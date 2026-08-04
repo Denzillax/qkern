@@ -1,0 +1,57 @@
+name: Real-Service Certification
+
+# Fuehrt beide Wegwerfstacks gegen echte Dienste aus. Ohne einen gruenen Lauf
+# dieser Workflow gilt kein Real-Service-Nachweis als erbracht; ein gruener
+# `npm test` allein ist ausdruecklich keine Zertifizierung.
+#
+# Docker wird nur auf Ubuntu-Runnern bereitgestellt. Die Windows-/macOS-Matrix
+# bleibt bewusst in `developer-experience.yml`.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: PostgreSQL 17
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+      - name: Run PostgreSQL certification stack
+        run: npm run test:postgres:docker
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-certification-log
+          path: docs/evidence/**/postgres-certification*.log
+          if-no-files-found: ignore
+          retention-days: 90
+
+  storage:
+    name: MinIO and ClamAV
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+      - name: Run Object Storage certification stack
+        run: npm run test:storage:docker
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-certification-log
+          path: docs/evidence/**/storage-certification*.log
+          if-no-files-found: ignore
+          retention-days: 90

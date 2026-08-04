@@ -1,5 +1,12 @@
 name: qkern-storage-v140a2-certification
 
+# Portloser Wegwerfstack fuer die Object-Storage-Zertifizierung.
+#
+# Es gilt dieselbe Regel wie im PostgreSQL-Stack: kein Mount darf innerhalb
+# eines anderen Mounts liegen. Der Arbeitsbaum wird deshalb read-only nach
+# /qkern-src gemountet und im Container in ein beschreibbares Verzeichnis
+# kopiert, statt ein node_modules-Volume in einen read-only Bind zu haengen.
+
 services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -14,6 +21,16 @@ services:
     image: clamav/clamav:1.4.5
     volumes:
       - storage-certification-clamav-db:/var/lib/clamav
+    healthcheck:
+      # freshclam laedt beim ersten Start die Signaturdatenbank. Ohne diesen
+      # Healthcheck startet der Test, bevor clamd seinen Socket oeffnet, und der
+      # Scannerpfad scheitert aus einem Grund, der nichts mit dem Produkt zu tun
+      # hat. start_period deckt den Download ab, ohne Retries zu verbrauchen.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 300s
 
   certification:
     image: node:24.7.0-alpine
@@ -22,10 +39,9 @@ services:
       minio:
         condition: service_started
       clamav:
-        condition: service_started
+        condition: service_healthy
     volumes:
-      - .:/workspace/qkern:ro
-      - storage-certification-node-modules:/workspace/qkern/node_modules
+      - .:/qkern-src:ro
     environment:
       NODE_ENV: test
       QKERN_TEST_STORAGE_PROVIDER_E2E: "true"
@@ -36,8 +52,20 @@ services:
       QKERN_TEST_STORAGE_S3_SECRET_ACCESS_KEY: qkern_cert_secret_change_me_32bytes
       QKERN_TEST_STORAGE_CLAMAV_HOST: clamav
       QKERN_TEST_STORAGE_CLAMAV_PORT: "3310"
-    command: ["sh", "-ec", "npm ci --ignore-scripts && npm run test:storage:provider"]
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npm run test:storage:provider
 
 volumes:
-  storage-certification-node-modules:
   storage-certification-clamav-db:

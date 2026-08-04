@@ -1,5 +1,14 @@
 name: qkern-v023-certification
 
+# Portloser Wegwerfstack fuer die PostgreSQL-17-Zertifizierung.
+#
+# Regel fuer diese Datei: kein Mount darf innerhalb eines anderen Mounts liegen.
+# Verschachtelte Mounts scheitern auf Docker-Desktop-/WSL2-Hosts beim Anlegen des
+# Mountpoints in einem read-only Bind. Deshalb liegt genau eine Init-Datei in
+# `/docker-entrypoint-initdb.d`, und die Quellen werden read-only an einen
+# separaten Pfad gemountet und im Container in ein beschreibbares Arbeits-
+# verzeichnis kopiert.
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -15,8 +24,8 @@ services:
     tmpfs:
       - /var/lib/postgresql/data
     volumes:
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
-      - ./db/docker/999-runtime-login.sh:/docker-entrypoint-initdb.d/999-runtime-login.sh:ro
+      - ./db:/qkern/db:ro
+      - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
     healthcheck:
       # The worker login is created by the final init script. A TCP role check
       # therefore cannot pass against PostgreSQL's temporary init server.
@@ -32,8 +41,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - .:/workspace/qkern:ro
-      - certification-node-modules:/workspace/qkern/node_modules
+      - .:/qkern-src:ro
     environment:
       NODE_ENV: test
       DATABASE_SSL: disable
@@ -45,7 +53,17 @@ services:
       QKERN_TEST_WORKER_DATABASE_URL: postgresql://qkern_worker_app:qkern_worker_local_only@postgres:5432/qkern_control
       QKERN_TEST_PROVISIONER_DATABASE_URL: postgresql://qkern_provisioner_app:qkern_provisioner_local_only@postgres:5432/qkern_control
       QKERN_TEST_PROJECT_API_DATABASE_URL: postgresql://qkern_project_api_app:qkern_project_api_local_only@postgres:5432/qkern_control
-    command: ["sh", "-ec", "npm ci --ignore-scripts && npm run test:postgres"]
-
-volumes:
-  certification-node-modules:
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npm run test:postgres

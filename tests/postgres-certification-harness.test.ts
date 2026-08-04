@@ -10,6 +10,10 @@ const runner = fs.readFileSync(
   path.resolve(process.cwd(), "scripts/postgres-certification.mjs"),
   "utf8",
 );
+const init = fs.readFileSync(
+  path.resolve(process.cwd(), "db/docker/000-certification-init.sh"),
+  "utf8",
+);
 const integration = fs.readFileSync(
   path.resolve(process.cwd(), "tests/postgres-incident-recovery.integration.test.ts"),
   "utf8",
@@ -22,6 +26,52 @@ const packageJson = JSON.parse(
   fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"),
 ) as { scripts: Record<string, string> };
 
+/**
+ * Collects every container-side mount target from the `volumes:` blocks of a
+ * Compose file. Only entries directly below a `volumes:` key are considered, so
+ * list items of `command:` or other sequences are never mistaken for mounts.
+ */
+export function containerMountTargets(composeFile: string): string[] {
+  const targets: string[] = [];
+  let volumesIndent: number | null = null;
+
+  for (const rawLine of composeFile.split(/\r?\n/)) {
+    if (rawLine.trim() === "" || rawLine.trim().startsWith("#")) {
+      continue;
+    }
+
+    const indent = rawLine.length - rawLine.trimStart().length;
+
+    if (volumesIndent !== null && indent <= volumesIndent) {
+      volumesIndent = null;
+    }
+
+    if (/^\s*volumes:\s*$/.test(rawLine)) {
+      volumesIndent = indent;
+      continue;
+    }
+
+    if (volumesIndent === null) {
+      continue;
+    }
+
+    const item = /^\s*-\s+(.+?)\s*$/.exec(rawLine);
+    if (!item) {
+      continue;
+    }
+
+    // Named-volume declarations at the top level have no colon-separated target.
+    const parts = item[1].replace(/^["']|["']$/g, "").split(":");
+    if (parts.length < 2) {
+      continue;
+    }
+
+    targets.push(parts[1]);
+  }
+
+  return targets;
+}
+
 describe("PostgreSQL certification harness", () => {
   it("uses an isolated ephemeral database stack without host database ports", () => {
     expect(compose).toContain("name: qkern-v023-certification");
@@ -29,10 +79,59 @@ describe("PostgreSQL certification harness", () => {
     expect(compose).toContain("tmpfs:");
     expect(compose).toContain("/var/lib/postgresql/data");
     expect(compose).not.toMatch(/^\s*ports:/m);
-    expect(compose).toContain("./db/migrations:/docker-entrypoint-initdb.d:ro");
-    expect(compose).toContain(".:/workspace/qkern:ro");
     expect(compose).toContain("qkern_worker_app");
     expect(compose).toContain("pg_has_role(current_user, 'qkern_worker', 'MEMBER')");
+  });
+
+  it("mounts sources read-only without nesting one mount inside another", () => {
+    // A mount whose target lies inside another mount target forces the runtime
+    // to create a mountpoint in an already read-only bind. Docker Desktop and
+    // WSL2 reject that with "make mountpoint: read-only file system", which
+    // previously prevented the stack from starting at all.
+    const targets = containerMountTargets(compose);
+
+    expect(targets).toContain("/qkern/db");
+    expect(targets).toContain("/qkern-src");
+    expect(targets).toContain("/docker-entrypoint-initdb.d/000-certification-init.sh");
+
+    for (const outer of targets) {
+      for (const inner of targets) {
+        if (outer === inner) {
+          continue;
+        }
+        expect(
+          inner.startsWith(`${outer.replace(/\/$/, "")}/`),
+          `mount ${inner} must not be nested inside ${outer}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("keeps every host source mount read-only", () => {
+    const mountLines = compose
+      .split(/\r?\n/)
+      .filter((line) => /^\s*-\s+\.[^:]*:/.test(line));
+
+    expect(mountLines.length).toBeGreaterThan(0);
+    for (const line of mountLines) {
+      expect(line.trimEnd().endsWith(":ro"), `${line.trim()} must be read-only`).toBe(true);
+    }
+  });
+
+  it("applies every migration and the runtime logins from a single init entrypoint", () => {
+    expect(init).toContain('readonly MIGRATIONS_DIR="${SOURCE_ROOT}/migrations"');
+    expect(init).toContain("--set ON_ERROR_STOP=1");
+    expect(init).toContain('bash "$RUNTIME_LOGIN_SCRIPT"');
+    // A silently empty migration directory would produce a green but meaningless
+    // certification run.
+    expect(init).toContain('if [[ "$applied" -eq 0 ]]; then');
+  });
+
+  it("copies the working tree into a writable directory instead of mounting over it", () => {
+    expect(compose).toContain("tar -C /qkern-src");
+    expect(compose).toContain("--exclude=./node_modules");
+    expect(compose).toContain("npm ci --ignore-scripts");
+    expect(compose).toContain("npm run test:postgres");
   });
 
   it("requires an explicit create/drop opt-in and every least-privilege login", () => {

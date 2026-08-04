@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { containerMountTargets } from "./postgres-certification-harness.test";
+
 const compose = fs.readFileSync(
   path.resolve(process.cwd(), "docker-compose.storage-certification.yml"),
   "utf8",
@@ -24,7 +26,33 @@ describe("Project Storage provider certification harness", () => {
     expect(compose).toContain("minio/minio:RELEASE.2025-09-07T16-13-09Z");
     expect(compose).toContain("clamav/clamav:1.4.5");
     expect(compose).not.toMatch(/^\s*ports:/m);
-    expect(compose).toContain(".:/workspace/qkern:ro");
+    expect(compose).toContain(".:/qkern-src:ro");
+  });
+
+  it("waits for a real ClamAV socket instead of a mere container start", () => {
+    // freshclam downloads the signature database on first start. Without a
+    // healthcheck the scanner path fails for a reason that has nothing to do
+    // with the product under certification.
+    expect(compose).toContain('test: ["CMD", "clamdcheck.sh"]');
+    expect(compose).toContain("start_period: 300s");
+    expect(compose).toMatch(/clamav:\s*\n\s*condition: service_healthy/);
+  });
+
+  it("mounts sources read-only without nesting one mount inside another", () => {
+    const targets = containerMountTargets(compose);
+
+    expect(targets).toContain("/qkern-src");
+    for (const outer of targets) {
+      for (const inner of targets) {
+        if (outer === inner) {
+          continue;
+        }
+        expect(
+          inner.startsWith(`${outer.replace(/\/$/, "")}/`),
+          `mount ${inner} must not be nested inside ${outer}`,
+        ).toBe(false);
+      }
+    }
   });
 
   it("requires an explicit provider E2E opt-in and private service names", () => {
