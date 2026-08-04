@@ -1,81 +1,94 @@
 import type { RealtimeJson, RealtimeScope } from "@/lib/server/realtime/model";
 
 /**
- * Vorbereiteter Port für Postgres Changes (CDC).
- *
- * **Dieser Port ist bewusst nicht implementiert.** Er hält die Architektur für
- * den nächsten Slice fest, damit dieser nicht neu entworfen werden muss, und
- * er markiert die Stelle, an der die Grenze verläuft.
+ * Postgres Changes: Vertrag für die Zustellung von Datenbankänderungen.
  *
  * ## Warum getrennt vom Event-Log
  *
- * Broadcast-Ereignisse entstehen im Dienst und sind bereits autorisiert, wenn
- * sie in den Log geschrieben werden: Der Absender hat die Kanalpolicy passiert.
- * Datenbankänderungen entstehen dagegen **außerhalb** von QKERN — durch die
- * Generated Data API, durch einen Migrationslauf, durch einen Operator mit
- * direkter Verbindung. Für sie gilt die Autorisierung des Absenders nicht.
+ * Broadcast-Ereignisse sind beim Schreiben bereits autorisiert: Der Absender hat
+ * die Kanalpolicy passiert. Datenbankänderungen entstehen dagegen **außerhalb**
+ * von QKERN — durch die Generated Data API, durch einen Migrationslauf, durch
+ * einen Operator mit direkter Verbindung. Für sie gilt die Autorisierung des
+ * Absenders nicht.
  *
- * Daraus folgt die zentrale Anforderung: **RLS pro Ereignis und pro Abonnent.**
- * Ob ein Abonnent eine geänderte Zeile sehen darf, hängt von seinen Claims ab,
- * nicht vom Kanal. Zwei Abonnenten desselben Kanals dürfen unterschiedliche
- * Teilmengen derselben Änderung erhalten. Ein Fan-out, der die Zeile einmal
- * autorisiert und dann an alle verteilt, wäre ein Cross-Tenant-Leck.
+ * Daraus folgt: **Row Level Security pro Ereignis und pro Abonnent.** Ob ein
+ * Abonnent eine geänderte Zeile sehen darf, hängt von seinen Claims ab, nicht
+ * vom Kanal. Zwei Abonnenten desselben Kanals dürfen unterschiedliche Teilmengen
+ * derselben Änderung erhalten. Deshalb läuft CDC nicht über `RealtimeEventLog`,
+ * dessen Ereignisse kanalweit sichtbar sind.
  *
- * Deshalb darf CDC **nicht** über `RealtimeEventLog` laufen. Dessen Ereignisse
- * sind kanalweit sichtbar; genau das ist bei Broadcast korrekt und bei
- * Datenänderungen falsch.
+ * ## Getroffene Entwurfsentscheidungen
  *
- * ## Offene Entwurfsentscheidungen für den nächsten Slice
+ * **Quelle: Trigger, nicht logische Replikation.** `db/project/0001` prüft für
+ * jede Rolle einer Projektdatenbank ausdrücklich `rolreplication = false`.
+ * Replikation zu verwenden hieße, diese Zusicherung umzukehren und jeder
+ * Projektdatenbank ein Replikationsrecht zu geben. Ein hängender Konsument ließe
+ * zudem den Slot unbegrenzt WAL halten, bis die Platte voll ist. Trigger sind
+ * begrenzbar, und das Anschalten je Tabelle durchläuft den vorhandenen
+ * Change-Set- und Approval-Weg.
  *
- * 1. **Quelle**: logische Replikation (`pgoutput`/`wal2json`) gegen
- *    tabellenbezogene Trigger. Replikation sieht jede Änderung ohne
- *    Schemaeingriff, verlangt aber einen Replikations-Slot, dessen unbegrenztes
- *    Wachstum bei hängendem Konsumenten die Datenbank füllt. Trigger sind
- *    einfacher zu begrenzen, ändern aber das Nutzerschema.
- * 2. **Autorisierung**: Prüfung pro Abonnent über eine tenantgebundene
- *    Transaktion mit den Claims des Abonnenten, oder vorberechnete Sichtbarkeit
- *    beim Einlesen. Ersteres ist korrekt und teuer, Letzteres schnell und
- *    schwer korrekt zu halten.
- * 3. **Rückstau**: Ein langsamer Abonnent darf den Slot nicht wachsen lassen.
- *    Es braucht eine Grenze, ab der ein Abonnent abgeworfen statt gepuffert
- *    wird, und einen Weg, das dem Client mitzuteilen statt still zu verwerfen.
+ * **Nutzlast: keine gespeicherten Zeilenwerte.** Der Feed hält ausschließlich
+ * die Primärschlüsselwerte. Die Zeile wird je Abonnent frisch mit dessen Claims
+ * gelesen; RLS autorisiert und erzeugt die Nutzlast in einem Schritt. Läge die
+ * Zeile im Feed, bräuchte es eine zweite Sichtbarkeitsprüfung außerhalb der
+ * Datenbank — eine Kopie der RLS-Logik und damit eine dauerhafte Fehlerquelle.
  *
- * Keine dieser Fragen ist beantwortet. Sie zu beantworten ist der Inhalt des
- * Slice, nicht seine Voraussetzung.
+ * **Löschungen: nur für `service_role`.** Nach einem `DELETE` existiert die
+ * Zeile nicht mehr, RLS kann also nicht mehr beantworten, wer sie hätte sehen
+ * dürfen. Sie trotzdem an alle Kanalabonnenten zu melden, würde die Existenz
+ * eines Schlüssels offenlegen, den manche nie sehen durften. Löschungen erreichen
+ * deshalb ausschließlich Abonnenten mit `service_role`. Das ist eine bewusste
+ * Funktionslücke, keine Übersehung.
+ *
+ * **Rückstau: schließen statt still verwerfen.** Ein Abonnent, der nicht
+ * mitkommt, verliert sein Abonnement mit einem eigenen Fehlercode. Ereignisse
+ * stillschweigend zu überspringen würde demselben Vertrag widersprechen, den die
+ * Cursor-Prüfung an anderer Stelle zusichert.
  */
+
 export type RealtimeChangeOperation = "insert" | "update" | "delete";
 
+/**
+ * Eine erfasste Änderung. Enthält bewusst **keine** Zeilenwerte, nur den
+ * Primärschlüssel und die Position im Feed.
+ */
 export type RealtimeChange = RealtimeScope & {
-  /** Schema und Tabelle der geänderten Zeile. */
+  position: number;
   schema: string;
   table: string;
   operation: RealtimeChangeOperation;
-  /** Monotone Position in der Änderungsquelle, für Wiederaufnahme. */
-  position: string;
-  /** Zeilenwerte nach der Änderung; bei `delete` die Primärschlüsselwerte. */
-  record: Record<string, RealtimeJson>;
-  /** Zeilenwerte vor der Änderung, sofern die Quelle sie liefert. */
-  previous?: Record<string, RealtimeJson>;
+  key: Record<string, RealtimeJson>;
   committedAt: Date;
 };
 
 export interface RealtimeChangeSource {
   /**
-   * Liefert Änderungen ab `position`. Der Aufrufer bestätigt Verarbeitung über
-   * `acknowledge`, damit die Quelle ihren Fortschritt begrenzen kann.
+   * Liest Änderungen mit Position größer `after`, höchstens `limit` Stück.
+   * Der Aufrufer bestimmt den Takt; die Quelle hält keinen eigenen Zustand.
    */
-  stream(from: string | null, handler: (change: RealtimeChange) => Promise<void>): Promise<void>;
-  acknowledge(position: string): Promise<void>;
-  close(): Promise<void>;
+  read(scope: RealtimeScope, after: number, limit: number): Promise<RealtimeChange[]>;
+
+  /** Entfernt bestätigte Änderungen bis einschließlich `through`. */
+  prune(scope: RealtimeScope, through: number): Promise<number>;
 }
 
+/** Claims eines Abonnenten, wie sie die Data Plane in RLS-Settings übersetzt. */
+export type RealtimeSubscriberClaims = {
+  role: "anon" | "authenticated" | "service_role";
+  subject?: string;
+  claims?: Record<string, RealtimeJson>;
+};
+
 /**
- * Entscheidet je Abonnent, ob eine Änderung sichtbar ist.
+ * Liest die geänderte Zeile mit den Claims eines Abonnenten.
  *
- * Getrennt vom Transport, weil die Antwort von den Claims des Abonnenten
- * abhängt und nicht vom Kanal. Eine Implementierung muss fail-closed sein: Im
- * Zweifel wird nicht zugestellt.
+ * Gibt `null` zurück, wenn der Abonnent sie nicht sehen darf — und ebenso, wenn
+ * die Prüfung nicht durchgeführt werden konnte. Eine Implementierung muss
+ * fail-closed sein: Im Zweifel wird nicht zugestellt.
  */
-export interface RealtimeChangeVisibility {
-  visible(change: RealtimeChange, subscriberClaims: Record<string, RealtimeJson>): Promise<boolean>;
+export interface RealtimeChangeReader {
+  read(
+    change: RealtimeChange,
+    subscriber: RealtimeSubscriberClaims,
+  ): Promise<Record<string, RealtimeJson> | null>;
 }

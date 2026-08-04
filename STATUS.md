@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 4. August 2026 · Release: `1.11.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 4. August 2026 · Release: `1.12.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
-| Realtime | teilweise | teilweise — dauerhafter Log und Fan-out ja, CDC nein |
+| Realtime | teilweise | teilweise — Log und Fan-out ja, CDC-Erfassung gebaut aber nicht verdrahtet |
 | Compute Contracts | nur Ports | nein |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -110,7 +110,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
-| Realtime | dauerhafter Log und Fan-out zertifiziert | Postgres Changes mit RLS pro Ereignis, Drop-/Last-Tests |
+| Realtime | Log und Fan-out zertifiziert; CDC-Erfassung gebaut | Verdrahtung des changes-Kanals und Trigger gegen echte Projekt-DB |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
