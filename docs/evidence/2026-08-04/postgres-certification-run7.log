@@ -1,0 +1,1081 @@
+
+> qkern-platform@1.8.0-alpha.1 test:postgres:docker
+> node scripts/postgres-certification.mjs
+
+ Network qkern-v023-certification_default Creating 
+ Network qkern-v023-certification_default Created 
+ Container qkern-v023-certification-postgres-1 Creating 
+ Container qkern-v023-certification-postgres-1 Created 
+ Container qkern-v023-certification-certification-1 Creating 
+ Container qkern-v023-certification-certification-1 Created 
+Attaching to certification-1, postgres-1
+ Container qkern-v023-certification-postgres-1 Starting 
+ Container qkern-v023-certification-postgres-1 Started 
+ Container qkern-v023-certification-postgres-1 Waiting 
+postgres-1  | The files belonging to this database system will be owned by user "postgres".
+postgres-1  | This user must also own the server process.
+postgres-1  | 
+postgres-1  | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1  | The default database encoding has accordingly been set to "UTF8".
+postgres-1  | The default text search configuration will be set to "english".
+postgres-1  | 
+postgres-1  | Data page checksums are disabled.
+postgres-1  | 
+postgres-1  | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1  | creating subdirectories ... ok
+postgres-1  | selecting dynamic shared memory implementation ... posix
+postgres-1  | selecting default "max_connections" ... 100
+postgres-1  | selecting default "shared_buffers" ... 128MB
+postgres-1  | selecting default time zone ... UTC
+postgres-1  | creating configuration files ... ok
+postgres-1  | running bootstrap script ... ok
+postgres-1  | sh: locale: not found
+postgres-1  | 2026-08-04 18:20:09.101 UTC [36] WARNING:  no usable system locales were found
+postgres-1  | performing post-bootstrap initialization ... ok
+postgres-1  | syncing data to disk ... ok
+postgres-1  | 
+postgres-1  | 
+postgres-1  | Success. You can now start the database server using:
+postgres-1  | 
+postgres-1  |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1  | 
+postgres-1  | initdb: warning: enabling "trust" authentication for local connections
+postgres-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1  | waiting for server to start....2026-08-04 18:20:09.514 UTC [42] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-08-04 18:20:09.518 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-08-04 18:20:09.520 UTC [45] LOG:  database system was shut down at 2026-08-04 18:20:09 UTC
+postgres-1  | 2026-08-04 18:20:09.523 UTC [42] LOG:  database system is ready to accept connections
+postgres-1  |  done
+postgres-1  | server started
+postgres-1  | CREATE DATABASE
+postgres-1  | 
+postgres-1  | 
+postgres-1  | /usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/000-certification-init.sh
+postgres-1  | certification-init: applying 0001_control_plane.sql
+postgres-1  | CREATE EXTENSION
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applying 0002_repository_hardening.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0003_auth_and_memberships.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0004_artifact_and_workspace_integrity.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0005_migration_apply_queue.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0006_worker_runtime_boundary.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0007_migration_claim_sequence.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0008_migration_reconciliation_quarantine.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0009_migration_review_commands.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0010_migration_incident_escalations.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0011_migration_incident_outbox.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | INSERT 0 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0012_migration_incident_dead_letters.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0013_migration_incident_delivery_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0014_migration_incident_delivery_visibility.sql
+postgres-1  | BEGIN
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0015_migration_incident_delivery_failure_classification.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0016_migration_incident_delivery_recovery_binding.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0017_migration_incident_verified_resolution.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0018_migration_incident_delivery_recovery_generation.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0019_migration_apply_delivery_resilience.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0020_project_database_provisioning.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0021_project_database_provisioning_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0022_project_automation_policies.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0023_project_api_keys.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0024_project_auth.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0025_project_storage.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0026_project_queues.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0027_project_queue_dead_letter_replay.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0028_usage_metering.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0029_project_queue_definition_row_lock.sql
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applied 29 migrations
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | 2026-08-04 18:20:10.957 UTC [173] WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.957 UTC [173] WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.958 UTC [173] WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.958 UTC [173] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.958 UTC [173] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.958 UTC [173] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-08-04 18:20:10.959 UTC [173] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | 
+postgres-1  | waiting for server to shut down....2026-08-04 18:20:10.967 UTC [42] LOG:  received fast shutdown request
+postgres-1  | 2026-08-04 18:20:10.967 UTC [42] LOG:  aborting any active transactions
+postgres-1  | 2026-08-04 18:20:10.970 UTC [42] LOG:  background worker "logical replication launcher" (PID 48) exited with exit code 1
+postgres-1  | 2026-08-04 18:20:10.970 UTC [43] LOG:  shutting down
+postgres-1  | 2026-08-04 18:20:10.970 UTC [43] LOG:  checkpoint starting: shutdown immediate
+postgres-1  | 2026-08-04 18:20:10.979 UTC [43] LOG:  checkpoint complete: wrote 1133 buffers (6.9%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.001 s, total=0.009 s; sync files=564, longest=0.001 s, average=0.001 s; distance=6807 kB, estimate=6807 kB; lsn=0/1B97DA0, redo lsn=0/1B97DA0
+postgres-1  | 2026-08-04 18:20:10.985 UTC [42] LOG:  database system is shut down
+postgres-1  |  done
+postgres-1  | server stopped
+postgres-1  | 
+postgres-1  | PostgreSQL init process complete; ready for start up.
+postgres-1  | 
+postgres-1  | 2026-08-04 18:20:11.086 UTC [1] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-08-04 18:20:11.086 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1  | 2026-08-04 18:20:11.086 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1  | 2026-08-04 18:20:11.090 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-08-04 18:20:11.092 UTC [178] LOG:  database system was shut down at 2026-08-04 18:20:10 UTC
+postgres-1  | 2026-08-04 18:20:11.097 UTC [1] LOG:  database system is ready to accept connections
+ Container qkern-v023-certification-postgres-1 Healthy 
+ Container qkern-v023-certification-certification-1 Starting 
+ Container qkern-v023-certification-certification-1 Started 
+certification-1  | 
+certification-1  | added 203 packages, and audited 204 packages in 20s
+certification-1  | 
+certification-1  | 57 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | found 0 vulnerabilities
+certification-1  | npm notice
+certification-1  | npm notice New major version of npm available! 11.17.0 -> 12.0.2
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+certification-1  | npm notice To update run: npm install -g npm@12.0.2
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@1.8.0-alpha.1 test:postgres
+certification-1  | > vitest run tests/postgres.integration.test.ts tests/postgres-incident-recovery.integration.test.ts tests/generated-data-postgres.integration.test.ts tests/project-auth-postgres.integration.test.ts tests/project-storage-postgres.integration.test.ts tests/project-queues-postgres.integration.test.ts tests/usage-metering-postgres.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+postgres-1       | 2026-08-04 18:20:36.929 UTC [295] ERROR:  permission denied for table users
+postgres-1       | 2026-08-04 18:20:36.929 UTC [295] STATEMENT:  SELECT id FROM users LIMIT 1
+postgres-1       | 2026-08-04 18:20:36.956 UTC [297] ERROR:  permission denied for table projects
+postgres-1       | 2026-08-04 18:20:36.956 UTC [297] STATEMENT:  SELECT id FROM projects LIMIT 1
+certification-1  |  [31m❯[39m tests/generated-data-postgres.integration.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 309[2mms[22m[39m
+certification-1  | [31m     [31m×[31m enforces RLS across insert, list, update and delete[39m[32m 52[2mms[22m[39m
+certification-1  | [31m     [31m×[31m rejects identifier and column injection before PostgreSQL execution[39m[32m 25[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 352[2mms[22m[39m
+postgres-1       | 2026-08-04 18:20:37.239 UTC [311] ERROR:  permission denied for table project_auth_users
+postgres-1       | 2026-08-04 18:20:37.239 UTC [311] STATEMENT:  SELECT id FROM project_auth_users LIMIT 1
+postgres-1       | 2026-08-04 18:20:37.277 UTC [302] ERROR:  audit_logs is append-only
+postgres-1       | 2026-08-04 18:20:37.277 UTC [302] CONTEXT:  PL/pgSQL function qkern_reject_audit_mutation() line 3 at RAISE
+postgres-1       | 2026-08-04 18:20:37.277 UTC [302] STATEMENT:  DELETE FROM audit_logs WHERE organization_id = $1
+certification-1  |  [31m❯[39m tests/usage-metering-postgres.integration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 264[2mms[22m[39m
+certification-1  |      [32m✓[39m serializes concurrent hard-quota decisions and persists verifier-only events[32m 83[2mms[22m[39m
+certification-1  |      [32m✓[39m returns the original denied decision after a repository restart[32m 15[2mms[22m[39m
+certification-1  |      [32m✓[39m keeps the durable projection consistent with the accepted counter[32m 6[2mms[22m[39m
+certification-1  |      [32m✓[39m lets tenant RLS project no policy or usage for another organization[32m 4[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/project-auth-postgres.integration.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 321[2mms[22m[39m
+postgres-1       | 2026-08-04 18:20:37.461 UTC [315] ERROR:  project storage object identity is immutable
+postgres-1       | 2026-08-04 18:20:37.461 UTC [315] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_object_mutation() line 12 at RAISE
+postgres-1       | 2026-08-04 18:20:37.461 UTC [315] STATEMENT:  UPDATE project_storage_objects SET deleted_at=coalesce(deleted_at,$5)
+postgres-1       | 	        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+postgres-1       | 	        RETURNING id,organization_id,project_id,environment,bucket_id,object_key,owner_subject,
+postgres-1       | 	  provider_key,size_bytes,content_type,checksum_sha256,etag,status,created_at,delete_after,deleted_at
+postgres-1       | 2026-08-04 18:20:37.464 UTC [303] ERROR:  audit_logs is append-only
+postgres-1       | 2026-08-04 18:20:37.464 UTC [303] CONTEXT:  PL/pgSQL function qkern_reject_audit_mutation() line 3 at RAISE
+postgres-1       | 2026-08-04 18:20:37.464 UTC [303] STATEMENT:  DELETE FROM audit_logs WHERE organization_id = $1
+postgres-1       | 2026-08-04 18:20:37.467 UTC [304] ERROR:  audit_logs is append-only
+postgres-1       | 2026-08-04 18:20:37.467 UTC [304] CONTEXT:  PL/pgSQL function qkern_reject_audit_mutation() line 3 at RAISE
+postgres-1       | 2026-08-04 18:20:37.467 UTC [304] STATEMENT:  DELETE FROM audit_logs WHERE organization_id = $1
+certification-1  |  [31m❯[39m tests/project-queues-postgres.integration.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 441[2mms[22m[39m
+certification-1  |      [32m✓[39m persists only the dedupe verifier and returns the same durable receipt[32m 79[2mms[22m[39m
+certification-1  |      [32m✓[39m claims each ready row at most once across concurrent workers[32m 100[2mms[22m[39m
+certification-1  | [31m     [31m×[31m keeps lease verifiers durable and fences the wrong or stale worker[39m[32m 63[2mms[22m[39m
+certification-1  |      [32m✓[39m persists one audited replay binding for concurrent dead-letter requests[32m 45[2mms[22m[39m
+certification-1  |      [32m✓[39m lets tenant RLS hide every queue from a different organization[32m 4[2mms[22m[39m
+certification-1  |  [31m❯[39m tests/project-storage-postgres.integration.test.ts [2m([22m[2m6 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 424[2mms[22m[39m
+certification-1  |      [32m✓[39m persists an exact verified upload and moves quota from reserved to used[32m 93[2mms[22m[39m
+certification-1  | [31m     [31m×[31m serializes concurrent quota reservations without overbooking[39m[32m 56[2mms[22m[39m
+certification-1  |      [32m✓[39m commits concurrent completion replays exactly once[32m 64[2mms[22m[39m
+certification-1  | [31m     [31m×[31m cleans the provider object when expiry wins a slow completion[39m[32m 41[2mms[22m[39m
+certification-1  |      [32m✓[39m releases used quota once when delete and lifecycle expiration race[32m 40[2mms[22m[39m
+certification-1  |      [32m✓[39m keeps the runtime role inside RLS and rejects direct cross-tenant reads[32m 2[2mms[22m[39m
+postgres-1       | 2026-08-04 18:20:37.556 UTC [305] ERROR:  new row for relation "migration_incident_delivery_commands" violates check constraint "migration_incident_delivery_commands_expected_failure_code"
+postgres-1       | 2026-08-04 18:20:37.556 UTC [305] DETAIL:  Failing row contains (a7f0b845-021b-4691-a407-5b773bb903b4, c4797be3-ac58-4442-912d-40340732822e, 34159cbe-de2c-4efb-b587-aed745bd1823, constraint-test, destination_recovered, pending, null, 2026-08-04 18:20:37.555607+00, 2026-08-04 18:20:37.555607+00, null, null).
+postgres-1       | 2026-08-04 18:20:37.556 UTC [305] STATEMENT:  INSERT INTO migration_incident_delivery_commands
+postgres-1       | 	           (organization_id, migration_incident_id, requested_by, reason_code,
+postgres-1       | 	            expected_failure_code, expected_retry_cycle)
+postgres-1       | 	         VALUES ($1, $2, 'constraint-test', 'destination_recovered', NULL, NULL)
+postgres-1       | 2026-08-04 18:20:37.569 UTC [316] ERROR:  new row for relation "migration_incident_delivery_commands" violates check constraint "migration_incident_delivery_commands_expected_retry_cycle"
+postgres-1       | 2026-08-04 18:20:37.569 UTC [316] DETAIL:  Failing row contains (5e3a7828-a70d-486c-8cb8-2d1e1d85e89a, c4797be3-ac58-4442-912d-40340732822e, 34159cbe-de2c-4efb-b587-aed745bd1823, constraint-test, destination_recovered, pending, null, 2026-08-04 18:20:37.567247+00, 2026-08-04 18:20:37.567247+00, PUBLISH_FAILED, null).
+postgres-1       | 2026-08-04 18:20:37.569 UTC [316] STATEMENT:  INSERT INTO migration_incident_delivery_commands
+postgres-1       | 	           (organization_id, migration_incident_id, requested_by, reason_code,
+postgres-1       | 	            expected_failure_code, expected_retry_cycle)
+postgres-1       | 	         VALUES ($1, $2, 'constraint-test', 'destination_recovered', 'PUBLISH_FAILED', NULL)
+postgres-1       | 2026-08-04 18:20:37.863 UTC [319] ERROR:  migration incident resolution requires worker-verified ledger evidence
+postgres-1       | 2026-08-04 18:20:37.863 UTC [319] CONTEXT:  PL/pgSQL function qkern_validate_migration_incident_acknowledgement() line 49 at RAISE
+postgres-1       | 2026-08-04 18:20:37.863 UTC [319] STATEMENT:  UPDATE migration_incidents
+postgres-1       | 	       SET status = 'resolved',
+postgres-1       | 	           resolution_code = 'target_ledger_match'::qkern_migration_incident_resolution_code
+postgres-1       | 	       WHERE organization_id = $1 AND migration_job_id = $2
+postgres-1       | 	         AND status IN ('open', 'acknowledged')
+postgres-1       | 	       RETURNING 
+postgres-1       | 	  id, organization_id, migration_job_id, project_id, environment, change_set_id,
+postgres-1       | 	  kind, severity, status, detected_review_cycle, detected_reconciliation_attempt,
+postgres-1       | 	  acknowledged_by, acknowledgement_code, acknowledged_at,
+postgres-1       | 	  resolved_by, resolution_code, resolved_at, created_at, updated_at
+postgres-1       | 2026-08-04 18:20:37.880 UTC [176] LOG:  checkpoint starting: immediate force wait
+postgres-1       | 2026-08-04 18:20:37.882 UTC [176] LOG:  checkpoint complete: wrote 288 buffers (1.8%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.003 s, sync=0.001 s, total=0.003 s; sync files=132, longest=0.001 s, average=0.000 s; distance=5995 kB, estimate=5995 kB; lsn=0/2172BB8, redo lsn=0/2172B60
+certification-1  |  [32m✓[39m tests/postgres-incident-recovery.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 972[2mms[22m[39m
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-queues-postgres.integration.test.ts[2m > [22mProject Queues PostgreSQL certification
+certification-1  | [31m[1merror[22m: audit_logs is append-only[39m
+certification-1  | [90m [2m❯[22m node_modules/pg-pool/index.js:[2m45:11[22m[39m
+certification-1  | [36m [2m❯[22m tests/project-queues-postgres.integration.test.ts:[2m53:7[22m[39m
+certification-1  |     [90m 51|[39m     // restricts deleting its owner, while everything below it cascade…
+certification-1  |     [90m 52|[39m     [35mif[39m (owner) {
+certification-1  |     [90m 53|[39m       await owner.query("DELETE FROM audit_logs WHERE organization_id …
+certification-1  |     [90m   |[39m       [31m^[39m
+certification-1  |     [90m 54|[39m       await owner.query("DELETE FROM organizations WHERE id = $1", [or…
+certification-1  |     [90m 55|[39m       await owner.query("DELETE FROM users WHERE id = $1", [controlUse…
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-storage-postgres.integration.test.ts[2m > [22mProject Storage PostgreSQL certification
+certification-1  | [31m[1merror[22m: audit_logs is append-only[39m
+certification-1  | [90m [2m❯[22m node_modules/pg-pool/index.js:[2m45:11[22m[39m
+certification-1  | [36m [2m❯[22m tests/project-storage-postgres.integration.test.ts:[2m56:7[22m[39m
+certification-1  |     [90m 54|[39m     // restricts deleting its owner, while everything below it cascade…
+certification-1  |     [90m 55|[39m     [35mif[39m (owner) {
+certification-1  |     [90m 56|[39m       await owner.query("DELETE FROM audit_logs WHERE organization_id …
+certification-1  |     [90m   |[39m       [31m^[39m
+certification-1  |     [90m 57|[39m       await owner.query("DELETE FROM organizations WHERE id = $1", [or…
+certification-1  |     [90m 58|[39m       await owner.query("DELETE FROM users WHERE id = $1", [controlUse…
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/usage-metering-postgres.integration.test.ts[2m > [22mUsage Metering PostgreSQL certification
+certification-1  | [31m[1merror[22m: audit_logs is append-only[39m
+certification-1  | [90m [2m❯[22m node_modules/pg-pool/index.js:[2m45:11[22m[39m
+certification-1  | [36m [2m❯[22m tests/usage-metering-postgres.integration.test.ts:[2m55:7[22m[39m
+certification-1  |     [90m 53|[39m     // restricts deleting its owner, while everything below it cascade…
+certification-1  |     [90m 54|[39m     [35mif[39m (owner) {
+certification-1  |     [90m 55|[39m       await owner.query("DELETE FROM audit_logs WHERE organization_id …
+certification-1  |     [90m   |[39m       [31m^[39m
+certification-1  |     [90m 56|[39m       await owner.query("DELETE FROM organizations WHERE id=$1", [orga…
+certification-1  |     [90m 57|[39m       await owner.query("DELETE FROM users WHERE id=$1", [controlUser]…
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 5 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/generated-data-postgres.integration.test.ts[2m > [22mgenerated Data API PostgreSQL RLS certification[2m > [22menforces RLS across insert, list, update and delete
+certification-1  | [31m[1mGeneratedDataApiError[22m: The generated project data API is unavailable.[39m
+certification-1  | [36m [2m❯[22m GeneratedDataApiService.loadTables lib/server/data-plane/generated-api.ts:[2m472:15[22m[39m
+certification-1  |     [90m470|[39m           !Number.isSafeInteger(row.ordinal_position) || row.ordinal_p…
+certification-1  |     [90m471|[39m           (row.primary_key_position !== null && (!Number.isSafeInteger…
+certification-1  |     [90m472|[39m         throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_R…
+certification-1  |     [90m   |[39m               [31m^[39m
+certification-1  |     [90m473|[39m       }
+certification-1  |     [90m474|[39m       [35mlet[39m mapped [33m=[39m tables[33m.[39m[35mget[39m(row[33m.[39mtable_name)[33m;[39m
+certification-1  | [90m [2m❯[22m GeneratedDataApiService.loadTable lib/server/data-plane/generated-api.ts:[2m455:20[22m[39m
+certification-1  | [90m [2m❯[22m lib/server/data-plane/generated-api.ts:[2m311:21[22m[39m
+certification-1  | [90m [2m❯[22m GeneratedDataApiService.run lib/server/data-plane/generated-api.ts:[2m594:22[22m[39m
+certification-1  | [90m [2m❯[22m tests/generated-data-postgres.integration.test.ts:[2m61:5[22m[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/generated-data-postgres.integration.test.ts[2m > [22mgenerated Data API PostgreSQL RLS certification[2m > [22mrejects identifier and column injection before PostgreSQL execution
+certification-1  | [31m[1mAssertionError[22m: expected GeneratedDataApiError: The generated proj… { code: '…' } to match object { Object (code) }
+certification-1  | (1 matching property omitted from actual)[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- {[39m
+certification-1  | [32m-   "code": "GENERATED_DATA_API_INVALID_INPUT",[39m
+certification-1  | [31m+ GeneratedDataApiError {[39m
+certification-1  | [31m+   "code": "GENERATED_DATA_API_BOUNDARY_REJECTED",[39m
+certification-1  | [2m  }[22m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/generated-data-postgres.integration.test.ts:[2m89:8[22m[39m
+certification-1  |     [90m 87|[39m     [35mawait[39m [34mexpect[39m(service[33m.[39m[34mlistRows[39m([34mcontext[39m(ownerA)[33m,[39m scope[33m,[39m {
+certification-1  |     [90m 88|[39m       schema, table: "items", filters: [{ column: "name) OR true --", …
+certification-1  |     [90m 89|[39m     })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPU…
+certification-1  |     [90m   |[39m        [31m^[39m
+certification-1  |     [90m 90|[39m   })[33m;[39m
+certification-1  |     [90m 91|[39m })[33m;[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-queues-postgres.integration.test.ts[2m > [22mProject Queues PostgreSQL certification[2m > [22mkeeps lease verifiers durable and fences the wrong or stale worker
+certification-1  | [31m[1mAssertionError[22m: expected ProjectQueueError: QUEUE_CONFLICT { code: '…' } to match object { code: 'QUEUE_LEASE_LOST' }
+certification-1  | (1 matching property omitted from actual)[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- {[39m
+certification-1  | [32m-   "code": "QUEUE_LEASE_LOST",[39m
+certification-1  | [31m+ ProjectQueueError {[39m
+certification-1  | [31m+   "code": "QUEUE_CONFLICT",[39m
+certification-1  | [2m  }[22m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/project-queues-postgres.integration.test.ts:[2m101:8[22m[39m
+certification-1  |     [90m 99|[39m     await expect(service.acknowledge(worker, scope, "lease-fence", rec…
+certification-1  |     [90m100|[39m       workerId[33m:[39m [32m"worker-two"[39m[33m,[39m leaseToken[33m:[39m claim[33m.[39mleaseToken[33m,[39m
+certification-1  |     [90m101|[39m     }))[33m.[39mrejects[33m.[39m[34mtoMatchObject[39m({ code[33m:[39m [32m"QUEUE_LEASE_LOST"[39m })[33m;[39m
+certification-1  |     [90m   |[39m        [31m^[39m
+certification-1  |     [90m102|[39m     [35mconst[39m restarted [33m=[39m [35mnew[39m [33mProjectQueueService[39m({
+certification-1  |     [90m103|[39m       repository: new PostgresProjectQueueRepository(new PostgresContr…
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-storage-postgres.integration.test.ts[2m > [22mProject Storage PostgreSQL certification[2m > [22mserializes concurrent quota reservations without overbooking
+certification-1  | [31m[1mAssertionError[22m: expected [ { status: 'rejected', …(1) } ] to match object [ Array(1) ]
+certification-1  | (3 matching properties omitted from actual)[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [2m  [[22m
+certification-1  | [2m    {[22m
+certification-1  | [32m-     "reason": {[39m
+certification-1  | [32m-       "code": "STORAGE_QUOTA_EXCEEDED",[39m
+certification-1  | [31m+     "reason": PersistenceError {[39m
+certification-1  | [31m+       "code": "PERSISTENCE_ERROR",[39m
+certification-1  | [2m      },[22m
+certification-1  | [2m    },[22m
+certification-1  | [2m  ][22m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/project-storage-postgres.integration.test.ts:[2m103:73[22m[39m
+certification-1  |     [90m101|[39m     ])[33m;[39m
+certification-1  |     [90m102|[39m     expect(attempts.filter((attempt) => attempt.status === "fulfilled"…
+certification-1  |     [90m103|[39m     expect(attempts.filter((attempt) => attempt.status === "rejected")…
+certification-1  |     [90m   |[39m                                                                         [31m^[39m
+certification-1  |     [90m104|[39m       { reason[33m:[39m { code[33m:[39m [32m"STORAGE_QUOTA_EXCEEDED"[39m } }[33m,[39m
+certification-1  |     [90m105|[39m     ])[33m;[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-storage-postgres.integration.test.ts[2m > [22mProject Storage PostgreSQL certification[2m > [22mcleans the provider object when expiry wins a slow completion
+certification-1  | [31m[1mAssertionError[22m: expected PersistenceError: The database operation … { …(2) } to match object { code: 'STORAGE_CONFLICT' }
+certification-1  | (2 matching properties omitted from actual)[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- {[39m
+certification-1  | [32m-   "code": "STORAGE_CONFLICT",[39m
+certification-1  | [31m+ PersistenceError {[39m
+certification-1  | [31m+   "code": "PERSISTENCE_ERROR",[39m
+certification-1  | [2m  }[22m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/project-storage-postgres.integration.test.ts:[2m180:29[22m[39m
+certification-1  |     [90m178|[39m     scanner[33m.[39m[34mrelease[39m()[33m;[39m
+certification-1  |     [90m179|[39m
+certification-1  |     [90m180|[39m     await expect(completion).rejects.toMatchObject({ code: "STORAGE_CO…
+certification-1  |     [90m   |[39m                             [31m^[39m
+certification-1  |     [90m181|[39m     await expect(provider.headObject(prepared.upload.fields.key)).reso…
+certification-1  |     [90m182|[39m     [35mconst[39m state [33m=[39m [35mawait[39m owner[33m.[39mquery[33m<[39m{
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (7)[39m
+certification-1  | [2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m23 passed[39m[22m[90m (28)[39m
+certification-1  | [2m   Start at [22m 18:20:36
+certification-1  | [2m   Duration [22m 1.69s[2m (transform 2.32s, setup 0ms, import 3.13s, tests 3.08s, environment 4ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 1
+ Compose Stopping Aborting on container exit...
+ Container qkern-v023-certification-certification-1 Stopping 
+ Container qkern-v023-certification-certification-1 Stopped 
+ Container qkern-v023-certification-postgres-1 Stopping 
+postgres-1       | 2026-08-04 18:20:38.300 UTC [1] LOG:  received fast shutdown request
+postgres-1       | 2026-08-04 18:20:38.300 UTC [1] LOG:  aborting any active transactions
+postgres-1       | 2026-08-04 18:20:38.303 UTC [1] LOG:  background worker "logical replication launcher" (PID 181) exited with exit code 1
+postgres-1       | 2026-08-04 18:20:38.303 UTC [176] LOG:  shutting down
+postgres-1       | 2026-08-04 18:20:38.303 UTC [176] LOG:  checkpoint starting: shutdown immediate
+postgres-1       | 2026-08-04 18:20:38.304 UTC [176] LOG:  checkpoint complete: wrote 1 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.001 s; sync files=1, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=5395 kB; lsn=0/2172CD0, redo lsn=0/2172CD0
+postgres-1       | 2026-08-04 18:20:38.309 UTC [1] LOG:  database system is shut down
+ Container qkern-v023-certification-postgres-1 Stopped 
+[Kpostgres-1 exited with code 0
+
+ Container qkern-v023-certification-certification-1 Stopping 
+ Container qkern-v023-certification-certification-1 Stopped 
+ Container qkern-v023-certification-certification-1 Removing 
+ Container qkern-v023-certification-certification-1 Removed 
+ Container qkern-v023-certification-postgres-1 Stopping 
+ Container qkern-v023-certification-postgres-1 Stopped 
+ Container qkern-v023-certification-postgres-1 Removing 
+ Container qkern-v023-certification-postgres-1 Removed 
+ Network qkern-v023-certification_default Removing 
+ Network qkern-v023-certification_default Removed 
+EXIT=1

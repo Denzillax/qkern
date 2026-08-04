@@ -1,0 +1,5 @@
+
+> qkern-platform@1.8.0-alpha.1 test:postgres:docker
+> node scripts/postgres-certification.mjs
+
+unable to get image 'postgres:17-alpine': failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.

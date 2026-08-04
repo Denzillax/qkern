@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.8_ALPHA1.md](RELEASE_1.8_ALPHA1.md) | Aktueller Release: Usage Metering & Quotas |
+| [RELEASE_1.9.md](RELEASE_1.9.md) | Aktueller Release: Real-Service Certification |
+| [RELEASE_1.8_ALPHA1.md](RELEASE_1.8_ALPHA1.md) | Historischer Release: Usage Metering & Quotas |
 | [RELEASE_1.7_ALPHA3.md](RELEASE_1.7_ALPHA3.md) | Historischer Release: Packages & Cross-Platform Contracts |
 | [RELEASE_1.7_ALPHA2.md](RELEASE_1.7_ALPHA2.md) | Historischer Release: CLI & Local Workflow |
 | [RELEASE_1.7_ALPHA1.md](RELEASE_1.7_ALPHA1.md) | Historischer Release: TypeScript SDK |
@@ -34,6 +35,10 @@
 | [RELEASE_1.3_ALPHA1.md](RELEASE_1.3_ALPHA1.md) | Historischer Release: Project Auth |
 | [RELEASE_1.2_ALPHA1.md](RELEASE_1.2_ALPHA1.md) | Historischer Release: Generated Data API |
 | [RELEASE_1.1_ALPHA1.md](RELEASE_1.1_ALPHA1.md) | Historischer Release: Data Plane und Autonomie |
+
+Zertifizierungsevidenz liegt unter `docs/evidence/<datum>/`: ungefilterte Rohlogs
+jedes Laufs samt generiertem Manifest mit Commit, Exit-Code, Testzahlen,
+Migrationszahl und Image-Tags.
 
 Runbooks für Production Apply, Provisioning, Background Runtimes, Incidents,
 Backups und signierte Evidenz liegen ebenfalls in diesem Ordner. Historische

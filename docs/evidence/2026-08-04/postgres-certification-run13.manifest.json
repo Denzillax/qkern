@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17",
+  "log": "postgres-certification-run13.log",
+  "commit": "b76cb6781ca247972f835e7f109fc6f17e9f991e",
+  "commitSubject": "fix(data-api): Introspektion gegen echtes PostgreSQL reparieren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 29,
+  "testFiles": "7 passed (7)",
+  "tests": "28 passed (28)",
+  "passed": 28,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -1,0 +1,304 @@
+
+> qkern-platform@1.8.0-alpha.1 test:postgres:docker
+> node scripts/postgres-certification.mjs
+
+ Image postgres:17-alpine Pulling 
+ Image node:24-alpine Pulling 
+ 7bd7d677a4b5 Pulling fs layer 0B
+ 9cf33c25d575 Pulling fs layer 0B
+ ae8ed6ddf5d2 Pulling fs layer 0B
+ 5635b2c7f90f Pulling fs layer 0B
+ b1aad2d5f399 Pulling fs layer 0B
+ e5d94dfa43d9 Pulling fs layer 0B
+ 4635b503f9b2 Pulling fs layer 0B
+ 603858638485 Pulling fs layer 0B
+ 34a3e2652f22 Pulling fs layer 0B
+ ae8ed6ddf5d2 Downloading 1.049MB
+ 7bd7d677a4b5 Download complete 0B
+ 34a3e2652f22 Download complete 0B
+ ae8ed6ddf5d2 Downloading 3.146MB
+ 5635b2c7f90f Download complete 0B
+ ae8ed6ddf5d2 Downloading 5.243MB
+ e5d94dfa43d9 Download complete 0B
+ 4635b503f9b2 Download complete 0B
+ b1aad2d5f399 Download complete 0B
+ 9cf33c25d575 Download complete 0B
+ 603858638485 Download complete 0B
+ ae8ed6ddf5d2 Downloading 7.34MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 10.49MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 12.58MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 14.68MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 16.78MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 18.94MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 22.02MB
+ 603858638485 Extracting 1B
+ e27d3f3e3cb6 Pulling fs layer 0B
+ 08d42cdba493 Pulling fs layer 0B
+ 4a7016f72779 Pulling fs layer 0B
+ ae8ed6ddf5d2 Downloading 23.07MB
+ 603858638485 Extracting 1B
+ ae8ed6ddf5d2 Downloading 25.17MB
+ 603858638485 Pull complete 0B
+ ae8ed6ddf5d2 Downloading 27.26MB
+ 34a3e2652f22 Pull complete 0B
+ 9cf33c25d575 Pull complete 0B
+ ae8ed6ddf5d2 Downloading 29.36MB
+ e77f8c50a326 Download complete 0B
+ 8eba273d064c Download complete 0B
+ d17e2629e444 Download complete 0B
+ ae8ed6ddf5d2 Downloading 30.41MB
+ 08d42cdba493 Downloading 1.049MB
+ 0d2f81fc44f6 Download complete 0B
+ ae8ed6ddf5d2 Downloading 31.46MB
+ ae8ed6ddf5d2 Downloading 32.51MB
+ e27d3f3e3cb6 Download complete 0B
+ 08d42cdba493 Downloading 2.097MB
+ ae8ed6ddf5d2 Downloading 33.55MB
+ 08d42cdba493 Downloading 3.146MB
+ 4a7016f72779 Downloading 1.049MB
+ 08d42cdba493 Downloading 4.194MB
+ ae8ed6ddf5d2 Downloading 35.65MB
+ 4a7016f72779 Download complete 0B
+ 08d42cdba493 Downloading 6.291MB
+ ae8ed6ddf5d2 Downloading 36.7MB
+ 08d42cdba493 Downloading 7.34MB
+ ae8ed6ddf5d2 Downloading 37.75MB
+ 08d42cdba493 Downloading 8.61MB
+ ae8ed6ddf5d2 Downloading 39.85MB
+ 08d42cdba493 Downloading 10.49MB
+ ae8ed6ddf5d2 Downloading 40.06MB
+ 08d42cdba493 Downloading 10.69MB
+ ae8ed6ddf5d2 Downloading 41.22MB
+ ae8ed6ddf5d2 Downloading 41.94MB
+ 08d42cdba493 Downloading 11.53MB
+ 08d42cdba493 Downloading 13.63MB
+ ae8ed6ddf5d2 Downloading 42.99MB
+ 08d42cdba493 Downloading 14.68MB
+ ae8ed6ddf5d2 Downloading 44.04MB
+ 08d42cdba493 Downloading 14.68MB
+ ae8ed6ddf5d2 Downloading 45.09MB
+ 08d42cdba493 Downloading 15.73MB
+ ae8ed6ddf5d2 Downloading 46.14MB
+ ae8ed6ddf5d2 Downloading 46.95MB
+ 08d42cdba493 Downloading 16.78MB
+ 08d42cdba493 Downloading 20.97MB
+ 08d42cdba493 Downloading 20.97MB
+ ae8ed6ddf5d2 Downloading 51.38MB
+ 08d42cdba493 Downloading 20.97MB
+ ae8ed6ddf5d2 Downloading 51.38MB
+ ae8ed6ddf5d2 Downloading 53.48MB
+ 08d42cdba493 Downloading 23.07MB
+ 08d42cdba493 Downloading 24.12MB
+ ae8ed6ddf5d2 Downloading 54.53MB
+ 08d42cdba493 Downloading 25.17MB
+ ae8ed6ddf5d2 Downloading 56.62MB
+ ae8ed6ddf5d2 Downloading 57.67MB
+ 08d42cdba493 Downloading 27.26MB
+ ae8ed6ddf5d2 Downloading 59.77MB
+ 08d42cdba493 Downloading 28.31MB
+ ae8ed6ddf5d2 Downloading 60.82MB
+ 08d42cdba493 Downloading 30.41MB
+ 08d42cdba493 Downloading 32.51MB
+ ae8ed6ddf5d2 Downloading 62.91MB
+ 08d42cdba493 Downloading 33.55MB
+ ae8ed6ddf5d2 Downloading 65.01MB
+ ae8ed6ddf5d2 Downloading 66.06MB
+ 08d42cdba493 Downloading 35.65MB
+ 08d42cdba493 Downloading 36.7MB
+ ae8ed6ddf5d2 Downloading 67.11MB
+ 08d42cdba493 Downloading 38.8MB
+ ae8ed6ddf5d2 Downloading 69.21MB
+ 08d42cdba493 Downloading 39.85MB
+ ae8ed6ddf5d2 Downloading 70.25MB
+ ae8ed6ddf5d2 Downloading 71.3MB
+ 08d42cdba493 Downloading 40.89MB
+ 08d42cdba493 Downloading 42.99MB
+ ae8ed6ddf5d2 Downloading 73.4MB
+ 08d42cdba493 Downloading 44.04MB
+ ae8ed6ddf5d2 Downloading 74.45MB
+ 08d42cdba493 Downloading 46.14MB
+ ae8ed6ddf5d2 Downloading 76.55MB
+ 08d42cdba493 Downloading 48.23MB
+ ae8ed6ddf5d2 Downloading 77.59MB
+ 08d42cdba493 Downloading 50.33MB
+ ae8ed6ddf5d2 Downloading 79.69MB
+ 08d42cdba493 Downloading 51.38MB
+ ae8ed6ddf5d2 Downloading 81.79MB
+ 08d42cdba493 Downloading 53.1MB
+ ae8ed6ddf5d2 Downloading 82.84MB
+ ae8ed6ddf5d2 Downloading 84.8MB
+ 08d42cdba493 Download complete 0B
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 85.98MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 88.08MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 90.18MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 91.87MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 93.32MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 94.37MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 95.48MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 97.52MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 98.62MB
+ 08d42cdba493 Extracting 1B
+ ae8ed6ddf5d2 Downloading 100.4MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Downloading 102.8MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Downloading 104.9MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Downloading 108MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Downloading 110.1MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Downloading 112.4MB
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Download complete 0B
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 2B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 3B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 1B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 1B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 3B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 2B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 3B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 3B
+ 08d42cdba493 Extracting 4B
+ ae8ed6ddf5d2 Extracting 3B
+ 4a7016f72779 Pull complete 0B
+ 08d42cdba493 Pull complete 0B
+ ae8ed6ddf5d2 Extracting 3B
+ e27d3f3e3cb6 Pull complete 0B
+ Image node:24-alpine Pulled 
+ ae8ed6ddf5d2 Extracting 3B
+ ae8ed6ddf5d2 Extracting 3B
+ ae8ed6ddf5d2 Extracting 3B
+ ae8ed6ddf5d2 Extracting 3B
+ ae8ed6ddf5d2 Extracting 3B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 4B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 5B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 6B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 7B
+ ae8ed6ddf5d2 Extracting 8B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 10B
+ ae8ed6ddf5d2 Extracting 11B
+ ae8ed6ddf5d2 Extracting 11B
+ b1aad2d5f399 Extracting 1B
+ ae8ed6ddf5d2 Pull complete 0B
+ b1aad2d5f399 Pull complete 0B
+ 5635b2c7f90f Pull complete 0B
+ 4635b503f9b2 Extracting 1B
+ 4635b503f9b2 Pull complete 0B
+ e5d94dfa43d9 Extracting 1B
+ e5d94dfa43d9 Extracting 1B
+ e5d94dfa43d9 Pull complete 0B
+ 7bd7d677a4b5 Extracting 1B
+ 7bd7d677a4b5 Extracting 1B
+ 7bd7d677a4b5 Pull complete 0B
+ Image postgres:17-alpine Pulled 
+ Network qkern-v023-certification_default Creating 
+ Network qkern-v023-certification_default Created 
+ Volume qkern-v023-certification_certification-node-modules Creating 
+ Volume qkern-v023-certification_certification-node-modules Created 
+ Container qkern-v023-certification-postgres-1 Creating 
+ Container qkern-v023-certification-postgres-1 Created 
+ Container qkern-v023-certification-certification-1 Creating 
+ Container qkern-v023-certification-certification-1 Created 
+Attaching to certification-1, postgres-1
+ Container qkern-v023-certification-postgres-1 Starting 
+Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "/run/desktop/mnt/host/c/Projekte/QKERN/db/docker/999-runtime-login.sh" to rootfs at "/docker-entrypoint-initdb.d/999-runtime-login.sh": create mountpoint for /docker-entrypoint-initdb.d/999-runtime-login.sh mount: make mountpoint "/docker-entrypoint-initdb.d/999-runtime-login.sh": read-only file system
+ Container qkern-v023-certification-certification-1 Stopping 
+ Container qkern-v023-certification-certification-1 Stopped 
+ Container qkern-v023-certification-certification-1 Removing 
+ Container qkern-v023-certification-certification-1 Removed 
+ Container qkern-v023-certification-postgres-1 Stopping 
+ Container qkern-v023-certification-postgres-1 Stopped 
+ Container qkern-v023-certification-postgres-1 Removing 
+ Container qkern-v023-certification-postgres-1 Removed 
+ Network qkern-v023-certification_default Removing 
+ Volume qkern-v023-certification_certification-node-modules Removing 
+ Volume qkern-v023-certification_certification-node-modules Removed 
+ Network qkern-v023-certification_default Removed 
+EXIT=1

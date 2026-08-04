@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17",
+  "log": "postgres-certification-run14.log",
+  "commit": "cb8bf710c02adbfa683c34d9801061162270e88e",
+  "commitSubject": "fix(certification): Storage-Stack gegen echte Loopback-Grenze fuehren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 29,
+  "testFiles": "7 passed (7)",
+  "tests": "28 passed (28)",
+  "passed": 28,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "stack": "minio-clamav",
+  "log": "storage-certification-run3.log",
+  "commit": "b76cb6781ca247972f835e7f109fc6f17e9f991e",
+  "commitSubject": "fix(data-api): Introspektion gegen echtes PostgreSQL reparieren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "2 passed (2)",
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

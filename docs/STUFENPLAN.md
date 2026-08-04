@@ -8,11 +8,11 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 
 | Stufe | Status | Ergebnis |
 | --- | --- | --- |
-| 0.1–1.0 | fertig | Control Plane, Auth-Basis, Approval/Audit, Migration Runtime, operative Sicherheitsverträge |
+| 0.1–1.0 | fertig, zertifiziert | Control Plane, Auth-Basis, Approval/Audit, Migration Runtime, operative Sicherheitsverträge |
 | 1.1 | fertig als Alpha | Reale Lese-Data-Plane und einstellbare Agentenautonomie |
-| 1.2 | fertig als Alpha | Generated Data API, Projekt-Keys und echter Table Editor |
-| 1.3 | in Arbeit als Alpha | Project Auth; reale Delivery-/Provider-Zertifizierung offen |
-| 1.4 | in Arbeit als Alpha | Object Storage plus Scanner-/Concurrency-Harnesses; archivierte Docker-Nachweise offen |
+| 1.2 | fertig, zertifiziert | Generated Data API, Projekt-Keys und echter Table Editor |
+| 1.3 | in Arbeit als Alpha | Project Auth; Lifecycle zertifiziert, Provider-E2E offen |
+| 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | in Arbeit als Alpha | Realtime-Foundation; persistente CDC-/Fan-out-Grenze offen |
 | 1.6 | in Arbeit als Alpha | Queue-/Jobs-Foundation mit PostgreSQL; Production-Compute und Real-Service-Evidenz offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
@@ -44,6 +44,16 @@ Isolation und CRUD gegen einen echten unprivilegierten Login. Endnutzer-JWTs und
 damit nutzerspezifische Claims über Projekt-Auth wurden mit dem nachfolgenden
 Alpha-Slice ergänzt.
 
+**Nachtrag Release 1.9.** Der optionale PostgreSQL-Test wurde bis dahin nie
+ausgeführt. Sein erster echter Lauf zeigte, dass die Schema-Introspektion gegen
+eine reale Datenbank **keine einzige Tabelle** laden konnte: `pg_index.indkey`
+ist ein nullbasierter `int2vector`, der Code erwartete eine einsbasierte
+Primärschlüsselposition und verwarf jede Zeile an der Grenzprüfung. Zusätzlich
+standen sensible Spalten mit Namen in der mitgelieferten Tabellenbeschreibung,
+obwohl der Vertrag ihren Ausschluss zusagt. Beides ist behoben; die Stufe ist
+jetzt erstmals gegen eine reale Datenbank belegt statt nur gegen ein
+nachgebildetes Schema.
+
 ## Stufe 1.3 — Project Auth
 
 App-User getrennt von QKERN-Control-Plane-Usern, Email/Passwort, Magic Link,
@@ -55,9 +65,17 @@ Email-Verifikation, Passwort-/Magic-Link-Flow, TOTP und einmalige Recovery Codes
 Ed25519-JWT/JWKS mit Schlüsselüberlappung, rotierende opaque Refresh Tokens mit
 Familienwiderruf bei Replay, Session-/User-Revocation, OIDC Authorization Code mit
 PKCE/State/Nonce, Control-Plane-Admin-API, Console-Sicht und das serverseitige
-RLS-Claim-Mapping. Offen bleiben reale Mailzustellung, Live-Provider-E2E und der
-vollständige PostgreSQL-17-Lifecycle-Test; deshalb ist das Austrittskriterium noch
-nicht erfüllt.
+RLS-Claim-Mapping.
+
+**Nachtrag Release 1.9.** Der PostgreSQL-17-Lifecycle-Test ist erfüllt: Persistenz
+über die Auth-Rolle, verweigerter Runtime-Zugriff, unveränderlicher Scope und
+atomare Familienrevocation bei Refresh-Replay laufen gegen eine echte Datenbank
+und sind archiviert. Ein echter SMTP-Adapter existiert; ohne konfigurierten Host
+bleibt die Zustellung fail-closed.
+
+Offen bleibt die Provider-E2E-Matrix: echte Mailzustellung gegen einen laufenden
+SMTP-Server und ein echter OIDC-Provider-Durchstich. Das Austrittskriterium ist
+deshalb weiterhin nicht erfüllt.
 
 ## Stufe 1.4 — Storage
 
@@ -88,6 +106,22 @@ kompatiblen Provider-/Scanner-E2E-Laufs sowie der PostgreSQL-17-Concurrency-Matr
 in einer Docker-fähigen Umgebung, großer Multipart-/Resumable-Upload, optionale
 Transformen sowie Browser-, Last- und unabhängige Security-
 Zertifizierung. Das Austrittskriterium ist deshalb noch nicht vollständig erfüllt.
+
+**Nachtrag Release 1.9: Austrittskriterium erfüllt.** Die Cross-Tenant-,
+Malware-/Content-Type- und Signed-URL-Expiry-Tests laufen gegen echtes
+PostgreSQL 17, echtes MinIO und echtes ClamAV. Beide Läufe wurden zweimal
+reproduzierbar ausgeführt und samt Manifest unter `docs/evidence/2026-08-04/`
+archiviert.
+
+Der erste echte Lauf deckte dabei einen Fehler auf, der nur unter einer realen
+Datenbank auftritt: `withTenantTransaction` überschrieb `STORAGE_CONFLICT` und
+`STORAGE_QUOTA_EXCEEDED` mit einem generischen Persistenzfehler, sodass ein
+erwarteter fachlicher Konflikt nicht mehr von einem Infrastrukturausfall zu
+unterscheiden war. Beide Verträge sind repariert und real belegt.
+
+Nicht Teil des Austrittskriteriums und weiterhin offen: großer Multipart-/
+Resumable-Upload, optionale Transformen sowie Browser-, Last- und unabhängige
+Security-Zertifizierung. Sie gehören in einen eigenen Slice.
 
 ## Stufe 1.5 — Realtime
 

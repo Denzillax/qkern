@@ -1,0 +1,19 @@
+{
+  "stack": "minio-clamav",
+  "log": "storage-certification-run4.log",
+  "commit": "cb8bf710c02adbfa683c34d9801061162270e88e",
+  "commitSubject": "fix(certification): Storage-Stack gegen echte Loopback-Grenze fuehren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "2 passed (2)",
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

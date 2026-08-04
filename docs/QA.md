@@ -117,10 +117,26 @@
   serialisierte Quota ohne Overbooking, idempotente Completion, Expiry-/Scan-
   Orphan-Cleanup, Delete-/Lifecycle-Race und Runtime-Direktzugriff-Deny
 
-Aktueller automatisierter Stand ohne bereitgestellte Real-Services: 609 erfolgreiche
-Tests in 105 Testdateien, 21 übersprungene optionale Integrationstests in sechs
-weiteren Dateien, grünem Strict Typecheck und erfolgreichem Next.js-Production-
-Build. Die 19 neuen Realtime-Tests decken
+> **Zahlenquelle.** Die Testzahlen in diesem Dokument waren an neun Stellen von
+> Hand gepflegt und drifteten: Bis Release 1.9 wies dieser Abschnitt 609 Tests
+> als „aktuell" aus, während `STATUS.md` bereits 678 nannte. Verbindlich sind ab
+> sofort die generierten Manifeste unter `docs/evidence/`, erzeugt von
+> `scripts/certification-manifest.mjs`. Die folgenden historischen
+> Checkpoint-Angaben bleiben als Chronik stehen und werden nicht nachgeführt.
+
+Automatisierter Stand zu Release 1.9: **692 erfolgreiche Tests, 47 übersprungene
+und 0 fehlgeschlagene** in 130 Testdateien, grüner Strict Typecheck und
+erfolgreicher Next.js-Production-Build. Die 47 übersprungenen Fälle sind 30
+Real-Service-Tests, die in den beiden Docker-Stacks laufen, und 17 POSIX-Fälle,
+die auf Windows nicht ausdrückbar sind.
+
+Erstmals zertifiziert: **PostgreSQL 17 mit 28 von 28 bestandenen Fällen** und
+**MinIO/ClamAV mit 2 von 2**, beide exit 0 und zweimal reproduziert. Rohlogs und
+Manifeste liegen unter `docs/evidence/2026-08-04/`.
+
+Historischer Stand vor Release 1.9 (nie gegen Real-Services ausgeführt): 609
+erfolgreiche Tests in 105 Testdateien, 21 übersprungene optionale
+Integrationstests in sechs weiteren Dateien. Die 19 neuen Realtime-Tests decken
 Service, Policy, Cursor/Replay, Presence, Auth, Gateway-Races, Runtime-Vertrag und
 echte lokale WebSocket-Verbindungen ab. Fünf ClamAV-Adaptertests prüfen Protokoll,
 Clean/Infected, malformed Responses und Integritätsdrift; sechs statische
@@ -293,3 +309,35 @@ Multi-Instance-/Crash-/Soak-/Last- und Billing-Reconciliation-Evidenz fehlen.
 - Zehn fehlerfreie Wiederholungen aller kritischen E2E-Flows
 
 Diese Zahlen sind Startwerte und müssen mit der gewählten Infrastruktur und dem Produktversprechen validiert werden.
+
+## Real-Service Certification — Release 1.9
+
+Beide Wegwerfstacks wurden erstmals ausgeführt. Das Ergebnis ist der eigentliche
+Inhalt des Release: fünf Produktfehler, die ausschließlich unter einer realen
+Datenbank auftreten. Zwei davon machten einen als fertig beziehungsweise
+implementiert dokumentierten Pfad vollständig funktionsunfähig — der dauerhafte
+Queue-Adapter konnte nie eine Nachricht schreiben, und die Generated Data API lud
+keine einzige reale Tabelle. Details in `docs/RELEASE_1.9.md`.
+
+`npm run test:postgres:docker` führt 28 Fälle gegen echtes PostgreSQL 17 aus:
+Rollen und RLS, Upgrade-/Recovery-/Resolution-Vertrag, Generated-API-CRUD mit
+Cross-Subject-Isolation und Injection-Grenze, Project-Auth-Persistenz und
+Refresh-Replay, sechs Storage-Persistenz- und Concurrency-Fälle, fünf
+Queue-Fälle und vier Usage-Fälle.
+
+`npm run test:storage:docker` führt Clean- und EICAR-Pfad gegen echtes MinIO und
+echtes ClamAV aus, inklusive signiertem POST, Provider-HEAD, Download und
+Löschung des infizierten Objekts.
+
+Der Harness selbst war vor diesem Release nicht startfähig. Verschachtelte
+Mounts, ein `node_modules`-Volume in einem read-only Bind, ein fehlender
+ClamAV-Healthcheck und eine Adressierung an der Loopback-Grenze vorbei sind
+behoben. Die Harness-Tests prüfen jetzt strukturell, dass kein Mount-Ziel
+innerhalb eines anderen liegt, statt die frühere Konfiguration per
+String-Assertion festzuschreiben.
+
+Weiterhin nicht zertifiziert und nicht als ausgeführt auszugeben: Realtime-CDC
+und Fan-out, Queue-Multi-Instance-/Crash-/Soak-/Lastläufe, Functions-Sandbox,
+Cron, Webhook-Zustellung, transaktionale Usage-Emitter, archivierte Windows- und
+macOS-Läufe, Backup-/Restore-Drill, echtes Prometheus-/OTel-Scraping und ein
+unabhängiger Pentest.

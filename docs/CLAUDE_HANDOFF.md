@@ -1,8 +1,21 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.8.0-alpha.1`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.9.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
+
+## Wichtigster Kontext für den nächsten Agenten
+
+Bis `1.8.0-alpha.1` war **kein einziger Real-Service-Test jemals ausgeführt
+worden**. Release 1.9 hat beide Docker-Zertifizierungsstacks zum Laufen gebracht
+und dabei fünf Produktfehler gefunden, die nur unter einer realen Datenbank
+auftreten. Zwei davon machten einen als fertig dokumentierten Pfad vollständig
+funktionsunfähig.
+
+Die Lehre daraus gilt weiter: **Ein grüner `npm test` ist keine Zertifizierung.**
+Die Memory-Adapter kennen weder Rechtemodell noch RLS noch Transaktionsgrenze.
+Wer einen dauerhaften Adapter anfasst, muss `npm run test:postgres:docker`
+ausführen, bevor er ihn als funktionsfähig beschreibt.
 
 ## Verbindliche Lesereihenfolge
 
@@ -26,9 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.8.0-alpha.1`
-- Aktueller Slice: 1.8 Product Operations Alpha 1 — Usage Metering und Quotas
-- Letzte Control-Plane-Migration: `db/migrations/0028_usage_metering.sql`
+- Paketversion: `1.9.0`
+- Aktueller Slice: 1.9 Real-Service Certification — beide Stacks grün, Stufe 1.4 geschlossen
+- Letzte Control-Plane-Migration: `db/migrations/0029_project_queue_definition_row_lock.sql`
+- Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
+- Manifestgenerator: `scripts/certification-manifest.mjs`
+- SMTP-Delivery: `lib/server/project-auth/smtp-delivery.ts`
 - Usage-Domäne: `lib/server/usage/`
 - Usage-REST: `app/api/v1/projects/[projectId]/environments/[environment]/usage/route.ts`
 - Usage-Vertrag: `docs/USAGE_METERING.md` und `lib/openapi.ts`
@@ -143,11 +159,18 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.8.0-alpha.2`: vertrauenswürdige Usage-Emitter über transaktionale Outbox-/
-Commit-Grenzen in Generated Data API, Storage und Project Queues anbinden, mit
-Retry-/Reconciliation-Vertrag, redigierten Metrics und Operator-Provisionierung
-für versionierte Policies. Keine Preise oder Rechnungen hinzufügen, bevor
-Vollständigkeit, Replay und Providerabgleich belastbar zertifiziert sind.
+`1.10.0`: Provider-E2E für Project Auth, um Stufe 1.3 zu schließen. Ein dritter
+Wegwerfstack mit einem echten SMTP-Server und einem echten OIDC-Provider; Tests,
+die eine Verifikationsmail tatsächlich zustellen, aus dem Postfach lesen, den
+Token einlösen und einen vollständigen Authorization-Code-Flow mit PKCE gegen
+den echten Provider fahren.
+
+Der SMTP-Adapter existiert seit 1.9 und ist gegen einen lokalen Socket getestet,
+aber noch nie gegen einen echten Mailserver gelaufen. Nach den Erfahrungen aus
+1.9 ist genau das der Unterschied zwischen implementiert und zertifiziert.
+
+Danach in dieser Reihenfolge: Realtime PostgreSQL-CDC, Queue-Multi-Instance- und
+Lastläufe, transaktionale Usage-Emitter.
 
 ## Sichere Arbeitsregeln
 

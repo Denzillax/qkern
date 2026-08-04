@@ -1,29 +1,56 @@
 # QKERN Status
 
-> Stand: 4. August 2026 · Release: `1.8.0-alpha.1` · Statusdatei ist Teil der Definition of Done.
+> Stand: 4. August 2026 · Release: `1.9.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
-aber noch keine vollständige Supabase-Alternative. Gemessen am dokumentierten
-QKERN-2.0-Ziel sind ungefähr **78 %** umgesetzt. Bewertet werden ausführbare
-vertikale Funktionen, nicht nur Console-Flächen oder vorbereitete Verträge.
+aber noch keine vollständige Supabase-Alternative.
+
+## Fortschrittsmessung
+
+Ein einzelner Prozentwert wurde entfernt. Er maß Fläche statt Tiefe und besaß
+keine Messvorschrift; er zählte geschriebenen Code, nicht verifiziertes
+Verhalten. Release 1.9 hat gezeigt, wie irreführend das ist: Zwei als fertig
+oder implementiert dokumentierte Pfade waren gegen eine reale Datenbank
+überhaupt nicht funktionsfähig.
+
+Gemessen wird jetzt zweiachsig je Modul:
+
+- **implementiert** — ausführbare vertikale Funktion vorhanden, lokal getestet
+- **zertifiziert** — gegen echte Dienste ausgeführt, Lauf archiviert
+
+| Modul | implementiert | zertifiziert |
+| --- | --- | --- |
+| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 9 Real-DB-Fälle |
+| Generated Data API | ja | ja — 2 Real-DB-Fälle, RLS und Injection |
+| Project Auth | teilweise | teilweise — Lifecycle und Replay ja, Provider-E2E nein |
+| Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
+| Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
+| Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
+| Realtime | teilweise | nein — prozesslokal, kein CDC |
+| Compute Contracts | nur Ports | nein |
+| SDK und CLI | ja | teilweise — nur Linux belegt |
+| Managed Operations | nein | nein |
 
 ## Releasezustand
 
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest | 678 bestanden, 30 optionale Real-Service-Tests übersprungen |
+| Vitest (Windows) | 692 bestanden, 47 übersprungen, 0 fehlgeschlagen |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
-| Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, hier nicht ausgeführt |
-| PostgreSQL-17-Zertifizierung | Teststack vorhanden; lokal nicht ausgeführt, da Docker fehlt |
-| MinIO-/ClamAV-Zertifizierung | Teststack vorhanden; lokal nicht ausgeführt, da Docker fehlt |
-| Realtime Real-Service/Load | noch nicht vorhanden; Alpha-1-Runtime verweigert Production |
-| Project Queues PostgreSQL | Adapter und 5 optionale Real-DB-Fälle vorhanden; mangels Docker lokal nicht ausgeführt |
+| Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
+| **PostgreSQL-17-Zertifizierung** | **28 von 28 bestanden, exit 0, zweimal reproduziert** |
+| **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
+| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
+| Realtime Real-Service/Load | noch nicht vorhanden; Runtime verweigert Production |
 | Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
-| Usage Metering PostgreSQL | Adapter und 4 optionale Real-DB-Fälle vorhanden; mangels Docker lokal nicht ausgeführt |
 | Managed Production Go-live | noch nicht freigegeben |
+
+Die 47 übersprungenen Fälle sind 30 Real-Service-Tests, die in den beiden
+Docker-Stacks laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
+sind. Sie gelten als übersprungen, nie als bestanden.
 
 ## Ausführbar implementiert
 
@@ -79,8 +106,8 @@ vertikale Funktionen, nicht nur Console-Flächen oder vorbereitete Verträge.
 
 | Modul | Stand | Nächster belastbarer Slice |
 | --- | --- | --- |
-| Project Auth | Alpha-Durchstich | realer Mail-Adapter, Provider-E2E, PostgreSQL-Lifecycle-Zertifizierung |
-| Storage | Alpha plus Scanner-/Concurrency-Harness | archivierte Dockerläufe, Multipart/Resumable, Transform-Service |
+| Project Auth | Alpha; SMTP-Adapter und PostgreSQL-Lifecycle zertifiziert | Provider-E2E gegen echten SMTP- und OIDC-Server |
+| Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
 | Realtime | Alpha-1-Foundation | persistenter PostgreSQL-Event-Log/CDC und horizontaler Fan-out |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
@@ -90,18 +117,29 @@ vertikale Funktionen, nicht nur Console-Flächen oder vorbereitete Verträge.
 
 ## Aktueller Fokus
 
-**Stufe 1.8 Product Operations besitzt jetzt einen Alpha-1-Checkpoint.** Das
-tenantgebundene Usage-Ledger, harte/observierende Quotas und die read-only Console-
-Projektion sind ausführbar. Tarife, Preise, Rechnungen und Zahlungen sind nicht
-implementiert. Als nächstes müssen vertrauenswürdige Produkt-Emitter transaktional
-angebunden und gegen echte PostgreSQL-Races zertifiziert werden.
+**Release 1.9 hat beide Zertifizierungsstacks erstmals ausgeführt.** Dabei traten
+fünf Produktfehler zutage, die ausschließlich unter einer realen Datenbank
+auftreten — darunter zwei, die einen als fertig beziehungsweise implementiert
+dokumentierten Pfad vollständig funktionsunfähig machten: Der dauerhafte
+Queue-Adapter konnte nie eine Nachricht schreiben, und die Generated Data API lud
+keine einzige reale Tabelle. Beide sind behoben und belegt. Details in
+[Release 1.9](docs/RELEASE_1.9.md).
+
+Stufe 1.4 Storage ist damit abgeschlossen. Als nächstes fehlt für Stufe 1.3 die
+Provider-E2E-Matrix gegen einen echten SMTP- und einen echten OIDC-Server.
 
 ## Wichtige Grenzen
 
 - Project Queues ist disabled-by-default. `QKERN_RUNTIME_MODE=postgres` wählt den
   dauerhaften RLS-Adapter; der `ephemeral` Memory-Adapter bleibt Production-verboten.
-- Der PostgreSQL-Queuepfad ist in dieser Umgebung nicht gegen einen realen Server,
-  mehrere Prozesse, Crash-Races oder Last zertifiziert und daher nicht Go-live-frei.
+- Der PostgreSQL-Queuepfad ist jetzt gegen einen realen Server zertifiziert
+  (5 Fälle: Dedupe, disjunkte Claims, Lease-Fencing, Replay-Bindung, Cross-Tenant-
+  RLS). Mehrere Prozesse, Crash-Races und Last sind weiterhin nicht zertifiziert;
+  der Pfad ist deshalb nicht Go-live-frei.
+- Project Auth kann Mails zustellen, sobald ein SMTP-Host konfiguriert ist. Ohne
+  Konfiguration bleibt der Port fail-closed und verweigert Action-Tokens, statt
+  sie stillschweigend zu verwerfen. Eine Provider-E2E gegen einen echten Mail-
+  und OIDC-Server fehlt weiterhin.
 - Der Worker ist ein injizierbarer Execution-Port, noch kein allgemeiner Sandbox-
   Host. Zähler liegen pro Prozess vor und sind noch nicht extern scrapebar.
 - Compute Contracts besitzen noch keine persistente Management-API, Scheduler-
