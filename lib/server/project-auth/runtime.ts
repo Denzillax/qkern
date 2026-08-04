@@ -15,6 +15,7 @@ import {
   ProjectAuthService,
   type ProjectAuthDeliveryPort,
 } from "@/lib/server/project-auth/service";
+import { smtpProjectAuthDeliveryFromEnv } from "@/lib/server/project-auth/smtp-delivery";
 import { projectAuthTokenServiceFromEnv, type ProjectAuthTokenService } from
   "@/lib/server/project-auth/tokens";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
@@ -43,9 +44,13 @@ export function createProjectAuthServiceFromEnv(
     : new MemoryProjectAuthRepository());
   const allowedRedirectOrigins = redirectOriginsFromEnv(env);
   const callbackBaseUrl = callbackBaseFromEnv(env);
-  const delivery = dependencies.delivery ?? (exposeTokens
-    ? new NoopDevelopmentProjectAuthDelivery()
-    : new DisabledProjectAuthDelivery());
+  // A configured SMTP host is the only way to obtain real delivery. Without it
+  // the port stays fail-closed, so a production deployment that forgets the
+  // mail configuration refuses to issue action tokens instead of silently
+  // dropping them.
+  const delivery = dependencies.delivery
+    ?? smtpProjectAuthDeliveryFromEnv(env)
+    ?? (exposeTokens ? new NoopDevelopmentProjectAuthDelivery() : new DisabledProjectAuthDelivery());
   return new ProjectAuthService({
     repository,
     passwords: new Argon2idPasswordHasher({ pepper: env.QKERN_PROJECT_AUTH_PASSWORD_PEPPER }),
