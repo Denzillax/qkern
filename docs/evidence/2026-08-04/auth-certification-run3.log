@@ -1,0 +1,74 @@
+
+> qkern-platform@1.9.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Container qkern-auth-v13-certification-mailpit-1 Recreate 
+ Container qkern-auth-v13-certification-certs-1 Recreate 
+ Container qkern-auth-v13-certification-mailpit-1 Recreated 
+ Container qkern-auth-v13-certification-certs-1 Recreated 
+ Container qkern-auth-v13-certification-dex-1 Recreate 
+ Container qkern-auth-v13-certification-dex-1 Recreated 
+ Container qkern-auth-v13-certification-certification-1 Recreate 
+ Container qkern-auth-v13-certification-certification-1 Recreated 
+Attaching to certification-1, certs-1, dex-1, mailpit-1
+ Container qkern-auth-v13-certification-mailpit-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+mailpit-1  | time="2026/08/04 19:07:45" level=info msg="[smtpd] enabling any authentication (insecure)"
+certs-1    | .+....+...+...+........+....+...+..+.+..+.......+...............+..................+..............+...+.+.....+....+..+.+.....+...+......+....+.................+.......+..+......+...+.......+...+..+....+......+++++++++++++++++++++++++++++++++++++++*..+....+........+++++++++++++++++++++++++++++++++++++++*...+.....+................+..+...+...+......+.............+..+....+.....+....+........+....+.........+..+...+.+.........+..+...+......+....+.................+.......+...+..+..........+..+.+...+..+.........+.+...+.........+......+..+....+........+...+....+...+..+.+..+......+......+...+.......+..............+.+...........+.........+.+...+.........+....................+.+.....+......+....+..............+.+......+...............+...+........+.......+.....+...+.........+...+......+....+...+...+.....+....+...+........+.....................+.+..+...+...+...............+....+.....................+......++++++
+mailpit-1  | time="2026/08/04 19:07:45" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1  | time="2026/08/04 19:07:45" level=info msg="[http] starting on [::]:8025"
+mailpit-1  | time="2026/08/04 19:07:45" level=info msg="[http] accessible via http://localhost:8025/"
+certs-1    | ....+++++++++++++++++++++++++++++++++++++++*.........+...+.........+.+........+.+.....+.+...+..+...+......+.+...+++++++++++++++++++++++++++++++++++++++*..+....+.....+.+...+........+...+....+......+...........+.+..+.+..+.......+............+...+...+.....+.............+......+...+.....+...+...............+............+.......+.....+....+.....+.+...+...+.....+.........+.+............+.....+.......+........+.+.........+...+.....+.......++++++
+certs-1    | -----
+[Kcerts-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container qkern-auth-v13-certification-certification-1 Stopping 
+ Container qkern-auth-v13-certification-certification-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+mailpit-1  | [db] got terminated signal, shutting down
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Starting 
+ Container qkern-auth-v13-certification-dex-1 Started 
+ Container qkern-auth-v13-certification-mailpit-1 Waiting 
+dex-1      | time=2026-08-04T19:07:46.762Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config storage" storage_type=memory
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config connector: local passwords enabled"
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config skipping approval screen"
+dex-1      | time=2026-08-04T19:07:46.763Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1      | time=2026-08-04T19:07:46.764Z level=INFO msg="keys expired, rotating"
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+[Kmailpit-1 exited with code 0
+dex-1      | time=2026-08-04T19:07:46.988Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:07:46.988Z
+dex-1      | time=2026-08-04T19:07:46.988Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+ Container qkern-auth-v13-certification-mailpit-1 Error dependency mailpit failed to start
+dependency failed to start: container qkern-auth-v13-certification-mailpit-1 exited (0)
+ Container qkern-auth-v13-certification-certification-1 Stopping 
+ Container qkern-auth-v13-certification-certification-1 Stopped 
+ Container qkern-auth-v13-certification-certification-1 Removing 
+ Container qkern-auth-v13-certification-certification-1 Removed 
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Removing 
+ Container qkern-auth-v13-certification-mailpit-1 Removed 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-dex-1 Removing 
+ Container qkern-auth-v13-certification-dex-1 Removed 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Removing 
+ Container qkern-auth-v13-certification-certs-1 Removed 
+ Network qkern-auth-v13-certification_default Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removed 
+ Network qkern-auth-v13-certification_default Removed 
+EXIT=1

@@ -145,10 +145,12 @@ export class SmtpProjectAuthDelivery implements ProjectAuthDeliveryPort {
       await session.data(body);
       await session.quit();
     } catch (error) {
-      // The token lives in `body`. Never let a transport error carry it or any
-      // server text outward.
+      // The token lives in `body`. A transport error must never carry it or any
+      // server text outward, so the code stays fixed. The cause is internal and
+      // contains only our own bounded messages; without it a failed delivery
+      // against a real mail server is impossible to diagnose.
       if (error instanceof ConfigurationError) throw error;
-      throw new ProjectAuthError("DELIVERY_UNAVAILABLE");
+      throw new ProjectAuthError("DELIVERY_UNAVAILABLE", undefined, { cause: error });
     } finally {
       session?.destroy();
     }
@@ -391,9 +393,13 @@ function waitForConnect(
       cleanup();
       resolve();
     };
-    const onError = () => {
+    const onError = (error: unknown) => {
       cleanup();
-      reject(new Error("SMTP connection failed"));
+      // The socket error names the transport failure (ECONNREFUSED, EAI_AGAIN,
+      // certificate problems). It never contains message content, and `deliver`
+      // keeps it internal, so carrying it makes a failed delivery diagnosable
+      // without widening what a caller can observe.
+      reject(new Error("SMTP connection failed", { cause: error }));
     };
     const cleanup = () => {
       clearTimeout(timer);

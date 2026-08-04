@@ -11,7 +11,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 0.1–1.0 | fertig, zertifiziert | Control Plane, Auth-Basis, Approval/Audit, Migration Runtime, operative Sicherheitsverträge |
 | 1.1 | fertig als Alpha | Reale Lese-Data-Plane und einstellbare Agentenautonomie |
 | 1.2 | fertig, zertifiziert | Generated Data API, Projekt-Keys und echter Table Editor |
-| 1.3 | in Arbeit als Alpha | Project Auth; Lifecycle zertifiziert, Provider-E2E offen |
+| 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | in Arbeit als Alpha | Realtime-Foundation; persistente CDC-/Fan-out-Grenze offen |
 | 1.6 | in Arbeit als Alpha | Queue-/Jobs-Foundation mit PostgreSQL; Production-Compute und Real-Service-Evidenz offen |
@@ -73,9 +73,20 @@ atomare Familienrevocation bei Refresh-Replay laufen gegen eine echte Datenbank
 und sind archiviert. Ein echter SMTP-Adapter existiert; ohne konfigurierten Host
 bleibt die Zustellung fail-closed.
 
-Offen bleibt die Provider-E2E-Matrix: echte Mailzustellung gegen einen laufenden
-SMTP-Server und ein echter OIDC-Provider-Durchstich. Das Austrittskriterium ist
-deshalb weiterhin nicht erfüllt.
+**Nachtrag Release 1.10: Austrittskriterium erfüllt.** Ein dritter Wegwerfstack
+mit Mailpit und Dex erbringt die Provider-E2E-Matrix: Verifikationsmail über
+echtes SMTP, Magic Link, Passwort-Reset mit anschließender Anmeldung,
+vollständiger Authorization-Code-Flow mit PKCE gegen einen echten OIDC-Provider
+über TLS sowie ein abgewiesener State-Replay.
+
+Der Nachweis läuft ohne Debug-Token: Der Dienst gibt keines zurück, der einzige
+Weg an ein Token führt über eine tatsächlich zugestellte Nachricht, die der Test
+aus dem Postfach liest. Dex läuft über echtes TLS unter einem routbaren
+Hostnamen, weil der OIDC-Katalog exaktes HTTPS verlangt und localhost sowie
+IP-Adressen ablehnt; die Produktgrenze wurde nicht aufgeweicht.
+
+Nicht Teil des Austrittskriteriums und weiterhin offen: weitere OIDC-Provider,
+SMS- und SAML-Anmeldung.
 
 ## Stufe 1.4 — Storage
 

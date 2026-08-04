@@ -1,0 +1,96 @@
+name: qkern-auth-v13-certification
+
+# Portloser Wegwerfstack fuer die Project-Auth-Provider-Zertifizierung.
+#
+# Es gilt dieselbe Regel wie in den anderen Stacks: kein Mount darf innerhalb
+# eines anderen liegen, und keine Produktgrenze wird fuer den Test aufgeweicht.
+# Der OIDC-Katalog verlangt exaktes HTTPS ohne localhost und ohne IP-Adresse,
+# deshalb laeuft Dex unter dem Netzwerk-Alias dex.qkern.test mit einem im Stack
+# erzeugten Zertifikat, das der Testcontainer ueber NODE_EXTRA_CA_CERTS traut.
+
+services:
+  certs:
+    image: alpine/openssl:3.3.2
+    entrypoint: ["sh", "-ec"]
+    # chmod 0644 auf den privaten Schluessel ist hier vertretbar und nur hier:
+    # das Zertifikat entsteht bei jedem Lauf neu, gilt zwei Tage und verlaesst
+    # den Wegwerfstack nicht. Dex laeuft als unprivilegierter Benutzer und
+    # koennte eine 0600-Datei von root sonst nicht lesen.
+    command:
+      - |
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=dex.qkern.test \
+          -addext subjectAltName=DNS:dex.qkern.test \
+          -keyout /certs/dex.key -out /certs/dex.crt
+        chmod 0644 /certs/dex.key /certs/dex.crt
+    volumes:
+      - auth-certification-certs:/certs
+
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    healthcheck:
+      # Ohne diese Pruefung koennte der Test die erste Nachricht senden, bevor
+      # der SMTP-Listener bereit ist — derselbe Startrennen-Fehler wie zuvor bei
+      # ClamAV.
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  dex:
+    image: dexidp/dex:v2.41.1
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    volumes:
+      - auth-certification-certs:/certs:ro
+      - ./tests/support/dex-config.yaml:/etc/dex/config.yaml:ro
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    networks:
+      default:
+        aliases:
+          - dex.qkern.test
+
+  certification:
+    image: node:24.7.0-alpine
+    working_dir: /workspace/qkern
+    depends_on:
+      dex:
+        condition: service_started
+      mailpit:
+        condition: service_healthy
+    volumes:
+      - .:/qkern-src:ro
+      - auth-certification-certs:/certs:ro
+    environment:
+      NODE_ENV: test
+      NODE_EXTRA_CA_CERTS: /certs/dex.crt
+      QKERN_TEST_PROJECT_AUTH_PROVIDER_E2E: "true"
+      QKERN_TEST_AUTH_SMTP_HOST: mailpit
+      QKERN_TEST_AUTH_SMTP_PORT: "1025"
+      QKERN_TEST_AUTH_MAILBOX_URL: http://mailpit:8025
+      QKERN_TEST_AUTH_OIDC_ISSUER: https://dex.qkern.test:5556/dex
+      QKERN_TEST_AUTH_OIDC_CLIENT_ID: qkern-certification
+      QKERN_PROJECT_AUTH_OIDC_SECRET_CERTIFICATION: qkern-certification-secret
+      QKERN_TEST_AUTH_OIDC_USER: oidc-user@qkern.test
+      QKERN_TEST_AUTH_OIDC_PASSWORD: password
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npm run test:auth:provider
+
+volumes:
+  auth-certification-certs:

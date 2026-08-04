@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.9.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.10.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -32,15 +32,16 @@ ausführen, bevor er ihn als funktionsfähig beschreibt.
 11. `docs/SDK_TYPESCRIPT.md`
 12. `docs/CLI.md`
 13. `docs/DEVELOPER_EXPERIENCE.md`
-14. `docs/RELEASE_1.8_ALPHA1.md`
+14. `docs/RELEASE_1.9.md` und `docs/RELEASE_1.10.md`
 
 Für Realtime-Arbeit zusätzlich `docs/REALTIME_PROTOCOL.md` lesen. Historische
 Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.9.0`
-- Aktueller Slice: 1.9 Real-Service Certification — beide Stacks grün, Stufe 1.4 geschlossen
+- Paketversion: `1.10.0`
+- Aktueller Slice: 1.10 Project Auth Provider Certification — Stufe 1.3 geschlossen
+- Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0029_project_queue_definition_row_lock.sql`
 - Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
 - Manifestgenerator: `scripts/certification-manifest.mjs`
@@ -58,7 +59,7 @@ Release Notes bleiben unverändert.
 - SDK: `sdk/typescript/src/index.ts`
 - CLI: `cli/src/core.ts`, `cli/src/security.ts`, `cli/src/main.ts`
 - DX-Gates: `scripts/verify-developer-experience.ts`, `scripts/verify-package-tarballs.mjs`
-- Releasevertrag: `.env.example`, `docs/RELEASE_1.8_ALPHA1.md`, `STATUS.md`
+- Releasevertrag: `.env.example`, `docs/RELEASE_1.10.md`, `STATUS.md`
 
 `ProjectQueueService` besitzt Validierung und Policy. Der vollständige Scope kommt
 aus Session beziehungsweise serverseitig aufgelöstem Project Key. Nur
@@ -159,18 +160,17 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.10.0`: Provider-E2E für Project Auth, um Stufe 1.3 zu schließen. Ein dritter
-Wegwerfstack mit einem echten SMTP-Server und einem echten OIDC-Provider; Tests,
-die eine Verifikationsmail tatsächlich zustellen, aus dem Postfach lesen, den
-Token einlösen und einen vollständigen Authorization-Code-Flow mit PKCE gegen
-den echten Provider fahren.
+`1.11.0`: Stufe 1.5 Realtime. Der Event-Log ist prozesslokal; es fehlen ein
+persistenter PostgreSQL-Event-Log mit CDC, datenbankgestützte RLS pro Event,
+horizontaler Fan-out und Multi-Instance-Fencing. Die Alpha-1-Runtime bindet nur
+Loopback und verweigert Production technisch.
 
-Der SMTP-Adapter existiert seit 1.9 und ist gegen einen lokalen Socket getestet,
-aber noch nie gegen einen echten Mailserver gelaufen. Nach den Erfahrungen aus
-1.9 ist genau das der Unterschied zwischen implementiert und zertifiziert.
+Erwartung nach den Erfahrungen aus 1.9 und 1.10: Ein Realtime-Stack mit mehreren
+Instanzen gegen eine echte Datenbank wird Fehler zeigen, die lokal unsichtbar
+sind. Der Zertifizierungslauf gehört deshalb an den Anfang des Slice, nicht an
+sein Ende.
 
-Danach in dieser Reihenfolge: Realtime PostgreSQL-CDC, Queue-Multi-Instance- und
-Lastläufe, transaktionale Usage-Emitter.
+Danach: Queue-Multi-Instance- und Lastläufe, transaktionale Usage-Emitter.
 
 ## Sichere Arbeitsregeln
 

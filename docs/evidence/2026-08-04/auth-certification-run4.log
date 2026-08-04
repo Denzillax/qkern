@@ -1,0 +1,73 @@
+
+> qkern-platform@1.9.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Network qkern-auth-v13-certification_default Creating 
+ Network qkern-auth-v13-certification_default Created 
+ Volume qkern-auth-v13-certification_auth-certification-certs Creating 
+ Volume qkern-auth-v13-certification_auth-certification-certs Created 
+ Container qkern-auth-v13-certification-certs-1 Creating 
+ Container qkern-auth-v13-certification-mailpit-1 Creating 
+ Container qkern-auth-v13-certification-certs-1 Created 
+ Container qkern-auth-v13-certification-dex-1 Creating 
+ Container qkern-auth-v13-certification-mailpit-1 Created 
+ Container qkern-auth-v13-certification-dex-1 Created 
+ Container qkern-auth-v13-certification-mailpit-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Starting 
+ Container qkern-auth-v13-certification-dex-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-mailpit-1 Waiting 
+ Container qkern-auth-v13-certification-dex-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Healthy 
+ Container qkern-auth-v13-certification-mailpit-1 Healthy 
+ Container qkern-auth-v13-certification-certification-run-bcade746dd8a Creating 
+ Container qkern-auth-v13-certification-certification-run-bcade746dd8a Created 
+
+added 285 packages, and audited 286 packages in 12s
+
+89 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.9.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [32m✓[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 335[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m   Start at [22m 19:09:06
+[2m   Duration [22m 753ms[2m (transform 165ms, setup 0ms, import 211ms, tests 335ms, environment 0ms)[22m
+
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-dex-1 Removing 
+ Container qkern-auth-v13-certification-dex-1 Removed 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Removing 
+ Container qkern-auth-v13-certification-certs-1 Removed 
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Removing 
+ Container qkern-auth-v13-certification-mailpit-1 Removed 
+ Network qkern-auth-v13-certification_default Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removed 
+ Network qkern-auth-v13-certification_default Removed 
+EXIT=0

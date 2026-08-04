@@ -1,0 +1,20 @@
+{
+  "stack": "project-auth-provider",
+  "log": "auth-certification-run5.log",
+  "commit": "baea60025f10b15a6b1411f7c41c7ce25296425e",
+  "commitSubject": "docs(evidence): Laeufe zu Release 1.9 archivieren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "5 passed (5)",
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

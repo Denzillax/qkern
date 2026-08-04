@@ -103,8 +103,16 @@ export type ProjectAuthErrorCode =
   | "RESOURCE_NOT_FOUND";
 
 export class ProjectAuthError extends Error {
-  constructor(readonly code: ProjectAuthErrorCode, readonly retryAfterSeconds?: number) {
-    super(code);
+  /**
+   * `cause` stays internal. Routes and MCP serialise `code` only, and the route
+   * contract tests assert that no cause reaches a client.
+   */
+  constructor(
+    readonly code: ProjectAuthErrorCode,
+    readonly retryAfterSeconds?: number,
+    options?: { cause?: unknown },
+  ) {
+    super(code, options);
     this.name = "ProjectAuthError";
   }
 }

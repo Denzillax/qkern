@@ -1,0 +1,273 @@
+
+> qkern-platform@1.9.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Container qkern-auth-v13-certification-mailpit-1 Recreate 
+ Container qkern-auth-v13-certification-certs-1 Recreate 
+ Container qkern-auth-v13-certification-mailpit-1 Recreated 
+ Container qkern-auth-v13-certification-certs-1 Recreated 
+ Container qkern-auth-v13-certification-dex-1 Recreate 
+ Container qkern-auth-v13-certification-dex-1 Recreated 
+ Container qkern-auth-v13-certification-certification-1 Recreate 
+ Container qkern-auth-v13-certification-certification-1 Recreated 
+Attaching to certification-1, certs-1, dex-1, mailpit-1
+ Container qkern-auth-v13-certification-mailpit-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+mailpit-1  | time="2026/08/04 19:01:34" level=info msg="[smtpd] enabling any authentication (insecure)"
+mailpit-1  | time="2026/08/04 19:01:34" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1  | time="2026/08/04 19:01:34" level=info msg="[http] starting on [::]:8025"
+mailpit-1  | time="2026/08/04 19:01:34" level=info msg="[http] accessible via http://localhost:8025/"
+certs-1    | ...+....+...........+.........+...............+++++++++++++++++++++++++++++++++++++++*.........+....+.....+....+..+++++++++++++++++++++++++++++++++++++++*...+......+.................................+.....+....+...+...+..+..........+...............+..+.............+..+.......+...+...........+............+...............+....+...........+....+..............+......+.+.....+....+.....+......+....+...+..+................+.........+...+..................+..+.+..+....+........+.+.....+.........+...+...+.+...........+....+...+........+.............+......+...+.....+..................+.......+.....+......+......+.........+....+..+...+......+......+....+........................+........+...+.+........+.+......+...+..+.+.........+........+.+..+.......+...+.....+...+.+...........+.............+..+.......++++++
+certs-1    | .+......+.+.....+...+.......+........+...+++++++++++++++++++++++++++++++++++++++*..+...+....+.....................+.........+......+..+.......+..+....+.....+++++++++++++++++++++++++++++++++++++++*.+....+.....................+...+.....+.............+..+.+..+...+............+...+....+...+.....+.......+......+..............+......+.+.........+..+....+....................+...+...+...+.+......+..+......+...................+...............+........+...+.+...+..........................+......+.+........+....+...+..............+.+............++++++
+certs-1    | -----
+[Kcerts-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container qkern-auth-v13-certification-certification-1 Stopping 
+ Container qkern-auth-v13-certification-certification-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+mailpit-1  | [db] got terminated signal, shutting down
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Starting 
+ Container qkern-auth-v13-certification-dex-1 Started 
+ Container qkern-auth-v13-certification-certification-1 Starting 
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config storage" storage_type=memory
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config connector: local passwords enabled"
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config skipping approval screen"
+dex-1      | time=2026-08-04T19:01:35.747Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1      | time=2026-08-04T19:01:35.749Z level=INFO msg="keys expired, rotating"
+dex-1      | time=2026-08-04T19:01:35.869Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:01:35.869Z
+dex-1      | time=2026-08-04T19:01:35.869Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+[Kmailpit-1 exited with code 0
+ Container qkern-auth-v13-certification-certification-1 Started 
+certification-1  | 
+certification-1  | added 285 packages, and audited 286 packages in 12s
+certification-1  | 
+certification-1  | 89 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | found 0 vulnerabilities
+certification-1  | npm notice
+certification-1  | npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+certification-1  | npm notice To update run: npm install -g npm@11.19.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@1.9.0 test:auth:provider
+certification-1  | > vitest run tests/project-auth-provider.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+dex-1            | time=2026-08-04T19:02:02.278Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=2686a0d5-1115-4fb5-9684-b6d143ccbb76
+dex-1            | time=2026-08-04T19:02:02.346Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=aa8df587-4d53-48d7-b5aa-a1326bfc3252
+certification-1  |  [31m❯[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[33m 11933[2mms[22m[39m
+certification-1  | [31m     [31m×[31m delivers a verification mail over real SMTP and only the mail carries the token[39m[33m 4012[2mms[22m[39m
+certification-1  | [31m     [31m×[31m delivers a magic link that signs the user in[39m[33m 3865[2mms[22m[39m
+certification-1  | [31m     [31m×[31m delivers a password reset that a new password can be set with[39m[33m 3866[2mms[22m[39m
+certification-1  |      [32m✓[39m completes a real OIDC authorization code flow with PKCE against Dex[32m 124[2mms[22m[39m
+certification-1  |      [32m✓[39m refuses a replayed authorization state[32m 64[2mms[22m[39m
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 3 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-auth-provider.integration.test.ts[2m > [22mProject Auth provider certification[2m > [22mdelivers a verification mail over real SMTP and only the mail carries the token
+certification-1  | [31m[1mProjectAuthError[22m: DELIVERY_UNAVAILABLE[39m
+certification-1  | [36m [2m❯[22m SmtpProjectAuthDelivery.deliver lib/server/project-auth/smtp-delivery.ts:[2m153:13[22m[39m
+certification-1  |     [90m151|[39m       [90m// against a real mail server is impossible to diagnose.[39m
+certification-1  |     [90m152|[39m       [35mif[39m (error [35minstanceof[39m [33mConfigurationError[39m) [35mthrow[39m error[33m;[39m
+certification-1  |     [90m153|[39m       throw new ProjectAuthError("DELIVERY_UNAVAILABLE", undefined, { …
+certification-1  |     [90m   |[39m             [31m^[39m
+certification-1  |     [90m154|[39m     } [35mfinally[39m {
+certification-1  |     [90m155|[39m       session[33m?.[39m[34mdestroy[39m()[33m;[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.issueDeliveryToken lib/server/project-auth/service.ts:[2m627:5[22m[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.signUp lib/server/project-auth/service.ts:[2m185:19[22m[39m
+certification-1  | [90m [2m❯[22m tests/project-auth-provider.integration.test.ts:[2m182:20[22m[39m
+certification-1  | 
+certification-1  | [31m[1mCaused by: Error[22m: SMTP connection failed[39m
+certification-1  | [36m [2m❯[22m Socket.onError lib/server/project-auth/smtp-delivery.ts:[2m398:14[22m[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-auth-provider.integration.test.ts[2m > [22mProject Auth provider certification[2m > [22mdelivers a magic link that signs the user in
+certification-1  | [31m[1mProjectAuthError[22m: DELIVERY_UNAVAILABLE[39m
+certification-1  | [36m [2m❯[22m SmtpProjectAuthDelivery.deliver lib/server/project-auth/smtp-delivery.ts:[2m153:13[22m[39m
+certification-1  |     [90m151|[39m       [90m// against a real mail server is impossible to diagnose.[39m
+certification-1  |     [90m152|[39m       [35mif[39m (error [35minstanceof[39m [33mConfigurationError[39m) [35mthrow[39m error[33m;[39m
+certification-1  |     [90m153|[39m       throw new ProjectAuthError("DELIVERY_UNAVAILABLE", undefined, { …
+certification-1  |     [90m   |[39m             [31m^[39m
+certification-1  |     [90m154|[39m     } [35mfinally[39m {
+certification-1  |     [90m155|[39m       session[33m?.[39m[34mdestroy[39m()[33m;[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.issueDeliveryToken lib/server/project-auth/service.ts:[2m627:5[22m[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.signUp lib/server/project-auth/service.ts:[2m185:19[22m[39m
+certification-1  | [90m [2m❯[22m tests/project-auth-provider.integration.test.ts:[2m201:5[22m[39m
+certification-1  | 
+certification-1  | [31m[1mCaused by: Error[22m: SMTP connection failed[39m
+certification-1  | [36m [2m❯[22m Socket.onError lib/server/project-auth/smtp-delivery.ts:[2m398:14[22m[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯[22m[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-auth-provider.integration.test.ts[2m > [22mProject Auth provider certification[2m > [22mdelivers a password reset that a new password can be set with
+certification-1  | [31m[1mProjectAuthError[22m: DELIVERY_UNAVAILABLE[39m
+certification-1  | [36m [2m❯[22m SmtpProjectAuthDelivery.deliver lib/server/project-auth/smtp-delivery.ts:[2m153:13[22m[39m
+certification-1  |     [90m151|[39m       [90m// against a real mail server is impossible to diagnose.[39m
+certification-1  |     [90m152|[39m       [35mif[39m (error [35minstanceof[39m [33mConfigurationError[39m) [35mthrow[39m error[33m;[39m
+certification-1  |     [90m153|[39m       throw new ProjectAuthError("DELIVERY_UNAVAILABLE", undefined, { …
+certification-1  |     [90m   |[39m             [31m^[39m
+certification-1  |     [90m154|[39m     } [35mfinally[39m {
+certification-1  |     [90m155|[39m       session[33m?.[39m[34mdestroy[39m()[33m;[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.issueDeliveryToken lib/server/project-auth/service.ts:[2m627:5[22m[39m
+certification-1  | [90m [2m❯[22m ProjectAuthService.signUp lib/server/project-auth/service.ts:[2m185:19[22m[39m
+certification-1  | [90m [2m❯[22m tests/project-auth-provider.integration.test.ts:[2m225:5[22m[39m
+certification-1  | 
+certification-1  | [31m[1mCaused by: Error[22m: SMTP connection failed[39m
+certification-1  | [36m [2m❯[22m Socket.onError lib/server/project-auth/smtp-delivery.ts:[2m398:14[22m[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+certification-1  | [2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (5)[39m
+certification-1  | [2m   Start at [22m 19:01:50
+certification-1  | [2m   Duration [22m 12.28s[2m (transform 154ms, setup 0ms, import 193ms, tests 11.93s, environment 0ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 1
+[Kmailpit-1 has been recreated
+[Kcerts-1 has been recreated
+[Kdex-1 has been recreated
+dex-1            | time=2026-08-04T19:07:44.351Z level=INFO msg="shutdown now" err="received signal terminated"
+[Kdex-1 exited with code 0
+[Kcertification-1 has been recreated
+mailpit-1        | time="2026/08/04 19:07:45" level=info msg="[smtpd] enabling any authentication (insecure)"
+mailpit-1        | time="2026/08/04 19:07:45" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1        | time="2026/08/04 19:07:45" level=info msg="[http] starting on [::]:8025"
+mailpit-1        | time="2026/08/04 19:07:45" level=info msg="[http] accessible via http://localhost:8025/"
+certs-1          | .+....+...+...+........+....+...+..+.+..+.......+...............+..................+..............+...+.+.....+....+..+.+.....+...+......+....+.................+.......+..+......+...+.......+...+..+....+......+++++++++++++++++++++++++++++++++++++++*..+....+........+++++++++++++++++++++++++++++++++++++++*...+.....+................+..+...+...+......+.............+..+....+.....+....+........+....+.........+..+...+.+.........+..+...+......+....+.................+.......+...+..+..........+..+.+...+..+.........+.+...+.........+......+..+....+........+...+....+...+..+.+..+......+......+...+.......+..............+.+...........+.........+.+...+.........+....................+.+.....+......+....+..............+.+......+...............+...+........+.......+.....+...+.........+...+......+....+...+...+.....+....+...+........+.....................+.+..+...+...+...............+....+.....................+......++++++
+certs-1          | ....+++++++++++++++++++++++++++++++++++++++*.........+...+.........+.+........+.+.....+.+...+..+...+......+.+...+++++++++++++++++++++++++++++++++++++++*..+....+.....+.+...+........+...+....+......+...........+.+..+.+..+.......+............+...+...+.....+.............+......+...+.....+...+...............+............+.......+.....+....+.....+.+...+...+.....+.........+.+............+.....+.......+........+.+.........+...+.....+.......++++++
+certs-1          | -----
+[Kcerts-1 exited with code 0
+mailpit-1        | [db] got terminated signal, shutting down
+dex-1            | time=2026-08-04T19:07:46.762Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config storage" storage_type=memory
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config connector: local passwords enabled"
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config skipping approval screen"
+dex-1            | time=2026-08-04T19:07:46.763Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1            | time=2026-08-04T19:07:46.764Z level=INFO msg="keys expired, rotating"
+[Kmailpit-1 exited with code 0
+dex-1            | time=2026-08-04T19:07:46.988Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:07:46.988Z
+dex-1            | time=2026-08-04T19:07:46.988Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+dex-1            | time=2026-08-04T19:07:47.658Z level=INFO msg="shutdown now" err="received signal terminated"
+[Kdex-1 exited with code 0
+mailpit-1        | time="2026/08/04 19:08:49" level=info msg="[smtpd] enabling any authentication (insecure)"
+mailpit-1        | time="2026/08/04 19:08:49" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1        | time="2026/08/04 19:08:49" level=info msg="[http] starting on [::]:8025"
+mailpit-1        | time="2026/08/04 19:08:49" level=info msg="[http] accessible via http://localhost:8025/"
+certs-1          | .....+.+.....+....+.....+...+...+.......+...........+++++++++++++++++++++++++++++++++++++++*..+...+..+.+.....+......+..........+++++++++++++++++++++++++++++++++++++++*.......+...+..+.......+..+...............+.+.....+...+......+.............+...+...+.....+....+..+..........+...+........+..........+..+...+....+...+.....+.+...........+....+......+...+...+.....+..........+..............+.+...+.................+...+..........+..+.......+..+...+...............+.+.....+....+...............+..+.+...............+.....+....+...+..+....+.....+....+........+...+.+.....+................+...+...........+.+..+......+.......+............+......+..+....+...+.....+.+.........+........+.........+...+......................+...+...+..+............+......+...+.........+.+.........+.....+......+.+........+...+..........+..+.+......+........+.+.....+.+.....+......+.......+......++++++
+certs-1          | .+..+....+.........+...........+....+.....+++++++++++++++++++++++++++++++++++++++*..+..+.+...+......+.....+...+++++++++++++++++++++++++++++++++++++++*...+......+....+...........+....+...............+.....+.+...+...+...+.....+...................+..+......+....+...+..+.............+...+............+.....+......+.+...+........+............+......+.......+.....+.........+.+........+.....................+....+..+............+..........+......+.....+....+..+...+.+......+.........+..+.........+.+..+................+..+...................+.....+......+.......+......+............+...+......+.....+....+.....+.+.....+......+...............+............+.+......+.........+..+....+..............+....+............+.....+.+..+......+....+..+..........+.....+.............+..+.+..+..........+......+.................+..........+..+.+.....+...................+...+........+.+...+..+.+............+...+.........+.....+...+...+.......+...+...+.....+.+..............+......+...+.+.....+.+...............+......+............+.....+...+....+.........+.....+..........+..+....+......+.................+.+.....+.+...+...+..+...+....+...+..+.+...+...........+....+..+.........+................+..+...+.........+...+.....................................+...+......+..+...+.......+.....+....+........+......+.+...+...+..+...+.......+...+.........+........+............+.+........+.+.........+............+...+..+....+.........+.........+.....+......+.+.....+...+.+.................+....+........+......+.......+.....+.........+.+.....+....+..................+...........+.........+.+......+......+.....+.......+.................+......+...+......+.+..+.+.........+..+.........+....+......+.........+..+..........+......+.....+...+.+......+..+......+...............+....+......+..+.........+....+......+......+...+......+...+..+..........+........+...+..................+......................+..+.+...............+......+......+..+......+....+..+..........+........+.+......+.....+...+..........+..+....++++++
+certs-1          | -----
+[Kcerts-1 exited with code 0
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config storage" storage_type=memory
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config connector: local passwords enabled"
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config skipping approval screen"
+dex-1            | time=2026-08-04T19:08:50.404Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1            | time=2026-08-04T19:08:50.405Z level=INFO msg="keys expired, rotating"
+dex-1            | time=2026-08-04T19:08:50.449Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:08:50.449Z
+dex-1            | time=2026-08-04T19:08:50.449Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | added 285 packages, and audited 286 packages in 12s
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 89 packages are looking for funding
+qkern-auth-v13-certification-certification-run-bcade746dd8a  |   run `npm fund` for details
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | found 0 vulnerabilities
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | npm notice
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | npm notice To update run: npm install -g npm@11.19.0
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | npm notice
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | > qkern-platform@1.9.0 test:auth:provider
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | > vitest run tests/project-auth-provider.integration.test.ts
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+dex-1                                                        | time=2026-08-04T19:09:07.020Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=37e34bc2-3440-4b05-8bfa-b40ec9c38adc
+dex-1                                                        | time=2026-08-04T19:09:07.096Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=5593fbb4-dc6b-481e-96fc-772726292bc9
+qkern-auth-v13-certification-certification-run-bcade746dd8a  |  [32m✓[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 335[2mms[22m[39m
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | [2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | [2m   Start at [22m 19:09:06
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | [2m   Duration [22m 753ms[2m (transform 165ms, setup 0ms, import 211ms, tests 335ms, environment 0ms)[22m
+qkern-auth-v13-certification-certification-run-bcade746dd8a  | 
+[Kqkern-auth-v13-certification-certification-run-bcade746dd8a exited with code 0
+mailpit-1                                                    | [db] got terminated signal, shutting down
+dex-1                                                        | time=2026-08-04T19:09:08.611Z level=INFO msg="shutdown now" err="received signal terminated"
+[Kdex-1 exited with code 0
+[Kmailpit-1 exited with code 0
+certs-1                                                      | .....+.....+++++++++++++++++++++++++++++++++++++++*........+...........+.......+...+...+......+...+..+...+......+......+......+.......+++++++++++++++++++++++++++++++++++++++*..........+.....+...+.......+..+..................+.............+...+..............+.+.....+.+...+...........+.+...+..+....+.....+.........+................+.....+.+......+.........+.....+.........+.......+..+...+...+......+..........+.....+....+..+.............+......+...+........+...+.........+.+..+.......+..+...+.+...........+...+...+.......+.....+.......+......+...............+...+..+....+.........+............+...+......+...+..+...+.......+...............+.....+...+............+....+..+...+....+..+...+.+.................+..................+...............+............+....+...+...+.....+...+...............+......+...+...+....+.....+....+...............+.....+.+..............++++++
+certs-1                                                      | ........+..+....+.....+.+...+............+.....+...+.+.....+...+...+++++++++++++++++++++++++++++++++++++++*....+......+..+++++++++++++++++++++++++++++++++++++++*..+.+.....+.......+......+......+...+.....+.+.........+......+...........+...+.+.....+......+.+.....+....+.....+....+.........+......+.........+..+.........+.+...+...+........+.+...+...........+.+......+...+..+...+.++++++
+certs-1                                                      | -----
+mailpit-1                                                    | time="2026/08/04 19:09:35" level=info msg="[smtpd] enabling any authentication (insecure)"
+mailpit-1                                                    | time="2026/08/04 19:09:35" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1                                                    | time="2026/08/04 19:09:35" level=info msg="[http] starting on [::]:8025"
+mailpit-1                                                    | time="2026/08/04 19:09:35" level=info msg="[http] accessible via http://localhost:8025/"
+[Kcerts-1 exited with code 0
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config storage" storage_type=memory
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config connector: local passwords enabled"
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config skipping approval screen"
+dex-1                                                        | time=2026-08-04T19:09:36.546Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1                                                        | time=2026-08-04T19:09:36.547Z level=INFO msg="keys expired, rotating"
+dex-1                                                        | time=2026-08-04T19:09:36.644Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:09:36.644Z
+dex-1                                                        | time=2026-08-04T19:09:36.644Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | added 285 packages, and audited 286 packages in 17s
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 89 packages are looking for funding
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  |   run `npm fund` for details
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | found 0 vulnerabilities
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | npm notice
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | npm notice To update run: npm install -g npm@11.19.0
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | npm notice
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | > qkern-platform@1.9.0 test:auth:provider
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | > vitest run tests/project-auth-provider.integration.test.ts
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+dex-1                                                        | time=2026-08-04T19:09:59.182Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=9b1731ed-baff-4ca8-a578-23ae3aeb92d6
+dex-1                                                        | time=2026-08-04T19:09:59.284Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=caf91799-e0c0-4eb5-af2f-300edb1c811a
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  |  [32m✓[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 515[2mms[22m[39m
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | [2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | [2m   Start at [22m 19:09:58
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | [2m   Duration [22m 978ms[2m (transform 189ms, setup 0ms, import 238ms, tests 515ms, environment 0ms)[22m
+qkern-auth-v13-certification-certification-run-b8c70c23b51b  | 
+[Kqkern-auth-v13-certification-certification-run-b8c70c23b51b exited with code 0
+dex-1                                                        | time=2026-08-04T19:10:02.444Z level=INFO msg="shutdown now" err="received signal terminated"
+mailpit-1                                                    | [db] got terminated signal, shutting down
+[Kdex-1 exited with code 0
+[Kmailpit-1 exited with code 0

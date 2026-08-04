@@ -1,0 +1,43 @@
+# Dex-Konfiguration des Auth-Zertifizierungsstacks.
+#
+# TLS ist nicht optional: ProjectAuthOidcCatalog verlangt fuer Issuer,
+# Authorization-, Token- und JWKS-Endpunkt exaktes HTTPS und lehnt localhost
+# sowie IP-Adressen ab. Der Stack betreibt Dex deshalb unter dem
+# Netzwerk-Alias dex.qkern.test mit einem im Stack erzeugten Zertifikat,
+# statt die Produktgrenze fuer den Test aufzuweichen.
+
+issuer: https://dex.qkern.test:5556/dex
+
+storage:
+  type: memory
+
+web:
+  https: 0.0.0.0:5556
+  tlsCert: /certs/dex.crt
+  tlsKey: /certs/dex.key
+
+oauth2:
+  # Ohne dies bliebe der Ablauf an einer HTML-Zustimmungsseite stehen, die
+  # nichts ueber den Authorization-Code-Vertrag aussagt.
+  skipApprovalScreen: true
+
+staticClients:
+  - id: qkern-certification
+    secret: qkern-certification-secret
+    name: QKERN Certification
+    redirectURIs:
+      # Exakt die URI, die ProjectAuthService aus callbackBaseUrl, Projekt,
+      # Environment und Providernamen bildet. Der Test verwendet deshalb eine
+      # feste Projekt-ID; ein Tippfehler hier faellt als redirect_uri-Mismatch
+      # von Dex auf, nicht als stiller Fehlschlag.
+      - http://localhost:3000/api/v1/projects/11111111-1111-4111-8111-111111111111/environments/development/auth/oidc/certification/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  # bcrypt-Hash von "password", der dokumentierte Beispielwert aus Dex.
+  # Ausschliesslich fuer diesen Wegwerfstack.
+  - email: oidc-user@qkern.test
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: oidcuser
+    userID: 3b2c4f1e-0d5a-4a6b-9c8d-7e6f5a4b3c2d

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 4. August 2026 · Release: `1.9.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 4. August 2026 · Release: `1.10.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -22,7 +22,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | --- | --- | --- |
 | Control Plane, Approval/Audit, Migration Runtime | ja | ja — 9 Real-DB-Fälle |
 | Generated Data API | ja | ja — 2 Real-DB-Fälle, RLS und Injection |
-| Project Auth | teilweise | teilweise — Lifecycle und Replay ja, Provider-E2E nein |
+| Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
@@ -43,6 +43,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
 | **PostgreSQL-17-Zertifizierung** | **28 von 28 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
+| **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
 | Realtime Real-Service/Load | noch nicht vorhanden; Runtime verweigert Production |
 | Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
@@ -106,7 +107,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 
 | Modul | Stand | Nächster belastbarer Slice |
 | --- | --- | --- |
-| Project Auth | Alpha; SMTP-Adapter und PostgreSQL-Lifecycle zertifiziert | Provider-E2E gegen echten SMTP- und OIDC-Server |
+| Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
 | Realtime | Alpha-1-Foundation | persistenter PostgreSQL-Event-Log/CDC und horizontaler Fan-out |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
@@ -125,8 +126,15 @@ Queue-Adapter konnte nie eine Nachricht schreiben, und die Generated Data API lu
 keine einzige reale Tabelle. Beide sind behoben und belegt. Details in
 [Release 1.9](docs/RELEASE_1.9.md).
 
-Stufe 1.4 Storage ist damit abgeschlossen. Als nächstes fehlt für Stufe 1.3 die
-Provider-E2E-Matrix gegen einen echten SMTP- und einen echten OIDC-Server.
+**Release 1.10 schließt Stufe 1.3.** Ein dritter Wegwerfstack mit Mailpit als
+echtem SMTP-Server und Dex als echtem OIDC-Provider erbringt die vom
+Austrittskriterium verlangte Provider-E2E-Matrix. Der Dienst läuft dabei ohne
+Debug-Token: Der einzige Weg an ein Verifikations-, Magic-Link- oder
+Reset-Token führt über eine tatsächlich zugestellte Nachricht. Details in
+[Release 1.10](docs/RELEASE_1.10.md).
+
+Damit sind die Stufen 1.1 bis 1.4 abgeschlossen. Als nächstes steht Stufe 1.5
+Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
 
 ## Wichtige Grenzen
 
