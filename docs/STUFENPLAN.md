@@ -13,7 +13,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.2 | fertig, zertifiziert | Generated Data API, Projekt-Keys und echter Table Editor |
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
-| 1.5 | in Arbeit als Alpha | Realtime-Foundation; persistente CDC-/Fan-out-Grenze offen |
+| 1.5 | in Arbeit | Realtime mit dauerhaftem Log und Fan-out zertifiziert; CDC und Lasttests offen |
 | 1.6 | in Arbeit als Alpha | Queue-/Jobs-Foundation mit PostgreSQL; Production-Compute und Real-Service-Evidenz offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
@@ -154,6 +154,25 @@ datenbankgestützte RLS pro Event, horizontaler Fan-out, Multi-Instance-Fencing,
 Production-TLS/Proxy, Telemetrie, Browser-SDK und echte Drop-/Soak-/Lasttests sind
 offen. Der Alpha-1-Host bindet nur Loopback und verweigert Production technisch;
 das Austrittskriterium ist nicht erfüllt.
+
+**Nachtrag Release 1.11.** Der Event-Log ist jetzt dauerhaft: Migration 0030
+speichert Ereignisse und die Kanal-Sequenz mit Tenant-RLS, Append-only-Trigger
+und engen Spaltengrants. Die Sequenz kommt aus der Datenbank, sodass mehrere
+Instanzen dieselbe Reihenfolge sehen und sie einen Neustart überlebt. Ein neuer
+optionaler Event-Bus verteilt Verweise über `LISTEN`/`NOTIFY`; die
+Benachrichtigung trägt keine Payload, und ein Verweis löst ein Replay ab der
+zuletzt zugestellten Sequenz aus, damit ein verpasster Hinweis keine stille
+Lücke hinterlässt.
+
+Fünf Fälle laufen gegen echtes PostgreSQL mit zwei Instanzen, getrennten Pools
+und getrennten `LISTEN`-Verbindungen: Zustellung über die Instanzgrenze, globale
+Sequenz bei gleichzeitigem Schreiben, Persistenz über einen Neustart,
+Tenant-Isolation und die Append-only-Invariante.
+
+Das Austrittskriterium bleibt **nicht erfüllt**. Offen sind PostgreSQL-CDC und
+RLS pro Ereignis sowie Drop-, Reconnect-, Soak- und Lasttests. Auch der
+Mehrinstanznachweis hat eine Grenze: Beide Instanzen laufen im selben
+Betriebssystemprozess, Prozessabsturz und Netzwerkausfall sind nicht geprüft.
 
 ## Stufe 1.6 — Compute und Messaging
 

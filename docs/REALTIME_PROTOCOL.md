@@ -117,3 +117,50 @@ Der Prozess bindet ausschließlich `127.0.0.1`. Für einen späteren Production-
 Release fehlen mindestens PostgreSQL-basierter Event Log/CDC, horizontaler
 Fan-out, mehrere Instanzen, Proxy-/TLS-Grenze, externe Rate-Limits, Telemetrie,
 Abuse-/Lasttests und archivierte Real-Service-E2E-Nachweise.
+
+## Dauerhaftigkeit und Mehrinstanzbetrieb (Release 1.11)
+
+Der Event-Log liegt nicht mehr im Prozessspeicher. Migration `0030` speichert
+Ereignisse und die Sequenz je Kanal mit Tenant-RLS, Append-only-Trigger und
+engen Spaltengrants. Die Sequenz stammt aus der Datenbank: Nur so sehen mehrere
+Instanzen dieselbe Reihenfolge, und nur so überlebt sie einen Neustart.
+
+Die Vergabe verwendet `INSERT … ON CONFLICT DO UPDATE … RETURNING` statt
+`SELECT … FOR UPDATE`. PostgreSQL verlangt für jede Sperrklausel zusätzlich ein
+UPDATE-Recht und eine UPDATE-Policy; der Upsert ist atomar und braucht beides
+nicht.
+
+### Zustellung zwischen Instanzen
+
+`RealtimeEventBus` verteilt **Verweise**, keine Ereignisse. Eine Benachrichtigung
+enthält Organisation, Projekt, Environment, Kanal, Sequenz und die
+Ursprungsinstanz — keine Payload. Zwei Gründe: `NOTIFY` begrenzt die Nutzlast
+auf 8000 Byte, und eine Payload auf einem Seitenkanal würde den Log als einzige
+Wahrheit über Reihenfolge und Inhalt umgehen. Die empfangende Instanz liest das
+Ereignis aus dem RLS-geprüften Log.
+
+Ein eingehender Verweis löst ein Replay ab der zuletzt zugestellten Sequenz aus,
+nicht das Holen des genannten Ereignisses. `NOTIFY` ist nicht dauerhaft; ein
+verpasster Hinweis würde sonst eine stille Lücke hinterlassen, die dem
+Cursor-Vertrag widerspricht.
+
+Die eigene Instanz erkennt ihre Ereignisse an der Ursprungskennung und stellt
+sie nicht doppelt zu.
+
+### Grenzen
+
+Ohne konfigurierten Bus verhält sich der Dienst wie zuvor: Ein Broadcast erreicht
+ausschließlich Verbindungen desselben Prozesses. Das ist der Default.
+
+Der Zertifizierungsnachweis führt zwei Instanzen mit getrennten Pools und
+getrennten `LISTEN`-Verbindungen gegen echtes PostgreSQL, **aber im selben
+Betriebssystemprozess**. Prozessabsturz und Netzwerkausfall sind nicht geprüft.
+
+Postgres Changes (CDC) sind nicht implementiert. `lib/server/realtime/change-source.ts`
+hält den vorgesehenen Port und die offenen Entwurfsentscheidungen fest. Der
+zentrale Unterschied: Datenbankänderungen entstehen außerhalb von QKERN und
+brauchen deshalb RLS pro Ereignis und pro Abonnent; sie dürfen nicht über den
+kanalweit sichtbaren Event-Log laufen.
+
+Die Aufbewahrung ist als `prune` implementiert, wird aber von keinem Scheduler
+aufgerufen.

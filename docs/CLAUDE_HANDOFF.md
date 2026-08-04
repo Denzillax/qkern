@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.10.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.11.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,10 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.10.0`
-- Aktueller Slice: 1.10 Project Auth Provider Certification — Stufe 1.3 geschlossen
+- Paketversion: `1.11.0`
+- Aktueller Slice: 1.11 Realtime Durability and Fan-out — Stufe 1.5 deutlich vorangebracht, aber nicht geschlossen
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0029_project_queue_definition_row_lock.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
+- Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
 - Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
 - Manifestgenerator: `scripts/certification-manifest.mjs`
 - SMTP-Delivery: `lib/server/project-auth/smtp-delivery.ts`
@@ -160,17 +161,29 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.11.0`: Stufe 1.5 Realtime. Der Event-Log ist prozesslokal; es fehlen ein
-persistenter PostgreSQL-Event-Log mit CDC, datenbankgestützte RLS pro Event,
-horizontaler Fan-out und Multi-Instance-Fencing. Die Alpha-1-Runtime bindet nur
-Loopback und verweigert Production technisch.
+`1.12.0`: Postgres Changes, um Stufe 1.5 zu schließen.
 
-Erwartung nach den Erfahrungen aus 1.9 und 1.10: Ein Realtime-Stack mit mehreren
-Instanzen gegen eine echte Datenbank wird Fehler zeigen, die lokal unsichtbar
-sind. Der Zertifizierungslauf gehört deshalb an den Anfang des Slice, nicht an
-sein Ende.
+`lib/server/realtime/change-source.ts` hält die Architektur bereits fest und ist
+bewusst nicht implementiert. Der entscheidende Punkt steht dort ausführlich:
+Broadcast-Ereignisse sind beim Schreiben bereits autorisiert, Datenbankänderungen
+entstehen dagegen außerhalb von QKERN. Für sie gilt die Autorisierung des
+Absenders nicht, weshalb CDC **RLS pro Ereignis und pro Abonnent** braucht. Zwei
+Abonnenten desselben Kanals dürfen unterschiedliche Teilmengen derselben
+Änderung erhalten. CDC darf deshalb **nicht** über `RealtimeEventLog` laufen,
+dessen Ereignisse kanalweit sichtbar sind.
 
-Danach: Queue-Multi-Instance- und Lastläufe, transaktionale Usage-Emitter.
+Drei Entwurfsentscheidungen sind offen und im Port dokumentiert: logische
+Replikation gegen Trigger als Quelle, Autorisierung pro Abonnent gegen
+vorberechnete Sichtbarkeit, und das Verhalten bei Rückstau.
+
+Danach: Drop-/Reconnect-/Soak-/Lasttests, Queue-Multi-Instance-Läufe,
+transaktionale Usage-Emitter.
+
+Hinweis aus 1.11: Der Realtime-Zertifizierungslauf war beim ersten Versuch grün,
+weil die Fehlerklassen aus 1.9 vorbeugend angewandt wurden — `bigint` erreicht
+den Treiber als Zeichenkette, jede Sperrklausel verlangt UPDATE-Recht und
+UPDATE-Policy, jeder Zugriffspfad braucht seine eigene RLS-Policy. Das lohnt sich
+zu wiederholen.
 
 ## Sichere Arbeitsregeln
 

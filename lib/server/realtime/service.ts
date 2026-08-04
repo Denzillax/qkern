@@ -11,6 +11,7 @@ import type {
 } from "@/lib/server/realtime/model";
 import { RealtimeError } from "@/lib/server/realtime/model";
 import { assertRealtimeChannel, type RealtimeAuthorizationPort } from "@/lib/server/realtime/policy";
+import type { RealtimeEventBus, RealtimeEventReference } from "@/lib/server/realtime/event-bus";
 import type { RealtimeEventLog } from "@/lib/server/realtime/repository";
 
 type Connection = {
@@ -25,6 +26,15 @@ type Connection = {
 export type RealtimeServiceOptions = {
   eventLog: RealtimeEventLog;
   authorization: RealtimeAuthorizationPort;
+  /**
+   * Optionale instanzübergreifende Zustellung. Ohne Bus verhält sich der Dienst
+   * exakt wie zuvor: ein Broadcast erreicht ausschließlich Verbindungen dieses
+   * Prozesses. Mit Bus erreicht er zusätzlich jede andere Instanz, die
+   * denselben Event-Log liest.
+   */
+  eventBus?: RealtimeEventBus;
+  /** Kennung dieser Instanz. Verhindert, dass ein eigenes Ereignis doppelt ankommt. */
+  instanceId?: string;
   cursor?: RealtimeCursorCodec;
   now?: () => Date;
   id?: () => string;
@@ -36,8 +46,11 @@ export type RealtimeServiceOptions = {
 };
 
 export class RealtimeService {
+  readonly instanceId: string;
   private readonly connections = new Map<string, Connection>();
   private readonly locks = new Map<string, Promise<void>>();
+  /** Zuletzt an lokale Abonnenten zugestellte Sequenz je Kanal. */
+  private readonly delivered = new Map<string, number>();
   private readonly cursor: RealtimeCursorCodec;
   private readonly now: () => Date;
   private readonly id: () => string;
@@ -48,6 +61,7 @@ export class RealtimeService {
   readonly heartbeatSeconds: number;
 
   constructor(private readonly options: RealtimeServiceOptions) {
+    this.instanceId = options.instanceId ?? randomUUID();
     this.cursor = options.cursor ?? new RealtimeCursorCodec(randomBytes(32));
     this.now = options.now ?? (() => new Date());
     this.id = options.id ?? (() => randomUUID());
@@ -140,7 +154,63 @@ export class RealtimeService {
       this.send(connection, { type: "ack", requestId, operation: "broadcast", cursor });
       const message = this.eventMessage(stored, false);
       for (const subscriber of this.subscribers(connection.scope, channel)) this.send(subscriber, message);
+      this.markDelivered(connection.scope, channel, stored.sequence);
     });
+
+    // Erst nach der lokalen Zustellung und außerhalb der Kanalsperre: Ein
+    // Fehler beim Hinweis darf weder den bestätigten Broadcast zurücknehmen
+    // noch die Sperre halten. Das Ereignis liegt bereits dauerhaft im Log,
+    // andere Instanzen holen es spätestens mit dem nächsten Hinweis nach.
+    await this.notifyPeers(connection.scope, channel);
+  }
+
+  /**
+   * Verarbeitet den Verweis einer anderen Instanz.
+   *
+   * Es wird bewusst nicht das genannte Ereignis geholt, sondern ab der zuletzt
+   * zugestellten Sequenz nachgelesen. `NOTIFY` ist nicht dauerhaft; ein
+   * verpasster Hinweis würde sonst eine stille Lücke hinterlassen, die genau
+   * dem Vertrag widerspricht, den die Cursor-Prüfung zusichert.
+   */
+  async deliverRemote(reference: RealtimeEventReference): Promise<void> {
+    if (reference.origin === this.instanceId) return;
+    const scope: RealtimeScope = {
+      organizationId: reference.organizationId,
+      projectId: reference.projectId,
+      environment: reference.environment,
+    };
+    if (this.subscribers(scope, reference.channel).length === 0) return;
+
+    await this.exclusive(scope, reference.channel, async () => {
+      const key = deliveredKey(scope, reference.channel);
+      const after = this.delivered.get(key) ?? 0;
+      if (reference.sequence <= after) return;
+
+      const replay = await this.options.eventLog.replay(scope, reference.channel, after, this.replayLimit);
+      for (const event of replay.events) {
+        const message = this.eventMessage(event, false);
+        for (const subscriber of this.subscribers(scope, reference.channel)) this.send(subscriber, message);
+        this.delivered.set(key, event.sequence);
+      }
+    });
+  }
+
+  private async notifyPeers(scope: RealtimeScope, channel: string): Promise<void> {
+    const bus = this.options.eventBus;
+    if (!bus) return;
+    const sequence = this.delivered.get(deliveredKey(scope, channel));
+    if (sequence === undefined) return;
+    try {
+      await bus.publish({ ...scope, channel, sequence, origin: this.instanceId });
+    } catch {
+      // Siehe oben: der Log bleibt die Wahrheit, der Hinweis ist nur eine
+      // Beschleunigung.
+    }
+  }
+
+  private markDelivered(scope: RealtimeScope, channel: string, sequence: number): void {
+    const key = deliveredKey(scope, channel);
+    if ((this.delivered.get(key) ?? 0) < sequence) this.delivered.set(key, sequence);
   }
 
   async trackPresence(connectionId: string, requestId: string, channel: string, state: unknown) {
@@ -297,4 +367,8 @@ function bounded(value: number, min: number, max: number) {
     throw new RealtimeError("REALTIME_INVALID_MESSAGE");
   }
   return value;
+}
+
+function deliveredKey(scope: RealtimeScope, channel: string) {
+  return `${scope.organizationId} ${scope.projectId} ${scope.environment} ${channel}`;
 }

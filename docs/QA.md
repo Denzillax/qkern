@@ -341,3 +341,25 @@ und Fan-out, Queue-Multi-Instance-/Crash-/Soak-/Lastläufe, Functions-Sandbox,
 Cron, Webhook-Zustellung, transaktionale Usage-Emitter, archivierte Windows- und
 macOS-Läufe, Backup-/Restore-Drill, echtes Prometheus-/OTel-Scraping und ein
 unabhängiger Pentest.
+
+## Realtime Durability and Fan-out — Release 1.11
+
+Neun lokale Tests prüfen die Zustellung über Instanzgrenzen: Broadcast von
+Instanz A zu einem Abonnenten auf Instanz B, keine doppelte Zustellung auf der
+sendenden Instanz, erhaltene Reihenfolge, Nachholen nach verlorenem Hinweis,
+ignorierter eigener Verweis, ignorierter Verweis für einen nicht abonnierten
+Kanal, Tenant-Grenze, unverändertes Verhalten ohne Bus und die Zusicherung, dass
+ein Verweis keine Payload trägt.
+
+Fünf Fälle laufen gegen echtes PostgreSQL mit zwei Instanzen, getrennten Pools
+und getrennten `LISTEN`-Verbindungen: Zustellung über die Instanzgrenze, globale
+Sequenz bei gleichzeitigem Schreiben beider Instanzen, Persistenz über einen
+Neustart, Cross-Tenant-Unsichtbarkeit und die Append-only-Invariante.
+
+Checkpoint `1.11.0` am 4. August 2026: **33 von 33** PostgreSQL-Fällen bestanden,
+30 Migrationen angewandt, zweimal reproduziert. Lokal 720 Tests bestanden, 57
+übersprungen, 0 fehlgeschlagen.
+
+Der Realtime-Lauf war beim ersten Versuch grün. Nicht geprüft und nicht als
+ausgeführt auszugeben bleiben Postgres Changes, RLS pro Ereignis, Drop-,
+Reconnect-, Soak- und Lasttests sowie echter Mehrprozessbetrieb.

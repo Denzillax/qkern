@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 4. August 2026 · Release: `1.10.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 4. August 2026 · Release: `1.11.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
-| Realtime | teilweise | nein — prozesslokal, kein CDC |
+| Realtime | teilweise | teilweise — dauerhafter Log und Fan-out ja, CDC nein |
 | Compute Contracts | nur Ports | nein |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -44,6 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **PostgreSQL-17-Zertifizierung** | **28 von 28 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
+| **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen, Teil der 33 PostgreSQL-Faelle** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
 | Realtime Real-Service/Load | noch nicht vorhanden; Runtime verweigert Production |
 | Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
@@ -109,7 +110,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
-| Realtime | Alpha-1-Foundation | persistenter PostgreSQL-Event-Log/CDC und horizontaler Fan-out |
+| Realtime | dauerhafter Log und Fan-out zertifiziert | Postgres Changes mit RLS pro Ereignis, Drop-/Last-Tests |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
