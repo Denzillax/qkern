@@ -35,6 +35,12 @@ services:
   certification:
     image: node:24.7.0-alpine
     working_dir: /workspace/qkern
+    # Teilt die Netzwerk-Namespace von MinIO. Der S3-Provider erlaubt Klartext-
+    # HTTP ausschliesslich gegen Loopback, und das ist richtig so: ein
+    # Docker-Servicename ist kein Loopback. Statt die Produktgrenze fuer den
+    # Test aufzuweichen, wird MinIO tatsaechlich zu 127.0.0.1. ClamAV bleibt
+    # ueber die DNS-Konfiguration desselben Compose-Netzwerks erreichbar.
+    network_mode: "service:minio"
     depends_on:
       minio:
         condition: service_started
@@ -45,7 +51,7 @@ services:
     environment:
       NODE_ENV: test
       QKERN_TEST_STORAGE_PROVIDER_E2E: "true"
-      QKERN_TEST_STORAGE_S3_ENDPOINT: http://minio:9000
+      QKERN_TEST_STORAGE_S3_ENDPOINT: http://127.0.0.1:9000
       QKERN_TEST_STORAGE_S3_REGION: us-east-1
       QKERN_TEST_STORAGE_S3_BUCKET: qkern-storage-certification
       QKERN_TEST_STORAGE_S3_ACCESS_KEY_ID: qkern_cert_access

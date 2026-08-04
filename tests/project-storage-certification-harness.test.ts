@@ -57,7 +57,8 @@ describe("Project Storage provider certification harness", () => {
 
   it("requires an explicit provider E2E opt-in and private service names", () => {
     expect(compose).toContain('QKERN_TEST_STORAGE_PROVIDER_E2E: "true"');
-    expect(compose).toContain("QKERN_TEST_STORAGE_S3_ENDPOINT: http://minio:9000");
+    expect(compose).toContain("QKERN_TEST_STORAGE_S3_ENDPOINT: http://127.0.0.1:9000");
+    expect(compose).toContain('network_mode: "service:minio"');
     expect(compose).toContain("QKERN_TEST_STORAGE_CLAMAV_HOST: clamav");
     expect(integration).toContain('QKERN_TEST_STORAGE_PROVIDER_E2E === "true"');
     expect(integration).toContain("describe.runIf(enabled)");
