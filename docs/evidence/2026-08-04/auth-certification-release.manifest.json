@@ -1,0 +1,20 @@
+{
+  "stack": "project-auth-provider",
+  "log": "auth-certification-release.log",
+  "commit": "b4a71923f8c3f83195c447d80123661deba09177",
+  "commitSubject": "release: 1.10.0 Project Auth Provider Certification",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "5 passed (5)",
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

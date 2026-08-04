@@ -271,3 +271,54 @@ dex-1                                                        | time=2026-08-04T1
 mailpit-1                                                    | [db] got terminated signal, shutting down
 [Kdex-1 exited with code 0
 [Kmailpit-1 exited with code 0
+mailpit-1                                                    | time="2026/08/04 19:12:40" level=info msg="[smtpd] enabling any authentication (insecure)"
+mailpit-1                                                    | time="2026/08/04 19:12:40" level=info msg="[smtpd] starting on [::]:1025 (no encryption)"
+mailpit-1                                                    | time="2026/08/04 19:12:40" level=info msg="[http] starting on [::]:8025"
+mailpit-1                                                    | time="2026/08/04 19:12:40" level=info msg="[http] accessible via http://localhost:8025/"
+certs-1                                                      | ................+.........+....+......+..+....+.....+....+......+.........+..+....+...........+...+++++++++++++++++++++++++++++++++++++++*.+........+.............+++++++++++++++++++++++++++++++++++++++*......+.+............+.....+...+...+.+......+...+..+.........+.+...+.........+..+....+..+....+.........+...........+................+..+.+.........+...+...............+...+.........+.....+.+..+.........+....+.....+....+............+.....+.+...+...........+.............+..++++++
+certs-1                                                      | .....+++++++++++++++++++++++++++++++++++++++*.+............+...+........+....+......+.........+..+...+...+++++++++++++++++++++++++++++++++++++++*......+.........+.....+.........+....+...+........+....+...........+.......+..+...+....+........+.+..+.......+...+.....+.............+......+.....+....+..+...+....+...............+.................+....+..+.............+..+...+.+..............+.......+..+...............+...+............+.......+...........+...+......+...+.......+.........+.....+.+......+.....+...+....+...+....................+...+.+...+..+......+...+......+....+..+.......+......+....................+.........+...+..........+..+...............+...+...+......+.+..+...+...+.+......+............+...+.........+........+...+...+.+..............+.+.....+.........+.......+..+.+......+...+...+.....+..........+.....+.......+..+.+..+.+....................+.........+.+..+....+.....................+..+.+..+.......+..+.+.....+.........+.+...+.........+..+.+..................+.....+.+........+...+...+.......+..++++++
+certs-1                                                      | -----
+[Kcerts-1 exited with code 0
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="Version info" dex_version=v2.41.1 go.version=go1.22.5 go.os=linux go.arch=amd64
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config issuer" issuer=https://dex.qkern.test:5556/dex
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config storage" storage_type=memory
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config static client" client_name="QKERN Certification"
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config connector: local passwords enabled"
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config skipping approval screen"
+dex-1                                                        | time=2026-08-04T19:12:41.574Z level=INFO msg="config refresh tokens rotation" enabled=true
+dex-1                                                        | time=2026-08-04T19:12:41.577Z level=INFO msg="keys expired, rotating"
+dex-1                                                        | time=2026-08-04T19:12:41.685Z level=INFO msg="keys rotated" next_rotation=2026-08-05T01:12:41.685Z
+dex-1                                                        | time=2026-08-04T19:12:41.685Z level=INFO msg="listening on" server=https address=0.0.0.0:5556
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | added 285 packages, and audited 286 packages in 11s
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 89 packages are looking for funding
+qkern-auth-v13-certification-certification-run-40649ee934c2  |   run `npm fund` for details
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | found 0 vulnerabilities
+qkern-auth-v13-certification-certification-run-40649ee934c2  | npm notice
+qkern-auth-v13-certification-certification-run-40649ee934c2  | npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+qkern-auth-v13-certification-certification-run-40649ee934c2  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+qkern-auth-v13-certification-certification-run-40649ee934c2  | npm notice To update run: npm install -g npm@11.19.0
+qkern-auth-v13-certification-certification-run-40649ee934c2  | npm notice
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | > qkern-platform@1.10.0 test:auth:provider
+qkern-auth-v13-certification-certification-run-40649ee934c2  | > vitest run tests/project-auth-provider.integration.test.ts
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+dex-1                                                        | time=2026-08-04T19:12:56.914Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=4313e690-45e2-48d3-a52c-99caeaefcf96
+dex-1                                                        | time=2026-08-04T19:12:56.973Z level=INFO msg="login successful" connector_id=local username=oidcuser preferred_username="" email=oidc-user@qkern.test groups=[] request_id=8af5a931-fae8-446a-9600-0df45cb2b8df
+qkern-auth-v13-certification-certification-run-40649ee934c2  |  [32m✓[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 253[2mms[22m[39m
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+qkern-auth-v13-certification-certification-run-40649ee934c2  | [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+qkern-auth-v13-certification-certification-run-40649ee934c2  | [2m      Tests [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+qkern-auth-v13-certification-certification-run-40649ee934c2  | [2m   Start at [22m 19:12:56
+qkern-auth-v13-certification-certification-run-40649ee934c2  | [2m   Duration [22m 578ms[2m (transform 136ms, setup 0ms, import 174ms, tests 253ms, environment 0ms)[22m
+qkern-auth-v13-certification-certification-run-40649ee934c2  | 
+[Kqkern-auth-v13-certification-certification-run-40649ee934c2 exited with code 0
+mailpit-1                                                    | [db] got terminated signal, shutting down
+dex-1                                                        | time=2026-08-04T19:12:58.101Z level=INFO msg="shutdown now" err="received signal terminated"
+[Kdex-1 exited with code 0
+[Kmailpit-1 exited with code 0

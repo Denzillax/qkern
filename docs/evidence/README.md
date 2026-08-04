@@ -28,14 +28,17 @@ erwartbar und kein Mangel: Das Rohlog entsteht während des Laufs im
 Arbeitsverzeichnis und ist zu diesem Zeitpunkt zwangsläufig unversioniert. Der
 Stand des Produktcodes ist über `commit` eindeutig belegt.
 
-## Läufe zu Release 1.9 (4. August 2026)
+## Läufe zu Release 1.9 und 1.10 (4. August 2026)
 
 | Datei | Stack | Ergebnis |
 | --- | --- | --- |
 | `postgres-certification-release.log` | PostgreSQL 17 | 28 von 28, exit 0, 29 Migrationen |
 | `storage-certification-release.log` | MinIO und ClamAV | 2 von 2, exit 0 |
+| `auth-certification-release.log` | Mailpit und Dex | 5 von 5, exit 0 |
 
-Die durchnummerierten Läufe `run4` bis `run14` sind die Diagnose- und
-Fix-Wellen, die zu diesem Ergebnis geführt haben. Sie bleiben absichtlich
-erhalten: `run4` ist der erste echte Lauf überhaupt und dokumentiert, dass
-zu diesem Zeitpunkt keine einzige der sieben Real-DB-Testdateien bestand.
+Die durchnummerierten Läufe sind die Diagnose- und Fix-Wellen, die zu diesem
+Ergebnis geführt haben. Sie bleiben absichtlich erhalten:
+`postgres-certification-run4` ist der erste echte Lauf überhaupt und
+dokumentiert, dass zu diesem Zeitpunkt keine einzige der sieben
+Real-DB-Testdateien bestand. `auth-certification-run1` dokumentiert entsprechend
+den Ausgangszustand des Provider-Nachweises.
