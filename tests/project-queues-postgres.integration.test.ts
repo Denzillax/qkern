@@ -47,13 +47,10 @@ describe.runIf(enabled)("Project Queues PostgreSQL certification", () => {
   });
 
   afterAll(async () => {
-    // The organization must go first: organizations.created_by deliberately
-    // restricts deleting its owner, while everything below it cascades.
-    if (owner) {
-      await owner.query("DELETE FROM audit_logs WHERE organization_id = $1", [organizationId]);
-      await owner.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
-      await owner.query("DELETE FROM users WHERE id = $1", [controlUser]);
-    }
+    // Nothing is deleted here. audit_logs is append-only by design, and
+    // organizations cannot be removed while audit entries reference them.
+    // Every run uses fresh random identifiers, and the certification stack is
+    // a disposable container, so residue is expected rather than a leak.
     await Promise.all([owner?.end(), runtime?.end()]);
   });
 

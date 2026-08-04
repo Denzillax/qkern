@@ -1,4 +1,9 @@
-import { InvalidTenantContextError, ResourceNotFoundError, mapPostgresError } from "@/lib/server/db/errors";
+import {
+  InvalidTenantContextError,
+  RepositoryError,
+  ResourceNotFoundError,
+  mapPostgresError,
+} from "@/lib/server/db/errors";
 import type { SqlPool, SqlPoolClient, SqlQueryResult, SqlValue } from "@/lib/server/db/sql";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -80,8 +85,32 @@ export async function withTenantTransaction<T>(
         client = undefined;
       }
     }
-    throw mapPostgresError(error);
+    throw fromTransaction(error);
   } finally {
     client?.release();
   }
+}
+
+/**
+ * Classifies a failure that escaped a tenant transaction.
+ *
+ * Errors raised by the operation itself must survive this boundary. Mapping
+ * them unconditionally turned every domain contract into a generic
+ * PERSISTENCE_ERROR, so `QUEUE_LEASE_LOST`, `STORAGE_CONFLICT` and
+ * `STORAGE_QUOTA_EXCEEDED` never reached their callers. The masking stayed
+ * invisible until the adapters ran against a real database, because the memory
+ * adapters do not pass through a transaction at all.
+ *
+ * A dedicated error class is the signal: it carries a domain contract, so it is
+ * rethrown untouched. A bare `Error`, a non-Error throw, a PostgreSQL failure
+ * (always carrying `severity`) and a Node socket failure (`EXXX` code) carry no
+ * such contract and are classified as infrastructure failures.
+ */
+function fromTransaction(error: unknown): unknown {
+  if (error instanceof RepositoryError) return error;
+  if (!(error instanceof Error) || error.constructor === Error) return mapPostgresError(error);
+  const candidate = error as { severity?: unknown; code?: unknown };
+  const fromDriver = typeof candidate.severity === "string"
+    || (typeof candidate.code === "string" && /^E[A-Z0-9_]+$/.test(candidate.code));
+  return fromDriver ? mapPostgresError(error) : error;
 }
