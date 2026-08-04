@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17-change-feed",
+  "log": "change-feed-certification-run1.log",
+  "commit": "a2b8afb4535e07623fe4f2c4904a4b5c554d2503",
+  "commitSubject": "release: 1.12.0 Change Capture Foundation",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 30,
+  "testFiles": "9 passed (9)",
+  "tests": "39 passed (39)",
+  "passed": 39,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

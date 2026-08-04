@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.12.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.13.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,9 +39,9 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.12.0`
-- Aktueller Slice: 1.12 Change Capture Foundation — Erfassungsschicht gebaut, Zustellpfad offen
-- Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (Trigger, noch nicht real ausgefuehrt)
+- Paketversion: `1.13.0`
+- Aktueller Slice: 1.13 Postgres Changes — Trigger zertifiziert, changes-Kanal verdrahtet
+- Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
@@ -162,36 +162,32 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.13.0`: Postgres Changes verdrahten und zertifizieren, um Stufe 1.5 zu
-schließen. Die Erfassungsschicht steht seit 1.12; es fehlen genau zwei Dinge.
+`1.14.0`: Drop- und Lasttests gegen echte Infrastruktur, um Stufe 1.5 zu
+schließen. Das Austrittskriterium nennt sie ausdrücklich, und keine von beiden
+wurde bisher ausgeführt.
 
-**Erstens die Verdrahtung.** Ein `changes:`-Kanalpräfix, das
-`PostgresRealtimeChangeSource` pollt und je Abonnent über
-`GeneratedApiRealtimeChangeReader` liest. Das Verhalten ist bereits entschieden
-und in `lib/server/realtime/change-source.ts` dokumentiert: Ein Abonnent, der
-nicht mitkommt, verliert sein Abonnement mit eigenem Fehlercode, statt still
-übersprungen zu werden — derselbe Vertrag, den die Cursor-Prüfung zusichert.
+Konkret fehlt: ein Lastprofil mit vielen gleichzeitigen Abonnenten gegen echtes
+PostgreSQL, ein Nachweis, dass ein langsamer Abonnent tatsächlich mit
+`REALTIME_BACKPRESSURE` geschlossen wird statt Ereignisse zu überspringen, und
+ein Reconnect unter Last, bei dem der Cursor-Vertrag hält.
 
-**Zweitens die Zertifizierung des Triggers.** `db/project/0003_qkern_change_feed.sql`
-enthält nicht-trivialen plpgsql und wurde bisher nur statisch geprüft. Er muss
-gegen eine echte Projektdatenbank laufen: Feuert er bei INSERT, UPDATE und
-DELETE? Enthält `row_key` genau die Primärschlüsselspalten, auch bei
-zusammengesetztem Schlüssel? Wird eine Tabelle ohne Primärschlüssel wirklich
-abgewiesen? Kann `qkern_project_api_app` tatsächlich nicht in den Feed
-schreiben?
+Ebenfalls offen und für den Betrieb nötig: ein Poller, der
+`PostgresRealtimeChangeSource.read` und `RealtimeService.deliverChanges` in einer
+Schleife verbindet, sowie ein Scheduler für beide `prune`-Pfade. Beide Bausteine
+existieren, aber niemand ruft sie auf.
 
-Die letzte Frage ist die wichtigste: Könnte die Laufzeitrolle schreiben, ließe
-sich ein erfundenes Änderungsereignis einschleusen und damit ein Lesevorgang mit
-fremden Claims auslösen.
+Die Kette Feed → Dispatcher → Abonnent ist in ihren Teilen zertifiziert, aber
+nicht als Ganzes gegen echtes PostgreSQL durchgefahren. Das gehört in denselben
+Slice.
 
-Danach: Drop-, Reconnect-, Soak- und Lasttests, Aufbewahrungs-Scheduler für
-beide `prune`-Pfade, Queue-Multi-Instance-Läufe, transaktionale Usage-Emitter.
+Danach: Queue-Multi-Instance- und Lastläufe, transaktionale Usage-Emitter.
 
-Hinweis aus 1.11: Der Realtime-Zertifizierungslauf war beim ersten Versuch grün,
-weil die Fehlerklassen aus 1.9 vorbeugend angewandt wurden — `bigint` erreicht
-den Treiber als Zeichenkette, jede Sperrklausel verlangt UPDATE-Recht und
-UPDATE-Policy, jeder Zugriffspfad braucht seine eigene RLS-Policy. Das lohnt
-sich zu wiederholen.
+Hinweis aus 1.11 bis 1.13: Drei Zertifizierungsläufe in Folge waren beim ersten
+Versuch grün, weil die Fehlerklassen aus 1.9 vorbeugend angewandt wurden —
+`bigint` erreicht den Treiber als Zeichenkette, jede Sperrklausel verlangt
+UPDATE-Recht und UPDATE-Policy, jeder Zugriffspfad braucht seine eigene
+RLS-Policy, und ein Test muss die ausgelieferte Datei ausführen statt eine
+Nachbildung. Das lohnt sich zu wiederholen.
 
 ## Sichere Arbeitsregeln
 

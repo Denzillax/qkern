@@ -11,6 +11,10 @@ import type {
 } from "@/lib/server/realtime/model";
 import { RealtimeError } from "@/lib/server/realtime/model";
 import { assertRealtimeChannel, type RealtimeAuthorizationPort } from "@/lib/server/realtime/policy";
+import type {
+  RealtimeChange,
+  RealtimeChangeReader,
+} from "@/lib/server/realtime/change-source";
 import type { RealtimeEventBus, RealtimeEventReference } from "@/lib/server/realtime/event-bus";
 import type { RealtimeEventLog } from "@/lib/server/realtime/repository";
 
@@ -33,6 +37,12 @@ export type RealtimeServiceOptions = {
    * denselben Event-Log liest.
    */
   eventBus?: RealtimeEventBus;
+  /**
+   * Liest eine geänderte Zeile mit den Claims eines Abonnenten. Ohne Reader
+   * werden `changes:`-Kanäle nicht beliefert; ein Abonnement bleibt dann leer,
+   * statt ungeprüfte Daten auszuliefern.
+   */
+  changeReader?: RealtimeChangeReader;
   /** Kennung dieser Instanz. Verhindert, dass ein eigenes Ereignis doppelt ankommt. */
   instanceId?: string;
   cursor?: RealtimeCursorCodec;
@@ -193,6 +203,67 @@ export class RealtimeService {
         this.delivered.set(key, event.sequence);
       }
     });
+  }
+
+  /**
+   * Stellt erfasste Datenbankänderungen zu — je Abonnent einzeln geprüft.
+   *
+   * Es gibt bewusst keinen gemeinsamen Fan-out: Ob eine Zeile sichtbar ist,
+   * hängt von den Claims des Abonnenten ab. Zwei Abonnenten desselben Kanals
+   * dürfen unterschiedliche Teilmengen derselben Änderung erhalten. Ein
+   * gemeinsamer Fan-out wäre ein Cross-Tenant-Leck.
+   *
+   * Gibt die Verbindungs-IDs zurück, die wegen Rückstaus geschlossen werden
+   * müssen. Ereignisse stillschweigend zu überspringen würde demselben Vertrag
+   * widersprechen, den die Cursor-Prüfung zusichert.
+   */
+  async deliverChanges(changes: readonly RealtimeChange[]): Promise<string[]> {
+    const reader = this.options.changeReader;
+    if (!reader) return [];
+    const overloaded = new Set<string>();
+
+    for (const change of changes) {
+      const channel = changeChannel(change);
+      const scope: RealtimeScope = {
+        organizationId: change.organizationId,
+        projectId: change.projectId,
+        environment: change.environment,
+      };
+
+      for (const subscriber of this.subscribers(scope, channel)) {
+        if (overloaded.has(subscriber.id)) continue;
+        const record = await reader.read(change, {
+          role: subscriber.principal.role,
+          subject: subscriber.principal.subject,
+        });
+        if (!record) continue;
+
+        const accepted = this.trySend(subscriber, {
+          type: "change",
+          channel,
+          schema: change.schema,
+          table: change.table,
+          operation: change.operation,
+          position: change.position,
+          record,
+        });
+        if (!accepted) {
+          overloaded.add(subscriber.id);
+          this.send(subscriber, { type: "error", code: "REALTIME_BACKPRESSURE" });
+        }
+      }
+    }
+
+    return [...overloaded];
+  }
+
+  /** Wie `send`, meldet aber, ob die Senke die Nachricht angenommen hat. */
+  private trySend(connection: Connection, message: RealtimeServerMessage): boolean {
+    try {
+      return connection.sink.send(message);
+    } catch {
+      return false;
+    }
   }
 
   private async notifyPeers(scope: RealtimeScope, channel: string): Promise<void> {
@@ -371,4 +442,9 @@ function bounded(value: number, min: number, max: number) {
 
 function deliveredKey(scope: RealtimeScope, channel: string) {
   return `${scope.organizationId} ${scope.projectId} ${scope.environment} ${channel}`;
+}
+
+/** `changes:<schema>.<table>` — die Kanalform fuer erfasste Aenderungen. */
+export function changeChannel(change: { schema: string; table: string }): string {
+  return `changes:${change.schema}.${change.table}`;
 }

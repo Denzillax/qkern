@@ -22,6 +22,13 @@ export class PrefixRealtimeAuthorization implements RealtimeAuthorizationPort {
     const { principal, channel, action } = input;
     if (principal.organizationId !== input.scope.organizationId || !validChannel(channel)) return false;
     const [kind, subject] = channel.split(":", 3);
+    // changes-Kanaele werden ausschliesslich vom Server erzeugt. Niemand darf
+    // dort senden oder Presence fuehren, sonst liesse sich eine Aenderung
+    // vortaeuschen, die nie stattgefunden hat.
+    if (kind === "changes") {
+      return action === "subscribe"
+        && (principal.role === "authenticated" || principal.role === "service_role");
+    }
     if (principal.role === "service_role") return action !== "presence";
     if (principal.role === "anon") return kind === "public" && action === "subscribe";
     if (kind === "public" || kind === "private") return true;
@@ -38,5 +45,7 @@ function validChannel(channel: string) {
   const parts = channel.split(":");
   if (parts.some((part) => !part || part.length > 80 || !/^[a-z0-9][a-z0-9._-]*$/.test(part))) return false;
   if (parts[0] === "user") return parts.length >= 3 && parts.length <= 5;
+  // changes:<schema>.<table>
+  if (parts[0] === "changes") return parts.length === 2 && parts[1].split(".").length === 2;
   return ["public", "private"].includes(parts[0]) && parts.length >= 2 && parts.length <= 4;
 }

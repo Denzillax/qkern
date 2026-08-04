@@ -40,6 +40,16 @@ export type RealtimeServerMessage =
   | { type: "ack"; requestId: string; operation: "broadcast" | "presence.track" | "presence.untrack"; cursor?: string }
   | { type: "broadcast"; channel: string; event: string; payload: RealtimeJson; cursor: string; actorRole: RealtimeRole; createdAt: string; replay: boolean }
   | { type: "presence"; channel: string; joins: RealtimePresenceEntry[]; leaves: string[] }
+  | {
+      type: "change";
+      channel: string;
+      schema: string;
+      table: string;
+      operation: "insert" | "update" | "delete";
+      position: number;
+      /** Zeile, wie sie dieser Abonnent sehen darf. Bei delete nur der Schluessel. */
+      record: Record<string, RealtimeJson>;
+    }
   | { type: "pong"; requestId: string; nonce?: string }
   | { type: "error"; requestId?: string; code: RealtimeErrorCode };
 
@@ -53,7 +63,8 @@ export type RealtimeErrorCode =
   | "REALTIME_PAYLOAD_TOO_LARGE"
   | "REALTIME_CURSOR_INVALID"
   | "REALTIME_CURSOR_STALE"
-  | "REALTIME_RATE_LIMITED";
+  | "REALTIME_RATE_LIMITED"
+  | "REALTIME_BACKPRESSURE";
 
 export class RealtimeError extends Error {
   constructor(readonly code: RealtimeErrorCode) {

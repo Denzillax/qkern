@@ -363,3 +363,27 @@ Checkpoint `1.11.0` am 4. August 2026: **33 von 33** PostgreSQL-Fällen bestande
 Der Realtime-Lauf war beim ersten Versuch grün. Nicht geprüft und nicht als
 ausgeführt auszugeben bleiben Postgres Changes, RLS pro Ereignis, Drop-,
 Reconnect-, Soak- und Lasttests sowie echter Mehrprozessbetrieb.
+
+## Postgres Changes — Release 1.13
+
+Sechs Fälle zertifizieren `db/project/0003_qkern_change_feed.sql` gegen echtes
+PostgreSQL, indem sie die ausgelieferte Migrationsdatei selbst ausführen: Trigger
+bei INSERT/UPDATE/DELETE, ausschließlich Primärschlüsselwerte im Feed,
+vollständiger zusammengesetzter Schlüssel, streng aufsteigende Positionen,
+Abweisung einer Tabelle ohne Primärschlüssel und die Rechtegrenze der
+Laufzeitrolle.
+
+Die letzte ist die tragende: Könnte `qkern_project_api_app` in den Feed
+schreiben, ließe sich ein erfundenes Änderungsereignis einschleusen und damit
+ein Lesevorgang unter fremden Claims auslösen.
+
+Neun lokale Tests decken Kanalpolicy und Zustellung ab, darunter der Fall, dass
+zwei Abonnenten desselben Kanals unterschiedliche Teilmengen derselben Änderung
+erhalten, sowie der Rückstaupfad, der schließt statt zu überspringen.
+
+Checkpoint `1.13.0`: **39 von 39** PostgreSQL-Fällen bestanden, lokal 743
+bestanden, 63 übersprungen, 0 fehlgeschlagen.
+
+Nicht ausgeführt und nicht als erbracht auszugeben: Drop- und Lasttests gegen
+echte Infrastruktur sowie ein Durchlauf der ganzen Kette Feed → Dispatcher →
+Abonnent gegen echtes PostgreSQL.

@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.12.md](RELEASE_1.12.md) | Aktueller Release: Change Capture Foundation |
+| [RELEASE_1.13.md](RELEASE_1.13.md) | Aktueller Release: Postgres Changes |
+| [RELEASE_1.12.md](RELEASE_1.12.md) | Historischer Release: Change Capture Foundation |
 | [RELEASE_1.11.md](RELEASE_1.11.md) | Historischer Release: Realtime Durability and Fan-out |
 | [RELEASE_1.10.md](RELEASE_1.10.md) | Historischer Release: Project Auth Provider Certification |
 | [RELEASE_1.9.md](RELEASE_1.9.md) | Historischer Release: Real-Service Certification |
