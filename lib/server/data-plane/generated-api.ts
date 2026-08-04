@@ -133,10 +133,35 @@ export type GeneratedDataApiErrorCode =
 
 /** Cause-free by design: connection details, SQL and driver diagnostics stay internal. */
 export class GeneratedDataApiError extends Error {
-  constructor(readonly code: GeneratedDataApiErrorCode) {
-    super("The generated project data API is unavailable.");
+  /**
+   * The message stays fixed and content-free. `cause` is internal: routes and
+   * MCP serialise `code` only, and the route contract tests assert that no
+   * cause reaches a client.
+   */
+  constructor(readonly code: GeneratedDataApiErrorCode, options?: { cause?: unknown }) {
+    super("The generated project data API is unavailable.", options);
     this.name = "GeneratedDataApiError";
   }
+}
+
+/**
+ * Returns the name of the violated boundary predicate, or null when the
+ * introspection row is acceptable. Only predicate names are returned, never
+ * schema content.
+ */
+function metadataRowRejection(row: MetadataRow): string | null {
+  if (!IDENTIFIER.test(row.table_name)) return "table_name";
+  if (!IDENTIFIER.test(row.column_name)) return "column_name";
+  if (!["r", "p"].includes(row.relation_kind)) return "relation_kind";
+  if (typeof row.data_type !== "string" || row.data_type.length > 160) return "data_type";
+  if (!Number.isSafeInteger(row.ordinal_position) || row.ordinal_position < 1) {
+    return `ordinal_position:${typeof row.ordinal_position}`;
+  }
+  if (row.primary_key_position !== null
+    && (!Number.isSafeInteger(row.primary_key_position) || row.primary_key_position < 1)) {
+    return `primary_key_position:${typeof row.primary_key_position}`;
+  }
+  return null;
 }
 
 type MetadataRow = {
@@ -177,7 +202,12 @@ const METADATA_SQL = `
          attribute.attnotnull AS not_null,
          attribute.attidentity AS identity_kind,
          attribute.attgenerated AS generated_kind,
-         array_position(primary_index.indkey::smallint[], attribute.attnum::smallint) AS primary_key_position,
+         -- pg_index.indkey is an int2vector and therefore zero-based, unlike an
+         -- ordinary PostgreSQL array. array_position returns the raw subscript,
+         -- so the first primary key column yields 0. Normalising against
+         -- array_lower makes the position one-based for any lower bound.
+         array_position(primary_index.indkey::smallint[], attribute.attnum::smallint)
+           - array_lower(primary_index.indkey::smallint[], 1) + 1 AS primary_key_position,
          has_column_privilege(current_user, relation.oid, attribute.attname, 'SELECT') AS can_select_column,
          has_column_privilege(current_user, relation.oid, attribute.attname, 'INSERT') AS can_insert_column,
          has_column_privilege(current_user, relation.oid, attribute.attname, 'UPDATE') AS can_update_column
@@ -464,12 +494,14 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     }
     const tables = new Map<string, InternalTable>();
     for (const row of result.rows) {
-      if (!IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.column_name) ||
-          !["r", "p"].includes(row.relation_kind) ||
-          typeof row.data_type !== "string" || row.data_type.length > 160 ||
-          !Number.isSafeInteger(row.ordinal_position) || row.ordinal_position < 1 ||
-          (row.primary_key_position !== null && (!Number.isSafeInteger(row.primary_key_position) || row.primary_key_position < 1))) {
-        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+      const rejected = metadataRowRejection(row);
+      if (rejected) {
+        // The name of the violated predicate stays internal: it identifies the
+        // boundary that fired without exposing any schema content. Without it a
+        // rejection against a real database is impossible to diagnose.
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+          cause: new Error(`introspection row rejected by ${rejected}`),
+        });
       }
       let mapped = tables.get(row.table_name);
       if (!mapped) {
@@ -679,13 +711,22 @@ function assertTableBoundary(table: InternalTable, action: "select" | "insert" |
   if (!allowed) throw new GeneratedDataApiError("GENERATED_DATA_API_FORBIDDEN");
 }
 
+/**
+ * Projects a table for a client response.
+ *
+ * Sensitive-name columns are dropped here as well, not only from rows, filters,
+ * ordering, mutations and the generated OpenAPI. Returning the descriptor
+ * unfiltered disclosed the existence and the name of a column such as
+ * `api_token` to every holder of a public project key, which contradicts the
+ * documented contract that sensitive-name columns are excluded.
+ */
 function publicTable(table: InternalTable): GeneratedTable {
   return {
     schema: table.schema,
     name: table.name,
     rowSecurityEnabled: table.rowSecurityEnabled,
     primaryKey: [...table.primaryKey],
-    columns: table.columns.map((column) => ({ ...column })),
+    columns: table.columns.filter((column) => !column.sensitive).map((column) => ({ ...column })),
   };
 }
 
