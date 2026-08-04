@@ -8,6 +8,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   canonicalProductionApplyAuthorizationPayload,
   ProductionApplyAuthorizationFileReader,
@@ -227,7 +228,7 @@ describe("production apply authorization", () => {
     await expect(gate.assertAuthorized(SUBJECT)).resolves.toBeUndefined();
   });
 
-  it("accepts protected regular files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts protected regular files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-production-apply-"));
     tempDirectories.push(directory);
     const authorizationPath = path.join(directory, "authorization.json");
@@ -254,7 +255,7 @@ describe("production apply authorization", () => {
       .toThrow("absolute paths");
   });
 
-  it("provides a cause-free exact-subject preflight CLI", async () => {
+  itOnPosix("provides a cause-free exact-subject preflight CLI", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-production-apply-cli-"));
     tempDirectories.push(directory);
     const actualNow = Date.now();

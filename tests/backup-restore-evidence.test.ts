@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   BACKUP_RESTORE_EVIDENCE_POLICY,
   BackupRestoreEvidenceFileReader,
@@ -233,7 +234,7 @@ describe("backup/restore evidence verification", () => {
 });
 
 describe("backup/restore evidence file boundary", () => {
-  it("accepts regular integrity-protected files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts regular integrity-protected files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-restore-evidence-"));
     tempDirectories.push(directory);
     const evidencePath = path.join(directory, "evidence.json");
@@ -280,7 +281,7 @@ describe("backup/restore evidence runtime and CLI", () => {
     })).toThrow("must be distinct");
   });
 
-  it("runs the machine-readable verifier and keeps failures cause-free", async () => {
+  itOnPosix("runs the machine-readable verifier and keeps failures cause-free", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-restore-cli-"));
     tempDirectories.push(directory);
     const keys = keyPair();

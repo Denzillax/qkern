@@ -11,6 +11,7 @@ import {
   type ApplyBrokerSigningKeyProvider,
 } from "@/lib/server/migrations/apply-broker-sink";
 import type { MigrationApplyRequestedMessage } from "@/lib/server/migrations/outbox-publisher";
+import { itOnPosix } from "./support/posix";
 
 const EVENT_ID = "412cb46b-6313-4a74-8480-9d9e9e240e36";
 const ORGANIZATION_ID = "0d9423d9-7437-4f66-898a-86275e6598fb";
@@ -192,7 +193,7 @@ describe("signed migration apply broker sink", () => {
 });
 
 describe("apply broker signing key file provider", () => {
-  it("rereads private key material for rotation and rejects group- or world-accessible files", async () => {
+  itOnPosix("rereads private key material for rotation and rejects group- or world-accessible files", async () => {
     const directory = await mkdtemp(join(tmpdir(), "qkern-apply-key-"));
     const path = join(directory, "signing-key.json");
     try {

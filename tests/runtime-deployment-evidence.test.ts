@@ -9,6 +9,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   RUNTIME_DEPLOYMENT_EVIDENCE_POLICY,
   RuntimeDeploymentEvidenceFileReader,
@@ -359,7 +360,7 @@ describe("runtime deployment evidence verification", () => {
 });
 
 describe("runtime deployment evidence file boundary", () => {
-  it("accepts protected regular files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts protected regular files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-runtime-evidence-"));
     tempDirectories.push(directory);
     const evidencePath = path.join(directory, "evidence.json");
@@ -416,7 +417,7 @@ describe("runtime deployment evidence runtime and CLI", () => {
     }, dependencies)).toThrow("distinct policy pins");
   });
 
-  it("runs the machine-readable verifier and keeps failures cause-free", async () => {
+  itOnPosix("runs the machine-readable verifier and keeps failures cause-free", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-runtime-evidence-cli-"));
     tempDirectories.push(directory);
     const keys = keyPair();

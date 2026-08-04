@@ -9,6 +9,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   PROVIDER_E2E_EVIDENCE_POLICY,
   ProviderE2EEvidenceFileReader,
@@ -265,7 +266,7 @@ describe("provider E2E evidence verification", () => {
 });
 
 describe("provider E2E evidence file boundary", () => {
-  it("accepts protected regular files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts protected regular files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-provider-e2e-"));
     tempDirectories.push(directory);
     const evidencePath = path.join(directory, "evidence.json");
@@ -323,7 +324,7 @@ describe("provider E2E evidence runtime and CLI", () => {
     }, dependencies)).toThrow("seven distinct policy pins");
   });
 
-  it("runs the redacted machine-readable CLI and keeps failures cause-free", async () => {
+  itOnPosix("runs the redacted machine-readable CLI and keeps failures cause-free", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-provider-cli-"));
     tempDirectories.push(directory);
     const keys = keyPair();

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGetProjectProvisioningMetricsHandler } from
   "@/app/api/internal/v1/projects/provisioning/metrics/route";
 import { ConfigurationError } from "@/lib/server/db/errors";
+import { itOnPosix } from "./support/posix";
 import {
   BACKUP_RESTORE_EVIDENCE_POLICY,
   BackupRestoreEvidenceUnavailableError,
@@ -408,7 +409,7 @@ describe("project provisioning metrics token boundary", () => {
     expect(provider.getToken).toHaveBeenCalledTimes(2);
   });
 
-  it("rereads a private no-follow token file so rotation is immediate", async () => {
+  itOnPosix("rereads a private no-follow token file so rotation is immediate", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-metrics-token-"));
     tempDirectories.push(directory);
     const tokenPath = path.join(directory, "token");
@@ -424,7 +425,7 @@ describe("project provisioning metrics token boundary", () => {
     second.fill(0);
   });
 
-  it("rejects group-readable files, links, malformed tokens and relative paths", async () => {
+  itOnPosix("rejects group-readable files, links, malformed tokens and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-metrics-token-"));
     tempDirectories.push(directory);
     const tokenPath = path.join(directory, "token");

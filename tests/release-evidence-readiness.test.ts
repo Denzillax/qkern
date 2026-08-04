@@ -4,6 +4,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   ReleaseEvidenceFileDigester,
   ReleaseEvidenceNotReadyError,
@@ -138,7 +139,7 @@ describe("combined release evidence readiness", () => {
 });
 
 describe("release evidence file and runtime boundaries", () => {
-  it("hashes regular no-follow files and rejects mutable files, links and aborts", async () => {
+  itOnPosix("hashes regular no-follow files and rejects mutable files, links and aborts", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-release-evidence-"));
     tempDirectories.push(directory);
     const releasePath = path.join(directory, "release.zip");

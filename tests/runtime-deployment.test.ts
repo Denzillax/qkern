@@ -3,6 +3,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   RuntimeDeploymentFileReader,
   RuntimeDeploymentNotReadyError,
@@ -217,7 +218,7 @@ describe("background runtime deployment policy", () => {
 });
 
 describe("background runtime deployment file and CLI", () => {
-  it("accepts protected regular files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts protected regular files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-runtime-deployment-"));
     tempDirectories.push(directory);
     const bundlePath = path.join(directory, "runtime-deployments.json");
@@ -242,7 +243,7 @@ describe("background runtime deployment file and CLI", () => {
       .toThrow("absolute file path");
   });
 
-  it("validates environment authority and produces cause-free machine output", async () => {
+  itOnPosix("validates environment authority and produces cause-free machine output", async () => {
     expect(runtimeDeploymentOptionsFromEnv({
       QKERN_RUNTIME_DEPLOYMENT_NAMESPACE: " qkern ",
       QKERN_RUNTIME_IMAGE: ` ${IMAGE} `,

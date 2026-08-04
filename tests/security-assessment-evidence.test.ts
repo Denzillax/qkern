@@ -9,6 +9,7 @@ import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { itOnPosix } from "./support/posix";
 import {
   SECURITY_ASSESSMENT_EVIDENCE_POLICY,
   SecurityAssessmentEvidenceFileReader,
@@ -271,7 +272,7 @@ describe("security assessment evidence verification", () => {
 });
 
 describe("security assessment file, runtime and CLI boundaries", () => {
-  it("accepts protected files and rejects writable files, links and relative paths", async () => {
+  itOnPosix("accepts protected files and rejects writable files, links and relative paths", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-security-evidence-"));
     tempDirectories.push(directory);
     const evidencePath = path.join(directory, "evidence.json");
@@ -329,7 +330,7 @@ describe("security assessment file, runtime and CLI boundaries", () => {
     }, dependencies)).toThrow("same release artifact");
   });
 
-  it("runs a redacted CLI and returns a fixed cause-free failure", async () => {
+  itOnPosix("runs a redacted CLI and returns a fixed cause-free failure", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-security-cli-"));
     tempDirectories.push(directory);
     const keys = keyPair();

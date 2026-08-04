@@ -12,6 +12,7 @@ import {
   type VaultProjectDatabaseBinding,
 } from "@/lib/server/migrations/connection-catalog-vault";
 import { createVaultProjectDatabaseCatalogFromEnv } from "@/lib/server/migrations/connection-catalog-vault-env";
+import { itOnPosix } from "./support/posix";
 
 const PIN = "ab".repeat(32);
 const binding: VaultProjectDatabaseBinding = {
@@ -315,7 +316,7 @@ describe("Vault project database connection catalog", () => {
 });
 
 describe("Vault token file provider", () => {
-  it("rereads a private Agent sink for token rotation and rejects world-readable files", async () => {
+  itOnPosix("rereads a private Agent sink for token rotation and rejects world-readable files", async () => {
     const directory = await mkdtemp(join(tmpdir(), "qkern-vault-token-"));
     const path = join(directory, "token");
     try {
