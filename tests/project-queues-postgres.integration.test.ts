@@ -47,7 +47,13 @@ describe.runIf(enabled)("Project Queues PostgreSQL certification", () => {
   });
 
   afterAll(async () => {
-    if (owner) await owner.query("DELETE FROM users WHERE id = $1", [controlUser]);
+    // The organization must go first: organizations.created_by deliberately
+    // restricts deleting its owner, while everything below it cascades.
+    if (owner) {
+      await owner.query("DELETE FROM audit_logs WHERE organization_id = $1", [organizationId]);
+      await owner.query("DELETE FROM organizations WHERE id = $1", [organizationId]);
+      await owner.query("DELETE FROM users WHERE id = $1", [controlUser]);
+    }
     await Promise.all([owner?.end(), runtime?.end()]);
   });
 

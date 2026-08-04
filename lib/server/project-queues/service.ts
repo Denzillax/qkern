@@ -30,7 +30,16 @@ export type ProjectQueueErrorCode =
   | "QUEUE_LEASE_LOST";
 
 export class ProjectQueueError extends Error {
-  constructor(readonly code: ProjectQueueErrorCode) { super(code); this.name = "ProjectQueueError"; }
+  /**
+   * `cause` stays internal. The HTTP and MCP layers serialise `code` only, and
+   * the route contract tests assert that no cause ever reaches a client.
+   * Without it an unexpected repository failure is indistinguishable from a
+   * genuine conflict, which made the first real PostgreSQL run undiagnosable.
+   */
+  constructor(readonly code: ProjectQueueErrorCode, options?: { cause?: unknown }) {
+    super(code, options);
+    this.name = "ProjectQueueError";
+  }
 }
 
 export class ProjectQueueService {
@@ -360,5 +369,5 @@ function hash(value: string) { return createHash("sha256").update(value, "utf8")
 function mapError(error: unknown): ProjectQueueError {
   if (error instanceof ProjectQueueError) return error;
   if (error instanceof ProjectQueueConflictError) return new ProjectQueueError(error.code);
-  return new ProjectQueueError("QUEUE_CONFLICT");
+  return new ProjectQueueError("QUEUE_CONFLICT", { cause: error });
 }

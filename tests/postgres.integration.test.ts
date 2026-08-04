@@ -46,7 +46,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
   });
 
   afterAll(async () => {
-    if (owner) await owner.query("DELETE FROM users WHERE id IN ($1, $2)", [userId, secondUserId]);
+    // organizations.created_by references users and is intentionally not
+    // cascading: a user who owns organizations must not disappear silently.
+    // Everything below an organization cascades, so the organization goes first.
+    if (owner) {
+      await owner.query("DELETE FROM organizations WHERE id IN ($1, $2)", [organizationA, organizationB]);
+      await owner.query("DELETE FROM users WHERE id IN ($1, $2)", [userId, secondUserId]);
+    }
     await Promise.all([owner?.end(), runtime?.end(), auth?.end()]);
   });
 
