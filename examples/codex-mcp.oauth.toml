@@ -1,0 +1,23 @@
+# Production target for a remote QKERN MCP deployment.
+[mcp_servers.qkern]
+url = "https://mcp.your-qkern-domain.ch/mcp"
+auth = "oauth"
+required = true
+enabled = true
+enabled_tools = [
+  "qkern_project_get",
+  "qkern_schema_list",
+  "qkern_query_readonly",
+  "qkern_logs_search",
+  "qkern_migration_preview",
+  "qkern_migration_apply_queue",
+]
+default_tools_approval_mode = "writes"
+startup_timeout_sec = 10
+tool_timeout_sec = 45
+
+[mcp_servers.qkern.tools.qkern_migration_preview]
+approval_mode = "prompt"
+
+[mcp_servers.qkern.tools.qkern_migration_apply_queue]
+approval_mode = "prompt"

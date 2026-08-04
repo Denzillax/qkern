@@ -1,0 +1,11 @@
+# Zeilenenden werden im Repository immer als LF gespeichert und ausgecheckt.
+# Der PostgreSQL-Zertifizierungsstack mountet db/docker/*.sh direkt in einen
+# Linux-Container; eine CRLF-Konvertierung wuerde den Init-Lauf brechen.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary

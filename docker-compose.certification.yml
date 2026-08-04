@@ -1,0 +1,51 @@
+name: qkern-v023-certification
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      - ./db/docker/999-runtime-login.sh:/docker-entrypoint-initdb.d/999-runtime-login.sh:ro
+    healthcheck:
+      # The worker login is created by the final init script. A TCP role check
+      # therefore cannot pass against PostgreSQL's temporary init server.
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_worker_local_only psql -h 127.0.0.1 -U qkern_worker_app -d qkern_control -tAc \"SELECT pg_has_role(current_user, 'qkern_worker', 'MEMBER')\" | grep -qx t"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  certification:
+    image: node:24-alpine
+    working_dir: /workspace/qkern
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/workspace/qkern:ro
+      - certification-node-modules:/workspace/qkern/node_modules
+    environment:
+      NODE_ENV: test
+      DATABASE_SSL: disable
+      QKERN_TEST_ALLOW_DATABASE_CREATE_DROP: "true"
+      QKERN_TEST_ADMIN_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
+      QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
+      QKERN_TEST_RUNTIME_DATABASE_URL: postgresql://qkern_app:qkern_runtime_local_only@postgres:5432/qkern_control
+      QKERN_TEST_AUTH_DATABASE_URL: postgresql://qkern_auth_app:qkern_auth_local_only@postgres:5432/qkern_control
+      QKERN_TEST_WORKER_DATABASE_URL: postgresql://qkern_worker_app:qkern_worker_local_only@postgres:5432/qkern_control
+      QKERN_TEST_PROVISIONER_DATABASE_URL: postgresql://qkern_provisioner_app:qkern_provisioner_local_only@postgres:5432/qkern_control
+      QKERN_TEST_PROJECT_API_DATABASE_URL: postgresql://qkern_project_api_app:qkern_project_api_local_only@postgres:5432/qkern_control
+    command: ["sh", "-ec", "npm ci --ignore-scripts && npm run test:postgres"]
+
+volumes:
+  certification-node-modules:

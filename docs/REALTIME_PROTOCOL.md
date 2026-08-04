@@ -1,0 +1,119 @@
+# QKERN Realtime Protocol v1
+
+Dieses Dokument beschreibt den in `1.5.0-alpha.1` eingeführten und in
+`1.6.0-alpha.1` unverändert geltenden ausführbaren Vertrag. Der
+Transport ist ein lokaler Alpha-Durchstich und verweigert `NODE_ENV=production`,
+bis persistente History, horizontales Fan-out, TLS-/Proxy-Zertifizierung und
+Lasttests implementiert sind.
+
+## Verbindung und Authentifizierung
+
+- URL: `ws://127.0.0.1:8788/realtime/v1/projects/{projectId}/environments/{environment}`
+- Subprotocol: `qkern.realtime.v1`
+- Environment: exakt `development`, `staging` oder `production`
+- Origin: muss exakt in `QKERN_REALTIME_ALLOWED_ORIGINS` stehen
+- Query-String: vollständig verboten; Credentials gehören nie in URLs
+- Binärframes: verboten
+
+Der erste Textframe ist immer die Authentifizierung:
+
+```json
+{
+  "type": "auth",
+  "requestId": "auth-1",
+  "projectKey": "<qk_public_... oder qk_service_...>",
+  "accessToken": "<optionales Project-Auth-Access-JWT>"
+}
+```
+
+Ohne `accessToken` wird aus dem serverseitig verifizierten Project Key `anon` oder
+`service_role`. Mit Token wird der Principal ausschließlich nach erfolgreicher
+Project-Auth-Prüfung `authenticated`. Organisation, Projekt, Umgebung, Rolle und
+Subject werden nie aus Client-Claims übernommen. Erfolg:
+
+```json
+{"type":"ready","requestId":"auth-1","connectionId":"...","heartbeatSeconds":30}
+```
+
+## Client-Kommandos
+
+Jedes Kommando ist ein striktes JSON-Objekt ohne zusätzliche Felder.
+
+```json
+{"type":"subscribe","requestId":"sub-1","channel":"private:orders"}
+{"type":"subscribe","requestId":"sub-2","channel":"private:orders","cursor":"qk_rt_..."}
+{"type":"unsubscribe","requestId":"unsub-1","channel":"private:orders"}
+{"type":"broadcast","requestId":"send-1","channel":"private:orders","event":"order.created","payload":{"id":"order-1"}}
+{"type":"presence.track","requestId":"track-1","channel":"private:orders","state":{"online":true}}
+{"type":"presence.untrack","requestId":"track-2","channel":"private:orders"}
+{"type":"ping","requestId":"ping-1","nonce":"client-1"}
+```
+
+Broadcast und Presence setzen ein vorher erfolgreiches Subscribe derselben
+Verbindung voraus. Eventnamen beginnen mit einem Kleinbuchstaben und enthalten
+höchstens 64 Zeichen aus `a-z`, `0-9`, Punkt, Unterstrich und Bindestrich.
+
+## Channel-Policy
+
+| Channel | `anon` | `authenticated` | `service_role` |
+| --- | --- | --- | --- |
+| `public:<name>` | Subscribe | Subscribe, Broadcast, Presence | Subscribe, Broadcast |
+| `private:<name>` | kein Zugriff | Subscribe, Broadcast, Presence | Subscribe, Broadcast |
+| `user:<subject>:<name>` | kein Zugriff | nur eigenes Subject | Subscribe, Broadcast |
+
+Channels sind immer an die serverseitig ermittelte Kombination aus Organisation,
+Projekt und Environment gebunden. Gleiche Channelnamen in anderen Scopes teilen
+weder Events noch Presence. Service Roles dürfen in diesem Alpha keine Presence
+publizieren, damit privilegierte Automatisierung nicht als Endnutzer erscheint.
+
+## Ordering, Cursor und Replay
+
+Events erhalten pro Scope und Channel eine monoton steigende Sequenz. Subscribe,
+Replay und Live-Broadcast laufen unter derselben Channel-Serialisierung; Live-
+Events können einen laufenden Replay nicht überholen. Jeder Broadcast enthält
+einen HMAC-signierten, Scope- und Channel-gebundenen `qk_rt_...`-Cursor.
+
+- Subscribe ohne Cursor beginnt am aktuellen Ende und liefert keine alte History.
+- Subscribe mit Cursor liefert ausschließlich spätere Events mit `replay: true`.
+- Manipulierte, fremde, zukünftige oder zu alte Cursors werden abgewiesen.
+- Überschreitet der Catch-up das konfigurierte Replaylimit, antwortet der Server
+  fail-closed mit `REALTIME_CURSOR_STALE`; er überspringt keine Events. Die App muss
+  ihren Zustand über die normale Daten-API neu laden und danach neu abonnieren.
+- Alpha 1 hält History im Prozessspeicher. Ein Neustart verliert die History; bei
+  zufälligem lokalem Cursor-Secret werden außerdem frühere Cursors ungültig.
+
+## Presence
+
+Presence enthält nur einen HMAC-abgeleiteten `qk_presence_...`-Schlüssel und den
+begrenzten JSON-State. User-ID, Project-Key, Token und Connection-ID werden nicht
+ausgegeben. Neue Subscriber erhalten einen Snapshot; Track/Untrack und Disconnect
+erzeugen Join-/Leave-Nachrichten.
+
+## Fehler und Schutzlimits
+
+Fehlerantworten enthalten nur `type`, optional `requestId` und einen festen Code,
+niemals Credentials oder interne Ursachen. Authentifizierungsfehler schließen mit
+4401, Protokollfehler mit 4400, Rate-Limits mit 4429 und Transport-Backpressure mit
+1013. Drei ungültige authentifizierte Frames schließen die Session.
+
+Konfigurierbar und hart begrenzt sind Verbindungen, Nachrichtengröße, Payload,
+Presence-State, Subscriptions, History, Replay, Auth-Timeout, Heartbeat und
+WebSocket-Sendepuffer. JSON-Tiefe, Knotenzahl, Schlüssel und Prototype-relevante
+Namen werden zusätzlich geprüft.
+
+## Alpha-1-Betriebsgrenze
+
+Start lokal nach einer laufenden PostgreSQL-Control-Plane und aktivierten Project
+Auth/API Keys:
+
+```powershell
+$env:QKERN_RUNTIME_MODE="postgres"
+$env:QKERN_REALTIME_ENABLED="true"
+$env:QKERN_REALTIME_ALLOWED_ORIGINS="http://localhost:3000"
+npm run realtime
+```
+
+Der Prozess bindet ausschließlich `127.0.0.1`. Für einen späteren Production-
+Release fehlen mindestens PostgreSQL-basierter Event Log/CDC, horizontaler
+Fan-out, mehrere Instanzen, Proxy-/TLS-Grenze, externe Rate-Limits, Telemetrie,
+Abuse-/Lasttests und archivierte Real-Service-E2E-Nachweise.

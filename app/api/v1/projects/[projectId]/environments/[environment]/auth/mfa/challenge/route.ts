@@ -1,0 +1,25 @@
+import { NextRequest } from "next/server";
+import { z } from "zod";
+import { rateLimitKey, safeJson } from "@/lib/server/auth/http";
+import {
+  projectAuthNoStore, projectAuthOriginAllowed, projectAuthPreflight, projectAuthRouteError,
+  publicProjectAuthScope, withProjectAuthCors, type ProjectAuthRouteContext,
+} from "@/lib/server/project-auth/http";
+import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
+
+const schema = z.object({ challengeToken: z.string().max(256), code: z.string().min(6).max(32) }).strict();
+
+export async function POST(request: NextRequest, routeContext: ProjectAuthRouteContext) {
+  if (!projectAuthOriginAllowed(request)) return projectAuthNoStore({ error: "Origin is not allowed" }, 403);
+  try {
+    const scope = await publicProjectAuthScope(request, routeContext);
+    const body = schema.safeParse(await safeJson(request));
+    if (!body.success) return withProjectAuthCors(request, projectAuthNoStore({ error: "Invalid Project Auth request" }, 400));
+    const data = await getProjectAuthService().verifyMfaChallenge(scope, {
+      ...body.data, rateLimitKey: rateLimitKey(request),
+    });
+    return withProjectAuthCors(request, projectAuthNoStore({ data }));
+  } catch (error) { return projectAuthRouteError(error, request); }
+}
+
+export const OPTIONS = (request: NextRequest) => projectAuthPreflight(request, "POST, OPTIONS");

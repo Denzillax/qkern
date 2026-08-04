@@ -1,0 +1,27 @@
+{
+  "name": "@qkern/sdk",
+  "version": "1.7.0-alpha.3",
+  "description": "Typed, framework-free TypeScript client for QKERN",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "engines": {
+    "node": ">=24.7.0"
+  },
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "private": true
+}

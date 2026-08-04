@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - qkern-postgres:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      - ./db/docker/999-runtime-login.sh:/docker-entrypoint-initdb.d/999-runtime-login.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qkern -d qkern_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  postgres-runtime-check:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: qkern_runtime_local_only
+    command: ["psql", "postgresql://qkern_app@postgres:5432/qkern_control", "-v", "ON_ERROR_STOP=1", "-c", "DO $$$$ BEGIN IF session_user <> current_user OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)) OR NOT pg_has_role(current_user, 'qkern_runtime', 'MEMBER') OR pg_has_role(current_user, 'qkern_auth', 'MEMBER') OR pg_has_role(current_user, 'qkern_worker', 'MEMBER') OR pg_has_role(current_user, 'qkern_provisioner', 'MEMBER') THEN RAISE EXCEPTION 'invalid runtime role boundary'; END IF; END $$$$"]
+    restart: "no"
+  postgres-auth-check:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: qkern_auth_local_only
+    command: ["psql", "postgresql://qkern_auth_app@postgres:5432/qkern_control", "-v", "ON_ERROR_STOP=1", "-c", "DO $$$$ BEGIN IF session_user <> current_user OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)) OR NOT pg_has_role(current_user, 'qkern_auth', 'MEMBER') OR pg_has_role(current_user, 'qkern_runtime', 'MEMBER') OR pg_has_role(current_user, 'qkern_worker', 'MEMBER') OR pg_has_role(current_user, 'qkern_provisioner', 'MEMBER') THEN RAISE EXCEPTION 'invalid auth role boundary'; END IF; END $$$$"]
+    restart: "no"
+  postgres-worker-check:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: qkern_worker_local_only
+    command: ["psql", "postgresql://qkern_worker_app@postgres:5432/qkern_control", "-v", "ON_ERROR_STOP=1", "-c", "DO $$$$ BEGIN IF session_user <> current_user OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)) OR NOT pg_has_role(current_user, 'qkern_worker', 'MEMBER') OR pg_has_role(current_user, 'qkern_runtime', 'MEMBER') OR pg_has_role(current_user, 'qkern_auth', 'MEMBER') OR pg_has_role(current_user, 'qkern_provisioner', 'MEMBER') THEN RAISE EXCEPTION 'invalid worker role boundary'; END IF; END $$$$"]
+    restart: "no"
+  postgres-provisioner-check:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: qkern_provisioner_local_only
+    command: ["psql", "postgresql://qkern_provisioner_app@postgres:5432/qkern_control", "-v", "ON_ERROR_STOP=1", "-c", "DO $$$$ BEGIN IF session_user <> current_user OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)) OR NOT pg_has_role(current_user, 'qkern_provisioner', 'MEMBER') OR pg_has_role(current_user, 'qkern_runtime', 'MEMBER') OR pg_has_role(current_user, 'qkern_auth', 'MEMBER') OR pg_has_role(current_user, 'qkern_worker', 'MEMBER') THEN RAISE EXCEPTION 'invalid provisioner role boundary'; END IF; END $$$$"]
+    restart: "no"
+  redis:
+    image: redis:8-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: qkern_local_access
+      MINIO_ROOT_PASSWORD: qkern_local_password_change_me_32bytes
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: ["qkern-minio:/data"]
+  clamav:
+    image: clamav/clamav:1.4.5
+    ports: ["127.0.0.1:3310:3310"]
+    volumes: ["qkern-clamav-db:/var/lib/clamav"]
+volumes:
+  qkern-postgres:
+  qkern-minio:
+  qkern-clamav-db:
