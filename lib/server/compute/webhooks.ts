@@ -73,12 +73,24 @@ export class WebhookDeliverer {
   }
 }
 
-function validateWebhook(definition: WebhookDefinition, delivery: WebhookDelivery) {
+/**
+ * Ist diese URL ein zustellbares Webhook-Ziel?
+ *
+ * Exportiert, damit die Management-Fläche exakt dieselbe Regel anwendet wie der
+ * Zusteller. Fielen beide auseinander, könnte ein Betreiber einen Webhook
+ * anlegen, den der Betrieb anschliessend stumm bei jedem Versuch abweist — und
+ * das sähe aus wie ein defekter Empfänger, nicht wie eine abgelehnte Eingabe.
+ */
+export function isDeliverableWebhookTarget(value: string): boolean {
   try {
-    const url = new URL(definition.url);
-    if (url.protocol !== "https:" || url.port && url.port !== "443" || url.username || url.password ||
-        url.pathname.length > 1_024 || url.search || url.hash || unsafeHostname(url.hostname)) throw new Error("invalid");
-  } catch { throw new WebhookDeliveryError("WEBHOOK_INVALID"); }
+    const url = new URL(value);
+    return !(url.protocol !== "https:" || url.port && url.port !== "443" || url.username || url.password ||
+      url.pathname.length > 1_024 || url.search || url.hash || unsafeHostname(url.hostname));
+  } catch { return false; }
+}
+
+function validateWebhook(definition: WebhookDefinition, delivery: WebhookDelivery) {
+  if (!isDeliverableWebhookTarget(definition.url)) throw new WebhookDeliveryError("WEBHOOK_INVALID");
   if (!/^[a-z][a-z0-9_-]{2,62}$/.test(definition.name) ||
       !/^[A-Za-z][A-Za-z0-9_./:-]{2,127}$/.test(definition.signingSecretRef) ||
       !Number.isSafeInteger(definition.timeoutMs) || definition.timeoutMs < 100 || definition.timeoutMs > 30_000 ||

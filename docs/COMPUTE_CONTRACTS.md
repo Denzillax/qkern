@@ -72,8 +72,31 @@ Der Prozess startet nicht ohne erreichbaren Signaturschlüssel. Ein Zusteller,
 der stillschweigend unsigniert sendet, wäre schlimmer als einer, der gar nicht
 startet.
 
-Offen bleiben: Scheduler-Leases, Zeitzonen/DST, Management-API und
-Console-Fläche für Definitionen, Vault-gestützte Signaturschlüssel,
-automatische Scope-Entdeckung, Functions-Sandbox-Deployment und Provider-E2E
-gegen einen echten HTTPS-Empfänger. Keine dieser Foundations ist in MCP
-exponiert.
+## Verwaltung
+
+Seit `1.21.0` verwalten REST und Console beide Definitionsarten unter
+`/v1/projects/{projectId}/environments/{environment}/compute/`. Die Berechtigung
+`project_compute_admin` haben nur `owner` und `administrator`; wer sie nicht hat,
+erhält 404 statt 403.
+
+**Nur `enabled` ist änderbar.** Ausdruck, Queue, Nutzlast, Ziel-URL und
+Signaturreferenz sind unveränderlich; eine Änderung ist ein Löschen und ein neues
+Anlegen. Die Grenze liegt als Spaltenrecht in den Migrationen 0031 und 0032, nicht
+als Prüfung im Dienst — ein zweiter Schreiber könnte eine Prüfung umgehen, das
+Spaltenrecht nicht.
+
+Ein Cron-Ausdruck wird beim Anlegen mit demselben Parser geprüft, den der
+Scheduler benutzt, und die Zielqueue muss existieren. Ein Webhook-Ziel wird mit
+derselben Funktion geprüft, die der Zusteller anwendet. Beides verhindert
+Definitionen, die erst im Betrieb stumm scheitern.
+
+Ein Webhook lässt sich erst löschen, nachdem er abgeschaltet wurde: Das Löschen
+entfernt über den Fremdschlüssel auch alle wartenden Zustellungen.
+
+Die Zustellstatusliste gibt niemals eine Nutzlast zurück.
+
+Offen bleiben: Scheduler-Leases, Zeitzonen/DST, Vault-gestützte
+Signaturschlüssel, automatische Scope-Entdeckung, SDK-/CLI-Anbindung, manuelles
+Auslösen eines Vorkommens, Wiederholen einer toten Zustellung,
+Functions-Sandbox-Deployment und Provider-E2E gegen einen echten
+HTTPS-Empfänger. Keine dieser Foundations ist in MCP exponiert.

@@ -60,3 +60,15 @@ zwei zugehörigen Fälle fielen um, kein anderer.
 Ein grüner Fall beweist nichts, solange nicht gezeigt ist, dass er auch rot
 werden kann. Release 1.16 hatte drei Fälle gefunden, die ausgeführt und
 zufällig grün waren.
+
+## Läufe zu Release 1.21 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/compute-definitions-run1.log` | PostgreSQL 17 | 78 von 78, exit 0, 32 Migrationen |
+| `2026-08-05/compute-definitions-run2.log` | PostgreSQL 17 | 78 von 78, exit 0, Wiederholung |
+| `2026-08-05/compute-definitions-mutation.log` | PostgreSQL 17 | **76 von 78, exit 1 — absichtlich** |
+
+Die Mutationsprobe ist inzwischen fester Bestandteil: Abgeschaltet wurden die
+Löschvorbedingung eines Webhooks und das Weglassen der Nutzlast im
+Zustellstatus. Genau die zwei zugehörigen Fälle fielen um, kein anderer.

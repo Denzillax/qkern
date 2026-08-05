@@ -3,6 +3,16 @@ const projectAuthScopeParameters = [
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
 ] as const;
 
+const projectComputeCronParameters = [
+  ...projectAuthScopeParameters,
+  { name: "cronId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+] as const;
+
+const projectComputeWebhookParameters = [
+  ...projectAuthScopeParameters,
+  { name: "webhookId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+] as const;
+
 const projectQueueParameters = [
   ...projectAuthScopeParameters,
   { name: "queue", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" } },
@@ -16,7 +26,7 @@ export const qkernOpenAPI = {
     description: "Tenant-scoped control plane, isolated Project Auth, private-by-default object storage, bounded project queues, read-only usage projections, RLS-enforced generated data API and governed AI automation endpoints.",
   },
   servers: [{ url: "/api", description: "Current QKERN deployment" }],
-  tags: [{ name: "System" }, { name: "Operations" }, { name: "Auth" }, { name: "Projects" }, { name: "Project Auth" }, { name: "Project Storage" }, { name: "Project Queues" }, { name: "Usage & Quotas" }, { name: "Project Data" }, { name: "Project API Keys" }, { name: "Automation" }, { name: "Project Provisioning" }, { name: "Change Sets" }, { name: "Approvals" }, { name: "Migration Recovery" }, { name: "Migration Apply Delivery" }, { name: "Migration Incidents" }],
+  tags: [{ name: "System" }, { name: "Operations" }, { name: "Auth" }, { name: "Projects" }, { name: "Project Auth" }, { name: "Project Storage" }, { name: "Project Queues" }, { name: "Project Compute" }, { name: "Usage & Quotas" }, { name: "Project Data" }, { name: "Project API Keys" }, { name: "Automation" }, { name: "Project Provisioning" }, { name: "Change Sets" }, { name: "Approvals" }, { name: "Migration Recovery" }, { name: "Migration Apply Delivery" }, { name: "Migration Incidents" }],
   paths: {
     "/health": {
       get: {
@@ -325,6 +335,98 @@ export const qkernOpenAPI = {
           name: "messageId", in: "path", required: true, schema: { type: "string", maxLength: 128 },
         }],
         responses: { "202": { description: "Replay message created or returned idempotently", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectQueueReplayResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Source is not a dead letter in this exact queue scope" }, "503": { description: "Project Queues are disabled or unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/cron": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectCronDefinitions",
+        summary: "List tenant-scoped cron definitions and their dispatch progress",
+        description: "Owner or administrator only. Progress is the last dispatched occurrence, never a lock.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Cron definitions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectCronListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "createProjectCronDefinition",
+        summary: "Create a cron definition bound to an existing project queue",
+        description: "Owner or administrator only with trusted same-origin validation. The expression is parsed by the same parser the scheduler uses, and the target queue must already exist. Expression, queue and payload are immutable afterwards; a change is a delete and a new definition.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectCronDefinition" } } } },
+        responses: { "201": { description: "Cron definition created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectCronResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Cron name already exists in this project environment or the limit is reached" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/cron/{cronId}": {
+      get: {
+        tags: ["Project Compute"], operationId: "getProjectCronDefinition",
+        summary: "Read one cron definition",
+        security: [{ sessionCookie: [] }], parameters: projectComputeCronParameters,
+        responses: { "200": { description: "Cron definition", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectCronResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      patch: {
+        tags: ["Project Compute"], operationId: "setProjectCronDefinitionEnabled",
+        summary: "Enable or disable one cron definition",
+        description: "Only the enabled flag is mutable. Disabling pauses dispatch without losing progress.",
+        security: [{ sessionCookie: [] }], parameters: projectComputeCronParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
+        responses: { "200": { description: "Cron definition", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectCronResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      delete: {
+        tags: ["Project Compute"], operationId: "deleteProjectCronDefinition",
+        summary: "Delete one cron definition",
+        security: [{ sessionCookie: [] }], parameters: projectComputeCronParameters,
+        responses: { "200": { description: "Cron definition deleted", content: { "application/json": { schema: { $ref: "#/components/schemas/ComputeDeletedResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/webhooks": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectWebhookDefinitions",
+        summary: "List tenant-scoped webhook definitions",
+        description: "Owner or administrator only. Only the signing secret reference is returned; the secret itself lives in the Vault and never reaches this surface.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Webhook definitions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWebhookListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "createProjectWebhookDefinition",
+        summary: "Create a webhook definition with an exact public HTTPS target",
+        description: "Owner or administrator only with trusted same-origin validation. The target is validated by exactly the rule the deliverer applies, so a definition that would be rejected at delivery time cannot be created. URL, events and signing reference are immutable afterwards.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectWebhookDefinition" } } } },
+        responses: { "201": { description: "Webhook definition created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Webhook name already exists in this project environment or the limit is reached" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/webhooks/{webhookId}": {
+      get: {
+        tags: ["Project Compute"], operationId: "getProjectWebhookDefinition",
+        summary: "Read one webhook definition",
+        security: [{ sessionCookie: [] }], parameters: projectComputeWebhookParameters,
+        responses: { "200": { description: "Webhook definition", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWebhookResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      patch: {
+        tags: ["Project Compute"], operationId: "setProjectWebhookDefinitionEnabled",
+        summary: "Enable or disable one webhook definition",
+        description: "Disabling pauses delivery: pending deliveries are parked instead of burning attempts, and resume when the definition is enabled again.",
+        security: [{ sessionCookie: [] }], parameters: projectComputeWebhookParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
+        responses: { "200": { description: "Webhook definition", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      delete: {
+        tags: ["Project Compute"], operationId: "deleteProjectWebhookDefinition",
+        summary: "Delete one disabled webhook definition and its pending deliveries",
+        description: "The webhook must be disabled first. Deletion removes pending deliveries with it, so the two-step makes that loss deliberate.",
+        security: [{ sessionCookie: [] }], parameters: projectComputeWebhookParameters,
+        responses: { "200": { description: "Webhook definition deleted", content: { "application/json": { schema: { $ref: "#/components/schemas/ComputeDeletedResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "The webhook is still enabled" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/webhooks/{webhookId}/deliveries": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectWebhookDeliveries",
+        summary: "List delivery status for one webhook without payloads",
+        description: "Owner or administrator only. Payloads, signatures and lease credentials are never returned; the status answers whether delivery works and why not.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectComputeWebhookParameters, {
+          name: "limit", in: "query", required: false,
+          schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+        }],
+        responses: { "200": { description: "Redacted delivery status", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectWebhookDeliveryListResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/usage": {
@@ -1005,6 +1107,18 @@ export const qkernOpenAPI = {
       ProjectQueueDeadLetterListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectQueueDeadLetter" } } } },
       ProjectQueueReplay: { type: "object", additionalProperties: false, required: ["id", "queue", "status", "replayedFromId", "deduplicated", "availableAt"], properties: { id: { type: "string", format: "uuid" }, queue: { type: "string" }, status: { const: "available" }, replayedFromId: { type: "string", format: "uuid" }, deduplicated: { type: "boolean" }, availableAt: { type: "string", format: "date-time" } } },
       ProjectQueueReplayResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectQueueReplay" } } },
+      ProjectCronDefinition: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "expression", "queue", "payload", "enabled", "lastDispatchedAt", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, expression: { type: "string", maxLength: 64 }, queue: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, payload: {}, enabled: { type: "boolean" }, lastDispatchedAt: { type: ["string", "null"], format: "date-time" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectCronResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectCronDefinition" } } },
+      ProjectCronListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 500, items: { $ref: "#/components/schemas/ProjectCronDefinition" } } } },
+      CreateProjectCronDefinition: { type: "object", additionalProperties: false, required: ["name", "expression", "queue"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, expression: { type: "string", minLength: 5, maxLength: 64, description: "Either */N * * * * with N between 1 and 59, or a fixed daily M H * * * in UTC." }, queue: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, payload: {}, enabled: { type: "boolean", default: true } } },
+      ProjectWebhookDefinition: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "url", "eventTypes", "signingSecretRef", "timeoutMs", "maxAttempts", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri" }, eventTypes: { type: "array", minItems: 1, maxItems: 20, uniqueItems: true, items: { type: "string", pattern: "^[a-z][a-z0-9._-]{0,63}$" } }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, timeoutMs: { type: "integer", minimum: 250, maximum: 30000 }, maxAttempts: { type: "integer", minimum: 1, maximum: 20 }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectWebhookResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectWebhookDefinition" } } },
+      ProjectWebhookListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 500, items: { $ref: "#/components/schemas/ProjectWebhookDefinition" } } } },
+      CreateProjectWebhookDefinition: { type: "object", additionalProperties: false, required: ["name", "url", "eventTypes", "signingSecretRef"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri", description: "Exact public HTTPS target on port 443 without query, fragment or credentials." }, eventTypes: { type: "array", minItems: 1, maxItems: 20, items: { type: "string", pattern: "^[a-z][a-z0-9._-]{0,63}$" } }, signingSecretRef: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$", description: "Reference only. Never send a secret value to this endpoint." }, timeoutMs: { type: "integer", minimum: 250, maximum: 30000, default: 5000 }, maxAttempts: { type: "integer", minimum: 1, maximum: 20, default: 5 }, enabled: { type: "boolean", default: true } } },
+      ProjectWebhookDelivery: { type: "object", additionalProperties: false, required: ["id", "webhookId", "eventType", "status", "attemptCount", "lastFailureCode", "occurredAt", "availableAt", "settledAt"], properties: { id: { type: "string", format: "uuid" }, webhookId: { type: "string", format: "uuid" }, eventType: { type: "string" }, status: { type: "string", enum: ["pending", "in_flight", "delivered", "dead_lettered"] }, attemptCount: { type: "integer", minimum: 0, maximum: 20 }, lastFailureCode: { type: ["string", "null"], enum: ["WEBHOOK_INVALID", "WEBHOOK_TIMEOUT", "WEBHOOK_REJECTED", "WEBHOOK_SIGNING_FAILED", null] }, occurredAt: { type: "string", format: "date-time" }, availableAt: { type: "string", format: "date-time" }, settledAt: { type: ["string", "null"], format: "date-time" } } },
+      ProjectWebhookDeliveryListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectWebhookDelivery" } } } },
+      SetComputeDefinitionEnabled: { type: "object", additionalProperties: false, required: ["enabled"], properties: { enabled: { type: "boolean" } } },
+      ComputeDeletedResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["deleted"], properties: { deleted: { const: true } } } } },
       UsageMetricProjection: { type: "object", additionalProperties: false, required: ["metric", "label", "unit", "used", "limit", "remaining", "mode", "status", "revision"], properties: { metric: { type: "string", enum: ["api_requests", "database_row_reads", "storage_egress_bytes", "realtime_messages", "queue_operations", "function_invocations"] }, label: { type: "string" }, unit: { type: "string", enum: ["operations", "rows", "bytes"] }, used: { type: "string", pattern: "^[0-9]+$", description: "Decimal integer string; never coerced through a JavaScript number." }, limit: { type: ["string", "null"], pattern: "^[0-9]+$" }, remaining: { type: ["string", "null"], pattern: "^[0-9]+$" }, mode: { type: "string", enum: ["unlimited", "observe", "enforce"] }, status: { type: "string", enum: ["unlimited", "ok", "warning", "exhausted", "exceeded"] }, revision: { type: ["integer", "null"], minimum: 1 } } },
       UsageProjection: { type: "object", additionalProperties: false, required: ["projectId", "environment", "period", "windowStart", "windowEnd", "metrics"], properties: { projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, period: { type: "string", pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" }, windowStart: { type: "string", format: "date-time" }, windowEnd: { type: "string", format: "date-time" }, metrics: { type: "array", minItems: 6, maxItems: 6, items: { $ref: "#/components/schemas/UsageMetricProjection" } } } },
       UsageProjectionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/UsageProjection" } } },

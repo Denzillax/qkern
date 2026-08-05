@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `1.20.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `1.21.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 
@@ -470,6 +470,46 @@ nach serverberechneter Wartezeit wiederholt.
 
 Definitionen entstehen in dieser Version weiterhin nur über direkten
 Datenbankzugriff; eine Management-API und eine Console-Fläche fehlen.
+
+## 9b. Cron und Webhooks in der Console verwalten
+
+Seit `1.21.0` gibt es die Ansicht **Cron & Webhooks**. Sie verlangt die
+Berechtigung `project_compute_admin` (nur `owner` und `administrator`) und die
+Freischaltung der Fläche:
+
+```powershell
+$env:QKERN_RUNTIME_MODE="postgres"
+$env:QKERN_PROJECT_QUEUES_ENABLED="true"
+$env:QKERN_COMPUTE_DEFINITIONS_ENABLED="true"
+npm run dev
+```
+
+Ein Cron-Job braucht einen Ausdruck, den der Scheduler versteht (`*/N * * * *`
+oder `M H * * *` in UTC), und eine **bereits vorhandene** Projekt-Queue. Beides
+wird beim Anlegen geprüft; ohne diese Prüfung entstünde ein Zeitplan, der bei
+jedem Vorkommen scheitert und dabei aussieht, als liefe er.
+
+Ein Webhook braucht ein exaktes öffentliches HTTPS-Ziel auf Port 443 ohne Query
+und Fragment sowie die **Referenz** des Signaturschlüssels — niemals den
+Schlüssel selbst. Die Regel für das Ziel ist dieselbe, die der Zusteller
+anwendet, damit ein hier angenommenes Ziel später nicht stumm abgewiesen wird.
+
+**Nur das Aktivierungsflag ist änderbar.** Ausdruck, Queue, Nutzlast, Ziel-URL
+und Signaturreferenz sind unveränderlich; eine Änderung ist ein Löschen und ein
+neues Anlegen. Diese Grenze liegt als Spaltenrecht in der Datenbank, nicht in
+der Oberfläche.
+
+Ein Webhook lässt sich erst löschen, nachdem er pausiert wurde: Das Löschen
+entfernt auch alle wartenden Zustellungen, und der Umweg macht diesen Verlust zu
+einer bewussten Entscheidung.
+
+Die Zustellstatusliste zeigt Ereignistyp, Status, Versuchszahl und Fehlercode —
+**nie die Nutzlast**. Sie beantwortet die Betriebsfrage, ob etwas ankommt und
+warum nicht; der Inhalt der Nachricht beantwortet sie nicht.
+
+Dieselben Operationen stehen unter
+`/api/v1/projects/{projectId}/environments/{environment}/compute/` als REST zur
+Verfügung und sind im OpenAPI-Vertrag beschrieben.
 
 ## 10. MCP für KI-Agenten
 

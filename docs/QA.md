@@ -564,3 +564,37 @@ Lokal 841 bestanden, 0 fehlgeschlagen.
 Nicht erbracht: Functions-Sandbox, ein Vault-gestuetzter Signaturschluessel-
 Provider, API-Flaechen fuer Definitionen, automatische Entdeckung der zu
 bedienenden Scopes und ein Lauf gegen einen echten HTTPS-Empfaenger.
+
+## Definitionsflaeche — Release 1.21
+
+Fuenfundzwanzig lokale Tests decken Dienst und Routen ab: nur vom Scheduler
+verstandene Cron-Ausdruecke, nur existierende Zielqueues, exakt die
+Webhook-Ziele die auch der Zusteller akzeptiert, doppelte Ereignistypen
+zusammengefasst statt abgewiesen, Loeschen nur nach dem Abschalten, ein
+Nicht-Administrator und eine fremde Organisation sehen 404 statt 403, ein
+missgebildeter Bezeichner erreicht die Datenbank gar nicht, CSRF-Schutz vor
+jedem Dienstaufruf, Authentifizierung vor Validierung und kein
+Datenbanktext in einer Antwort.
+
+Sieben Faelle laufen gegen echtes PostgreSQL: anlegen, auflisten und pausieren
+ueber die unprivilegierte Runtime-Rolle, Namenskonflikt als 409 statt
+Serverfehler, **`permission denied` fuer jede Aenderung jenseits des
+Aktivierungsflags**, Loeschvorbedingung, Loeschen samt wartender Zustellungen,
+Zustellstatus ohne Nutzlast und Cross-Tenant-Unsichtbarkeit.
+
+Der dritte Fall ist der Kern: Die Unveraenderlichkeit von Ausdruck, Queue und
+Ziel-URL traegt das Spaltenrecht aus den Migrationen 0031 und 0032, nicht der
+Dienst. Ein Test gegen den Memory-Port koennte das gar nicht belegen.
+
+Wie in Release 1.20 waren alle Faelle im ersten Lauf gruen, und wie dort wurden
+zwei Garantien einzeln abgeschaltet — die Loeschvorbedingung und das Weglassen
+der Nutzlast. Genau die zwei zugehoerigen Faelle fielen um, kein anderer.
+Protokoll: `docs/evidence/2026-08-05/compute-definitions-mutation.log`.
+
+Checkpoint `1.21.0` am 5. August 2026: **78 von 78** PostgreSQL-Faellen
+bestanden, 32 Migrationen, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 866 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Functions-Sandbox, Vault-gestuetzter Signaturschluessel-Provider,
+SDK-/CLI-Anbindung der Definitionsflaeche, manuelles Ausloesen eines
+Cron-Vorkommens und Wiederholen einer toten Zustellung ueber die Flaeche.

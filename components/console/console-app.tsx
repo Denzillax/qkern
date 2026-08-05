@@ -24,7 +24,7 @@ import type {
 import { classifySqlRisk, isReadOnlySql } from "@/lib/security";
 
 type Snapshot = { user: { id: string; email: string }; organization: { id: string; name: string; slug: string }; projects: Project[]; changeSets: ChangeSet[]; approvals: Approval[]; audit: AuditEvent[] };
-type ViewId = "overview" | "database" | "table" | "sql" | "auth" | "storage" | "api" | "ai" | "activity" | "approvals" | "logs" | "monitoring" | "backups" | "settings";
+type ViewId = "overview" | "database" | "table" | "sql" | "auth" | "storage" | "compute" | "api" | "ai" | "activity" | "approvals" | "logs" | "monitoring" | "backups" | "settings";
 
 type LiveTableColumn = {
   name: string; dataType: string; nullable: boolean; sensitive: boolean;
@@ -68,6 +68,7 @@ const nav: { id: ViewId; label: string; icon: typeof Database; badge?: string }[
   { id: "sql", label: "SQL Editor", icon: Terminal },
   { id: "auth", label: "Authentication", icon: Fingerprint },
   { id: "storage", label: "Storage", icon: Cloud },
+  { id: "compute", label: "Cron & Webhooks", icon: Webhook },
   { id: "api", label: "API", icon: Braces },
   { id: "ai", label: "AI Bridge", icon: Bot, badge: "2" },
   { id: "activity", label: "AI Activity", icon: Activity },
@@ -180,6 +181,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "sql": return <ProductPreview service="project query executor"><SqlView projectId={props.project.id} environment={props.environment} reload={props.reload} navigate={props.navigate}/></ProductPreview>;
     case "auth": return <AuthView projectId={props.project.id} environment={props.environment}/>;
     case "storage": return <StorageView projectId={props.project.id} environment={props.environment}/>;
+    case "compute": return <ComputeView projectId={props.project.id} environment={props.environment}/>;
     case "api": return <LiveApiView projectId={props.project.id} environment={props.environment}/>;
     case "ai": return <ProductPreview service="agent connection service"><AIBridge projectId={props.project.id} environment={props.environment} reload={props.reload} navigate={props.navigate}/></ProductPreview>;
     case "activity": case "logs": return <ActivityView audit={props.snapshot.audit} aiOnly={props.view === "activity"}/>;
@@ -291,6 +293,97 @@ function StorageView({ projectId, environment }: { projectId: string; environmen
   const quota=buckets.reduce((sum,bucket)=>sum+bucket.quotaBytes,0);
   const percent=quota>0?Math.min(100,(used/quota)*100):0;
   return <div className="module-grid"><article className="console-card storage-total"><Cloud size={24}/><div><span>STORAGE USED</span><strong>{formatBytes(used)}</strong><small>{quota?`of ${formatBytes(quota)}`:"No buckets"}</small></div><div className="progress"><i style={{width:`${percent}%`}}/></div></article><article className="console-card span-2"><div className="card-head"><div><span>BUCKETS · {environment.toUpperCase()}</span><h3>Project storage</h3></div><button className="button small" onClick={()=>void create()} disabled={state==="loading"||state==="unavailable"}><Plus size={14}/> New bucket</button></div>{state==="loading"&&<p className="muted">Loading storage policy and usage…</p>}{(state==="unavailable"||state==="error")&&<div className="live-module-state compact"><Cloud size={24}/><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={13}/> Retry</button></div>}{state==="ready"&&buckets.length===0&&<p className="muted">No buckets yet. New buckets are private and accept only the default safe MIME allowlist.</p>}{state==="ready"&&buckets.map(bucket=><div className="bucket-row" key={bucket.id}><span className="bucket-icon"><HardDrive size={16}/></span><div><strong>{bucket.name}</strong><small>{bucket.readPolicy} read · {bucket.writePolicy} write · {bucket.retentionDays?`${bucket.retentionDays}d retention`:"no lifecycle"}</small></div><span>{formatBytes(bucket.usedBytes)} / {formatBytes(bucket.quotaBytes)}</span><button className="icon-button" onClick={()=>void remove(bucket)} aria-label={`Delete ${bucket.name}`}><Trash2 size={14}/></button></div>)}</article><article className="console-card"><div className="card-head"><div><span>POLICY STATUS</span><h3>Private by default</h3></div><ShieldCheck className="secure" size={21}/></div><p className="muted">Uploads are bound to exact size, MIME type and SHA-256 checksum. Objects remain quarantined until a scanner marks them clean; signed downloads expire after at most 15 minutes.</p></article></div>;
+}
+
+type CronDefinitionItem={id:string;name:string;expression:string;queue:string;enabled:boolean;lastDispatchedAt:string|null};
+type WebhookDefinitionItem={id:string;name:string;url:string;eventTypes:string[];signingSecretRef:string;timeoutMs:number;maxAttempts:number;enabled:boolean};
+type WebhookDeliveryItem={id:string;eventType:string;status:"pending"|"in_flight"|"delivered"|"dead_lettered";attemptCount:number;lastFailureCode:string|null;settledAt:string|null};
+
+/**
+ * Cron-Jobs und Webhooks verwalten.
+ *
+ * Bis Release 1.20 entstanden beide ausschliesslich ueber direkten
+ * Datenbankzugriff: Der Betrieb lief, aber niemand konnte ihm ohne `psql`
+ * sagen, was er tun soll.
+ *
+ * Nur das Aktivierungsflag ist aenderbar. Ausdruck, Queue, Ziel-URL und
+ * Signaturreferenz sind unveraenderlich; eine Aenderung ist ein Loeschen und
+ * ein neues Anlegen. Diese Entscheidung liegt als Spaltenrecht in der
+ * Datenbank, nicht in dieser Ansicht.
+ */
+function ComputeView({projectId,environment}:{projectId:string;environment:Environment}) {
+  const [cron,setCron]=useState<CronDefinitionItem[]>([]);
+  const [webhooks,setWebhooks]=useState<WebhookDefinitionItem[]>([]);
+  const [deliveries,setDeliveries]=useState<WebhookDeliveryItem[]>([]);
+  const [selected,setSelected]=useState<string|null>(null);
+  const [state,setState]=useState<"loading"|"ready"|"unavailable"|"error">("loading");
+  const [message,setMessage]=useState("");
+  const base=`/api/v1/projects/${projectId}/environments/${environment}/compute`;
+
+  const load=useCallback(async()=>{setState("loading");setMessage("");try{
+    const [cronResponse,webhookResponse]=await Promise.all([
+      fetch(`${base}/cron`,{cache:"no-store"}),fetch(`${base}/webhooks`,{cache:"no-store"})]);
+    const cronPayload=await cronResponse.json();const webhookPayload=await webhookResponse.json();
+    if(cronResponse.status===503||webhookResponse.status===503){setCron([]);setWebhooks([]);setState("unavailable");
+      setMessage(cronPayload.error??webhookPayload.error??"Compute definitions are disabled for this environment.");return;}
+    if(!cronResponse.ok)throw new Error(cronPayload.error??"Cron definitions unavailable");
+    if(!webhookResponse.ok)throw new Error(webhookPayload.error??"Webhook definitions unavailable");
+    setCron(cronPayload.data as CronDefinitionItem[]);setWebhooks(webhookPayload.data as WebhookDefinitionItem[]);setState("ready");
+  }catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:"Compute definitions unavailable");}},[base]);
+  useEffect(()=>{void load();},[load]);
+
+  async function mutate(path:string,init:RequestInit){const response=await fetch(`${base}${path}`,init);
+    if(response.ok){await load();return true;}
+    const payload=await response.json().catch(()=>({}));setMessage(payload.error??"The change was rejected.");return false;}
+
+  async function createCron(){const name=window.prompt("Cron name (lowercase, numbers, hyphen)","nightly-report");if(!name)return;
+    const expression=window.prompt("UTC expression: */N * * * * or M H * * *","*/15 * * * *");if(!expression)return;
+    const queue=window.prompt("Existing project queue","email_jobs");if(!queue)return;
+    await mutate("/cron",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),expression:expression.trim(),queue:queue.trim()})});}
+
+  async function createWebhook(){const name=window.prompt("Webhook name (lowercase, numbers, hyphen)","order-events");if(!name)return;
+    const url=window.prompt("Exact public HTTPS target, no query and no fragment","https://receiver.example.com/hooks");if(!url)return;
+    const events=window.prompt("Event types, comma separated","order.created");if(!events)return;
+    // Nur die Referenz. Das Geheimnis selbst liegt im Vault und darf diese
+    // Flaeche nie beruehren.
+    const signingSecretRef=window.prompt("Vault reference of the signing key — never the secret itself","vault:webhook/orders");if(!signingSecretRef)return;
+    await mutate("/webhooks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),url:url.trim(),eventTypes:events.split(",").map(entry=>entry.trim()).filter(Boolean),signingSecretRef:signingSecretRef.trim()})});}
+
+  async function showDeliveries(webhook:WebhookDefinitionItem){
+    if(selected===webhook.id){setSelected(null);setDeliveries([]);return;}
+    const response=await fetch(`${base}/webhooks/${webhook.id}/deliveries?limit=20`,{cache:"no-store"});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){setMessage(payload.error??"Delivery status unavailable");return;}
+    setSelected(webhook.id);setDeliveries(payload.data as WebhookDeliveryItem[]);}
+
+  if(state==="loading")return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>Loading cron and webhook definitions…</h3></div>;
+  if(state==="unavailable")return <div className="console-card live-module-state"><Webhook size={26}/><h3>Compute definitions not enabled</h3><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> Retry</button></div>;
+
+  return <div className="module-grid">
+    <article className="console-card span-2"><div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>Scheduled dispatch</h3></div><button className="button small" onClick={()=>void createCron()}><Plus size={14}/> New cron job</button></div>
+      {message&&<p className="muted">{message}</p>}
+      {cron.length===0&&<p className="muted">No cron jobs yet. An occurrence is enqueued into an existing project queue with a deterministic dedupe key, so two schedulers produce exactly one message.</p>}
+      {cron.map(job=><div className="bucket-row" key={job.id}><span className="bucket-icon"><Zap size={16}/></span>
+        <div><strong>{job.name}</strong><small>{job.expression} UTC → {job.queue} · {job.lastDispatchedAt?`last ${new Intl.DateTimeFormat("de-CH",{dateStyle:"short",timeStyle:"short"}).format(new Date(job.lastDispatchedAt))}`:"never dispatched"}</small></div>
+        <span className={job.enabled?"secure":"muted"}>{job.enabled?"enabled":"paused"}</span>
+        <button className="plain-button" onClick={()=>void mutate(`/cron/${job.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!job.enabled})})}>{job.enabled?"Pause":"Enable"}</button>
+        <button className="icon-button" onClick={()=>{if(window.confirm(`Delete cron job ${job.name}? Expression and queue cannot be edited, so this is how a change is made.`))void mutate(`/cron/${job.id}`,{method:"DELETE"});}} aria-label={`Delete ${job.name}`}><Trash2 size={14}/></button></div>)}
+    </article>
+    <article className="console-card"><div className="card-head"><div><span>DELIVERY CONTRACT</span><h3>Signed and acknowledged</h3></div><ShieldCheck className="secure" size={21}/></div>
+      <p className="muted">Every delivery is signed with HMAC-SHA256 over timestamp and body. A receiver must answer 2xx <em>and</em> echo the <code>x-qkern-delivery-id</code> header; otherwise the attempt counts as failed and the server decides when to retry. Payloads are never shown here.</p></article>
+    <article className="console-card span-2"><div className="card-head"><div><span>WEBHOOKS · {environment.toUpperCase()}</span><h3>Outbound delivery targets</h3></div><button className="button small" onClick={()=>void createWebhook()}><Plus size={14}/> New webhook</button></div>
+      {webhooks.length===0&&<p className="muted">No webhooks yet. Targets must be exact public HTTPS URLs on port 443 without query or fragment — the same rule the deliverer applies, so a target accepted here cannot be rejected later.</p>}
+      {webhooks.map(hook=><div key={hook.id}>
+        <div className="bucket-row"><span className="bucket-icon"><Webhook size={16}/></span>
+          <div><strong>{hook.name}</strong><small>{hook.url} · {hook.eventTypes.join(", ")} · {hook.maxAttempts} attempts · key {hook.signingSecretRef}</small></div>
+          <span className={hook.enabled?"secure":"muted"}>{hook.enabled?"enabled":"paused"}</span>
+          <button className="plain-button" onClick={()=>void showDeliveries(hook)}>{selected===hook.id?"Hide status":"Delivery status"}</button>
+          <button className="plain-button" onClick={()=>void mutate(`/webhooks/${hook.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!hook.enabled})})}>{hook.enabled?"Pause":"Enable"}</button>
+          <button className="icon-button" onClick={()=>{if(!hook.enabled&&window.confirm(`Delete webhook ${hook.name}? Pending deliveries are removed with it.`))void mutate(`/webhooks/${hook.id}`,{method:"DELETE"});else if(hook.enabled)setMessage("Pause the webhook before deleting it — deletion also removes its pending deliveries.");}} aria-label={`Delete ${hook.name}`}><Trash2 size={14}/></button></div>
+        {selected===hook.id&&<div className="detail-list">{deliveries.length===0?<div><span>No deliveries recorded</span><strong className="muted">–</strong></div>:deliveries.map(delivery=><div key={delivery.id}><span>{delivery.eventType}<small>attempt {delivery.attemptCount}{delivery.lastFailureCode?` · ${delivery.lastFailureCode}`:""}</small></span><strong className={delivery.status==="delivered"?"secure":delivery.status==="dead_lettered"?"risk high":""}>{delivery.status}</strong></div>)}</div>}
+      </div>)}
+    </article>
+  </div>;
 }
 
 function ApiView() { const [language,setLanguage]=useState("typescript"); return <div className="api-layout"><article className="console-card endpoint-list"><div className="card-head"><div><span>AUTO-GENERATED REST API</span><h3>Schema endpoints</h3></div><span className="secure">OpenAPI synced</span></div>{["products","orders","profiles","organizations"].map((endpoint)=><button key={endpoint}><span className="method get">GET</span><code>/v1/{endpoint}</code><ChevronRight size={14}/></button>)}</article><article className="console-card code-sample"><div className="code-head"><span>GET /v1/products</span><select value={language} onChange={e=>setLanguage(e.target.value)}><option value="typescript">TypeScript</option><option value="curl">cURL</option></select></div><pre>{language === "typescript" ? `const { data, error } = await qkern\n  .from("products")\n  .select("id, name, price")\n  .eq("active", true)\n  .limit(20);` : `curl 'https://api.example.qkern.ch/v1/products?limit=20' \\\n  -H "x-qkern-key: $QKERN_PUBLIC_KEY"`}</pre><div className="code-note"><ShieldCheck size={14}/> Response is filtered by the caller&apos;s RLS policies.</div></article></div>; }

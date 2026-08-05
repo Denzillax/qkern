@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.20.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.21.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.20.0`
-- Aktueller Slice: 1.20 Zustellprozess — Cron und Webhooks laufen in `workers/compute-runtime.ts`
+- Paketversion: `1.21.0`
+- Aktueller Slice: 1.21 Definitionsflaeche — REST und Console fuer Cron und Webhooks
+- Definitionsdienst: `lib/server/compute/definitions.ts` und `definitions-postgres-repository.ts`
+- Routen: `app/api/v1/projects/[projectId]/environments/[environment]/compute/`
+- Berechtigung: `project_compute_admin` (nur owner und administrator)
+- Console: Ansicht `Cron & Webhooks` in `components/console/console-app.tsx`
+- Vorheriger Slice: 1.20 Zustellprozess — Cron und Webhooks laufen in `workers/compute-runtime.ts`
 - Compute-Betrieb: `lib/server/compute/runtime-composition.ts`, `webhook-delivery-runtime.ts`
 - Signatur und Transport: `lib/server/compute/webhook-signer.ts`, `webhook-transport.ts`
 - Start: `QKERN_COMPUTE_RUNTIME_ENABLED=true npm run worker:compute`

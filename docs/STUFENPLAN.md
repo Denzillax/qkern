@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit | Queues, Cron und Webhook-Zustellung zertifiziert und in Betrieb; Functions-Sandbox offen |
+| 1.6 | in Arbeit | Queues, Cron und Webhooks zertifiziert, in Betrieb und verwaltbar; Functions-Sandbox offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |
@@ -245,10 +245,17 @@ Webhook lief weiter, statt zu pausieren. Beide neuen Garantien wurden zusaetzlic
 durch eine Mutationsprobe belegt: einzeln abgeschaltet fallen genau die zwei
 zugehoerigen Faelle um, kein anderer.
 
+**Nachtrag Release 1.21.** Cron und Webhooks sind jetzt ueber REST und Console
+verwaltbar, statt nur ueber direkten Datenbankzugriff zu entstehen. Sieben
+Faelle zertifizieren die Flaeche gegen echtes PostgreSQL, darunter der Kern:
+Die Runtime-Rolle erhaelt `permission denied` fuer jede Aenderung jenseits des
+Aktivierungsflags. Die Unveraenderlichkeit traegt das Spaltenrecht, nicht der
+Dienst.
+
 Das Austrittskriterium bleibt **nicht erfuellt**: Es verlangt zusaetzlich
 Egress-Policy, Ressourcenlimits und Secret-Canary-Tests ohne gemeinsame
-Ausfuehrungsautoritaet. Erbracht sind Idempotenz, Dead Letters, Retry und
-Betrieb; es fehlt die **Functions-Sandbox**, die als einzige die drei
+Ausfuehrungsautoritaet. Erbracht sind Idempotenz, Dead Letters, Retry, Betrieb
+und Verwaltung; es fehlt die **Functions-Sandbox**, die als einzige die drei
 verbleibenden Teile traegt.
 
 ## Stufe 1.7 — Developer Experience

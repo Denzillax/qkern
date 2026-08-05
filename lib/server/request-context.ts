@@ -50,11 +50,12 @@ export type RequestCapability =
   | "project_auth_admin"
   | "project_storage_admin"
   | "project_queues_admin"
+  | "project_compute_admin"
   | "project_data_mutate";
 
 const ROLE_CAPABILITIES: Record<OrganizationRole, ReadonlySet<RequestCapability>> = {
-  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_data_mutate"]),
-  administrator: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_data_mutate"]),
+  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate"]),
+  administrator: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate"]),
   developer: new Set(["read", "change_preview", "project_data_mutate"]),
   deployer: new Set(["read", "change_preview", "apply", "migration_apply_delivery_read", "project_provisioning_read"]),
   analyst: new Set(["read"]), support: new Set(["read", "migration_apply_delivery_read", "migration_incident_read", "project_provisioning_read"]), read_only: new Set(["read"]),
