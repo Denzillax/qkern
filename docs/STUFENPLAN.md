@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit als Alpha | Queue-/Jobs-Foundation mit PostgreSQL; Production-Compute und Real-Service-Evidenz offen |
+| 1.6 | in Arbeit | Queues inkl. Multi-Instance zertifiziert; Functions, Cron und Webhooks nur Vertragsports |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |
@@ -220,6 +220,23 @@ Alpha 4 ergänzt interne Function-Sandbox-, Webhook-Signer/Transport- und
 Cron→Queue-Ports mit digest-gepinnten Images, bounded JSON/Ressourcen/Egress,
 SSRF-/Redirect-/Timeout-/Exact-Ack-Grenzen und deterministischen Occurrence-Dedupe-
 Keys. Persistenz, Sandbox-/DNS-Pinning-Adapter und Provider-E2E bleiben offen.
+
+**Nachtrag Release 1.17.** Sechs Faelle zertifizieren Project Queues ueber
+mehrere Instanzen gegen echtes PostgreSQL: Claim-Disjunktheit bei 180
+Nachrichten und sechs gleichzeitig claimenden Instanzen, genau ein Gewinner bei
+acht gleichzeitigen Zugriffen auf eine Nachricht, Lease-Fencing nach echtem
+Ablauf mit totem Alt-Token, Retry-Autoritaet beim Server, Kapazitaetsgrenze
+unter Nebenlaeufigkeit und Dedupe ueber Instanzgrenzen.
+
+Kein Produktfehler dabei; alle Fehlschlaege lagen in den Testparametern. Ein
+Umgehungsversuch am Trigger vorbei bestaetigte zudem, dass
+`project_queue_messages_update_guard` Zustandsuebergaenge auch gegen den
+Owner-Zugang schuetzt.
+
+Das Austrittskriterium bleibt **nicht erfuellt**: Es verlangt zusaetzlich
+Egress-Policy, Ressourcenlimits und Secret-Canary-Tests ohne gemeinsame
+Ausfuehrungsautoritaet, also Functions-Sandbox, Cron und Webhook-Zustellung.
+Diese sind weiterhin nur interne Vertragsports ohne Laufzeit.
 
 ## Stufe 1.7 — Developer Experience
 

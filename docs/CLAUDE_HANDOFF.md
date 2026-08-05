@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.16.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.17.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,8 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.16.0`
-- Aktueller Slice: 1.16 Postgres Changes in Betrieb — Projekt-Datenbank-Port verdrahtet
+- Paketversion: `1.17.0`
+- Aktueller Slice: 1.17 Queues ueber mehrere Instanzen — Multi-Instance und Last zertifiziert
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
@@ -164,28 +164,37 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.17.0`: Stufe 1.6 Compute und Messaging. Die Queue-Foundation ist seit 1.6
-Alpha vorhanden und teilweise zertifiziert; es fehlen Multi-Instance- und
-Lastlaeufe sowie ein startbarer Handler-Host.
+`1.18.0`: Compute, um Stufe 1.6 zu schliessen. Queues sind seit 1.17 inklusive
+Mehrinstanzbetrieb zertifiziert; was fehlt, ist die Ausfuehrungsseite.
 
-Kleinere offene Punkte aus dem Realtime-Bereich, die sich nebenbei erledigen
-lassen: ein Scheduler fuer die beiden `prune`-Pfade, und eine gemeinsame
-Katalogaufloesung fuer Generated Data API und Realtime-Changes -- beide oeffnen
-derzeit einen eigenen Pool auf dieselben Projektdatenbanken.
+Das Austrittskriterium verlangt Egress-Policy, Ressourcenlimits, Idempotenz,
+Dead Letters, Retry und Secret-Canary-Tests **ohne gemeinsame
+Ausfuehrungsautoritaet**. Idempotenz, Dead Letters und Retry sind erbracht. Es
+fehlen Functions-Sandbox, Cron-Scheduler und Webhook-Zustellung -- alle drei
+existieren nur als interne Vertragsports in `lib/server/compute/` ohne Laufzeit.
+Offene Adapter stehen in `docs/COMPUTE_CONTRACTS.md`.
 
-Nicht vergessen: Die Runtime-Komposition selbst ist ueber Vertragstests belegt,
-aber nie in einem laufenden Realtime-Prozess gegen echtes PostgreSQL
-durchgefahren. Die Kette ist es (Release 1.14), die Verdrahtung nicht.
+Ebenfalls offen: ein startbarer Handler-Host. `ProjectQueueWorker` ist ein
+injizierbarer Ausfuehrungsport, kein Prozess, den ein Betreiber starten kann.
 
-## Ein Muster, das zweimal aufgetreten ist
+Kleinere Punkte, die sich nebenbei erledigen lassen: ein Scheduler fuer die
+beiden Realtime-`prune`-Pfade und eine gemeinsame Katalogaufloesung fuer
+Generated Data API und Realtime-Changes.
 
-Neben „nie gegen echte Dienste ausgefuehrt" gibt es ein zweites Muster:
-**gebaut, zertifiziert — und trotzdem wirkungslos, weil niemand es aufruft.**
+## Zwei Muster, die mehrfach aufgetreten sind
 
-Release 1.14 fand den Poller, den kein Prozess rief. Release 1.15 fand, dass die
+**Gebaut, zertifiziert -- und trotzdem wirkungslos, weil niemand es aufruft.**
+Release 1.14 fand den Poller, den kein Prozess rief. 1.15 fand, dass die
 Realtime-Runtime weiterhin den Memory-Log verwendete, obwohl der dauerhafte
 Adapter seit 1.11 zertifiziert war. Beim Anfassen eines Moduls lohnt die Frage:
 Ruft der Betrieb das ueberhaupt auf?
+
+**Ausgefuehrt und zufaellig gruen.** Release 1.16 fand drei Wettlaeufe im
+gemeinsamen Testaufbau, die seit 1.13 latent waren: Rolle, Schema und Feed
+werden von parallel laufenden Integrationstests angelegt, und jedes
+`IF NOT EXISTS` davor ist ein Check-dann-Erzeuge ohne Atomaritaet. Die Laeufe zu
+1.13 bis 1.15 waren gruen, ohne dass der Aufbau deterministisch war. Ein gruener
+Lauf beweist nicht, dass der Aufbau deterministisch ist.
 
 ## Sichere Arbeitsregeln
 

@@ -457,3 +457,29 @@ eine Datei das Rennen gewann.
 Checkpoint `1.16.0` am 5. August 2026: **46 von 46** PostgreSQL-Faellen
 bestanden, Soak p95 198 bis 240 ms. Lokal 779 bestanden, 70 uebersprungen, 0
 fehlgeschlagen.
+
+## Queues ueber mehrere Instanzen — Release 1.17
+
+Sechs Faelle zertifizieren Project Queues ueber mehrere Instanzen gegen echtes
+PostgreSQL. Jede Instanz besitzt einen eigenen Pool, ein eigenes Repository und
+einen eigenen Service; Koordination kann ausschliesslich ueber die Datenbank
+laufen.
+
+Geprueft werden Claim-Disjunktheit bei 180 Nachrichten und sechs gleichzeitig
+claimenden Instanzen, genau ein Gewinner bei acht gleichzeitigen Zugriffen auf
+eine Nachricht, Lease-Fencing nach echtem Ablauf mit totem Alt-Token,
+Retry-Autoritaet beim Server, Kapazitaetsgrenze unter Nebenlaeufigkeit und
+Dedupe ueber Instanzgrenzen.
+
+Kein Produktfehler; alle Fehlschlaege lagen in den Testparametern. Ein
+Umgehungsversuch am Trigger vorbei bestaetigte, dass
+`project_queue_messages_update_guard` Zustandsuebergaenge auch gegen den
+Owner-Zugang schuetzt -- eine Zusicherung, die seit Release 1.6 behauptet und
+bis hierher nicht belegt war.
+
+Checkpoint `1.17.0` am 5. August 2026: **52 von 52** PostgreSQL-Faellen
+bestanden, zweimal reproduziert. Lokal 779 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht und nicht als solches auszugeben: Functions-Sandbox, Cron und
+Webhook-Zustellung, ein startbarer Handler-Host, externer Metrics-Export sowie
+ein echter Prozessabsturz statt mehrerer Instanzen im selben Prozess.

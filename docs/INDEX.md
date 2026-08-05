@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.16.md](RELEASE_1.16.md) | Aktueller Release: Postgres Changes in Betrieb |
+| [RELEASE_1.17.md](RELEASE_1.17.md) | Aktueller Release: Queues ueber mehrere Instanzen |
+| [RELEASE_1.16.md](RELEASE_1.16.md) | Historischer Release: Postgres Changes in Betrieb |
 | [RELEASE_1.15.md](RELEASE_1.15.md) | Historischer Release: Realtime in Betrieb |
 | [RELEASE_1.14.md](RELEASE_1.14.md) | Historischer Release: Change Delivery End to End |
 | [RELEASE_1.13.md](RELEASE_1.13.md) | Historischer Release: Postgres Changes |

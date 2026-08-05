@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 5. August 2026 · Release: `1.16.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.17.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -24,7 +24,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Generated Data API | ja | ja — 2 Real-DB-Fälle, RLS und Injection |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
-| Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
+| Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | nur Ports | nein |
@@ -41,13 +41,13 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **46 von 46 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **52 von 52 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust, p95 198 bis 333 ms; Runtime verweigert weiterhin Production |
-| Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
+| Project Queues Multi-Instance/Load | **zertifiziert**; Functions/Cron/Webhooks weiterhin nur Vertragsports |
 | Managed Production Go-live | noch nicht freigegeben |
 
 Die 69 übersprungenen Fälle sind Real-Service-Tests, die in den drei
@@ -111,7 +111,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
 | Realtime | **abgeschlossen und zertifiziert** | Scheduler fuer die prune-Pfade; Runtime-Komposition gegen echtes PostgreSQL |
-| Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
+| Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
 | Billing/Usage | Alpha 1 Metering-/Quota-Grundlage | transaktionale Produkt-Emitter, Reconciliation, Tarife und Rechnungsintegration |
