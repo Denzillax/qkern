@@ -434,3 +434,26 @@ bestanden, 70 übersprungen, 0 fehlgeschlagen, dreimal in Folge stabil.
 Behoben wurde außerdem ein zeitabhängiger Test: `project-queue-worker` erwartete
 zwei Lease-Erneuerungen innerhalb einer festen Schlafdauer und fiel unter voller
 Suite gelegentlich aus. Der Handler wartet jetzt, bis zweimal erneuert wurde.
+
+## Postgres Changes in Betrieb — Release 1.16
+
+Sieben Tests decken `ControlPlaneRealtimeProjectConnection` ab: Aufloesung ueber
+Control Plane und Katalog, Abweisung eines unbekannten Projekts ohne Rueckfall
+auf eine Standardverbindung, Abweisung bei abweichender Rolle oder Datenbank,
+Abweisung eines privilegierten Logins in allen vier Auspraegungen, Pruefung der
+Grenze bei jedem Zugriff statt einmal beim Start, und Freigabe der Verbindung
+auch wenn die Arbeit wirft.
+
+Zwei Vertragstests halten fest, dass `changes:` nur hinter einem ausdruecklichen
+Opt-in entsteht, beim Shutdown gestoppt wird und Poller-Fehler nicht in das Log
+dieses Prozesses gelangen.
+
+Behoben wurden drei latente Wettlaeufe im gemeinsamen Testaufbau: Rolle, Schema
+und Feed werden von drei parallel laufenden Integrationstests angelegt, und
+jedes `IF NOT EXISTS` davor war ein Check-dann-Erzeuge ohne Atomarität. Sie
+waren seit Release 1.13 vorhanden und blieben unentdeckt, weil zufaellig immer
+eine Datei das Rennen gewann.
+
+Checkpoint `1.16.0` am 5. August 2026: **46 von 46** PostgreSQL-Faellen
+bestanden, Soak p95 198 bis 240 ms. Lokal 779 bestanden, 70 uebersprungen, 0
+fehlgeschlagen.

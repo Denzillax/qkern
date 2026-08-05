@@ -2,6 +2,11 @@ import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { getPostgresPool } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
+import { controlPlaneService } from "@/lib/server/control-plane/runtime";
+import { ControlPlaneDataTargetResolver } from "@/lib/server/data-plane/runtime";
+import { createGeneratedDataApiFromEnv } from "@/lib/server/data-plane/generated-runtime";
+import { createLocalProjectDatabaseCatalogFromEnv } from
+  "@/lib/server/migrations/connection-catalog-env";
 import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
 import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
 import { ProjectRealtimeAuthenticator } from "@/lib/server/realtime/auth";
@@ -10,7 +15,12 @@ import {
   PostgresRealtimeEventBus,
   type ListenConnection,
 } from "@/lib/server/realtime/event-bus";
+import { RealtimeChangePollerRegistry } from "@/lib/server/realtime/change-poller-registry";
+import { GeneratedApiRealtimeChangeReader } from "@/lib/server/realtime/change-reader";
 import { PrefixRealtimeAuthorization } from "@/lib/server/realtime/policy";
+import { PostgresRealtimeChangeSource } from "@/lib/server/realtime/postgres-change-source";
+import { ControlPlaneRealtimeProjectConnection } from
+  "@/lib/server/realtime/project-connection";
 import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
 import { MemoryRealtimeEventLog } from "@/lib/server/realtime/repository";
 import { RealtimeService } from "@/lib/server/realtime/service";
@@ -51,11 +61,34 @@ const eventBus = ephemeralLog ? undefined : new PostgresRealtimeEventBus({
     return client;
   },
 });
+// Postgres Changes sind opt-in. Ohne Reader bleibt ein `changes:`-Abonnement
+// leer, statt ungeprueft Daten auszuliefern; ohne Registry pollt niemand, und
+// die Funktion saehe vorhanden aus, ohne es zu sein.
+//
+// Der Katalog wird mit denselben Umgebungsvariablen aufgebaut wie der der
+// Generated Data API: beide sprechen dieselben Projektdatenbanken ueber
+// dieselbe unprivilegierte Rolle an.
+const changesEnabled = process.env.QKERN_REALTIME_CHANGES_ENABLED === "true";
+const changeReader = changesEnabled
+  ? new GeneratedApiRealtimeChangeReader(await createGeneratedDataApiFromEnv() as never)
+  : undefined;
+const changeSource = changesEnabled
+  ? new PostgresRealtimeChangeSource(new ControlPlaneRealtimeProjectConnection(
+    new ControlPlaneDataTargetResolver(controlPlaneService),
+    await createLocalProjectDatabaseCatalogFromEnv(process.env, undefined, {
+      allowFlag: "QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG",
+      catalogVariable: "QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON",
+      applicationName: "qkern-realtime-changes",
+    }),
+  ))
+  : undefined;
+
 const cursorSecret = process.env.QKERN_REALTIME_CURSOR_SECRET?.trim();
 const cursorBytes = cursorSecret ? Buffer.from(cursorSecret, "base64url") : randomBytes(32);
 const service = new RealtimeService({
   eventLog,
   eventBus,
+  changeReader,
   authorization: new PrefixRealtimeAuthorization(),
   cursor: new RealtimeCursorCodec(cursorBytes),
   maxSubscriptionsPerConnection: integer("QKERN_REALTIME_MAX_SUBSCRIPTIONS", 32, 1, 128),
@@ -78,16 +111,24 @@ const runtime = createRealtimeWebSocketServer({
 
 await eventBus?.subscribe((reference) => { void service.deliverRemote(reference); });
 
-// Postgres Changes sind in dieser Runtime noch nicht betriebsbereit.
-// RealtimeChangePollerRegistry, PostgresRealtimeChangeSource und
-// GeneratedApiRealtimeChangeReader existieren und sind zertifiziert, aber diese
-// Runtime besitzt keinen Port, der je Scope eine Projektdatenbank aufloest. Ein
-// `changes:`-Abonnement bleibt hier deshalb leer.
-//
-// Bewusst kein Platzhalter, der beim ersten Gebrauch wirft: Eine Verdrahtung,
-// die vorhanden aussieht und dann abstuerzt, ist schlechter als eine fehlende.
-// Zu verbinden sind ControlPlaneDataTargetResolver aus data-plane/runtime und
-// der Katalog aus migrations/connection-catalog-env.
+let changeRegistry: RealtimeChangePollerRegistry | undefined;
+let reconcileTimer: ReturnType<typeof setInterval> | undefined;
+
+if (changeSource) {
+  changeRegistry = new RealtimeChangePollerRegistry({
+    source: changeSource,
+    audience: service,
+    idleIntervalMs: integer("QKERN_REALTIME_CHANGE_POLL_MS", 500, 50, 60_000),
+    batchSize: integer("QKERN_REALTIME_CHANGE_BATCH", 100, 1, 500),
+    // Redigiert: der Fehler kann eine Datenbankmeldung enthalten und gehoert
+    // nicht ins Log dieses Prozesses.
+    onError: () => undefined,
+  });
+  const registry = changeRegistry;
+  reconcileTimer = setInterval(() => {
+    try { registry.reconcile(); } catch { /* Scope-Grenze; naechster Takt versucht erneut */ }
+  }, integer("QKERN_REALTIME_CHANGE_RECONCILE_MS", 2_000, 250, 60_000));
+}
 
 const port = await runtime.listen();
 console.error(
@@ -99,6 +140,8 @@ let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  if (reconcileTimer) clearInterval(reconcileTimer);
+  await changeRegistry?.stop();
   await runtime.close();
   await eventBus?.close();
 }

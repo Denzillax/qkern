@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.15.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.16.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,10 +39,10 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.15.0`
-- Aktueller Slice: 1.15 Realtime in Betrieb — Stufe 1.5 abgeschlossen
-- Poller-Betrieb: `change-poller-runtime.ts` und `change-poller-registry.ts`
-- Offen: die Realtime-Runtime hat keinen Projekt-Datenbank-Port, `changes:` bleibt dort leer
+- Paketversion: `1.16.0`
+- Aktueller Slice: 1.16 Postgres Changes in Betrieb — Projekt-Datenbank-Port verdrahtet
+- Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
+- `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
@@ -164,26 +164,18 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.16.0`: `changes:` in der Realtime-Runtime betriebsbereit machen.
+`1.17.0`: Stufe 1.6 Compute und Messaging. Die Queue-Foundation ist seit 1.6
+Alpha vorhanden und teilweise zertifiziert; es fehlen Multi-Instance- und
+Lastlaeufe sowie ein startbarer Handler-Host.
 
-Stufe 1.5 ist abgeschlossen, aber ein `changes:`-Abonnement bleibt in
-`workers/realtime-runtime.ts` leer. `RealtimeChangePollerRegistry`,
-`PostgresRealtimeChangeSource` und `GeneratedApiRealtimeChangeReader` sind
-zertifiziert; es fehlt ein Port, der je Scope eine Projektdatenbank aufloest.
-Zu verbinden sind `ControlPlaneDataTargetResolver` aus `data-plane/runtime` und
-der Katalog aus `migrations/connection-catalog-env`.
+Kleinere offene Punkte aus dem Realtime-Bereich, die sich nebenbei erledigen
+lassen: ein Scheduler fuer die beiden `prune`-Pfade, und eine gemeinsame
+Katalogaufloesung fuer Generated Data API und Realtime-Changes -- beide oeffnen
+derzeit einen eigenen Pool auf dieselben Projektdatenbanken.
 
-Bewusst steht dort **kein** Platzhalter, der beim ersten Gebrauch wirft. Eine
-Verdrahtung, die vorhanden aussieht und abstuerzt, ist schlechter als eine
-fehlende — das gilt auch fuer den naechsten Bearbeiter.
-
-Ebenfalls offen: ein Scheduler fuer die beiden `prune`-Pfade.
-`RealtimeChangeSource.prune` ist altersbasiert, weil positionsbasiertes Loeschen
-im Mehrinstanzbetrieb entfernen wuerde, was eine langsamere Instanz noch nicht
-gelesen hat.
-
-Danach: Stufe 1.6 Queue-Multi-Instance- und Lastlaeufe, dann transaktionale
-Usage-Emitter fuer 1.8.
+Nicht vergessen: Die Runtime-Komposition selbst ist ueber Vertragstests belegt,
+aber nie in einem laufenden Realtime-Prozess gegen echtes PostgreSQL
+durchgefahren. Die Kette ist es (Release 1.14), die Verdrahtung nicht.
 
 ## Ein Muster, das zweimal aufgetreten ist
 

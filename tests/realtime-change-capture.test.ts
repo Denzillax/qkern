@@ -126,7 +126,7 @@ describe("GeneratedApiRealtimeChangeReader", () => {
   it("returns the row a subscriber is allowed to see", async () => {
     let seen: unknown;
     const reader = new GeneratedApiRealtimeChangeReader(
-      api([{ id: "row-1", name: "visible" }], (input) => { seen = input; }) as never, "org-1",
+      api([{ id: "row-1", name: "visible" }], (input) => { seen = input; }) as never,
     );
 
     const row = await reader.read(change(), { role: "authenticated", subject: "alice" });
@@ -139,14 +139,14 @@ describe("GeneratedApiRealtimeChangeReader", () => {
   });
 
   it("returns nothing when row level security hides the row", async () => {
-    const reader = new GeneratedApiRealtimeChangeReader(api([]) as never, "org-1");
+    const reader = new GeneratedApiRealtimeChangeReader(api([]) as never);
     expect(await reader.read(change(), { role: "anon" })).toBeNull();
   });
 
   it("fails closed when the read itself fails", async () => {
     const reader = new GeneratedApiRealtimeChangeReader({
       async listRows() { throw new Error("unavailable"); },
-    } as never, "org-1");
+    } as never);
 
     expect(await reader.read(change(), { role: "authenticated", subject: "alice" })).toBeNull();
   });
@@ -155,7 +155,7 @@ describe("GeneratedApiRealtimeChangeReader", () => {
     // Nach dem DELETE kann RLS nicht mehr beantworten, wer die Zeile haette
     // sehen duerfen. Den Schluessel an alle zu melden wuerde seine Existenz
     // offenlegen.
-    const reader = new GeneratedApiRealtimeChangeReader(api([]) as never, "org-1");
+    const reader = new GeneratedApiRealtimeChangeReader(api([]) as never);
     const deletion = change({ operation: "delete" });
 
     expect(await reader.read(deletion, { role: "service_role", subject: "worker" }))
@@ -168,7 +168,7 @@ describe("GeneratedApiRealtimeChangeReader", () => {
     const wide = change({
       key: Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`k${index}`, index])),
     });
-    const reader = new GeneratedApiRealtimeChangeReader(api([{ id: 1 }]) as never, "org-1");
+    const reader = new GeneratedApiRealtimeChangeReader(api([{ id: 1 }]) as never);
     expect(await reader.read(wide, { role: "authenticated", subject: "alice" })).toBeNull();
   });
 });

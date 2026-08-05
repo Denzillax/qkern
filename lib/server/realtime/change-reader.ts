@@ -26,10 +26,7 @@ import type {
  * sie existiert nicht mehr. Beides führt zu `null`.
  */
 export class GeneratedApiRealtimeChangeReader implements RealtimeChangeReader {
-  constructor(
-    private readonly api: GeneratedDataApiService,
-    private readonly organizationId: string,
-  ) {}
+  constructor(private readonly api: GeneratedDataApiService) {}
 
   async read(
     change: RealtimeChange,
@@ -49,7 +46,11 @@ export class GeneratedApiRealtimeChangeReader implements RealtimeChangeReader {
     if (filters.length === 0 || filters.length > 8) return null;
 
     const context: GeneratedDataContext = {
-      organizationId: this.organizationId,
+      // Die Organisation kommt aus der Aenderung, nicht aus dem Konstruktor:
+      // eine Reader-Instanz bedient in der Runtime alle beobachteten Projekte,
+      // und ein fester Wert wuerde fuer fremde Mandanten den falschen
+      // Tenantkontext setzen.
+      organizationId: change.organizationId,
       actorRef: `realtime:${subscriber.role}`,
       claims: {
         role: subscriber.role,

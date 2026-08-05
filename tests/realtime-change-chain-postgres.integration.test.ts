@@ -88,21 +88,37 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
     admin = createPostgresPool({ connectionString: adminUrl!, max: 2 });
     projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 4 });
 
+    // IF NOT EXISTS vor CREATE ROLE ist nicht atomar: parallele Testdateien
+    // laufen sonst in pg_authid_rolname_index. Der Ausnahmezweig ist der
+    // idiomatische Weg und braucht keine Absprache zwischen den Dateien.
     await admin.query(`DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qkern_ledger_owner') THEN
-          CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-            NOREPLICATION NOBYPASSRLS;
-        END IF;
+        CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS;
+      EXCEPTION WHEN duplicate_object THEN NULL;
       END $$;`);
-    await admin.query("CREATE SCHEMA IF NOT EXISTS qkern_internal AUTHORIZATION qkern_ledger_owner");
+    await admin.query("CREATE SCHEMA IF NOT EXISTS qkern_internal AUTHORIZATION qkern_ledger_owner")
+      .catch((error: unknown) => {
+        // Auch CREATE SCHEMA IF NOT EXISTS kann parallel auf pg_namespace
+        // kollidieren.
+        if (!String(error).includes("duplicate key value")) throw error;
+      });
     await admin.query("GRANT qkern_ledger_owner TO CURRENT_USER");
     await admin.query(await readFile(
       path.resolve(process.cwd(), "db/project/0003_qkern_change_feed.sql"), "utf8",
-    )).catch(async (error: unknown) => {
-      // Ein zweiter Lauf im selben Container findet den Feed bereits vor.
-      if (!String(error).includes("already exists")) throw error;
+    )).catch((error: unknown) => {
+      // Vitest fuehrt Testdateien parallel aus; mehrere koennen den Feed
+      // gleichzeitig anlegen. "already exists" und der Duplikatsfehler auf
+      // pg_type bedeuten dasselbe: jemand war schneller.
+      const message = String(error);
+      if (!message.includes("already exists")
+        && !message.includes("duplicate key value")) throw error;
     });
+    // Unabhaengig davon, wer ihn angelegt hat: ohne Feed ist der Test wertlos.
+    const feedPresent = await admin.query<{ present: string | null }>(
+      "SELECT to_regclass('qkern_internal.change_feed')::text AS present",
+    );
+    if (!feedPresent.rows[0]?.present) throw new Error("change feed was not created");
 
     await admin.query(`CREATE SCHEMA "${schema}"`);
     await admin.query(`CREATE TABLE "${schema}".${table} (
@@ -133,7 +149,7 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
         expectedLedgerOwner: "qkern",
       }) } as never,
     );
-    reader = new GeneratedApiRealtimeChangeReader(api, scope.organizationId);
+    reader = new GeneratedApiRealtimeChangeReader(api);
   });
 
   afterAll(async () => {

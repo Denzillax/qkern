@@ -50,20 +50,39 @@ describe.runIf(enabled)("Realtime change feed PostgreSQL certification", () => {
     projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
 
     // Die Migration setzt die Rollen und das Schema aus 0001/0002 voraus.
+    // IF NOT EXISTS vor CREATE ROLE ist nicht atomar: parallele Testdateien
+    // laufen sonst in pg_authid_rolname_index. Der Ausnahmezweig ist der
+    // idiomatische Weg und braucht keine Absprache zwischen den Dateien.
     await admin.query(`DO $$
       BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'qkern_ledger_owner') THEN
-          CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-            NOREPLICATION NOBYPASSRLS;
-        END IF;
+        CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS;
+      EXCEPTION WHEN duplicate_object THEN NULL;
       END $$;`);
-    await admin.query("CREATE SCHEMA IF NOT EXISTS qkern_internal AUTHORIZATION qkern_ledger_owner");
+    await admin.query("CREATE SCHEMA IF NOT EXISTS qkern_internal AUTHORIZATION qkern_ledger_owner")
+      .catch((error: unknown) => {
+        // Auch CREATE SCHEMA IF NOT EXISTS kann parallel auf pg_namespace
+        // kollidieren.
+        if (!String(error).includes("duplicate key value")) throw error;
+      });
     await admin.query("GRANT qkern_ledger_owner TO CURRENT_USER");
 
     const migration = await readFile(
       path.resolve(process.cwd(), "db/project/0003_qkern_change_feed.sql"), "utf8",
     );
-    await admin.query(migration);
+    await admin.query(migration).catch((error: unknown) => {
+      // Vitest fuehrt Testdateien parallel aus; mehrere koennen den Feed
+      // gleichzeitig anlegen. "already exists" und der Duplikatsfehler auf
+      // pg_type bedeuten dasselbe: jemand war schneller.
+      const message = String(error);
+      if (!message.includes("already exists")
+        && !message.includes("duplicate key value")) throw error;
+    });
+    // Unabhaengig davon, wer ihn angelegt hat: ohne Feed ist der Test wertlos.
+    const feedPresent = await admin.query<{ present: string | null }>(
+      "SELECT to_regclass('qkern_internal.change_feed')::text AS present",
+    );
+    if (!feedPresent.rows[0]?.present) throw new Error("change feed was not created");
 
     for (const [name, definition] of [
       [single, "id uuid PRIMARY KEY, label text NOT NULL"],
