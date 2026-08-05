@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 5. August 2026 · Release: `1.14.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.15.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
-| Realtime | ja | fast — Log, Fan-out, CDC, Tenant, Ordering und Drop zertifiziert; Lasttest offen |
+| Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | nur Ports | nein |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -36,17 +36,17 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest (Windows) | 754 bestanden, 69 übersprungen, 0 fehlgeschlagen |
+| Vitest (Windows) | 770 bestanden, 70 übersprungen, 0 fehlgeschlagen, dreimal stabil |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **45 von 45 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **46 von 46 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
-| Realtime Lasttest | Soak mit Latenzmessung fehlt; Runtime verweigert weiterhin Production |
+| Realtime Soak | 120 Aenderungen ohne Verlust, p95 224 bis 333 ms; Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
 | Managed Production Go-live | noch nicht freigegeben |
 
@@ -110,7 +110,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
-| Realtime | Kette End-to-End zertifiziert | Soak-Harness mit Latenzmessung, danach Stufenabschluss |
+| Realtime | **abgeschlossen und zertifiziert** | Projekt-Datenbank-Port in der Runtime, damit changes: im Betrieb greift |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |

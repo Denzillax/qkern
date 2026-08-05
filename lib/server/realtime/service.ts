@@ -350,6 +350,27 @@ export class RealtimeService {
     })) throw new RealtimeError("REALTIME_ACCESS_DENIED");
   }
 
+  /**
+   * Scopes, für die aktuell mindestens eine Verbindung einen `changes:`-Kanal
+   * abonniert hat.
+   *
+   * Der Poller braucht das, um nur für tatsächlich beobachtete Projekte zu
+   * arbeiten. Ohne diese Auskunft müsste er entweder alle Projekte pollen oder
+   * gar keines — Ersteres belastet jede Projektdatenbank ohne Anlass,
+   * Letzteres liefert Abonnenten stumm nichts aus.
+   */
+  changeSubscriptionScopes(): RealtimeScope[] {
+    const scopes = new Map<string, RealtimeScope>();
+    for (const connection of this.connections.values()) {
+      for (const channel of connection.subscriptions) {
+        if (!channel.startsWith("changes:")) continue;
+        const key = deliveredKey(connection.scope, "");
+        if (!scopes.has(key)) scopes.set(key, { ...connection.scope });
+      }
+    }
+    return [...scopes.values()];
+  }
+
   private subscribers(scope: RealtimeScope, channel: string) {
     return [...this.connections.values()].filter((connection) => sameScope(connection.scope, scope) &&
       connection.subscriptions.has(channel));

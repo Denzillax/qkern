@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.14.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.15.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,9 +39,10 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.14.0`
-- Aktueller Slice: 1.14 Change Delivery End to End — Poller gebaut, ganze Kette zertifiziert
-- Poller: `lib/server/realtime/change-poller.ts` (kein Betriebsprozess ruft ihn auf)
+- Paketversion: `1.15.0`
+- Aktueller Slice: 1.15 Realtime in Betrieb — Stufe 1.5 abgeschlossen
+- Poller-Betrieb: `change-poller-runtime.ts` und `change-poller-registry.ts`
+- Offen: die Realtime-Runtime hat keinen Projekt-Datenbank-Port, `changes:` bleibt dort leer
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
@@ -163,35 +164,36 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.15.0`: Soak-Harness, um Stufe 1.5 zu schließen — und ein Betriebsprozess,
-der den Poller überhaupt aufruft.
+`1.16.0`: `changes:` in der Realtime-Runtime betriebsbereit machen.
 
-Das Austrittskriterium nennt Tenant-, Ordering-, Drop- und Lasttests gegen echte
-Infrastruktur. Die ersten drei sind seit 1.14 belegt. Beim Lasttest gilt: Ein
-Testfall mit expliziten `drain`-Aufrufen misst keine Zustelllatenz, weil diese
-vom Pollintervall dominiert wird, das der Aufrufer bestimmt. Nötig ist ein
-laufender Poller mit Intervall, ein anhaltender Schreiber und eine Messung von
-Durchsatz und p95-Latenz über eine definierte Dauer.
+Stufe 1.5 ist abgeschlossen, aber ein `changes:`-Abonnement bleibt in
+`workers/realtime-runtime.ts` leer. `RealtimeChangePollerRegistry`,
+`PostgresRealtimeChangeSource` und `GeneratedApiRealtimeChangeReader` sind
+zertifiziert; es fehlt ein Port, der je Scope eine Projektdatenbank aufloest.
+Zu verbinden sind `ControlPlaneDataTargetResolver` aus `data-plane/runtime` und
+der Katalog aus `migrations/connection-catalog-env`.
 
-Zweitens fehlt der Betrieb: `lib/server/realtime/change-poller.ts` existiert,
-aber keine `workers/`-Runtime ruft ihn auf. Ebenso wenig gibt es einen Scheduler
-für die beiden `prune`-Pfade — `RealtimeChangeSource.prune` ist bewusst
-altersbasiert, weil positionsbasiertes Löschen im Mehrinstanzbetrieb entfernen
-würde, was eine langsamere Instanz noch nicht gelesen hat.
+Bewusst steht dort **kein** Platzhalter, der beim ersten Gebrauch wirft. Eine
+Verdrahtung, die vorhanden aussieht und abstuerzt, ist schlechter als eine
+fehlende — das gilt auch fuer den naechsten Bearbeiter.
 
-Beachten: Ein `changes:`-Kanal liefert **keine Historie**. Wer später abonniert,
-sieht ab dann. Ein Replay wäre hier gefährlich, weil die Sichtbarkeit an den
-Claims zum Prüfzeitpunkt hängt und eine zurückgezogene Berechtigung sonst
-umgangen würde. Der Poller muss deshalb aufholen, bevor Abonnenten verbinden.
+Ebenfalls offen: ein Scheduler fuer die beiden `prune`-Pfade.
+`RealtimeChangeSource.prune` ist altersbasiert, weil positionsbasiertes Loeschen
+im Mehrinstanzbetrieb entfernen wuerde, was eine langsamere Instanz noch nicht
+gelesen hat.
 
-Danach: Queue-Multi-Instance- und Lastläufe, transaktionale Usage-Emitter.
+Danach: Stufe 1.6 Queue-Multi-Instance- und Lastlaeufe, dann transaktionale
+Usage-Emitter fuer 1.8.
 
-Hinweis aus 1.11 bis 1.14: Vier Zertifizierungsläufe in Folge waren beim ersten
-Versuch grün, weil die Fehlerklassen aus 1.9 vorbeugend angewandt wurden —
-`bigint` erreicht den Treiber als Zeichenkette, jede Sperrklausel verlangt
-UPDATE-Recht und UPDATE-Policy, jeder Zugriffspfad braucht seine eigene
-RLS-Policy, und ein Test muss die ausgelieferte Datei ausführen statt eine
-Nachbildung.
+## Ein Muster, das zweimal aufgetreten ist
+
+Neben „nie gegen echte Dienste ausgefuehrt" gibt es ein zweites Muster:
+**gebaut, zertifiziert — und trotzdem wirkungslos, weil niemand es aufruft.**
+
+Release 1.14 fand den Poller, den kein Prozess rief. Release 1.15 fand, dass die
+Realtime-Runtime weiterhin den Memory-Log verwendete, obwohl der dauerhafte
+Adapter seit 1.11 zertifiziert war. Beim Anfassen eines Moduls lohnt die Frage:
+Ruft der Betrieb das ueberhaupt auf?
 
 ## Sichere Arbeitsregeln
 

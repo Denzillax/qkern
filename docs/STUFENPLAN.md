@@ -13,7 +13,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.2 | fertig, zertifiziert | Generated Data API, Projekt-Keys und echter Table Editor |
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
-| 1.5 | in Arbeit | Realtime mit dauerhaftem Log und Fan-out zertifiziert; CDC und Lasttests offen |
+| 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
 | 1.6 | in Arbeit als Alpha | Queue-/Jobs-Foundation mit PostgreSQL; Production-Compute und Real-Service-Evidenz offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
@@ -173,6 +173,23 @@ Das Austrittskriterium bleibt **nicht erfüllt**. Offen sind PostgreSQL-CDC und
 RLS pro Ereignis sowie Drop-, Reconnect-, Soak- und Lasttests. Auch der
 Mehrinstanznachweis hat eine Grenze: Beide Instanzen laufen im selben
 Betriebssystemprozess, Prozessabsturz und Netzwerkausfall sind nicht geprüft.
+
+**Nachtrag Release 1.15: Austrittskriterium erfüllt.** Tenant-, Ordering-, Drop-
+und Lasttests laufen gegen echtes PostgreSQL. Der Soak-Lauf betreibt einen
+laufenden Poller mit 100-ms-Intervall gegen einen anhaltenden Schreiber und
+stellt 120 Änderungen vollständig, in Reihenfolge und ohne Rückstau zu; die
+gemessene p95-Latenz lag bei 224 bis 333 ms.
+
+Release 1.11 ergänzte den dauerhaften Event-Log und den instanzübergreifenden
+Fan-out, 1.12 bis 1.14 die Postgres Changes mit RLS pro Abonnent samt Trigger-
+Zertifizierung, 1.15 den Betrieb als Dauerschleife und die Vermittlung je
+Projekt.
+
+Ausdrücklich festgehalten, ohne die Stufe offen zu halten: `changes:`-Kanäle
+sind in `workers/realtime-runtime.ts` **noch nicht betriebsbereit**. Registry,
+Quelle und Reader sind zertifiziert, aber die Runtime besitzt keinen Port, der
+je Scope eine Projektdatenbank auflöst; ein Abonnement bleibt dort leer. Der
+technische Production-Deny der Runtime bleibt ein Go-live-Gate der Stufe 2.0.
 
 ## Stufe 1.6 — Compute und Messaging
 

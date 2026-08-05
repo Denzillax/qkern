@@ -44,11 +44,23 @@ async function fixture(options: {
 
 describe("Project Queue worker", () => {
   it("renews a long-running lease, acknowledges once and emits only redacted telemetry", async () => {
+    // Der Handler wartet, bis zweimal erneuert wurde, statt eine feste Zeit zu
+    // schlafen. Mit fester Zeit haengt das Ergebnis daran, wie puenktlich Timer
+    // unter Last feuern: der Fall war unter voller Suite gelegentlich rot,
+    // isoliert immer gruen. Die geprueft Aussage bleibt dieselbe -- ein lang
+    // laufender Handler bekommt seine Lease wiederholt erneuert.
+    let renewals = () => 0;
     const built = await fixture({
-      timeoutMs: 120,
+      timeoutMs: 5_000,
       heartbeatMs: 10,
-      handler: { async handle() { await new Promise((resolve) => setTimeout(resolve, 35)); } },
+      handler: { async handle() {
+        const deadline = Date.now() + 3_000;
+        while (renewals() < 2 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+      } },
     });
+    renewals = () => built.worker.metrics.snapshot().renewals;
     await expect(built.worker.runOnce()).resolves.toMatchObject({
       status: "completed", messageId: built.receipt.id,
     });

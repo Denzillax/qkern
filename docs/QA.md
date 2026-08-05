@@ -408,3 +408,29 @@ zweimal reproduziert. Lokal 754 bestanden, 69 übersprungen, 0 fehlgeschlagen.
 Nicht ausgeführt und nicht als erbracht auszugeben: ein Soak-Lauf mit laufendem
 Poller, anhaltendem Schreiber und Messung von Durchsatz und p95-Latenz. Ein
 Testfall mit expliziten `drain`-Aufrufen misst die Zustelllatenz nicht.
+
+## Realtime in Betrieb — Release 1.15
+
+Sieben Tests decken die Poller-Dauerschleife ab: sofortiger Folgelauf bei
+gefundenen Änderungen, Leerlaufintervall nur wenn nichts zu tun war, längere
+Pause nach einem Fehler ohne Abbruch der Schleife, gemeinsamer Stopp, Ablehnung
+eines zweiten gleichzeitigen Laufs, Grenzen der Intervalle und sofortiges Wecken
+beim Shutdown statt Aussitzen der Wartezeit.
+
+Sieben weitere decken die Vermittlung je Projekt ab: Start je beobachtetem
+Scope, kein Poller ohne Abonnent, Idempotenz, Stopp beim letzten Abonnenten,
+Deduplizierung mehrfacher Scopes, lautes Scheitern an der Scope-Grenze statt
+stillem Auslassen, und vollständiger Stopp mit Warten auf die Schleifen.
+
+Der Soak-Lauf gegen echtes PostgreSQL betreibt einen laufenden Poller mit
+100-ms-Intervall gegen einen anhaltenden Schreiber. Hart geprüft werden
+Vollständigkeit, Reihenfolge und die Abwesenheit von Rückstau und Fehlern; die
+Latenzschranken prüfen Stillstandsfreiheit, kein Leistungsversprechen.
+
+Checkpoint `1.15.0` am 5. August 2026: **46 von 46** PostgreSQL-Fällen
+bestanden, Soak mit 120 Änderungen und p95 zwischen 224 und 333 ms. Lokal 770
+bestanden, 70 übersprungen, 0 fehlgeschlagen, dreimal in Folge stabil.
+
+Behoben wurde außerdem ein zeitabhängiger Test: `project-queue-worker` erwartete
+zwei Lease-Erneuerungen innerhalb einer festen Schlafdauer und fiel unter voller
+Suite gelegentlich aus. Der Handler wartet jetzt, bis zweimal erneuert wurde.
