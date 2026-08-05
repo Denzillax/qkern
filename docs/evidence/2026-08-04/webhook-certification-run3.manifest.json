@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17-webhooks",
+  "log": "webhook-certification-run3.log",
+  "commit": "f8e278c122cd865691295ba38637529e5269c0bf",
+  "commitSubject": "fix(tests): Nebenlaeufigkeitsfall braucht eine eigene Zeitgrenze",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 32,
+  "testFiles": "14 passed (14)",
+  "tests": "65 passed (65)",
+  "passed": 65,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

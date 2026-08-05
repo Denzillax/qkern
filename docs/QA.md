@@ -507,3 +507,24 @@ ein regelmaessig laufender Scheduler im Fenster bleibt.
 
 Checkpoint `1.18.0` am 5. August 2026: **57 von 57** PostgreSQL-Faellen
 bestanden, 31 Migrationen. Lokal 792 bestanden, 0 fehlgeschlagen.
+
+## Webhook-Outbox — Release 1.19
+
+Dreizehn lokale Tests decken Migration und Outbox ab: nur eine Vault-Referenz
+statt eines Geheimnisses, unveraenderliche Nutzlast, nicht rueckwaerts laufender
+Versuchszaehler, finale Abschluesse, das UPDATE-Recht samt Policy fuer die
+Sperrklausel, Tenant-Isolation auf allen Zugriffspfaden, serverberechnetes
+Backoff mit Obergrenze und Dead Letter an der Grenze der Definition.
+
+Acht Faelle laufen gegen echtes PostgreSQL: genau ein Gewinner bei sechs
+gleichzeitigen Claimants, nur der Verifier gespeichert, Abweisung eines fremden
+Workers und eines veralteten Tokens, serverbestimmte Wartezeit, Dead Letter,
+unveraenderliche Nutzlast, Endgueltigkeit eines Abschlusses und
+Cross-Tenant-Unsichtbarkeit.
+
+Checkpoint `1.19.0` am 5. August 2026: **65 von 65** PostgreSQL-Faellen
+bestanden, 32 Migrationen, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 805 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Functions-Sandbox, ein laufender Zustellprozess, ein
+Signer-Adapter gegen den Vault und API-Flaechen fuer Definitionen.

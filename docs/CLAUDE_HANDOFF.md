@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.18.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.19.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,13 +39,14 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.18.0`
-- Aktueller Slice: 1.18 Cron mit Persistenz und Scheduler — Catch-up-Fehler behoben
+- Paketversion: `1.19.0`
+- Aktueller Slice: 1.19 Webhook-Outbox — Persistenz, Lease, Backoff und Dead Letter zertifiziert
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0031_project_cron.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0032_project_webhooks.sql`
+- Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
 - Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
@@ -165,23 +166,25 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.19.0`: Webhook-Outbox und Functions-Sandbox, um Stufe 1.6 zu schliessen.
+`1.20.0`: Zustellprozesse und Flaechen. Cron und Webhooks sind persistiert und
+zertifiziert, aber beide sind Bibliotheken -- kein Prozess ruft sie auf, und es
+gibt weder API noch Console-Flaeche, um eine Definition anzulegen. Sie entstehen
+derzeit nur ueber direkten Datenbankzugriff.
 
-Cron ist seit 1.18 betriebsfaehig und zertifiziert. Es fehlen noch zwei der
-drei Compute-Bausteine, beide nur interne Vertragsports in
-`lib/server/compute/` ohne Laufzeit. Offene Adapter stehen in
+Konkret fehlen: eine `workers/`-Runtime, die `CronScheduler.run` und
+`WebhookOutbox.claim` plus `WebhookDeliverer.deliver` in Schleifen betreibt; ein
+Signer-Adapter gegen den Vault; und REST-Endpunkte samt Console fuer beide
+Definitionsarten.
+
+Das ist derselbe Punkt wie zweimal zuvor: gebaut und zertifiziert, aber niemand
+ruft es auf. Beim Anfassen eines Moduls lohnt die Frage, ob der Betrieb es
+ueberhaupt erreicht.
+
+Danach schliesst nur noch die **Functions-Sandbox** die Stufe 1.6. Sie ist der
+groesste verbleibende Brocken, weil sie echte Prozessisolation, Ressourcenlimits
+und Egress-Kontrolle verlangt -- und genau diese drei nennt das
+Austrittskriterium ausdruecklich. Offene Adapter stehen in
 `docs/COMPUTE_CONTRACTS.md`.
-
-Die Webhook-Outbox ist der naeherliegende Teil: Sie braucht Persistenz, einen
-Zustellprozess mit Retry und Dead Letter, und sie kann dieselben Muster nutzen,
-die bei Queues und Cron bereits zertifiziert sind. Die Functions-Sandbox ist der
-groessere Brocken, weil sie echte Prozessisolation und Egress-Kontrolle
-verlangt.
-
-Kleinere offene Punkte: Der `CronScheduler` ist eine Bibliothek, kein Prozess --
-keine `workers/`-Runtime ruft ihn auf. Cron-Definitionen entstehen derzeit nur
-ueber direkten Datenbankzugriff; es gibt weder API noch Console-Flaeche. Und
-weiterhin fehlt ein Scheduler fuer die beiden Realtime-`prune`-Pfade.
 
 ## Zwei Muster, die mehrfach aufgetreten sind
 
