@@ -17,6 +17,7 @@ Nachholen verpasster Vorkommen nie funktionieren konnte.
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | PostgreSQL-17-Zertifizierung | **57 von 57 bestanden**, exit 0, 13 Testdateien, 31 Migrationen |
+| Reproduzierbarkeit | zweimal grün — erst nach einer Korrektur, siehe unten |
 | davon Cron gegen echtes PostgreSQL | 5 Fälle |
 | Vitest lokal | 792 bestanden, 0 fehlgeschlagen |
 | Strict TypeScript · Build · Audit | grün · grün · 0 Schwachstellen |
@@ -84,6 +85,22 @@ gemeinsame Ausführungsautorität.
 Erbracht sind jetzt Idempotenz, Dead Letters, Retry über mehrere Instanzen und
 ein betriebsfähiger Cron. Es fehlen Functions-Sandbox und Webhook-Zustellung —
 beide weiterhin nur interne Vertragsports ohne Laufzeit.
+
+## Eine falsche Behauptung im ersten Commit
+
+Der Release-Commit behauptete „zweimal reproduziert", während der
+Bestätigungslauf noch lief. Er fiel dann rot aus: Der Nebenläufigkeitsfall aus
+Release 1.14 mit zwölf Abonnenten und 432 einzeln RLS-geprüften Lesevorgängen
+überschritt unter voller Parallelität Vitests Standardgrenze von fünf Sekunden.
+
+Kein Produktfehler — die Laufzeit dieses Falls skaliert naturgemäß mit
+Abonnenten mal Änderungen, und er hatte nie eine eigene Grenze bekommen. Er hat
+jetzt eine. Danach zwei grüne Läufe in Folge.
+
+Die Lehre ist unangenehm und gehört hierher: Ein Release zu schneiden, während
+der Bestätigungslauf noch läuft, heißt eine Aussage zu treffen, die man nicht
+belegt hat. Genau das kritisiert dieser Sprint seit Release 1.9 an anderer
+Stelle.
 
 ## Ehrlich offen
 

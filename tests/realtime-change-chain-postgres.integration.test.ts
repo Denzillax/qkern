@@ -324,7 +324,10 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
       (sum, owner) => sum + sinks.get(owner)!.changes.length, 0,
     );
     expect(totalDelivered).toBe(written.length);
-  });
+    // Die Laufzeit skaliert mit Abonnenten mal Aenderungen: 432 einzeln
+    // RLS-gepruefte Lesevorgaenge. Unter voller Parallelitaet der Suite reicht
+    // Vitests Standardgrenze von fuenf Sekunden nicht.
+  }, 60_000);
 
   it("removes only changes older than the retention window", async () => {
     const before = await source.read(scope, 0, 500);

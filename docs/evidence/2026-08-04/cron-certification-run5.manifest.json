@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17-cron",
+  "log": "cron-certification-run5.log",
+  "commit": "2b2bd7419dbc528cd1e164d99e5c98cc9bf66c1e",
+  "commitSubject": "release: 1.18.0 Cron mit Persistenz und Scheduler",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 31,
+  "testFiles": "13 passed (13)",
+  "tests": "57 passed (57)",
+  "passed": 57,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
