@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-sandbox",
+  "log": "functions-run2.log",
+  "commit": "8e065901acfbfc3e02c0f7951ddead807c34becd",
+  "commitSubject": "release: 1.21.0 Flaeche fuer Definitionen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "13 passed (13)",
+  "passed": 13,
+  "failed": 0,
+  "skipped": 0,
+  "images": []
+}

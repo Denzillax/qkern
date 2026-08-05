@@ -1,6 +1,6 @@
 {
   "name": "qkern-platform",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "private": true,
   "engines": {
     "node": ">=24.7.0"
@@ -42,7 +42,8 @@
     "publisher:incidents": "node --import tsx workers/incident-outbox-runtime.ts",
     "worker:compute": "node --import tsx workers/compute-runtime.ts",
     "test:auth:provider": "vitest run tests/project-auth-provider.integration.test.ts",
-    "test:auth:docker": "node scripts/auth-certification.mjs"
+    "test:auth:docker": "node scripts/auth-certification.mjs",
+    "test:functions:docker": "node scripts/functions-certification.mjs"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "5.3.0",

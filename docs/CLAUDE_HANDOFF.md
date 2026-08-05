@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.21.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.22.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.21.0`
-- Aktueller Slice: 1.21 Definitionsflaeche — REST und Console fuer Cron und Webhooks
+- Paketversion: `1.22.0`
+- Aktueller Slice: 1.22 Functions-Sandbox — `lib/server/compute/function-sandbox-docker.ts`
+- Vierter Zertifizierungslauf: `npm run test:functions:docker` (braucht Docker, keinen Compose-Stack)
+- Test-Image der Sandbox: `tests/support/function-sandbox/`
+- Vorheriger Slice: 1.21 Definitionsflaeche — REST und Console fuer Cron und Webhooks
 - Definitionsdienst: `lib/server/compute/definitions.ts` und `definitions-postgres-repository.ts`
 - Routen: `app/api/v1/projects/[projectId]/environments/[environment]/compute/`
 - Berechtigung: `project_compute_admin` (nur owner und administrator)
@@ -52,7 +55,7 @@ Release Notes bleiben unverändert.
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
-- Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
+- Vier Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0032_project_webhooks.sql`
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`

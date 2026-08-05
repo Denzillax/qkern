@@ -72,3 +72,15 @@ zufällig grün waren.
 Die Mutationsprobe ist inzwischen fester Bestandteil: Abgeschaltet wurden die
 Löschvorbedingung eines Webhooks und das Weglassen der Nutzlast im
 Zustellstatus. Genau die zwei zugehörigen Fälle fielen um, kein anderer.
+
+## Läufe zu Release 1.22 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/functions-run1.log` | Docker 29.5 | 13 von 13, exit 0 |
+| `2026-08-05/functions-run2.log` | Docker 29.5 | 13 von 13, exit 0, Wiederholung |
+| `2026-08-05/functions-mutation.log` | Docker 29.5 | **10 von 13, exit 1 — absichtlich** |
+
+Abgeschaltet wurden `--network none`, `--user` und die erzwungene
+Container-Entfernung nach einem Fehlschlag. Genau die drei zugehörigen Fälle
+fielen um, kein anderer.

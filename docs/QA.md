@@ -598,3 +598,41 @@ Lokal 866 bestanden, 0 fehlgeschlagen.
 Nicht erbracht: Functions-Sandbox, Vault-gestuetzter Signaturschluessel-Provider,
 SDK-/CLI-Anbindung der Definitionsflaeche, manuelles Ausloesen eines
 Cron-Vorkommens und Wiederholen einer toten Zustellung ueber die Flaeche.
+
+## Functions-Sandbox — Release 1.22
+
+Ein vierter Zertifizierungslauf kommt hinzu: `npm run test:functions:docker`. Er
+braucht keinen Compose-Stack, sondern die Container-Laufzeit selbst — geprueft
+wird, ob die Flags wirklich greifen.
+
+Dreizehn Faelle laufen gegen Docker: eine Function laeuft und liefert ein
+begrenztes Ergebnis, sie erhaelt Referenzen statt Geheimniswerten, die Umgebung
+dieses Prozesses erreicht den Container nicht (Canary), Egress ist verweigert,
+eine Definition mit erlaubten Origins wird abgewiesen statt geraten, der Prozess
+laeuft nicht als root, ein Schreibversuch ausserhalb von `/tmp` scheitert, die
+Speichergrenze greift, ein ueberzogener Timeout toetet den Aufruf **und**
+hinterlaesst keinen laufenden Container, eine zu grosse Antwort wird abgewiesen
+statt gepuffert, ein Tag als Image-Referenz wird abgewiesen, und die lokale
+Image-Id ist nur ueber einen ausdruecklichen Schalter erreichbar.
+
+Der erste Lauf war 12 von 12 gruen und trotzdem falsch. Beim Aufraeumen liess
+sich das Test-Image nicht loeschen: *image is being used by running container*.
+Die Sandbox toetete den Docker-Client, nicht den Container. Fuer den Aufrufer
+sah das aus wie ein sauberer Timeout, waehrend die Function unbegrenzt
+weiterlief. Der Fall war nur zu finden, weil der Aufraeumschritt fehlschlug und
+das gemeldet wurde; ein Lauf, der stillschweigend aufraeumt, haette es
+verschluckt.
+
+Mutationsprobe: `--network none` durch `bridge` ersetzt, `--user` entfernt, die
+Container-Entfernung abgeschaltet — genau die drei zugehoerigen Faelle fallen
+um, kein anderer. Protokoll:
+`docs/evidence/2026-08-05/functions-mutation.log`.
+
+Checkpoint `1.22.0` am 5. August 2026: **13 von 13** Sandbox-Faellen bestanden,
+zweimal reproduziert **vor** dem Release-Commit. Lokal 866 bestanden, 0
+fehlgeschlagen.
+
+Nicht erbracht: Egress-Proxy und damit jede erlaubte Ausgangsverbindung,
+Deployment-Weg fuer Function-Images, Aufruf-API, Durchsetzung von
+`maxConcurrency`, eigene Zertifizierung der CPU- und PID-Grenze und andere
+Container-Laufzeiten als Docker 29.5.

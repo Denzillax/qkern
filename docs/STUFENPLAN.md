@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit | Queues, Cron und Webhooks zertifiziert, in Betrieb und verwaltbar; Functions-Sandbox offen |
+| 1.6 | in Arbeit | Queues, Cron und Webhooks in Betrieb; Functions-Sandbox zertifiziert, aber ohne Aufrufweg |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |
@@ -252,11 +252,25 @@ Die Runtime-Rolle erhaelt `permission denied` fuer jede Aenderung jenseits des
 Aktivierungsflags. Die Unveraenderlichkeit traegt das Spaltenrecht, nicht der
 Dienst.
 
-Das Austrittskriterium bleibt **nicht erfuellt**: Es verlangt zusaetzlich
-Egress-Policy, Ressourcenlimits und Secret-Canary-Tests ohne gemeinsame
-Ausfuehrungsautoritaet. Erbracht sind Idempotenz, Dead Letters, Retry, Betrieb
-und Verwaltung; es fehlt die **Functions-Sandbox**, die als einzige die drei
-verbleibenden Teile traegt.
+**Nachtrag Release 1.22.** Die Functions-Sandbox existiert und ist gegen eine
+echte Container-Laufzeit zertifiziert: kein Egress, kein Schreibzugriff
+ausserhalb eines `noexec`-tmpfs, nicht root, harte Speichergrenze, keine
+Weitergabe der Prozessumgebung (Canary) und ein Timeout, der den Container
+wirklich beendet. Dreizehn Faelle, zweimal reproduziert, plus Mutationsprobe.
+
+Dabei kam ein Fehler zutage, den nur die echte Laufzeit zeigt: Die Sandbox
+toetete den Docker-Client, nicht den Container. Der Aufrufer sah einen sauberen
+Timeout, waehrend die Function unbegrenzt weiterlief.
+
+**Das Austrittskriterium bleibt trotzdem nicht erfuellt — bewusst.** Die drei
+darin genannten Eigenschaften sind jetzt belegt, aber Functions haben weder
+einen Deployment-Weg noch eine Aufruf-API noch eine erlaubte
+Ausgangsverbindung. Die Sandbox ist eine Bibliothek, die niemand aufruft.
+
+Genau dieses Muster hat der Sprint dreimal gefunden — beim Realtime-Poller, beim
+dauerhaften Event-Log und bei der Webhook-Outbox. Eine Stufe auf einer
+Komponente zu schliessen, die der Betrieb nicht erreicht, waere derselbe Fehler
+mit einem Haekchen darunter.
 
 ## Stufe 1.7 — Developer Experience
 

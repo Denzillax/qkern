@@ -17,8 +17,23 @@ Secrets erscheinen nur als Referenzen. Der Sandbox-Port erhält keine von QKERN
 aufgelösten Secret-Werte. Input ist auf 64 KiB, Output auf 256 KiB sowie Tiefe und
 Knoten begrenzt. Response-Header sind klein, CRLF-frei und schließen Cookie- und
 Hop-by-Hop-Header aus. Timeout und Abort werden außerhalb der Sandbox erzwungen.
-Ein Production-Adapter muss zusätzlich DNS-Pinning, NetworkPolicy, Read-only-
-Filesystem, Non-root, CPU-Limits, Ephemeral-Disk-Limit und Kill-Evidenz liefern.
+
+Seit `1.22.0` gibt es mit `DockerFunctionSandbox` einen Adapter. Er setzt
+`--network none`, `--read-only` mit einem `noexec`-tmpfs, einen Nicht-root-
+Benutzer, `--cap-drop ALL`, `no-new-privileges`, `--memory` gleich
+`--memory-swap`, eine CPU- und eine PID-Grenze — und **kein** `--env`, damit die
+Umgebung dieser Runtime den Container nicht erreicht.
+
+Eine Definition mit erlaubten Egress-Origins wird **abgewiesen**: Ohne
+Egress-Proxy gäbe es nur alles oder nichts, und „alles" wäre keine Policy.
+
+Ein überzogener Timeout beendet den Container hart. Den Docker-Client zu töten
+genügt nicht — das war der Produktfehler, den der erste Zertifizierungslauf
+aufdeckte.
+
+Ein Production-Adapter muss zusätzlich DNS-Pinning, einen Egress-Proxy für die
+erlaubten Origins, ein Ephemeral-Disk-Limit und Kill-Evidenz liefern. Es gibt
+weiterhin keinen Deployment-Weg für Function-Images und keine Aufruf-API.
 
 ## Webhooks
 

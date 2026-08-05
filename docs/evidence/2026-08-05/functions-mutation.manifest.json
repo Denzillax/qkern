@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-sandbox-mutation",
+  "log": "functions-mutation.log",
+  "commit": "8e065901acfbfc3e02c0f7951ddead807c34becd",
+  "commitSubject": "release: 1.21.0 Flaeche fuer Definitionen",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "3 failed | 10 passed (13)",
+  "passed": 10,
+  "failed": 3,
+  "skipped": 0,
+  "images": []
+}

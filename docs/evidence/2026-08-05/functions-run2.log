@@ -1,0 +1,12 @@
+Docker-Server 29.5.3
+Test-Image sha256:87ceb25940a1056967a9a9c2ab443252f8be0456fcf4f83a7ffa8ceaffa9c727
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+   Start at  21:32:06
+   Duration  15.29s (transform 38ms, setup 0ms, import 56ms, tests 15.08s, environment 0ms)
+
+EXIT=0
