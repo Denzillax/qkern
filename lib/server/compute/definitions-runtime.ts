@@ -8,6 +8,9 @@ import {
 } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
+import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
+import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
+import { FunctionInvoker } from "@/lib/server/compute/functions";
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
@@ -51,12 +54,45 @@ export function createComputeDefinitionServiceFromEnv(
   });
 }
 
+/**
+ * Aufrufweg für Functions.
+ *
+ * Getrennt freizuschalten: Definitionen zu verwalten ist eine
+ * Verwaltungsentscheidung, fremden Code auszuführen eine ganz andere. Ohne
+ * Container-Laufzeit soll die Verwaltungsfläche trotzdem benutzbar bleiben.
+ */
+export function createFunctionInvocationServiceFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  if (env.QKERN_FUNCTIONS_ENABLED !== "true") {
+    throw new ConfigurationError("Set QKERN_FUNCTIONS_ENABLED=true explicitly.");
+  }
+  if (runtimeModeFromEnv(env) !== "postgres") {
+    throw new ConfigurationError("Function invocation requires the PostgreSQL runtime mode.");
+  }
+  return new FunctionInvocationService({
+    repository: new PostgresComputeDefinitionRepository(
+      new PostgresControlPlane(getPostgresPool(env)),
+    ),
+    invoker: new FunctionInvoker(new DockerFunctionSandbox({
+      docker: env.QKERN_FUNCTIONS_CONTAINER_RUNTIME?.trim() || "docker",
+    })),
+  });
+}
+
 type GlobalComputeDefinitions = typeof globalThis & {
   __qkernComputeDefinitionService?: ComputeDefinitionService;
+  __qkernFunctionInvocationService?: FunctionInvocationService;
 };
 
 export function getComputeDefinitionService() {
   const runtime = globalThis as GlobalComputeDefinitions;
   runtime.__qkernComputeDefinitionService ??= createComputeDefinitionServiceFromEnv();
   return runtime.__qkernComputeDefinitionService;
+}
+
+export function getFunctionInvocationService() {
+  const runtime = globalThis as GlobalComputeDefinitions;
+  runtime.__qkernFunctionInvocationService ??= createFunctionInvocationServiceFromEnv();
+  return runtime.__qkernFunctionInvocationService;
 }

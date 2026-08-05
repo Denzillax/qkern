@@ -1,0 +1,18 @@
+{
+  "stack": "postgres-17-project-functions-mutation",
+  "log": "compute-functions-mutation.log",
+  "commit": "f719bf4dfb4b2ce9935a10ec00536d4f1cf64b3f",
+  "commitSubject": "release: 1.22.0 Functions-Sandbox",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 33,
+  "testFiles": "1 failed | 16 passed (17)",
+  "tests": "2 failed | 83 passed (85)",
+  "passed": 83,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -31,9 +31,20 @@ Ein überzogener Timeout beendet den Container hart. Den Docker-Client zu töten
 genügt nicht — das war der Produktfehler, den der erste Zertifizierungslauf
 aufdeckte.
 
+Seit `1.23.0` gibt es Migration 0033 als Ort für Definitionen und
+`POST /v1/projects/{projectId}/environments/{environment}/compute/invoke/{name}`
+als Aufrufweg. Aufrufen darf ein **Service**-Projektschlüssel oder ein
+Administrator; es gibt bewusst keinen anonymen und keinen Endnutzer-Pfad und
+keine CORS-Freigabe, weil eine Function mit der Autorität des Projekts läuft und
+nicht mit der ihres Aufrufers.
+
+Die Definition wird bei jedem Aufruf frisch gelesen. Ein zwischengespeichertes
+Bild liefe nach einem Abschalten weiter.
+
 Ein Production-Adapter muss zusätzlich DNS-Pinning, einen Egress-Proxy für die
 erlaubten Origins, ein Ephemeral-Disk-Limit und Kill-Evidenz liefern. Es gibt
-weiterhin keinen Deployment-Weg für Function-Images und keine Aufruf-API.
+weiterhin keinen Deployment-Weg für Function-Images, `maxConcurrency` wird nicht
+durchgesetzt, und eine Policy je Function für anonyme Aufrufe fehlt.
 
 ## Webhooks
 

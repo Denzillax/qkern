@@ -636,3 +636,39 @@ Nicht erbracht: Egress-Proxy und damit jede erlaubte Ausgangsverbindung,
 Deployment-Weg fuer Function-Images, Aufruf-API, Durchsetzung von
 `maxConcurrency`, eigene Zertifizierung der CPU- und PID-Grenze und andere
 Container-Laufzeiten als Docker 29.5.
+
+## Functions aufrufbar — Release 1.23
+
+Migration 0033 legt `project_functions` an. Sechs lokale Tests binden ihren
+Vertrag: nur Referenzen statt Geheimnissen, Bild an einen Inhaltsdigest
+gebunden, alles ausser dem Aktivierungsflag unveraenderlich, kein
+Spaltenrecht auf `image`, Tenant-Isolation auf allen Zugriffspfaden und
+dieselben Ressourcengrenzen wie im Validator.
+
+Vierzehn weitere lokale Tests decken Dienst und Aufrufweg ab: eine Definition,
+die der Aufruf ebenfalls akzeptiert, Abweisung genau dessen was
+`validateFunctionDefinition` abweist, Aufloesen bei jedem Aufruf statt
+Zwischenspeichern, Abweisung anonymer und Endnutzer-Aufrufe, fremde Organisation
+unsichtbar, missgebildeter Name ohne Datenbankzugriff, Fehlerabbildung auf
+404/422/502/504 und keine Container- oder Datenbankmeldung in einer Antwort.
+
+Sieben Faelle laufen gegen echtes PostgreSQL: anlegen, auflisten und pausieren
+ueber die unprivilegierte Runtime-Rolle, **`permission denied` fuer jede
+Aenderung jenseits des Aktivierungsflags**, ein Tag als Bild vom Spalten-Check
+abgewiesen, Namenskonflikt als 409, Aufloesen einer aktiven und Nicht-Aufloesen
+einer pausierten Function, Cross-Tenant-Unsichtbarkeit und Loeschen.
+
+Mutationsprobe: Digest-Bindung aus dem Spalten-Check entfernt und das
+UPDATE-Recht auf `image` und `memory_mib` erweitert — genau die zwei
+zugehoerigen Faelle fallen um, kein anderer. Protokoll:
+`docs/evidence/2026-08-05/compute-functions-mutation.log`.
+
+Checkpoint `1.23.0` am 5. August 2026: **85 von 85** PostgreSQL-Faellen
+bestanden, 33 Migrationen, zweimal reproduziert **vor** dem Release-Commit,
+dazu 13 von 13 Sandbox-Faellen. Lokal 886 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: die volle Kette Datenbank → HTTP → Container in **einem** Lauf.
+Die Definitionen laufen im PostgreSQL-Stack, die Sandbox gegen Docker auf dem
+Host; beide Haelften sind belegt, die Naht dazwischen nicht. Ebenfalls offen:
+Egress-Proxy, Image-Deployment, Durchsetzung von `maxConcurrency` und eine
+Policy je Function fuer anonyme oder Endnutzer-Aufrufe.

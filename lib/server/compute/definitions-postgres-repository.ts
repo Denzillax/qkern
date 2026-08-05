@@ -6,6 +6,7 @@ import {
   type ComputeDefinitionRepository,
   type ComputeDefinitionScope,
   type CronDefinitionRecord,
+  type FunctionDefinitionRecord,
   type WebhookDefinitionRecord,
   type WebhookDeliveryRecord,
 } from "@/lib/server/compute/definitions";
@@ -32,8 +33,18 @@ type DeliveryRow = {
   available_at: Date; delivered_at: Date | null; dead_lettered_at: Date | null;
 };
 
+type FunctionRow = {
+  id: string; organization_id: string; project_id: string; environment: Environment;
+  name: string; runtime: "nodejs24"; image: string; entrypoint: string;
+  timeout_ms: number; memory_mib: number; max_concurrency: number;
+  egress_origins: string[]; secret_refs: string[]; enabled: boolean; created_at: Date;
+};
+
 const CRON_COLUMNS = `id, organization_id, project_id, environment, name, expression, queue,
   payload, enabled, last_dispatched_at, created_at`;
+const FUNCTION_COLUMNS = `id, organization_id, project_id, environment, name, runtime, image,
+  entrypoint, timeout_ms, memory_mib, max_concurrency, egress_origins, secret_refs, enabled,
+  created_at`;
 const WEBHOOK_COLUMNS = `id, organization_id, project_id, environment, name, url, event_types,
   signing_secret_ref, timeout_ms, max_attempts, enabled, created_at`;
 
@@ -195,6 +206,87 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
     });
   }
 
+  async listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
+    return await this.read(principal, async (database) => {
+      const result = await database.query<FunctionRow>(
+        `SELECT ${FUNCTION_COLUMNS} FROM project_functions
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          ORDER BY name`, scopeValues(scope),
+      );
+      return result.rows.map(toFunction);
+    });
+  }
+
+  async createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
+    name: string; image: string; entrypoint: string; timeoutMs: number; memoryMiB: number;
+    maxConcurrency: number; egressOrigins: readonly string[]; secretRefs: readonly string[];
+    enabled: boolean;
+  }) {
+    return await asConflict(this.write(principal, async (database) => {
+      const result = await database.query<FunctionRow>(
+        `INSERT INTO project_functions
+           (organization_id, project_id, environment, name, runtime, image, entrypoint,
+            timeout_ms, memory_mib, max_concurrency, egress_origins, secret_refs, enabled)
+         VALUES ($1,$2,$3,$4,'nodejs24',$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING ${FUNCTION_COLUMNS}`,
+        [...scopeValues(scope), input.name, input.image, input.entrypoint, input.timeoutMs,
+          input.memoryMiB, input.maxConcurrency, [...input.egressOrigins],
+          [...input.secretRefs], input.enabled],
+      );
+      const row = result.rows[0];
+      if (!row) throw new ComputeDefinitionError("COMPUTE_CONFLICT");
+      return toFunction(row);
+    }));
+  }
+
+  async getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {
+    return await this.read(principal, async (database) => {
+      const result = await database.query<FunctionRow>(
+        `SELECT ${FUNCTION_COLUMNS} FROM project_functions
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4`,
+        [...scopeValues(scope), id],
+      );
+      return result.rows[0] ? toFunction(result.rows[0]) : null;
+    });
+  }
+
+  /** Nur aktive Definitionen: Ein abgeschalteter Name ist kein Ziel. */
+  async findFunctionByName(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    name: string) {
+    return await this.read(principal, async (database) => {
+      const result = await database.query<FunctionRow>(
+        `SELECT ${FUNCTION_COLUMNS} FROM project_functions
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND name=$4 AND enabled`,
+        [...scopeValues(scope), name],
+      );
+      return result.rows[0] ? toFunction(result.rows[0]) : null;
+    });
+  }
+
+  async setFunctionEnabled(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, enabled: boolean) {
+    return await this.write(principal, async (database) => {
+      const result = await database.query<FunctionRow>(
+        `UPDATE project_functions SET enabled=$5
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          RETURNING ${FUNCTION_COLUMNS}`,
+        [...scopeValues(scope), id, enabled],
+      );
+      return result.rows[0] ? toFunction(result.rows[0]) : null;
+    });
+  }
+
+  async deleteFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {
+    return await this.write(principal, async (database) => {
+      const result = await database.query<{ id: string }>(
+        `DELETE FROM project_functions
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          RETURNING id`, [...scopeValues(scope), id],
+      );
+      return result.rows.length === 1;
+    });
+  }
+
   private read<T>(principal: ProjectQueuePrincipal, work: (database: SqlQueryable) => Promise<T>) {
     return this.withTenant(principal, true, work);
   }
@@ -265,6 +357,26 @@ function toWebhook(row: WebhookRow): WebhookDefinitionRecord {
     signingSecretRef: row.signing_secret_ref,
     timeoutMs: row.timeout_ms,
     maxAttempts: row.max_attempts,
+    enabled: row.enabled,
+    createdAt: new Date(row.created_at).toISOString(),
+  });
+}
+
+function toFunction(row: FunctionRow): FunctionDefinitionRecord {
+  return Object.freeze({
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    environment: row.environment,
+    id: row.id,
+    name: row.name,
+    runtime: row.runtime,
+    image: row.image,
+    entrypoint: row.entrypoint,
+    timeoutMs: row.timeout_ms,
+    memoryMiB: row.memory_mib,
+    maxConcurrency: row.max_concurrency,
+    egressOrigins: Object.freeze([...row.egress_origins]),
+    secretRefs: Object.freeze([...row.secret_refs]),
     enabled: row.enabled,
     createdAt: new Date(row.created_at).toISOString(),
   });

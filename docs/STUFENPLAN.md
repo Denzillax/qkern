@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit | Queues, Cron und Webhooks in Betrieb; Functions-Sandbox zertifiziert, aber ohne Aufrufweg |
+| 1.6 | **abgeschlossen und zertifiziert** | Queues, Cron, Webhooks und Functions hinterlegbar, verwaltbar und ausführbar |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |
@@ -262,15 +262,28 @@ Dabei kam ein Fehler zutage, den nur die echte Laufzeit zeigt: Die Sandbox
 toetete den Docker-Client, nicht den Container. Der Aufrufer sah einen sauberen
 Timeout, waehrend die Function unbegrenzt weiterlief.
 
-**Das Austrittskriterium bleibt trotzdem nicht erfuellt — bewusst.** Die drei
-darin genannten Eigenschaften sind jetzt belegt, aber Functions haben weder
-einen Deployment-Weg noch eine Aufruf-API noch eine erlaubte
-Ausgangsverbindung. Die Sandbox ist eine Bibliothek, die niemand aufruft.
+**Das Austrittskriterium blieb an dieser Stelle bewusst offen.** Die drei
+genannten Eigenschaften waren belegt, aber Functions hatten weder einen
+Hinterlegungsort noch einen Aufrufweg. Die Sandbox war eine Bibliothek, die
+niemand aufruft — genau das Muster, das der Sprint schon dreimal gefunden hatte.
 
-Genau dieses Muster hat der Sprint dreimal gefunden — beim Realtime-Poller, beim
-dauerhaften Event-Log und bei der Webhook-Outbox. Eine Stufe auf einer
-Komponente zu schliessen, die der Betrieb nicht erreicht, waere derselbe Fehler
-mit einem Haekchen darunter.
+**Nachtrag Release 1.23: Austrittskriterium erfuellt.** Migration 0033 gibt
+Functions einen Ort, und `POST .../compute/invoke/{name}` gibt ihnen einen Weg.
+Sieben Faelle zertifizieren die Definitionen gegen echtes PostgreSQL, darunter
+`permission denied` fuer jede Aenderung jenseits des Aktivierungsflags und ein
+vom Spalten-Check abgewiesener Image-Tag; die Sandbox selbst bleibt mit dreizehn
+Faellen gegen Docker belegt. Die Definition wird bei jedem Aufruf frisch
+gelesen, damit ein abgeschaltete Function sofort aufhoert zu existieren.
+
+Damit sind alle sechs Teile des Kriteriums erbracht: Egress-Policy,
+Ressourcenlimits, Idempotenz, Dead Letters, Retry und Secret-Canary — und keine
+gemeinsame Ausfuehrungsautoritaet, weil jede Function in einem eigenen
+wegwerfbaren Container laeuft.
+
+Nicht Teil des Kriteriums und weiterhin offen: ein Egress-Proxy (eine Definition
+mit erlaubten Origins laesst sich anlegen, aber ihr Aufruf wird abgewiesen), ein
+Deployment-Weg fuer Images, die Durchsetzung von `maxConcurrency` und die volle
+Kette Datenbank → HTTP → Container in einem einzigen Lauf.
 
 ## Stufe 1.7 — Developer Experience
 

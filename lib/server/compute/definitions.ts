@@ -1,4 +1,5 @@
 import { nextCronOccurrence } from "@/lib/server/compute/cron";
+import { validateFunctionDefinition } from "@/lib/server/compute/functions";
 import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import type { Environment } from "@/lib/types";
@@ -28,6 +29,21 @@ export type WebhookDefinitionRecord = ComputeDefinitionScope & Readonly<{
   signingSecretRef: string;
   timeoutMs: number;
   maxAttempts: number;
+  enabled: boolean;
+  createdAt: string;
+}>;
+
+export type FunctionDefinitionRecord = ComputeDefinitionScope & Readonly<{
+  id: string;
+  name: string;
+  runtime: "nodejs24";
+  image: string;
+  entrypoint: string;
+  timeoutMs: number;
+  memoryMiB: number;
+  maxConcurrency: number;
+  egressOrigins: readonly string[];
+  secretRefs: readonly string[];
   enabled: boolean;
   createdAt: string;
 }>;
@@ -76,6 +92,18 @@ export type WebhookDefinitionInput = {
   enabled?: boolean;
 };
 
+export type FunctionDefinitionInput = {
+  name: string;
+  image: string;
+  entrypoint: string;
+  timeoutMs?: number;
+  memoryMiB?: number;
+  maxConcurrency?: number;
+  egressOrigins?: readonly string[];
+  secretRefs?: readonly string[];
+  enabled?: boolean;
+};
+
 export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -100,6 +128,23 @@ export interface ComputeDefinitionRepository {
   deleteWebhook(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string): Promise<boolean>;
   listDeliveries(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, webhookId: string,
     limit: number): Promise<WebhookDeliveryRecord[]>;
+
+  listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
+    Promise<FunctionDefinitionRecord[]>;
+  createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
+    name: string; image: string; entrypoint: string; timeoutMs: number; memoryMiB: number;
+    maxConcurrency: number; egressOrigins: readonly string[]; secretRefs: readonly string[];
+    enabled: boolean;
+  }): Promise<FunctionDefinitionRecord>;
+  getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string):
+    Promise<FunctionDefinitionRecord | null>;
+  /** Aktive Definition zu einem Namen — der Weg, den ein Aufruf nimmt. */
+  findFunctionByName(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, name: string):
+    Promise<FunctionDefinitionRecord | null>;
+  setFunctionEnabled(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string,
+    enabled: boolean): Promise<FunctionDefinitionRecord | null>;
+  deleteFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string):
+    Promise<boolean>;
 }
 
 export interface ComputeQueueDirectory {
@@ -117,6 +162,7 @@ export type ComputeDefinitionServiceOptions = {
   queues?: ComputeQueueDirectory;
   maxCronPerScope?: number;
   maxWebhooksPerScope?: number;
+  maxFunctionsPerScope?: number;
   maxPayloadBytes?: number;
 };
 
@@ -142,11 +188,13 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class ComputeDefinitionService {
   private readonly maxCron: number;
   private readonly maxWebhooks: number;
+  private readonly maxFunctions: number;
   private readonly maxPayloadBytes: number;
 
   constructor(private readonly options: ComputeDefinitionServiceOptions) {
     this.maxCron = bounded(options.maxCronPerScope ?? 50, 1, 500);
     this.maxWebhooks = bounded(options.maxWebhooksPerScope ?? 50, 1, 500);
+    this.maxFunctions = bounded(options.maxFunctionsPerScope ?? 50, 1, 500);
     this.maxPayloadBytes = bounded(options.maxPayloadBytes ?? 64 * 1024, 256, 64 * 1024);
   }
 
@@ -284,6 +332,82 @@ export class ComputeDefinitionService {
       throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
     }
     return await this.options.repository.listDeliveries(principal, scope, webhookId, bound);
+  }
+
+  async listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
+    this.assertScope(principal, scope);
+    return await this.options.repository.listFunctions(principal, scope);
+  }
+
+  /**
+   * Legt eine Function an.
+   *
+   * Die Form prüft `validateFunctionDefinition` — derselbe Validator, den der
+   * Aufruf anwendet. Eine Definition, die der Betrieb später abweisen würde,
+   * darf gar nicht erst entstehen; dieselbe Regel gilt seit Release 1.21 schon
+   * für Cron-Ausdrücke und Webhook-Ziele.
+   */
+  async createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    input: FunctionDefinitionInput): Promise<FunctionDefinitionRecord> {
+    this.assertScope(principal, scope);
+    const candidate = {
+      ...scope,
+      id: "00000000-0000-4000-8000-000000000000",
+      name: input.name,
+      runtime: "nodejs24" as const,
+      image: input.image,
+      entrypoint: input.entrypoint,
+      timeoutMs: input.timeoutMs ?? 30_000,
+      memoryMiB: input.memoryMiB ?? 128,
+      maxConcurrency: input.maxConcurrency ?? 1,
+      egressOrigins: [...new Set(input.egressOrigins ?? [])],
+      secretRefs: [...new Set(input.secretRefs ?? [])],
+    };
+    try {
+      validateFunctionDefinition(candidate);
+    } catch (cause) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT", { cause });
+    }
+
+    const existing = await this.options.repository.listFunctions(principal, scope);
+    if (existing.length >= this.maxFunctions) throw new ComputeDefinitionError("COMPUTE_CONFLICT");
+
+    return await this.options.repository.createFunction(principal, scope, {
+      name: candidate.name,
+      image: candidate.image,
+      entrypoint: candidate.entrypoint,
+      timeoutMs: candidate.timeoutMs,
+      memoryMiB: candidate.memoryMiB,
+      maxConcurrency: candidate.maxConcurrency,
+      egressOrigins: candidate.egressOrigins,
+      secretRefs: candidate.secretRefs,
+      enabled: input.enabled ?? true,
+    });
+  }
+
+  async getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    const record = await this.options.repository.getFunction(principal, scope, id);
+    if (!record) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return record;
+  }
+
+  async setFunctionEnabled(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, enabled: boolean) {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    const record = await this.options.repository.setFunctionEnabled(principal, scope, id, enabled);
+    if (!record) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return record;
+  }
+
+  async deleteFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    if (!await this.options.repository.deleteFunction(principal, scope, id)) {
+      throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    }
   }
 
   /**

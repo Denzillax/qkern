@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConfigurationError } from "@/lib/server/db/errors";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { ComputeDefinitionError } from "@/lib/server/compute/definitions";
+import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
 import {
   asControlPlaneContext,
   authenticatedContext,
@@ -13,7 +14,8 @@ import type { Environment } from "@/lib/types";
 
 export type ComputeDefinitionRouteContext = {
   params: Promise<{
-    projectId: string; environment: string; cronId?: string; webhookId?: string;
+    projectId: string; environment: string;
+    cronId?: string; webhookId?: string; functionId?: string; name?: string;
   }>;
 };
 
@@ -50,6 +52,46 @@ export async function adminComputeContext(
     scope: { organizationId, projectId: raw.projectId, environment: raw.environment as Environment },
     raw,
   };
+}
+
+/**
+ * Aufrufkontext einer Function.
+ *
+ * Zwei Wege, bewusst nur zwei: ein **Service**-Projektschlüssel für einen
+ * vertrauenswürdigen Backend-Aufrufer, oder eine Administratorsitzung für den
+ * Testlauf aus der Console. Kein anonymer und kein Endnutzer-Aufruf — eine
+ * Function läuft mit der Autorität des Projekts, nicht mit der ihres Aufrufers,
+ * und eine Policy je Function, die das sicher unterscheiden könnte, gibt es
+ * noch nicht.
+ */
+export async function functionInvocationContext(
+  request: NextRequest,
+  routeContext: ComputeDefinitionRouteContext,
+) {
+  const raw = await routeContext.params;
+  if (!/^[A-Za-z0-9._:-]{3,128}$/.test(raw.projectId) ||
+      !["development", "staging", "production"].includes(raw.environment)) {
+    throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+  }
+  const scope = {
+    projectId: raw.projectId, environment: raw.environment as Environment,
+  };
+
+  const application = await projectApplicationPrincipal(request, scope);
+  if (application) {
+    if (application.role !== "service_role") throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return {
+      principal: {
+        organizationId: application.organizationId,
+        actorRef: application.actorRef,
+        role: "service_role" as const,
+        subject: application.subject,
+      },
+      scope: { organizationId: application.organizationId, ...scope },
+      raw,
+    };
+  }
+  return await adminComputeContext(request, routeContext);
 }
 
 export function computeNoStore(data: unknown, status = 200) {

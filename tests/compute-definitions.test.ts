@@ -5,6 +5,7 @@ import {
   type ComputeDefinitionRepository,
   type ComputeDefinitionScope,
   type CronDefinitionRecord,
+  type FunctionDefinitionRecord,
   type WebhookDefinitionRecord,
 } from "@/lib/server/compute/definitions";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
@@ -37,14 +38,31 @@ function webhookRecord(overrides: Partial<WebhookDefinitionRecord> = {}): Webhoo
   });
 }
 
+const functionId = "33333333-3333-4333-8333-333333333333";
+const pinnedImage =
+  "registry.example.com/qkern/probe@sha256:" + "a".repeat(64);
+
+function functionRecord(
+  overrides: Partial<FunctionDefinitionRecord> = {},
+): FunctionDefinitionRecord {
+  return Object.freeze({
+    ...scope, id: functionId, name: "resize-image", runtime: "nodejs24" as const,
+    image: pinnedImage, entrypoint: "handler.mjs", timeoutMs: 30_000, memoryMiB: 128,
+    maxConcurrency: 1, egressOrigins: Object.freeze([]), secretRefs: Object.freeze([]),
+    enabled: true, createdAt: "2026-08-05T00:00:00.000Z", ...overrides,
+  });
+}
+
 function harness(options: {
   cron?: CronDefinitionRecord[];
   webhooks?: WebhookDefinitionRecord[];
+  functions?: FunctionDefinitionRecord[];
   queues?: string[];
 } = {}) {
   const calls: Array<{ method: string; payload?: unknown }> = [];
   const cron = options.cron ?? [];
   const webhooks = options.webhooks ?? [];
+  const functions = options.functions ?? [];
 
   const repository: ComputeDefinitionRepository = {
     async listCron() { return cron; },
@@ -80,6 +98,26 @@ function harness(options: {
       return webhooks.some((entry) => entry.id === id);
     },
     async listDeliveries() { return []; },
+    async listFunctions() { return functions; },
+    async createFunction(_principal, _scope, input) {
+      calls.push({ method: "createFunction", payload: input });
+      return functionRecord(input);
+    },
+    async getFunction(_principal, _scope, id) {
+      return functions.find((entry) => entry.id === id) ?? null;
+    },
+    async findFunctionByName(_principal, _scope, name) {
+      return functions.find((entry) => entry.name === name && entry.enabled) ?? null;
+    },
+    async setFunctionEnabled(_principal, _scope, id, enabled) {
+      calls.push({ method: "setFunctionEnabled", payload: { id, enabled } });
+      const found = functions.find((entry) => entry.id === id);
+      return found ? functionRecord({ ...found, enabled }) : null;
+    },
+    async deleteFunction(_principal, _scope, id) {
+      calls.push({ method: "deleteFunction", payload: id });
+      return functions.some((entry) => entry.id === id);
+    },
   };
 
   const service = new ComputeDefinitionService({
@@ -222,6 +260,54 @@ describe("ComputeDefinitionService — webhooks", () => {
     const { service } = harness({ webhooks: [webhookRecord()] });
     await expect(service.listDeliveries(admin, scope, webhookId, 5_000))
       .rejects.toBeInstanceOf(ComputeDefinitionError);
+  });
+});
+
+describe("ComputeDefinitionService — functions", () => {
+  it("creates a definition the invoker would also accept", async () => {
+    const { service, calls } = harness();
+    await service.createFunction(admin, scope, {
+      name: "resize-image", image: pinnedImage, entrypoint: "handler.mjs",
+    });
+    expect(calls[0]?.payload).toMatchObject({
+      image: pinnedImage, timeoutMs: 30_000, memoryMiB: 128, maxConcurrency: 1,
+    });
+  });
+
+  it("refuses exactly what validateFunctionDefinition refuses", async () => {
+    // Derselbe Validator, den der Aufruf anwendet. Eine Definition, die der
+    // Betrieb spaeter abweist, darf gar nicht erst entstehen.
+    const { service } = harness();
+    const base = { name: "resize-image", image: pinnedImage, entrypoint: "handler.mjs" };
+    for (const override of [
+      { image: "registry.example.com/qkern/probe:latest" },
+      { memoryMiB: 8 },
+      { timeoutMs: 10 },
+      { maxConcurrency: 500 },
+      { egressOrigins: ["http://api.example.com"] },
+      { egressOrigins: ["https://127.0.0.1"] },
+      { secretRefs: ["!"] },
+      { entrypoint: "../escape" },
+    ]) {
+      await expect(service.createFunction(admin, scope, { ...base, ...override }))
+        .rejects.toBeInstanceOf(ComputeDefinitionError);
+    }
+  });
+
+  it("enables and disables without touching anything else", async () => {
+    const { service, calls } = harness({ functions: [functionRecord()] });
+    const updated = await service.setFunctionEnabled(admin, scope, functionId, false);
+    expect(updated.enabled).toBe(false);
+    expect(updated.image).toBe(pinnedImage);
+    expect(calls[0]).toEqual({
+      method: "setFunctionEnabled", payload: { id: functionId, enabled: false },
+    });
+  });
+
+  it("reports an unknown function as not found", async () => {
+    const { service } = harness();
+    await expect(service.getFunction(admin, scope, functionId))
+      .rejects.toMatchObject({ code: "COMPUTE_NOT_FOUND" });
   });
 });
 

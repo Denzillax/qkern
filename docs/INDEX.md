@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.22.md](RELEASE_1.22.md) | Aktueller Release: Functions-Sandbox |
+| [RELEASE_1.23.md](RELEASE_1.23.md) | Aktueller Release: Functions aufrufbar |
+| [RELEASE_1.22.md](RELEASE_1.22.md) | Historischer Release: Functions-Sandbox |
 | [RELEASE_1.21.md](RELEASE_1.21.md) | Historischer Release: Fläche für Definitionen |
 | [RELEASE_1.20.md](RELEASE_1.20.md) | Historischer Release: Zustellprozess |
 | [RELEASE_1.19.md](RELEASE_1.19.md) | Historischer Release: Webhook-Outbox |

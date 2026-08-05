@@ -68,7 +68,7 @@ const nav: { id: ViewId; label: string; icon: typeof Database; badge?: string }[
   { id: "sql", label: "SQL Editor", icon: Terminal },
   { id: "auth", label: "Authentication", icon: Fingerprint },
   { id: "storage", label: "Storage", icon: Cloud },
-  { id: "compute", label: "Cron & Webhooks", icon: Webhook },
+  { id: "compute", label: "Functions & Jobs", icon: Webhook },
   { id: "api", label: "API", icon: Braces },
   { id: "ai", label: "AI Bridge", icon: Bot, badge: "2" },
   { id: "activity", label: "AI Activity", icon: Activity },
@@ -295,6 +295,7 @@ function StorageView({ projectId, environment }: { projectId: string; environmen
   return <div className="module-grid"><article className="console-card storage-total"><Cloud size={24}/><div><span>STORAGE USED</span><strong>{formatBytes(used)}</strong><small>{quota?`of ${formatBytes(quota)}`:"No buckets"}</small></div><div className="progress"><i style={{width:`${percent}%`}}/></div></article><article className="console-card span-2"><div className="card-head"><div><span>BUCKETS · {environment.toUpperCase()}</span><h3>Project storage</h3></div><button className="button small" onClick={()=>void create()} disabled={state==="loading"||state==="unavailable"}><Plus size={14}/> New bucket</button></div>{state==="loading"&&<p className="muted">Loading storage policy and usage…</p>}{(state==="unavailable"||state==="error")&&<div className="live-module-state compact"><Cloud size={24}/><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={13}/> Retry</button></div>}{state==="ready"&&buckets.length===0&&<p className="muted">No buckets yet. New buckets are private and accept only the default safe MIME allowlist.</p>}{state==="ready"&&buckets.map(bucket=><div className="bucket-row" key={bucket.id}><span className="bucket-icon"><HardDrive size={16}/></span><div><strong>{bucket.name}</strong><small>{bucket.readPolicy} read · {bucket.writePolicy} write · {bucket.retentionDays?`${bucket.retentionDays}d retention`:"no lifecycle"}</small></div><span>{formatBytes(bucket.usedBytes)} / {formatBytes(bucket.quotaBytes)}</span><button className="icon-button" onClick={()=>void remove(bucket)} aria-label={`Delete ${bucket.name}`}><Trash2 size={14}/></button></div>)}</article><article className="console-card"><div className="card-head"><div><span>POLICY STATUS</span><h3>Private by default</h3></div><ShieldCheck className="secure" size={21}/></div><p className="muted">Uploads are bound to exact size, MIME type and SHA-256 checksum. Objects remain quarantined until a scanner marks them clean; signed downloads expire after at most 15 minutes.</p></article></div>;
 }
 
+type FunctionDefinitionItem={id:string;name:string;image:string;entrypoint:string;timeoutMs:number;memoryMiB:number;egressOrigins:string[];secretRefs:string[];enabled:boolean};
 type CronDefinitionItem={id:string;name:string;expression:string;queue:string;enabled:boolean;lastDispatchedAt:string|null};
 type WebhookDefinitionItem={id:string;name:string;url:string;eventTypes:string[];signingSecretRef:string;timeoutMs:number;maxAttempts:number;enabled:boolean};
 type WebhookDeliveryItem={id:string;eventType:string;status:"pending"|"in_flight"|"delivered"|"dead_lettered";attemptCount:number;lastFailureCode:string|null;settledAt:string|null};
@@ -314,6 +315,7 @@ type WebhookDeliveryItem={id:string;eventType:string;status:"pending"|"in_flight
 function ComputeView({projectId,environment}:{projectId:string;environment:Environment}) {
   const [cron,setCron]=useState<CronDefinitionItem[]>([]);
   const [webhooks,setWebhooks]=useState<WebhookDefinitionItem[]>([]);
+  const [functions,setFunctions]=useState<FunctionDefinitionItem[]>([]);
   const [deliveries,setDeliveries]=useState<WebhookDeliveryItem[]>([]);
   const [selected,setSelected]=useState<string|null>(null);
   const [state,setState]=useState<"loading"|"ready"|"unavailable"|"error">("loading");
@@ -321,14 +323,18 @@ function ComputeView({projectId,environment}:{projectId:string;environment:Envir
   const base=`/api/v1/projects/${projectId}/environments/${environment}/compute`;
 
   const load=useCallback(async()=>{setState("loading");setMessage("");try{
-    const [cronResponse,webhookResponse]=await Promise.all([
-      fetch(`${base}/cron`,{cache:"no-store"}),fetch(`${base}/webhooks`,{cache:"no-store"})]);
+    const [cronResponse,webhookResponse,functionResponse]=await Promise.all([
+      fetch(`${base}/cron`,{cache:"no-store"}),fetch(`${base}/webhooks`,{cache:"no-store"}),
+      fetch(`${base}/functions`,{cache:"no-store"})]);
     const cronPayload=await cronResponse.json();const webhookPayload=await webhookResponse.json();
-    if(cronResponse.status===503||webhookResponse.status===503){setCron([]);setWebhooks([]);setState("unavailable");
+    const functionPayload=await functionResponse.json();
+    if(cronResponse.status===503||webhookResponse.status===503){setCron([]);setWebhooks([]);setFunctions([]);setState("unavailable");
       setMessage(cronPayload.error??webhookPayload.error??"Compute definitions are disabled for this environment.");return;}
     if(!cronResponse.ok)throw new Error(cronPayload.error??"Cron definitions unavailable");
     if(!webhookResponse.ok)throw new Error(webhookPayload.error??"Webhook definitions unavailable");
-    setCron(cronPayload.data as CronDefinitionItem[]);setWebhooks(webhookPayload.data as WebhookDefinitionItem[]);setState("ready");
+    if(!functionResponse.ok)throw new Error(functionPayload.error??"Function definitions unavailable");
+    setCron(cronPayload.data as CronDefinitionItem[]);setWebhooks(webhookPayload.data as WebhookDefinitionItem[]);
+    setFunctions(functionPayload.data as FunctionDefinitionItem[]);setState("ready");
   }catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:"Compute definitions unavailable");}},[base]);
   useEffect(()=>{void load();},[load]);
 
@@ -349,6 +355,19 @@ function ComputeView({projectId,environment}:{projectId:string;environment:Envir
     const signingSecretRef=window.prompt("Vault reference of the signing key — never the secret itself","vault:webhook/orders");if(!signingSecretRef)return;
     await mutate("/webhooks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),url:url.trim(),eventTypes:events.split(",").map(entry=>entry.trim()).filter(Boolean),signingSecretRef:signingSecretRef.trim()})});}
 
+  async function createFunction(){const name=window.prompt("Function name (lowercase, numbers, hyphen)","resize-image");if(!name)return;
+    // Digest statt Tag: Ein Tag koennte morgen einen anderen Inhalt bezeichnen.
+    const image=window.prompt("Image pinned by digest, for example registry.example.com/app/fn@sha256:…","");if(!image)return;
+    const entrypoint=window.prompt("Entrypoint inside the image","handler.mjs");if(!entrypoint)return;
+    await mutate("/functions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),image:image.trim(),entrypoint:entrypoint.trim()})});}
+
+  async function testInvoke(fn:FunctionDefinitionItem){
+    setMessage(`Running ${fn.name}…`);
+    const response=await fetch(`${base}/invoke/${fn.name}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:"console"})});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){setMessage(payload.error??"The function could not be executed");return;}
+    setMessage(`${fn.name} answered with status ${payload.data?.statusCode ?? "?"}.`);}
+
   async function showDeliveries(webhook:WebhookDefinitionItem){
     if(selected===webhook.id){setSelected(null);setDeliveries([]);return;}
     const response=await fetch(`${base}/webhooks/${webhook.id}/deliveries?limit=20`,{cache:"no-store"});
@@ -360,6 +379,15 @@ function ComputeView({projectId,environment}:{projectId:string;environment:Envir
   if(state==="unavailable")return <div className="console-card live-module-state"><Webhook size={26}/><h3>Compute definitions not enabled</h3><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> Retry</button></div>;
 
   return <div className="module-grid">
+    <article className="console-card span-2"><div className="card-head"><div><span>FUNCTIONS · {environment.toUpperCase()}</span><h3>Sandboxed execution</h3></div><button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> New function</button></div>
+      {functions.length===0&&<p className="muted">No functions yet. An image must be pinned by digest; the sandbox runs it without network, read-only, as a non-root user and with a hard memory limit.</p>}
+      {functions.map(fn=><div className="bucket-row" key={fn.id}><span className="bucket-icon"><Blocks size={16}/></span>
+        <div><strong>{fn.name}</strong><small>{fn.entrypoint} · {fn.memoryMiB} MiB · {fn.timeoutMs} ms · {fn.egressOrigins.length?`${fn.egressOrigins.length} egress origins (not yet executable)`:"no egress"}{fn.secretRefs.length?` · ${fn.secretRefs.length} secret refs`:""}</small></div>
+        <span className={fn.enabled?"secure":"muted"}>{fn.enabled?"enabled":"paused"}</span>
+        <button className="plain-button" onClick={()=>void testInvoke(fn)} disabled={!fn.enabled}>Test run</button>
+        <button className="plain-button" onClick={()=>void mutate(`/functions/${fn.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!fn.enabled})})}>{fn.enabled?"Pause":"Enable"}</button>
+        <button className="icon-button" onClick={()=>{if(window.confirm(`Delete function ${fn.name}? Image and limits cannot be edited, so this is how a change is made.`))void mutate(`/functions/${fn.id}`,{method:"DELETE"});}} aria-label={`Delete ${fn.name}`}><Trash2 size={14}/></button></div>)}
+    </article>
     <article className="console-card span-2"><div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>Scheduled dispatch</h3></div><button className="button small" onClick={()=>void createCron()}><Plus size={14}/> New cron job</button></div>
       {message&&<p className="muted">{message}</p>}
       {cron.length===0&&<p className="muted">No cron jobs yet. An occurrence is enqueued into an existing project queue with a deterministic dedupe key, so two schedulers produce exactly one message.</p>}

@@ -84,3 +84,14 @@ Zustellstatus. Genau die zwei zugehörigen Fälle fielen um, kein anderer.
 Abgeschaltet wurden `--network none`, `--user` und die erzwungene
 Container-Entfernung nach einem Fehlschlag. Genau die drei zugehörigen Fälle
 fielen um, kein anderer.
+
+## Läufe zu Release 1.23 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/compute-functions-run1.log` | PostgreSQL 17 | 85 von 85, exit 0, 33 Migrationen |
+| `2026-08-05/compute-functions-run2.log` | PostgreSQL 17 | 85 von 85, exit 0, Wiederholung |
+| `2026-08-05/compute-functions-mutation.log` | PostgreSQL 17 | **83 von 85, exit 1 — absichtlich** |
+
+Aufgeweicht wurden die Digest-Bindung des Images und das UPDATE-Spaltenrecht.
+Genau die zwei zugehörigen Fälle fielen um, kein anderer.
