@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.13.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.14.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,9 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.13.0`
-- Aktueller Slice: 1.13 Postgres Changes — Trigger zertifiziert, changes-Kanal verdrahtet
+- Paketversion: `1.14.0`
+- Aktueller Slice: 1.14 Change Delivery End to End — Poller gebaut, ganze Kette zertifiziert
+- Poller: `lib/server/realtime/change-poller.ts` (kein Betriebsprozess ruft ihn auf)
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
@@ -162,32 +163,35 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.14.0`: Drop- und Lasttests gegen echte Infrastruktur, um Stufe 1.5 zu
-schließen. Das Austrittskriterium nennt sie ausdrücklich, und keine von beiden
-wurde bisher ausgeführt.
+`1.15.0`: Soak-Harness, um Stufe 1.5 zu schließen — und ein Betriebsprozess,
+der den Poller überhaupt aufruft.
 
-Konkret fehlt: ein Lastprofil mit vielen gleichzeitigen Abonnenten gegen echtes
-PostgreSQL, ein Nachweis, dass ein langsamer Abonnent tatsächlich mit
-`REALTIME_BACKPRESSURE` geschlossen wird statt Ereignisse zu überspringen, und
-ein Reconnect unter Last, bei dem der Cursor-Vertrag hält.
+Das Austrittskriterium nennt Tenant-, Ordering-, Drop- und Lasttests gegen echte
+Infrastruktur. Die ersten drei sind seit 1.14 belegt. Beim Lasttest gilt: Ein
+Testfall mit expliziten `drain`-Aufrufen misst keine Zustelllatenz, weil diese
+vom Pollintervall dominiert wird, das der Aufrufer bestimmt. Nötig ist ein
+laufender Poller mit Intervall, ein anhaltender Schreiber und eine Messung von
+Durchsatz und p95-Latenz über eine definierte Dauer.
 
-Ebenfalls offen und für den Betrieb nötig: ein Poller, der
-`PostgresRealtimeChangeSource.read` und `RealtimeService.deliverChanges` in einer
-Schleife verbindet, sowie ein Scheduler für beide `prune`-Pfade. Beide Bausteine
-existieren, aber niemand ruft sie auf.
+Zweitens fehlt der Betrieb: `lib/server/realtime/change-poller.ts` existiert,
+aber keine `workers/`-Runtime ruft ihn auf. Ebenso wenig gibt es einen Scheduler
+für die beiden `prune`-Pfade — `RealtimeChangeSource.prune` ist bewusst
+altersbasiert, weil positionsbasiertes Löschen im Mehrinstanzbetrieb entfernen
+würde, was eine langsamere Instanz noch nicht gelesen hat.
 
-Die Kette Feed → Dispatcher → Abonnent ist in ihren Teilen zertifiziert, aber
-nicht als Ganzes gegen echtes PostgreSQL durchgefahren. Das gehört in denselben
-Slice.
+Beachten: Ein `changes:`-Kanal liefert **keine Historie**. Wer später abonniert,
+sieht ab dann. Ein Replay wäre hier gefährlich, weil die Sichtbarkeit an den
+Claims zum Prüfzeitpunkt hängt und eine zurückgezogene Berechtigung sonst
+umgangen würde. Der Poller muss deshalb aufholen, bevor Abonnenten verbinden.
 
 Danach: Queue-Multi-Instance- und Lastläufe, transaktionale Usage-Emitter.
 
-Hinweis aus 1.11 bis 1.13: Drei Zertifizierungsläufe in Folge waren beim ersten
+Hinweis aus 1.11 bis 1.14: Vier Zertifizierungsläufe in Folge waren beim ersten
 Versuch grün, weil die Fehlerklassen aus 1.9 vorbeugend angewandt wurden —
 `bigint` erreicht den Treiber als Zeichenkette, jede Sperrklausel verlangt
 UPDATE-Recht und UPDATE-Policy, jeder Zugriffspfad braucht seine eigene
 RLS-Policy, und ein Test muss die ausgelieferte Datei ausführen statt eine
-Nachbildung. Das lohnt sich zu wiederholen.
+Nachbildung.
 
 ## Sichere Arbeitsregeln
 

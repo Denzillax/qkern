@@ -68,8 +68,19 @@ export interface RealtimeChangeSource {
    */
   read(scope: RealtimeScope, after: number, limit: number): Promise<RealtimeChange[]>;
 
-  /** Entfernt bestätigte Änderungen bis einschließlich `through`. */
-  prune(scope: RealtimeScope, through: number): Promise<number>;
+  /**
+   * Entfernt Änderungen, die vor `before` festgeschrieben wurden.
+   *
+   * Bewusst **altersbasiert und nicht positionsbasiert**: Im Mehrinstanzbetrieb
+   * führt jede Instanz ihre eigene Position, weil sie eigene Abonnenten
+   * beliefert. Nach Position zu löschen hieße, dass die schnellste Instanz
+   * entfernt, was eine langsamere noch nicht gelesen hat — eine stille Lücke
+   * genau der Art, die der Cursor-Vertrag an anderer Stelle ausschließt.
+   *
+   * Aufbewahrung ist außerdem eine Betriebsaufgabe und gehört nicht in den
+   * Zustellpfad. Der Poller ruft sie nicht auf.
+   */
+  prune(scope: RealtimeScope, before: Date): Promise<number>;
 }
 
 /** Claims eines Abonnenten, wie sie die Data Plane in RLS-Settings übersetzt. */

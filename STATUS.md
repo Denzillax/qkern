@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 4. August 2026 · Release: `1.13.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.14.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | teilweise — 5 Real-DB-Fälle; Multi-Instance und Last nein |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
-| Realtime | ja | teilweise — Log, Fan-out und CDC zertifiziert; Drop-/Lasttests offen |
+| Realtime | ja | fast — Log, Fan-out, CDC, Tenant, Ordering und Drop zertifiziert; Lasttest offen |
 | Compute Contracts | nur Ports | nein |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -36,21 +36,21 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest (Windows) | 692 bestanden, 47 übersprungen, 0 fehlgeschlagen |
+| Vitest (Windows) | 754 bestanden, 69 übersprungen, 0 fehlgeschlagen |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **28 von 28 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **45 von 45 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
-| **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen, Teil der 33 PostgreSQL-Faelle** |
+| **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
-| Realtime Real-Service/Load | noch nicht vorhanden; Runtime verweigert Production |
+| Realtime Lasttest | Soak mit Latenzmessung fehlt; Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | noch nicht zertifiziert; kein Production-Go-live |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 47 übersprungenen Fälle sind 30 Real-Service-Tests, die in den beiden
+Die 69 übersprungenen Fälle sind Real-Service-Tests, die in den drei
 Docker-Stacks laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -110,7 +110,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
-| Realtime | CDC zertifiziert und verdrahtet | Drop- und Lasttests gegen echte Infrastruktur, danach Stufenabschluss |
+| Realtime | Kette End-to-End zertifiziert | Soak-Harness mit Latenzmessung, danach Stufenabschluss |
 | Project Queues / Jobs | Alpha 3 | startbarer konkreter Handler-Host, Metrics-Export und Real-Service-Zertifizierung |
 | Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |

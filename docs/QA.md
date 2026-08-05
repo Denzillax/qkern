@@ -387,3 +387,24 @@ bestanden, 63 übersprungen, 0 fehlgeschlagen.
 Nicht ausgeführt und nicht als erbracht auszugeben: Drop- und Lasttests gegen
 echte Infrastruktur sowie ein Durchlauf der ganzen Kette Feed → Dispatcher →
 Abonnent gegen echtes PostgreSQL.
+
+## Change Delivery End to End — Release 1.14
+
+Zwölf lokale Tests decken den Poller ab: Stapelzustellung, Position erst nach
+erfolgreicher Zustellung, keine überlappenden Läufe, Meldung jeder
+rückgestauten Verbindung, begrenztes `drain`, Abweisung einer rückläufigen
+Position und der Nachweis, dass der Poller den Feed niemals aufräumt.
+
+Sechs Fälle fahren die ganze Kette gegen echtes PostgreSQL: `INSERT` → Trigger →
+Feed → Poller → Sichtbarkeitsprüfung pro Abonnent → Zustellung. Darunter zwei
+Abonnenten mit unterschiedlichen Teilmengen gegen eine echte RLS-Policy, ein
+Burst von 40 Änderungen ohne Verlust oder Reihenfolgefehler, zwölf gleichzeitige
+Abonnenten mit 432 einzeln geprüften Lesevorgängen, ein rückgestauter Abonnent
+der geschlossen statt übersprungen wird, und die altersbasierte Aufbewahrung.
+
+Checkpoint `1.14.0` am 5. August 2026: **45 von 45** PostgreSQL-Fällen bestanden,
+zweimal reproduziert. Lokal 754 bestanden, 69 übersprungen, 0 fehlgeschlagen.
+
+Nicht ausgeführt und nicht als erbracht auszugeben: ein Soak-Lauf mit laufendem
+Poller, anhaltendem Schreiber und Messung von Durchsatz und p95-Latenz. Ein
+Testfall mit expliziten `drain`-Aufrufen misst die Zustelllatenz nicht.

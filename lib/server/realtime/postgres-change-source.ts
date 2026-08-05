@@ -63,16 +63,16 @@ export class PostgresRealtimeChangeSource implements RealtimeChangeSource {
     });
   }
 
-  async prune(scope: RealtimeScope, through: number): Promise<number> {
-    if (!Number.isSafeInteger(through) || through < 0) {
+  async prune(scope: RealtimeScope, before: Date): Promise<number> {
+    if (!(before instanceof Date) || Number.isNaN(before.getTime())) {
       throw new RealtimeError("REALTIME_INVALID_MESSAGE");
     }
     return await this.connection.withProject(scope, async (database) => {
       const result = await database.query<{ count: string | number }>(
         `WITH deleted AS (
-           DELETE FROM qkern_internal.change_feed WHERE position <= $1 RETURNING 1
+           DELETE FROM qkern_internal.change_feed WHERE committed_at < $1 RETURNING 1
          ) SELECT count(*)::bigint AS count FROM deleted`,
-        [through],
+        [before],
       );
       return boundedPosition(result.rows[0]?.count ?? 0, 0);
     });
