@@ -29,6 +29,17 @@ tragen Delivery-ID, Event, Timestamp und versionierte Signatur und verbieten
 Redirects. Erfolg verlangt sowohl HTTP 2xx als auch die exakt gleiche
 Acknowledgement-ID. Payload, Timeout, Events und Signaturformat sind begrenzt.
 
+Seit `1.20.0` gibt es Adapter für beide Ports. `HmacWebhookSigner` signiert mit
+HMAC-SHA256 über `timestamp.body` und trägt eine `keyId`, damit ein Empfänger
+während einer Rotation beide Schlüssel kennen kann. `FetchWebhookTransport`
+liest den Antwortkörper eines fremden Empfängers nie; die Bestätigung kommt
+ausschließlich aus dem zurückgespiegelten Header `x-qkern-delivery-id`.
+
+Signaturschlüssel liefert ein `WebhookSecretProvider`. Der einzige heutige
+Provider liest sie aus der Umgebung, verlangt eine ausdrückliche Freischaltung
+und weigert sich, in Produktion überhaupt zu existieren. Ein Vault-gestützter
+Provider ist offen.
+
 Der Production-Transport muss DNS einmal auflösen, öffentliche IPs pinnen, alle
 privaten/Link-local/Metadata-Netze nach IPv4 und IPv6 blockieren und Rebinding
 verhindern. Dieser Netzwerkadapter ist noch nicht enthalten.
@@ -42,6 +53,27 @@ wird mit dem deterministischen Dedupe-Key
 geschrieben. Crash/Retry nach erfolgreichem Enqueue erzeugt dadurch keine zweite
 Nachricht. Tenant, Service Role, Schedule und Queue bleiben serverseitig gebunden.
 
-Persistente Cron-Definitionen, Scheduler-Leases, Catch-up-Policy, Zeitzonen/DST,
-Management-API, Functions-Sandbox-Deployment, Webhook-Outbox und Provider-E2E sind
-noch offen. Keine dieser Foundations ist in MCP exponiert.
+Persistente Cron-Definitionen (Migration 0031), begrenztes Catch-up und die
+Webhook-Outbox (Migration 0032) sind seit `1.18.0` beziehungsweise `1.19.0`
+vorhanden und gegen echtes PostgreSQL zertifiziert.
+
+## Betrieb
+
+`workers/compute-runtime.ts` (`npm run worker:compute`) löst fällige
+Cron-Vorkommen aus und stellt Webhooks zu. Bis `1.19.0` waren beide
+Bibliotheken, die niemand aufrief.
+
+Welche Projekte der Prozess bedient, steht ausdrücklich in
+`QKERN_COMPUTE_SCOPES_JSON`. Die Runtime-Rolle sieht durch RLS nur die eigene
+Organisation; eine organisationsübergreifende Suche nach fälliger Arbeit ginge
+nur mit einer Rolle, die alles sieht.
+
+Der Prozess startet nicht ohne erreichbaren Signaturschlüssel. Ein Zusteller,
+der stillschweigend unsigniert sendet, wäre schlimmer als einer, der gar nicht
+startet.
+
+Offen bleiben: Scheduler-Leases, Zeitzonen/DST, Management-API und
+Console-Fläche für Definitionen, Vault-gestützte Signaturschlüssel,
+automatische Scope-Entdeckung, Functions-Sandbox-Deployment und Provider-E2E
+gegen einen echten HTTPS-Empfänger. Keine dieser Foundations ist in MCP
+exponiert.

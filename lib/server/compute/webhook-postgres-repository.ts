@@ -1,5 +1,7 @@
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlQueryable } from "@/lib/server/db/sql";
+import type { WebhookDefinition } from "@/lib/server/compute/model";
+import type { WebhookDefinitionSource } from "@/lib/server/compute/webhook-delivery-runtime";
 import {
   WebhookOutboxError,
   type WebhookClaim,
@@ -20,7 +22,49 @@ type DeliveryRow = {
   attempt_count: number;
 };
 
+type DefinitionRow = {
+  id: string;
+  name: string;
+  url: string;
+  event_types: string[];
+  signing_secret_ref: string;
+  timeout_ms: number;
+};
+
 const COLUMNS = "id, webhook_id, event_type, payload, occurred_at, attempt_count";
+
+/**
+ * Gibt Zustellungen frei, deren Lease abgelaufen ist.
+ *
+ * Bis Release 1.19 fehlte dieser Schritt. Er fiel nicht auf, weil niemand
+ * zustellte — erst mit dem Zustellprozess kann ein Prozess mitten in einem
+ * Versuch abstürzen, und ohne Wiederaufnahme bliebe die Zustellung für immer
+ * `in_flight`. Project Queues machen es an derselben Stelle genauso.
+ *
+ * Der Versuchszähler wurde beim Claim bereits erhöht; ein abgestürzter Zusteller
+ * verbraucht also einen Versuch. Das ist gewollt: Sonst könnte ein Empfänger,
+ * der den Prozess reproduzierbar zum Absturz bringt, endlos wiederholt werden.
+ */
+async function recoverExpiredLeases(
+  database: SqlQueryable,
+  scope: WebhookOutboxScope,
+  now: Date,
+): Promise<void> {
+  await database.query(
+    `UPDATE project_webhook_deliveries d
+        SET status=CASE WHEN d.attempt_count >= w.max_attempts THEN 'dead_lettered' ELSE 'pending' END,
+            available_at=CASE WHEN d.attempt_count >= w.max_attempts THEN d.available_at ELSE $4 END,
+            lease_worker_id=NULL, lease_token_hash=NULL, lease_expires_at=NULL,
+            last_failure_code='WEBHOOK_TIMEOUT',
+            dead_lettered_at=CASE WHEN d.attempt_count >= w.max_attempts THEN $4 ELSE NULL END
+       FROM project_webhooks w
+      WHERE w.organization_id=d.organization_id AND w.project_id=d.project_id
+        AND w.environment=d.environment AND w.id=d.webhook_id
+        AND d.organization_id=$1 AND d.project_id=$2 AND d.environment=$3
+        AND d.status='in_flight' AND d.lease_expires_at <= $4`,
+    [scope.organizationId, scope.projectId, scope.environment, now],
+  );
+}
 
 /**
  * Dauerhafte Webhook-Outbox.
@@ -31,7 +75,8 @@ const COLUMNS = "id, webhook_id, event_type, payload, occurred_at, attempt_count
  * bereits das UPDATE-Recht und die UPDATE-Policy, die eine Sperrklausel
  * verlangt — die Lehre aus Release 1.9, hier vorbeugend angewandt.
  */
-export class PostgresWebhookOutboxRepository implements WebhookOutboxRepository {
+export class PostgresWebhookOutboxRepository
+implements WebhookOutboxRepository, WebhookDefinitionSource {
   constructor(
     private readonly database: WebhookDatabase,
     private readonly actorRef = "service-role:webhooks",
@@ -62,13 +107,24 @@ export class PostgresWebhookOutboxRepository implements WebhookOutboxRepository 
     leases: ReadonlyArray<{ token: string; tokenHash: string }>;
   }): Promise<WebhookClaim[]> {
     return await this.withTenant(scope, false, async (database) => {
+      await recoverExpiredLeases(database, scope, input.now);
+
+      // Nur Zustellungen aktiver Definitionen. Ein Betreiber, der einen Webhook
+      // abschaltet, will ihn pausieren — nicht, dass die Warteschlange
+      // weiterlaeuft und die Versuche bis zum Dead Letter verbrennt. Beim
+      // Wiedereinschalten laufen die geparkten Zustellungen weiter.
       const due = await database.query<{ id: string }>(
-        `SELECT id FROM project_webhook_deliveries
-          WHERE organization_id=$1 AND project_id=$2 AND environment=$3
-            AND status='pending' AND available_at <= $4
-          ORDER BY available_at, created_at, id
+        `SELECT d.id FROM project_webhook_deliveries d
+          WHERE d.organization_id=$1 AND d.project_id=$2 AND d.environment=$3
+            AND d.status='pending' AND d.available_at <= $4
+            AND EXISTS (
+              SELECT 1 FROM project_webhooks w
+               WHERE w.organization_id=d.organization_id AND w.project_id=d.project_id
+                 AND w.environment=d.environment AND w.id=d.webhook_id AND w.enabled
+            )
+          ORDER BY d.available_at, d.created_at, d.id
           LIMIT $5
-          FOR UPDATE SKIP LOCKED`,
+          FOR UPDATE OF d SKIP LOCKED`,
         [scope.organizationId, scope.projectId, scope.environment, input.now, input.limit],
       );
 
@@ -131,6 +187,34 @@ export class PostgresWebhookOutboxRepository implements WebhookOutboxRepository 
 
       if (result.rows.length === 0) throw new WebhookOutboxError("WEBHOOK_OUTBOX_LEASE_LOST");
       return { status: input.outcome.status };
+    });
+  }
+
+  /**
+   * Aktive Definition einer Zustellung.
+   *
+   * Der Zustellprozess liest sie erst nach dem Claim, damit die Definition zum
+   * Zeitpunkt des Sendens gilt und nicht die eines früheren Durchlaufs.
+   */
+  async find(scope: WebhookOutboxScope, webhookId: string): Promise<WebhookDefinition | null> {
+    return await this.withTenant(scope, true, async (database) => {
+      const result = await database.query<DefinitionRow>(
+        `SELECT id, name, url, event_types, signing_secret_ref, timeout_ms
+           FROM project_webhooks
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4 AND enabled`,
+        [scope.organizationId, scope.projectId, scope.environment, webhookId],
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return Object.freeze({
+        ...scope,
+        id: row.id,
+        name: row.name,
+        url: row.url,
+        eventTypes: Object.freeze([...row.event_types]),
+        signingSecretRef: row.signing_secret_ref,
+        timeoutMs: row.timeout_ms,
+      });
     });
   }
 

@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit | Queues, Cron und Webhook-Outbox zertifiziert; Functions-Sandbox offen |
+| 1.6 | in Arbeit | Queues, Cron und Webhook-Zustellung zertifiziert und in Betrieb; Functions-Sandbox offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |
@@ -233,10 +233,23 @@ Umgehungsversuch am Trigger vorbei bestaetigte zudem, dass
 `project_queue_messages_update_guard` Zustandsuebergaenge auch gegen den
 Owner-Zugang schuetzt.
 
+**Nachtrag Release 1.20.** Cron und Webhooks haben jetzt eine Laufzeit:
+`workers/compute-runtime.ts` loest faellige Vorkommen aus und stellt Webhooks
+zu. Sechs Faelle zertifizieren die Zustellkette Ende zu Ende gegen echtes
+PostgreSQL, mit einem Empfaenger, der die HMAC-Signatur wirklich verifiziert.
+
+Dabei kamen zwei Produktfehler zutage, die erst der Betrieb sichtbar macht: Der
+Claim der Webhook-Outbox gab abgelaufene Leases nie frei, sodass eine
+abgestuerzte Zustellung fuer immer `in_flight` blieb; und ein abgeschalteter
+Webhook lief weiter, statt zu pausieren. Beide neuen Garantien wurden zusaetzlich
+durch eine Mutationsprobe belegt: einzeln abgeschaltet fallen genau die zwei
+zugehoerigen Faelle um, kein anderer.
+
 Das Austrittskriterium bleibt **nicht erfuellt**: Es verlangt zusaetzlich
 Egress-Policy, Ressourcenlimits und Secret-Canary-Tests ohne gemeinsame
-Ausfuehrungsautoritaet, also Functions-Sandbox, Cron und Webhook-Zustellung.
-Diese sind weiterhin nur interne Vertragsports ohne Laufzeit.
+Ausfuehrungsautoritaet. Erbracht sind Idempotenz, Dead Letters, Retry und
+Betrieb; es fehlt die **Functions-Sandbox**, die als einzige die drei
+verbleibenden Teile traegt.
 
 ## Stufe 1.7 — Developer Experience
 

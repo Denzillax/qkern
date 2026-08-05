@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `1.19.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `1.20.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 
@@ -434,6 +434,42 @@ Der vollständige Metrik-/Quellenvertrag, `observe` versus `enforce`, Idempotenz
 Beispielantwort und offene Billing-Grenzen stehen in
 [USAGE_METERING.md](USAGE_METERING.md). Preise, Tarife, Rechnungen und Zahlungen
 sind nicht Teil dieses Releases.
+
+## 9a. Cron und Webhooks lokal betreiben
+
+Cron-Definitionen und Webhook-Zustellungen liegen seit `1.18.0` und `1.19.0` in
+der Datenbank, aber erst der Compute-Prozess arbeitet sie ab. Er verlangt den
+PostgreSQL-Modus und eine ausdrückliche Liste der zu bedienenden Projekte: Die
+Runtime-Rolle sieht durch RLS nur die eigene Organisation, deshalb gibt es keine
+organisationsübergreifende Suche nach fälliger Arbeit.
+
+```powershell
+$env:QKERN_RUNTIME_MODE="postgres"
+$env:QKERN_PROJECT_QUEUES_ENABLED="true"
+$env:QKERN_COMPUTE_RUNTIME_ENABLED="true"
+$env:QKERN_COMPUTE_SCOPES_JSON='[{"organizationId":"<org-id>","projectId":"<project-id>","environment":"development"}]'
+$env:QKERN_ALLOW_LOCAL_WEBHOOK_SIGNING_SECRETS="true"
+$env:QKERN_LOCAL_WEBHOOK_SIGNING_SECRETS_JSON='{"vault:webhook/orders":{"keyId":"local-1","secret":"<base64url mit mindestens 32 Bytes>"}}'
+npm run worker:compute
+```
+
+Der Prozess startet **nicht**, wenn kein Signaturschlüssel erreichbar ist. Ein
+Zusteller, der stillschweigend unsigniert sendet, wäre schlimmer als einer, der
+gar nicht startet: Der Empfänger könnte dann nicht mehr unterscheiden, ob eine
+Nachricht wirklich von QKERN kommt.
+
+Der Umgebungs-Provider ist ausdrücklich nur für lokale Entwicklung und weigert
+sich, unter `NODE_ENV=production` überhaupt zu existieren — ein Signaturgeheimnis
+in einer Umgebungsvariable steht in jedem Prozessabbild und in jeder
+Container-Definition.
+
+Der Empfänger prüft die Signatur über `<zeitstempel>.<körper>` mit HMAC-SHA256
+und muss den Header `x-qkern-delivery-id` unverändert zurückspiegeln. Fehlt die
+Bestätigung oder passt sie nicht, gilt die Zustellung als fehlgeschlagen und wird
+nach serverberechneter Wartezeit wiederholt.
+
+Definitionen entstehen in dieser Version weiterhin nur über direkten
+Datenbankzugriff; eine Management-API und eine Console-Fläche fehlen.
 
 ## 10. MCP für KI-Agenten
 

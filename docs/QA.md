@@ -528,3 +528,39 @@ Lokal 805 bestanden, 0 fehlgeschlagen.
 
 Nicht erbracht: Functions-Sandbox, ein laufender Zustellprozess, ein
 Signer-Adapter gegen den Vault und API-Flaechen fuer Definitionen.
+
+## Zustellprozess — Release 1.20
+
+Sechsundzwanzig lokale Tests decken Zustellschleife, Signatur und Transport ab:
+Fehlercode des Zustellers statt eines generischen, ein unerwarteter Wurf als
+Fehlschlag statt als stiller Verlust, Weiterarbeit nach einem Fehlschlag im
+selben Stapel, verlorener Lease ohne Stapelabbruch, nur der Fehlercode an den
+Beobachter, laengere Wartezeit nach einem gescheiterten Claim als im Leerlauf,
+Signatur an den Zeitstempel gebunden, zu kurzer Schluessel abgewiesen,
+Umgebungs-Provider in Produktion abgewiesen, Antwortkoerper nie gelesen, keine
+Weiterleitung und kein Klartextziel.
+
+Sechs Faelle laufen gegen echtes PostgreSQL — die **Kette**, nicht die Teile:
+hinterlegen bis zur bestaetigten Zustellung mit vom Empfaenger verifizierter
+Signatur, Wiederholung nach Ablehnung, fehlende Bestaetigung als Fehlschlag,
+Dead Letter an der Grenze der Definition, keine Zustellung fuer eine
+abgeschaltete Definition und Wiederaufnahme nach einem abgestuerzten Zusteller.
+
+Dabei kamen zwei Produktfehler zutage, die erst der Betrieb sichtbar macht: Der
+Claim gab abgelaufene Leases nie frei, sodass eine abgestuerzte Zustellung fuer
+immer `in_flight` blieb; und ein abgeschalteter Webhook lief weiter und
+verbrannte Versuche bis zum Dead Letter, statt zu pausieren.
+
+Beide neuen Garantien waren im ersten Lauf sofort gruen. Deshalb wurden sie im
+Adapter einzeln abgeschaltet und der Stack erneut ausgefuehrt: Genau die zwei
+zugehoerigen Faelle fallen um, kein anderer. Ein gruener Fall beweist nichts,
+solange nicht gezeigt ist, dass er auch rot werden kann. Protokoll:
+`docs/evidence/2026-08-05/compute-chain-mutation.log`.
+
+Checkpoint `1.20.0` am 5. August 2026: **71 von 71** PostgreSQL-Faellen
+bestanden, 32 Migrationen, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 841 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Functions-Sandbox, ein Vault-gestuetzter Signaturschluessel-
+Provider, API-Flaechen fuer Definitionen, automatische Entdeckung der zu
+bedienenden Scopes und ein Lauf gegen einen echten HTTPS-Empfaenger.

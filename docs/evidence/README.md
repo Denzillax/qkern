@@ -42,3 +42,21 @@ Ergebnis geführt haben. Sie bleiben absichtlich erhalten:
 dokumentiert, dass zu diesem Zeitpunkt keine einzige der sieben
 Real-DB-Testdateien bestand. `auth-certification-run1` dokumentiert entsprechend
 den Ausgangszustand des Provider-Nachweises.
+
+## Läufe zu Release 1.20 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/compute-chain-run1.log` | PostgreSQL 17 | 71 von 71, exit 0, 32 Migrationen |
+| `2026-08-05/compute-chain-run2.log` | PostgreSQL 17 | 71 von 71, exit 0, Wiederholung |
+| `2026-08-05/compute-chain-mutation.log` | PostgreSQL 17 | **69 von 71, exit 1 — absichtlich** |
+
+Die Mutationsprobe ist der ungewöhnliche Eintrag. Die beiden neuen Garantien aus
+Release 1.20 — Freigabe abgelaufener Leases und das Übergehen abgeschalteter
+Definitionen — waren im ersten Lauf sofort grün. Statt das zu glauben, wurden
+beide im Adapter einzeln abgeschaltet und der Stack erneut ausgeführt. Genau die
+zwei zugehörigen Fälle fielen um, kein anderer.
+
+Ein grüner Fall beweist nichts, solange nicht gezeigt ist, dass er auch rot
+werden kann. Release 1.16 hatte drei Fälle gefunden, die ausgeführt und
+zufällig grün waren.

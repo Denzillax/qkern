@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.19.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.20.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.19.0`
-- Aktueller Slice: 1.19 Webhook-Outbox — Persistenz, Lease, Backoff und Dead Letter zertifiziert
+- Paketversion: `1.20.0`
+- Aktueller Slice: 1.20 Zustellprozess — Cron und Webhooks laufen in `workers/compute-runtime.ts`
+- Compute-Betrieb: `lib/server/compute/runtime-composition.ts`, `webhook-delivery-runtime.ts`
+- Signatur und Transport: `lib/server/compute/webhook-signer.ts`, `webhook-transport.ts`
+- Start: `QKERN_COMPUTE_RUNTIME_ENABLED=true npm run worker:compute`
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
@@ -49,7 +52,7 @@ Release Notes bleiben unverändert.
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
-- Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
+- Evidenz: `docs/evidence/2026-08-04/` und `docs/evidence/2026-08-05/` mit Rohlogs und generierten Manifesten
 - Manifestgenerator: `scripts/certification-manifest.mjs`
 - SMTP-Delivery: `lib/server/project-auth/smtp-delivery.ts`
 - Usage-Domäne: `lib/server/usage/`
@@ -166,19 +169,19 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.20.0`: Zustellprozesse und Flaechen. Cron und Webhooks sind persistiert und
-zertifiziert, aber beide sind Bibliotheken -- kein Prozess ruft sie auf, und es
-gibt weder API noch Console-Flaeche, um eine Definition anzulegen. Sie entstehen
-derzeit nur ueber direkten Datenbankzugriff.
+`1.21.0`: Flaechen fuer Definitionen. Cron und Webhooks laufen seit 1.20 in
+einem startbaren Prozess, aber eine Definition entsteht weiterhin nur ueber
+direkten Datenbankzugriff. Es fehlen REST-Endpunkte und eine Console-Flaeche
+fuer beide Definitionsarten sowie ein Vault-gestuetzter Provider fuer
+Signaturschluessel -- der einzige heutige Provider liest sie aus der Umgebung
+und ist in Produktion abgewiesen.
 
-Konkret fehlen: eine `workers/`-Runtime, die `CronScheduler.run` und
-`WebhookOutbox.claim` plus `WebhookDeliverer.deliver` in Schleifen betreibt; ein
-Signer-Adapter gegen den Vault; und REST-Endpunkte samt Console fuer beide
-Definitionsarten.
-
-Das ist derselbe Punkt wie zweimal zuvor: gebaut und zertifiziert, aber niemand
-ruft es auf. Beim Anfassen eines Moduls lohnt die Frage, ob der Betrieb es
-ueberhaupt erreicht.
+Ebenfalls offen und kleiner: die automatische Entdeckung der zu bedienenden
+Scopes (heute `QKERN_COMPUTE_SCOPES_JSON`; eine Suche ueber alle Organisationen
+braucht eine Rolle, die RLS nicht einschraenkt), ein Scheduler fuer die beiden
+Realtime-`prune`-Pfade und ein gemeinsamer Katalog, damit Generated Data API und
+Realtime-Changes nicht je einen eigenen Pool zu denselben Projektdatenbanken
+oeffnen.
 
 Danach schliesst nur noch die **Functions-Sandbox** die Stufe 1.6. Sie ist der
 groesste verbleibende Brocken, weil sie echte Prozessisolation, Ressourcenlimits
@@ -193,6 +196,13 @@ Release 1.14 fand den Poller, den kein Prozess rief. 1.15 fand, dass die
 Realtime-Runtime weiterhin den Memory-Log verwendete, obwohl der dauerhafte
 Adapter seit 1.11 zertifiziert war. Beim Anfassen eines Moduls lohnt die Frage:
 Ruft der Betrieb das ueberhaupt auf?
+
+**Der Gegenprobe trauen, nicht dem gruenen Haken.** Release 1.20 hat zwei neue
+Garantien zertifiziert, die im ersten Lauf sofort gruen waren. Statt das zu
+glauben, wurden beide im Adapter einzeln abgeschaltet und der Stack erneut
+ausgefuehrt: Genau die zwei zugehoerigen Faelle fielen um, kein anderer. Wer
+eine neue Garantie zertifiziert, sollte einmal zeigen, dass ihr Test auch rot
+werden kann -- der Lauf dauert Minuten und beantwortet die Frage endgueltig.
 
 **Ausgefuehrt und zufaellig gruen.** Release 1.16 fand drei Wettlaeufe im
 gemeinsamen Testaufbau, die seit 1.13 latent waren: Rolle, Schema und Feed

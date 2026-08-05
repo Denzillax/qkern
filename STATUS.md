@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 5. August 2026 · Release: `1.19.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.20.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Cron und Webhook-Outbox persistiert; Functions nur Port | teilweise — 13 Fälle |
+| Compute Contracts | Cron und Webhooks persistiert und **in Betrieb**; Functions nur Port | teilweise — 19 Fälle |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -36,21 +36,22 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest (Windows) | 805 bestanden, 89 übersprungen, 0 fehlgeschlagen |
+| Vitest (Windows) | 841 bestanden, 95 übersprungen, 0 fehlgeschlagen |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **65 von 65 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **71 von 71 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
-| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` |
+| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` und `docs/evidence/2026-08-05/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust, p95 198 bis 333 ms; Runtime verweigert weiterhin Production |
-| Project Queues Multi-Instance/Load | **zertifiziert**; Functions/Cron/Webhooks weiterhin nur Vertragsports |
+| Project Queues Multi-Instance/Load | **zertifiziert** |
+| **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe**; Functions weiterhin nur Vertragsport |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 69 übersprungenen Fälle sind Real-Service-Tests, die in den drei
+Die 95 übersprungenen Fälle sind Real-Service-Tests, die in den drei
 Docker-Stacks laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -151,8 +152,12 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
   und OIDC-Server fehlt weiterhin.
 - Der Worker ist ein injizierbarer Execution-Port, noch kein allgemeiner Sandbox-
   Host. Zähler liegen pro Prozess vor und sind noch nicht extern scrapebar.
-- Compute Contracts besitzen noch keine persistente Management-API, Scheduler-
-  Lease, Webhook-Outbox, DNS-Pinning oder Production-Sandbox.
+- Cron und Webhooks laufen seit `1.20.0` in einem startbaren Prozess
+  (`npm run worker:compute`). Es fehlen weiterhin eine Management-API und eine
+  Console-Fläche für Definitionen, ein Vault-gestützter Signaturschlüssel-
+  Provider, automatische Entdeckung der zu bedienenden Scopes, DNS-Pinning und
+  die Functions-Sandbox. Der Zustellprozess ist gegen echtes PostgreSQL
+  zertifiziert, aber noch nie gegen einen echten HTTPS-Empfänger gelaufen.
 - Queue-Claims und Settlement verlangen eine Service Role sowie exakten Worker,
   Token und Ablauf. Roh-Dedupe-/Lease-Secrets werden nicht persistiert.
 - Realtime bindet nur Loopback, verweigert Production und hält History/Presence
