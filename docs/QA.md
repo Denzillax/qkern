@@ -483,3 +483,27 @@ bestanden, zweimal reproduziert. Lokal 779 bestanden, 0 fehlgeschlagen.
 Nicht erbracht und nicht als solches auszugeben: Functions-Sandbox, Cron und
 Webhook-Zustellung, ein startbarer Handler-Host, externer Metrics-Export sowie
 ein echter Prozessabsturz statt mehrerer Instanzen im selben Prozess.
+
+## Cron mit Persistenz und Scheduler — Release 1.18
+
+Dreizehn lokale Tests decken Migration und Scheduler ab: unveraenderliche
+Definition ueber den Grant, Ruecksprungschutz und Identitaetsschutz im Trigger,
+Abwesenheit jeder Lease-Konstruktion, Tenant-Isolation auf allen vier
+Zugriffspfaden, Ausloesen mit Fortschritt, kein rueckwirkendes Aufarbeiten einer
+frischen Definition, begrenztes Nachholen, Ueberspringen ohne faelliges
+Vorkommen, Ignorieren deaktivierter Definitionen, Weiterlaufen bei einem Fehler
+und Fortschritt erst nach erfolgreichem Ausloesen.
+
+Fuenf Faelle laufen gegen echtes PostgreSQL: Ausloesen bis in die Queue mit
+fortgeschriebenem Fortschritt, genau eine Nachricht bei vier gleichzeitig
+ausloesenden Schedulern, abgewiesener Ruecksprung, unveraenderliche Identitaet
+und Cross-Tenant-Unsichtbarkeit.
+
+Dabei kam ein Produktfehler zutage: Der Dispatcher reichte den
+Vorkommenszeitpunkt als Zustellzeit an die Queue weiter, die hoechstens fuenf
+Minuten Rueckdatierung akzeptiert. Jedes nachgeholte Vorkommen wurde abgewiesen;
+Catch-up konnte nie funktionieren. Im Normalbetrieb faellt das nicht auf, weil
+ein regelmaessig laufender Scheduler im Fenster bleibt.
+
+Checkpoint `1.18.0` am 5. August 2026: **57 von 57** PostgreSQL-Faellen
+bestanden, 31 Migrationen. Lokal 792 bestanden, 0 fehlgeschlagen.

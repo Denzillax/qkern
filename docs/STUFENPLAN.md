@@ -14,7 +14,7 @@ ausführbare Produktfunktion. Externe Live-Zertifizierung bleibt separat.
 | 1.3 | **abgeschlossen und zertifiziert** | Project Auth gegen echtes PostgreSQL, echtes SMTP und echtes OIDC |
 | 1.4 | **abgeschlossen und zertifiziert** | Object Storage gegen echtes PostgreSQL, MinIO und ClamAV |
 | 1.5 | **abgeschlossen und zertifiziert** | Realtime mit dauerhaftem Log, Fan-out, CDC und Soak gegen echtes PostgreSQL |
-| 1.6 | in Arbeit | Queues inkl. Multi-Instance zertifiziert; Functions, Cron und Webhooks nur Vertragsports |
+| 1.6 | in Arbeit | Queues und Cron zertifiziert; Functions-Sandbox und Webhook-Zustellung offen |
 | 1.7 | Alpha-Checkpoint | SDK, CLI, Paketbuild und Linux-Fresh-Project-Smoke; Drei-OS-/Publishing-Evidenz offen |
 | 1.8 | in Arbeit als Alpha | Usage-/Quota-Grundlage; Teams, Billing und vollständige Operations offen |
 | 2.0 | offen | Zertifizierte Managed Platform |

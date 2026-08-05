@@ -1,6 +1,6 @@
 {
   "name": "qkern-platform",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "private": true,
   "engines": {
     "node": ">=24.7.0"
@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:postgres": "vitest run tests/postgres.integration.test.ts tests/postgres-incident-recovery.integration.test.ts tests/generated-data-postgres.integration.test.ts tests/project-auth-postgres.integration.test.ts tests/project-storage-postgres.integration.test.ts tests/project-queues-postgres.integration.test.ts tests/usage-metering-postgres.integration.test.ts tests/realtime-postgres.integration.test.ts tests/realtime-change-feed-postgres.integration.test.ts tests/realtime-change-chain-postgres.integration.test.ts tests/realtime-change-soak-postgres.integration.test.ts tests/project-queues-multi-instance.integration.test.ts",
+    "test:postgres": "vitest run tests/postgres.integration.test.ts tests/postgres-incident-recovery.integration.test.ts tests/generated-data-postgres.integration.test.ts tests/project-auth-postgres.integration.test.ts tests/project-storage-postgres.integration.test.ts tests/project-queues-postgres.integration.test.ts tests/usage-metering-postgres.integration.test.ts tests/realtime-postgres.integration.test.ts tests/realtime-change-feed-postgres.integration.test.ts tests/realtime-change-chain-postgres.integration.test.ts tests/realtime-change-soak-postgres.integration.test.ts tests/project-queues-multi-instance.integration.test.ts tests/compute-cron-postgres.integration.test.ts",
     "test:postgres:docker": "node scripts/postgres-certification.mjs",
     "test:storage:provider": "vitest run tests/project-storage-provider.integration.test.ts",
     "test:storage:docker": "node scripts/storage-certification.mjs",

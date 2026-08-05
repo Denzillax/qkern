@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 5. August 2026 · Release: `1.17.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.18.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | nur Ports | nein |
+| Compute Contracts | Cron betriebsfähig, Functions und Webhooks nur Ports | teilweise — 5 Cron-Fälle |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -36,12 +36,12 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest (Windows) | 779 bestanden, 70 übersprungen, 0 fehlgeschlagen |
+| Vitest (Windows) | 792 bestanden, 81 übersprungen, 0 fehlgeschlagen |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **52 von 52 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **57 von 57 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
@@ -112,7 +112,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
 | Realtime | **abgeschlossen und zertifiziert** | Scheduler fuer die prune-Pfade; Runtime-Komposition gegen echtes PostgreSQL |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
-| Functions/Cron/Webhooks | Alpha-4-Vertragsports | Persistenz, Sandbox/DNS-Pinning, Scheduler/Webhook-Outbox und E2E |
+| Functions/Cron/Webhooks | Cron persistiert und zertifiziert | Functions-Sandbox und Webhook-Outbox |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
 | Billing/Usage | Alpha 1 Metering-/Quota-Grundlage | transaktionale Produkt-Emitter, Reconciliation, Tarife und Rechnungsintegration |
 | Managed Swiss Operations | Nachweisverträge | Provider-Onboarding, HA, PITR, Restore, Datenflussnachweis |

@@ -46,7 +46,13 @@ export class CronDispatcher {
     }, definition.queue, {
       payload: definition.payload,
       dedupeKey: `cron:${definition.id}:${scheduledAt.toISOString()}`,
-      scheduledAt: scheduledAt.toISOString(),
+      // Bewusst **kein** scheduledAt. Ein Vorkommen ist faellig, wenn es
+      // ausgeloest wird; die Nachricht soll sofort verfuegbar sein. Wurde der
+      // Zeitpunkt weitergereicht, wies die Queue jedes nachgeholte Vorkommen
+      // ab: sie akzeptiert hoechstens fuenf Minuten Rueckdatierung, und ein
+      // Rueckstand nach einem Ausfall ist aelter. Das Nachholen konnte damit
+      // nie funktionieren. Die Identitaet des Vorkommens steckt im
+      // Dedupe-Key, nicht in der Verfuegbarkeit.
     });
     return Object.freeze({
       status: receipt.deduplicated ? "already_dispatched" as const : "dispatched" as const,

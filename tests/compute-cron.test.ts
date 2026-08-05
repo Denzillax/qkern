@@ -26,8 +26,12 @@ describe("Compute cron boundary", () => {
     const call = enqueue.mock.calls[0] as unknown as [unknown, unknown, unknown, Record<string, unknown>];
     expect(call[3]).toMatchObject({
       dedupeKey: `cron:${definition.id}:${scheduledAt.toISOString()}`,
-      scheduledAt: scheduledAt.toISOString(),
     });
+    // Der Vorkommenszeitpunkt darf **nicht** als Zustellzeit weitergereicht
+    // werden. Die Queue akzeptiert hoechstens fuenf Minuten Rueckdatierung; ein
+    // nachgeholtes Vorkommen ist aelter und wurde bis Release 1.18
+    // ausnahmslos abgewiesen. Die Identitaet steckt im Dedupe-Key.
+    expect(call[3]).not.toHaveProperty("scheduledAt");
   });
 
   it("rejects a non-occurrence and a cross-tenant scheduler", async () => {

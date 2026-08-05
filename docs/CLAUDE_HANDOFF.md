@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.17.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.18.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,13 +39,14 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.17.0`
-- Aktueller Slice: 1.17 Queues ueber mehrere Instanzen — Multi-Instance und Last zertifiziert
+- Paketversion: `1.18.0`
+- Aktueller Slice: 1.18 Cron mit Persistenz und Scheduler — Catch-up-Fehler behoben
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Drei Zertifizierungsstacks: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0030_realtime_event_log.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0031_project_cron.sql`
+- Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
 - Evidenz: `docs/evidence/2026-08-04/` mit Rohlogs und generierten Manifesten
 - Manifestgenerator: `scripts/certification-manifest.mjs`
@@ -164,22 +165,23 @@ Auch die offenen Live-Gates aus 1.3 bis 1.5 bleiben bestehen. Docker, Podman,
 
 ## Nächster bounded Slice
 
-`1.18.0`: Compute, um Stufe 1.6 zu schliessen. Queues sind seit 1.17 inklusive
-Mehrinstanzbetrieb zertifiziert; was fehlt, ist die Ausfuehrungsseite.
+`1.19.0`: Webhook-Outbox und Functions-Sandbox, um Stufe 1.6 zu schliessen.
 
-Das Austrittskriterium verlangt Egress-Policy, Ressourcenlimits, Idempotenz,
-Dead Letters, Retry und Secret-Canary-Tests **ohne gemeinsame
-Ausfuehrungsautoritaet**. Idempotenz, Dead Letters und Retry sind erbracht. Es
-fehlen Functions-Sandbox, Cron-Scheduler und Webhook-Zustellung -- alle drei
-existieren nur als interne Vertragsports in `lib/server/compute/` ohne Laufzeit.
-Offene Adapter stehen in `docs/COMPUTE_CONTRACTS.md`.
+Cron ist seit 1.18 betriebsfaehig und zertifiziert. Es fehlen noch zwei der
+drei Compute-Bausteine, beide nur interne Vertragsports in
+`lib/server/compute/` ohne Laufzeit. Offene Adapter stehen in
+`docs/COMPUTE_CONTRACTS.md`.
 
-Ebenfalls offen: ein startbarer Handler-Host. `ProjectQueueWorker` ist ein
-injizierbarer Ausfuehrungsport, kein Prozess, den ein Betreiber starten kann.
+Die Webhook-Outbox ist der naeherliegende Teil: Sie braucht Persistenz, einen
+Zustellprozess mit Retry und Dead Letter, und sie kann dieselben Muster nutzen,
+die bei Queues und Cron bereits zertifiziert sind. Die Functions-Sandbox ist der
+groessere Brocken, weil sie echte Prozessisolation und Egress-Kontrolle
+verlangt.
 
-Kleinere Punkte, die sich nebenbei erledigen lassen: ein Scheduler fuer die
-beiden Realtime-`prune`-Pfade und eine gemeinsame Katalogaufloesung fuer
-Generated Data API und Realtime-Changes.
+Kleinere offene Punkte: Der `CronScheduler` ist eine Bibliothek, kein Prozess --
+keine `workers/`-Runtime ruft ihn auf. Cron-Definitionen entstehen derzeit nur
+ueber direkten Datenbankzugriff; es gibt weder API noch Console-Flaeche. Und
+weiterhin fehlt ein Scheduler fuer die beiden Realtime-`prune`-Pfade.
 
 ## Zwei Muster, die mehrfach aufgetreten sind
 
