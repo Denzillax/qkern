@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import type { EgressOutcome, EgressRequest } from "@/lib/server/compute/function-egress";
 import { FunctionInvocationError, type FunctionSandboxPort } from "@/lib/server/compute/functions";
 import type {
   FunctionDefinition,
@@ -22,6 +23,7 @@ const PINNED_IMAGE = /^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$/;
 const LOCAL_IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
 const MAX_OUTPUT_BYTES = 256 * 1024;
 const MAX_STDERR_BYTES = 8 * 1024;
+const REMOVE_TIMEOUT_MS = 10_000;
 
 /** Präfix jedes Sandbox-Containers, damit ein Betreiber Reste erkennen kann. */
 export const SANDBOX_CONTAINER_PREFIX = "qkern-fn-";
@@ -35,11 +37,6 @@ export type DockerFunctionSandboxOptions = {
   pidsLimit?: number;
   tmpfsBytes?: number;
   /**
-   * Erlaubt Egress. In dieser Stufe **nicht implementiert**: Ohne Proxy gäbe es
-   * nur alles oder nichts, und „alles" wäre keine Policy.
-   */
-  allowEgress?: never;
-  /**
    * Erlaubt zusätzlich eine lokale Image-Id als Ziel.
    *
    * Ausschliesslich für die Zertifizierung der Isolationsflags: Ein lokal
@@ -49,8 +46,21 @@ export type DockerFunctionSandboxOptions = {
    * Produktionsgrenze exakt die der Definition bleibt.
    */
   allowLocalImageId?: boolean;
+  /**
+   * Vermittelt Ausgangsverbindungen einer Function.
+   *
+   * Ohne ihn wird eine Definition mit erlaubten Origins abgewiesen: Der
+   * Container bekommt in keinem Fall ein Netz, und eine Liste, die niemand
+   * bedient, wäre ein stiller Bruch der Zusage.
+   */
+  egress?: FunctionEgressHandler;
   spawnFn?: typeof spawn;
 };
+
+export interface FunctionEgressHandler {
+  request(definition: FunctionDefinition, request: EgressRequest): Promise<EgressOutcome>;
+  budget(): { spend(): boolean };
+}
 
 /**
  * Führt eine Function in einem wegwerfbaren Container aus.
@@ -61,9 +71,9 @@ export type DockerFunctionSandboxOptions = {
  *
  * Die Isolation liegt in den Flags, nicht in dieser Klasse:
  *
- * - `--network none` — kein Egress. Das ist die einzige Netzwerkform, die diese
- *   Stufe kennt; eine Definition mit erlaubten Origins wird abgewiesen, statt
- *   stillschweigend volles Netz oder gar keins zu bekommen.
+ * - `--network none` — der Container hat **nie** ein Netz. Ausgangsverbindungen
+ *   laufen ausschliesslich über den vermittelten Kanal auf stdio, wo die
+ *   Allowlist der Definition bei jeder einzelnen Anfrage geprüft wird.
  * - `--read-only` mit einem kleinen `noexec`-tmpfs für `/tmp` — geschriebener
  *   Code kann nicht ausgeführt werden.
  * - `--user` ungleich root, `--cap-drop ALL`, `--security-opt no-new-privileges`
@@ -111,10 +121,9 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
     const pinned = PINNED_IMAGE.test(definition.image) ||
       (this.options.allowLocalImageId === true && LOCAL_IMAGE_ID.test(definition.image));
     if (!pinned) throw new FunctionInvocationError("FUNCTION_INVALID");
-    if (definition.egressOrigins.length > 0) {
-      // Fail closed. Ein Egress-Proxy fehlt; volles Netz zu geben waere das
-      // Gegenteil dessen, was die Liste ausdrueckt, und gar kein Netz waere ein
-      // stiller Bruch der Zusage.
+    if (definition.egressOrigins.length > 0 && !this.options.egress) {
+      // Fail closed. Ohne Vermittler bliebe die Liste unbedient, und das waere
+      // ein stiller Bruch der Zusage, die sie ausdrueckt.
       throw new FunctionInvocationError("FUNCTION_INVALID");
     }
     if (options.signal.aborted) throw new FunctionInvocationError("FUNCTION_TIMEOUT");
@@ -122,7 +131,8 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
     // Der Name kommt aus dem Zufallsgenerator, nicht aus der Definition: Er
     // muss eindeutig sein und darf nichts aus einer Eingabe uebernehmen.
     const container = `${SANDBOX_CONTAINER_PREFIX}${randomBytes(12).toString("hex")}`;
-    const raw = await this.run(container, this.args(definition, container), JSON.stringify({
+    const invoke = JSON.stringify({
+      type: "invoke",
       id: invocation.id,
       functionId: invocation.functionId,
       requestedAt: invocation.requestedAt,
@@ -131,15 +141,10 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
       // Nur Referenzen. Der Wert eines Geheimnisses erreicht diesen Prozess gar
       // nicht und kann deshalb auch nicht weitergereicht werden.
       secretRefs: [...definition.secretRefs],
-    }), options.signal);
-
-    try {
-      return JSON.parse(raw) as FunctionInvocationResult;
-    } catch (cause) {
-      // Die Ausgabe stammt aus fremdem Code und gehoert nicht in eine Meldung.
-      void cause;
-      throw new FunctionInvocationError("FUNCTION_SANDBOX_FAILED");
-    }
+      egressOrigins: [...definition.egressOrigins],
+    });
+    return await this.run(container, this.args(definition, container), invoke, definition,
+      options.signal);
   }
 
   private args(definition: FunctionDefinition, container: string): string[] {
@@ -166,8 +171,12 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
   }
 
   /**
-   * Startet den Container, schreibt den Aufruf auf stdin und liest eine
-   * begrenzte Antwort von stdout.
+   * Startet den Container und spricht zeilenweise JSON mit ihm.
+   *
+   * Die Function schickt entweder eine Bitte um eine Ausgangsverbindung oder
+   * ihr Ergebnis. Eine einzelne Antwort ohne `type` gilt weiterhin als
+   * Ergebnis — das war das Protokoll aus Release 1.22, und ein Image, das nichts
+   * nach aussen ruft, muss dafür nicht angefasst werden.
    *
    * `stderr` wird verworfen. Es stammt aus fremdem Code und könnte alles
    * enthalten, was die Function gesehen hat.
@@ -176,9 +185,10 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
     container: string,
     args: string[],
     input: string,
+    definition: FunctionDefinition,
     signal: AbortSignal,
-  ): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
+  ): Promise<FunctionInvocationResult> {
+    return new Promise<FunctionInvocationResult>((resolve, reject) => {
       const child = this.spawnFn(this.docker, args, {
         stdio: ["pipe", "pipe", "pipe"] as const,
         // Die Umgebung dieses Prozesses bleibt draussen. Sie enthaelt
@@ -187,12 +197,14 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
         env: { PATH: process.env.PATH ?? "" } as unknown as NodeJS.ProcessEnv,
       });
 
-      let stdout = "";
+      let pending = "";
       let stdoutBytes = 0;
       let stderrBytes = 0;
       let settled = false;
+      let result: FunctionInvocationResult | null = null;
+      const budget = this.options.egress?.budget();
 
-      const finish = (error: FunctionInvocationError | null, value?: string) => {
+      const finish = (error: FunctionInvocationError | null, value?: FunctionInvocationResult) => {
         if (settled) return;
         settled = true;
         signal.removeEventListener("abort", onAbort);
@@ -202,12 +214,56 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
           // Schritt lief eine Function nach ihrem Timeout unbegrenzt weiter und
           // verbrauchte weiter Speicher und CPU — der Aufrufer sah einen
           // sauberen Fehler, die Isolationszusage war trotzdem hohl.
-          this.removeContainer(container);
-          reject(error);
-        } else resolve(value ?? "");
+          //
+          // Auf das Entfernen wird **gewartet**. Abgekoppelt war es nur
+          // best-effort: Endete der Prozess im selben Moment, blieb der
+          // Container stehen. Der Preis sind wenige hundert Millisekunden auf
+          // einem ohnehin gescheiterten Aufruf.
+          void this.removeContainer(container).finally(() => reject(error));
+        } else if (value) resolve(value);
+        else reject(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
       };
       const onAbort = () => finish(new FunctionInvocationError("FUNCTION_TIMEOUT"));
       signal.addEventListener("abort", onAbort, { once: true });
+
+      const answer = (payload: unknown) => {
+        if (settled) return;
+        try { child.stdin?.write(`${JSON.stringify(payload)}\n`); } catch { /* geschlossen */ }
+      };
+
+      const handleMessage = (raw: string) => {
+        if (settled || !raw.trim()) return;
+        let message: unknown;
+        try {
+          message = JSON.parse(raw);
+        } catch {
+          finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
+          return;
+        }
+        if (!message || typeof message !== "object") {
+          finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
+          return;
+        }
+        const typed = message as { type?: unknown; id?: unknown; request?: unknown };
+        if (typed.type === "egress") {
+          const handler = this.options.egress;
+          // Ohne Vermittler oder ueber dem Budget: eine Absage, kein Abbruch.
+          // Die Function soll darauf reagieren koennen wie auf jeden anderen
+          // fehlgeschlagenen Aufruf.
+          if (!handler || !budget?.spend()) {
+            answer({ type: "egress-result", id: typed.id, outcome: { error: "EGRESS_LIMIT" } });
+            return;
+          }
+          void handler.request(definition, typed.request as EgressRequest)
+            .then((outcome: EgressOutcome) =>
+              answer({ type: "egress-result", id: typed.id, outcome }))
+            .catch(() =>
+              answer({ type: "egress-result", id: typed.id, outcome: { error: "EGRESS_FAILED" } }));
+          return;
+        }
+        // `type: "result"` oder — wie in Release 1.22 — eine blosse Antwort.
+        result = message as FunctionInvocationResult;
+      };
 
       child.stdout?.on("data", (chunk: Buffer) => {
         stdoutBytes += chunk.byteLength;
@@ -217,7 +273,14 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
           finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
           return;
         }
-        stdout += chunk.toString("utf8");
+        pending += chunk.toString("utf8");
+        let newline = pending.indexOf("\n");
+        while (newline >= 0) {
+          const line = pending.slice(0, newline);
+          pending = pending.slice(newline + 1);
+          handleMessage(line);
+          newline = pending.indexOf("\n");
+        }
       });
       child.stderr?.on("data", (chunk: Buffer) => {
         stderrBytes += chunk.byteLength;
@@ -226,12 +289,16 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
 
       child.on("error", () => finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED")));
       child.on("close", (code) => {
-        if (code === 0) finish(null, stdout);
+        // Der letzte Abschnitt kann ohne Zeilenende enden.
+        handleMessage(pending);
+        if (code === 0 && result) finish(null, result);
         else finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
       });
 
       child.stdin?.on("error", () => finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED")));
-      child.stdin?.end(input);
+      // stdin bleibt offen: Der Container darf waehrend seines Laufs um
+      // Ausgangsverbindungen bitten und braucht dafuer den Rueckkanal.
+      child.stdin?.write(`${input}\n`);
     });
   }
 
@@ -240,14 +307,22 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
    * der Container bereits weg, und ein Fehler hier darf den eigentlichen
    * Fehlerpfad nicht überschreiben.
    */
-  private removeContainer(container: string): void {
-    try {
-      const remover = this.spawnFn(this.docker, ["rm", "--force", "--volumes", container], {
-        stdio: "ignore",
-        env: { PATH: process.env.PATH ?? "" } as unknown as NodeJS.ProcessEnv,
-      });
-      remover.on("error", () => undefined);
-      remover.unref();
-    } catch { /* Die Laufzeit ist nicht erreichbar; nichts zu tun */ }
+  private removeContainer(container: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const settle = () => { if (!done) { done = true; resolve(); } };
+      try {
+        const remover = this.spawnFn(this.docker, ["rm", "--force", "--volumes", container], {
+          stdio: "ignore",
+          env: { PATH: process.env.PATH ?? "" } as unknown as NodeJS.ProcessEnv,
+        });
+        remover.on("error", settle);
+        remover.on("close", settle);
+        // Auch das Aufraeumen darf nicht unbegrenzt haengen.
+        setTimeout(settle, REMOVE_TIMEOUT_MS).unref?.();
+      } catch {
+        settle();
+      }
+    });
   }
 }

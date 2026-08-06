@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import {
   DockerFunctionSandbox,
   SANDBOX_CONTAINER_PREFIX,
@@ -111,12 +112,74 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     expect(result.body).toMatchObject({ reached: false });
   });
 
-  it("refuses a definition that asks for allowed egress instead of guessing", async () => {
-    // Fail closed: Ohne Egress-Proxy gaebe es nur alles oder nichts. „Alles"
-    // waere keine Policy, „nichts" waere ein stiller Bruch der Zusage.
+  it("refuses a definition that asks for allowed egress when nobody mediates it", async () => {
+    // Fail closed: Eine Liste, die niemand bedient, waere ein stiller Bruch der
+    // Zusage, die sie ausdrueckt.
     await expect(call({ mode: "echo" }, {
       egressOrigins: Object.freeze(["https://api.example.com"]),
     })).rejects.toMatchObject({ code: "FUNCTION_INVALID" });
+  });
+
+  it("lets a mediated request through to an allowed origin", async () => {
+    // Der Container behaelt `--network none`. Die Verbindung stellt die Runtime
+    // her, und sie prueft dabei die Allowlist der Definition.
+    const mediated = new DockerFunctionSandbox({
+      allowLocalImageId: true,
+      egress: new MediatedFunctionEgress({
+        fetchFn: async () => new Response('{"pong":true}', {
+          headers: { "content-type": "application/json" },
+        }),
+      }),
+    });
+    const result = await call({ mode: "mediated" }, {
+      egressOrigins: Object.freeze(["https://api.example.com"]),
+    }, mediated);
+    expect(result.body).toMatchObject({ outcome: { status: 200, body: '{"pong":true}' } });
+  });
+
+  it("refuses a mediated request to an origin outside the allowlist", async () => {
+    let called = false;
+    const mediated = new DockerFunctionSandbox({
+      allowLocalImageId: true,
+      egress: new MediatedFunctionEgress({
+        fetchFn: async () => { called = true; return new Response("{}"); },
+      }),
+    });
+    const result = await call({
+      mode: "mediated", url: "https://api.example.com.evil.test/v1/ping",
+    }, { egressOrigins: Object.freeze(["https://api.example.com"]) }, mediated);
+
+    expect(result.body).toMatchObject({ outcome: { error: "EGRESS_NOT_ALLOWED" } });
+    // Die Anfrage wurde nie gestellt, nicht nur ihr Ergebnis verworfen.
+    expect(called).toBe(false);
+  });
+
+  it("bounds how many outbound requests one invocation may make", async () => {
+    const mediated = new DockerFunctionSandbox({
+      allowLocalImageId: true,
+      egress: new MediatedFunctionEgress({
+        maxRequests: 3,
+        fetchFn: async () => new Response("{}", {
+          headers: { "content-type": "application/json" },
+        }),
+      }),
+    });
+    const result = await call({ mode: "mediated-burst", count: 6 }, {
+      egressOrigins: Object.freeze(["https://api.example.com"]),
+    }, mediated);
+    expect(result.body).toMatchObject({ allowed: 3, refused: 3 });
+  });
+
+  it("still denies a direct connection even while mediation is available", async () => {
+    // Der Kanal ersetzt das Netz, er ergaenzt es nicht.
+    const mediated = new DockerFunctionSandbox({
+      allowLocalImageId: true,
+      egress: new MediatedFunctionEgress({ fetchFn: async () => new Response("{}") }),
+    });
+    const result = await call({ mode: "egress" }, {
+      egressOrigins: Object.freeze(["https://api.example.com"]),
+    }, mediated);
+    expect(result.body).toMatchObject({ reached: false });
   });
 
   it("runs as a non-root user", async () => {

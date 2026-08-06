@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.25.md](RELEASE_1.25.md) | Aktueller Release: Signaturschlüssel aus dem Vault |
+| [RELEASE_1.26.md](RELEASE_1.26.md) | Aktueller Release: Vermittelter Egress |
+| [RELEASE_1.25.md](RELEASE_1.25.md) | Historischer Release: Signaturschlüssel aus dem Vault |
 | [RELEASE_1.24.md](RELEASE_1.24.md) | Historischer Release: Functions Ende zu Ende |
 | [RELEASE_1.23.md](RELEASE_1.23.md) | Historischer Release: Functions aufrufbar |
 | [RELEASE_1.22.md](RELEASE_1.22.md) | Historischer Release: Functions-Sandbox |

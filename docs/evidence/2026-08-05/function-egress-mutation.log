@@ -1,0 +1,78 @@
+Docker-Server 29.5.3
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image sha256:5fbfae9540559f1093e98d047314073e98dde9925d32317fbb2377e1569da50a
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-sandbox.integration.test.ts (17 tests | 2 failed) 22258ms
+     × refuses a mediated request to an origin outside the allowlist 429ms
+     × bounds how many outbound requests one invocation may make 436ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > refuses a mediated request to an origin outside the allowlist
+AssertionError: expected { outcome: { status: 200, …(2) } } to match object { Object (outcome) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "outcome": {
+-     "error": "EGRESS_NOT_ALLOWED",
++     "body": "{}",
++     "headers": {
++       "content-type": "text/plain;charset=UTF-8",
++     },
++     "status": 200,
+    },
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:152:25
+    150|     }, { egressOrigins: Object.freeze(["https://api.example.com"]) }, …
+    151|
+    152|     expect(result.body).toMatchObject({ outcome: { error: "EGRESS_NOT_…
+       |                         ^
+    153|     // Die Anfrage wurde nie gestellt, nicht nur ihr Ergebnis verworfe…
+    154|     expect(called).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > bounds how many outbound requests one invocation may make
+AssertionError: expected { allowed: 6, refused: +0 } to match object { allowed: 3, refused: 3 }
+
+- Expected
++ Received
+
+  {
+-   "allowed": 3,
+-   "refused": 3,
++   "allowed": 6,
++   "refused": 0,
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:170:25
+    168|       egressOrigins: Object.freeze(["https://api.example.com"]),
+    169|     }, mediated);
+    170|     expect(result.body).toMatchObject({ allowed: 3, refused: 3 });
+       |                         ^
+    171|   });
+    172|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 20 passed (22)
+   Start at  07:06:08
+   Duration  33.75s (transform 178ms, setup 0ms, import 265ms, tests 33.16s, environment 0ms)
+
+EXIT=1
+EXIT=1

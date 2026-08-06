@@ -24,8 +24,19 @@ Benutzer, `--cap-drop ALL`, `no-new-privileges`, `--memory` gleich
 `--memory-swap`, eine CPU- und eine PID-Grenze — und **kein** `--env`, damit die
 Umgebung dieser Runtime den Container nicht erreicht.
 
-Eine Definition mit erlaubten Egress-Origins wird **abgewiesen**: Ohne
-Egress-Proxy gäbe es nur alles oder nichts, und „alles" wäre keine Policy.
+Seit `1.26.0` sind erlaubte Egress-Origins **benutzbar** — ohne dass der
+Container ein Netz bekommt. Er bittet über stdio um jede Ausgangsverbindung; die
+Runtime prüft die exakte Origin, die Methode, die Header, die Grössen und die
+Anzahl je Aufruf und führt die Anfrage dann selbst aus. Weiterleitungen sind
+ausgeschlossen, und von der Antwort kehren nur vier feste Header zurück.
+
+Der Preis: Eine Function benutzt nicht direkt `fetch`, sondern den vermittelten
+Kanal ihrer Laufzeit. Ein Egress-Proxy in einem eigenen Netz wäre der übliche
+Weg gewesen, hätte aber `--network none` gekostet — die stärkste Zusage der
+Sandbox — um dieselbe Frage zu beantworten.
+
+Ohne Vermittler wird eine Definition mit erlaubten Origins weiterhin abgewiesen:
+Eine Liste, die niemand bedient, wäre ein stiller Bruch der Zusage.
 
 Ein überzogener Timeout beendet den Container hart. Den Docker-Client zu töten
 genügt nicht — das war der Produktfehler, den der erste Zertifizierungslauf
@@ -41,10 +52,13 @@ nicht mit der ihres Aufrufers.
 Die Definition wird bei jedem Aufruf frisch gelesen. Ein zwischengespeichertes
 Bild liefe nach einem Abschalten weiter.
 
-Ein Production-Adapter muss zusätzlich DNS-Pinning, einen Egress-Proxy für die
-erlaubten Origins, ein Ephemeral-Disk-Limit und Kill-Evidenz liefern. Es gibt
-weiterhin keinen Deployment-Weg für Function-Images, `maxConcurrency` wird nicht
-durchgesetzt, und eine Policy je Function für anonyme Aufrufe fehlt.
+`maxConcurrency` wird seit `1.23.0` gespeichert und seit `1.24.0` beim Aufruf
+durchgesetzt — allerdings **prozesslokal**, nicht clusterweit.
+
+Ein Production-Adapter muss zusätzlich DNS-Pinning und eine Sperre privater
+Adressbereiche im Egress-Pfad, ein Ephemeral-Disk-Limit und Kill-Evidenz
+liefern. Es gibt weiterhin keinen Deployment-Weg für Function-Images und keine
+Policy je Function für anonyme Aufrufe.
 
 ## Webhooks
 
@@ -61,10 +75,11 @@ während einer Rotation beide Schlüssel kennen kann. `FetchWebhookTransport`
 liest den Antwortkörper eines fremden Empfängers nie; die Bestätigung kommt
 ausschließlich aus dem zurückgespiegelten Header `x-qkern-delivery-id`.
 
-Signaturschlüssel liefert ein `WebhookSecretProvider`. Der einzige heutige
-Provider liest sie aus der Umgebung, verlangt eine ausdrückliche Freischaltung
-und weigert sich, in Produktion überhaupt zu existieren. Ein Vault-gestützter
-Provider ist offen.
+Signaturschlüssel liefert ein `WebhookSecretProvider`. Seit `1.25.0` gibt es
+zwei: einen Vault-gestützten für KV Version 2 und einen für die Umgebung, der
+eine ausdrückliche Freischaltung verlangt und sich weigert, in Produktion
+überhaupt zu existieren. Ist ein Vault konfiguriert, wird der Umgebungs-Provider
+gar nicht erst gebaut.
 
 Der Production-Transport muss DNS einmal auflösen, öffentliche IPs pinnen, alle
 privaten/Link-local/Metadata-Netze nach IPv4 und IPv6 blockieren und Rebinding
@@ -121,8 +136,7 @@ entfernt über den Fremdschlüssel auch alle wartenden Zustellungen.
 
 Die Zustellstatusliste gibt niemals eine Nutzlast zurück.
 
-Offen bleiben: Scheduler-Leases, Zeitzonen/DST, Vault-gestützte
-Signaturschlüssel, automatische Scope-Entdeckung, SDK-/CLI-Anbindung, manuelles
-Auslösen eines Vorkommens, Wiederholen einer toten Zustellung,
-Functions-Sandbox-Deployment und Provider-E2E gegen einen echten
-HTTPS-Empfänger. Keine dieser Foundations ist in MCP exponiert.
+Offen bleiben: Scheduler-Leases, Zeitzonen/DST, automatische Scope-Entdeckung,
+SDK-/CLI-Anbindung, manuelles Auslösen eines Vorkommens, Wiederholen einer toten
+Zustellung, ein Deployment-Weg für Function-Images und Provider-E2E gegen einen
+echten HTTPS-Empfänger. Keine dieser Foundations ist in MCP exponiert.

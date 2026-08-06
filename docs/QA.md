@@ -752,3 +752,36 @@ fehlgeschlagen.
 Nicht erbracht: Betrieb eines produktiven Vault-Clusters (der Lauf nutzt den
 Dev-Modus), AppRole- oder Kubernetes-Authentifizierung und ein Egress-Proxy fuer
 Functions.
+
+## Vermittelter Egress — Release 1.26
+
+Elf lokale Tests decken die Policy ab: exakt allowlistete Origin durch,
+Nachbar-Origin und abweichender Port abgewiesen, leere Liste weist alles ab,
+keine Weiterleitung, kleine Methodenliste, abgewiesene Hop-by-Hop- und
+Identitaetsheader samt CRLF-Injektion, begrenzte Anfrage- und Antwortgroesse,
+Fehler ohne Ursache, nur vier feste Antwortheader und ein Budget, das
+ausgeht.
+
+Fuenf Faelle laufen im echten Container: eine vermittelte Anfrage an eine
+erlaubte Origin geht durch, eine an `api.example.com.evil.test` wird abgewiesen
+**ohne dass die Anfrage ueberhaupt gestellt wird**, das Budget begrenzt die
+Anzahl je Aufruf, eine Definition mit erlaubten Origins ohne Vermittler wird
+abgewiesen, und ein **direkter** Verbindungsversuch scheitert weiterhin — der
+Kanal ersetzt das Netz, er ergaenzt es nicht.
+
+Beim Umbau fiel ein Fall um, der nichts mit dem neuen Protokoll zu tun hatte:
+Das harte Entfernen eines Containers lief abgekoppelt weiter und war damit nur
+best-effort — eine Einschraenkung, die Release 1.24 selbst notiert hatte. Jetzt
+wird darauf gewartet; die Zusage braucht keine Einschraenkung mehr.
+
+Mutationsprobe: Allowlist auf einen Praefixvergleich aufgeweicht und das
+Anfragebudget abgeschaltet — genau die zwei zugehoerigen Faelle fallen um, kein
+anderer. Protokoll: `docs/evidence/2026-08-05/function-egress-mutation.log`.
+
+Checkpoint `1.26.0` am 5. August 2026: **22 von 22** Faellen des
+Functions-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 912 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: eine Zertifizierung gegen einen echten externen HTTPS-Server
+(der ausgehende Aufruf laeuft in den Faellen gegen ein eingespeistes `fetch`),
+DNS-Pinning und eine Sperre privater Adressbereiche im Egress-Pfad.

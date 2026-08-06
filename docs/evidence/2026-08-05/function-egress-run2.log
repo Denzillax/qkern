@@ -1,0 +1,20 @@
+Docker-Server 29.5.3
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image sha256:aa0b5e5b5473567b9c76ac52e11ee902d79a6ad8e9f91261b4d30f21afb7ab06
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+
+ Test Files  2 passed (2)
+      Tests  22 passed (22)
+   Start at  07:07:39
+   Duration  34.05s (transform 207ms, setup 0ms, import 293ms, tests 33.45s, environment 0ms)
+
+EXIT=0

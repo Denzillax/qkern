@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-egress-mutation",
+  "log": "function-egress-mutation.log",
+  "commit": "6e39946f87605965f9ff6ec0bad3ed45895bd9af",
+  "commitSubject": "release: 1.25.0 Signaturschluessel aus dem Vault",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "2 failed | 20 passed (22)",
+  "passed": 20,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

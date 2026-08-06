@@ -123,3 +123,14 @@ nachdem zwei Flakes im Harness behoben waren.
 Abgeschaltet wurden die Mindestlänge des Signaturgeheimnisses und die
 Behandlung von HTTP 404 als „kenne ich nicht". Genau die zwei zugehörigen Fälle
 fielen um, kein anderer.
+
+## Läufe zu Release 1.26 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/function-egress-run1.log` | Docker 29.5 und PostgreSQL 17 | 22 von 22, exit 0 |
+| `2026-08-05/function-egress-run2.log` | Docker 29.5 und PostgreSQL 17 | 22 von 22, exit 0, Wiederholung |
+| `2026-08-05/function-egress-mutation.log` | Docker 29.5 und PostgreSQL 17 | **20 von 22, exit 1 — absichtlich** |
+
+Aufgeweicht wurden der exakte Origin-Vergleich (auf einen Präfixvergleich) und
+das Anfragebudget je Aufruf. Genau die zwei zugehörigen Fälle fielen um.

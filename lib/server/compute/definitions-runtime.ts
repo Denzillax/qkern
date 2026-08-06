@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
+import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
 import { FunctionInvoker } from "@/lib/server/compute/functions";
@@ -76,8 +77,24 @@ export function createFunctionInvocationServiceFromEnv(
     ),
     invoker: new FunctionInvoker(new DockerFunctionSandbox({
       docker: env.QKERN_FUNCTIONS_CONTAINER_RUNTIME?.trim() || "docker",
+      // Ohne Vermittler wird eine Definition mit erlaubten Origins abgewiesen.
+      // Der Container bekommt in keinem Fall ein Netz; die Verbindung stellt
+      // dieser Prozess her, und er prueft dabei die Allowlist.
+      egress: new MediatedFunctionEgress({
+        maxRequests: integer(env.QKERN_FUNCTIONS_EGRESS_MAX_REQUESTS, 10),
+        timeoutMs: integer(env.QKERN_FUNCTIONS_EGRESS_TIMEOUT_MS, 10_000),
+      }),
     })),
   });
+}
+
+function integer(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new ConfigurationError("A function egress setting must be an integer.");
+  }
+  return value;
 }
 
 type GlobalComputeDefinitions = typeof globalThis & {
