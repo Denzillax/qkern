@@ -95,3 +95,19 @@ fielen um, kein anderer.
 
 Aufgeweicht wurden die Digest-Bindung des Images und das UPDATE-Spaltenrecht.
 Genau die zwei zugehörigen Fälle fielen um, kein anderer.
+
+## Läufe zu Release 1.24 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/function-chain-run1.log` | Docker 29.5 und PostgreSQL 17 | 18 von 18, exit 0 |
+| `2026-08-05/function-chain-run2.log` | Docker 29.5 und PostgreSQL 17 | 18 von 18, exit 0, Wiederholung |
+| `2026-08-05/function-chain-mutation.log` | Docker 29.5 und PostgreSQL 17 | **15 von 18, exit 1 — absichtlich** |
+
+Abgeschaltet wurden die Nebenläufigkeitsgrenze und das erneute Lesen der
+Definition bei jedem Aufruf. Zwei Fälle fielen direkt um, ein dritter als Folge:
+ohne Grenze startete der Test einen zweiten schlafenden Container, der den Lauf
+überlebte.
+
+Beide grünen Läufe stammen aus einer Serie von drei aufeinanderfolgenden Läufen,
+nachdem zwei Flakes im Harness behoben waren.

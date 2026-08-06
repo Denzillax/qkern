@@ -16,6 +16,8 @@ export type FunctionInvocationServiceOptions = {
   invoker: Pick<FunctionInvoker, "invoke">;
   now?: () => Date;
   id?: () => string;
+  /** Wird beim Abweisen wegen Überlast gerufen. Erhält nur den Namen. */
+  onRejected?: (name: string) => void;
 };
 
 /**
@@ -37,10 +39,26 @@ export type FunctionInvocationServiceOptions = {
 export class FunctionInvocationService {
   private readonly now: () => Date;
   private readonly id: () => string;
+  /**
+   * Laufende Aufrufe je Function.
+   *
+   * **Prozesslokal.** Zwei Web-Instanzen zählen getrennt, die tatsächliche
+   * Obergrenze ist also `maxConcurrency × Instanzen`. Eine clusterweite Grenze
+   * bräuchte einen gemeinsamen Zähler mit eigener Ausfallsemantik; das wäre eine
+   * größere Entscheidung als dieser Schnitt trägt. Was diese Grenze schon hier
+   * verhindert, ist der Fall, der ohne sie unvermeidlich ist: ein Aufrufer, der
+   * beliebig viele Container gleichzeitig startet, bis der Host steht.
+   */
+  private readonly running = new Map<string, number>();
 
   constructor(private readonly options: FunctionInvocationServiceOptions) {
     this.now = options.now ?? (() => new Date());
     this.id = options.id ?? (() => randomUUID());
+  }
+
+  /** Laufende Aufrufe einer Function. Nur für Beobachtung. */
+  concurrency(functionId: string): number {
+    return this.running.get(functionId) ?? 0;
   }
 
   async invoke(
@@ -58,12 +76,27 @@ export class FunctionInvocationService {
     const record = await this.options.repository.findFunctionByName(principal, scope, name);
     if (!record) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
 
-    return await this.options.invoker.invoke(toDefinition(record), Object.freeze({
-      id: this.id(),
-      functionId: record.id,
-      payload,
-      requestedAt: this.now().toISOString(),
-    }));
+    const active = this.running.get(record.id) ?? 0;
+    if (active >= record.maxConcurrency) {
+      this.options.onRejected?.(record.name);
+      throw new ComputeDefinitionError("COMPUTE_AT_CAPACITY");
+    }
+    this.running.set(record.id, active + 1);
+    try {
+      return await this.options.invoker.invoke(toDefinition(record), Object.freeze({
+        id: this.id(),
+        functionId: record.id,
+        payload,
+        requestedAt: this.now().toISOString(),
+      }));
+    } finally {
+      // Der Zaehler muss auch nach einem Timeout oder einem Absturz der Sandbox
+      // fallen. Sonst waere die Function nach ein paar Fehlschlaegen dauerhaft
+      // "voll" — und genau das faellt erst im Betrieb auf.
+      const remaining = (this.running.get(record.id) ?? 1) - 1;
+      if (remaining <= 0) this.running.delete(record.id);
+      else this.running.set(record.id, remaining);
+    }
   }
 }
 
@@ -87,7 +120,9 @@ function toDefinition(record: FunctionDefinitionRecord) {
 
 /** Auf einen HTTP-Status abbildbarer Fehlercode ohne Innenansicht. */
 export function functionInvocationStatus(error: unknown): number {
-  if (error instanceof ComputeDefinitionError) return 404;
+  if (error instanceof ComputeDefinitionError) {
+    return error.code === "COMPUTE_AT_CAPACITY" ? 429 : 404;
+  }
   if (error instanceof FunctionInvocationError) {
     switch (error.code) {
       case "FUNCTION_INVALID": return 422;

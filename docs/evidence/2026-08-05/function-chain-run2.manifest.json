@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-chain",
+  "log": "function-chain-run2.log",
+  "commit": "872c7cc898ef97558c663b1212c70c236dfdd8d7",
+  "commitSubject": "release: 1.23.0 Functions aufrufbar",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "18 passed (18)",
+  "passed": 18,
+  "failed": 0,
+  "skipped": 0,
+  "images": []
+}

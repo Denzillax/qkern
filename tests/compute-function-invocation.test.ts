@@ -117,9 +117,82 @@ describe("FunctionInvocationService", () => {
   });
 });
 
+describe("FunctionInvocationService — concurrency", () => {
+  /**
+   * Hält jeden Aufruf fest, bis `release` gerufen wird. Alle Resolver werden
+   * gesammelt: Nur den letzten zu behalten liesse die übrigen Aufrufe hängen.
+   */
+  function gated(maxConcurrency: number) {
+    const waiting: Array<() => void> = [];
+    const started: number[] = [];
+    const service = new FunctionInvocationService({
+      repository: {
+        async findFunctionByName() { return { ...record, maxConcurrency }; },
+      },
+      invoker: {
+        async invoke() {
+          started.push(started.length);
+          await new Promise<void>((resolve) => waiting.push(resolve));
+          return Object.freeze({ statusCode: 200, headers: {}, body: {} });
+        },
+      },
+    });
+    return {
+      service,
+      started,
+      release: () => { for (const resolve of waiting.splice(0)) resolve(); },
+    };
+  }
+
+  /** Lässt angefangene Aufrufe bis zu ihrem Wartepunkt laufen. */
+  async function settle() {
+    for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
+  }
+
+  it("refuses an invocation beyond the recorded limit", async () => {
+    const { service, release } = gated(1);
+    const first = service.invoke(serviceRole, scope, "resize-image", {});
+    await settle();
+
+    await expect(service.invoke(serviceRole, scope, "resize-image", {}))
+      .rejects.toMatchObject({ code: "COMPUTE_AT_CAPACITY" });
+
+    release();
+    await first;
+  });
+
+  it("frees the slot again after a failed invocation", async () => {
+    // Sonst waere die Function nach ein paar Fehlschlaegen dauerhaft "voll" —
+    // und genau das faellt erst im Betrieb auf.
+    const service = new FunctionInvocationService({
+      repository: { async findFunctionByName() { return { ...record, maxConcurrency: 1 }; } },
+      invoker: { async invoke() { throw new FunctionInvocationError("FUNCTION_TIMEOUT"); } },
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(service.invoke(serviceRole, scope, "resize-image", {}))
+        .rejects.toBeInstanceOf(FunctionInvocationError);
+    }
+    expect(service.concurrency(record.id)).toBe(0);
+  });
+
+  it("lets a higher limit through", async () => {
+    const { service, started, release } = gated(3);
+    const calls = [
+      service.invoke(serviceRole, scope, "resize-image", {}),
+      service.invoke(serviceRole, scope, "resize-image", {}),
+      service.invoke(serviceRole, scope, "resize-image", {}),
+    ];
+    await settle();
+    expect(started).toHaveLength(3);
+    release();
+    await Promise.allSettled(calls);
+  });
+});
+
 describe("functionInvocationStatus", () => {
   it("separates a missing function from a failing one", () => {
     expect(functionInvocationStatus(new ComputeDefinitionError("COMPUTE_NOT_FOUND"))).toBe(404);
+    expect(functionInvocationStatus(new ComputeDefinitionError("COMPUTE_AT_CAPACITY"))).toBe(429);
     expect(functionInvocationStatus(new FunctionInvocationError("FUNCTION_INVALID"))).toBe(422);
     expect(functionInvocationStatus(new FunctionInvocationError("FUNCTION_TIMEOUT"))).toBe(504);
     expect(functionInvocationStatus(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"))).toBe(502);

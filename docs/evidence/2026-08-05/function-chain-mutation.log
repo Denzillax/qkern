@@ -1,0 +1,109 @@
+Docker-Server 29.5.3
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image sha256:07166016aa0021d974ddf228df248e39ee907d7799fab13cdb2820d7b7ff6de0
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-sandbox.integration.test.ts (13 tests | 1 failed) 30305ms
+     × leaves no container running after a timeout 19027ms
+ ❯ tests/function-chain.integration.test.ts (5 tests | 2 failed) 7406ms
+     × stops running a function the moment it is disabled 886ms
+     × enforces the concurrency limit stored with the definition 515ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > stops running a function the moment it is disabled
+AssertionError: promise resolved "{ statusCode: 200, headers: {}, …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "body": {
++     "received": null,
++     "secretRefs": [
++       "vault:functions/chain",
++     ],
++   },
++   "headers": {},
++   "statusCode": 200,
+  }
+
+ ❯ tests/function-chain.integration.test.ts:141:88
+    139|
+    140|     await definitions.setFunctionEnabled(admin, scope, created.id, fal…
+    141|     await expect(invocation.invoke(serviceRole, scope, created.name, {…
+       |                                                                                        ^
+    142|       .rejects.toMatchObject({ code: "COMPUTE_NOT_FOUND" });
+    143|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > enforces the concurrency limit stored with the definition
+AssertionError: promise resolved "{ statusCode: 200, headers: {}, …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "body": {
++     "received": null,
++     "secretRefs": [
++       "vault:functions/chain",
++     ],
++   },
++   "headers": {},
++   "statusCode": 200,
+  }
+
+ ❯ tests/function-chain.integration.test.ts:154:88
+    152|     }
+    153|
+    154|     await expect(invocation.invoke(serviceRole, scope, created.name, {…
+       |                                                                                        ^
+    155|       .rejects.toMatchObject({ code: "COMPUTE_AT_CAPACITY" });
+    156|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > leaves no container running after a timeout
+AssertionError: expected [ 'qkern-fn-b1e8e18465c3192a3ced8541' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "qkern-fn-b1e8e18465c3192a3ced8541",
++ ]
+
+ ❯ tests/function-sandbox.integration.test.ts:165:40
+    163|       await new Promise((resolve) => setTimeout(resolve, 250));
+    164|     }
+    165|     expect(runningSandboxContainers()).toEqual([]);
+       |                                        ^
+    166|   }, 40_000);
+    167|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  3 failed | 15 passed (18)
+   Start at  06:18:26
+   Duration  38.25s (transform 152ms, setup 0ms, import 229ms, tests 37.71s, environment 0ms)
+
+Hinweis: Das Test-Image konnte nicht entfernt werden.
+EXIT=1
+EXIT=1

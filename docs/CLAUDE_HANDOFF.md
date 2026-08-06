@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.23.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.24.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,11 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.23.0`
-- Aktueller Slice: 1.23 Functions aufrufbar — Migration 0033, Verwaltung und `compute/invoke/{name}`
+- Paketversion: `1.24.0`
+- Aktueller Slice: 1.24 Functions Ende zu Ende — Kette in einem Lauf, `maxConcurrency` durchgesetzt
+- Kettenlauf: `tests/function-chain.integration.test.ts` plus `docker-compose.functions-certification.yml`
+- Vorheriger Slice: 1.23 Functions aufrufbar — Migration 0033, Verwaltung und `compute/invoke/{name}`
 - Aufrufweg: `lib/server/compute/function-invocation.ts`, opt-in ueber `QKERN_FUNCTIONS_ENABLED`
 - Vorheriger Slice: 1.22 Functions-Sandbox — `lib/server/compute/function-sandbox-docker.ts`
-- Vierter Zertifizierungslauf: `npm run test:functions:docker` (braucht Docker, keinen Compose-Stack)
+- Vierter Zertifizierungslauf: `npm run test:functions:docker` (braucht Docker; startet sein eigenes PostgreSQL auf 127.0.0.1:55433)
 - Test-Image der Sandbox: `tests/support/function-sandbox/`
 - Vorheriger Slice: 1.21 Definitionsflaeche — REST und Console fuer Cron und Webhooks
 - Definitionsdienst: `lib/server/compute/definitions.ts` und `definitions-postgres-repository.ts`

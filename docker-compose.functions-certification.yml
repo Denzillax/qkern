@@ -1,0 +1,38 @@
+name: qkern-functions-certification
+
+# PostgreSQL fuer die Functions-Kettenzertifizierung.
+#
+# Anders als der portlose Hauptstack veroeffentlicht dieser Postgres einen Port:
+# Der Testlauf laeuft hier auf dem **Host**, weil er eine Container-Laufzeit
+# braucht. Ein Test im Container koennte keine Container starten, ohne den
+# Docker-Socket hineinzureichen — und das waere ein groesseres Loch als der
+# Nachweis wert ist.
+#
+# Es gilt dieselbe Regel wie im Hauptstack: kein Mount innerhalb eines anderen
+# Mounts, und genau eine Init-Datei in `/docker-entrypoint-initdb.d`.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    # Wegwerfbar: Der Zustand dieses Laufs darf keinen naechsten beeinflussen.
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - ./db:/qkern/db:ro
+      - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_runtime_local_only psql -h 127.0.0.1 -U qkern_app -d qkern_control -tAc \"SELECT 1\" | grep -qx 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 40

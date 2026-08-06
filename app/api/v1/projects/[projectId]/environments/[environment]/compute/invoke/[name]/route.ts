@@ -42,6 +42,9 @@ export function createFunctionInvocationHandler(service: FunctionInvocationServi
     } catch (error) {
       const status = functionInvocationStatus(error);
       if (status === 404) return computeNoStore({ error: "Resource not found" }, 404);
+      if (status === 429) {
+        return computeNoStore({ error: "The function is at its concurrency limit" }, 429);
+      }
       // Der Fehler kann eine Container- oder Datenbankmeldung tragen und
       // gehoert nicht in die Antwort.
       return computeNoStore({ error: "The function could not be executed" }, status);

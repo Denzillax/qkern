@@ -672,3 +672,47 @@ Die Definitionen laufen im PostgreSQL-Stack, die Sandbox gegen Docker auf dem
 Host; beide Haelften sind belegt, die Naht dazwischen nicht. Ebenfalls offen:
 Egress-Proxy, Image-Deployment, Durchsetzung von `maxConcurrency` und eine
 Policy je Function fuer anonyme oder Endnutzer-Aufrufe.
+
+## Functions Ende zu Ende — Release 1.24
+
+Der vierte Zertifizierungslauf startet jetzt zusaetzlich ein echtes PostgreSQL
+mit allen 33 Migrationen. Bis Release 1.23 liefen die Definitionen im einen
+Stack und die Sandbox im anderen; beide Haelften waren belegt, die Naht
+dazwischen nicht.
+
+Fuenf Faelle laufen ueber die ganze Strecke: eine ueber die Verwaltung angelegte
+Definition landet in der Datenbank, wird beim Aufruf von dort gelesen und in
+einem echten Container ausgefuehrt. Geprueft wird dabei, was nur die Naht zeigen
+kann — Secret-Referenzen bleiben Referenzen, der Egress bleibt verweigert, eine
+abgeschaltete Function hoert sofort auf zu existieren, die in der Datenbank
+hinterlegte Nebenlaeufigkeitsgrenze greift, und eine fremde Organisation sieht
+auch ueber diesen Weg nichts.
+
+Drei lokale Tests decken die Grenze selbst ab: Abweisung ueber dem Limit, freies
+Slot nach einem Fehlschlag und ein hoeheres Limit, das durchlaesst.
+
+Genau eine Stelle bleibt ersetzt: Ein lokal gebautes Test-Image hat keinen
+Registry-Digest, deshalb traegt die Definition eine formgueltige
+Registry-Referenz, die erst beim Containerstart gegen die lokale Image-Id
+getauscht wird. Validator, Spalten-Check und Sandbox-Pruefung sehen die echte
+Referenz. Der erste Versuch nahm die bequeme Abkuerzung und schrieb die lokale
+Id direkt in die Tabelle — der Unveraenderlichkeits-Trigger aus Release 1.23 hat
+das abgewiesen, auch gegen den Owner-Zugang.
+
+Zwei Flakes lagen im Harness, nicht im Produkt: Der Fall "nach einem Timeout
+laeuft kein Sandbox-Container mehr" misst ueber alle Container mit dem Praefix,
+und zwei parallel laufende Dateien teilen sich einen Docker-Daemon. Behoben ohne
+die Aussage abzuschwaechen: die Dateien laufen seriell, und der Lauf raeumt
+Reste frueherer Laeufe ab, bevor er misst.
+
+Mutationsprobe: Nebenlaeufigkeitsgrenze abgeschaltet und Definition
+zwischengespeichert — zwei Faelle fallen direkt um, ein dritter als Folge.
+Protokoll: `docs/evidence/2026-08-05/function-chain-mutation.log`.
+
+Checkpoint `1.24.0` am 5. August 2026: **18 von 18** Faellen des
+Functions-Laufs bestanden, **dreimal** hintereinander reproduziert, dazu 85 von
+85 PostgreSQL-Faellen. Lokal 889 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Egress-Proxy, Deployment-Weg fuer Images, Aufloesung einer
+echten Registry-Referenz in einem Lauf und eine clusterweite
+Nebenlaeufigkeitsgrenze.

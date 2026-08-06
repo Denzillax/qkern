@@ -65,7 +65,8 @@ export type ComputeDefinitionErrorCode =
   | "COMPUTE_INVALID_INPUT"
   | "COMPUTE_NOT_FOUND"
   | "COMPUTE_CONFLICT"
-  | "COMPUTE_PRECONDITION_FAILED";
+  | "COMPUTE_PRECONDITION_FAILED"
+  | "COMPUTE_AT_CAPACITY";
 
 export class ComputeDefinitionError extends Error {
   constructor(readonly code: ComputeDefinitionErrorCode, options?: { cause?: unknown }) {

@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-chain-mutation",
+  "log": "function-chain-mutation.log",
+  "commit": "872c7cc898ef97558c663b1212c70c236dfdd8d7",
+  "commitSubject": "release: 1.23.0 Functions aufrufbar",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "2 failed (2)",
+  "tests": "3 failed | 15 passed (18)",
+  "passed": 15,
+  "failed": 3,
+  "skipped": 0,
+  "images": []
+}

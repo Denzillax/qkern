@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 5. August 2026 · Release: `1.23.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 5. August 2026 · Release: `1.24.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar und ausführbar | ja — 46 Fälle |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar und ausführbar | ja — 51 Fälle, Kette in einem Lauf |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -36,7 +36,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Prüfschritt | Ergebnis |
 | --- | --- |
 | Strict TypeScript | grün |
-| Vitest (Windows) | 886 bestanden, 122 übersprungen, 0 fehlgeschlagen |
+| Vitest (Windows) | 889 bestanden, 127 übersprungen, 0 fehlgeschlagen |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
@@ -44,16 +44,16 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **PostgreSQL-17-Zertifizierung** | **85 von 85 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
-| **Functions-Sandbox gegen Docker** | **13 von 13 bestanden, exit 0, zweimal reproduziert** |
+| **Functions gegen Docker plus PostgreSQL** | **18 von 18 bestanden, exit 0, dreimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` und `docs/evidence/2026-08-05/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust, p95 198 bis 333 ms; Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
-| **Functions Ende zu Ende** | Definitionen und Aufrufweg zertifiziert; die Naht Datenbank → HTTP → Container **nicht in einem Lauf** |
+| **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 122 übersprungenen Fälle sind Real-Service-Tests, die in den vier
+Die 127 übersprungenen Fälle sind Real-Service-Tests, die in den vier
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -115,7 +115,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
 | Realtime | **abgeschlossen und zertifiziert** | Scheduler fuer die prune-Pfade; Runtime-Komposition gegen echtes PostgreSQL |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
-| Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Egress-Proxy, Image-Deployment und Nebenläufigkeitssteuerung |
+| Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Egress-Proxy, Image-Deployment und clusterweite Nebenläufigkeit |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
 | Billing/Usage | Alpha 1 Metering-/Quota-Grundlage | transaktionale Produkt-Emitter, Reconciliation, Tarife und Rechnungsintegration |
 | Managed Swiss Operations | Nachweisverträge | Provider-Onboarding, HA, PITR, Restore, Datenflussnachweis |

@@ -114,6 +114,8 @@ export function computeRouteError(error: unknown) {
       case "COMPUTE_CONFLICT": return computeNoStore({ error: "Compute definition conflict" }, 409);
       case "COMPUTE_PRECONDITION_FAILED":
         return computeNoStore({ error: "Disable the webhook before deleting it" }, 409);
+      case "COMPUTE_AT_CAPACITY":
+        return computeNoStore({ error: "The function is at its concurrency limit" }, 429);
     }
   }
   if (error instanceof ConfigurationError) {
