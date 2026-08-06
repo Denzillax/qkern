@@ -1,121 +1,350 @@
 import Link from "next/link";
-import { ArrowRight, Braces, Check, Cloud, Code2, Database, Fingerprint, KeyRound, LockKeyhole, Network, ShieldCheck, Sparkles, SwissFranc, Terminal, Workflow } from "lucide-react";
-import { ConsolePreview } from "@/components/console-preview";
-import { QKERNLogo, QKERNSymbol } from "@/components/brand";
+import {
+  ArrowRight, Check, CircleDashed, Code2, Network, ShieldCheck, Sparkles, SwissFranc,
+} from "lucide-react";
+import { QKERNSymbol, QKERNLogo } from "@/components/brand";
 import { SiteHeader } from "@/components/site-header";
+import styles from "./page.module.css";
 
-const coreProducts = [
-  { icon: Database, label: "DATABASE", title: "PostgreSQL, ohne Umwege", text: "Tabellen, SQL, Policies, Migrationen und Backups in einem präzisen Workflow." },
-  { icon: Fingerprint, label: "AUTH", title: "Identitäten unter Kontrolle", text: "Accounts, Sessions, Rollen und Row-Level Security mit sicheren Defaults." },
-  { icon: Cloud, label: "STORAGE", title: "Dateien mit klaren Regeln", text: "Private Buckets, signierte URLs, Limits und Policies statt offener Dateisilos." },
-  { icon: Braces, label: "API", title: "Vom Schema zur API", text: "Automatisch erzeugte REST-Endpunkte und aktuelle OpenAPI-Dokumentation." },
+/**
+ * Alle Zahlen auf dieser Seite stammen aus archivierten Läufen unter
+ * `docs/evidence/`. Wer sie ändert, muss den Lauf mitliefern.
+ */
+const runs = [
+  { name: "Control Plane und Data API", stack: "PostgreSQL 17", count: "85 von 85" },
+  { name: "Object Storage", stack: "MinIO und ClamAV", count: "2 von 2" },
+  { name: "Project Auth", stack: "Mailpit und Dex über TLS", count: "5 von 5" },
+  { name: "Functions", stack: "Docker 29.5 und PostgreSQL 17", count: "22 von 22" },
+  { name: "Webhook-Signatur", stack: "HashiCorp Vault 1.18", count: "6 von 6" },
+];
+
+const modules = [
+  { name: "Datenbank und Migrationen", state: "zertifiziert", tone: "done", note: "Change Sets, Freigaben, Audit-Kette und Rollback gegen einen echten Server." },
+  { name: "Generated Data API", state: "zertifiziert", tone: "done", note: "CRUD am Live-Schema, RLS und eine eigene Injection-Matrix." },
+  { name: "Project Auth", state: "zertifiziert", tone: "done", note: "Passwort, Magic Link, TOTP und OIDC gegen echtes SMTP und echten Provider." },
+  { name: "Object Storage", state: "zertifiziert", tone: "done", note: "Private Buckets, Quarantäne bis der Scanner urteilt, signierte Ablaufzeiten." },
+  { name: "Realtime", state: "zertifiziert", tone: "done", note: "Dauerhafter Log, Fan-out über zwei Instanzen, Change Feed und Soak-Lauf." },
+  { name: "Queues, Cron, Webhooks", state: "zertifiziert", tone: "done", note: "Atomare Claims, Leases, serverberechnetes Retry und Dead Letters." },
+  { name: "Functions", state: "zertifiziert", tone: "done", note: "Container ohne Netz, harte Speichergrenze, vermittelte Ausgangsverbindungen." },
+  { name: "Usage und Quotas", state: "teilweise", tone: "part", note: "Ledger und Quoten laufen. Die Emitter in den Produktmodulen fehlen noch." },
+];
+
+const gaps = [
+  "Function-Images müssen ausserhalb gebaut und in eine Registry geschoben werden.",
+  "Die Nebenläufigkeitsgrenze zählt je Prozess, nicht über den ganzen Cluster.",
+  "Im Egress-Pfad fehlen DNS-Pinning und die Sperre privater Adressbereiche.",
+  "Usage misst noch keine Produktoperationen automatisch mit.",
+  "Managed Operations sind Nachweisverträge, kein betriebener Dienst.",
+  "SDK und CLI sind nur auf Linux belegt, Windows und macOS stehen aus.",
 ];
 
 export default function HomePage() {
   return (
-    <main>
+    <main className={styles.page}>
       <SiteHeader />
-      <section className="hero">
-        <div className="grid-halo" />
-        <div className="container hero-grid">
-          <div className="hero-copy">
-            <div className="signal"><span /> SWISS-BUILT · AI-NATIVE · OPEN STANDARDS</div>
-            <h1>Der intelligente Kern <em>deiner Anwendung.</em></h1>
-            <p className="lead">QKERN verbindet Datenbank, Authentifizierung, Storage, APIs und KI-Agenten in einer kontrollierten Backend-Plattform.</p>
-            <div className="hero-actions">
-              <Link className="button" href="/register">Projekt erstellen <ArrowRight size={17} /></Link>
-              <Link className="secondary-button" href="/console">QKERN Console ansehen</Link>
+
+      <section className={styles.hero}>
+        <div className={styles.shell}>
+          <div className={styles.heroGrid}>
+            <div className={styles.heroCopy}>
+              <h1>Backend-Bausteine, die ihre Zusagen belegen.</h1>
+              <p>
+                Datenbank, Auth, Storage, Realtime und Functions. Zu jeder Zusage auf dieser
+                Seite gehört ein archivierter Prüflauf.
+              </p>
+              <div className={styles.heroActions}>
+                <Link className="button" href="/register">Projekt erstellen <ArrowRight size={17} /></Link>
+                <Link className="secondary-button" href="/console">Console ansehen</Link>
+              </div>
             </div>
-            <p className="code-claim"><Terminal size={15} /> Build your backend with Claude, Codex or code.</p>
+
+            <div className={styles.record}>
+              <div className={styles.recordHead}>
+                <span>Prüflauf</span>
+                <strong>6. August 2026</strong>
+              </div>
+              {runs.map((run, index) => (
+                <div className={styles.row} key={run.name} style={{ "--index": index + 1 } as React.CSSProperties}>
+                  <span className={styles.rowName}>
+                    {run.name}
+                    <small>{run.stack}</small>
+                  </span>
+                  <span className={styles.count}>{run.count}</span>
+                </div>
+              ))}
+              <div className={`${styles.row} ${styles.rowCounter}`} style={{ "--index": runs.length + 1 } as React.CSSProperties}>
+                <span className={styles.rowName}>
+                  Gegenprobe
+                  <small>Garantien abgeschaltet, absichtlich fehlgeschlagen</small>
+                </span>
+                <span className={styles.count}>20 von 22</span>
+              </div>
+            </div>
           </div>
-          <ConsolePreview />
         </div>
       </section>
 
-      <section className="trust-strip">
-        <div className="container trust-grid">
-          <span>CONTROL BY DEFAULT</span>
-          <div><LockKeyhole size={17} /> Approval Gates</div>
-          <div><Workflow size={17} /> Traceable Change Sets</div>
-          <div><KeyRound size={17} /> Scoped Agent Access</div>
-          <div><ShieldCheck size={17} /> Default-deny Policies</div>
-        </div>
-      </section>
-
-      <section className="section" id="product">
-        <div className="container">
-          <div className="section-intro"><span className="eyebrow">THE APPLICATION CORE</span><h2>Alles verbunden.<br/>Nichts unkontrolliert.</h2><p>Ein konsistentes System für Entwickler, Teams und die Agenten, mit denen sie bauen.</p></div>
-          <div className="product-grid">
-            {coreProducts.map((item, index) => {
-              const Icon = item.icon;
-              return <article className="product-card" key={item.label}><div className="index">0{index + 1}</div><Icon size={22}/><span>{item.label}</span><h3>{item.title}</h3><p>{item.text}</p><Link href="/console">In der Console öffnen <ArrowRight size={15}/></Link></article>;
-            })}
+      <section className={styles.section} id="product">
+        <div className={styles.shell}>
+          <div className={styles.sectionHead}>
+            <h2>Was heute läuft, und wie weit es belegt ist.</h2>
+            <p>
+              Gemessen wird zweiachsig: ausführbar vorhanden, und gegen echte Dienste
+              ausgeführt mit archiviertem Lauf. Nur die zweite Achse zählt als zertifiziert.
+            </p>
+          </div>
+          <div className={styles.ledger}>
+            {modules.map((module) => (
+              <article className={styles.entry} key={module.name}>
+                <h3>{module.name}</h3>
+                <span className={`${styles.state} ${module.tone === "done" ? styles.stateDone : styles.statePart}`}>
+                  {module.state}
+                </span>
+                <p>{module.note}</p>
+              </article>
+            ))}
+            <article className={styles.entry}>
+              <h3>Managed Operations</h3>
+              <span className={`${styles.state} ${styles.stateOpen}`}>offen</span>
+              <p>Provider-Onboarding, Hochverfügbarkeit und Restore sind beschrieben, aber nicht betrieben.</p>
+            </article>
           </div>
         </div>
       </section>
 
-      <section className="section ai-section" id="ai">
-        <div className="container ai-grid">
+      <section className={styles.section} id="verification">
+        <div className={styles.shell}>
+          <div className={styles.sectionHead}>
+            <span className={styles.eyebrow}>So prüfen wir</span>
+            <h2>Ein grüner Testlauf ist keine Zertifizierung.</h2>
+          </div>
+          <div className={styles.method}>
+            <div className={styles.step}>
+              <h3>Ausführen</h3>
+              <p className={styles.stepLead}>
+                Jeder dauerhafte Adapter läuft gegen echtes PostgreSQL, echtes MinIO, echtes
+                ClamAV, echtes SMTP, einen echten OIDC-Provider und einen echten Vault.
+                Memory-Adapter kennen weder Rechtemodell noch Row-Level Security noch
+                Transaktionsgrenze. Neun Produktfehler kamen genau so ans Licht.
+              </p>
+            </div>
+            <div className={styles.step}>
+              <h3>Wiederholen</h3>
+              <p>
+                Jeder Lauf zweimal, bevor ein Release entsteht. Rohlog und Manifest mit Commit,
+                Exit-Code, Testzahlen und Migrationszahl liegen im Repository.
+              </p>
+            </div>
+            <div className={styles.step}>
+              <h3>Brechen</h3>
+              <p>
+                Danach schalten wir die geprüfte Garantie ab und lassen erneut laufen. Fällt
+                kein Fall um, prüft der Test nichts.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.bridge} id="ai">
+        <div className={styles.shell}>
+          <div className={styles.bridgeGrid}>
+            <div>
+              <span className={`${styles.eyebrow} ${styles.bridgeEyebrow}`}>QKERN AI Bridge</span>
+              <h2>Dein Agent baut. QKERN hält die Grenze.</h2>
+              <p>
+                Claude Code und Codex arbeiten über eng geschnittene MCP-Werkzeuge. Jede Aktion
+                ist an Projekt, Umgebung und Berechtigung gebunden.
+              </p>
+              <ul className={styles.bridgeList}>
+                <li><Check size={16} /> Kurzlebige, widerrufbare Tokens</li>
+                <li><Check size={16} /> Vorschau vor jeder Änderung</li>
+                <li><Check size={16} /> Manuell, abgesichert oder autonom je Umgebung</li>
+                <li><Check size={16} /> Vollständiges Protokoll jeder Agentenaktion</li>
+              </ul>
+              <Link className="white-button" href="/console">Console ansehen <ArrowRight size={16} /></Link>
+            </div>
+
+            <div className={styles.changeSet}>
+              <div className={styles.changeHead}>
+                <Sparkles size={16} />
+                <strong>chg_8F2A</strong>
+                <span>Wartet auf Freigabe</span>
+              </div>
+              <div className={styles.prompt}>
+                <strong>Codex</strong>
+                Lege eine Tabelle für den Bestellverlauf an, aktiviere Row-Level Security und
+                bereite eine Migration vor. Wende sie nicht an.
+              </div>
+              <div className={styles.changeStep}>
+                <div>
+                  Schema gelesen
+                  <small>6 Tabellen, 4 Beziehungen, RLS aktiv</small>
+                </div>
+                <Check size={16} />
+              </div>
+              <div className={styles.changeStep}>
+                <div>
+                  Migration geprüft
+                  <small>0 zerstörende Operationen, Rollback vorhanden</small>
+                </div>
+                <Check size={16} />
+              </div>
+              <div className={styles.changeStep}>
+                <div>
+                  Freigabe offen
+                  <small>Risiko mittel, Umgebung Development</small>
+                </div>
+                <ShieldCheck size={16} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section} id="developers">
+        <div className={styles.shell}>
+          <div className={styles.sectionHead}>
+            <h2>Drei Zugänge, die sich nicht gegenseitig übernehmen können.</h2>
+            <p>
+              Anwendungszugriff, Agentenwerkzeuge und Modellprovider sind getrennte Wege mit
+              eigenen Schlüsseln. Ein Schlüssel kann die Rolle eines anderen nicht annehmen.
+            </p>
+          </div>
+          <div className={styles.interfaces}>
+            <article className={styles.interfaceRow}>
+              <h3>Application API</h3>
+              <p>REST und SDK für deine Anwendung, gebunden an Public oder Service Key.</p>
+              <code><Code2 size={13} /> /v1/projects</code>
+            </article>
+            <article className={styles.interfaceRow}>
+              <h3>MCP Agent Interface</h3>
+              <p>Kleine Werkzeuge mit Freigabepflicht. Worker-Leases bleiben ausgeschlossen.</p>
+              <code><Network size={13} /> stdio und http</code>
+            </article>
+            <article className={styles.interfaceRow}>
+              <h3>Model Provider API</h3>
+              <p>Optional und mit eigenem Schlüssel. Der Kontext bleibt unter deiner Kontrolle.</p>
+              <code><Sparkles size={13} /> bring your own key</code>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section} id="security">
+        <div className={styles.shell}>
+          <div className={styles.sectionHead}>
+            <span className={styles.eyebrow}>Was noch fehlt</span>
+            <h2>Diese Punkte sind offen, und sie stehen hier.</h2>
+            <p>
+              Jede Release-Notiz endet mit derselben Liste. Sie hier wegzulassen wäre die
+              erste unbelegte Zusage der Seite.
+            </p>
+          </div>
+          <div className={styles.gaps}>
+            {gaps.map((gap) => (
+              <p className={styles.gap} key={gap}>
+                <CircleDashed size={15} />
+                <span>{gap}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section} id="pricing">
+        <div className={styles.shell}>
+          <div className={styles.sectionHead}>
+            <h2>Preise in Franken, klein beginnend.</h2>
+          </div>
+          <div className={styles.plans}>
+            <article className={styles.planMain}>
+              <span className={styles.planName}>Pro</span>
+              <div className={styles.price}>
+                <SwissFranc size={22} />
+                <strong>29</strong>
+                <span>pro Monat</span>
+              </div>
+              <ul>
+                <li><Check size={15} /> Mehrere Projekte und Umgebungen</li>
+                <li><Check size={15} /> Claude Code und Codex über die AI Bridge</li>
+                <li><Check size={15} /> Automatische Backups</li>
+                <li><Check size={15} /> Freigabezentrale mit Rollback-Plan</li>
+              </ul>
+              <Link className="button" href="/register">Projekt erstellen <ArrowRight size={16} /></Link>
+            </article>
+
+            <div className={styles.planSide}>
+              <article>
+                <span className={styles.planName}>Free</span>
+                <div className={styles.price}>
+                  <SwissFranc size={16} />
+                  <strong>0</strong>
+                  <span>pro Monat</span>
+                </div>
+                <p>Ein Development-Projekt, lesender Agentenzugriff, Basisprotokoll.</p>
+              </article>
+              <article>
+                <span className={styles.planName}>Business</span>
+                <div className={styles.price}>
+                  <SwissFranc size={16} />
+                  <strong>99</strong>
+                  <span>pro Monat</span>
+                </div>
+                <p>Teamrollen, erweiterte Protokolle, Production-Umgebungen.</p>
+              </article>
+            </div>
+          </div>
+          <p className={styles.draftNote}>
+            Diese Preise sind Entwürfe und vor dem Marktstart zu validieren. Aussagen zu
+            Infrastruktur, Datenresidenz und Compliance werden vor Veröffentlichung technisch
+            und rechtlich geprüft.
+          </p>
+        </div>
+      </section>
+
+      <section className={styles.close}>
+        <div className={styles.shell}>
+          <QKERNSymbol variant="white" size="lg" />
+          <h2>Baue den Kern. Nicht die Infrastruktur.</h2>
+          <p>
+            Starte mit einem Development-Projekt. Die Belege für alles, was hier steht, liegen
+            im Repository unter docs/evidence.
+          </p>
+          <Link className="white-button" href="/register">Projekt erstellen <ArrowRight size={16} /></Link>
+        </div>
+      </section>
+
+      <footer className="footer">
+        <div className="container footer-top">
           <div>
-            <span className="eyebrow light">QKERN AI BRIDGE</span>
-            <h2>Dein Agent baut.<br/><em>QKERN schützt.</em></h2>
-            <p>Claude Code und Codex arbeiten über kleine, klar begrenzte MCP-Tools. Jede Aktion ist projekt-, umgebungs- und berechtigungsgebunden.</p>
-            <ul className="check-list">
-              <li><Check size={16}/> Kurzlebige, widerrufbare Tokens</li>
-              <li><Check size={16}/> Dry Runs vor jeder Änderung</li>
-              <li><Check size={16}/> Manuell, abgesichert oder autonom</li>
-              <li><Check size={16}/> Vollständiger AI Activity Log</li>
-            </ul>
-            <Link className="white-button" href="/console">AI Bridge öffnen <ArrowRight size={16}/></Link>
+            <QKERNLogo variant="white" />
+            <p>Backend-Bausteine, die ihre Zusagen belegen.</p>
           </div>
-          <div className="change-flow">
-            <div className="flow-header"><Sparkles size={18}/><strong>Change Set / chg_8F2A</strong><span>READY FOR REVIEW</span></div>
-            <div className="agent-request"><div className="agent-mark">C</div><p><strong>Codex</strong><br/>Create an order status history table, enable RLS and prepare a migration. Do not apply it.</p></div>
-            <div className="flow-step done"><span>01</span><div><strong>Schema inspected</strong><small>6 tables · 4 relations · RLS enabled</small></div><Check size={16}/></div>
-            <div className="flow-step done"><span>02</span><div><strong>Migration validated</strong><small>0 destructive operations · rollback available</small></div><Check size={16}/></div>
-            <div className="flow-step current"><span>03</span><div><strong>Policy decision</strong><small>Manual · guarded · autonomous</small></div><ShieldCheck size={16}/></div>
-            <div className="flow-footer"><span>Risk: Medium</span><span>Environment: Development</span></div>
+          <div>
+            <strong>Produkt</strong>
+            <Link href="#product">Module</Link>
+            <Link href="#verification">Prüfverfahren</Link>
+            <Link href="#ai">AI Bridge</Link>
           </div>
-        </div>
-      </section>
-
-      <section className="section architecture" id="developers">
-        <div className="container architecture-grid">
-          <div className="arch-copy"><span className="eyebrow">THREE CLEAR INTERFACES</span><h2>Gebaut für Apps,<br/>Agenten und Teams.</h2><p>QKERN trennt Anwendungszugriff, Agentenwerkzeuge und Modellprovider konsequent. Ein Schlüssel kann nicht heimlich die Rolle eines anderen übernehmen.</p></div>
-          <div className="layer-stack">
-            <div><span>01</span><Code2/><p><strong>Application API</strong><small>REST · SDK · Public & service keys</small></p></div>
-            <div><span>02</span><Network/><p><strong>MCP Agent Interface</strong><small>Scoped tools · Approvals · Audit</small></p></div>
-            <div><span>03</span><Sparkles/><p><strong>Model Provider API</strong><small>Optional · BYO key · Context control</small></p></div>
+          <div>
+            <strong>Entwickler</strong>
+            <Link href="/console">Console</Link>
+            <Link href="#developers">Schnittstellen</Link>
+            <Link href="#security">Offene Punkte</Link>
+          </div>
+          <div>
+            <strong>Unternehmen</strong>
+            <span>Impressum, Vorlage</span>
+            <span>Datenschutz, Vorlage</span>
+            <span>Status</span>
           </div>
         </div>
-      </section>
-
-      <section className="section security" id="security">
-        <div className="container">
-          <div className="section-intro centered"><span className="eyebrow">SECURITY ARCHITECTURE</span><h2>Sicherheit ist kein Tarif-Extra.</h2><p>Die entscheidenden Grenzen sitzen serverseitig — nicht hinter versteckten Buttons.</p></div>
-          <div className="security-grid">
-            <article><span>01</span><LockKeyhole/><h3>Tenant Isolation</h3><p>Organisation, Projekt und Umgebung werden bei jeder Anfrage geprüft.</p></article>
-            <article><span>02</span><ShieldCheck/><h3>Approval Center</h3><p>Riskante Änderungen erhalten Diff, Teststatus, Rollback-Plan und eine einstellbare Freigabepolicy.</p></article>
-            <article><span>03</span><KeyRound/><h3>Secret Boundary</h3><p>Agenten sehen Referenzen wie „configured“, niemals rohe Secret-Werte.</p></article>
-          </div>
-          <p className="legal-note">Infrastruktur-, Datenresidenz- und Compliance-Aussagen werden vor Veröffentlichung technisch und rechtlich verifiziert.</p>
+        <div className="container footer-bottom">
+          <span>© 2026 QKERN. Product MVP.</span>
+          <span>Entwickelt in der Schweiz. Hosting-Aussage noch nicht verifiziert.</span>
         </div>
-      </section>
-
-      <section className="section pricing-section" id="pricing">
-        <div className="container">
-          <div className="section-intro"><span className="eyebrow">PRICING IN CHF</span><h2>Starte klein.<br/>Behalte die Kontrolle.</h2><p>Preise sind Produktentwürfe und vor dem Marktstart zu validieren.</p></div>
-          <div className="pricing-grid">
-            <article><span>FREE</span><div className="price"><SwissFranc size={21}/><strong>0</strong><small>/ Monat</small></div><p>Für erste Prototypen.</p><ul><li>1 Development-Projekt</li><li>Read-only AI Bridge</li><li>Basis-Logs</li></ul><Link className="secondary-button" href="/console">Kostenlos starten</Link></article>
-            <article className="featured"><div className="popular">FÜR BUILDERS</div><span>PRO</span><div className="price"><SwissFranc size={21}/><strong>29</strong><small>/ Monat</small></div><p>Für echte Produkte.</p><ul><li>Mehrere Projekte</li><li>Codex & Claude Code</li><li>Automatische Backups</li></ul><Link className="button" href="/console">Pro ausprobieren</Link></article>
-            <article><span>BUSINESS</span><div className="price"><SwissFranc size={21}/><strong>99</strong><small>/ Monat</small></div><p>Für Teams mit Production.</p><ul><li>Approval Center</li><li>Teamrollen</li><li>Erweiterte Audit Logs</li></ul><Link className="secondary-button" href="/console">Kontakt aufnehmen</Link></article>
-          </div>
-        </div>
-      </section>
-
-      <section className="final-cta"><div className="container"><QKERNSymbol variant="white" size="lg"/><span className="eyebrow light">FROM PROMPT TO PRODUCTION — WITH CONTROL</span><h2>Baue den Kern.<br/>Nicht die Infrastruktur.</h2><Link className="white-button" href="/console">QKERN Console starten <ArrowRight size={16}/></Link></div></section>
-
-      <footer className="footer"><div className="container footer-top"><div><QKERNLogo variant="white"/><p>Der intelligente Kern deiner Anwendung.</p></div><div><strong>Produkt</strong><Link href="#product">Database</Link><Link href="#ai">AI Bridge</Link><Link href="#security">Security</Link></div><div><strong>Entwickler</strong><Link href="/console">Console</Link><Link href="#developers">MCP</Link><Link href="#developers">API</Link></div><div><strong>Unternehmen</strong><span>Impressum · Vorlage</span><span>Datenschutz · Vorlage</span><span>Status</span></div></div><div className="container footer-bottom"><span>© 2026 QKERN. Product MVP.</span><span>Designed in Switzerland · Hosting claim pending verification</span></div></footer>
+      </footer>
     </main>
   );
 }

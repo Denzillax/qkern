@@ -1,0 +1,635 @@
+/*
+ * Startseite: Prüfprotokoll.
+ *
+ * Formregel dieser Seite, überall eingehalten:
+ *   Flächen und Zeilen haben Radius 0. Bedienelemente behalten die 9px der
+ *   Marke. Präzision liegt in den Kanten, Bedienbarkeit in den Knöpfen.
+ *
+ * Farbe: genau ein Akzent, das Markenblau. Status wird über Typografie und
+ * Umkehrung gezeigt, nicht über eine Ampel. Eine Seite, die von Nachprüfbarkeit
+ * handelt, braucht kein Grün, das Zustimmung suggeriert.
+ *
+ * Alle Farbwerte hängen an den Variablen aus globals.css, damit der vorhandene
+ * Dark Mode ohne zweite Pflegestelle weiterläuft.
+ */
+
+.page {
+  --rule: color-mix(in srgb, var(--qkern-border) 88%, transparent);
+  --rule-strong: color-mix(in srgb, var(--qkern-text) 22%, transparent);
+  --mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --gutter: clamp(24px, 5vw, 72px);
+}
+
+.shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+
+.hero {
+  padding: 64px 0 76px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: var(--gutter);
+  align-items: start;
+}
+
+.heroCopy h1 {
+  margin: 0;
+  font-size: clamp(38px, 5vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 750;
+  text-wrap: balance;
+}
+
+.heroCopy p {
+  margin: 22px 0 0;
+  max-width: 46ch;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--qkern-text-muted);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 34px;
+}
+
+/* ── Signaturelement: die Belegtafel ──────────────────────────────────── */
+
+.record {
+  border: 1px solid var(--rule-strong);
+  background: var(--qkern-surface);
+}
+
+.recordHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--rule-strong);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--qkern-text-muted);
+}
+
+.recordHead strong {
+  color: var(--qkern-text);
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.rowName {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.rowName small {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--qkern-text-muted);
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--qkern-primary);
+  white-space: nowrap;
+}
+
+/*
+ * Die Gegenprobe. Sie ist absichtlich fehlgeschlagen, und das ist die Pointe
+ * der ganzen Tafel: Ein Test, der nicht rot werden kann, prüft nichts. Deshalb
+ * kehrt diese eine Zeile die Fläche um, statt eine zweite Farbe einzuführen.
+ */
+.rowCounter {
+  background: var(--qkern-dark);
+  color: #f2f6fd;
+  border-bottom: 0;
+}
+
+.rowCounter .rowName small {
+  color: #9db2d6;
+}
+
+.rowCounter .count {
+  color: #f2f6fd;
+}
+
+/*
+ * Gestaffelte Einblendung der Belegtafel.
+ *
+ * Bewegt wird ausschliesslich die Position, nie die Deckkraft. Eine Animation,
+ * die Inhalt erst sichtbar macht, laesst ihn unsichtbar zurueck, wenn sie nicht
+ * laeuft: bei abgeschaltetem JavaScript, in einem nicht zeichnenden Tab, bei
+ * einem Fehler im Stylesheet. Ausgerechnet der Beleg darf nicht von einer
+ * Animation abhaengen.
+ *
+ * Reines CSS und an das Laden gebunden, nicht an das Scrollen: Die Tafel steht
+ * ohnehin im ersten Bild. Die Reihenfolge folgt der Leserichtung und macht
+ * sichtbar, dass die letzte Zeile eine andere ist als die davor. Mehr Bewegung
+ * hat die Seite nicht.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .record > * {
+    animation: settle 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    animation-delay: calc(var(--index, 0) * 70ms);
+  }
+}
+
+@keyframes settle {
+  from { transform: translateY(9px); }
+  to { transform: translateY(0); }
+}
+
+/* ── Abschnitte ───────────────────────────────────────────────────────── */
+
+.section {
+  padding: 88px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sectionHead {
+  max-width: 62ch;
+  margin-bottom: 44px;
+}
+
+.sectionHead h2 {
+  margin: 0;
+  font-size: clamp(27px, 3.2vw, 38px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.sectionHead p {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--qkern-text-muted);
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 14px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--qkern-primary);
+}
+
+/* ── Modulverzeichnis: zwei Spalten, gruppiert ────────────────────────── */
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--gutter);
+  border-top: 1px solid var(--rule-strong);
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.entry h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.entry p {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--qkern-text-muted);
+}
+
+/*
+ * Statuswort je Modul. Bewusst ohne Versalien: Neun grossgeschriebene
+ * Mikro-Labels untereinander lesen sich als Dekoration, obwohl sie Daten sind.
+ */
+.state {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.stateDone { color: var(--qkern-primary); }
+.statePart { color: var(--qkern-text-muted); }
+
+/*
+ * "offen" wird nicht ueber Deckkraft abgesetzt. Das druecke den Kontrast unter
+ * die zugaengliche Grenze, und ausgerechnet die offenen Punkte darf niemand
+ * schlechter lesen koennen als die erledigten.
+ */
+.stateOpen {
+  color: var(--qkern-text-muted);
+  font-style: italic;
+}
+
+/* ── Methode: ein breiter Schritt, zwei schmale ───────────────────────── */
+
+.method {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: var(--rule-strong);
+  border: 1px solid var(--rule-strong);
+}
+
+.step {
+  background: var(--qkern-background);
+  padding: 30px 26px 32px;
+}
+
+.step h3 {
+  margin: 0 0 12px;
+  font-size: 21px;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+
+.step p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--qkern-text-muted);
+}
+
+.stepLead {
+  font-size: 15px;
+}
+
+/* ── AI Bridge: die eine dunkle Bahn der Seite ────────────────────────── */
+
+.bridge {
+  background: var(--qkern-dark);
+  color: #eef3fb;
+  padding: 92px 0;
+}
+
+.bridgeGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: var(--gutter);
+  align-items: center;
+}
+
+.bridge h2 {
+  margin: 0;
+  font-size: clamp(27px, 3.2vw, 38px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.bridge p {
+  margin: 16px 0 0;
+  max-width: 46ch;
+  font-size: 16px;
+  line-height: 1.62;
+  color: #a9bcd8;
+}
+
+.bridgeEyebrow {
+  color: #7ea9ff;
+}
+
+.bridgeList {
+  list-style: none;
+  margin: 26px 0 32px;
+  padding: 0;
+  display: grid;
+  gap: 11px;
+}
+
+.bridgeList li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  color: #d8e3f5;
+}
+
+.bridgeList svg {
+  color: #7ea9ff;
+  flex: none;
+}
+
+.changeSet {
+  border: 1px solid #26364f;
+  background: #0e1828;
+}
+
+.changeHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #26364f;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #9db2d6;
+}
+
+.changeHead strong {
+  color: #eef3fb;
+  font-weight: 600;
+}
+
+.changeHead span {
+  margin-left: auto;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: #7ea9ff;
+}
+
+.prompt {
+  padding: 18px;
+  border-bottom: 1px solid #26364f;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #c3d2ea;
+}
+
+.prompt strong {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7ea9ff;
+  font-weight: 600;
+}
+
+.changeStep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #26364f;
+  font-size: 13.5px;
+  color: #eef3fb;
+}
+
+.changeStep:last-child { border-bottom: 0; }
+
+.changeStep small {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #9db2d6;
+}
+
+.changeStep svg {
+  margin-left: auto;
+  color: #7ea9ff;
+  flex: none;
+}
+
+/* ── Drei Schnittstellen: vertikaler Stapel ───────────────────────────── */
+
+.interfaces {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule-strong);
+}
+
+.interfaceRow {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--gutter);
+  padding: 26px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.interfaceRow h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.interfaceRow p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--qkern-text-muted);
+}
+
+.interfaceRow code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--qkern-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Was noch fehlt ───────────────────────────────────────────────────── */
+
+.gaps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--gutter);
+}
+
+.gap {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 17px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.gap svg {
+  margin-top: 2px;
+  color: var(--qkern-text-muted);
+  flex: none;
+}
+
+/* ── Preise: ein Angebot gross, zwei begleitend ───────────────────────── */
+
+.plans {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--gutter);
+  align-items: start;
+}
+
+.planMain {
+  border: 1px solid var(--qkern-primary);
+  padding: 34px 32px 32px;
+}
+
+.planSide {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule-strong);
+}
+
+.planSide article {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.planName {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--qkern-text-muted);
+}
+
+.price {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 12px 0 14px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.price strong {
+  font-size: 42px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.planSide .price strong { font-size: 26px; }
+
+.price span {
+  font-size: 12px;
+  color: var(--qkern-text-muted);
+}
+
+.planMain ul {
+  list-style: none;
+  margin: 0 0 26px;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+  font-size: 14.5px;
+}
+
+.planMain li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.planMain li svg { color: var(--qkern-primary); flex: none; }
+
+.planSide p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--qkern-text-muted);
+}
+
+.draftNote {
+  margin: 30px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--qkern-text-muted);
+}
+
+/* ── Abschluss ────────────────────────────────────────────────────────── */
+
+.close {
+  background: var(--qkern-dark);
+  color: #eef3fb;
+  padding: 96px 0;
+  text-align: center;
+}
+
+.close h2 {
+  margin: 20px 0 0;
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-weight: 750;
+}
+
+.close p {
+  margin: 16px auto 32px;
+  max-width: 48ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #a9bcd8;
+}
+
+/* ── Mobil ────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .heroGrid,
+  .bridgeGrid,
+  .plans,
+  .ledger,
+  .gaps { grid-template-columns: minmax(0, 1fr); }
+
+  .method { grid-template-columns: minmax(0, 1fr); }
+
+  .interfaceRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .hero { padding: 44px 0 60px; }
+  .section { padding: 60px 0; }
+  .bridge, .close { padding: 64px 0; }
+  .planMain { padding: 26px 22px 24px; }
+}

@@ -2,12 +2,15 @@ import Link from "next/link";
 import { QKERNLogo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+// "Lösungen" zeigte auf #solutions, einen Anker, den es auf der Seite nicht
+// gibt. Ein Navigationspunkt, der nirgends hinfuehrt, ist kein Label, sondern
+// ein Fehler; er ist deshalb entfernt statt umbenannt.
 const links = [
   ["Produkt", "#product"],
-  ["Lösungen", "#solutions"],
+  ["Prüfverfahren", "#verification"],
   ["Entwickler", "#developers"],
   ["KI", "#ai"],
-  ["Sicherheit", "#security"],
+  ["Offene Punkte", "#security"],
   ["Preise", "#pricing"],
 ];
 
@@ -22,7 +25,9 @@ export function SiteHeader() {
         <div className="header-actions">
           <ThemeToggle />
           <Link className="text-link desktop-only" href="/login">Anmelden</Link>
-          <Link className="button small" href="/register">Jetzt starten</Link>
+          {/* Gleiche Beschriftung wie auf der Seite. Zwei Woerter fuer dieselbe
+              Handlung zwingen den Leser, sie fuer zwei zu halten. */}
+          <Link className="button small" href="/register">Projekt erstellen</Link>
         </div>
       </div>
     </header>
