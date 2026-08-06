@@ -179,3 +179,68 @@ describe("change delivery", () => {
     expect(changes(sink)).toHaveLength(0);
   });
 });
+
+describe("change metering", () => {
+  /** Zaehlt mit, ohne je abzulehnen — wie der buendelnde Emitter im Betrieb. */
+  function counting() {
+    const seen: Array<{ metric: string; reference: string }> = [];
+    return {
+      seen,
+      port: {
+        async admit(_scope: RealtimeScope, input: { metric: string; reference: string }) {
+          seen.push({ metric: input.metric, reference: input.reference });
+          return { admitted: true, reason: null } as const;
+        },
+      },
+    };
+  }
+
+  function meteredService(changeReader: RealtimeChangeReader, usage: ReturnType<typeof counting>) {
+    let connection = 0;
+    return new RealtimeService({
+      eventLog: new MemoryRealtimeEventLog(20),
+      authorization: new PrefixRealtimeAuthorization(),
+      cursor: new RealtimeCursorCodec(Buffer.alloc(32, 3)),
+      id: () => `connection-${++connection}`,
+      changeReader,
+      usage: usage.port as never,
+    });
+  }
+
+  it("counts a change once, not once per subscriber", async () => {
+    // Dieselbe Regel wie beim Broadcast: gemessen wird die Nachricht, nicht
+    // ihr Fan-out. Ein Kanal mit zwei Abonnenten erzeugt eine Nachricht.
+    const usage = counting();
+    const instance = meteredService(
+      readerFor({ alice: { id: "row-1" }, bob: { id: "row-1" } }), usage,
+    );
+    const first = instance.connect(scope, principal("authenticated", "alice"), new Sink());
+    const second = instance.connect(scope, principal("authenticated", "bob"), new Sink());
+    await instance.subscribe(first, "r1", CHANNEL);
+    await instance.subscribe(second, "r2", CHANNEL);
+
+    await instance.deliverChanges([change()]);
+    expect(usage.seen).toEqual([
+      { metric: "realtime_messages", reference: `${CHANNEL}:1` },
+    ]);
+  });
+
+  it("does not count a change nobody was allowed to see", async () => {
+    // Es ist keine Nachricht entstanden. Etwas zu berechnen, das nie
+    // ausgeliefert wurde, waere genau die falsche Richtung.
+    const usage = counting();
+    const instance = meteredService(readerFor({ alice: null }), usage);
+    const id = instance.connect(scope, principal("authenticated", "alice"), new Sink());
+    await instance.subscribe(id, "r1", CHANNEL);
+
+    await instance.deliverChanges([change()]);
+    expect(usage.seen).toEqual([]);
+  });
+
+  it("does not count a change nobody subscribed to", async () => {
+    const usage = counting();
+    const instance = meteredService(readerFor({ alice: { id: "row-1" } }), usage);
+    await instance.deliverChanges([change()]);
+    expect(usage.seen).toEqual([]);
+  });
+});

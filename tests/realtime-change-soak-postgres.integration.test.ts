@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
-import { createPostgresPool } from "@/lib/server/db/pool";
+import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
+import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool } from "@/lib/server/db/sql";
 import { RealtimeChangePoller } from "@/lib/server/realtime/change-poller";
 import { RealtimeChangePollerRuntime } from "@/lib/server/realtime/change-poller-runtime";
@@ -22,6 +23,10 @@ import {
 } from "@/lib/server/realtime/postgres-change-source";
 import { MemoryRealtimeEventLog } from "@/lib/server/realtime/repository";
 import { RealtimeService } from "@/lib/server/realtime/service";
+import { BufferedUsageEmitter } from "@/lib/server/usage/buffered-emitter";
+import { ServiceUsageEmitter } from "@/lib/server/usage/emitter";
+import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
+import { UsageService } from "@/lib/server/usage/service";
 
 /**
  * Soak-Lauf mit **laufendem** Poller und anhaltendem Schreiber.
@@ -40,10 +45,19 @@ import { RealtimeService } from "@/lib/server/realtime/service";
 
 const adminUrl = process.env.QKERN_TEST_ADMIN_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
-const enabled = Boolean(adminUrl && projectApiUrl);
+const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
+const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
+const enabled = Boolean(adminUrl && projectApiUrl && ownerUrl && runtimeUrl);
 
 const WRITE_COUNT = 120;
 const IDLE_INTERVAL_MS = 100;
+/**
+ * Bewusst klein. Der Betrieb bündelt zu 500; hier soll der Schreibvorgang
+ * mehrfach **während** der Messung stattfinden. Sonst liefe der Soak-Lauf mit
+ * eingeschaltetem Emitter und ohne je eine Buchung zu machen — und hätte über
+ * genau die Frage nichts ausgesagt, für die er hier steht.
+ */
+const USAGE_FLUSH_AT = 25;
 
 class TimingSink implements RealtimeSink {
   readonly arrivals = new Map<string, number>();
@@ -72,12 +86,16 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
   const schema = `soak_${suffix}`;
   const table = "items";
   const owner = randomUUID();
+  const controlUser = randomUUID();
   const scope: RealtimeScope = {
-    organizationId: randomUUID(), projectId: "soak-project", environment: "development",
+    organizationId: randomUUID(), projectId: randomUUID(), environment: "development",
   };
 
   let admin: SqlPool;
   let projectApi: SqlPool;
+  let control: SqlPool;
+  let runtime: SqlPool;
+  let usage: BufferedUsageEmitter;
   let source: PostgresRealtimeChangeSource;
   let reader: GeneratedApiRealtimeChangeReader;
 
@@ -91,6 +109,34 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
   beforeAll(async () => {
     admin = createPostgresPool({ connectionString: adminUrl!, max: 3 });
     projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 6 });
+    control = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
+    runtime = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
+    );
+
+    // Der Zähler hängt an einem echten Projekt: usage_counters trägt einen
+    // zusammengesetzten Fremdschlüssel.
+    await control.query(`INSERT INTO users (id,email,password_hash,status)
+      VALUES ($1,$2,'$argon2id$integration-only','active')`,
+    [controlUser, `soak-owner-${controlUser}@qkern.test`]);
+    await control.query(`INSERT INTO organizations (id,name,slug,created_by)
+      VALUES ($1,'Realtime Soak',$2,$3)`,
+    [scope.organizationId, `soak-${scope.organizationId}`, controlUser]);
+    await control.query(`INSERT INTO projects (id,organization_id,name,slug,region,status,created_by)
+      VALUES ($1,$2,'Soak',$3,'test','ready',$4)`,
+    [scope.projectId, scope.organizationId, `soak-${scope.projectId}`, controlUser]);
+    await control.query(`INSERT INTO project_environments
+      (organization_id,project_id,environment,database_instance_ref)
+      VALUES ($1,$2,'development',$3)`,
+    [scope.organizationId, scope.projectId, `managed:${scope.projectId}`]);
+
+    usage = new BufferedUsageEmitter({
+      inner: new ServiceUsageEmitter({
+        service: new UsageService({ repository: new PostgresUsageRepository(new PostgresControlPlane(runtime)) }),
+        source: "realtime",
+      }),
+      flushAtQuantity: USAGE_FLUSH_AT,
+    });
 
     // IF NOT EXISTS vor CREATE ROLE ist nicht atomar: parallele Testdateien
     // laufen sonst in pg_authid_rolname_index. Der Ausnahmezweig ist der
@@ -158,7 +204,7 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
 
   afterAll(async () => {
     await admin?.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => undefined);
-    await Promise.allSettled([admin?.end(), projectApi?.end()]);
+    await Promise.allSettled([admin?.end(), projectApi?.end(), control?.end(), runtime?.end()]);
   });
 
   it("delivers every change of a sustained writer without loss, gap or stall", async () => {
@@ -167,6 +213,7 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
       authorization: new PrefixRealtimeAuthorization(),
       cursor: new RealtimeCursorCodec(Buffer.alloc(32, 6)),
       changeReader: reader,
+      usage,
       id: () => `soak-connection-${randomUUID().slice(0, 8)}`,
     });
 
@@ -233,5 +280,25 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
     );
     expect(p95).toBeLessThan(5_000);
     expect(worst).toBeLessThan(15_000);
+
+    // Der Lauf lief mit **eingeschaltetem** Emitter, und der Schwellwert war
+    // klein genug, dass währenddessen mehrfach geschrieben wurde. Die Schranken
+    // oben gelten also für den gemessenen Pfad, nicht für einen ohne Messung.
+    await usage.stop();
+    const counted = await control.query<{ quantity: string }>(
+      `SELECT quantity FROM usage_counters
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          AND metric='realtime_messages'`,
+      [scope.organizationId, scope.projectId, scope.environment],
+    );
+    expect(counted.rows[0]?.quantity).toBe(String(sink.order.length));
+    const bookings = await control.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM usage_events
+        WHERE organization_id=$1 AND project_id=$2 AND metric='realtime_messages'`,
+      [scope.organizationId, scope.projectId],
+    );
+    // Gebündelt heisst gebündelt: deutlich weniger Buchungen als Nachrichten.
+    console.error(`soak: ${bookings.rows[0].count} Buchungen fuer ${sink.order.length} Nachrichten`);
+    expect(Number(bookings.rows[0].count)).toBeLessThan(sink.order.length / 5);
   }, 90_000);
 });

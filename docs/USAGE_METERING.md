@@ -48,8 +48,19 @@ demselben Schlüssel erneut gesendet — ein doppelt angekommener Stapel zählt
 trotzdem einmal. Ein Stapel, über den das Ledger entschieden hat, wird
 verworfen: Ein erneuter Versuch bekäme dieselbe Antwort.
 
-Gezählt wird die Nachricht im Log, nicht die Zustellungen daraus. Ein Kanal mit
-hundert Abonnenten erzeugt eine Nachricht, nicht hundert.
+Gezählt wird die Nachricht, nicht die Zustellungen daraus. Ein Kanal mit hundert
+Abonnenten erzeugt eine Nachricht, nicht hundert.
+
+Seit `1.34.0` gilt das für **beide** Wege: `broadcast` und `deliverChanges`.
+Eine erfasste Datenbankänderung zählt einmal, sobald sie mindestens einen
+Abonnenten erreicht hat. Eine Änderung, die kein Abonnent sehen darf oder die
+niemand abonniert hat, zählt nicht — es ist keine Nachricht entstanden.
+
+Der Soak-Lauf misst seither **mit** eingeschaltetem Emitter und hält seine
+Stillstandsschranken ein. Die Kosten des Emitters lassen sich daraus **nicht**
+ablesen: Zwei Läufe derselben Konfiguration liegen zwischen 421 und 1846 ms p95,
+und diese Streuung ist grösser als jeder Unterschied zwischen den
+Konfigurationen. Details in `docs/QA.md`.
 
 ## `api_requests` an der HTTP-Grenze
 

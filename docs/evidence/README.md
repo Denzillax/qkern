@@ -243,3 +243,22 @@ um, zusammen mit dem lokalen Abbruchfall.
 Abgeschaltet wurden die Bündelung (Schreiben je Nachricht statt gesammelt) und
 die Eintragung von `realtime_messages` in die Liste der nicht erzwingbaren
 Metriken. Genau die drei zugehörigen Fälle fielen um.
+
+## Läufe zu Release 1.34 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-changes-run1.log` | PostgreSQL 17 | 101 von 101, exit 0, 33 Migrationen |
+| `2026-08-06/usage-changes-run2.log` | PostgreSQL 17 | 101 von 101, exit 0, Wiederholung |
+| `2026-08-06/usage-changes-baseline.log` | PostgreSQL 17 | **100 von 101, exit 1 — absichtlich** |
+
+Der dritte Eintrag ist zweierlei zugleich, und deshalb steht er hier: Er ist die
+Mutationsprobe — der Emitter wurde aus dem Soak-Lauf entfernt, und genau die
+Zählerprüfung fiel um — und er ist die **Basislinie** der Latenzmessung.
+
+Die Latenzwerte über vier Läufe: mit Emitter p95 421 ms, 1846 ms und 1716 ms,
+ohne Emitter p95 528 ms. Die Streuung **derselben** Konfiguration ist rund
+viermal so gross wie jeder Unterschied zwischen den Konfigurationen — diese
+Messreihe kann die Kosten des Emitters deshalb nicht isolieren. Sie belegt, dass
+der Lauf mit eingeschaltetem Emitter seine Stillstandsschranken einhält, und
+nicht mehr.

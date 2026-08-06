@@ -1085,3 +1085,62 @@ vermessen worden — der Soak-Lauf lief ohne. Ein Absturz verliert weiterhin den
 Puffer, und ein Lauf, der das unter echtem Prozessabbruch zeigt, fehlt.
 `control_plane`, `project_auth` und `mcp` duerfen `api_requests` schreiben, tun
 es aber nicht.
+
+## Aenderungen zaehlen mit — Release 1.34
+
+Zwei Dinge, und beide standen als offener Punkt in Release 1.33.
+
+**Erstens meldet jetzt auch `deliverChanges`.** Bis 1.33 zaehlte nur
+`broadcast`. Ein Projekt, das ausschliesslich `changes:`-Kanaele benutzt, haette
+dauerhaft null gezeigt — gemessen, aber am falschen Weg. Gezaehlt wird **einmal
+je zugestellter Aenderung**, nicht je Abonnent: dieselbe Regel wie beim
+Broadcast. Eine Aenderung, die kein Abonnent sehen darf oder die niemand
+abonniert hat, zaehlt nicht; es ist keine Nachricht entstanden. Drei lokale
+Faelle halten das fest.
+
+**Zweitens laeuft der Soak-Lauf jetzt mit eingeschaltetem Emitter**, und der
+Flush-Schwellwert ist mit 25 klein genug, dass waehrend der Messung mehrfach
+wirklich geschrieben wird. Der Lauf pruefe sonst einen Pfad, den er nicht misst.
+
+Vier Laeufe auf derselben Maschine, im Abstand von Minuten:
+
+| Lauf | Emitter | p50 | p95 | max |
+| --- | --- | --- | --- | --- |
+| erster Lauf | ein | 359 ms | 421 ms | 456 ms |
+| Basislinie | aus | 400 ms | 528 ms | 547 ms |
+| run1 | ein | 1237 ms | 1846 ms | 1947 ms |
+| run2 | ein | 1241 ms | 1716 ms | 1836 ms |
+
+**Diese Messung kann die Kosten des Emitters nicht isolieren, und das ist das
+Ergebnis.** Zwei Laeufe derselben Konfiguration liegen zwischen 421 und 1846 ms
+p95 — die Streuung ist rund viermal so gross wie jeder Unterschied zwischen den
+Konfigurationen. Ein Vergleich, der das ignoriert, waere eine Zahl mit
+Nachkommastellen und ohne Aussage.
+
+Die Ursache ist naheliegend: Die Laeufe folgten unmittelbar aufeinander, jeder
+mit eigenem Container-Stack, auf einem Entwicklungsrechner. Wer die Kosten des
+Emitters wirklich messen will, braucht eine ruhige Maschine und viele
+Wiederholungen je Konfiguration.
+
+Was der Lauf **belegt**: Der Soak-Lauf haelt seine Stillstandsschranken auch mit
+eingeschaltetem Emitter ein, der Zaehlerstand entspricht exakt der Zahl
+zugestellter Nachrichten, und fuenf Buchungen fuer 120 Nachrichten zeigen, dass
+wirklich gebuendelt wurde.
+
+Die frueher dokumentierten 198 bis 333 ms stammen von einem anderen Tag und sind
+mit diesen Zahlen ohnehin nicht vergleichbar.
+
+Mutationsprobe in zwei Teilen: Emitter aus dem Soak-Lauf entfernt — genau die
+Zaehlerpruefung faellt um (Protokoll:
+`docs/evidence/2026-08-06/usage-changes-baseline.log`, zugleich die Basislinie).
+Zaehlung je Abonnent statt je Aenderung — der lokale Fall dazu faellt um.
+
+Checkpoint `1.34.0` am 6. August 2026: **101 von 101** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 976 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: **Die Kosten des Emitters bleiben unbekannt** — die Streuung
+zwischen Laeufen ueberdeckt sie. Die Messung gilt ausserdem fuer 120
+Aenderungen auf einem Entwicklungsrechner, nicht fuer Last. Ein Lauf, der den
+Pufferverlust unter echtem Prozessabbruch zeigt, fehlt weiterhin.
+`control_plane`, `project_auth` und `mcp` melden `api_requests` nicht.

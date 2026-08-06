@@ -256,6 +256,7 @@ export class RealtimeService {
         environment: change.environment,
       };
 
+      let reached = false;
       for (const subscriber of this.subscribers(scope, channel)) {
         if (overloaded.has(subscriber.id)) continue;
         const record = await reader.read(change, {
@@ -273,10 +274,25 @@ export class RealtimeService {
           position: change.position,
           record,
         });
-        if (!accepted) {
+        if (accepted) reached = true;
+        else {
           overloaded.add(subscriber.id);
           this.send(subscriber, { type: "error", code: "REALTIME_BACKPRESSURE" });
         }
+      }
+
+      // Einmal je zugestellter Änderung, nicht je Abonnent — dieselbe Regel wie
+      // beim Broadcast. Eine Änderung, die kein Abonnent sehen darf oder die
+      // niemand abonniert hat, zählt nicht: Es ist keine Nachricht entstanden.
+      //
+      // Ohne diese Zeile zeigte ein Projekt, das ausschliesslich
+      // `changes:`-Kanäle benutzt, dauerhaft null — gemessen, aber am falschen
+      // Weg.
+      if (reached) {
+        await this.usage.admit(scope, {
+          metric: "realtime_messages",
+          reference: `${channel}:${change.position}`.slice(0, 64),
+        });
       }
     }
 

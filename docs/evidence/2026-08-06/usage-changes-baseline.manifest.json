@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "usage-changes-baseline.log",
+  "commit": "ad80f45be5a174b2983ea3606173a557f605390f",
+  "commitSubject": "release: 1.33.0 Realtime buendelt",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 33,
+  "testFiles": "1 failed | 17 passed (18)",
+  "tests": "1 failed | 100 passed (101)",
+  "passed": 100,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.33.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.34.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -25,7 +25,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
-| Usage Metering | teilweise | teilweise — 20 Real-DB-Fälle; **alle sechs Metriken melden**; keine Preise, keine Rechnungen |
+| Usage Metering | teilweise | teilweise — 20 Real-DB-Fälle; **alle sechs Metriken melden**, Realtime auch für CDC; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 111 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
@@ -49,7 +49,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **10 von 10 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-06/` |
-| Realtime Soak | 120 Aenderungen ohne Verlust, p95 198 bis 333 ms; Runtime verweigert weiterhin Production |
+| Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
 | **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
