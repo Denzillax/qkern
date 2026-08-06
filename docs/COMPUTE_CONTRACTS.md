@@ -9,7 +9,10 @@ Management-API dar.
 
 Eine Function-Definition referenziert ausschließlich ein Image mit festem
 `sha256`-Digest, `nodejs24`, einen begrenzten Entrypoint sowie feste Timeout-,
-Memory- und Concurrency-Werte. Egress ist standardmäßig leer und ansonsten eine
+Memory- und Concurrency-Werte. Seit Migration 0034 darf der Bezug eine Registry
+mit Port tragen; bis dahin war jede Registry mit Port ausgeschlossen, und das
+fiel erst auf, als der Zertifizierungslauf eine echte benutzte. Die bindende
+Stelle bleibt der Digest — was vor dem `@` steht, ist die Adresse. Egress ist standardmäßig leer und ansonsten eine
 Liste exakter öffentlicher HTTPS-Origins. Localhost, IP-Literale, `.local`,
 `.internal`, Credentials, andere Ports und ungenaue Origins werden abgewiesen.
 

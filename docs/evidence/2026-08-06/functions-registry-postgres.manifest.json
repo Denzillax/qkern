@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "functions-registry-postgres.log",
+  "commit": "0b4c0cfe78b8d1a4a1ef49d022c808251e231abd",
+  "commitSubject": "release: 1.34.0 Aenderungen zaehlen mit",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 34,
+  "testFiles": "18 passed (18)",
+  "tests": "101 passed (101)",
+  "passed": 101,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

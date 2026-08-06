@@ -1,0 +1,220 @@
+﻿
+> qkern-platform@1.34.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.5.3
+node.exe :  Network qkern-functions-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-registry-1 Healthy 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:b9d31142647ee323c71551424c5a19a65cce16d3ffeb0d8eed4e2ddd066ab216 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-chain.integration.test.ts (5 tests | 5 failed) 107ms
+     × carries a stored definition all the way into a real container 27ms
+     × still denies egress when the definition came from the database 7ms
+     × stops running a function the moment it is disabled 6ms
+     × enforces the concurrency limit stored with the definition 6ms
+     × hides a function of another organization from the chain 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > carries a stored definition all the 
+way into a real container
+InvalidRecordError: The record violates a persistence constraint.
+ ❯ mapPostgresError lib/server/db/errors.ts:143:14
+    141|     case "23514":
+    142|     case "22P02":
+    143|       return new InvalidRecordError(undefined, error);
+       |              ^
+    144|     case "40001":
+    145|     case "40P01":
+ ❯ fromTransaction lib/server/db/transaction.ts:115:23
+ ❯ withTenantTransaction lib/server/db/transaction.ts:88:11
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:112:21
+
+Caused by: error: new row for relation "project_functions" violates check constraint "project_functions_image_check"
+ ❯ node_modules/pg/lib/client.js:652:17
+ ❯ lib/server/compute/definitions-postgres-repository.ts:226:22
+ ❯ withTenantTransaction lib/server/db/transaction.ts:74:20
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:112:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 219, severity: 'ERROR', code: '23514', detail: undefined, hint: undefined, position: 
+undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: 'public', table: 
+'project_functions', dataType: undefined, constraint: 'project_functions_image_check', file: 'execMain.c', routine: 
+'ExecConstraints' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > still denies egress when the 
+definition came from the database
+InvalidRecordError: The record violates a persistence constraint.
+ ❯ mapPostgresError lib/server/db/errors.ts:143:14
+    141|     case "23514":
+    142|     case "22P02":
+    143|       return new InvalidRecordError(undefined, error);
+       |              ^
+    144|     case "40001":
+    145|     case "40P01":
+ ❯ fromTransaction lib/server/db/transaction.ts:115:23
+ ❯ withTenantTransaction lib/server/db/transaction.ts:88:11
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:125:21
+
+Caused by: error: new row for relation "project_functions" violates check constraint "project_functions_image_check"
+ ❯ node_modules/pg/lib/client.js:652:17
+ ❯ lib/server/compute/definitions-postgres-repository.ts:226:22
+ ❯ withTenantTransaction lib/server/db/transaction.ts:74:20
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:125:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 219, severity: 'ERROR', code: '23514', detail: undefined, hint: undefined, position: 
+undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: 'public', table: 
+'project_functions', dataType: undefined, constraint: 'project_functions_image_check', file: 'execMain.c', routine: 
+'ExecConstraints' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > stops running a function the moment 
+it is disabled
+InvalidRecordError: The record violates a persistence constraint.
+ ❯ mapPostgresError lib/server/db/errors.ts:143:14
+    141|     case "23514":
+    142|     case "22P02":
+    143|       return new InvalidRecordError(undefined, error);
+       |              ^
+    144|     case "40001":
+    145|     case "40P01":
+ ❯ fromTransaction lib/server/db/transaction.ts:115:23
+ ❯ withTenantTransaction lib/server/db/transaction.ts:88:11
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:131:21
+
+Caused by: error: new row for relation "project_functions" violates check constraint "project_functions_image_check"
+ ❯ node_modules/pg/lib/client.js:652:17
+ ❯ lib/server/compute/definitions-postgres-repository.ts:226:22
+ ❯ withTenantTransaction lib/server/db/transaction.ts:74:20
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:131:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 219, severity: 'ERROR', code: '23514', detail: undefined, hint: undefined, position: 
+undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: 'public', table: 
+'project_functions', dataType: undefined, constraint: 'project_functions_image_check', file: 'execMain.c', routine: 
+'ExecConstraints' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > enforces the concurrency limit stored 
+with the definition
+InvalidRecordError: The record violates a persistence constraint.
+ ❯ mapPostgresError lib/server/db/errors.ts:143:14
+    141|     case "23514":
+    142|     case "22P02":
+    143|       return new InvalidRecordError(undefined, error);
+       |              ^
+    144|     case "40001":
+    145|     case "40P01":
+ ❯ fromTransaction lib/server/db/transaction.ts:115:23
+ ❯ withTenantTransaction lib/server/db/transaction.ts:88:11
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:142:21
+
+Caused by: error: new row for relation "project_functions" violates check constraint "project_functions_image_check"
+ ❯ node_modules/pg/lib/client.js:652:17
+ ❯ lib/server/compute/definitions-postgres-repository.ts:226:22
+ ❯ withTenantTransaction lib/server/db/transaction.ts:74:20
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:142:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 219, severity: 'ERROR', code: '23514', detail: undefined, hint: undefined, position: 
+undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: 'public', table: 
+'project_functions', dataType: undefined, constraint: 'project_functions_image_check', file: 'execMain.c', routine: 
+'ExecConstraints' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > hides a function of another 
+organization from the chain
+InvalidRecordError: The record violates a persistence constraint.
+ ❯ mapPostgresError lib/server/db/errors.ts:143:14
+    141|     case "23514":
+    142|     case "22P02":
+    143|       return new InvalidRecordError(undefined, error);
+       |              ^
+    144|     case "40001":
+    145|     case "40P01":
+ ❯ fromTransaction lib/server/db/transaction.ts:115:23
+ ❯ withTenantTransaction lib/server/db/transaction.ts:88:11
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:156:21
+
+Caused by: error: new row for relation "project_functions" violates check constraint "project_functions_image_check"
+ ❯ node_modules/pg/lib/client.js:652:17
+ ❯ lib/server/compute/definitions-postgres-repository.ts:226:22
+ ❯ withTenantTransaction lib/server/db/transaction.ts:74:20
+ ❯ asConflict lib/server/compute/definitions-postgres-repository.ts:318:12
+ ❯ PostgresComputeDefinitionRepository.createFunction lib/server/compute/definitions-postgres-repository.ts:225:12
+ ❯ ComputeDefinitionService.createFunction lib/server/compute/definitions.ts:378:12
+ ❯ define tests/function-chain.integration.test.ts:101:12
+ ❯ tests/function-chain.integration.test.ts:156:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { length: 219, severity: 'ERROR', code: '23514', detail: undefined, hint: undefined, position: 
+undefined, internalPosition: undefined, internalQuery: undefined, where: undefined, schema: 'public', table: 
+'project_functions', dataType: undefined, constraint: 'project_functions_image_check', file: 'execMain.c', routine: 
+'ExecConstraints' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  5 failed | 18 passed (23)
+   Start at  22:57:41
+   Duration  23.73s (transform 227ms, setup 0ms, import 328ms, tests 23.02s, environment 0ms)
+
+EXIT=1

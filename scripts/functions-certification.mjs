@@ -71,20 +71,40 @@ if (database.status !== 0) {
   process.exit(1);
 }
 
-const build = run("docker", ["build", "--quiet", "--file", `${context}/Dockerfile`, context]);
-if (build.status !== 0) {
-  console.error("Das Test-Image konnte nicht gebaut werden.");
-  console.error(build.stderr);
+const REGISTRY = "127.0.0.1:55000";
+const TAG = `${REGISTRY}/qkern/probe:certification`;
+
+function fail(message, detail) {
+  console.error(message);
+  if (detail) console.error(detail);
   composeDown();
   process.exit(1);
 }
-const image = build.stdout.trim();
-if (!/^sha256:[0-9a-f]{64}$/.test(image)) {
-  console.error(`Unerwartete Image-Referenz: ${image}`);
-  composeDown();
-  process.exit(1);
+
+const build = run("docker", ["build", "--quiet", "--tag", TAG, "--file", `${context}/Dockerfile`, context]);
+if (build.status !== 0) fail("Das Test-Image konnte nicht gebaut werden.", build.stderr);
+const localId = build.stdout.trim();
+if (!/^sha256:[0-9a-f]{64}$/.test(localId)) fail(`Unerwartete Image-Id: ${localId}`);
+
+// Der Digest kommt aus der Registry, nicht aus dem lokalen Speicher. Eine
+// lokale Image-Id ist etwas anderes als ein Registry-Digest: Sie beschreibt die
+// Konfiguration, er das Manifest. Nur der zweite ist das, was ein Betreiber
+// hinterlegt.
+const push = run("docker", ["push", TAG]);
+if (push.status !== 0) fail("Das Test-Image konnte nicht in die Registry geschoben werden.", push.stderr);
+
+const inspect = run("docker", ["inspect", "--format", "{{index .RepoDigests 0}}", TAG]);
+if (inspect.status !== 0) fail("Der Registry-Digest konnte nicht gelesen werden.", inspect.stderr);
+const image = inspect.stdout.trim();
+if (!new RegExp(`^${REGISTRY.replace(".", "\\.")}/qkern/probe@sha256:[0-9a-f]{64}$`).test(image)) {
+  fail(`Unerwarteter Registry-Bezug: ${image}`);
 }
-console.log(`Test-Image ${image}`);
+
+// Beide lokalen Namen verschwinden, damit der Lauf wirklich aus der Registry
+// zieht. Ohne diesen Schritt beantwortete der lokale Zwischenspeicher die
+// Frage, und die Registry waere Kulisse.
+run("docker", ["image", "rm", "--force", TAG, image]);
+console.log(`Test-Image ${image} (lokal entfernt, wird aus der Registry geholt)`);
 
 // Vitest wird direkt ueber seinen Einstiegspunkt gestartet, nicht ueber einen
 // Paketmanager-Wrapper: Auf Windows ist das ein Batch-Skript, und ein
@@ -120,7 +140,10 @@ if (test.error) {
 // liegen gebliebenes Image liesse den naechsten Lauf gegen einen anderen Inhalt
 // pruefen, ohne dass es auffaellt.
 removeStaleSandboxes();
-const remove = run("docker", ["image", "rm", "--force", image]);
+// Nach dem Lauf liegt das Image wieder lokal — es wurde ja gezogen. Es muss
+// weg, sonst prueft der naechste Lauf gegen einen Zwischenspeicher statt gegen
+// die Registry.
+const remove = run("docker", ["image", "rm", "--force", image, localId]);
 if (remove.status !== 0) console.error("Hinweis: Das Test-Image konnte nicht entfernt werden.");
 composeDown();
 

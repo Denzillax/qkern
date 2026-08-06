@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
@@ -20,13 +19,15 @@ import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
  * rief; das Event-Log, das niemand benutzte; der Container, der seinen Timeout
  * überlebte. Diese Datei schliesst die letzte davon.
  *
- * Eine Stelle bleibt ersetzt, und nur eine: Ein lokal gebautes Test-Image hat
- * keinen Registry-Digest. Die Definition trägt deshalb eine echte, formgültige
- * Registry-Referenz, und erst beim Start des Containers wird genau dieser eine
- * Argumentwert gegen die lokale Image-Id getauscht. Jede Produktregel bleibt in
- * Kraft — Validator, Spalten-Check und Sandbox-Prüfung sehen die Referenz, die
- * ein Betreiber auch hinterlegen würde. Was kein lokaler Lauf zeigen kann, ist
- * die Aufloesung dieser Referenz durch eine echte Registry.
+ * **Seit Release 1.35 ist keine Stelle mehr ersetzt.** Bis dahin trug die
+ * Definition eine erfundene Registry-Referenz, und beim Start des Containers
+ * wurde genau dieser eine Argumentwert gegen die lokale Image-Id getauscht.
+ * Jetzt läuft im Stack eine echte Registry: Das Test-Image wird gebaut,
+ * gepusht, lokal gelöscht — und der Lauf holt es über seinen Digest zurück.
+ *
+ * Was die Registry ausschliesst, ist der stille Zwischenspeicher. Läge das
+ * Image noch lokal, beantwortete der Cache die Frage und die Registry wäre
+ * Kulisse.
  */
 
 const image = process.env.QKERN_TEST_FUNCTION_IMAGE;
@@ -34,8 +35,6 @@ const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
 const enabled = Boolean(image && ownerUrl && runtimeUrl);
 
-/** Formgültige Registry-Referenz. Beim Containerstart gegen die lokale Id getauscht. */
-const PINNED = `registry.example.com/qkern/probe@sha256:${"a".repeat(64)}`;
 
 describe.runIf(enabled)("Function chain certification", () => {
   const controlUser = randomUUID();
@@ -78,14 +77,9 @@ describe.runIf(enabled)("Function chain certification", () => {
     pools.push(pool);
     repository = new PostgresComputeDefinitionRepository(new PostgresControlPlane(pool));
     definitions = new ComputeDefinitionService({ repository });
-    // Genau ein Argumentwert wird getauscht: die Registry-Referenz gegen die
-    // lokale Image-Id. Alle Flags, stdin, Timeout und das harte Beenden bleiben
-    // die der Produktions-Sandbox.
-    const sandbox = new DockerFunctionSandbox({
-      spawnFn: ((command: string, args: readonly string[], options: never) =>
-        spawn(command, args.map((argument) => argument === PINNED ? image! : argument), options)
-      ) as unknown as typeof spawn,
-    });
+    // Nichts wird mehr getauscht. Die Sandbox ist die der Produktion, und der
+    // Bezug, den sie bekommt, ist der aus der Registry.
+    const sandbox = new DockerFunctionSandbox();
     invocation = new FunctionInvocationService({
       repository,
       invoker: {
@@ -106,7 +100,7 @@ describe.runIf(enabled)("Function chain certification", () => {
   async function define(overrides: { maxConcurrency?: number; timeoutMs?: number } = {}) {
     return await definitions.createFunction(admin, scope, {
       name: uniqueName("chain"),
-      image: PINNED,
+      image: image!,
       entrypoint: "handler.mjs",
       maxConcurrency: overrides.maxConcurrency ?? 1,
       timeoutMs: overrides.timeoutMs ?? 30_000,

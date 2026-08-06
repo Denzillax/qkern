@@ -1139,8 +1139,57 @@ Checkpoint `1.34.0` am 6. August 2026: **101 von 101** Faellen des
 PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
 Lokal 976 bestanden, 0 fehlgeschlagen.
 
-Nicht erbracht: **Die Kosten des Emitters bleiben unbekannt** — die Streuung
-zwischen Laeufen ueberdeckt sie. Die Messung gilt ausserdem fuer 120
+Nicht erbracht (Stand 1.34): **Die Kosten des Emitters bleiben unbekannt** — die
+Streuung zwischen Laeufen ueberdeckt sie. Die Messung gilt ausserdem fuer 120
 Aenderungen auf einem Entwicklungsrechner, nicht fuer Last. Ein Lauf, der den
 Pufferverlust unter echtem Prozessabbruch zeigt, fehlt weiterhin.
 `control_plane`, `project_auth` und `mcp` melden `api_requests` nicht.
+
+## Echte Registry — Release 1.35
+
+Die Functions-Kette hatte seit Release 1.24 genau **eine** ersetzte Stelle: Ein
+lokal gebautes Test-Image hat keinen Registry-Digest, deshalb trug die
+Definition eine erfundene Referenz, und beim Containerstart wurde genau dieser
+Argumentwert gegen die lokale Image-Id getauscht. Jede Release-Notiz seither
+fuehrte das offen mit.
+
+Jetzt laeuft im Stack eine `registry:2`. Das Test-Image wird gebaut, gepusht,
+**lokal geloescht** und ueber seinen Digest wieder geholt. Ohne das Loeschen
+beantwortete der Zwischenspeicher die Frage und die Registry waere Kulisse.
+
+**Der Versuch, eine echte Registry zu benutzen, hat sofort einen Produktfehler
+freigelegt.** Der Spalten-Check aus Migration 0033 liess keinen Doppelpunkt zu:
+
+    image ~ '^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$'
+
+Damit war jede Registry mit Port ausgeschlossen — jede lokale, jede in einem
+Cluster, jede in einem Zertifizierungsstack. Aufgefallen ist das nie, weil bis
+dahin jede Definition eine erfundene Referenz ohne Port trug. Migration 0034
+laesst den Doppelpunkt zu; die bindende Stelle bleibt der Digest, denn was vor
+dem `@` steht, ist nur die Adresse.
+
+**Ein Schlupfloch ist verschwunden.** `DockerFunctionSandbox` hatte einen
+benannten Schalter `allowLocalImageId`, der zusaetzlich eine blosse Image-Id
+zuliess — noetig, solange der Zertifizierungslauf lokal baute. Er ist entfernt.
+Was bleibt, ist eine Regel ohne Ausnahme, und der zugehoerige Fall prueft jetzt
+genau das statt der Wirkung eines Schalters.
+
+Mutationsprobe in zwei Teilen, beide direkt am Fund. Migration 0034
+weggelassen: Alle fuenf Kettenfaelle fallen ueber
+`project_functions_image_check` — der Fehler, der ohne diesen Slice unentdeckt
+geblieben waere. Registry nach dem Push gestoppt: 15 von 23 Faellen fallen um,
+weil nichts mehr zu ziehen ist. Der zweite Teil belegt, dass der Lauf wirklich
+aus der Registry zieht und nicht aus einem Rest im Zwischenspeicher.
+Protokolle: `docs/evidence/2026-08-06/functions-registry-mutation.log` und
+`functions-registry-mutation2.log`.
+
+Checkpoint `1.35.0` am 6. August 2026: **23 von 23** Faellen des
+Functions-Laufs und **101 von 101** des PostgreSQL-Laufs bestanden, je zweimal
+reproduziert **vor** dem Release-Commit. Lokal 976 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Die Registry laeuft ohne TLS und ohne Authentifizierung auf
+127.0.0.1 — Docker behandelt diese Adresse ohne Zutun als unsicher erreichbar.
+Ein Lauf gegen eine authentifizierte Registry mit Zertifikat fehlt, und damit
+auch jede Aussage ueber Registry-Zugangsdaten. Einen Deployment-Weg, der ein
+Image eines Betreibers dorthin bringt, gibt es weiterhin nicht: Der Lauf zeigt,
+dass QKERN einen Digest aufloesen kann, nicht wie er entsteht.

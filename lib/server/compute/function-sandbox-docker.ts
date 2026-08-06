@@ -13,14 +13,7 @@ import type {
  * Inhaltsdigest. Ein Tag ist veränderlich — derselbe Name könnte morgen einen
  * anderen Inhalt bezeichnen.
  */
-const PINNED_IMAGE = /^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$/;
-
-/**
- * Eine blosse lokale Image-Id. Inhaltsadressiert und damit fest, aber nur auf
- * genau diesem Rechner auflösbar — deshalb kein gültiges Ziel für eine
- * gespeicherte Definition und nur über einen ausdrücklichen Schalter erreichbar.
- */
-const LOCAL_IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
+const PINNED_IMAGE = /^[a-z0-9][a-z0-9.:/_-]{1,254}[a-z0-9]@sha256:[0-9a-f]{64}$/;
 const MAX_OUTPUT_BYTES = 256 * 1024;
 const MAX_STDERR_BYTES = 8 * 1024;
 const REMOVE_TIMEOUT_MS = 10_000;
@@ -36,16 +29,6 @@ export type DockerFunctionSandboxOptions = {
   cpus?: number;
   pidsLimit?: number;
   tmpfsBytes?: number;
-  /**
-   * Erlaubt zusätzlich eine lokale Image-Id als Ziel.
-   *
-   * Ausschliesslich für die Zertifizierung der Isolationsflags: Ein lokal
-   * gebautes Image hat keinen Registry-Digest, und eine Registry aufzusetzen,
-   * nur um `--network none` zu prüfen, würde den Nachweis nicht besser machen.
-   * Der Schalter ist sichtbar, benannt und standardmässig aus, damit die
-   * Produktionsgrenze exakt die der Definition bleibt.
-   */
-  allowLocalImageId?: boolean;
   /**
    * Vermittelt Ausgangsverbindungen einer Function.
    *
@@ -118,9 +101,14 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
     invocation: FunctionInvocation,
     options: { signal: AbortSignal },
   ): Promise<FunctionInvocationResult> {
-    const pinned = PINNED_IMAGE.test(definition.image) ||
-      (this.options.allowLocalImageId === true && LOCAL_IMAGE_ID.test(definition.image));
-    if (!pinned) throw new FunctionInvocationError("FUNCTION_INVALID");
+    // Nur ein Registry-Bezug mit Digest. Bis Release 1.34 gab es hier einen
+    // benannten Schalter, der zusätzlich eine lokale Image-Id zuliess — nötig,
+    // weil der Zertifizierungslauf ein lokal gebautes Image benutzte. Seit im
+    // Stack eine echte Registry läuft, braucht ihn niemand mehr, und ein
+    // Schlupfloch, das niemand braucht, gehört weg.
+    if (!PINNED_IMAGE.test(definition.image)) {
+      throw new FunctionInvocationError("FUNCTION_INVALID");
+    }
     if (definition.egressOrigins.length > 0 && !this.options.egress) {
       // Fail closed. Ohne Vermittler bliebe die Liste unbedient, und das waere
       // ein stiller Bruch der Zusage, die sie ausdrueckt.

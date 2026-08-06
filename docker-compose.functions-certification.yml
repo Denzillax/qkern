@@ -10,8 +10,31 @@ name: qkern-functions-certification
 #
 # Es gilt dieselbe Regel wie im Hauptstack: kein Mount innerhalb eines anderen
 # Mounts, und genau eine Init-Datei in `/docker-entrypoint-initdb.d`.
+#
+# Seit Release 1.35 gehoert eine **echte** Registry dazu. Bis dahin trug die
+# Definition eine erfundene Referenz, und genau ein Argumentwert wurde beim
+# Containerstart gegen die lokale Image-Id getauscht — die letzte ersetzte
+# Stelle der ganzen Kette. Jetzt wird das Test-Image gebaut, gepusht, lokal
+# geloescht und vom Digest wieder geholt.
 
 services:
+  registry:
+    image: registry:2.8.3
+    # Auf dem Host veroeffentlicht, weil der Lauf dort stattfindet: Der
+    # Docker-Client des Hosts pusht hinein und der Daemon zieht daraus.
+    # 127.0.0.1 gilt Docker ohne weitere Konfiguration als unsicher erreichbar.
+    ports:
+      - "127.0.0.1:55000:5000"
+    # Wegwerfbar wie alles hier: Ein Lauf darf keinen naechsten beeinflussen.
+    tmpfs:
+      - /var/lib/registry
+    healthcheck:
+      test: ["CMD", "/bin/registry", "--version"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+
   postgres:
     image: postgres:17-alpine
     environment:

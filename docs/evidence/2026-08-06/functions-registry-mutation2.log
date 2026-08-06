@@ -1,0 +1,118 @@
+﻿
+> qkern-platform@1.34.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.5.3
+node.exe :  Network qkern-functions-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-registry-1 Healthy 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:6c771b5674af3f34aacedd504b81ed4354f136174b14cf4ea773c394f943683f (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-chain.integration.test.ts (5 tests | 3 failed) 1542ms
+     × carries a stored definition all the way into a real container 402ms
+     × still denies egress when the definition came from the database 353ms
+     × stops running a function the moment it is disabled 361ms
+ ❯ tests/function-sandbox.integration.test.ts (18 tests | 12 failed) 5394ms
+     × runs a function and returns its bounded result 342ms
+     × hands the function references, never secret values 335ms
+     × keeps the runtime environment out of the container 339ms
+     × denies egress 340ms
+     × lets a mediated request through to an allowed origin 345ms
+     × refuses a mediated request to an origin outside the allowlist 340ms
+     × bounds how many outbound requests one invocation may make 344ms
+     × refuses an allowlisted origin whose name points at a private address 337ms
+     × still denies a direct connection even while mediation is available 338ms
+     × runs as a non-root user 334ms
+     × denies a write outside the temporary filesystem 340ms
+     × kills a function that outruns its timeout 340ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > carries a stored definition all the 
+way into a real container
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > still denies egress when the 
+definition came from the database
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > stops running a function the moment 
+it is disabled
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > runs a function and returns its 
+bounded result
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > hands the function references, 
+never secret values
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > keeps the runtime environment out 
+of the container
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > denies egress
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > lets a mediated request through 
+to an allowed origin
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > refuses a mediated request to an 
+origin outside the allowlist
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > bounds how many outbound requests 
+one invocation may make
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > refuses an allowlisted origin 
+whose name points at a private address
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > still denies a direct connection 
+even while mediation is available
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > runs as a non-root user
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > denies a write outside the 
+temporary filesystem
+FunctionInvocationError: FUNCTION_SANDBOX_FAILED
+ ❯ ChildProcess.<anonymous> lib/server/compute/function-sandbox-docker.ts:283:21
+    281|         handleMessage(pending);
+    282|         if (code === 0 && result) finish(null, result);
+    283|         else finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAIL…
+       |                     ^
+    284|       });
+    285|
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > kills a function that outruns its 
+timeout
+ Test Files  2 failed (2)
+      Tests  15 failed | 8 passed (23)
+   Start at  22:58:26
+   Duration  7.57s (transform 184ms, setup 0ms, import 301ms, tests 6.94s, environment 0ms)
+
+AssertionError: expected FunctionInvocationError: FUNCTION_SANDBOX… { code: '…' } to match object { code: 
+'FUNCTION_TIMEOUT' }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+- {
+-   "code": "FUNCTION_TIMEOUT",
++ FunctionInvocationError {
++   "code": "FUNCTION_SANDBOX_FAILED",
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:216:48
+    214|       payload: { mode: "sleep" },
+    215|       requestedAt: "2026-08-05T12:00:00.000Z",
+    216|     }, { signal: AbortSignal.timeout(3_000) }))
+       |                                                ^
+    217|       .rejects.toMatchObject({ code: "FUNCTION_TIMEOUT" });
+    218|   }, 30_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/15]⎯
+
+EXIT=1

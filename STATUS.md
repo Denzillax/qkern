@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.34.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.35.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -52,7 +52,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
-| **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
+| **Functions Ende zu Ende** | **Registry → Datenbank → Dienst → Container in einem Lauf zertifiziert**; seit `1.35.0` ohne jede ersetzte Stelle |
 | Managed Production Go-live | noch nicht freigegeben |
 
 Die 164 übersprungenen Fälle sind Real-Service-Tests, die in den sechs

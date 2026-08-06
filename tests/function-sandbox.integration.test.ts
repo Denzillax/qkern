@@ -37,10 +37,9 @@ function runningSandboxContainers(): string[] {
 }
 
 describe.runIf(enabled)("Function sandbox certification", () => {
-  // Das Test-Image wird lokal gebaut und hat deshalb keinen Registry-Digest.
-  // Der Schalter ist genau dafuer da und in der Produktion aus; ein eigener
-  // Fall unten belegt das.
-  const sandbox = new DockerFunctionSandbox({ allowLocalImageId: true });
+  // Dieselbe Sandbox wie in der Produktion, ohne jede Zugabe: Das Test-Image
+  // liegt seit Release 1.35 in einer echten Registry im Stack.
+  const sandbox = new DockerFunctionSandbox();
   let previousCanary: string | undefined;
 
   beforeAll(() => {
@@ -124,7 +123,6 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     // Der Container behaelt `--network none`. Die Verbindung stellt die Runtime
     // her, und sie prueft dabei die Allowlist der Definition.
     const mediated = new DockerFunctionSandbox({
-      allowLocalImageId: true,
       egress: new MediatedFunctionEgress({
         fetchFn: async () => new Response('{"pong":true}', {
           headers: { "content-type": "application/json" },
@@ -140,7 +138,6 @@ describe.runIf(enabled)("Function sandbox certification", () => {
   it("refuses a mediated request to an origin outside the allowlist", async () => {
     let called = false;
     const mediated = new DockerFunctionSandbox({
-      allowLocalImageId: true,
       egress: new MediatedFunctionEgress({
         fetchFn: async () => { called = true; return new Response("{}"); },
       }),
@@ -156,7 +153,6 @@ describe.runIf(enabled)("Function sandbox certification", () => {
 
   it("bounds how many outbound requests one invocation may make", async () => {
     const mediated = new DockerFunctionSandbox({
-      allowLocalImageId: true,
       egress: new MediatedFunctionEgress({
         maxRequests: 3,
         fetchFn: async () => new Response("{}", {
@@ -175,7 +171,6 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     // betreibt, und darf jederzeit auf 169.254.169.254 oder 10.0.0.5 zeigen.
     // Geprueft wird deshalb die Adresse, nicht der Name.
     const mediated = new DockerFunctionSandbox({
-      allowLocalImageId: true,
       egress: new MediatedFunctionEgress({
         resolver: { async resolve() { return [{ address: "169.254.169.254", family: 4 as const }]; } },
       }),
@@ -189,7 +184,6 @@ describe.runIf(enabled)("Function sandbox certification", () => {
   it("still denies a direct connection even while mediation is available", async () => {
     // Der Kanal ersetzt das Netz, er ergaenzt es nicht.
     const mediated = new DockerFunctionSandbox({
-      allowLocalImageId: true,
       egress: new MediatedFunctionEgress({ fetchFn: async () => new Response("{}") }),
     });
     const result = await call({ mode: "egress" }, {
@@ -257,12 +251,13 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     });
   });
 
-  it("refuses a local image id unless the certification seam is switched on", async () => {
-    // Belegt, dass der Schalter wirklich ein Schalter ist: Ohne ihn gilt exakt
-    // die Regel der Definition, naemlich eine Registry-Referenz mit Digest.
-    const strict = new DockerFunctionSandbox();
-    await expect(call({ mode: "echo" }, {}, strict)).rejects.toMatchObject({
-      code: "FUNCTION_INVALID",
-    });
+  it("refuses a local image id, and there is no switch that would allow it", async () => {
+    // Bis Release 1.34 gab es hier einen benannten Schalter, weil das
+    // Test-Image lokal gebaut war und keinen Registry-Digest hatte. Seit im
+    // Stack eine echte Registry laeuft, braucht ihn niemand mehr — und ein
+    // Schlupfloch, das niemand braucht, gehoert weg. Was bleibt, ist eine
+    // Regel ohne Ausnahme.
+    await expect(call({ mode: "echo" }, { image: `sha256:${"a".repeat(64)}` }))
+      .rejects.toMatchObject({ code: "FUNCTION_INVALID" });
   });
 });

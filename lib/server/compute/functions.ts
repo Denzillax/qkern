@@ -8,7 +8,17 @@ import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
 const NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 const ENTRYPOINT = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 const SECRET_REF = /^[A-Za-z][A-Za-z0-9_./:-]{2,127}$/;
-const IMAGE = /^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$/;
+/**
+ * Inhaltsadressierter Image-Bezug, optional mit Registry und Port.
+ *
+ * Der Doppelpunkt kam mit Release 1.35 dazu. Ohne ihn war jede Registry mit
+ * Port ausgeschlossen — und das fiel erst auf, als der Zertifizierungslauf eine
+ * **echte** benutzte statt einer erfundenen Referenz.
+ *
+ * Die bindende Stelle bleibt der Digest: Was vor dem `@` steht, ist die
+ * Adresse, aufgelöst wird über `sha256`. Ein Tag allein bleibt abgewiesen.
+ */
+const IMAGE = /^[a-z0-9][a-z0-9.:/_-]{1,254}[a-z0-9]@sha256:[0-9a-f]{64}$/;
 
 export interface FunctionSandboxPort {
   invoke(

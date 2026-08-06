@@ -256,9 +256,28 @@ Der dritte Eintrag ist zweierlei zugleich, und deshalb steht er hier: Er ist die
 Mutationsprobe — der Emitter wurde aus dem Soak-Lauf entfernt, und genau die
 Zählerprüfung fiel um — und er ist die **Basislinie** der Latenzmessung.
 
-Die Latenzwerte über vier Läufe: mit Emitter p95 421 ms, 1846 ms und 1716 ms,
+Die Latenzwerte über vier Läufe (Stand 1.34): mit Emitter p95 421 ms, 1846 ms und 1716 ms,
 ohne Emitter p95 528 ms. Die Streuung **derselben** Konfiguration ist rund
 viermal so gross wie jeder Unterschied zwischen den Konfigurationen — diese
 Messreihe kann die Kosten des Emitters deshalb nicht isolieren. Sie belegt, dass
 der Lauf mit eingeschaltetem Emitter seine Stillstandsschranken einhält, und
 nicht mehr.
+
+## Läufe zu Release 1.35 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/functions-registry-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 23 von 23, exit 0 |
+| `2026-08-06/functions-registry-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 23 von 23, exit 0, Wiederholung |
+| `2026-08-06/functions-registry-postgres.log` | PostgreSQL 17 | 101 von 101, exit 0, 34 Migrationen |
+| `2026-08-06/functions-registry-mutation.log` | Docker 29.5 und PostgreSQL 17 | **18 von 23, exit 1 — absichtlich** |
+| `2026-08-06/functions-registry-mutation2.log` | Docker 29.5 und PostgreSQL 17 | **8 von 23, exit 1 — absichtlich** |
+
+Die erste Mutation lässt Migration 0034 weg: Alle fünf Kettenfälle fallen über
+`project_functions_image_check`, weil der alte Ausdruck keinen Doppelpunkt und
+damit keine Registry mit Port zuliess. Das ist zugleich der Produktfehler, den
+dieser Slice gefunden hat.
+
+Die zweite stoppt die Registry nach dem Push. 15 Fälle fallen um, weil nichts
+mehr zu ziehen ist — der Beleg, dass der Lauf wirklich aus der Registry zieht
+und nicht aus einem Rest im lokalen Zwischenspeicher.
