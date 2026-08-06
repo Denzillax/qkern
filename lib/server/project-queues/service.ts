@@ -10,7 +10,11 @@ import type {
   ProjectQueueScope,
 } from "@/lib/server/project-queues/model";
 import { publicProjectQueue, sameProjectQueueScope } from "@/lib/server/project-queues/model";
-import { ProjectQueueConflictError, type ProjectQueueRepository } from "@/lib/server/project-queues/repository";
+import {
+  ProjectQueueConflictError,
+  type ProjectQueueMeter,
+  type ProjectQueueRepository,
+} from "@/lib/server/project-queues/repository";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 
 const QUEUE_NAME = /^[a-z][a-z0-9_-]{2,62}$/;
@@ -145,16 +149,24 @@ export class ProjectQueueService {
       deadLetteredAt: null,
       replayedFromMessageId: null,
     };
-    // Gemessen wird vor dem Schreiben, mit der Kennung der Nachricht als
-    // Bezug. Wer erst danach misst, kann nicht mehr ablehnen — und ein hartes
-    // Limit, das erst nach der Annahme greift, ist keines.
-    const admission = await this.usage.admit(scope, {
-      metric: "queue_operations", reference: message.id, observedAt: now,
-    });
-    if (!admission.admitted) throw new ProjectQueueError("QUEUE_QUOTA_EXCEEDED");
+    // Gemessen wird **in** der Transaktion des Enqueues, nicht davor.
+    //
+    // Bis Release 1.29 lief die Messung vorher und in einer eigenen
+    // Transaktion. Das war korrekt genug, um ein hartes Limit durchzusetzen,
+    // aber zwischen beiden lag ein Fenster: Ein Absturz nach der Zählung und
+    // vor dem Schreiben zählte eine Nachricht, die es nie gab. Jetzt gilt
+    // beides zusammen oder keines von beidem.
+    const meter: ProjectQueueMeter = async (transaction) => {
+      const admission = await this.usage.admit(scope, {
+        metric: "queue_operations", reference: message.id, observedAt: now,
+      }, transaction);
+      if (!admission.admitted) throw new ProjectQueueError("QUEUE_QUOTA_EXCEEDED");
+    };
 
     try {
-      const result = await this.dependencies.repository.enqueue(principal, scope, queue, message, now);
+      const result = await this.dependencies.repository.enqueue(
+        principal, scope, queue, message, now, meter,
+      );
       return {
         id: result.message.id,
         queue: queue.name,

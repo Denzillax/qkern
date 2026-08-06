@@ -9,6 +9,19 @@ import type {
   ProjectQueueStatus,
 } from "@/lib/server/project-queues/model";
 import { sameProjectQueueScope } from "@/lib/server/project-queues/model";
+import type { SqlQueryable } from "@/lib/server/db/sql";
+
+/**
+ * Wird **innerhalb** der Enqueue-Transaktion gerufen, nachdem die Nachricht
+ * geschrieben wurde und bevor sie festgeschrieben wird.
+ *
+ * Wirft der Haken, rollt die Nachricht mit zurück. Das ist der ganze Zweck: Es
+ * soll keine Nachricht geben, die niemand gezählt hat, und keine Zählung ohne
+ * ihre Nachricht.
+ *
+ * Der Memory-Port hat keine Transaktion und übergibt deshalb nichts.
+ */
+export type ProjectQueueMeter = (transaction?: SqlQueryable) => Promise<void>;
 
 export class ProjectQueueConflictError extends Error {
   constructor(readonly code: "QUEUE_CONFLICT" | "QUEUE_CAPACITY_EXCEEDED" | "QUEUE_LEASE_LOST") {
@@ -27,6 +40,7 @@ export interface ProjectQueueRepository {
     queue: ProjectQueue,
     message: ProjectQueueMessage,
     now: Date,
+    meter?: ProjectQueueMeter,
   ): Promise<{ message: ProjectQueueMessage; deduplicated: boolean }>;
   claim(
     principal: ProjectQueuePrincipal,
@@ -117,6 +131,7 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
     queue: ProjectQueue,
     message: ProjectQueueMessage,
     now: Date,
+    meter?: ProjectQueueMeter,
   ) {
     return await this.exclusive(queue, async () => {
       this.assertQueue(principal, scope, queue);
@@ -126,7 +141,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         const duplicate = [...this.messages.values()].find((candidate) => sameProjectQueueScope(candidate, scope) &&
           candidate.queueId === queue.id && candidate.dedupeKeyHash === message.dedupeKeyHash &&
           candidate.createdAt.getTime() >= earliest);
-        if (duplicate) return { message: cloneMessage(duplicate), deduplicated: true };
+        if (duplicate) {
+          await meter?.();
+          return { message: cloneMessage(duplicate), deduplicated: true };
+        }
       }
       const pending = [...this.messages.values()].filter((candidate) => sameProjectQueueScope(candidate, scope) &&
         candidate.queueId === queue.id && ["available", "in_flight"].includes(candidate.status)).length;
@@ -134,6 +152,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
       if (this.messages.has(message.id) || !sameProjectQueueScope(message, queue)) {
         throw new ProjectQueueConflictError("QUEUE_CONFLICT");
       }
+      // Ohne Transaktion bleibt nur die Reihenfolge: erst messen, dann
+      // ablegen. Wirft der Haken, entsteht die Nachricht nicht. Das ist
+      // schwächer als ein Rollback und für einen Entwicklungsport genug.
+      await meter?.();
       this.messages.set(message.id, cloneMessage(message));
       return { message: cloneMessage(message), deduplicated: false };
     });

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.29.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.30.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.29.0`
-- Aktueller Slice: 1.29 Usage-Emitter — `lib/server/usage/emitter.ts`
+- Paketversion: `1.30.0`
+- Aktueller Slice: 1.30 Transaktionale Messung — `consume`, `record` und `admit` nehmen eine laufende Transaktion
+- `ProjectQueueRepository.enqueue` erhaelt einen `ProjectQueueMeter`, der **in** der Enqueue-Transaktion laeuft
+- Eine abgelehnte Messung rollt die bereits geschriebene Nachricht zurueck; Functions bleiben nicht-transaktional, weil sie nichts schreiben
+- Vorheriger Slice: 1.29 Usage-Emitter — `lib/server/usage/emitter.ts`
 - Ein Port mit **einer** Methode: `admit`. Der Emitter besitzt den `meter`-Principal und baut den Idempotenzschluessel
 - Verdrahtet in `ProjectQueueService.enqueue` und `FunctionInvocationService.invoke`; Voreinstellung ist der `DisabledUsageEmitter`
 - Messung faellt im Betrieb offen aus (`QKERN_USAGE_EMITTER_ON_FAILURE`), bei Fehlkonfiguration aber beim Start zu

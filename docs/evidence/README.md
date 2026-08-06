@@ -186,3 +186,25 @@ um. Zusammen ist für jeden der sieben Fälle gezeigt, dass er rot werden kann.
 Ab diesem Release schreibt `scripts/postgres-certification.mjs` die
 `EXIT=`-Zeile selbst. Bisher musste die Shell sie anhängen — Handpflege genau an
 der Stelle, an der die Evidenz entsteht.
+
+## Läufe zu Release 1.30 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-transaction-run1.log` | PostgreSQL 17 | 95 von 95, exit 0, 33 Migrationen |
+| `2026-08-06/usage-transaction-run2.log` | PostgreSQL 17 | 95 von 95, exit 0, Wiederholung |
+| `2026-08-06/usage-transaction-mutation.log` | PostgreSQL 17 | **93 von 95, exit 1 — absichtlich** |
+| `2026-08-06/usage-transaction-mutation2.log` | PostgreSQL 17 | **94 von 95, exit 1 — absichtlich** |
+
+Erste Welle: zurück auf das Verhalten von 1.29 — messen vor der Operation, in
+einer eigenen Transaktion. Genau die zwei zugehörigen Fälle fielen um.
+
+Zweite Welle: die Zeilensperre auf dem Monatszähler entfernt. Diese Welle lief
+**zweimal**. Beim ersten Mal fiel nichts um — der Nebenläufigkeitsfall benutzte
+eine einzige Queue, und Enqueues derselben Queue serialisieren ohnehin auf deren
+Zeile. Der Fall war grün, ohne die Zusage zu tragen. Mit vier Queues fällt er
+ohne die Sperre sofort um.
+
+Abgelegt ist die zweite, aussagekräftige Ausführung. Der erste, grüne Versuch
+ist kein Nachweis, sondern war der Anlass, den Testfall zu korrigieren; er steht
+in `docs/QA.md` und `docs/RELEASE_1.30.md` beschrieben.

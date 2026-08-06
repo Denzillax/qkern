@@ -47,10 +47,36 @@ Er baut auch den Idempotenzschlüssel: `<quelle>:<metrik>:<bezug>`. Der
 Schlüsselraum ist **scope-weit**, nicht metrikweit; zwei Module mit derselben
 Kennung würden sich sonst gegenseitig deduplizieren.
 
-**Gezählt wird die Operation, nicht ihr Ergebnis.** Die Messung steht vor dem
-Schreiben beziehungsweise vor dem Aufruf: Wer erst danach misst, kann nicht mehr
-ablehnen. Ein Aufruf, der scheitert, hat trotzdem einen Container gestartet; ein
-deduplizierter Enqueue hat trotzdem stattgefunden.
+**Gezählt wird die Operation, nicht ihr Ergebnis.** Ein Aufruf, der scheitert,
+hat trotzdem einen Container gestartet; ein deduplizierter Enqueue hat trotzdem
+stattgefunden.
+
+### Transaktional, wo es eine Transaktion gibt
+
+Seit `1.30.0` nehmen `consume`, `record` und `admit` eine **laufende**
+Transaktion entgegen. `ProjectQueueRepository.enqueue` erhält dafür einen
+`ProjectQueueMeter`, der innerhalb der Enqueue-Transaktion läuft: nach dem
+Schreiben der Nachricht, vor dem Festschreiben.
+
+Damit gilt beides zusammen oder keines von beidem. Lehnt die Messung ab, rollt
+die bereits geschriebene Nachricht mit zurück. Bis `1.29.0` lag zwischen Zählung
+und Schreiben ein Fenster, in dem ein Absturz eine Nachricht zählte, die es nie
+gab.
+
+Alle Sperren des Ledgers sind transaktionsgebunden (`pg_advisory_xact_lock`,
+`FOR UPDATE`). Sie enden mit der Transaktion, in der sie genommen wurden — der
+eigenen wie der fremden. Ohne diese Eigenschaft wäre eine mitbenutzte
+Transaktion nicht möglich, ohne Sperren zu verlieren oder zu lange zu halten.
+
+Die Messung steht dabei **hinter** den Konflikten der Operation. Eine wegen
+voller Warteschlange abgewiesene Nachricht verbraucht kein Kontingent.
+
+Der **Function-Aufruf bleibt nicht-transaktional**. Er schreibt nichts in die
+Control Plane, mit dem er atomar sein könnte; ein Container startet oder startet
+nicht. Dort bleibt es bei der Reihenfolge: erst messen, dann starten.
+
+Der Memory-Port hat keine Transaktion und ignoriert das Argument. Für Produktion
+war er ohnehin nie zugelassen.
 
 ### Zwei Ausfallsemantiken
 
@@ -201,8 +227,12 @@ nach echter Operation, ein hartes Limit, das den Enqueue abweist ohne eine
 Nachricht zu schreiben, und ein erschöpftes Kontingent, das den Function-Aufruf
 abweist ohne den Invoker zu starten.
 
+Seit `1.30.0` kommen drei weitere PostgreSQL-Fälle dazu: eine abgewiesene
+Nachricht verbraucht kein Kontingent; eine abgelehnte Zählung rollt die bereits
+geschriebene Nachricht zurück; acht gleichzeitige Enqueues über vier Queues
+ergeben genau acht Nachrichten und Zählerstand acht.
+
 Vor kommerziellem Betrieb fehlen weiterhin echte archivierte PostgreSQL-Last- und
-Crash-Races, Emitter in Data/Storage/Realtime, ein **transaktionaler** Emitter,
-der sein Ereignis in derselben Transaktion schreibt wie die Operation,
-Reconciliation mit Providerwerten, Metrics/Alerts, Retention/Export, Tarife,
-Rechnungs- und Zahlungsintegration sowie unabhängige Security-/Finanzprüfung.
+Crash-Races, Emitter in Data/Storage/Realtime, Reconciliation mit Providerwerten,
+Metrics/Alerts, Retention/Export, Tarife, Rechnungs- und Zahlungsintegration
+sowie unabhängige Security-/Finanzprüfung.

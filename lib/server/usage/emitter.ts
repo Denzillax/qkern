@@ -1,3 +1,4 @@
+import type { SqlQueryable } from "@/lib/server/db/sql";
 import type { UsageMetric, UsagePrincipal, UsageScope, UsageSource } from "@/lib/server/usage/model";
 import { UsageError, type UsageService } from "@/lib/server/usage/service";
 
@@ -37,8 +38,18 @@ export interface UsageEmitterPort {
    * nehmen kann — und ein hartes Limit, das an einer Stelle greift und an einer
    * anderen nicht, wäre schlimmer als gar keines. Wer nicht gaten will,
    * ignoriert die Antwort sichtbar.
+   *
+   * `transaction` ist die laufende Transaktion der gemessenen Operation. Mit
+   * ihr wird die Buchung Teil derselben Einheit: Wer die Operation zurückrollt,
+   * rollt die Zählung mit zurück. Ohne sie bleibt zwischen beiden ein Fenster,
+   * in dem ein Absturz zu viel zählt — messbar, aber nicht nachträglich
+   * korrigierbar.
    */
-  admit(scope: UsageScope, input: UsageMeasurement): Promise<UsageAdmission>;
+  admit(
+    scope: UsageScope,
+    input: UsageMeasurement,
+    transaction?: SqlQueryable,
+  ): Promise<UsageAdmission>;
 }
 
 /** Lässt alles durch und misst nichts. Der Zustand, wenn Metering aus ist. */
@@ -90,7 +101,11 @@ export class ServiceUsageEmitter implements UsageEmitterPort {
     this.actorRef = options.actorRef ?? `system:usage-emitter:${options.source}`;
   }
 
-  async admit(scope: UsageScope, input: UsageMeasurement): Promise<UsageAdmission> {
+  async admit(
+    scope: UsageScope,
+    input: UsageMeasurement,
+    transaction?: SqlQueryable,
+  ): Promise<UsageAdmission> {
     if (!REFERENCE.test(input.reference)) return this.unavailable();
     try {
       const decision = await this.options.service.record(this.principal(scope), scope, {
@@ -99,7 +114,7 @@ export class ServiceUsageEmitter implements UsageEmitterPort {
         quantity: input.quantity ?? 1,
         idempotencyKey: `${this.options.source}:${input.metric}:${input.reference}`,
         observedAt: input.observedAt,
-      });
+      }, transaction);
       if (decision.accepted) return ADMITTED;
       return Object.freeze({ admitted: false, reason: "quota_exceeded" as const });
     } catch (error) {

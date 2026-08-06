@@ -1,3 +1,4 @@
+import type { SqlQueryable } from "@/lib/server/db/sql";
 import type {
   UsageDecisionRecord,
   UsageEventInput,
@@ -17,7 +18,20 @@ export class UsageRepositoryConflictError extends Error {
 
 export interface UsageRepository {
   readonly durability: "ephemeral" | "durable";
-  consume(principal: UsagePrincipal, event: UsageEventInput): Promise<UsageDecisionRecord>;
+  /**
+   * Verbucht ein Ereignis.
+   *
+   * `transaction` ist die **laufende** Transaktion der gemessenen Operation.
+   * Wird sie übergeben, entsteht die Buchung darin: keine Nachricht ohne ihre
+   * Zählung, keine Zählung ohne ihre Nachricht. Ohne sie öffnet der Adapter
+   * eine eigene — dann liegt zwischen Messung und Operation ein Fenster, in dem
+   * ein Absturz zu viel zählt.
+   */
+  consume(
+    principal: UsagePrincipal,
+    event: UsageEventInput,
+    transaction?: SqlQueryable,
+  ): Promise<UsageDecisionRecord>;
   readWindow(
     principal: UsagePrincipal,
     scope: UsageScope,
@@ -39,7 +53,12 @@ export class MemoryUsageRepository implements UsageRepository {
   private readonly policies = new Map<string, UsageQuotaPolicy>();
   private readonly locks = new Map<string, Promise<void>>();
 
-  consume(principal: UsagePrincipal, event: UsageEventInput) {
+  /**
+   * `transaction` wird bewusst ignoriert: Dieser Port hat keine. Er bleibt
+   * damit ein Entwicklungs- und Testport — für Produktion war er ohnehin nie
+   * zugelassen.
+   */
+  consume(principal: UsagePrincipal, event: UsageEventInput, _transaction?: SqlQueryable) {
     const eventKey = `${scopeKey(event)}:${event.eventKeyHash}`;
     return this.exclusive(`event:${eventKey}`, async () => {
       const existing = this.events.get(eventKey);

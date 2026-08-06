@@ -14,7 +14,9 @@ import { UsageService } from "@/lib/server/usage/service";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type { FunctionInvocationResult } from "@/lib/server/compute/model";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
-import type { UsageMetric, UsagePrincipal, UsageScope } from "@/lib/server/usage/model";
+import type {
+  PublicUsageDecision, UsageMetric, UsagePrincipal, UsageScope,
+} from "@/lib/server/usage/model";
 
 /**
  * Produktoperationen zählen sich selbst — gegen echtes PostgreSQL.
@@ -235,6 +237,76 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
     expect(calls).toHaveLength(1);
     expect(await counter(scope, "function_invocations")).toBe(1n);
   });
+
+  it("does not spend quota on an enqueue the queue itself refused", async () => {
+    // Seit Release 1.30 steht die Messung **hinter** den Konflikten der
+    // Operation. Eine wegen voller Warteschlange abgewiesene Nachricht hat
+    // nichts verbraucht — bis 1.29 zaehlte sie trotzdem.
+    const scope = await freshScope();
+    const service = queues(scope);
+    await service.createQueue(admin, scope, { name: "full", maxPendingMessages: 1 });
+    await service.enqueue(worker, scope, "full", { payload: { order: 1 } });
+
+    await expect(service.enqueue(worker, scope, "full", { payload: { order: 2 } }))
+      .rejects.toMatchObject({ code: "QUEUE_CAPACITY_EXCEEDED" });
+    expect(await counter(scope, "queue_operations")).toBe(1n);
+  });
+
+  it("rolls back a message that was already written when the count is refused", async () => {
+    // Der eigentliche Nachweis der Atomaritaet: Die Zeile **existiert**, als
+    // gemessen wird — die Messung liest sie ueber dieselbe Transaktion. Danach
+    // ist sie weg. Ohne gemeinsame Transaktion waere sie geblieben.
+    const scope = await freshScope();
+    let seenInsideTransaction: string | null = null;
+    const refusing: Pick<UsageService, "record"> = {
+      async record(_principal, _scope, _input, transaction) {
+        const rows = await transaction!.query<{ id: string }>(
+          "SELECT id FROM project_queue_messages WHERE organization_id=$1 AND project_id=$2",
+          [scope.organizationId, scope.projectId],
+        );
+        seenInsideTransaction = rows.rows[0]?.id ?? null;
+        // Der Emitter liest nur `accepted`; alles Weitere waere Beiwerk.
+        return { accepted: false } as unknown as PublicUsageDecision;
+      },
+    };
+
+    const service = queues(scope, { ledger: refusing });
+    await service.createQueue(admin, scope, { name: "rolled-back" });
+    await expect(service.enqueue(worker, scope, "rolled-back", { payload: { order: 1 } }))
+      .rejects.toMatchObject({ code: "QUEUE_QUOTA_EXCEEDED" });
+
+    expect(seenInsideTransaction).toMatch(/^[0-9a-f-]{36}$/);
+    const remaining = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM project_queue_messages
+        WHERE organization_id=$1 AND project_id=$2`, [scope.organizationId, scope.projectId],
+    );
+    expect(remaining.rows[0].count).toBe("0");
+  });
+
+  it("counts every simultaneous enqueue across queues exactly once", async () => {
+    // **Über vier Queues**, nicht über eine. Enqueues derselben Queue
+    // serialisieren ohnehin auf deren Zeile und erreichen die Zählersperre nie;
+    // ein Fall mit einer einzigen Queue wäre grün geblieben, auch ohne sie. Die
+    // Mutationsprobe hat genau das aufgedeckt.
+    //
+    // Vier gleichzeitige Transaktionen treffen jetzt wirklich auf denselben
+    // Monatszähler. Fehlt dort die Sperre, lesen mehrere denselben Stand und
+    // schreiben ihn absolut zurück — der Zähler bleibt hinter den Nachrichten.
+    const scope = await freshScope();
+    const service = queues(scope);
+    const names = ["fan-a", "fan-b", "fan-c", "fan-d"];
+    for (const name of names) await service.createQueue(admin, scope, { name });
+
+    await Promise.all(names.flatMap((name, queueIndex) => [0, 1].map((slot) =>
+      service.enqueue(worker, scope, name, { payload: { queueIndex, slot } }))));
+
+    expect(await counter(scope, "queue_operations")).toBe(8n);
+    const messages = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM project_queue_messages
+        WHERE organization_id=$1 AND project_id=$2`, [scope.organizationId, scope.projectId],
+    );
+    expect(messages.rows[0].count).toBe("8");
+  }, 30_000);
 
   it("keeps working when the ledger is unavailable, and can be told not to", async () => {
     const scope = await freshScope();

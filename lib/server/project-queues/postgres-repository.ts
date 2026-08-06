@@ -13,6 +13,7 @@ import type {
 } from "@/lib/server/project-queues/model";
 import {
   ProjectQueueConflictError,
+  type ProjectQueueMeter,
   type ProjectQueueRepository,
 } from "@/lib/server/project-queues/repository";
 
@@ -82,8 +83,29 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
     queue: ProjectQueue,
     message: ProjectQueueMessage,
     now: Date,
+    meter?: ProjectQueueMeter,
   ) {
     return this.withTenant(principal, false, async (database) => {
+      const result = await this.enqueueWithin(database, scope, queue, message, now);
+      // Nach dem Schreiben, vor dem Festschreiben — und in **dieser**
+      // Transaktion. Wirft der Haken, verschwindet die Nachricht mit ihm.
+      //
+      // Die frueh geworfenen Konflikte (falsche Queue, volle Queue) kommen hier
+      // nie an: Eine abgewiesene Operation soll auch kein Kontingent
+      // verbrauchen.
+      await meter?.(database);
+      return result;
+    });
+  }
+
+  private async enqueueWithin(
+    database: SqlQueryable,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    message: ProjectQueueMessage,
+    now: Date,
+  ): Promise<{ message: ProjectQueueMessage; deduplicated: boolean }> {
+    {
       const current = await this.lockQueue(database, scope, queue.id);
       if (!current || current.name !== queue.name || message.queueId !== current.id) {
         throw new ProjectQueueConflictError("QUEUE_CONFLICT");
@@ -139,7 +161,7 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         }
         throw error;
       }
-    });
+    }
   }
 
   claim(

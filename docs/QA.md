@@ -914,3 +914,51 @@ Nicht erbracht: Emitter in Generated Data API, Storage und Realtime; ein
 transaktionaler Emitter, der sein Ereignis in derselben Transaktion schreibt
 wie die Operation; Abgleich mit Providerwerten; Last- und Crash-Laeufe des
 Messpfads.
+
+## Transaktionale Messung — Release 1.30
+
+Drei weitere Faelle, und alle drei betreffen die Naht zwischen Messung und
+Operation.
+
+Der erste: Eine wegen voller Warteschlange abgewiesene Nachricht verbraucht
+**kein** Kontingent. Bis 1.29 zaehlte sie trotzdem, weil die Messung vor der
+Operation lief.
+
+Der zweite ist der eigentliche Nachweis der Atomaritaet: Ein Ledger, das
+ablehnt, liest zuvor ueber **dieselbe** Transaktion die soeben geschriebene
+Nachricht und sieht sie. Danach ist sie weg. Die Zeile existierte, und der
+Rollback hat sie mitgenommen — ohne gemeinsame Transaktion waere sie geblieben.
+
+Der dritte: acht gleichzeitige Enqueues ueber **vier** Queues ergeben genau acht
+Nachrichten und Zaehlerstand acht.
+
+Dieser dritte Fall ist der Lehrreiche. Er hiess zuerst „acht gleichzeitige
+Enqueues" — ueber eine einzige Queue. Die Mutationsprobe entfernte daraufhin die
+Zeilensperre auf dem Monatszaehler, und **nichts** fiel um. Grund: Enqueues
+derselben Queue serialisieren ohnehin auf deren Zeile und erreichen den Zaehler
+nie gleichzeitig. Der Fall war grün, ohne die Zusage zu tragen. Mit vier Queues
+faellt er ohne die Sperre sofort um.
+
+Dabei kam ein zweiter, unbequemer Befund heraus: Auch der aeltere Fall
+„serializes concurrent hard-quota decisions" aus `usage-metering-postgres`
+bleibt ohne die Zeilensperre grün. Er traegt seine Aussage nicht selbst — die
+beiden gleichzeitigen Buchungen laufen dort in ein frisches Projekt, und der
+`ON CONFLICT DO NOTHING`-Einschub in `usage_counters` serialisiert sie ueber den
+Unique-Index. Die Sperre ist im Betrieb noetig, aber belegt hat sie erst der
+neue Fall.
+
+Mutationsprobe in zwei Wellen. Erste Welle: zurueck auf das Verhalten von 1.29 —
+messen vor der Operation, in einer eigenen Transaktion. Genau die zwei
+zugehoerigen Faelle fallen um. Zweite Welle: Zeilensperre auf dem Monatszaehler
+entfernt — der korrigierte Nebenlaeufigkeitsfall faellt um.
+Protokoll: `docs/evidence/2026-08-06/usage-transaction-mutation.log` und
+`usage-transaction-mutation2.log`.
+
+Checkpoint `1.30.0` am 6. August 2026: **95 von 95** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 960 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Der Function-Aufruf bleibt nicht-transaktional — er schreibt
+nichts in die Control Plane, mit dem er atomar sein koennte. Generated Data API,
+Storage und Realtime melden weiterhin nicht. Ein Crash-Lauf, der die
+Atomaritaet unter echtem Prozessabbruch zeigt, fehlt.

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
+import type { SqlQueryable } from "@/lib/server/db/sql";
 import {
   USAGE_METRIC_DEFINITIONS,
   type PublicUsageDecision,
@@ -68,7 +69,7 @@ export class UsageService {
     quantity: number | string | bigint;
     idempotencyKey: string;
     observedAt?: string | Date;
-  }): Promise<PublicUsageDecision> {
+  }, transaction?: SqlQueryable): Promise<PublicUsageDecision> {
     assertPrincipal(principal, scope, "meter");
     if (!METRICS.has(input.metric) || !SOURCES.has(input.source) ||
         !SOURCE_METRICS[input.source]?.has(input.metric) || !EVENT_KEY.test(input.idempotencyKey)) {
@@ -99,7 +100,7 @@ export class UsageService {
         observedAt,
         windowStart: window.start,
         windowEnd: window.end,
-      });
+      }, transaction);
       return publicDecision(decision);
     } catch (error) { throw mapError(error); }
   }

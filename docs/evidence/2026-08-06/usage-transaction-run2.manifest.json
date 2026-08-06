@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "usage-transaction-run2.log",
+  "commit": "45b62f89a3d0d23f276241754fc654677ad54514",
+  "commitSubject": "release: 1.29.0 Usage-Emitter",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 33,
+  "testFiles": "18 passed (18)",
+  "tests": "95 passed (95)",
+  "passed": 95,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

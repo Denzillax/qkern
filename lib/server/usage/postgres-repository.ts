@@ -23,8 +23,22 @@ export class PostgresUsageRepository implements UsageRepository {
 
   constructor(private readonly database: UsageDatabase) {}
 
-  consume(principal: UsagePrincipal, event: UsageEventInput) {
-    return this.withTenant(principal, false, async (database) => {
+  /**
+   * Verbucht ein Ereignis — in der Transaktion der Operation, wenn es eine gibt.
+   *
+   * Alle Sperren hier sind transaktionsgebunden (`pg_advisory_xact_lock`,
+   * `FOR UPDATE`). Sie enden also mit der Transaktion, in der sie genommen
+   * wurden — der eigenen wie der fremden. Ohne diese Eigenschaft wäre eine
+   * mitbenutzte Transaktion nicht möglich, ohne Sperren zu verlieren oder zu
+   * lange zu halten.
+   */
+  consume(principal: UsagePrincipal, event: UsageEventInput, transaction?: SqlQueryable) {
+    if (transaction) return this.consumeWithin(transaction, event);
+    return this.withTenant(principal, false, (database) => this.consumeWithin(database, event));
+  }
+
+  private consumeWithin(database: SqlQueryable, event: UsageEventInput) {
+    return (async () => {
       await database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
         `${event.organizationId}:${event.projectId}:${event.environment}:${event.eventKeyHash}`,
       ]);
@@ -75,7 +89,7 @@ export class PostgresUsageRepository implements UsageRepository {
         policy?.limit.toString() ?? null, policy?.mode ?? "unlimited", policy?.revision ?? null,
       ]);
       return { ...eventFromRow(inserted.rows[0]), deduplicated: false };
-    });
+    })();
   }
 
   readWindow(

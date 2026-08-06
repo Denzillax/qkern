@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.29.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.30.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -25,7 +25,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
-| Usage Metering | teilweise | teilweise — 11 Real-DB-Fälle; Queues und Functions melden, Data/Storage/Realtime nicht |
+| Usage Metering | teilweise | teilweise — 14 Real-DB-Fälle; Queues melden transaktional, Functions melden, Data/Storage/Realtime nicht |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 111 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
@@ -41,7 +41,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **92 von 92 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **95 von 95 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
@@ -55,7 +55,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 155 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
+Die 158 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -174,10 +174,12 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
 - Usage Metering ist disabled-by-default. Browser und MCP dürfen keine Quota-
   Policies mutieren; `meter`/`operator` bleiben interne Autoritäten.
 - Seit `1.29.0` melden Project Queues und Functions ihre Operationen selbst; ein
-  erschöpftes hartes Limit weist die Operation wirklich ab. Generated Data API,
-  Storage und Realtime melden noch nicht, und für ihre Metriken sind Nullwerte
-  weiterhin erwartbar. Das Ereignis entsteht in einer eigenen Transaktion, nicht
-  in der der Operation — ein Absturz zwischen beiden zählt also zu viel. Es
+  erschöpftes hartes Limit weist die Operation wirklich ab. Seit `1.30.0` bucht
+  der Enqueue **in derselben Transaktion**, in der er schreibt: keine Nachricht
+  ohne ihre Zählung, keine Zählung ohne ihre Nachricht. Der Function-Aufruf
+  bleibt nicht-transaktional, weil er nichts in die Control Plane schreibt, mit
+  dem er atomar sein könnte. Generated Data API, Storage und Realtime melden
+  noch nicht, und für ihre Metriken sind Nullwerte weiterhin erwartbar. Es
   existieren weder Preise noch Rechnungen.
 - Der PostgreSQL-Usagepfad ist lokal nur statisch und in Memory getestet; die vier
   Real-DB-Fälle sowie Multi-Instance-, Crash-, Reconciliation- und Lastläufe fehlen.
