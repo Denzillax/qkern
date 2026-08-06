@@ -146,3 +146,24 @@ das Anfragebudget je Aufruf. Genau die zwei zugehörigen Fälle fielen um.
 Aufgeweicht wurden die Sperre des Link-local-Bereichs (dort liegt der
 Metadatendienst) und die Prüfung aller aufgelösten Adressen statt nur der
 ersten. Vier lokale Fälle und der Container-Fall fielen um.
+
+## Läufe zu Release 1.28 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/receiver-run1.log` | Node-24-HTTPS-Empfänger und PostgreSQL 17 | 10 von 10, exit 0 |
+| `2026-08-06/receiver-run2.log` | Node-24-HTTPS-Empfänger und PostgreSQL 17 | 10 von 10, exit 0, Wiederholung |
+| `2026-08-06/receiver-mutation.log` | Node-24-HTTPS-Empfänger und PostgreSQL 17 | **7 von 10, exit 1 — absichtlich** |
+
+Abgeschaltet wurden das Weiterleitungsverbot, die Adressprüfung und die
+Antwortgrenze. Genau die drei zugehörigen Fälle fielen um. Eine zweite
+Mutationswelle am Empfänger selbst — Zustell-ID auch auf dem stillen Pfad
+zurückgespiegelt, `wrong.qkern.test` ins Zertifikat aufgenommen — liess die
+anderen drei umfallen; sie ist nicht als eigenes Log abgelegt, weil sie
+denselben Stack mit veränderten Testmitteln fährt.
+
+Der **erste** Lauf dieses Slices war rot und ist der eigentliche Fund: Das
+DNS-Pinning aus Release 1.27 hat gegen einen echten Socket jede Verbindung
+verhindert. Er ist hier nicht abgelegt, weil er den defekten Stand belegt, den
+`receiver-run1.log` bereits ersetzt; die Ursache steht in `docs/QA.md` und
+`docs/RELEASE_1.28.md`.

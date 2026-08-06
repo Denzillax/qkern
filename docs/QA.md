@@ -816,3 +816,54 @@ Lokal 951 bestanden, 0 fehlgeschlagen.
 Nicht erbracht: eine Zertifizierung gegen einen echten externen HTTPS-Server.
 Der geprüfte Weg wird mit einem eingespeisten Resolver belegt, nicht mit einer
 echten TLS-Verbindung nach draussen.
+
+## Echter Empfaenger — Release 1.28
+
+Der sechste Zertifizierungslauf (`npm run test:receiver:docker`) stellt zehn
+Faelle gegen einen **echten** HTTPS-Server, der die HMAC-Signatur selbst
+nachrechnet. Ein Empfaenger, der jede Nachricht bestaetigt, wuerde nur belegen,
+dass irgendetwas ankam.
+
+Auf dem Zustellweg: eine signierte Zustellung geht durch und wird in der
+Datenbank `delivered`; ein Empfaenger, der mit 200 antwortet, ohne die
+Zustell-ID zurueckzuspiegeln, gilt als Fehlschlag; eine Weiterleitung wird nicht
+befolgt; und ein zweiter Netzwerk-Alias auf demselben Container, den das
+Zertifikat nicht traegt, wird abgewiesen — mit
+`ERR_TLS_CERT_ALTNAME_INVALID` als belegtem Grund. Dieser Fall zeigt, dass das
+Festhalten der Adresse aus 1.27 die Identitaetspruefung nicht aushebelt.
+
+Auf dem Egress-Weg: eine erlaubte Origin ist erreichbar und liefert von ihren
+Antwortheadern nur `content-type` zurueck — `set-cookie` und der interne Header
+des Empfaengers bleiben draussen; eine zu grosse Antwort wird abgebrochen; eine
+Weiterleitung wird abgewiesen, statt der Function ein neues Ziel zu reichen;
+eine fremde Origin faellt vor dem Verbindungsaufbau durch; und
+`internal.qkern.test`, das ein echter Resolver auf 172.31.240.x abbildet, wird
+mit `EGRESS_BLOCKED` abgewiesen, obwohl die Allowlist es ausdruecklich erlaubt.
+
+**Der erste Lauf war rot, und das aus gutem Grund.** Das DNS-Pinning aus
+Release 1.27 hat gegen einen echten Socket **jede** Verbindung verhindert: Node
+ruft die ersetzte `lookup` seit `autoSelectFamily` mit `all: true` auf und
+erwartet dann eine Liste; eine einzelne Adresse endet in
+`ERR_INVALID_IP_ADDRESS`. Gegen ein eingespeistes `fetch` war davon nichts zu
+sehen. Die drei negativen Faelle des Laufs waren dabei gruen — vollstaendig
+wirkungslos ist eben auch ein Fehlschlag.
+
+Mutationsprobe in zwei Wellen. Empfaengerseitig: die Zustell-ID auch auf dem
+stillen Pfad zurueckgespiegelt und `wrong.qkern.test` ins Zertifikat
+aufgenommen — genau die drei zugehoerigen Faelle fallen um. Codeseitig: das
+Weiterleitungsverbot, die Adresspruefung und die Antwortgrenze abgeschaltet —
+genau die drei zugehoerigen Faelle fallen um.
+Protokoll: `docs/evidence/2026-08-06/receiver-mutation.log`.
+
+Dabei zeigte sich, dass der Weiterleitungsfall **auf dem Zustellweg** nicht
+traegt: Eine 302 faellt dort ohnehin durch die Statuspruefung. Getragen wird die
+Zusage vom Egress-Fall, wo eine Weiterleitung sonst samt `location` bei der
+Function ankaeme.
+
+Checkpoint `1.28.0` am 6. August 2026: **10 von 10** Faellen des
+Empfaenger-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 951 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: ein Empfaenger ausserhalb des eigenen Docker-Netzes und ein
+oeffentlich vertrauenswuerdiges Zertifikat. Der Lauf belegt Protokoll, Signatur
+und Policy, nicht die Erreichbarkeit des offenen Internets.

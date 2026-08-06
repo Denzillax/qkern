@@ -92,6 +92,14 @@ IPv4 und IPv6 prüfen, die geprüfte Adresse festhalten und damit Rebinding
 verhindern. Dieselbe Prüfung gilt für
 den Functions-Egress.
 
+Seit `1.28.0` ist dieser ganze Weg gegen einen **echten** HTTPS-Empfänger
+belegt: Signatur, Bestätigung über den zurückgespiegelten Header,
+Weiterleitungsverbot, Antwortgrenze, Header-Filter und Adressprüfung, alles über
+eine echte TLS-Verbindung. Dabei kam heraus, dass das Pinning aus `1.27.0`
+gegen einen echten Socket jede Verbindung verhindert hat: Die ersetzte
+`lookup`-Funktion muss `options.all` beachten, sonst antwortet sie in der
+falschen Form. Gegen ein eingespeistes `fetch` war davon nichts zu sehen.
+
 ## Cron
 
 Der aktuelle UTC-Vertrag akzeptiert bewusst nur `*/N * * * *` mit 1 bis 59
@@ -145,5 +153,5 @@ Die Zustellstatusliste gibt niemals eine Nutzlast zurück.
 
 Offen bleiben: Scheduler-Leases, Zeitzonen/DST, automatische Scope-Entdeckung,
 SDK-/CLI-Anbindung, manuelles Auslösen eines Vorkommens, Wiederholen einer toten
-Zustellung, ein Deployment-Weg für Function-Images und Provider-E2E gegen einen
-echten HTTPS-Empfänger. Keine dieser Foundations ist in MCP exponiert.
+Zustellung und ein Deployment-Weg für Function-Images. Keine dieser Foundations
+ist in MCP exponiert.

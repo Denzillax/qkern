@@ -1,0 +1,147 @@
+name: qkern-receiver-certification
+
+# Wegwerfstack fuer die Zustellung an einen **echten** HTTPS-Empfaenger.
+#
+# Bis Release 1.27 war jede Zusage des ausgehenden Wegs gegen ein eingespeistes
+# `fetch` belegt: Signatur, Bestaetigung, Weiterleitungsverbot, Groessengrenze,
+# Adresspruefung. Keine einzige davon hatte je eine TLS-Verbindung gesehen.
+#
+# ## Warum dieses Netz eine oeffentliche Adresse traegt
+#
+# Seit 1.27 verlangt jede Ausgangsverbindung eine oeffentlich routbare Adresse.
+# Ein Container im Docker-Standardnetz liegt in 172.16.0.0/12 und wird von genau
+# dieser Zusage abgewiesen — richtigerweise. Der Stack legt deshalb ein eigenes
+# Netz mit einem oeffentlichen Subnetz an, das er fuer die Dauer des Laufs auf
+# der lokalen Bridge belegt und danach wieder abraeumt.
+#
+# Die Alternative waere ein Schalter gewesen, der die Adresspruefung fuer den
+# Lauf abschaltet. Dann haette der Lauf bewiesen, dass die Zusage haelt, solange
+# sie nicht gilt. Der belegte Adressraum ist der ehrlichere Preis.
+
+services:
+  certs:
+    image: alpine/openssl:3.3.2
+    entrypoint: ["sh", "-ec"]
+    # Das Zertifikat traegt **nur** receiver.qkern.test als SAN. Der Empfaenger
+    # ist zusaetzlich unter wrong.qkern.test erreichbar — unter diesem Namen muss
+    # die Verbindung an der Identitaetspruefung scheitern. Das ist der Fall, der
+    # belegt, dass das Festhalten der Adresse aus 1.27 die Zertifikatspruefung
+    # nicht ausgehebelt hat.
+    command:
+      - |
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=receiver.qkern.test \
+          -addext subjectAltName=DNS:receiver.qkern.test \
+          -keyout /certs/receiver.key -out /certs/receiver.crt
+        chmod 0644 /certs/receiver.key /certs/receiver.crt
+    volumes:
+      - receiver-certification-certs:/certs
+
+  receiver:
+    image: node:24.7.0-alpine
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    environment:
+      # Derselbe Wert wie QKERN_LOCAL_WEBHOOK_SIGNING_SECRETS_JSON im Testlauf.
+      # Der Empfaenger rechnet den HMAC selbst nach; ein Empfaenger, der alles
+      # bestaetigt, wuerde nur belegen, dass irgendetwas ankam.
+      QKERN_RECEIVER_SECRET: cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi
+    volumes:
+      - receiver-certification-certs:/certs:ro
+      - ./tests/support/receiver/server.mjs:/receiver/server.mjs:ro
+    command: ["node", "/receiver/server.mjs"]
+    healthcheck:
+      # Ohne diese Pruefung koennte der Testlauf verbinden, bevor der Listener
+      # steht — derselbe Startrennen-Fehler wie zuvor bei ClamAV und Mailpit.
+      test: ["CMD", "node", "-e", "require('node:net').connect(443,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      default:
+        aliases:
+          - receiver.qkern.test
+          - wrong.qkern.test
+
+  # Ein Name, den ein echter Resolver auf eine **private** Adresse abbildet.
+  # Der Dienst hoert nirgends zu, und das ist der Punkt: Die Adresspruefung
+  # greift bereits bei der Aufloesung, lange vor dem Verbindungsaufbau.
+  internal:
+    image: node:24.7.0-alpine
+    command: ["sleep", "3600"]
+    networks:
+      internal:
+        aliases:
+          - internal.qkern.test
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./db:/qkern/db:ro
+      - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_runtime_local_only psql -h 127.0.0.1 -U qkern_app -d qkern_control -tAc \"SELECT 1\" | grep -qx 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 40
+
+  certification:
+    image: node:24.7.0-alpine
+    working_dir: /workspace/qkern
+    networks:
+      - default
+      - internal
+    volumes:
+      - .:/qkern-src:ro
+      - receiver-certification-certs:/certs:ro
+    environment:
+      NODE_ENV: test
+      NODE_EXTRA_CA_CERTS: /certs/receiver.crt
+      QKERN_TEST_RECEIVER_E2E: "true"
+      DATABASE_SSL: disable
+      QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
+      QKERN_TEST_RUNTIME_DATABASE_URL: postgresql://qkern_app:qkern_runtime_local_only@postgres:5432/qkern_control
+      QKERN_ALLOW_LOCAL_WEBHOOK_SIGNING_SECRETS: "true"
+      QKERN_LOCAL_WEBHOOK_SIGNING_SECRETS_JSON: >-
+        {"webhook/certification":{"keyId":"cert-1","secret":"cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi"}}
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npm run test:receiver
+
+volumes:
+  receiver-certification-certs:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 13.37.0.0/28
+  # Bewusst privat: Dieses Netz existiert, damit ein Name auf eine Adresse
+  # zeigt, die die Policy aus 1.27 ablehnen muss.
+  internal:
+    ipam:
+      config:
+        - subnet: 172.31.240.0/28

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.27.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.28.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 4 Real-DB-Fälle; keine Emitter |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 101 Fälle, Kette in einem Lauf |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 111 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -46,15 +46,16 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
+| **Ausgehender Weg gegen echten HTTPS-Empfänger** | **10 von 10 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
-| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` und `docs/evidence/2026-08-05/` |
+| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-06/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust, p95 198 bis 333 ms; Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
 | **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 138 übersprungenen Fälle sind Real-Service-Tests, die in den fünf
+Die 148 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -161,9 +162,11 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
   ein Löschen und ein neues Anlegen, und diese Grenze liegt als Spaltenrecht in
   der Datenbank. Es fehlen weiterhin ein Vault-gestützter Signaturschlüssel-
   Provider, automatische Entdeckung der zu bedienenden Scopes, SDK-/CLI-
-  Anbindung, DNS-Pinning und die Functions-Sandbox. Der Zustellprozess ist gegen
-  echtes PostgreSQL zertifiziert, aber noch nie gegen einen echten
-  HTTPS-Empfänger gelaufen.
+  Anbindung und automatische Entdeckung der zu bedienenden Scopes. Seit `1.28.0`
+  ist der Zustellprozess auch gegen einen echten HTTPS-Empfänger gelaufen —
+  dabei kam heraus, dass das DNS-Pinning aus `1.27.0` gegen einen echten Socket
+  jede Verbindung verhindert hatte. Ein Empfänger ausserhalb des eigenen
+  Docker-Netzes und ein öffentlich vertrauenswürdiges Zertifikat bleiben offen.
 - Queue-Claims und Settlement verlangen eine Service Role sowie exakten Worker,
   Token und Ablauf. Roh-Dedupe-/Lease-Secrets werden nicht persistiert.
 - Realtime bindet nur Loopback, verweigert Production und hält History/Presence

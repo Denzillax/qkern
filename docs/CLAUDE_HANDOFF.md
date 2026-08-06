@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.27.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.28.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,9 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.27.0`
-- Aktueller Slice: 1.27 Egress-Haertung — `lib/server/net/address-policy.ts`, `guarded-fetch.ts`
+- Paketversion: `1.28.0`
+- Aktueller Slice: 1.28 Echter Empfaenger — `tests/receiver.integration.test.ts`, `tests/support/receiver/`
+- Sechster Zertifizierungslauf: `npm run test:receiver:docker` (Node-24-HTTPS-Empfaenger plus PostgreSQL 17)
+- Der Stack legt ein Netz mit **oeffentlichem** Subnetz an, damit die Adresspolicy unveraendert gilt
+- Vorheriger Slice: 1.27 Egress-Haertung — `lib/server/net/address-policy.ts`, `guarded-fetch.ts`
 - Jede Ausgangsverbindung: Namen aufloesen, jede Adresse pruefen, zur geprueften verbinden
+- Die gepinnte `lookup` muss `options.all` beachten; sonst scheitert jede echte Verbindung
 - Vorheriger Slice: 1.26 Vermittelter Egress — `lib/server/compute/function-egress.ts`
 - Der Container behaelt `--network none`; Ausgangsverbindungen laufen zeilenweise ueber stdio
 - Vorheriger Slice: 1.25 Signaturschluessel aus dem Vault — `lib/server/compute/webhook-secret-vault.ts`
@@ -65,12 +69,12 @@ Release Notes bleiben unverändert.
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
-- Fuenf Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`
+- Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0033_project_functions.sql`
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`
-- Evidenz: `docs/evidence/2026-08-04/` und `docs/evidence/2026-08-05/` mit Rohlogs und generierten Manifesten
+- Evidenz: `docs/evidence/2026-08-04/` bis `2026-08-06/` mit Rohlogs und generierten Manifesten
 - Manifestgenerator: `scripts/certification-manifest.mjs`
 - SMTP-Delivery: `lib/server/project-auth/smtp-delivery.ts`
 - Usage-Domäne: `lib/server/usage/`

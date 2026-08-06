@@ -280,10 +280,25 @@ Ressourcenlimits, Idempotenz, Dead Letters, Retry und Secret-Canary — und kein
 gemeinsame Ausfuehrungsautoritaet, weil jede Function in einem eigenen
 wegwerfbaren Container laeuft.
 
-Nicht Teil des Kriteriums und weiterhin offen: ein Egress-Proxy (eine Definition
-mit erlaubten Origins laesst sich anlegen, aber ihr Aufruf wird abgewiesen), ein
-Deployment-Weg fuer Images, die Durchsetzung von `maxConcurrency` und die volle
-Kette Datenbank → HTTP → Container in einem einzigen Lauf.
+Nicht Teil des Kriteriums und zu diesem Zeitpunkt offen: ein Egress-Vermittler
+(eine Definition mit erlaubten Origins liess sich anlegen, aber ihr Aufruf wurde
+abgewiesen), ein Deployment-Weg fuer Images, die Durchsetzung von
+`maxConcurrency` und die volle Kette Datenbank → HTTP → Container in einem
+einzigen Lauf. Die Kette schliesst Release 1.24, `maxConcurrency` ebenfalls, den
+Vermittler Release 1.26. Der Deployment-Weg bleibt offen.
+
+**Nachtrag Release 1.28.** Der ausgehende Weg ist jetzt gegen einen echten
+HTTPS-Empfaenger belegt, der die HMAC-Signatur selbst nachrechnet: zehn Faelle
+ueber echtes TLS, davon einer gegen einen Namen, den das Zertifikat nicht
+traegt, und einer gegen einen Namen, den ein echter Resolver auf eine private
+Adresse abbildet.
+
+Der erste Lauf war rot, und darin lag der Wert: Das DNS-Pinning aus Release 1.27
+hatte gegen einen echten Socket **jede** Verbindung verhindert. Node ruft die
+ersetzte `lookup` seit `autoSelectFamily` mit `all: true` auf und erwartet dann
+eine Liste. Gegen ein eingespeistes `fetch` war davon nichts zu sehen — das
+Muster dieses Sprints, diesmal an der letzten Stelle, an der es sich noch
+verstecken konnte.
 
 ## Stufe 1.7 — Developer Experience
 

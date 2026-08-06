@@ -87,8 +87,19 @@ export function createGuardedFetch(options: GuardedFetchOptions = {}): typeof fe
         headers: toHeaderRecord(init.headers),
         // Die geprüfte Adresse, und nur sie. `servername` bleibt der Name,
         // damit SNI und Zertifikatsprüfung unverändert greifen.
-        lookup: (_hostname, _opts, callback) => {
-          (callback as (e: null, a: string, f: number) => void)(null, pinned.address, pinned.family);
+        //
+        // Die Antwortform hängt davon ab, wonach gefragt wurde. Node ruft diesen
+        // Ersatz seit `autoSelectFamily` mit `all: true` auf und erwartet dann
+        // eine **Liste**; eine einzelne Adresse endet in
+        // `ERR_INVALID_IP_ADDRESS`. Genau das war der Zustand nach Release
+        // 1.27: Das Festhalten der Adresse war gegen einen eingespeisten
+        // `fetch` belegt und hat gegen einen echten Socket jede Verbindung
+        // verhindert.
+        lookup: (_hostname, options, callback) => {
+          const entry = { address: pinned.address, family: pinned.family };
+          (callback as unknown as (
+            error: null, addresses: string | ResolvedAddress[], family?: number,
+          ) => void)(null, options?.all ? [entry] : entry.address, entry.family);
         },
         servername: url.hostname,
         timeout: timeoutMs,
