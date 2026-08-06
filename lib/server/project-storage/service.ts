@@ -11,6 +11,7 @@ import type {
   PublicProjectStorageObject,
 } from "@/lib/server/project-storage/model";
 import { publicStorageBucket, publicStorageObject } from "@/lib/server/project-storage/model";
+import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 import type { ProjectStorageProvider, ProjectStorageScanner } from "@/lib/server/project-storage/provider";
 import { ProjectStorageProviderError } from "@/lib/server/project-storage/provider";
 import {
@@ -56,6 +57,8 @@ export type ProjectStorageServiceDependencies = {
   provider: ProjectStorageProvider;
   scanner: ProjectStorageScanner;
   controlPlane?: Pick<ControlPlaneService, "getProjectEnvironment">;
+  /** Ohne Emitter zählt nichts — und nichts ändert sich am Verhalten. */
+  usage?: UsageEmitterPort;
   now?: () => Date;
   id?: () => string;
   completionToken?: () => string;
@@ -67,8 +70,10 @@ export class ProjectStorageService {
   private readonly id: () => string;
   private readonly completionToken: () => string;
   private readonly grantTtlSeconds: number;
+  private readonly usage: UsageEmitterPort;
 
   constructor(private readonly dependencies: ProjectStorageServiceDependencies) {
+    this.usage = dependencies.usage ?? new DisabledUsageEmitter();
     this.now = dependencies.now ?? (() => new Date());
     this.id = dependencies.id ?? (() => randomUUID());
     this.completionToken = dependencies.completionToken ??
@@ -349,6 +354,19 @@ export class ProjectStorageService {
         expiresAt: new Date(this.now().getTime() + ttl * 1_000),
         downloadName: input.downloadName,
       });
+      // **Freigegebene**, nicht ausgelieferte Bytes. Die Auslieferung übernimmt
+      // der Provider direkt; QKERN sieht sie nie und könnte sie nur schätzen.
+      // Eine Freigabe, die niemand einlöst, zählt deshalb mit — das ist die
+      // ehrliche Beschreibung dessen, was gemessen wird, und der Grund, warum
+      // diese Zahl kein Abrechnungsbeleg ist.
+      //
+      // Nicht gegated: Die Menge steht erst hier fest, und `enforce` lässt sich
+      // für diese Metrik gar nicht setzen.
+      if (object.sizeBytes >= 1) {
+        await this.usage.admit(scope, {
+          metric: "storage_egress_bytes", quantity: object.sizeBytes, reference: this.id(),
+        });
+      }
       return { ...grant, expiresAt: grant.expiresAt.toISOString() };
     } catch (error) { throw mapStorageError(error); }
   }

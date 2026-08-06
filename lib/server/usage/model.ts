@@ -10,6 +10,23 @@ export const USAGE_METRIC_DEFINITIONS = {
 } as const;
 
 export type UsageMetric = keyof typeof USAGE_METRIC_DEFINITIONS;
+
+/**
+ * Metriken, deren Menge erst feststeht, **wenn die Arbeit getan ist**.
+ *
+ * Wie viele Zeilen eine Abfrage liefert, weiss man nach der Abfrage; wie viele
+ * Bytes eine Freigabe umfasst, nach dem Auflösen des Objekts. Ein hartes Limit
+ * kann dort nichts mehr verhindern — es könnte nur noch aufhören zu zählen, und
+ * ein Zähler, der stehen bleibt, während die Nutzung weiterläuft, ist schlimmer
+ * als gar keiner.
+ *
+ * Deshalb wird `enforce` für diese Metriken gar nicht erst angenommen. Ein
+ * Modus, der nicht wirken kann, darf nicht setzbar sein.
+ */
+export const POST_HOC_USAGE_METRICS: ReadonlySet<UsageMetric> = new Set<UsageMetric>([
+  "database_row_reads",
+  "storage_egress_bytes",
+]);
 export type UsageUnit = (typeof USAGE_METRIC_DEFINITIONS)[UsageMetric]["unit"];
 export type UsageSource =
   | "control_plane"

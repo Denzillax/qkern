@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { Environment } from "@/lib/types";
 import type { SqlPoolClient, SqlValue } from "@/lib/server/db/sql";
+import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 import type {
   ProjectDatabaseConnectionResolver,
   ResolvedProjectDatabaseConnection,
@@ -236,10 +238,43 @@ type InternalTable = GeneratedTable & {
 };
 
 export class GeneratedDataApiService implements GeneratedDataApiPort {
+  private readonly usage: UsageEmitterPort;
+
   constructor(
     private readonly targets: ProjectDataPlaneTargetResolver,
     private readonly connections: ProjectDatabaseConnectionResolver,
-  ) {}
+    /** Ohne Emitter zählt nichts — und nichts ändert sich am Verhalten. */
+    usage: UsageEmitterPort = new DisabledUsageEmitter(),
+  ) {
+    this.usage = usage;
+  }
+
+  /**
+   * Meldet gelesene Zeilen — **ohne zu gaten**.
+   *
+   * Die Menge steht erst fest, wenn die Abfrage gelaufen ist. Eine Antwort
+   * abzulehnen, deren Arbeit bereits getan ist, würde die Kosten nicht sparen
+   * und den Aufrufer um ein Ergebnis bringen, für das er schon bezahlt hat.
+   *
+   * Dass das Ignorieren der Antwort hier sicher ist, ist keine Nachlässigkeit,
+   * sondern abgesichert: `enforce` lässt sich für diese Metrik gar nicht
+   * setzen (siehe `POST_HOC_USAGE_METRICS`). Das Ledger kann sie also nicht
+   * ablehnen.
+   *
+   * Ein Lesen ohne Zeilen zählt nicht. Die Metrik heisst `database_row_reads`.
+   */
+  private async meterRowReads(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    rowCount: number,
+  ): Promise<void> {
+    if (rowCount < 1) return;
+    await this.usage.admit({
+      organizationId: context.organizationId,
+      projectId: scope.projectId,
+      environment: scope.environment,
+    }, { metric: "database_row_reads", quantity: rowCount, reference: randomUUID() });
+  }
 
   async listRows(
     context: GeneratedDataContext,
@@ -312,6 +347,10 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       }
       const hasMore = result.rows.length > limit || rows.length < selected.length;
       const cursorSource = rows.length > 0 ? selected[rows.length - 1] : undefined;
+      // Gemessen wird, was der Aufrufer tatsächlich bekommt — nicht, was die
+      // Abfrage geholt hat. Die eine Zeile über dem Limit dient nur dazu,
+      // `hasMore` zu bestimmen, und verlässt QKERN nie.
+      await this.meterRowReads(context, scope, rows.length);
       return {
         source: "postgres",
         table: publicTable(table),

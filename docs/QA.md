@@ -962,3 +962,42 @@ Nicht erbracht: Der Function-Aufruf bleibt nicht-transaktional — er schreibt
 nichts in die Control Plane, mit dem er atomar sein koennte. Generated Data API,
 Storage und Realtime melden weiterhin nicht. Ein Crash-Lauf, der die
 Atomaritaet unter echtem Prozessabbruch zeigt, fehlt.
+
+## Nachtraegliche Metriken — Release 1.31
+
+Drei weitere Faelle. Ein echtes `listRows` ueber die Generated Data API erhoeht
+`database_row_reads` um genau die Zahl der zurueckgegebenen Zeilen — nicht um
+die geholte Zeile mehr, die nur `hasMore` bestimmt und QKERN nie verlaesst. Eine
+Lesung ohne Treffer zaehlt nicht; die Metrik heisst `database_row_reads`. Ein
+echtes `createDownloadGrant` erhoeht `storage_egress_bytes` um die Groesse des
+Objekts, zweimal aufgerufen also zweimal.
+
+Der dritte Fall belegt eine Produktregel, die dieser Slice neu zieht: Fuer beide
+Metriken laesst sich `enforce` **nicht setzen**. Ihre Menge steht erst fest,
+wenn die Arbeit getan ist; ein hartes Limit koennte dort nichts mehr verhindern
+und wuerde nur aufhoeren zu zaehlen. Ein Zaehler, der stehen bleibt, waehrend
+die Nutzung weiterlaeuft, ist schlimmer als gar keiner. `observe` bleibt
+erlaubt.
+
+Damit ist auch abgesichert, dass die beiden Emitter ihre Antwort ignorieren
+duerfen: Das Ledger kann diese Ereignisse gar nicht ablehnen.
+
+Zwei Faelle scheiterten im ersten Lauf, und beide Male hatte das Produkt recht:
+Die Generated Data API weist eine Tabelle ohne RLS ab, und Storage weist einen
+MIME-Typ ausserhalb der Allowlist ab. Korrigiert wurde der Testaufbau, nicht die
+Regel.
+
+Mutationsprobe: Zeilenzahl durch eine feste Eins ersetzt, die Byte-Messung
+abgeschaltet und das enforce-Verbot entfernt — genau die drei zugehoerigen
+Faelle fallen um.
+Protokoll: `docs/evidence/2026-08-06/usage-modules-mutation.log`.
+
+Checkpoint `1.31.0` am 6. August 2026: **98 von 98** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+
+Nicht erbracht: `api_requests` gehoert an die HTTP-Grenze — 71 Routendateien
+ohne gemeinsamen Chokepoint, und eine Messung je Dienstmethode wuerde doppelt
+zaehlen. `realtime_messages` braucht einen buendelnden Emitter; eine
+Control-Plane-Transaktion je Nachricht waere auf dem Realtime-Pfad ein
+absehbarer Fehler. Gemessen werden ausserdem **freigegebene**, nicht
+ausgelieferte Bytes: Die Auslieferung uebernimmt der Provider direkt.

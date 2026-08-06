@@ -208,3 +208,15 @@ ohne die Sperre sofort um.
 Abgelegt ist die zweite, aussagekräftige Ausführung. Der erste, grüne Versuch
 ist kein Nachweis, sondern war der Anlass, den Testfall zu korrigieren; er steht
 in `docs/QA.md` und `docs/RELEASE_1.30.md` beschrieben.
+
+## Läufe zu Release 1.31 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-modules-run1.log` | PostgreSQL 17 | 98 von 98, exit 0, 33 Migrationen |
+| `2026-08-06/usage-modules-run2.log` | PostgreSQL 17 | 98 von 98, exit 0, Wiederholung |
+| `2026-08-06/usage-modules-mutation.log` | PostgreSQL 17 | **95 von 98, exit 1 — absichtlich** |
+
+Ersetzt wurden die gelesene Zeilenzahl durch eine feste Eins, die Byte-Messung
+durch nichts und das enforce-Verbot durch nichts. Genau die drei zugehörigen
+Fälle fielen um.

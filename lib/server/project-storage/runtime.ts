@@ -21,6 +21,7 @@ import {
 } from "@/lib/server/project-storage/repository";
 import { ProjectStorageError, ProjectStorageService } from "@/lib/server/project-storage/service";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
 export type ProjectStorageRuntimeDependencies = {
   repository?: ProjectStorageRepository;
@@ -50,6 +51,7 @@ export function createProjectStorageServiceFromEnv(
     provider,
     scanner,
     controlPlane: controlPlaneService,
+    usage: createUsageEmitterFromEnv("project_storage", env),
     grantTtlSeconds: integerSetting(env.QKERN_PROJECT_STORAGE_GRANT_TTL_SECONDS, 300, 30, 900),
   });
 }

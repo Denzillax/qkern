@@ -4,6 +4,10 @@ import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
+import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
+import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
+import { MemoryProjectStorageProvider } from "@/lib/server/project-storage/provider";
+import { ProjectStorageService } from "@/lib/server/project-storage/service";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
@@ -33,9 +37,11 @@ import type {
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
-const enabled = Boolean(ownerUrl && runtimeUrl);
+const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
+const enabled = Boolean(ownerUrl && runtimeUrl && projectApiUrl);
 
 const IMAGE = `registry.example.com/qkern/probe@sha256:${"c".repeat(64)}`;
+const CHECKSUM = Buffer.alloc(32, 11).toString("base64");
 
 describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
   const controlUser = randomUUID();
@@ -43,6 +49,7 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
 
   let owner: SqlPool;
   let runtime: SqlPool;
+  let projectApi: SqlPool;
   let usage: UsageService;
   let queueRepository: PostgresProjectQueueRepository;
   let definitionRepository: PostgresComputeDefinitionRepository;
@@ -61,6 +68,7 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
   beforeAll(async () => {
     owner = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
     runtime = verifyDatabaseBoundary(createPostgresPool({ connectionString: runtimeUrl!, max: 8 }), "runtime");
+    projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
     await owner.query(`INSERT INTO users (id,email,password_hash,status)
       VALUES ($1,$2,'$argon2id$integration-only','active')`,
     [controlUser, `emitter-owner-${controlUser}@qkern.test`]);
@@ -75,7 +83,7 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
   });
 
   afterAll(async () => {
-    await Promise.all([owner?.end(), runtime?.end()]);
+    await Promise.all([owner?.end(), runtime?.end(), projectApi?.end()]);
   });
 
   /**
@@ -307,6 +315,106 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
     );
     expect(messages.rows[0].count).toBe("8");
   }, 30_000);
+
+  describe("post-hoc metrics", () => {
+    it("counts the rows a real read actually returned", async () => {
+      const scope = await freshScope();
+      const schema = `metered_${randomUUID().replaceAll("-", "_")}`;
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".items (id uuid PRIMARY KEY, owner_id text NOT NULL)`);
+      // Ohne RLS weist die Generated Data API die Tabelle ab — richtigerweise.
+      // Der erste Lauf dieses Falls scheiterte genau daran.
+      await owner.query(`ALTER TABLE "${schema}".items ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY metered_owner_isolation ON "${schema}".items
+        USING (owner_id = current_setting('request.jwt.claim.sub', true))
+        WITH CHECK (owner_id = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`GRANT SELECT, INSERT ON "${schema}".items TO qkern_project_api_app`);
+      const subject = randomUUID();
+      for (let index = 0; index < 3; index += 1) {
+        await owner.query(`INSERT INTO "${schema}".items (id, owner_id) VALUES ($1,$2)`,
+          [randomUUID(), subject]);
+      }
+
+      const api = new GeneratedDataApiService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+        new ServiceUsageEmitter({ service: usage, source: "generated_data_api" }),
+      );
+      const context = {
+        organizationId, actorRef: "certification:reader",
+        claims: { role: "authenticated" as const, subject },
+      };
+
+      const listed = await api.listRows(context, scope, { schema, table: "items" });
+      expect(listed.rowCount).toBe(3);
+      expect(await counter(scope, "database_row_reads")).toBe(3n);
+
+      // Eine Lesung ohne Treffer zaehlt nicht. Die Metrik heisst
+      // database_row_reads, nicht database_reads.
+      const empty = await api.listRows(context, scope, {
+        schema, table: "items", filters: [{ column: "owner_id", operator: "eq", value: randomUUID() }],
+      });
+      expect(empty.rowCount).toBe(0);
+      expect(await counter(scope, "database_row_reads")).toBe(3n);
+
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    });
+
+    it("counts the bytes a real download grant released", async () => {
+      const scope = await freshScope();
+      const provider = new MemoryProjectStorageProvider();
+      const storage = new ProjectStorageService({
+        repository: new PostgresProjectStorageRepository(new PostgresControlPlane(runtime)),
+        provider,
+        scanner: { async scan() { return "clean" as const; } },
+        usage: new ServiceUsageEmitter({ service: usage, source: "project_storage" }),
+      });
+      const storageAdmin = { organizationId, actorRef: "owner@qkern.test", role: "admin" as const, subject: controlUser };
+      const user = { organizationId, actorRef: "project-auth-user:alice", role: "authenticated" as const, subject: randomUUID() };
+
+      const bucket = await storage.createBucket(storageAdmin, scope, {
+        name: `metered-${randomUUID().slice(0, 8)}`,
+        readPolicy: "owner", writePolicy: "owner", maxObjectBytes: 100, quotaBytes: 100,
+      });
+      const prepared = await storage.prepareUpload(user, scope, bucket.id, {
+        key: "owner/file.png", contentType: "image/png", sizeBytes: 42,
+        checksumSha256: CHECKSUM,
+      });
+      provider.putForTest(prepared.upload.fields.key, {
+        sizeBytes: 42, contentType: "image/png", checksumSha256: CHECKSUM, etag: "e",
+      });
+      await storage.completeUpload(user, scope, {
+        uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      });
+
+      await storage.createDownloadGrant(user, scope, bucket.id, { key: "owner/file.png" });
+      expect(await counter(scope, "storage_egress_bytes")).toBe(42n);
+      await storage.createDownloadGrant(user, scope, bucket.id, { key: "owner/file.png" });
+      expect(await counter(scope, "storage_egress_bytes")).toBe(84n);
+    });
+
+    it("refuses a hard limit on a metric it could never enforce", async () => {
+      // Beide Mengen stehen erst fest, wenn die Arbeit getan ist. Ein
+      // enforce-Limit koennte dort nichts verhindern und wuerde nur aufhoeren
+      // zu zaehlen — ein Zaehler, der stehen bleibt, waehrend die Nutzung
+      // weiterlaeuft, ist schlimmer als gar keiner.
+      const scope = await freshScope();
+      for (const metric of ["database_row_reads", "storage_egress_bytes"] as const) {
+        await expect(usage.setQuota(operator, scope, {
+          metric, limit: 10, mode: "enforce", expectedRevision: null,
+        })).rejects.toMatchObject({ code: "USAGE_INVALID_INPUT" });
+        await expect(usage.setQuota(operator, scope, {
+          metric, limit: 10, mode: "observe", expectedRevision: null,
+        })).resolves.toMatchObject({ mode: "observe" });
+      }
+    });
+  });
 
   it("keeps working when the ledger is unavailable, and can be told not to", async () => {
     const scope = await freshScope();

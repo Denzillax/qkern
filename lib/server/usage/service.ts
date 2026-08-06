@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 import {
+  POST_HOC_USAGE_METRICS,
   USAGE_METRIC_DEFINITIONS,
   type PublicUsageDecision,
   type PublicUsageProjection,
@@ -149,6 +150,10 @@ export class UsageService {
     assertPrincipal(principal, scope, "operator");
     await this.assertProject(principal, scope);
     if (!METRICS.has(input.metric) || !["observe", "enforce"].includes(input.mode) ||
+        // Ein Modus, der bei dieser Metrik nicht wirken kann, wird nicht
+        // angenommen. Sonst stünde in der Datenbank eine Zusage, die der
+        // Betrieb stillschweigend nicht einhält.
+        (input.mode === "enforce" && POST_HOC_USAGE_METRICS.has(input.metric)) ||
         (input.expectedRevision !== null && (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1))) {
       throw new UsageError("USAGE_INVALID_INPUT");
     }

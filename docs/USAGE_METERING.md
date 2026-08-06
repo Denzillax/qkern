@@ -21,9 +21,44 @@ Nicht enthalten sind Preise, Tarife, Währungen, Rechnungen, Steuern, Zahlungen,
 Provider-Abgleich, Credits, Kostenalarme oder eine öffentliche API zum Ändern von
 Limits.
 
-Seit `1.29.0` melden **Project Queues** und **Functions** selbst; Generated Data
-API, Storage und Realtime noch nicht. Für die übrigen Metriken zeigt die
-Projektion weiterhin null.
+Seit `1.29.0` melden **Project Queues** und **Functions** selbst, seit `1.31.0`
+auch **Generated Data API** und **Storage**. Damit melden vier der sechs
+Metriken.
+
+Für `api_requests` und `realtime_messages` zeigt die Projektion weiterhin null,
+und zwar aus je einem benannten Grund:
+
+- `api_requests` gehört an die **HTTP-Grenze**, eine Zählung je Request. QKERN
+  hat 71 Routendateien und keinen gemeinsamen Chokepoint; eine Messung je
+  Dienstmethode würde doppelt zählen, weil eine Route mehrere Methoden ruft.
+- `realtime_messages` bräuchte einen **bündelnden** Emitter. Eine
+  Control-Plane-Transaktion je Nachricht wäre auf dem Realtime-Pfad ein
+  absehbarer Fehler.
+
+## Nachträgliche Metriken
+
+`database_row_reads` und `storage_egress_bytes` stehen erst fest, **wenn die
+Arbeit getan ist**: Wie viele Zeilen eine Abfrage liefert, weiss man nach der
+Abfrage.
+
+Für sie gilt seit `1.31.0` eine eigene Regel: **`enforce` ist nicht setzbar.**
+Ein hartes Limit könnte dort nichts mehr verhindern und würde nur aufhören zu
+zählen — ein Zähler, der stehen bleibt, während die Nutzung weiterläuft, ist
+schlimmer als gar keiner. `setQuota` weist den Modus mit
+`USAGE_INVALID_INPUT` ab; `observe` bleibt erlaubt.
+
+Deshalb dürfen die beiden Emitter ihre Antwort ignorieren: Das Ledger kann diese
+Ereignisse gar nicht ablehnen. Das ist keine Nachlässigkeit, sondern eine
+abgesicherte Eigenschaft.
+
+Gezählt wird bei Storage die **freigegebene**, nicht die ausgelieferte Menge.
+Die Auslieferung übernimmt der Provider direkt; QKERN sieht sie nie und könnte
+sie nur schätzen. Eine Freigabe, die niemand einlöst, zählt deshalb mit — und
+das ist ein Grund mehr, diese Zahl nicht als Abrechnungsbeleg zu verwenden.
+
+Bei der Generated Data API zählt, was der Aufrufer tatsächlich bekommt. Die eine
+Zeile über dem Limit dient nur dazu, `hasMore` zu bestimmen, und verlässt QKERN
+nie.
 
 ## Der Emitter
 

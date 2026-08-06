@@ -12,6 +12,7 @@ import { createLocalProjectDatabaseCatalogFromEnv } from
 import type { ProjectDatabaseConnectionResolver } from
   "@/lib/server/migrations/postgres-executor";
 import type { ProjectDataPlaneTargetResolver } from "@/lib/server/data-plane/service";
+import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
 export async function createGeneratedDataApiFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -25,7 +26,10 @@ export async function createGeneratedDataApiFromEnv(
   const targets = dependencies.targets ?? new ControlPlaneDataTargetResolver(
     dependencies.controlPlane ?? controlPlaneService,
   );
-  if (dependencies.connections) return new GeneratedDataApiService(targets, dependencies.connections);
+  const usage = createUsageEmitterFromEnv("generated_data_api", env);
+  if (dependencies.connections) {
+    return new GeneratedDataApiService(targets, dependencies.connections, usage);
+  }
   if (env.NODE_ENV === "production") {
     throw new ConfigurationError(
       "Production generated data writes require an injected dedicated project API-role catalog.",
@@ -36,7 +40,7 @@ export async function createGeneratedDataApiFromEnv(
     catalogVariable: "QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON",
     applicationName: "qkern-local-generated-data-api",
   });
-  return new GeneratedDataApiService(targets, catalog);
+  return new GeneratedDataApiService(targets, catalog, usage);
 }
 
 type GlobalGeneratedDataApi = typeof globalThis & {
