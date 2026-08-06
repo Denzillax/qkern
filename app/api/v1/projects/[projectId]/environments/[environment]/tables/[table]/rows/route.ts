@@ -18,6 +18,7 @@ import {
   RequestAuthenticationError,
   RequestAuthorizationError,
 } from "@/lib/server/request-context";
+import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
 
 const paramsSchema = z.object({
   projectId: z.string().min(3).max(128),
@@ -41,6 +42,7 @@ async function routeScope(routeContext: RouteContext) {
 function routeError(error: unknown) {
   if (error instanceof RequestAuthenticationError) return noStore({ error: "Authentication required" }, 401);
   if (error instanceof RequestAuthorizationError) return noStore({ error: "Resource not found" }, 404);
+  if (error instanceof UsageQuotaExceededError) return noStore({ error: "Usage quota exceeded" }, 429);
   if (error instanceof GeneratedDataApiError) {
     if (error.code === "GENERATED_DATA_API_INVALID_INPUT") {
       return noStore({ error: "Invalid generated data request", code: error.code }, 400);

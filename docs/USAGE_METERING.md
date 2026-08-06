@@ -25,15 +25,33 @@ Seit `1.29.0` melden **Project Queues** und **Functions** selbst, seit `1.31.0`
 auch **Generated Data API** und **Storage**. Damit melden vier der sechs
 Metriken.
 
-Für `api_requests` und `realtime_messages` zeigt die Projektion weiterhin null,
-und zwar aus je einem benannten Grund:
+Seit `1.32.0` zählt auch `api_requests`. Damit melden fünf der sechs Metriken.
 
-- `api_requests` gehört an die **HTTP-Grenze**, eine Zählung je Request. QKERN
-  hat 71 Routendateien und keinen gemeinsamen Chokepoint; eine Messung je
-  Dienstmethode würde doppelt zählen, weil eine Route mehrere Methoden ruft.
-- `realtime_messages` bräuchte einen **bündelnden** Emitter. Eine
-  Control-Plane-Transaktion je Nachricht wäre auf dem Realtime-Pfad ein
-  absehbarer Fehler.
+Für `realtime_messages` zeigt die Projektion weiterhin null: Es bräuchte einen
+**bündelnden** Emitter, denn eine Control-Plane-Transaktion je Nachricht wäre
+auf dem Realtime-Pfad ein absehbarer Fehler.
+
+## `api_requests` an der HTTP-Grenze
+
+Diese Metrik entsteht nicht in einem Dienst. Eine Route ruft mehrere
+Dienstmethoden; eine Messung je Methode wäre kein Ersatz, sondern systematisch
+zu hoch.
+
+Gezählt wird deshalb dort, wo eine Anfrage genau einmal ihren Scope bekommt: im
+**Kontext-Resolver** des jeweiligen Moduls — `adminProjectQueueContext`,
+`applicationProjectQueueContext`, `adminProjectStorageContext`,
+`applicationProjectStorageContext` und `generatedDataContext`. Der Aufruf steht
+am **Ende** des Resolvers: Eine Anfrage, die schon an der Authentifizierung
+scheitert, hat keinen Scope, den man belasten könnte, und einen fremden zu
+belasten wäre schlimmer, als sie nicht zu zählen.
+
+Anders als bei den nachträglichen Metriken ist die Menge hier **vorher**
+bekannt: genau eins. Deshalb darf und soll `api_requests` gaten. Ein
+erschöpftes hartes Limit beantwortet die Anfrage mit `429` — „später
+wiederkommen", nicht „kaputt".
+
+Der Helfer liegt in `lib/server/usage/api-requests.ts`, bewusst nicht in
+`usage/http.ts`: Dort steht die HTTP-Fläche der Usage-Projektion selbst.
 
 ## Nachträgliche Metriken
 

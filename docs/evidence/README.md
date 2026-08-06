@@ -220,3 +220,14 @@ in `docs/QA.md` und `docs/RELEASE_1.30.md` beschrieben.
 Ersetzt wurden die gelesene Zeilenzahl durch eine feste Eins, die Byte-Messung
 durch nichts und das enforce-Verbot durch nichts. Genau die drei zugehörigen
 Fälle fielen um.
+
+## Läufe zu Release 1.32 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-api-requests-run1.log` | PostgreSQL 17 | 99 von 99, exit 0, 33 Migrationen |
+| `2026-08-06/usage-api-requests-run2.log` | PostgreSQL 17 | 99 von 99, exit 0, Wiederholung |
+| `2026-08-06/usage-api-requests-mutation.log` | PostgreSQL 17 | **98 von 99, exit 1 — absichtlich** |
+
+Entfernt wurde die Ablehnung in `admitApiRequest`. Der Zertifizierungsfall fiel
+um, zusammen mit dem lokalen Abbruchfall.

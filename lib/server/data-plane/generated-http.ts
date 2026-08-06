@@ -11,6 +11,7 @@ import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service
 import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
 import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
 import type { ProjectAuthService } from "@/lib/server/project-auth/service";
+import { admitApiRequest } from "@/lib/server/usage/api-requests";
 
 export type GeneratedDataScope = { projectId: string; environment: Environment };
 
@@ -42,6 +43,7 @@ export async function generatedDataContext(
 ): Promise<GeneratedDataContext> {
   const application = await projectApplicationPrincipal(request, scope, keys, projectAuth);
   if (application) {
+    await admitApiRequest("generated_data_api", { organizationId: application.organizationId, ...scope });
     return {
       organizationId: application.organizationId,
       actorRef: application.actorRef,
@@ -51,8 +53,10 @@ export async function generatedDataContext(
 
   const principal = await authenticatedContext(request);
   requireCapability(principal, write ? "project_data_mutate" : "read");
+  const organizationId = principal.membership.organization.id;
+  await admitApiRequest("generated_data_api", { organizationId, ...scope });
   return {
-    organizationId: principal.membership.organization.id,
+    organizationId,
     actorRef: principal.user.email,
     claims: { role: "authenticated", subject: principal.user.id },
   };

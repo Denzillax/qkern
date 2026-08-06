@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.31.md](RELEASE_1.31.md) | Aktueller Release: Nachträgliche Metriken |
+| [RELEASE_1.32.md](RELEASE_1.32.md) | Aktueller Release: Zählung an der HTTP-Grenze |
+| [RELEASE_1.31.md](RELEASE_1.31.md) | Historischer Release: Nachträgliche Metriken |
 | [RELEASE_1.30.md](RELEASE_1.30.md) | Historischer Release: Transaktionale Messung |
 | [RELEASE_1.29.md](RELEASE_1.29.md) | Historischer Release: Usage-Emitter |
 | [RELEASE_1.28.md](RELEASE_1.28.md) | Historischer Release: Echter Empfänger |

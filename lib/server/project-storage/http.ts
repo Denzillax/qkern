@@ -11,6 +11,7 @@ import {
   RequestAuthorizationError,
   requireCapability,
 } from "@/lib/server/request-context";
+import { admitApiRequest, UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
 
 export type ProjectStorageRouteContext = {
   params: Promise<{ projectId: string; environment: string; [key: string]: string }>;
@@ -39,6 +40,8 @@ export async function adminProjectStorageContext(
     asControlPlaneContext(authenticated), parsed.projectId, parsed.environment,
   );
   const organizationId = authenticated.membership.organization.id;
+  const scope = { organizationId, projectId: parsed.projectId, environment: parsed.environment };
+  await admitApiRequest("project_storage", scope);
   return {
     principal: {
       organizationId,
@@ -46,7 +49,7 @@ export async function adminProjectStorageContext(
       role: "admin",
       subject: authenticated.user.id,
     },
-    scope: { organizationId, projectId: parsed.projectId, environment: parsed.environment },
+    scope,
     raw: parsed.raw,
   };
 }
@@ -59,6 +62,12 @@ export async function applicationProjectStorageContext(
   if (!parsed) throw new ProjectStorageError("STORAGE_INVALID_INPUT");
   const application = await projectApplicationPrincipal(request, parsed);
   if (!application) throw new RequestAuthenticationError();
+  const scope = {
+    organizationId: application.organizationId,
+    projectId: parsed.projectId,
+    environment: parsed.environment,
+  };
+  await admitApiRequest("project_storage", scope);
   return {
     principal: {
       organizationId: application.organizationId,
@@ -66,11 +75,7 @@ export async function applicationProjectStorageContext(
       role: application.role,
       subject: application.subject,
     },
-    scope: {
-      organizationId: application.organizationId,
-      projectId: parsed.projectId,
-      environment: parsed.environment,
-    },
+    scope,
     raw: parsed.raw,
   };
 }
@@ -133,6 +138,9 @@ export function projectStorageRouteError(error: unknown, request?: NextRequest):
   }
   if (error instanceof RequestAuthorizationError) {
     return respond(projectStorageNoStore({ error: "Resource not found" }, 404));
+  }
+  if (error instanceof UsageQuotaExceededError) {
+    return respond(projectStorageNoStore({ error: "Usage quota exceeded" }, 429));
   }
   if (error instanceof ProjectStorageError) {
     switch (error.code) {

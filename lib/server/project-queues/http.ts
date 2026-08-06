@@ -11,6 +11,7 @@ import {
   RequestAuthorizationError,
   requireCapability,
 } from "@/lib/server/request-context";
+import { admitApiRequest, UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
 
 export type ProjectQueueRouteContext = {
   params: Promise<{ projectId: string; environment: string; queue?: string; messageId?: string }>;
@@ -39,11 +40,13 @@ export async function adminProjectQueueContext(request: NextRequest, routeContex
     asControlPlaneContext(authenticated), parsed.scope.projectId, parsed.scope.environment,
   );
   const organizationId = authenticated.membership.organization.id;
+  const scope = { organizationId, ...parsed.scope };
+  await admitApiRequest("project_queues", scope);
   return {
     principal: {
       organizationId, actorRef: authenticated.user.email, role: "admin" as const, subject: authenticated.user.id,
     },
-    scope: { organizationId, ...parsed.scope },
+    scope,
     raw: parsed.raw,
   };
 }
@@ -57,6 +60,8 @@ export async function applicationProjectQueueContext(request: NextRequest, route
   if (!parsed) throw new ProjectQueueError("QUEUE_INVALID_INPUT");
   const application = await projectApplicationPrincipal(request, parsed.scope);
   if (!application) throw new RequestAuthenticationError();
+  const scope = { organizationId: application.organizationId, ...parsed.scope };
+  await admitApiRequest("project_queues", scope);
   return {
     principal: {
       organizationId: application.organizationId,
@@ -64,7 +69,7 @@ export async function applicationProjectQueueContext(request: NextRequest, route
       role: application.role,
       subject: application.subject,
     },
-    scope: { organizationId: application.organizationId, ...parsed.scope },
+    scope,
     raw: parsed.raw,
   };
 }
@@ -111,6 +116,9 @@ export function projectQueueRouteError(error: unknown, request?: NextRequest) {
   const respond = (response: NextResponse) => request ? withProjectQueueCors(request, response) : response;
   if (error instanceof RequestAuthenticationError) return respond(projectQueueNoStore({ error: "Authentication required" }, 401));
   if (error instanceof RequestAuthorizationError) return respond(projectQueueNoStore({ error: "Resource not found" }, 404));
+  if (error instanceof UsageQuotaExceededError) {
+    return respond(projectQueueNoStore({ error: "Usage quota exceeded" }, 429));
+  }
   if (error instanceof ProjectQueueError) {
     switch (error.code) {
       case "QUEUE_INVALID_INPUT": return respond(projectQueueNoStore({ error: "Invalid queue request" }, 400));

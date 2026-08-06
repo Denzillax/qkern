@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.31.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.32.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.31.0`
-- Aktueller Slice: 1.31 Nachtraegliche Metriken — Generated Data API und Storage melden
+- Paketversion: `1.32.0`
+- Aktueller Slice: 1.32 Zaehlung an der HTTP-Grenze — `lib/server/usage/api-requests.ts`
+- `admitApiRequest` steht am Ende der Kontext-Resolver von Queues, Storage und Generated Data API
+- Nicht in `usage/http.ts`: dort steht die HTTP-Flaeche der Usage-Projektion selbst
+- Fuenf von sechs Metriken melden; offen bleibt `realtime_messages` (braucht einen buendelnden Emitter)
+- Vorheriger Slice: 1.31 Nachtraegliche Metriken — Generated Data API und Storage melden
 - `POST_HOC_USAGE_METRICS` in `lib/server/usage/model.ts`: fuer diese Metriken ist `enforce` nicht setzbar
 - Vier der sechs Metriken sind live; `api_requests` gehoert an die HTTP-Grenze (71 Routen, kein Chokepoint), `realtime_messages` braucht einen buendelnden Emitter
 - Vorheriger Slice: 1.30 Transaktionale Messung — `consume`, `record` und `admit` nehmen eine laufende Transaktion

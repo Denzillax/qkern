@@ -12,6 +12,7 @@ import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+import { admitApiRequest, UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
 import { ServiceUsageEmitter } from "@/lib/server/usage/emitter";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { UsageService } from "@/lib/server/usage/service";
@@ -397,6 +398,25 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
       expect(await counter(scope, "storage_egress_bytes")).toBe(42n);
       await storage.createDownloadGrant(user, scope, bucket.id, { key: "owner/file.png" });
       expect(await counter(scope, "storage_egress_bytes")).toBe(84n);
+    });
+
+    it("stops API requests at the HTTP boundary once the quota is exhausted", async () => {
+      // `api_requests` ist die Gegenprobe zu den beiden nachtraeglichen
+      // Metriken: Die Menge steht **vorher** fest, genau eins. Deshalb darf und
+      // soll hier gegated werden.
+      const scope = await freshScope();
+      const emitter = new ServiceUsageEmitter({ service: usage, source: "project_queues" });
+      await usage.setQuota(operator, scope, {
+        metric: "api_requests", limit: 2, mode: "enforce", expectedRevision: null,
+      });
+
+      await admitApiRequest("project_queues", scope, emitter);
+      await admitApiRequest("project_queues", scope, emitter);
+      await expect(admitApiRequest("project_queues", scope, emitter))
+        .rejects.toBeInstanceOf(UsageQuotaExceededError);
+
+      // Die abgelehnte Anfrage erhoeht den Zaehler nicht.
+      expect(await counter(scope, "api_requests")).toBe(2n);
     });
 
     it("refuses a hard limit on a metric it could never enforce", async () => {

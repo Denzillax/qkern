@@ -1001,3 +1001,41 @@ zaehlen. `realtime_messages` braucht einen buendelnden Emitter; eine
 Control-Plane-Transaktion je Nachricht waere auf dem Realtime-Pfad ein
 absehbarer Fehler. Gemessen werden ausserdem **freigegebene**, nicht
 ausgelieferte Bytes: Die Auslieferung uebernimmt der Provider direkt.
+
+## Zaehlung an der HTTP-Grenze — Release 1.32
+
+Der Chokepoint war doch da, nur nicht dort, wo Release 1.31 gesucht hatte. Nicht
+71 Routendateien, sondern **fuenf Kontext-Resolver**: Jedes Modul loest den
+Scope einer Anfrage an genau einer Stelle auf, und genau dort wird jetzt
+gezaehlt.
+
+Ein Fall im PostgreSQL-Lauf belegt das Ergebnis gegen das echte Ledger: Bei
+einem `enforce`-Limit von zwei gehen zwei Anfragen durch, die dritte scheitert
+mit `UsageQuotaExceededError`, und der Zaehler steht auf zwei — die abgewiesene
+Anfrage erhoeht ihn nicht.
+
+`api_requests` ist damit die Gegenprobe zu den beiden nachtraeglichen Metriken
+aus 1.31: Die Menge steht **vorher** fest, genau eins. Deshalb darf und soll
+diese Metrik gaten; `enforce` ist hier die sinnvolle Einstellung, nicht die
+unmoegliche.
+
+Vier lokale Faelle decken den Helfer ab: eine Anfrage zaehlt als eins, ein
+erschoepftes Kontingent bricht ab, der Fehler traegt weder Scope noch Zahlen, und
+beide Fehlerabbildungen antworten mit 429. Ein erschoepftes Kontingent heisst
+„spaeter wiederkommen", nicht „kaputt"; faellt eine Abbildung weg, wird daraus
+eine 500.
+
+Mutationsprobe: die Ablehnung im Helfer entfernt — der Zertifizierungsfall und
+der lokale Abbruchfall fallen um.
+Protokoll: `docs/evidence/2026-08-06/usage-api-requests-mutation.log`.
+
+Checkpoint `1.32.0` am 6. August 2026: **99 von 99** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 964 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht — und das ist die wichtigste Zeile hier: Zertifiziert ist der
+**Helfer**, nicht seine **Platzierung**. Dass er an allen fuenf Resolvern steht
+und an keinem doppelt, ist gelesen und nicht getestet; ein Test dafuer braeuchte
+eine echte HTTP-Anfrage mit Sitzung oder Projektschluessel. Wer einen Resolver
+hinzufuegt, muss selbst daran denken. `realtime_messages` meldet weiterhin
+nicht.
