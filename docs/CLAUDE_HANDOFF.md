@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.24.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.25.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,10 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.24.0`
-- Aktueller Slice: 1.24 Functions Ende zu Ende — Kette in einem Lauf, `maxConcurrency` durchgesetzt
+- Paketversion: `1.25.0`
+- Aktueller Slice: 1.25 Signaturschluessel aus dem Vault — `lib/server/compute/webhook-secret-vault.ts`
+- Fuenfter Zertifizierungslauf: `npm run test:vault:docker` (HashiCorp Vault 1.18 im Dev-Modus)
+- Vorheriger Slice: 1.24 Functions Ende zu Ende — Kette in einem Lauf, `maxConcurrency` durchgesetzt
 - Kettenlauf: `tests/function-chain.integration.test.ts` plus `docker-compose.functions-certification.yml`
 - Vorheriger Slice: 1.23 Functions aufrufbar — Migration 0033, Verwaltung und `compute/invoke/{name}`
 - Aufrufweg: `lib/server/compute/function-invocation.ts`, opt-in ueber `QKERN_FUNCTIONS_ENABLED`
@@ -59,7 +61,7 @@ Release Notes bleiben unverändert.
 - Poller-Betrieb: `change-poller-runtime.ts`, `change-poller-registry.ts`, `project-connection.ts`
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
-- Vier Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`
+- Fuenf Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`
 - Letzte Control-Plane-Migration: `db/migrations/0033_project_functions.sql`
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`

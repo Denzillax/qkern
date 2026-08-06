@@ -716,3 +716,39 @@ Functions-Laufs bestanden, **dreimal** hintereinander reproduziert, dazu 85 von
 Nicht erbracht: Egress-Proxy, Deployment-Weg fuer Images, Aufloesung einer
 echten Registry-Referenz in einem Lauf und eine clusterweite
 Nebenlaeufigkeitsgrenze.
+
+## Signaturschluessel aus dem Vault — Release 1.25
+
+Zwoelf lokale Tests decken den Provider ab: Abbildung der Referenz auf den
+KV-v2-Datenpfad, Token nur im Header und nie in der URL, keine Weiterleitung,
+`no-store`, unbekannte Referenz als `null` statt Fehler, abgewiesene
+Nicht-Vault-Referenz, zu kurzes Geheimnis abgewiesen, falsche Antwortform,
+Nicht-JSON-Antwort, weder Pfad noch Netzwerkmeldung im Fehler, Cache mit TTL
+samt durchgelassener Rotation, Cache-Eintrag faellt beim Verschwinden der
+Referenz, Klartext-HTTP in Produktion abgewiesen und ungueltiger Mount
+abgewiesen.
+
+Sechs Faelle laufen gegen einen echten HashiCorp Vault 1.18: ein Schluessel, den
+ein Empfaenger wirklich verifizieren kann (gegengerechnet mit einem unabhaengig
+gebildeten HMAC), ein zu kurz hinterlegtes Geheimnis, eine unbekannte Referenz,
+fail-closed bei fehlender Tokendatei, kein Pfad im Fehler und ein Cache-Treffer.
+
+Der Token kommt auch im Zertifizierungsstack ausschliesslich aus einer Datei;
+der Stack legt sie an, statt die Produktgrenze aufzuweichen.
+
+Zwei Fehler lagen im Stack, keiner im Produkt: `--abort-on-container-exit` riss
+den Vault mit, sobald der eigene Seed-Container endete, und das Seed-Skript
+mischte `require` mit Top-Level-`await`. Der Seed laeuft jetzt im Testcontainer
+selbst ueber dieselbe HTTP-API wie der Provider.
+
+Mutationsprobe: Laengengrenze fallen gelassen und die 404-Behandlung
+abgeschaltet — genau die zwei zugehoerigen Faelle fallen um, kein anderer.
+Protokoll: `docs/evidence/2026-08-05/webhook-vault-mutation.log`.
+
+Checkpoint `1.25.0` am 5. August 2026: **6 von 6** Vault-Faellen bestanden,
+zweimal reproduziert **vor** dem Release-Commit. Lokal 901 bestanden, 0
+fehlgeschlagen.
+
+Nicht erbracht: Betrieb eines produktiven Vault-Clusters (der Lauf nutzt den
+Dev-Modus), AppRole- oder Kubernetes-Authentifizierung und ein Egress-Proxy fuer
+Functions.

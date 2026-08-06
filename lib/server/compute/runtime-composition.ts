@@ -7,6 +7,7 @@ import { CronScheduler } from "@/lib/server/compute/cron-scheduler";
 import { WebhookDeliveryRuntime } from "@/lib/server/compute/webhook-delivery-runtime";
 import { WebhookOutbox } from "@/lib/server/compute/webhook-outbox";
 import { PostgresWebhookOutboxRepository } from "@/lib/server/compute/webhook-postgres-repository";
+import { createVaultWebhookSecretProviderFromEnv } from "@/lib/server/compute/webhook-secret-vault";
 import { EnvWebhookSecretProvider, HmacWebhookSigner } from "@/lib/server/compute/webhook-signer";
 import { FetchWebhookTransport } from "@/lib/server/compute/webhook-transport";
 import { WebhookDeliverer, type WebhookSignerPort, type WebhookTransportPort } from
@@ -132,8 +133,13 @@ export function createComputeRuntimeFromEnv(
   // stillschweigend ohne Signatur sendet, waere schlimmer als einer, der gar
   // nicht startet: Der Empfaenger kann dann nicht mehr unterscheiden, ob eine
   // Nachricht wirklich von hier kommt.
+  // Der Vault hat Vorrang. Ist er konfiguriert, wird der Umgebungs-Provider
+  // gar nicht erst gebaut — sonst koennte ein vergessener lokaler Schluessel in
+  // einer Produktionsumgebung stillschweigend gewinnen.
   const signer = webhooksEnabled
-    ? dependencies.signer ?? new HmacWebhookSigner(new EnvWebhookSecretProvider(env))
+    ? dependencies.signer ?? new HmacWebhookSigner(
+      createVaultWebhookSecretProviderFromEnv(env) ?? new EnvWebhookSecretProvider(env),
+    )
     : undefined;
   const transport = dependencies.transport ?? new FetchWebhookTransport();
   const deliverer = signer ? new WebhookDeliverer(signer, transport) : undefined;

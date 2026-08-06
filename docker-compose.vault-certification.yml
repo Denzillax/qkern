@@ -1,0 +1,85 @@
+name: qkern-vault-certification
+
+# Portloser Wegwerfstack fuer die Signaturschluessel-Zertifizierung.
+#
+# Der Vault laeuft im Dev-Modus: ein Root-Token, in-memory, kein Unseal. Das ist
+# fuer einen Wegwerfstack richtig und aendert nichts an dem, was hier geprueft
+# wird — dem Weg von einer Referenz zu einem Schluessel und den Grenzen darum.
+#
+# Produktionsgrenzen bleiben in Kraft: Der Provider verlangt HTTPS, sobald
+# NODE_ENV=production ist, und liest den Token ausschliesslich aus einer Datei.
+# Der Stack setzt NODE_ENV=test und legt den Token als Datei ab, statt die
+# Grenze aufzuweichen.
+
+services:
+  vault:
+    image: hashicorp/vault:1.18.3
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: qkern-certification-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      # Ohne diese Pruefung koennte der Test lesen, bevor der Listener bereit
+      # ist — derselbe Startrennen-Fehler wie zuvor bei ClamAV und Mailpit.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8200/v1/sys/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Bewusst **kein** eigener Seed-Container. `--abort-on-container-exit` stoppt
+  # den ganzen Stack, sobald irgendein Container endet — ein Einweg-Seed haette
+  # damit den Vault mitgerissen, bevor der Test lesen konnte. Der Seed laeuft
+  # deshalb im Testcontainer selbst, ueber dieselbe HTTP-API, die auch der
+  # Provider benutzt.
+  certification:
+    image: node:24.7.0-alpine
+    working_dir: /workspace/qkern
+    depends_on:
+      vault:
+        condition: service_healthy
+    volumes:
+      - .:/qkern-src:ro
+    environment:
+      NODE_ENV: test
+      QKERN_TEST_VAULT_KV_URL: http://vault:8200/v1/secret
+      QKERN_TEST_VAULT_TOKEN: qkern-certification-root-token
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern /run/qkern
+        # Der Provider liest den Token nur aus einer Datei. Der Stack legt sie
+        # an, statt die Grenze fuer den Test aufzuweichen.
+        printf '%s' "$$QKERN_TEST_VAULT_TOKEN" > /run/qkern/vault-token
+        chmod 0600 /run/qkern/vault-token
+        # Ein 32-Byte-Geheimnis und ein absichtlich zu kurzes daneben. Der
+        # zweite Pfad belegt, dass die Laengengrenze auch dann greift, wenn der
+        # Vault die Antwort liefert.
+        node -e "
+          import { randomBytes } from 'node:crypto';
+          const put = async (path, keyId, bytes) => {
+            const secret = randomBytes(bytes).toString('base64url');
+            const response = await fetch(process.env.QKERN_TEST_VAULT_KV_URL + '/data/' + path, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-vault-token': process.env.QKERN_TEST_VAULT_TOKEN,
+              },
+              body: JSON.stringify({ data: { keyId, secret } }),
+            });
+            if (!response.ok) throw new Error(path + ': ' + response.status);
+          };
+          await put('webhooks/orders', 'orders-2026-08', 32);
+          await put('webhooks/weak', 'weak-2026-08', 8);
+          console.error('vault-seed: two secrets written');
+        " --input-type=module
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        QKERN_TEST_VAULT_TOKEN_FILE=/run/qkern/vault-token npm run test:vault

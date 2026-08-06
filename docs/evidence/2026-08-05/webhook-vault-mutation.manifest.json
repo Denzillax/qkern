@@ -1,0 +1,18 @@
+{
+  "stack": "vault-1.18-webhook-signing-mutation",
+  "log": "webhook-vault-mutation.log",
+  "commit": "3b7f73d37f61d731f132f1bc9d45bd4c319936df",
+  "commitSubject": "release: 1.24.0 Functions Ende zu Ende",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "2 failed | 4 passed (6)",
+  "passed": 4,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "hashicorp/vault:1.18.3",
+    "node:24.7.0-alpine"
+  ]
+}

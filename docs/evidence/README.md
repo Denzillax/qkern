@@ -111,3 +111,15 @@ ohne Grenze startete der Test einen zweiten schlafenden Container, der den Lauf
 
 Beide grünen Läufe stammen aus einer Serie von drei aufeinanderfolgenden Läufen,
 nachdem zwei Flakes im Harness behoben waren.
+
+## Läufe zu Release 1.25 (5. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/webhook-vault-run1.log` | HashiCorp Vault 1.18 | 6 von 6, exit 0 |
+| `2026-08-05/webhook-vault-run2.log` | HashiCorp Vault 1.18 | 6 von 6, exit 0, Wiederholung |
+| `2026-08-05/webhook-vault-mutation.log` | HashiCorp Vault 1.18 | **4 von 6, exit 1 — absichtlich** |
+
+Abgeschaltet wurden die Mindestlänge des Signaturgeheimnisses und die
+Behandlung von HTTP 404 als „kenne ich nicht". Genau die zwei zugehörigen Fälle
+fielen um, kein anderer.
