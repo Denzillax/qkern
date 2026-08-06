@@ -231,3 +231,15 @@ Fälle fielen um.
 
 Entfernt wurde die Ablehnung in `admitApiRequest`. Der Zertifizierungsfall fiel
 um, zusammen mit dem lokalen Abbruchfall.
+
+## Läufe zu Release 1.33 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-realtime-run1.log` | PostgreSQL 17 | 101 von 101, exit 0, 33 Migrationen |
+| `2026-08-06/usage-realtime-run2.log` | PostgreSQL 17 | 101 von 101, exit 0, Wiederholung |
+| `2026-08-06/usage-realtime-mutation.log` | PostgreSQL 17 | **98 von 101, exit 1 — absichtlich** |
+
+Abgeschaltet wurden die Bündelung (Schreiben je Nachricht statt gesammelt) und
+die Eintragung von `realtime_messages` in die Liste der nicht erzwingbaren
+Metriken. Genau die drei zugehörigen Fälle fielen um.

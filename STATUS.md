@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.32.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.33.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -25,7 +25,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
-| Usage Metering | teilweise | teilweise — 18 Real-DB-Fälle; 5 von 6 Metriken melden, `realtime_messages` nicht |
+| Usage Metering | teilweise | teilweise — 20 Real-DB-Fälle; **alle sechs Metriken melden**; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 111 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
@@ -41,7 +41,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **99 von 99 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **101 von 101 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
@@ -55,7 +55,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Functions Ende zu Ende** | **Datenbank → Dienst → Container in einem Lauf zertifiziert**; die Auflösung einer echten Registry-Referenz bleibt ungeprüft |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 162 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
+Die 164 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -183,10 +183,14 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
   ist `enforce` nicht setzbar, weil die Menge erst nach der Arbeit feststeht.
   Seit `1.32.0` zählt `api_requests` an der HTTP-Grenze — in den
   Kontext-Resolvern von Queues, Storage und Generated Data API, also genau
-  einmal je Anfrage — und ein erschöpftes hartes Limit antwortet mit 429. Damit
-  melden fünf der sechs Metriken. Offen bleibt `realtime_messages`: Es bräuchte
-  einen bündelnden Emitter, und für diese Metrik sind Nullwerte weiterhin
-  erwartbar. Es existieren weder Preise noch Rechnungen.
+  einmal je Anfrage — und ein erschöpftes hartes Limit antwortet mit 429. Seit
+  `1.33.0` meldet auch Realtime, gebündelt statt je Nachricht. Damit melden
+  **alle sechs Metriken**. Für drei davon ist `enforce` nicht setzbar, weil es
+  nichts verhindern könnte: `database_row_reads` und `storage_egress_bytes`
+  stehen erst nach der Arbeit fest, `realtime_messages` ist beim Schreiben
+  längst gezählt. Ein Absturz des Realtime-Prozesses verliert den Puffer —
+  bewusst zu wenig statt zu viel. Es existieren weder Preise noch Rechnungen,
+  und keine dieser Zahlen ist ein Abrechnungsbeleg.
 - Der PostgreSQL-Usagepfad ist lokal nur statisch und in Memory getestet; die vier
   Real-DB-Fälle sowie Multi-Instance-, Crash-, Reconciliation- und Lastläufe fehlen.
 - `autonomous` ist eine explizite stehende Autorisierung, kein stiller Bypass.

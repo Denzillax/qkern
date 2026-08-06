@@ -12,20 +12,28 @@ export const USAGE_METRIC_DEFINITIONS = {
 export type UsageMetric = keyof typeof USAGE_METRIC_DEFINITIONS;
 
 /**
- * Metriken, deren Menge erst feststeht, **wenn die Arbeit getan ist**.
+ * Metriken, für die ein hartes Limit nichts verhindern könnte.
  *
- * Wie viele Zeilen eine Abfrage liefert, weiss man nach der Abfrage; wie viele
- * Bytes eine Freigabe umfasst, nach dem Auflösen des Objekts. Ein hartes Limit
- * kann dort nichts mehr verhindern — es könnte nur noch aufhören zu zählen, und
- * ein Zähler, der stehen bleibt, während die Nutzung weiterläuft, ist schlimmer
- * als gar keiner.
+ * Es gibt zwei verschiedene Gründe dafür, und beide führen zum selben Schluss:
  *
- * Deshalb wird `enforce` für diese Metriken gar nicht erst angenommen. Ein
- * Modus, der nicht wirken kann, darf nicht setzbar sein.
+ * **Nachträglich.** Wie viele Zeilen eine Abfrage liefert, weiss man nach der
+ * Abfrage; wie viele Bytes eine Freigabe umfasst, nach dem Auflösen des
+ * Objekts. Es gibt keinen Moment, in dem man mit dieser Zahl noch ablehnen
+ * könnte.
+ *
+ * **Gebündelt.** `realtime_messages` wird gesammelt geschrieben, weil eine
+ * Buchung je Nachricht den Realtime-Pfad ruinieren würde. Man kann keine
+ * Nachricht ablehnen, die längst in einem offenen Stapel gezählt ist.
+ *
+ * In beiden Fällen könnte `enforce` nur noch aufhören zu zählen — und ein
+ * Zähler, der stehen bleibt, während die Nutzung weiterläuft, ist schlimmer als
+ * gar keiner. Deshalb wird der Modus für diese Metriken gar nicht erst
+ * angenommen: Was nicht wirken kann, darf nicht setzbar sein.
  */
-export const POST_HOC_USAGE_METRICS: ReadonlySet<UsageMetric> = new Set<UsageMetric>([
+export const UNENFORCEABLE_USAGE_METRICS: ReadonlySet<UsageMetric> = new Set<UsageMetric>([
   "database_row_reads",
   "storage_egress_bytes",
+  "realtime_messages",
 ]);
 export type UsageUnit = (typeof USAGE_METRIC_DEFINITIONS)[UsageMetric]["unit"];
 export type UsageSource =

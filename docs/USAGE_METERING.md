@@ -25,11 +25,31 @@ Seit `1.29.0` melden **Project Queues** und **Functions** selbst, seit `1.31.0`
 auch **Generated Data API** und **Storage**. Damit melden vier der sechs
 Metriken.
 
-Seit `1.32.0` zählt auch `api_requests`. Damit melden fünf der sechs Metriken.
+Seit `1.32.0` zählt auch `api_requests`, seit `1.33.0` Realtime. Damit melden
+**alle sechs Metriken**.
 
-Für `realtime_messages` zeigt die Projektion weiterhin null: Es bräuchte einen
-**bündelnden** Emitter, denn eine Control-Plane-Transaktion je Nachricht wäre
-auf dem Realtime-Pfad ein absehbarer Fehler.
+## Gebündelt: `realtime_messages`
+
+Eine Control-Plane-Transaktion je Broadcast wäre auf dem Realtime-Pfad ein
+absehbarer Fehler. `BufferedUsageEmitter` sammelt deshalb je Scope und Metrik
+und schreibt gebündelt — beim Erreichen einer Menge, in einem Intervall und beim
+Herunterfahren des Prozesses.
+
+Der Preis ist doppelt und wird hier ausdrücklich genannt:
+
+- **Der Emitter kann nicht gaten.** Man kann keine Nachricht ablehnen, die
+  bereits in einem offenen Stapel gezählt ist.
+- **Ein Absturz verliert den Puffer.** Das ist die gewählte Richtung: lieber zu
+  wenig zählen als zu viel. Wer zu viel zählt, stellt in Rechnung, was nie
+  stattgefunden hat.
+
+Ein Stapel, den das Ledger nicht erreicht hat, wird **unverändert** und mit
+demselben Schlüssel erneut gesendet — ein doppelt angekommener Stapel zählt
+trotzdem einmal. Ein Stapel, über den das Ledger entschieden hat, wird
+verworfen: Ein erneuter Versuch bekäme dieselbe Antwort.
+
+Gezählt wird die Nachricht im Log, nicht die Zustellungen daraus. Ein Kanal mit
+hundert Abonnenten erzeugt eine Nachricht, nicht hundert.
 
 ## `api_requests` an der HTTP-Grenze
 
@@ -53,13 +73,18 @@ wiederkommen", nicht „kaputt".
 Der Helfer liegt in `lib/server/usage/api-requests.ts`, bewusst nicht in
 `usage/http.ts`: Dort steht die HTTP-Fläche der Usage-Projektion selbst.
 
-## Nachträgliche Metriken
+## Metriken ohne hartes Limit
 
-`database_row_reads` und `storage_egress_bytes` stehen erst fest, **wenn die
-Arbeit getan ist**: Wie viele Zeilen eine Abfrage liefert, weiss man nach der
-Abfrage.
+Drei Metriken stehen in `UNENFORCEABLE_USAGE_METRICS`, aus zwei verschiedenen
+Gründen.
 
-Für sie gilt seit `1.31.0` eine eigene Regel: **`enforce` ist nicht setzbar.**
+**Nachträglich**: `database_row_reads` und `storage_egress_bytes` stehen erst
+fest, wenn die Arbeit getan ist. Wie viele Zeilen eine Abfrage liefert, weiss
+man nach der Abfrage.
+
+**Gebündelt**: `realtime_messages` ist beim Schreiben längst gezählt.
+
+Für alle drei gilt: **`enforce` ist nicht setzbar.**
 Ein hartes Limit könnte dort nichts mehr verhindern und würde nur aufhören zu
 zählen — ein Zähler, der stehen bleibt, während die Nutzung weiterläuft, ist
 schlimmer als gar keiner. `setQuota` weist den Modus mit

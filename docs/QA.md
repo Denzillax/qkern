@@ -1039,3 +1039,49 @@ und an keinem doppelt, ist gelesen und nicht getestet; ein Test dafuer braeuchte
 eine echte HTTP-Anfrage mit Sitzung oder Projektschluessel. Wer einen Resolver
 hinzufuegt, muss selbst daran denken. `realtime_messages` meldet weiterhin
 nicht.
+
+## Realtime buendelt — Release 1.33
+
+Die letzte Metrik meldet, und zwar anders als die fuenf davor: gesammelt.
+
+Zwei Faelle im PostgreSQL-Lauf. Vierzig Nachrichten ergeben **eine** Buchung,
+und vor dem Schreiben steht im Ledger nichts — genau das ist der Handel: ein
+Puffer statt vierzig Transaktionen. Ein weggeworfener Emitter, also ein
+abgestuerzter Prozess, verliert seinen Puffer: fuenf ungeschriebene Nachrichten
+zaehlen nicht, eine geschriebene zaehlt. Lieber zu wenig als zu viel — wer zu
+viel zaehlt, stellt in Rechnung, was nie stattgefunden hat.
+
+Neun lokale Faelle decken den Emitter ab, darunter die beiden, die die
+Wiederholung tragen: Ein Stapel, den das Ledger nie erreicht hat
+(`unavailable`), wird **unveraendert** und mit demselben Schluessel erneut
+gesendet; ein Stapel, ueber den das Ledger entschieden hat
+(`quota_exceeded`), wird verworfen. Das Zusammenlegen eines wiederholten
+Stapels mit neuen Nachrichten waere ein Idempotenzkonflikt und machte ihn
+dauerhaft unschreibbar — auch dafuer gibt es einen Fall.
+
+`realtime_messages` kommt damit in dieselbe Liste wie die beiden
+nachtraeglichen Metriken, aber aus einem **zweiten** Grund: Nicht die Menge
+fehlt, sondern der Zeitpunkt. Man kann keine Nachricht ablehnen, die laengst in
+einem offenen Stapel gezaehlt ist. Die Liste heisst deshalb jetzt
+`UNENFORCEABLE_USAGE_METRICS` und traegt beide Gruende.
+
+**Die Luecke aus Release 1.32 ist geschlossen**, wenn auch anders als dort
+angekuendigt: Ein Vertragstest liest die drei Modulquellen und verlangt, dass
+jeder exportierte Kontext-Resolver `admitApiRequest` ruft. Das prueft den
+Quelltext, nicht das Verhalten — es faengt aber genau den Fehlerfall, der
+gemeint war: Jemand fuegt einen Resolver hinzu und denkt nicht daran.
+
+Mutationsprobe: Buendelung abgeschaltet (Schreiben je Nachricht) und
+`realtime_messages` aus der Liste entfernt — genau die drei zugehoerigen Faelle
+fallen um.
+Protokoll: `docs/evidence/2026-08-06/usage-realtime-mutation.log`.
+
+Checkpoint `1.33.0` am 6. August 2026: **101 von 101** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 973 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Der Realtime-Pfad ist mit eingeschaltetem Emitter nicht neu
+vermessen worden — der Soak-Lauf lief ohne. Ein Absturz verliert weiterhin den
+Puffer, und ein Lauf, der das unter echtem Prozessabbruch zeigt, fehlt.
+`control_plane`, `project_auth` und `mcp` duerfen `api_requests` schreiben, tun
+es aber nicht.

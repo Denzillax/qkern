@@ -13,6 +13,7 @@ import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { admitApiRequest, UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
+import { BufferedUsageEmitter } from "@/lib/server/usage/buffered-emitter";
 import { ServiceUsageEmitter } from "@/lib/server/usage/emitter";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { UsageService } from "@/lib/server/usage/service";
@@ -419,13 +420,53 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
       expect(await counter(scope, "api_requests")).toBe(2n);
     });
 
+    it("writes bundled realtime messages as one booking", async () => {
+      const scope = await freshScope();
+      const buffered = new BufferedUsageEmitter({
+        inner: new ServiceUsageEmitter({ service: usage, source: "realtime" }),
+      });
+      for (let index = 0; index < 40; index += 1) {
+        await buffered.admit(scope, { metric: "realtime_messages", reference: `msg-${index}` });
+      }
+      // Vor dem Schreiben steht nichts im Ledger. Genau das ist der Handel:
+      // ein Puffer statt vierzig Transaktionen.
+      expect(await counter(scope, "realtime_messages")).toBe(0n);
+
+      await buffered.stop();
+      expect(await counter(scope, "realtime_messages")).toBe(40n);
+
+      const events = await owner.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM usage_events
+          WHERE organization_id=$1 AND project_id=$2 AND metric='realtime_messages'`,
+        [scope.organizationId, scope.projectId],
+      );
+      expect(events.rows[0].count).toBe("1");
+    });
+
+    it("loses an unwritten buffer instead of counting it twice", async () => {
+      // Der Absturz eines Prozesses ist hier ein weggeworfener Emitter. Was
+      // nicht geschrieben wurde, zaehlt nicht — lieber zu wenig als zu viel.
+      const scope = await freshScope();
+      const inner = new ServiceUsageEmitter({ service: usage, source: "realtime" });
+      const lost = new BufferedUsageEmitter({ inner });
+      for (let index = 0; index < 5; index += 1) {
+        await lost.admit(scope, { metric: "realtime_messages", reference: `lost-${index}` });
+      }
+
+      const survivor = new BufferedUsageEmitter({ inner });
+      await survivor.admit(scope, { metric: "realtime_messages", reference: "kept" });
+      await survivor.stop();
+
+      expect(await counter(scope, "realtime_messages")).toBe(1n);
+    });
+
     it("refuses a hard limit on a metric it could never enforce", async () => {
       // Beide Mengen stehen erst fest, wenn die Arbeit getan ist. Ein
       // enforce-Limit koennte dort nichts verhindern und wuerde nur aufhoeren
       // zu zaehlen — ein Zaehler, der stehen bleibt, waehrend die Nutzung
       // weiterlaeuft, ist schlimmer als gar keiner.
       const scope = await freshScope();
-      for (const metric of ["database_row_reads", "storage_egress_bytes"] as const) {
+      for (const metric of ["database_row_reads", "storage_egress_bytes", "realtime_messages"] as const) {
         await expect(usage.setQuota(operator, scope, {
           metric, limit: 10, mode: "enforce", expectedRevision: null,
         })).rejects.toMatchObject({ code: "USAGE_INVALID_INPUT" });

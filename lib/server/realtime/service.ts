@@ -17,6 +17,7 @@ import type {
 } from "@/lib/server/realtime/change-source";
 import type { RealtimeEventBus, RealtimeEventReference } from "@/lib/server/realtime/event-bus";
 import type { RealtimeEventLog } from "@/lib/server/realtime/repository";
+import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 
 type Connection = {
   id: string;
@@ -43,6 +44,12 @@ export type RealtimeServiceOptions = {
    * statt ungeprüfte Daten auszuliefern.
    */
   changeReader?: RealtimeChangeReader;
+  /**
+   * Ohne Emitter zählt nichts. Sinnvoll ist hier nur ein bündelnder: Eine
+   * Control-Plane-Buchung je Broadcast wäre auf diesem Pfad ein absehbarer
+   * Fehler.
+   */
+  usage?: UsageEmitterPort;
   /** Kennung dieser Instanz. Verhindert, dass ein eigenes Ereignis doppelt ankommt. */
   instanceId?: string;
   cursor?: RealtimeCursorCodec;
@@ -68,9 +75,11 @@ export class RealtimeService {
   private readonly replayLimit: number;
   private readonly maxPayloadBytes: number;
   private readonly maxPresenceBytes: number;
+  private readonly usage: UsageEmitterPort;
   readonly heartbeatSeconds: number;
 
   constructor(private readonly options: RealtimeServiceOptions) {
+    this.usage = options.usage ?? new DisabledUsageEmitter();
     this.instanceId = options.instanceId ?? randomUUID();
     this.cursor = options.cursor ?? new RealtimeCursorCodec(randomBytes(32));
     this.now = options.now ?? (() => new Date());
@@ -154,6 +163,7 @@ export class RealtimeService {
     }
     await this.authorize(connection, channel, "broadcast");
     const safePayload = safeJson(payload, this.maxPayloadBytes, false) as RealtimeJson;
+    let storedId: string | null = null;
     await this.exclusive(connection.scope, channel, async () => {
       this.assertActive(connection);
       const stored = await this.options.eventLog.append({
@@ -165,7 +175,23 @@ export class RealtimeService {
       const message = this.eventMessage(stored, false);
       for (const subscriber of this.subscribers(connection.scope, channel)) this.send(subscriber, message);
       this.markDelivered(connection.scope, channel, stored.sequence);
+      // Kanal und Sequenz identifizieren das Ereignis innerhalb des Scopes.
+      // Auf 64 Zeichen gekürzt, weil ein Bezug nicht länger sein darf; der
+      // bündelnde Emitter benutzt ihn ohnehin nicht, er summiert nur.
+      storedId = `${stored.channel}:${stored.sequence}`.slice(0, 64);
     });
+
+    // Gemessen wird die Nachricht, die dauerhaft im Log liegt — nicht die
+    // Zustellungen, die daraus entstehen. Ein Kanal mit hundert Abonnenten
+    // erzeugt eine Nachricht, nicht hundert.
+    //
+    // Der Emitter sammelt und schreibt gebündelt; er kann deshalb nicht
+    // ablehnen, und seine Antwort wird sichtbar ignoriert.
+    if (storedId) {
+      await this.usage.admit(connection.scope, {
+        metric: "realtime_messages", reference: storedId,
+      });
+    }
 
     // Erst nach der lokalen Zustellung und außerhalb der Kanalsperre: Ein
     // Fehler beim Hinweis darf weder den bestätigten Broadcast zurücknehmen

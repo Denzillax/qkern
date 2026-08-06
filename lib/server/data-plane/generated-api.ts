@@ -258,7 +258,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
    *
    * Dass das Ignorieren der Antwort hier sicher ist, ist keine Nachlässigkeit,
    * sondern abgesichert: `enforce` lässt sich für diese Metrik gar nicht
-   * setzen (siehe `POST_HOC_USAGE_METRICS`). Das Ledger kann sie also nicht
+   * setzen (siehe `UNENFORCEABLE_USAGE_METRICS`). Das Ledger kann sie also nicht
    * ablehnen.
    *
    * Ein Lesen ohne Zeilen zählt nicht. Die Metrik heisst `database_row_reads`.

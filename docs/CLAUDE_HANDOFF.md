@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.32.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.33.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.32.0`
-- Aktueller Slice: 1.32 Zaehlung an der HTTP-Grenze — `lib/server/usage/api-requests.ts`
+- Paketversion: `1.33.0`
+- Aktueller Slice: 1.33 Realtime buendelt — `lib/server/usage/buffered-emitter.ts`
+- Alle sechs Metriken melden; `UNENFORCEABLE_USAGE_METRICS` sammelt die drei, fuer die `enforce` nicht setzbar ist
+- Der Puffer wird beim Herunterfahren geschrieben (`workers/realtime-runtime.ts`); ein Absturz verliert ihn absichtlich
+- Vorheriger Slice: 1.32 Zaehlung an der HTTP-Grenze — `lib/server/usage/api-requests.ts`
 - `admitApiRequest` steht am Ende der Kontext-Resolver von Queues, Storage und Generated Data API
 - Nicht in `usage/http.ts`: dort steht die HTTP-Flaeche der Usage-Projektion selbst
 - Fuenf von sechs Metriken melden; offen bleibt `realtime_messages` (braucht einen buendelnden Emitter)

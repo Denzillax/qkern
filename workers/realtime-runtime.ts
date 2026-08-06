@@ -26,6 +26,8 @@ import { MemoryRealtimeEventLog } from "@/lib/server/realtime/repository";
 import { RealtimeService } from "@/lib/server/realtime/service";
 import { createRealtimeWebSocketServer } from "@/lib/server/realtime/websocket-server";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import { BufferedUsageEmitter } from "@/lib/server/usage/buffered-emitter";
+import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
 if (process.env.QKERN_REALTIME_ENABLED !== "true") {
   throw new Error("QKERN Realtime is disabled. Set QKERN_REALTIME_ENABLED=true explicitly.");
@@ -85,10 +87,23 @@ const changeSource = changesEnabled
 
 const cursorSecret = process.env.QKERN_REALTIME_CURSOR_SECRET?.trim();
 const cursorBytes = cursorSecret ? Buffer.from(cursorSecret, "base64url") : randomBytes(32);
+// Gebündelt, nicht je Nachricht: Eine Control-Plane-Transaktion pro Broadcast
+// wäre auf diesem Pfad ein absehbarer Fehler. Der Puffer wird beim
+// Herunterfahren geschrieben; ein harter Absturz verliert ihn, und das ist die
+// gewählte Richtung — lieber zu wenig zählen als zu viel.
+const usage = new BufferedUsageEmitter({
+  inner: createUsageEmitterFromEnv("realtime"),
+  flushAtQuantity: integer("QKERN_REALTIME_USAGE_FLUSH_AT", 500, 1, 100_000),
+});
+const usageFlushTimer = setInterval(() => { void usage.flush(); },
+  integer("QKERN_REALTIME_USAGE_FLUSH_MS", 15_000, 1_000, 300_000));
+usageFlushTimer.unref();
+
 const service = new RealtimeService({
   eventLog,
   eventBus,
   changeReader,
+  usage,
   authorization: new PrefixRealtimeAuthorization(),
   cursor: new RealtimeCursorCodec(cursorBytes),
   maxSubscriptionsPerConnection: integer("QKERN_REALTIME_MAX_SUBSCRIPTIONS", 32, 1, 128),
@@ -141,8 +156,12 @@ async function stop() {
   if (stopping) return;
   stopping = true;
   if (reconcileTimer) clearInterval(reconcileTimer);
+  clearInterval(usageFlushTimer);
   await changeRegistry?.stop();
   await runtime.close();
+  // Nach dem Schliessen der Verbindungen: Was bis zuletzt gezaehlt wurde, soll
+  // noch ankommen.
+  await usage.stop();
   await eventBus?.close();
 }
 process.once("SIGINT", () => { void stop(); });
