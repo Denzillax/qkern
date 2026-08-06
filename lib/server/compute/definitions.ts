@@ -66,7 +66,9 @@ export type ComputeDefinitionErrorCode =
   | "COMPUTE_NOT_FOUND"
   | "COMPUTE_CONFLICT"
   | "COMPUTE_PRECONDITION_FAILED"
-  | "COMPUTE_AT_CAPACITY";
+  | "COMPUTE_AT_CAPACITY"
+  /** Das monatliche Kontingent ist erschöpft — nicht die Nebenläufigkeit. */
+  | "COMPUTE_QUOTA_EXCEEDED";
 
 export class ComputeDefinitionError extends Error {
   constructor(readonly code: ComputeDefinitionErrorCode, options?: { cause?: unknown }) {

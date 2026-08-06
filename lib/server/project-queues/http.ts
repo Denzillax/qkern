@@ -118,6 +118,7 @@ export function projectQueueRouteError(error: unknown, request?: NextRequest) {
       case "QUEUE_ACCESS_DENIED": return respond(projectQueueNoStore({ error: "Resource not found" }, 404));
       case "QUEUE_CONFLICT": return respond(projectQueueNoStore({ error: "Queue conflict" }, 409));
       case "QUEUE_CAPACITY_EXCEEDED": return respond(projectQueueNoStore({ error: "Queue capacity exceeded" }, 429));
+      case "QUEUE_QUOTA_EXCEEDED": return respond(projectQueueNoStore({ error: "Usage quota exceeded" }, 429));
       case "QUEUE_LEASE_LOST": return respond(projectQueueNoStore({ error: "Queue lease is no longer valid" }, 409));
       case "PROJECT_QUEUES_DISABLED": return respond(projectQueueNoStore({ error: "Project Queues are disabled" }, 503));
     }

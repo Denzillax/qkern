@@ -19,8 +19,57 @@ Tarife und Rechnungen, aber selbst **kein Billing-System**.
 
 Nicht enthalten sind Preise, Tarife, Währungen, Rechnungen, Steuern, Zahlungen,
 Provider-Abgleich, Credits, Kostenalarme oder eine öffentliche API zum Ändern von
-Limits. Bestehende Produktmodule erzeugen in Alpha 1 noch nicht automatisch alle
-Usage Events; ohne vertrauenswürdigen Emitter zeigt die Projektion deshalb null.
+Limits.
+
+Seit `1.29.0` melden **Project Queues** und **Functions** selbst; Generated Data
+API, Storage und Realtime noch nicht. Für die übrigen Metriken zeigt die
+Projektion weiterhin null.
+
+## Der Emitter
+
+`lib/server/usage/emitter.ts` ist der vertrauenswürdige Emitter, den dieser
+Slice seit Alpha 1 voraussetzt. Er hat **eine** Methode:
+
+```ts
+admit(scope, { metric, reference, quantity?, observedAt? }): Promise<UsageAdmission>
+```
+
+Sie meldet die Operation und gibt zurück, ob sie stattfinden darf. Eine zweite
+Methode ohne Antwort hätte einen zweiten Codepfad ergeben, auf dem ein hartes
+Limit nicht greift — und eine Grenze, die an einer Stelle wirkt und an einer
+anderen nicht, ist schlimmer als gar keine. Wer nicht gaten will, ignoriert die
+Antwort sichtbar.
+
+Der Emitter besitzt den `meter`-Principal. Ein Produktmodul, das sich seinen
+eigenen bauen dürfte, könnte in einen fremden Scope schreiben.
+
+Er baut auch den Idempotenzschlüssel: `<quelle>:<metrik>:<bezug>`. Der
+Schlüsselraum ist **scope-weit**, nicht metrikweit; zwei Module mit derselben
+Kennung würden sich sonst gegenseitig deduplizieren.
+
+**Gezählt wird die Operation, nicht ihr Ergebnis.** Die Messung steht vor dem
+Schreiben beziehungsweise vor dem Aufruf: Wer erst danach misst, kann nicht mehr
+ablehnen. Ein Aufruf, der scheitert, hat trotzdem einen Container gestartet; ein
+deduplizierter Enqueue hat trotzdem stattgefunden.
+
+### Zwei Ausfallsemantiken
+
+| Wann | Verhalten |
+| --- | --- |
+| Fehlkonfiguration beim Start | abweisen — niemand soll unbemerkt ohne Zähler laufen |
+| Messung fällt im Betrieb aus | durchlassen (`QKERN_USAGE_EMITTER_ON_FAILURE=admit`) |
+| Schlüssel wiederverwendet, Inhalt verändert | immer abweisen |
+
+Die mittlere Zeile ist bewusst nicht fail-closed. Eine Quota ist eine
+kaufmännische Grenze, keine Sicherheitsgrenze: Der Schaden eines kurz nicht
+gezählten Aufrufs ist begrenzt und nachträglich abgleichbar, der Schaden einer
+Plattform, die bei jedem Datenbankschluckauf jede Operation abweist, ist es
+nicht. `reject` stellt das um.
+
+Ein erschöpftes Kontingent beantwortet REST mit `429` und den Codes
+`QUEUE_QUOTA_EXCEEDED` beziehungsweise `COMPUTE_QUOTA_EXCEEDED` — ausdrücklich
+getrennt von `QUEUE_CAPACITY_EXCEEDED` und `COMPUTE_AT_CAPACITY`, damit eine
+volle Warteschlange nicht wie ein erreichtes Limit aussieht.
 
 ## Feste Metriken
 
@@ -146,7 +195,14 @@ und den statischen Migrationsvertrag. Vier optionale PostgreSQL-Fälle prüfen h
 Concurrent-Limits, verifier-only Persistenz, Restart-Replay, dauerhafte Projektion
 und Cross-Tenant-RLS.
 
+Seit `1.29.0` kommen neun lokale Emitter-Fälle und sieben PostgreSQL-Fälle dazu.
+Die sieben messen nicht den Emitter, sondern seine Wirkung: echter Zählerstand
+nach echter Operation, ein hartes Limit, das den Enqueue abweist ohne eine
+Nachricht zu schreiben, und ein erschöpftes Kontingent, das den Function-Aufruf
+abweist ohne den Invoker zu starten.
+
 Vor kommerziellem Betrieb fehlen weiterhin echte archivierte PostgreSQL-Last- und
-Crash-Races, transaktionale Emitter in Data/Storage/Realtime/Queues/Compute,
+Crash-Races, Emitter in Data/Storage/Realtime, ein **transaktionaler** Emitter,
+der sein Ereignis in derselben Transaktion schreibt wie die Operation,
 Reconciliation mit Providerwerten, Metrics/Alerts, Retention/Export, Tarife,
 Rechnungs- und Zahlungsintegration sowie unabhängige Security-/Finanzprüfung.

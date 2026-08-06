@@ -330,6 +330,28 @@ Docker nicht ausgeführt. Produktmodule emittieren noch nicht durchgängig
 transaktional; Tarife, Preise, Rechnungen, Payments, Teams, PITR/Restore und die
 weiteren Operations-Flächen bleiben offen.
 
+**Nachtrag Release 1.29.** Alpha 1 hatte einen vertrauenswuerdigen Emitter
+vorausgesetzt und keinen mitgeliefert. Ledger, Quota-Entscheidung und Projektion
+waren gebaut und gegen echtes PostgreSQL zertifiziert — und zeigten trotzdem
+null, weil keine Produktoperation je ein Ereignis meldete. Dasselbe Muster wie
+beim Realtime-Poller, beim Event-Log, bei der Webhook-Outbox und bei der
+Functions-Sandbox.
+
+`ProjectQueueService.enqueue` und `FunctionInvocationService.invoke` melden
+jetzt. Sieben Faelle im PostgreSQL-Lauf belegen nicht den Emitter, sondern seine
+Wirkung: echter Zaehlerstand nach echter Operation, ein hartes Limit, das den
+Enqueue abweist **ohne eine Nachricht zu schreiben**, und ein erschoepftes
+Kontingent, das den Function-Aufruf abweist, **ohne den Invoker zu starten**.
+
+Der Emitter hat **eine** Methode. Eine zweite ohne Antwort haette einen Pfad
+ergeben, auf dem ein hartes Limit nicht greift — und eine Grenze, die an einer
+Stelle wirkt und an einer anderen nicht, ist schlimmer als gar keine.
+
+Weiterhin offen und damit weiterhin kein Austritt: Generated Data API, Storage
+und Realtime melden noch nicht; das Ereignis entsteht in einer eigenen
+Transaktion, nicht in der der Operation; Abgleich mit Providerwerten, Last- und
+Crash-Laeufe des Messpfads, Tarife, Rechnungen und Payments fehlen.
+
 ## Stufe 2.0 — Managed Platform
 
 Provider-Onboarding, HA, Upgrades, Skalierung, reale signierte DR-/Security-/

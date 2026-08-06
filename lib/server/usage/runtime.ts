@@ -3,6 +3,12 @@ import { getPostgresPool } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import {
+  DisabledUsageEmitter,
+  ServiceUsageEmitter,
+  type UsageEmitterPort,
+} from "@/lib/server/usage/emitter";
+import type { UsageSource } from "@/lib/server/usage/model";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { MemoryUsageRepository, type UsageRepository } from "@/lib/server/usage/repository";
 import { UsageError, UsageService } from "@/lib/server/usage/service";
@@ -19,6 +25,32 @@ export function createUsageServiceFromEnv(
     throw new ConfigurationError("Production Usage Metering requires the durable PostgreSQL repository.");
   }
   return new UsageService({ repository, controlPlane: controlPlaneService });
+}
+
+/**
+ * Baut den Emitter eines Produktmoduls.
+ *
+ * Zwei getrennte Ausfallsemantiken, und die Trennung ist Absicht: Eine falsch
+ * konfigurierte Messung wird **hier** abgewiesen, beim Start, sodass niemand
+ * unbemerkt ohne Zähler läuft. Ein Ausfall **im Betrieb** lässt die Operation
+ * dagegen durch, weil eine kaufmännische Grenze keine Plattform anhalten soll.
+ * Wer das anders will, setzt `QKERN_USAGE_EMITTER_ON_FAILURE=reject`.
+ */
+export function createUsageEmitterFromEnv(
+  source: UsageSource,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  dependencies: { repository?: UsageRepository } = {},
+): UsageEmitterPort {
+  if (env.QKERN_USAGE_METERING_ENABLED !== "true") return new DisabledUsageEmitter();
+  const onFailure = env.QKERN_USAGE_EMITTER_ON_FAILURE ?? "admit";
+  if (onFailure !== "admit" && onFailure !== "reject") {
+    throw new ConfigurationError("QKERN_USAGE_EMITTER_ON_FAILURE must be admit or reject.");
+  }
+  return new ServiceUsageEmitter({
+    service: createUsageServiceFromEnv(env, dependencies),
+    source,
+    onFailure,
+  });
 }
 
 type GlobalUsage = typeof globalThis & { __qkernUsageService?: UsageService };

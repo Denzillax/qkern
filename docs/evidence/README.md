@@ -167,3 +167,22 @@ DNS-Pinning aus Release 1.27 hat gegen einen echten Socket jede Verbindung
 verhindert. Er ist hier nicht abgelegt, weil er den defekten Stand belegt, den
 `receiver-run1.log` bereits ersetzt; die Ursache steht in `docs/QA.md` und
 `docs/RELEASE_1.28.md`.
+
+## Läufe zu Release 1.29 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-emitters-run1.log` | PostgreSQL 17 | 92 von 92, exit 0, 33 Migrationen |
+| `2026-08-06/usage-emitters-run2.log` | PostgreSQL 17 | 92 von 92, exit 0, Wiederholung |
+| `2026-08-06/usage-emitters-mutation.log` | PostgreSQL 17 | **89 von 92, exit 1 — absichtlich** |
+| `2026-08-06/usage-emitters-mutation2.log` | PostgreSQL 17 | **86 von 92, exit 1 — absichtlich** |
+
+Zwei Mutationswellen statt einer, weil die sieben neuen Fälle zwei verschiedene
+Zusagen tragen. Erste Welle: Zulassung im Function-Aufruf entfernt, Messung im
+Enqueue hinter das Schreiben verschoben — drei Fälle fallen um. Zweite Welle:
+Idempotenzschlüssel konstant, Ausfallmodus auf `reject` — sechs Fälle fallen
+um. Zusammen ist für jeden der sieben Fälle gezeigt, dass er rot werden kann.
+
+Ab diesem Release schreibt `scripts/postgres-certification.mjs` die
+`EXIT=`-Zeile selbst. Bisher musste die Shell sie anhängen — Handpflege genau an
+der Stelle, an der die Evidenz entsteht.

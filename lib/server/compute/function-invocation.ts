@@ -8,12 +8,15 @@ import {
 import { FunctionInvocationError, type FunctionInvoker } from "@/lib/server/compute/functions";
 import type { FunctionInvocationResult } from "@/lib/server/compute/model";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
+import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 
 const NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 
 export type FunctionInvocationServiceOptions = {
   repository: Pick<ComputeDefinitionRepository, "findFunctionByName">;
   invoker: Pick<FunctionInvoker, "invoke">;
+  /** Ohne Emitter zählt nichts — und nichts ändert sich am Verhalten. */
+  usage?: UsageEmitterPort;
   now?: () => Date;
   id?: () => string;
   /** Wird beim Abweisen wegen Überlast gerufen. Erhält nur den Namen. */
@@ -51,7 +54,10 @@ export class FunctionInvocationService {
    */
   private readonly running = new Map<string, number>();
 
+  private readonly usage: UsageEmitterPort;
+
   constructor(private readonly options: FunctionInvocationServiceOptions) {
+    this.usage = options.usage ?? new DisabledUsageEmitter();
     this.now = options.now ?? (() => new Date());
     this.id = options.id ?? (() => randomUUID());
   }
@@ -81,10 +87,22 @@ export class FunctionInvocationService {
       this.options.onRejected?.(record.name);
       throw new ComputeDefinitionError("COMPUTE_AT_CAPACITY");
     }
+    const invocationId = this.id();
+    // Gezählt wird der Aufruf, nicht sein Ergebnis. Wer erst nach dem Erfolg
+    // zählt, kann nicht mehr ablehnen — und ein Aufruf, der scheitert, hat
+    // trotzdem einen Container gestartet.
+    //
+    // Die Kapazitätsgrenze kommt zuerst: Ein abgewiesener Aufruf, der nie
+    // gelaufen ist, soll auch kein Kontingent verbrauchen.
+    const admission = await this.usage.admit(scope, {
+      metric: "function_invocations", reference: invocationId,
+    });
+    if (!admission.admitted) throw new ComputeDefinitionError("COMPUTE_QUOTA_EXCEEDED");
+
     this.running.set(record.id, active + 1);
     try {
       return await this.options.invoker.invoke(toDefinition(record), Object.freeze({
-        id: this.id(),
+        id: invocationId,
         functionId: record.id,
         payload,
         requestedAt: this.now().toISOString(),
@@ -121,7 +139,7 @@ function toDefinition(record: FunctionDefinitionRecord) {
 /** Auf einen HTTP-Status abbildbarer Fehlercode ohne Innenansicht. */
 export function functionInvocationStatus(error: unknown): number {
   if (error instanceof ComputeDefinitionError) {
-    return error.code === "COMPUTE_AT_CAPACITY" ? 429 : 404;
+    return ["COMPUTE_AT_CAPACITY", "COMPUTE_QUOTA_EXCEEDED"].includes(error.code) ? 429 : 404;
   }
   if (error instanceof FunctionInvocationError) {
     switch (error.code) {

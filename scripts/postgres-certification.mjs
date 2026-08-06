@@ -34,4 +34,10 @@ if (down.error) {
   console.error(`Unable to clean up the PostgreSQL certification stack: ${down.error.message}`);
 }
 
+// Wie in den fuenf anderen Staeks: Der Runner schreibt den Exit-Code selbst ins
+// Protokoll. `scripts/certification-manifest.mjs` liest ihn dort, und ein Log
+// ohne diese Zeile gilt als unvollstaendiger Lauf. Bisher musste ihn die Shell
+// anhaengen — eine Handpflege, die genau an der Stelle sass, an der die Evidenz
+// entsteht.
+console.log(`EXIT=${up.status ?? 1}`);
 process.exitCode = up.status ?? 1;

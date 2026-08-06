@@ -867,3 +867,50 @@ Lokal 951 bestanden, 0 fehlgeschlagen.
 Nicht erbracht: ein Empfaenger ausserhalb des eigenen Docker-Netzes und ein
 oeffentlich vertrauenswuerdiges Zertifikat. Der Lauf belegt Protokoll, Signatur
 und Policy, nicht die Erreichbarkeit des offenen Internets.
+
+## Usage-Emitter — Release 1.29
+
+Sieben Faelle im PostgreSQL-Lauf messen nicht den Emitter, sondern seine
+Wirkung: Nach einem echten `enqueue` beziehungsweise einem echten `invoke` steht
+eine Zahl in `usage_counters`, und ein hartes Limit verhindert die Operation
+wirklich.
+
+Gepruefte Zusagen: zwei echte Enqueues ergeben Zaehlerstand zwei und zwei
+Ereignisse mit Quelle `project_queues`; ein erschoepftes `enforce`-Limit weist
+den naechsten Enqueue ab **und schreibt keine Nachricht**; ein `observe`-Limit
+laeuft stattdessen ueber; ein deduplizierter Enqueue zaehlt als eigene
+Operation; ein echter Function-Aufruf zaehlt; ein erschoepftes Kontingent weist
+den Aufruf ab, **ohne den Invoker zu starten**; und ein ausgefallenes Ledger
+laesst die Operation durch, waehrend `onFailure: "reject"` sie blockiert.
+
+Jeder Fall bekommt sein eigenes Projekt. Zaehler sind monatlich und kumulativ —
+teilten sich zwei Faelle einen Scope, haenge jede Zahl an der Reihenfolge.
+
+Neun lokale Faelle decken den Emitter selbst ab: Schluesselaufbau aus Quelle,
+Metrik und Bezug; der eigene `meter`-Principal statt dem des Aufrufers;
+Ausfall offen und geschlossen; ein wiederverwendeter Schluessel mit verandertem
+Inhalt scheitert immer geschlossen; ein unbrauchbarer Bezug erreicht das Ledger
+gar nicht.
+
+Mutationsprobe in zwei Wellen. Erste Welle: die Zulassung im Function-Aufruf
+entfernt und die Messung im Enqueue hinter das Schreiben verschoben — genau
+drei Faelle fallen um. Zweite Welle: der Idempotenzschluessel konstant gesetzt
+und der Ausfallmodus auf `reject` gedreht — sechs Faelle fallen um. Zusammen
+zeigt jede der sieben Zusagen, dass sie rot werden kann.
+Protokoll: `docs/evidence/2026-08-06/usage-emitters-mutation.log` und
+`usage-emitters-mutation2.log`.
+
+Die zweite Welle zeigt dabei etwas Eigenes: Ein Schluessel, der sich nicht
+aendert, macht aus dem Ledger eine **einzige** Entscheidung, die ewig
+wiederholt wird — auch die Ablehnung eines harten Limits greift dann nur
+einmal. Der Idempotenzschluessel ist nicht nur Schutz gegen Doppelzaehlung,
+er ist die Bedingung dafuer, dass eine Grenze mehr als einmal beisst.
+
+Checkpoint `1.29.0` am 6. August 2026: **92 von 92** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 960 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Emitter in Generated Data API, Storage und Realtime; ein
+transaktionaler Emitter, der sein Ereignis in derselben Transaktion schreibt
+wie die Operation; Abgleich mit Providerwerten; Last- und Crash-Laeufe des
+Messpfads.

@@ -15,6 +15,7 @@ import { FunctionInvoker } from "@/lib/server/compute/functions";
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
 /**
  * Bindet die Cron-Zielqueue an die tatsächlich vorhandenen Queues.
@@ -75,6 +76,7 @@ export function createFunctionInvocationServiceFromEnv(
     repository: new PostgresComputeDefinitionRepository(
       new PostgresControlPlane(getPostgresPool(env)),
     ),
+    usage: createUsageEmitterFromEnv("compute", env),
     invoker: new FunctionInvoker(new DockerFunctionSandbox({
       docker: env.QKERN_FUNCTIONS_CONTAINER_RUNTIME?.trim() || "docker",
       // Ohne Vermittler wird eine Definition mit erlaubten Origins abgewiesen.

@@ -6,6 +6,7 @@ import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/post
 import { MemoryProjectQueueRepository, type ProjectQueueRepository } from "@/lib/server/project-queues/repository";
 import { ProjectQueueError, ProjectQueueService } from "@/lib/server/project-queues/service";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
 export function createProjectQueueServiceFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -22,6 +23,7 @@ export function createProjectQueueServiceFromEnv(
   return new ProjectQueueService({
     repository,
     controlPlane: controlPlaneService,
+    usage: createUsageEmitterFromEnv("project_queues", env),
     maxPayloadBytes: integer(env.QKERN_PROJECT_QUEUES_MAX_PAYLOAD_BYTES, 64 * 1024, 256, 256 * 1024),
   });
 }

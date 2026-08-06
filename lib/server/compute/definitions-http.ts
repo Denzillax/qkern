@@ -116,6 +116,8 @@ export function computeRouteError(error: unknown) {
         return computeNoStore({ error: "Disable the webhook before deleting it" }, 409);
       case "COMPUTE_AT_CAPACITY":
         return computeNoStore({ error: "The function is at its concurrency limit" }, 429);
+      case "COMPUTE_QUOTA_EXCEEDED":
+        return computeNoStore({ error: "The usage quota for function invocations is exhausted" }, 429);
     }
   }
   if (error instanceof ConfigurationError) {

@@ -11,6 +11,7 @@ import type {
 } from "@/lib/server/project-queues/model";
 import { publicProjectQueue, sameProjectQueueScope } from "@/lib/server/project-queues/model";
 import { ProjectQueueConflictError, type ProjectQueueRepository } from "@/lib/server/project-queues/repository";
+import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 
 const QUEUE_NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -27,6 +28,8 @@ export type ProjectQueueErrorCode =
   | "QUEUE_ACCESS_DENIED"
   | "QUEUE_CONFLICT"
   | "QUEUE_CAPACITY_EXCEEDED"
+  /** Das monatliche Kontingent ist erschöpft — nicht die Warteschlange. */
+  | "QUEUE_QUOTA_EXCEEDED"
   | "QUEUE_LEASE_LOST";
 
 export class ProjectQueueError extends Error {
@@ -47,15 +50,19 @@ export class ProjectQueueService {
   private readonly id: () => string;
   private readonly leaseToken: () => string;
   private readonly maxPayloadBytes: number;
+  private readonly usage: UsageEmitterPort;
 
   constructor(private readonly dependencies: {
     repository: ProjectQueueRepository;
     controlPlane?: Pick<ControlPlaneService, "getProjectEnvironment">;
+    /** Ohne Emitter zählt nichts — und nichts ändert sich am Verhalten. */
+    usage?: UsageEmitterPort;
     now?: () => Date;
     id?: () => string;
     leaseToken?: () => string;
     maxPayloadBytes?: number;
   }) {
+    this.usage = dependencies.usage ?? new DisabledUsageEmitter();
     this.now = dependencies.now ?? (() => new Date());
     this.id = dependencies.id ?? (() => randomUUID());
     this.leaseToken = dependencies.leaseToken ?? (() => `qk_lease_${randomBytes(32).toString("base64url")}`);
@@ -138,6 +145,14 @@ export class ProjectQueueService {
       deadLetteredAt: null,
       replayedFromMessageId: null,
     };
+    // Gemessen wird vor dem Schreiben, mit der Kennung der Nachricht als
+    // Bezug. Wer erst danach misst, kann nicht mehr ablehnen — und ein hartes
+    // Limit, das erst nach der Annahme greift, ist keines.
+    const admission = await this.usage.admit(scope, {
+      metric: "queue_operations", reference: message.id, observedAt: now,
+    });
+    if (!admission.admitted) throw new ProjectQueueError("QUEUE_QUOTA_EXCEEDED");
+
     try {
       const result = await this.dependencies.repository.enqueue(principal, scope, queue, message, now);
       return {
