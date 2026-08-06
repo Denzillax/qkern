@@ -1,3 +1,8 @@
+import {
+  createGuardedFetch,
+  EgressBlockedError,
+  type AddressResolver,
+} from "@/lib/server/net/guarded-fetch";
 import type { FunctionDefinition } from "@/lib/server/compute/model";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
@@ -21,7 +26,14 @@ export type EgressResponse = Readonly<{
 }>;
 
 export type EgressRejection = Readonly<{
-  error: "EGRESS_NOT_ALLOWED" | "EGRESS_INVALID" | "EGRESS_LIMIT" | "EGRESS_FAILED";
+  /**
+   * `EGRESS_BLOCKED` steht eigens neben `EGRESS_FAILED`: Ein von der
+   * Adresspolicy abgewiesenes Ziel ist etwas anderes als ein Empfaenger, der
+   * gerade nicht erreichbar ist. Wer beides gleich benennt, laesst einen
+   * Betreiber im Dunkeln daruebersuchen, warum sein Aufruf nicht ankommt.
+   */
+  error: "EGRESS_NOT_ALLOWED" | "EGRESS_INVALID" | "EGRESS_LIMIT"
+    | "EGRESS_BLOCKED" | "EGRESS_FAILED";
 }>;
 
 export type EgressOutcome = EgressResponse | EgressRejection;
@@ -32,6 +44,8 @@ export function isEgressRejection(outcome: EgressOutcome): outcome is EgressReje
 
 export type MediatedEgressOptions = {
   fetchFn?: typeof fetch;
+  /** Ersetzt die Namensaufloesung. Nur fuer die Zertifizierung der Policy. */
+  resolver?: AddressResolver;
   /** Höchstzahl Ausgangsverbindungen je Aufruf. */
   maxRequests?: number;
   maxResponseBytes?: number;
@@ -65,7 +79,11 @@ export class MediatedFunctionEgress {
   private readonly fetchFn: typeof fetch;
 
   constructor(options: MediatedEgressOptions = {}) {
-    this.fetchFn = options.fetchFn ?? fetch;
+    // Ohne eingespeisten Transport wird der geprueften Weg genommen: Der Name
+    // wird aufgeloest, jede Adresse geprueft und dann genau zu ihr verbunden.
+    // Die Allowlist allein reicht nicht, denn ein Name kann jederzeit auf eine
+    // interne Adresse zeigen.
+    this.fetchFn = options.fetchFn ?? createGuardedFetch({ resolver: options.resolver });
     this.maxRequests = bounded(options.maxRequests ?? 10, 1, 100);
     this.maxResponseBytes = bounded(options.maxResponseBytes ?? 256 * 1024, 1024, 4 * 1024 * 1024);
     this.maxRequestBytes = bounded(options.maxRequestBytes ?? 64 * 1024, 256, 1024 * 1024);
@@ -125,8 +143,10 @@ export class MediatedFunctionEgress {
         signal: controller.signal,
       });
       return await bounded_response(response, this.maxResponseBytes);
-    } catch {
-      // Die Ursache kann Ziel, Header oder Netzwerkdetails tragen.
+    } catch (error) {
+      // Die Ursache kann Ziel, Header oder Netzwerkdetails tragen und bleibt
+      // deshalb draussen. Nur die Unterscheidung selbst wird weitergereicht.
+      if (error instanceof EgressBlockedError) return { error: "EGRESS_BLOCKED" };
       return { error: "EGRESS_FAILED" };
     } finally {
       clearTimeout(timer);

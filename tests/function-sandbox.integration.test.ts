@@ -170,6 +170,22 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     expect(result.body).toMatchObject({ allowed: 3, refused: 3 });
   });
 
+  it("refuses an allowlisted origin whose name points at a private address", async () => {
+    // Die Allowlist allein genuegt nicht: Ein Name gehoert dem, der ihn
+    // betreibt, und darf jederzeit auf 169.254.169.254 oder 10.0.0.5 zeigen.
+    // Geprueft wird deshalb die Adresse, nicht der Name.
+    const mediated = new DockerFunctionSandbox({
+      allowLocalImageId: true,
+      egress: new MediatedFunctionEgress({
+        resolver: { async resolve() { return [{ address: "169.254.169.254", family: 4 as const }]; } },
+      }),
+    });
+    const result = await call({ mode: "mediated" }, {
+      egressOrigins: Object.freeze(["https://api.example.com"]),
+    }, mediated);
+    expect(result.body).toMatchObject({ outcome: { error: "EGRESS_BLOCKED" } });
+  });
+
   it("still denies a direct connection even while mediation is available", async () => {
     // Der Kanal ersetzt das Netz, er ergaenzt es nicht.
     const mediated = new DockerFunctionSandbox({

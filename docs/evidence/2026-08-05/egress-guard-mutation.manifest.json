@@ -1,0 +1,15 @@
+{
+  "stack": "docker-function-egress-guard-mutation",
+  "log": "egress-guard-mutation.log",
+  "commit": "1b27aba8bb99c8947aee759658558d39c6ea69c0",
+  "commitSubject": "design: Startseite als Pruefprotokoll neu komponiert",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 22 passed (23)",
+  "passed": 22,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

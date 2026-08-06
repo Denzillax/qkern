@@ -1,3 +1,4 @@
+import { createGuardedFetch } from "@/lib/server/net/guarded-fetch";
 import type { WebhookTransportPort } from "@/lib/server/compute/webhooks";
 
 const ACKNOWLEDGEMENT_HEADER = "x-qkern-delivery-id";
@@ -26,7 +27,10 @@ export class FetchWebhookTransport implements WebhookTransportPort {
   private readonly fetchFn: typeof fetch;
 
   constructor(private readonly options: FetchWebhookTransportOptions = {}) {
-    this.fetchFn = options.fetchFn ?? fetch;
+    // Wie beim Functions-Egress: aufloesen, pruefen, dann zur geprueften
+    // Adresse verbinden. Ein Empfaenger, dessen Name auf 169.254.169.254
+    // zeigt, ist kein Empfaenger.
+    this.fetchFn = options.fetchFn ?? createGuardedFetch();
   }
 
   async send(request: Readonly<{

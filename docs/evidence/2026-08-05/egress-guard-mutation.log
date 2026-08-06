@@ -1,0 +1,49 @@
+Docker-Server 29.5.3
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image sha256:9da92b0329cacffbc9c41b360befe511a19d7983c01f6f39ee84690731093a8a
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-sandbox.integration.test.ts (18 tests | 1 failed) 23052ms
+     × refuses an allowlisted origin whose name points at a private address 468ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > refuses an allowlisted origin whose name points at a private address
+AssertionError: expected { outcome: { error: 'EGRESS_FAILED' } } to match object { Object (outcome) }
+
+- Expected
++ Received
+
+  {
+    "outcome": {
+-     "error": "EGRESS_BLOCKED",
++     "error": "EGRESS_FAILED",
+    },
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:186:25
+    184|       egressOrigins: Object.freeze(["https://api.example.com"]),
+    185|     }, mediated);
+    186|     expect(result.body).toMatchObject({ outcome: { error: "EGRESS_BLOC…
+       |                         ^
+    187|   });
+    188|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 22 passed (23)
+   Start at  18:34:39
+   Duration  34.47s (transform 173ms, setup 0ms, import 273ms, tests 33.87s, environment 0ms)
+
+EXIT=1
+EXIT=1

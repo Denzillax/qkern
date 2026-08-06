@@ -134,3 +134,15 @@ fielen um, kein anderer.
 
 Aufgeweicht wurden der exakte Origin-Vergleich (auf einen Präfixvergleich) und
 das Anfragebudget je Aufruf. Genau die zwei zugehörigen Fälle fielen um.
+
+## Läufe zu Release 1.27 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-05/egress-guard-run1.log` | Docker 29.5 und PostgreSQL 17 | 23 von 23, exit 0 |
+| `2026-08-05/egress-guard-run2.log` | Docker 29.5 und PostgreSQL 17 | 23 von 23, exit 0, Wiederholung |
+| `2026-08-05/egress-guard-mutation.log` | Docker 29.5 und PostgreSQL 17 | **22 von 23, exit 1 — absichtlich** |
+
+Aufgeweicht wurden die Sperre des Link-local-Bereichs (dort liegt der
+Metadatendienst) und die Prüfung aller aufgelösten Adressen statt nur der
+ersten. Vier lokale Fälle und der Container-Fall fielen um.

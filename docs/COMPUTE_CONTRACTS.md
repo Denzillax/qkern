@@ -55,9 +55,14 @@ Bild liefe nach einem Abschalten weiter.
 `maxConcurrency` wird seit `1.23.0` gespeichert und seit `1.24.0` beim Aufruf
 durchgesetzt — allerdings **prozesslokal**, nicht clusterweit.
 
-Ein Production-Adapter muss zusätzlich DNS-Pinning und eine Sperre privater
-Adressbereiche im Egress-Pfad, ein Ephemeral-Disk-Limit und Kill-Evidenz
-liefern. Es gibt weiterhin keinen Deployment-Weg für Function-Images und keine
+Seit `1.27.0` gilt **DNS-Pinning** für jede Ausgangsverbindung: Der Name wird
+einmal aufgelöst, **jede** zurückgegebene Adresse muss öffentlich sein, und
+danach wird zu genau der geprüften Adresse verbunden. Der Name bleibt SNI und
+erwarteter Zertifikatsname. Ohne dieses Festhalten bliebe zwischen Prüfung und
+Verbindungsaufbau ein Rebinding-Fenster offen.
+
+Ein Production-Adapter muss zusätzlich ein Ephemeral-Disk-Limit und
+Kill-Evidenz liefern. Es gibt weiterhin keinen Deployment-Weg für Function-Images und keine
 Policy je Function für anonyme Aufrufe.
 
 ## Webhooks
@@ -81,9 +86,11 @@ eine ausdrückliche Freischaltung verlangt und sich weigert, in Produktion
 überhaupt zu existieren. Ist ein Vault konfiguriert, wird der Umgebungs-Provider
 gar nicht erst gebaut.
 
-Der Production-Transport muss DNS einmal auflösen, öffentliche IPs pinnen, alle
-privaten/Link-local/Metadata-Netze nach IPv4 und IPv6 blockieren und Rebinding
-verhindern. Dieser Netzwerkadapter ist noch nicht enthalten.
+Der Transport wendet seit `1.27.0` dasselbe DNS-Pinning an: einmal auflösen,
+jede Adresse gegen die Sperre privater, Link-local- und Metadaten-Netze nach
+IPv4 und IPv6 prüfen, die geprüfte Adresse festhalten und damit Rebinding
+verhindern. Dieselbe Prüfung gilt für
+den Functions-Egress.
 
 ## Cron
 

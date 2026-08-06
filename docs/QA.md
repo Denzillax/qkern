@@ -785,3 +785,34 @@ Lokal 912 bestanden, 0 fehlgeschlagen.
 Nicht erbracht: eine Zertifizierung gegen einen echten externen HTTPS-Server
 (der ausgehende Aufruf laeuft in den Faellen gegen ein eingespeistes `fetch`),
 DNS-Pinning und eine Sperre privater Adressbereiche im Egress-Pfad.
+
+## Egress-Haertung — Release 1.27
+
+Neununddreissig lokale Faelle decken die Adresspolicy ab, siebenundzwanzig davon
+abzuweisende Adressen: Loopback, alle drei privaten Bereiche, Carrier-Grade NAT,
+Link-local samt Metadatendienst, "dieses Netz", Multicast, Broadcast, Benchmark-
+und Dokumentationsbereiche, 6to4-Relay; auf der IPv6-Seite Loopback,
+unspezifiziert, Unique Local, Link-local, Multicast, Dokumentation, Teredo und
+6to4; dazu IPv4-mapped IPv6, ohne das `::ffff:127.0.0.1` die gesamte
+IPv4-Pruefung umginge.
+
+Fuenf weitere Faelle pruefen das Auflösen: die geprüfte Adresse kommt zurueck,
+eine einzige nicht oeffentliche Adresse unter mehreren weist den ganzen Namen
+ab, ein Name ohne Adresse wird abgewiesen, ein unmoeglicher Name wird gar nicht
+erst aufgeloest, und weder Name noch Adresse stehen in der Ausnahme.
+
+Ein Fall laeuft im echten Container: Eine allowlistete Origin, deren Name auf
+`169.254.169.254` zeigt, wird mit `EGRESS_BLOCKED` abgewiesen. Damit ist die
+Kette Definition, Vermittler, Adresspolicy in einem Lauf belegt.
+
+Mutationsprobe: Link-local durchgelassen und statt aller Adressen nur die erste
+geprueft — vier lokale Faelle und der Container-Fall fallen um.
+Protokoll: `docs/evidence/2026-08-05/egress-guard-mutation.log`.
+
+Checkpoint `1.27.0` am 6. August 2026: **23 von 23** Faellen des
+Functions-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 951 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: eine Zertifizierung gegen einen echten externen HTTPS-Server.
+Der geprüfte Weg wird mit einem eingespeisten Resolver belegt, nicht mit einer
+echten TLS-Verbindung nach draussen.

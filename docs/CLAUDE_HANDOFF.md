@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.26.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.27.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,10 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.26.0`
-- Aktueller Slice: 1.26 Vermittelter Egress — `lib/server/compute/function-egress.ts`
+- Paketversion: `1.27.0`
+- Aktueller Slice: 1.27 Egress-Haertung — `lib/server/net/address-policy.ts`, `guarded-fetch.ts`
+- Jede Ausgangsverbindung: Namen aufloesen, jede Adresse pruefen, zur geprueften verbinden
+- Vorheriger Slice: 1.26 Vermittelter Egress — `lib/server/compute/function-egress.ts`
 - Der Container behaelt `--network none`; Ausgangsverbindungen laufen zeilenweise ueber stdio
 - Vorheriger Slice: 1.25 Signaturschluessel aus dem Vault — `lib/server/compute/webhook-secret-vault.ts`
 - Fuenfter Zertifizierungslauf: `npm run test:vault:docker` (HashiCorp Vault 1.18 im Dev-Modus)
