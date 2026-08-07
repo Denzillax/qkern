@@ -1394,3 +1394,33 @@ Die Zuordnung von Behauptung zu Stack steht als Liste im Test und ist damit
 selbst handgepflegt — sie faellt aber laut aus, wenn ein Stack fehlt. Und die
 uebrigen Zahlen in `STATUS.md` (Real-DB-Faelle je Modul, uebersprungene Faelle)
 bleiben ungeprueft.
+
+## Die letzte ungepruefte Zahl — Release 1.40
+
+Release 1.39 hat die Zertifizierungszahlen an die Manifeste gebunden und
+ausdruecklich offen gelassen, dass die Zahlen der Fortschrittstabelle weiter
+ungeprueft bleiben. Beim Nachzaehlen stimmten fuenf von sechs: Control Plane 9,
+Generated Data API 2, Object Storage 6, Project Queues 5, Usage Metering 20.
+
+Die sechste war falsch — und zwar die einzige, die niemand rekonstruieren
+konnte. „Compute Contracts | 116 Faelle" war ein ueber viele Releases von Hand
+fortgeschriebener Wert ohne Ableitung; zaehlbar sind 40 Real-DB-Faelle plus 23
+im Functions-Lauf und 10 gegen den echten HTTPS-Empfaenger, also 73.
+
+Eine Zahl, die nur durch Fortschreiben entsteht, ist keine Messung. Die Zeile
+nennt jetzt die drei Bestandteile getrennt, und ein Vertragstest zaehlt die
+Real-DB-Faelle je Modul aus den Testdateien.
+
+Gezaehlt wird der **Quelltext**, nicht ein Lauf. Das ist die schwaechere Aussage
+und die richtige an dieser Stelle: Behauptet wird die Anzahl der Faelle, nicht
+ihr Ergebnis. Ob sie bestehen, sagt der Vertrag aus Release 1.39.
+
+Mutationsprobe: 40 auf 41 verfaelscht — der Fall faellt um.
+
+Checkpoint `1.40.0` am 7. August 2026: Lokal 990 bestanden, 0 fehlgeschlagen;
+die sechs Zertifizierungslaeufe unveraendert gegenueber `1.38.0`.
+
+Nicht erbracht: Die Zuordnung Modul zu Testdateien steht als Liste im Test und
+ist selbst handgepflegt — wer eine neue Real-DB-Datei anlegt und sie dort
+vergisst, faellt nicht auf. Ungeprueft bleiben ausserdem die Zahl der
+uebersprungenen Faelle und die Zahlen in `docs/QA.md` selbst.

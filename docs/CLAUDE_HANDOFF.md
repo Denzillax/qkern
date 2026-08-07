@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.39.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.40.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.39.0`
-- Aktueller Slice: 1.39 Zahlen pruefen sich — `tests/status-numbers-contract.test.ts`
+- Paketversion: `1.40.0`
+- Aktueller Slice: 1.40 Die letzte ungepruefte Zahl — `tests/status-module-counts-contract.test.ts`
+- Die Fortschrittstabelle nennt jetzt nur noch Zahlen, die aus den Testdateien zaehlbar sind
+- Compute Contracts behauptete 116 Faelle; rekonstruierbar waren 73
+- Vorheriger Slice: 1.39 Zahlen pruefen sich — `tests/status-numbers-contract.test.ts`
 - Jede Zertifizierungszahl in `STATUS.md` muss dem Maximum der gruenen Manifeste ihres Stacks entsprechen
 - `STATUS.md` nennt **keine** Zahl mehr, die kein Manifest belegen kann; die lokalen Vitest-Zahlen stehen in `docs/QA.md`
 - Neuer Stack? Dann die Zuordnung in `CLAIMS` ergaenzen, sonst schlaegt der Vertrag laut fehl
