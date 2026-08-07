@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.36.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.37.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -41,7 +41,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **106 von 106 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **108 von 108 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
@@ -55,7 +55,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Functions Ende zu Ende** | **Registry → Datenbank → Dienst → Container in einem Lauf zertifiziert**; seit `1.35.0` ohne jede ersetzte Stelle |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 169 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
+Die 171 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 
@@ -115,7 +115,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
-| Realtime | **abgeschlossen und zertifiziert** | Scheduler fuer die prune-Pfade; Runtime-Komposition gegen echtes PostgreSQL |
+| Realtime | **abgeschlossen und zertifiziert** | Runtime-Komposition gegen echtes PostgreSQL; Lueckennachweis bei zu langem Poller-Ausfall |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |

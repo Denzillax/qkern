@@ -1247,3 +1247,45 @@ teilen nichts ausser der Datenbank, aber ein Lauf mit zwei echten Prozessen und
 einem echten Absturz zwischen Belegen und Freigeben fehlt. Die Lease ist fest
 auf Timeout plus 30 Sekunden; eine Function, die ihren Timeout ueberschreitet,
 weil der Host haengt, gibt ihren Platz zu frueh frei.
+
+## Aufraeumen laeuft — Release 1.37
+
+Drei `prune`-Pfade gab es seit Release 1.11 beziehungsweise 1.13. **Keiner
+hatte einen Aufrufer.** Der Change-Poller lehnt das Aufraeumen ausdruecklich ab,
+mit gutem Grund — eine Instanz weiss nicht, was andere noch brauchen — und ein
+eigener Test haelt das seit damals fest. Damit war die Aufgabe benannt und blieb
+liegen: Event-Log und Change-Feed wuchsen unbegrenzt.
+
+Das ist dasselbe Muster wie beim Realtime-Poller, beim dauerhaften Event-Log,
+bei der Webhook-Outbox, bei der Functions-Sandbox und bei den Usage-Emittern —
+zum sechsten Mal in diesem Sprint. Diesmal war es besonders gut versteckt, weil
+ein Test ausdruecklich belegte, dass **nicht** aufgeraeumt wird.
+
+Zwei Faelle im PostgreSQL-Lauf messen die Wirkung: Von drei Ereignissen mit 30,
+10 und einem Tag Alter bleibt bei sieben Tagen Aufbewahrung genau eines uebrig;
+und die Ereignisse einer anderen Organisation bleiben unberuehrt.
+
+Sechs lokale Faelle decken die Runtime ab: Sie raeumt jeden konfigurierten Scope
+auf statt nur die abonnierten; sie haelt die zwei Fenster auseinander; ein nicht
+erreichbares Projekt haelt die uebrigen nicht auf; ohne Change-Quelle bleibt der
+Feed unberuehrt; eine Aufbewahrung von null Millisekunden wird abgewiesen; und
+ein `stop` wirkt zwischen zwei Projekten, nicht erst nach der Runde.
+
+Welche Projekte aufgeraeumt werden, steht **ausdruecklich** in der Umgebung.
+Die Abonnements einer Instanz waeren der falsche Massstab: Gerade das Projekt,
+dem niemand zuhoert, waechst unbeobachtet.
+
+Mutationsprobe: Das Aufbewahrungsfenster ignoriert, also bis `now` geloescht —
+genau der Fall faellt um, der Altes von Neuem unterscheidet.
+Protokoll: `docs/evidence/2026-08-06/realtime-retention-mutation.log`.
+
+Checkpoint `1.37.0` am 6. August 2026: **108 von 108** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 982 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Die Tenant-Grenze im zweiten Fall traegt **RLS**, nicht der
+Aufraeumer — sie laesst sich vom Adapter aus nicht brechen und ist deshalb auch
+nicht durch eine Mutation belegt. Aufbewahrt wird nach Alter, nicht nach
+Position: Ein Poller, der laenger als das Fenster ausgefallen war, verliert
+Aenderungen; die Cursor-Pruefung meldet die Luecke, statt sie zu verschweigen.
+Ein Lauf, der genau das zeigt, fehlt.

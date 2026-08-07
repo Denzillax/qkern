@@ -14,6 +14,7 @@ import type {
 } from "@/lib/server/realtime/model";
 import { PrefixRealtimeAuthorization } from "@/lib/server/realtime/policy";
 import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
+import { RealtimeRetentionRuntime } from "@/lib/server/realtime/retention-runtime";
 import { RealtimeService } from "@/lib/server/realtime/service";
 
 /**
@@ -218,5 +219,100 @@ describe.runIf(enabled)("Realtime PostgreSQL certification", () => {
       `UPDATE realtime_events SET event='tampered'
         WHERE organization_id=$1 AND channel=$2`, [organizationId, channel],
     )).rejects.toMatchObject({ message: expect.stringContaining("append-only") });
+  });
+});
+
+/**
+ * Aufbewahrung gegen echtes PostgreSQL.
+ *
+ * Der `prune`-Pfad existiert seit Release 1.11 und hatte bis 1.36 **keinen
+ * Aufrufer**. Der Log wuchs damit unbegrenzt. Gemessen wird hier nicht der
+ * Pfad, sondern seine Wirkung: Was alt ist, verschwindet; was jung ist und was
+ * einem anderen Tenant gehoert, bleibt.
+ */
+describe.runIf(enabled)("Realtime retention PostgreSQL certification", () => {
+  const controlUser = randomUUID();
+  const organizationId = randomUUID();
+  const projectId = randomUUID();
+  const otherOrganizationId = randomUUID();
+  const otherProjectId = randomUUID();
+  const scope: RealtimeScope = { organizationId, projectId, environment: "development" };
+
+  let owner: SqlPool;
+  let runtimePool: SqlPool;
+  let eventLog: PostgresRealtimeEventLog;
+
+  async function project(organization: string, project: string, label: string) {
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+    [organization, label, `${label}-${organization}`, controlUser]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, $3, $4, 'test', 'ready', $5)`,
+    [project, organization, label, `${label}-${project}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [organization, project, `managed:${project}`]);
+  }
+
+  async function event(organization: string, project: string, sequence: number, ageDays: number) {
+    await owner.query(`INSERT INTO realtime_events
+      (organization_id, project_id, environment, channel, sequence, event, payload, actor_role, created_at)
+      VALUES ($1,$2,'development','retention',$3,'probe','{}','service_role', now() - ($4 || ' days')::interval)`,
+    [organization, project, sequence, String(ageDays)]);
+  }
+
+  async function remaining(organization: string, project: string) {
+    const result = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM realtime_events
+        WHERE organization_id=$1 AND project_id=$2`, [organization, project],
+    );
+    return Number(result.rows[0].count);
+  }
+
+  beforeAll(async () => {
+    owner = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
+    runtimePool = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
+    );
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [controlUser, `retention-owner-${controlUser}@qkern.test`]);
+    await project(organizationId, projectId, "Retention");
+    await project(otherOrganizationId, otherProjectId, "Retention Other");
+    eventLog = new PostgresRealtimeEventLog(new PostgresControlPlane(runtimePool));
+  });
+
+  afterAll(async () => {
+    await Promise.allSettled([owner?.end(), runtimePool?.end()]);
+  });
+
+  it("removes what is old and keeps what is not", async () => {
+    await event(organizationId, projectId, 1, 30);
+    await event(organizationId, projectId, 2, 10);
+    await event(organizationId, projectId, 3, 1);
+
+    const runtime = new RealtimeRetentionRuntime({
+      eventLog,
+      scopes: [scope],
+      eventRetentionMs: 7 * 86_400_000,
+      changeRetentionMs: 86_400_000,
+    });
+    await expect(runtime.runOnce()).resolves.toMatchObject({ events: 2 });
+    expect(await remaining(organizationId, projectId)).toBe(1);
+  });
+
+  it("never reaches into another tenant", async () => {
+    // Die Runtime-Rolle sieht durch RLS nur die eigene Organisation. Ein
+    // Aufraeumer, der das nicht einhaelt, waere ein Cross-Tenant-Loeschen.
+    await event(otherOrganizationId, otherProjectId, 1, 30);
+
+    const runtime = new RealtimeRetentionRuntime({
+      eventLog,
+      scopes: [scope],
+      eventRetentionMs: 60_000,
+      changeRetentionMs: 60_000,
+    });
+    await runtime.runOnce();
+    expect(await remaining(otherOrganizationId, otherProjectId)).toBe(1);
   });
 });

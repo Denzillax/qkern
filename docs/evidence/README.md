@@ -303,3 +303,18 @@ den Typ eines Parameters nicht bestimmen, der nur in `IS NOT NULL` oder in
 `$5 - interval` vorkommt. Eine Probe, die das Werkzeug zerstört statt die Zusage
 aufzuweichen, sagt nichts aus; sie ist deshalb nicht abgelegt, sondern in
 `docs/QA.md` und `docs/RELEASE_1.36.md` beschrieben.
+
+## Läufe zu Release 1.37 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/realtime-retention-run1.log` | PostgreSQL 17 | 108 von 108, exit 0, 35 Migrationen |
+| `2026-08-06/realtime-retention-run2.log` | PostgreSQL 17 | 108 von 108, exit 0, Wiederholung |
+| `2026-08-06/realtime-retention-mutation.log` | PostgreSQL 17 | **107 von 108, exit 1 — absichtlich** |
+
+Das Aufbewahrungsfenster wurde ignoriert, also bis `now` gelöscht. Genau der
+Fall fiel um, der Altes von Neuem unterscheidet.
+
+Die Tenant-Grenze des zweiten Falls trägt RLS und nicht der Aufräumer; sie lässt
+sich vom Adapter aus nicht brechen und ist deshalb nicht durch eine Mutation
+belegt.

@@ -23,6 +23,8 @@ import { ControlPlaneRealtimeProjectConnection } from
   "@/lib/server/realtime/project-connection";
 import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
 import { MemoryRealtimeEventLog } from "@/lib/server/realtime/repository";
+import type { RealtimeScope } from "@/lib/server/realtime/model";
+import { RealtimeRetentionRuntime } from "@/lib/server/realtime/retention-runtime";
 import { RealtimeService } from "@/lib/server/realtime/service";
 import { createRealtimeWebSocketServer } from "@/lib/server/realtime/websocket-server";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
@@ -145,6 +147,31 @@ if (changeSource) {
   }, integer("QKERN_REALTIME_CHANGE_RECONCILE_MS", 2_000, 250, 60_000));
 }
 
+// Aufraeumen hat jetzt einen Besitzer. Beide `prune`-Pfade existierten seit
+// Release 1.13 beziehungsweise 1.15, und niemand rief sie auf: Der Poller tut es
+// ausdruecklich nicht, weil eine Instanz nicht weiss, was andere noch brauchen.
+// Damit war die Aufgabe benannt und blieb liegen.
+//
+// Welche Projekte aufgeraeumt werden, steht ausdruecklich in der Umgebung — wie
+// bei `QKERN_COMPUTE_SCOPES_JSON` und aus demselben Grund: RLS gibt keine
+// organisationsuebergreifende Suche her. Die Abonnements dieser Instanz waeren
+// der falsche Massstab, denn gerade das Projekt ohne Zuhoerer waechst
+// unbeobachtet.
+const retentionScopes = parseRetentionScopes(process.env.QKERN_REALTIME_RETENTION_SCOPES_JSON);
+// Der Memory-Log kennt keine Aufbewahrung: Er verliert ohnehin alles beim
+// Neustart. Aufraeumen gibt es nur, wo etwas dauerhaft liegt.
+const retention = retentionScopes.length > 0 && !ephemeralLog
+  ? new RealtimeRetentionRuntime({
+    eventLog: eventLog as PostgresRealtimeEventLog,
+    changeSource,
+    scopes: retentionScopes,
+    eventRetentionMs: integer("QKERN_REALTIME_EVENT_RETENTION_MS", 7 * 86_400_000, 60_000, 90 * 86_400_000),
+    changeRetentionMs: integer("QKERN_REALTIME_CHANGE_RETENTION_MS", 86_400_000, 60_000, 90 * 86_400_000),
+    intervalMs: integer("QKERN_REALTIME_RETENTION_INTERVAL_MS", 3_600_000, 1_000, 86_400_000),
+  })
+  : undefined;
+const retentionLoop = retention?.run();
+
 const port = await runtime.listen();
 console.error(
   `QKERN Realtime listening on ws://127.0.0.1:${port} with protocol qkern.realtime.v1 `
@@ -157,6 +184,8 @@ async function stop() {
   stopping = true;
   if (reconcileTimer) clearInterval(reconcileTimer);
   clearInterval(usageFlushTimer);
+  retention?.stop();
+  await retentionLoop;
   await changeRegistry?.stop();
   await runtime.close();
   // Nach dem Schliessen der Verbindungen: Was bis zuletzt gezaehlt wurde, soll
@@ -190,4 +219,31 @@ function allowedOrigins() {
     }
     return url.origin;
   }));
+}
+
+/**
+ * Liest die Scope-Liste fuer die Aufbewahrung. Eine unlesbare Liste ist ein
+ * Konfigurationsfehler und wird nicht stillschweigend zu "keine Scopes":
+ * Sonst laeuft der Prozess weiter und raeumt nie auf.
+ */
+function parseRetentionScopes(raw: string | undefined): RealtimeScope[] {
+  if (!raw?.trim()) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); }
+  catch { throw new Error("QKERN_REALTIME_RETENTION_SCOPES_JSON must be valid JSON."); }
+  if (!Array.isArray(parsed) || parsed.length > 200) {
+    throw new Error("QKERN_REALTIME_RETENTION_SCOPES_JSON must be an array of at most 200 scopes.");
+  }
+  return parsed.map((entry) => {
+    const scope = entry as Partial<RealtimeScope>;
+    if (typeof scope.organizationId !== "string" || typeof scope.projectId !== "string" ||
+        !["development", "staging", "production"].includes(String(scope.environment))) {
+      throw new Error("QKERN_REALTIME_RETENTION_SCOPES_JSON entries need organizationId, projectId and environment.");
+    }
+    return {
+      organizationId: scope.organizationId,
+      projectId: scope.projectId,
+      environment: scope.environment as RealtimeScope["environment"],
+    };
+  });
 }
