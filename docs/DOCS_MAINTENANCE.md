@@ -28,3 +28,21 @@ ausführbare Vertrag und die zugehörigen Dokumente auseinanderlaufen.
 
 Die Regeln sind zusätzlich in `AGENTS.md` verankert, damit spätere Agenten sie vor
 Änderungen sehen.
+
+## Zahlen in `STATUS.md`
+
+Seit Release 1.39 prueft `tests/status-numbers-contract.test.ts` jede
+Zertifizierungszahl gegen die archivierten Manifeste unter `docs/evidence/`.
+Wer eine solche Zahl aendert, ohne dass ein gruener Lauf sie deckt, bekommt
+einen roten Test — nicht erst ein Dutzend Releases spaeter.
+
+Zwei Regeln folgen daraus:
+
+1. **Erst der Lauf, dann die Zahl.** Ein Manifest entsteht mit
+   `scripts/certification-manifest.mjs` aus einem echten Rohlog.
+2. **Keine Zahl ohne moeglichen Beleg.** Was kein Manifest decken kann, gehoert
+   nicht als absolute Zahl in die Releasezustand-Tabelle. Die lokalen
+   Vitest-Zahlen stehen deshalb als Checkpoint in `docs/QA.md`.
+
+Kommt ein neuer Zertifizierungsstack dazu, muss seine Zuordnung in der Liste
+`CLAIMS` des Tests ergaenzt werden. Fehlt sie, faellt der Vertrag laut aus.

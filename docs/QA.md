@@ -1350,3 +1350,47 @@ bleibt diese Tabelle die einzige, die absichtlich waechst. Auch
 `usage_counters`, `project_function_slots` (abgelaufene Zeilen ohne neuen
 Aufruf) und `audit_logs` haben keinen Aufraeumer; die ersten beiden sind
 klein und beschraenkt, das dritte ist absichtlich unveraenderlich.
+
+## Zahlen pruefen sich — Release 1.39
+
+`STATUS.md` nennt sich selbst „Teil der Definition of Done". Der bestehende
+Doku-Vertrag prueft dort Zeichenketten und abgeleitete Dateinamen — aber **keine
+einzige Zahl**.
+
+Aufgefallen ist das an der eigenen Zeile: Die lokalen Vitest-Zahlen standen
+ueber ein Dutzend Releases hinweg auf `951 bestanden, 138 uebersprungen`,
+waehrend es laengst 987 und 173 waren. Nichts schlug an. Ein Statusdokument,
+dessen Zahlen niemand prueft, ist genau die Art Behauptung, gegen die dieses
+Projekt seine Mutationsproben faehrt — nur eine Ebene hoeher.
+
+Zwei Faelle schliessen das:
+
+**Jede Zertifizierungszahl muss durch ein archiviertes Manifest gedeckt sein.**
+Geprueft wird gegen das Maximum der gruenen Laeufe eines Stacks. Die Suiten
+wachsen; das Maximum ist damit der juengste Stand. Schrumpft eine Suite wirklich
+einmal, verlangt der Vertrag eine bewusste Bearbeitung — und das ist richtig so.
+Zusaetzlich muss „X von Y" mit X gleich Y stehen: Ein roter Lauf, als gruen
+ausgegeben, faellt damit ebenfalls auf.
+
+**Keine Zahl ohne moeglichen Beleg.** Die lokale Vitest-Zeile traegt keine
+absoluten Werte mehr; sie verweist auf die Checkpoints in dieser Datei. Eine
+Zahl, die niemand prueft, ist schlechter als keine.
+
+Mutationsprobe: Die PostgreSQL-Behauptung auf 111 verfaelscht und die alte
+Vitest-Zeile zurueckgeholt — beide Faelle fallen um, jeder an seiner Stelle.
+
+Der erste Entwurf des Tests baute den Suchausdruck aus einer Vorlage zusammen
+und war deshalb selbst kaputt. Er sucht jetzt zeilenweise: Ein Regex, den erst
+eine Vorlage erzeugt, ist eine Fehlerquelle mehr in einem Test, der Fehler
+finden soll.
+
+Checkpoint `1.39.0` am 6. August 2026: Lokal 989 bestanden, 0 fehlgeschlagen;
+die sechs Zertifizierungslaeufe unveraendert gegenueber `1.38.0`.
+
+Nicht erbracht: Der Vertrag prueft die **Zahl**, nicht die **Aktualitaet**. Ein
+gruenes Manifest von gestern deckt eine Behauptung von heute, solange die Zahl
+stimmt; der Commit im Manifest wird nicht gegen den aktuellen Stand geprueft.
+Die Zuordnung von Behauptung zu Stack steht als Liste im Test und ist damit
+selbst handgepflegt — sie faellt aber laut aus, wenn ein Stack fehlt. Und die
+uebrigen Zahlen in `STATUS.md` (Real-DB-Faelle je Modul, uebersprungene Faelle)
+bleiben ungeprueft.

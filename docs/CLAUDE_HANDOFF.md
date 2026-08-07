@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.38.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.39.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.38.0`
-- Aktueller Slice: 1.38 Was noch waechst — `lib/server/compute/webhook-retention-runtime.ts`
+- Paketversion: `1.39.0`
+- Aktueller Slice: 1.39 Zahlen pruefen sich — `tests/status-numbers-contract.test.ts`
+- Jede Zertifizierungszahl in `STATUS.md` muss dem Maximum der gruenen Manifeste ihres Stacks entsprechen
+- `STATUS.md` nennt **keine** Zahl mehr, die kein Manifest belegen kann; die lokalen Vitest-Zahlen stehen in `docs/QA.md`
+- Neuer Stack? Dann die Zuordnung in `CLAIMS` ergaenzen, sonst schlaegt der Vertrag laut fehl
+- Vorheriger Slice: 1.38 Was noch waechst — `lib/server/compute/webhook-retention-runtime.ts`
 - Zugestellte und tote Zustellungen haben getrennte Fenster; **wartende bleiben unberuehrt**
 - `usage_events` bekommt bewusst **keinen** Aufraeumer: Trigger und fehlendes DELETE-Recht sind Absicht, die Antwort auf Wachstum ist Export
 - Regel fuer Mutationsproben: nie die Parameterzahl oder einen untypisierten Bezug aendern — PostgreSQL wirft dann, und die Probe misst das Werkzeug statt der Zusage
