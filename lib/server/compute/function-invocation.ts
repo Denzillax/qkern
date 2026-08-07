@@ -9,14 +9,24 @@ import { FunctionInvocationError, type FunctionInvoker } from "@/lib/server/comp
 import type { FunctionInvocationResult } from "@/lib/server/compute/model";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
+import type { FunctionConcurrencyPort, FunctionSlot } from "@/lib/server/compute/function-concurrency";
 
 const NAME = /^[a-z][a-z0-9_-]{2,62}$/;
+/** Zuschlag auf den Timeout, damit ein Platz nie vor seinem Container abläuft. */
+const SLOT_MARGIN_MS = 30_000;
 
 export type FunctionInvocationServiceOptions = {
   repository: Pick<ComputeDefinitionRepository, "findFunctionByName">;
   invoker: Pick<FunctionInvoker, "invoke">;
   /** Ohne Emitter zählt nichts — und nichts ändert sich am Verhalten. */
   usage?: UsageEmitterPort;
+  /**
+   * Teilt die Nebenläufigkeitsgrenze über Prozesse hinweg.
+   *
+   * Ohne ihn bleibt es bei der prozesslokalen Zählung: Die Grenze schützt dann
+   * diesen Host, nicht den Tenant.
+   */
+  concurrency?: FunctionConcurrencyPort;
   now?: () => Date;
   id?: () => string;
   /** Wird beim Abweisen wegen Überlast gerufen. Erhält nur den Namen. */
@@ -100,6 +110,35 @@ export class FunctionInvocationService {
     if (!admission.admitted) throw new ComputeDefinitionError("COMPUTE_QUOTA_EXCEEDED");
 
     this.running.set(record.id, active + 1);
+
+    // Die prozesslokale Zaehlung schuetzt **diesen Host** vor einem Aufrufer,
+    // der beliebig viele Container startet. Sie ersetzt die geteilte Grenze
+    // nicht: Zwei Instanzen zaehlen getrennt, und `maxConcurrency × Instanzen`
+    // ist keine Grenze, sondern ein Vielfaches davon.
+    //
+    // Die Lease ist laenger als der Timeout. Ein Platz, der vor seinem
+    // Container ablaeuft, liesse die Grenze stillschweigend ueberschreiten.
+    let slot: FunctionSlot | null = null;
+    if (this.options.concurrency) {
+      try {
+        slot = await this.options.concurrency.claim(
+          scope, record.id, record.maxConcurrency, record.timeoutMs + SLOT_MARGIN_MS,
+        );
+      } catch {
+        // Eine nicht erreichbare Control Plane darf keinen Aufruf durchlassen,
+        // den die Grenze verboten haette. Hier wird geschlossen gescheitert:
+        // Anders als bei einer kaufmaennischen Quota schuetzt diese Grenze den
+        // Host vor Ueberlast.
+        this.releaseLocal(record.id);
+        throw new ComputeDefinitionError("COMPUTE_AT_CAPACITY");
+      }
+      if (!slot) {
+        this.releaseLocal(record.id);
+        this.options.onRejected?.(record.name);
+        throw new ComputeDefinitionError("COMPUTE_AT_CAPACITY");
+      }
+    }
+
     try {
       return await this.options.invoker.invoke(toDefinition(record), Object.freeze({
         id: invocationId,
@@ -108,13 +147,18 @@ export class FunctionInvocationService {
         requestedAt: this.now().toISOString(),
       }));
     } finally {
-      // Der Zaehler muss auch nach einem Timeout oder einem Absturz der Sandbox
-      // fallen. Sonst waere die Function nach ein paar Fehlschlaegen dauerhaft
-      // "voll" — und genau das faellt erst im Betrieb auf.
-      const remaining = (this.running.get(record.id) ?? 1) - 1;
-      if (remaining <= 0) this.running.delete(record.id);
-      else this.running.set(record.id, remaining);
+      // Beide Zaehlungen muessen auch nach einem Timeout oder einem Absturz der
+      // Sandbox fallen. Sonst waere die Function nach ein paar Fehlschlaegen
+      // dauerhaft "voll" — und genau das faellt erst im Betrieb auf.
+      this.releaseLocal(record.id);
+      await slot?.release();
     }
+  }
+
+  private releaseLocal(functionId: string): void {
+    const remaining = (this.running.get(functionId) ?? 1) - 1;
+    if (remaining <= 0) this.running.delete(functionId);
+    else this.running.set(functionId, remaining);
   }
 }
 

@@ -1193,3 +1193,57 @@ Ein Lauf gegen eine authentifizierte Registry mit Zertifikat fehlt, und damit
 auch jede Aussage ueber Registry-Zugangsdaten. Einen Deployment-Weg, der ein
 Image eines Betreibers dorthin bringt, gibt es weiterhin nicht: Der Lauf zeigt,
 dass QKERN einen Digest aufloesen kann, nicht wie er entsteht.
+
+## Clusterweite Grenze — Release 1.36
+
+`max_concurrency` steht seit Migration 0033 in der Definition und wurde seit
+Release 1.24 durchgesetzt — **prozesslokal**. Zwei Web-Instanzen zaehlten
+getrennt, die tatsaechliche Obergrenze war also `max_concurrency × Instanzen`.
+Jede Release-Notiz seit 1.23 fuehrte das offen mit.
+
+Ein Platz ist jetzt eine Zeile (Migration 0035). Fuenf Faelle im
+PostgreSQL-Lauf pruefen die Grenze mit **zwei getrennten Diensten**, die nichts
+teilen ausser der Datenbank: Eine belegte Function weist die zweite Instanz ab;
+nach dem Ende der ersten kommt die zweite durch; der Platz eines abgestuerzten
+Prozesses wird nach Ablauf zurueckgeholt; eine belegte Function blockiert keine
+andere; und ein Platz laesst sich nicht verlaengern, sondern nur neu nehmen.
+
+Die prozesslokale Zaehlung bleibt daneben stehen, mit einer eigenen Aufgabe: Sie
+schuetzt **diesen Host** vor einem Aufrufer, der beliebig viele Container
+startet. Die geteilte Grenze schuetzt den Tenant. Beide muessen zustimmen.
+
+Ist die Control Plane nicht erreichbar, wird der Aufruf abgewiesen. Das ist die
+Gegenrichtung zur Usage-Quota aus Release 1.29, und aus gutem Grund: Eine Quota
+ist eine kaufmaennische Grenze, diese hier schuetzt vor Ueberlast.
+
+Mutationsprobe in zwei Wellen. Erste Welle: Der Zaehlweg filtert zusaetzlich
+nach dem Halter — genau der Fehler, den der Kommentar im Adapter beschreibt.
+Genau ein Fall faellt um, naemlich der, der zwei Instanzen gegeneinander stellt.
+Zweite Welle: Ablauf ignoriert und die Unveraenderlichkeit des Platzes
+aufgehoben — genau die zwei zugehoerigen Faelle fallen um.
+Protokolle: `docs/evidence/2026-08-06/function-slots-mutation.log` und
+`function-slots-mutation2.log`.
+
+**Zwei Zwischenlaeufe waren wertlos und sind es wert, genannt zu werden.** Die
+ersten beiden Versuche der zweiten Welle warfen alle fuenf Faelle um statt
+zweier — nicht, weil die Zusage breiter traegt, sondern weil die Mutation
+ungueltiges SQL erzeugte: PostgreSQL kann den Typ eines Parameters nicht
+bestimmen, der nur in `IS NOT NULL` oder in `$5 - interval` vorkommt. Der
+Adapter warf, und `claim` scheitert geschlossen. Eine Mutationsprobe, die das
+Werkzeug zerstoert statt die Zusage aufzuweichen, sagt nichts aus. Erst der
+dritte Versuch — Ablauf ueber einen uralten Vergleichszeitpunkt ausgehebelt,
+SQL unveraendert — traf die zwei vorhergesagten Faelle.
+
+Dabei kam ein zweiter Befund heraus: Das Aufraeumen abgelaufener Plaetze im
+Adapter ist **nicht** das, was die Zusage traegt. Der Ablaufvergleich in der
+Zaehlung tut es. Das Loeschen haelt nur die Tabelle klein; wer es entfernt,
+bricht keinen Fall.
+
+Checkpoint `1.36.0` am 6. August 2026: **106 von 106** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+
+Nicht erbracht: Die zwei Instanzen sind zwei Dienste in einem Prozess. Sie
+teilen nichts ausser der Datenbank, aber ein Lauf mit zwei echten Prozessen und
+einem echten Absturz zwischen Belegen und Freigeben fehlt. Die Lease ist fest
+auf Timeout plus 30 Sekunden; eine Function, die ihren Timeout ueberschreitet,
+weil der Host haengt, gibt ihren Platz zu frueh frei.

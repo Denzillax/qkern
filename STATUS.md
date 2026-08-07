@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 6. August 2026 · Release: `1.35.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 6. August 2026 · Release: `1.36.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 5 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 20 Real-DB-Fälle; **alle sechs Metriken melden**, Realtime auch für CDC; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft | ja — 111 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 116 Fälle, Kette in einem Lauf, ausgehender Weg gegen echtes TLS |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -41,7 +41,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS, CLI-JS und Tarball-Manifeste grün |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **101 von 101 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **106 von 106 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
@@ -55,7 +55,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Functions Ende zu Ende** | **Registry → Datenbank → Dienst → Container in einem Lauf zertifiziert**; seit `1.35.0` ohne jede ersetzte Stelle |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 164 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
+Die 169 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
 Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
 sind. Sie gelten als übersprungen, nie als bestanden.
 

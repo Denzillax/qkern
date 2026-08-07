@@ -281,3 +281,25 @@ dieser Slice gefunden hat.
 Die zweite stoppt die Registry nach dem Push. 15 Fälle fallen um, weil nichts
 mehr zu ziehen ist — der Beleg, dass der Lauf wirklich aus der Registry zieht
 und nicht aus einem Rest im lokalen Zwischenspeicher.
+
+## Läufe zu Release 1.36 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/function-slots-run1.log` | PostgreSQL 17 | 106 von 106, exit 0, 35 Migrationen |
+| `2026-08-06/function-slots-run2.log` | PostgreSQL 17 | 106 von 106, exit 0, Wiederholung |
+| `2026-08-06/function-slots-mutation.log` | PostgreSQL 17 | **105 von 106, exit 1 — absichtlich** |
+| `2026-08-06/function-slots-mutation2.log` | PostgreSQL 17 | **104 von 106, exit 1 — absichtlich** |
+
+Erste Welle: Der Zählweg filtert zusätzlich nach dem Halter. Genau der Fall
+fällt um, der zwei Instanzen gegeneinander stellt.
+
+Zweite Welle: Ablauf ignoriert und die Unveränderlichkeit des Platzes
+aufgehoben. Genau die zwei zugehörigen Fälle fallen um.
+
+Die abgelegte zweite Welle ist der **dritte** Anlauf. Die ersten beiden warfen
+alle fünf Fälle um, weil die Mutation ungültiges SQL erzeugte — PostgreSQL kann
+den Typ eines Parameters nicht bestimmen, der nur in `IS NOT NULL` oder in
+`$5 - interval` vorkommt. Eine Probe, die das Werkzeug zerstört statt die Zusage
+aufzuweichen, sagt nichts aus; sie ist deshalb nicht abgelegt, sondern in
+`docs/QA.md` und `docs/RELEASE_1.36.md` beschrieben.

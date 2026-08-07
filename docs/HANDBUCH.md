@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `1.35.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `1.36.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 

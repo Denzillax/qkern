@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.35.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.36.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.35.0`
-- Aktueller Slice: 1.35 Echte Registry — `registry:2` im Functions-Stack, kein ersetzter Wert mehr in der Kette
+- Paketversion: `1.36.0`
+- Aktueller Slice: 1.36 Clusterweite Grenze — `lib/server/compute/function-concurrency.ts`, Migration 0035
+- Ein Platz ist eine Zeile mit Ablauf; die prozesslokale Zaehlung bleibt als Host-Schutz daneben
+- Der Halter steht in der Zeile, aber nicht in der Zaehlbedingung — sonst uebersaehe eine Instanz die fremden Plaetze
+- Vorheriger Slice: 1.35 Echte Registry — `registry:2` im Functions-Stack, kein ersetzter Wert mehr in der Kette
 - Migration 0034 laesst `host:port` im Image-Bezug zu; der Digest bleibt die bindende Stelle
 - `allowLocalImageId` ist **entfernt**: Das Schlupfloch existierte nur, weil das Test-Image lokal gebaut war
 - Vorheriger Slice: 1.34 Aenderungen zaehlen mit — `deliverChanges` meldet einmal je zugestellter Aenderung
@@ -92,7 +95,7 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0034_project_functions_registry.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0035_project_function_slots.sql`
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`

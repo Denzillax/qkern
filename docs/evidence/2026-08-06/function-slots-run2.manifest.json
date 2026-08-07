@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "function-slots-run2.log",
+  "commit": "a0ff5ad7ad267d1ebdadf5e58fa58b5c20982370",
+  "commitSubject": "release: 1.35.0 Echte Registry",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 35,
+  "testFiles": "18 passed (18)",
+  "tests": "106 passed (106)",
+  "passed": 106,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ConfigurationError } from "@/lib/server/db/errors";
 import { getPostgresPool } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
@@ -8,6 +9,7 @@ import {
 } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
+import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
@@ -77,6 +79,12 @@ export function createFunctionInvocationServiceFromEnv(
       new PostgresControlPlane(getPostgresPool(env)),
     ),
     usage: createUsageEmitterFromEnv("compute", env),
+    // Geteilt statt prozesslokal. Ohne diesen Port waere die tatsaechliche
+    // Obergrenze `maxConcurrency × Instanzen`.
+    concurrency: new PostgresFunctionConcurrency(
+      new PostgresControlPlane(getPostgresPool(env)),
+      `instance:${randomUUID()}`,
+    ),
     invoker: new FunctionInvoker(new DockerFunctionSandbox({
       docker: env.QKERN_FUNCTIONS_CONTAINER_RUNTIME?.trim() || "docker",
       // Ohne Vermittler wird eine Definition mit erlaubten Origins abgewiesen.
