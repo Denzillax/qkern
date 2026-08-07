@@ -337,3 +337,23 @@ Die abgelegte zweite Welle ist der **dritte** Anlauf. Die ersten beiden liessen
 PostgreSQL werfen (`$5 IS NOT NULL`, dann ein unbenutzter Parameter) und warfen
 deshalb den falschen Fall um. Daraus die Regel in `docs/QA.md`: Eine Mutation
 ändert einen Wert oder ein Prädikat, nie die Parameterzahl.
+
+## Läufe zu Release 1.41 (7. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/usage-export-run1.log` | PostgreSQL 17 | 114 von 114, exit 0, 35 Migrationen |
+| `2026-08-06/usage-export-run2.log` | PostgreSQL 17 | 114 von 114, exit 0, Wiederholung |
+| `2026-08-06/usage-export-mutation.log` | PostgreSQL 17 | **113 von 114, exit 1 — absichtlich** |
+| `2026-08-06/usage-export-mutation2.log` | PostgreSQL 17 | **112 von 114, exit 1 — absichtlich** |
+
+Erste Welle: `>` zu `>=` im Keyset — der Seitenfall meldet dreizehn statt sieben
+Ereignisse. Zweite Welle: `project_id=$2` zu `(project_id=$2 OR $2 IS NOT NULL)`
+— beide Fälle fallen, die die Projektgrenze tragen.
+
+Der Ordner trägt das Datum des Laufs, nicht das des Release: Die vier Läufe
+liefen in der Nacht zum 7. August auf demselben Stack wie die Läufe zu 1.38.
+
+Dass die erste Welle **dieselben dreizehn Zeilen** liefert wie der Defekt, den
+der erste Zertifizierungslauf gefunden hatte, ist der eigentliche Beleg: Die
+Probe misst die Zusage und nicht das Werkzeug.

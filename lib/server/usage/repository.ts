@@ -16,6 +16,18 @@ export class UsageRepositoryConflictError extends Error {
   }
 }
 
+/**
+ * Ein Ereignis samt seiner Cursor-Marke.
+ *
+ * `recordedAtText` traegt die Textform der Datenbank, nicht die des Clients.
+ * `Date.toISOString()` kann nur Millisekunden; `recorded_at` speichert
+ * Mikrosekunden. Ein abgeschnittener Cursor liesse die letzte Zeile jeder Seite
+ * erneut durch — die Seiten ueberlappten sich, statt aneinanderzustossen.
+ * Deshalb reicht der Adapter seine eigene Darstellung durch und vergleicht
+ * gegen genau sie.
+ */
+export type UsageExportRecord = UsageDecisionRecord & { recordedAtText: string };
+
 export interface UsageRepository {
   readonly durability: "ephemeral" | "durable";
   /**
@@ -38,6 +50,26 @@ export interface UsageRepository {
     windowStart: Date,
     windowEnd: Date,
   ): Promise<UsageWindowRecord[]>;
+  /**
+   * Liest Ereignisse eines Fensters seitenweise, in stabiler Ordnung.
+   *
+   * `after` ist der zuletzt gelesene Schlüssel, kein Offset. Ein Offset
+   * verschiebt sich, sobald nebenher geschrieben wird — und in diese Tabelle
+   * wird laufend geschrieben.
+   *
+   * Optional, weil der Memory-Port ihn nicht braucht: Exportiert wird, was
+   * dauerhaft liegt.
+   */
+  listEvents?(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    input: {
+      windowStart: Date;
+      windowEnd: Date;
+      after: { recordedAt: string; id: string } | null;
+      limit: number;
+    },
+  ): Promise<UsageExportRecord[]>;
   setPolicy(
     principal: UsagePrincipal,
     policy: Omit<UsageQuotaPolicy, "revision" | "createdAt" | "updatedAt">,

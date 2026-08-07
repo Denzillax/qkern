@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.40.md](RELEASE_1.40.md) | Aktueller Release: Die letzte ungeprüfte Zahl |
+| [RELEASE_1.41.md](RELEASE_1.41.md) | Aktueller Release: Belege gehen raus |
+| [RELEASE_1.40.md](RELEASE_1.40.md) | Die letzte ungeprüfte Zahl |
 | [RELEASE_1.39.md](RELEASE_1.39.md) | Historischer Release: Zahlen prüfen sich |
 | [RELEASE_1.38.md](RELEASE_1.38.md) | Historischer Release: Was noch wächst |
 | [RELEASE_1.37.md](RELEASE_1.37.md) | Historischer Release: Aufräumen läuft |

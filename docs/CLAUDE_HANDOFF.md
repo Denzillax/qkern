@@ -284,6 +284,10 @@ Lauf beweist nicht, dass der Aufbau deterministisch ist.
 - Usage-Idempotency Keys niemals roh speichern oder loggen; Hard-Quota,
   Counter und Evententscheidung müssen atomar bleiben.
 - Keine öffentliche Event-Ingestion oder Browser-/MCP-Quota-Mutation ergänzen.
+- `usage_events` bleibt append-only. Der Export aus `1.41.0` ersetzt keine
+  Aufbewahrung: Ein gelöschtes Ereignis heisst, dass derselbe Schlüssel später
+  erneut zählt. Cursor niemals über einen Typ führen, der den Wert der
+  Datenbank abschneidet.
 - Usage-Zähler nicht als Rechnung darstellen, solange Tarife/Reconciliation fehlen.
 - Service Role ist kein PostgreSQL-/RLS-Privilegien-Bypass.
 - Historische `docs/RELEASE_*.md` niemals nachträglich ändern.

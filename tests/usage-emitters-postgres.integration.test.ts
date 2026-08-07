@@ -493,3 +493,143 @@ describe.runIf(enabled)("Usage emitters PostgreSQL certification", () => {
       .rejects.toMatchObject({ code: "QUEUE_QUOTA_EXCEEDED" });
   });
 });
+
+/**
+ * Der Export der Ereignisse gegen echtes PostgreSQL.
+ *
+ * `usage_events` ist die einzige Tabelle, die absichtlich waechst — der Trigger
+ * weist DELETE ab. Ein Export war seit Alpha 1 als fehlend verzeichnet.
+ *
+ * Gemessen wird nicht der Aufruf, sondern das, was ein Archiv braucht: keine
+ * Luecke, keine Dopplung, keine fremden Zeilen.
+ */
+describe.runIf(enabled)("Usage export PostgreSQL certification", () => {
+  const controlUser = randomUUID();
+  const organizationId = randomUUID();
+
+  let owner: SqlPool;
+  let runtime: SqlPool;
+  let usage: UsageService;
+
+  const operator: UsagePrincipal = {
+    organizationId, actorRef: "operator:export", subject: "operator-export", role: "operator",
+  };
+  const reader: UsagePrincipal = {
+    organizationId, actorRef: "reader@qkern.test", subject: controlUser, role: "reader",
+  };
+  const meter: UsagePrincipal = {
+    organizationId, actorRef: "meter:export", subject: "meter-export", role: "meter",
+  };
+
+  async function project(projectId: string, label: string) {
+    await owner.query(`INSERT INTO projects (id,organization_id,name,slug,region,status,created_by)
+      VALUES ($1,$2,$3,$4,'test','ready',$5)`,
+    [projectId, organizationId, label, `${label}-${projectId}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id,project_id,environment,database_instance_ref)
+      VALUES ($1,$2,'development',$3)`, [organizationId, projectId, `managed:${projectId}`]);
+  }
+
+  beforeAll(async () => {
+    owner = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
+    runtime = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
+    );
+    await owner.query(`INSERT INTO users (id,email,password_hash,status)
+      VALUES ($1,$2,'$argon2id$integration-only','active')`,
+    [controlUser, `export-owner-${controlUser}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id,name,slug,created_by)
+      VALUES ($1,'Usage Export',$2,$3)`, [organizationId, `export-${organizationId}`, controlUser]);
+    usage = new UsageService({ repository: new PostgresUsageRepository(new PostgresControlPlane(runtime)) });
+  });
+
+  afterAll(async () => {
+    await Promise.allSettled([owner?.end(), runtime?.end()]);
+  });
+
+  it("pages through every event exactly once", async () => {
+    const projectId = randomUUID();
+    await project(projectId, "Export");
+    const scope = { organizationId, projectId, environment: "development" as const };
+    for (let index = 0; index < 7; index += 1) {
+      await usage.record(meter, scope, {
+        metric: "queue_operations", source: "project_queues", quantity: index + 1,
+        idempotencyKey: `export-event-${index}`,
+      });
+    }
+
+    const seen: string[] = [];
+    let cursor: { recordedAt: string; id: string } | null = null;
+    let rounds = 0;
+    do {
+      const page = await usage.exportEvents(operator, scope, { cursor, limit: 2 });
+      seen.push(...page.events.map((event) => event.id));
+      cursor = page.nextCursor;
+      rounds += 1;
+    } while (cursor && rounds < 20);
+
+    // Keine Luecke und keine Dopplung — das ist die ganze Zusage eines Archivs.
+    expect(seen).toHaveLength(7);
+    expect(new Set(seen).size).toBe(7);
+  });
+
+  it("hands out the decision, never the verifier", async () => {
+    const projectId = randomUUID();
+    await project(projectId, "Export Shape");
+    const scope = { organizationId, projectId, environment: "development" as const };
+    await usage.record(meter, scope, {
+      metric: "function_invocations", source: "compute", quantity: 3,
+      idempotencyKey: "export-shape-1",
+    });
+
+    const page = await usage.exportEvents(operator, scope, {});
+    expect(page.events).toHaveLength(1);
+    const event = page.events[0];
+    expect(event).toMatchObject({ metric: "function_invocations", quantity: "3", accepted: true });
+    // Die Verifier tragen fuer ein Archiv nichts bei und laden dazu ein,
+    // Schluessel zu raten.
+    expect(JSON.stringify(event)).not.toContain("Hash");
+    expect(Object.keys(event)).not.toContain("eventKeyHash");
+    expect(Object.keys(event)).not.toContain("eventFingerprint");
+  });
+
+  it("refuses a reader and never crosses the tenant", async () => {
+    const projectId = randomUUID();
+    await project(projectId, "Export Guard");
+    const scope = { organizationId, projectId, environment: "development" as const };
+    await usage.record(meter, scope, {
+      metric: "queue_operations", source: "project_queues", quantity: 1,
+      idempotencyKey: "export-guard-1",
+    });
+
+    // Der Browser bekommt die Projektion, nicht die Einzelbelege.
+    await expect(usage.exportEvents(reader, scope, {}))
+      .rejects.toMatchObject({ code: "USAGE_ACCESS_DENIED" });
+
+    // Ein Operator ist Operator seiner eigenen Organisation, nicht aller.
+    await expect(usage.exportEvents(operator, { ...scope, organizationId: randomUUID() }, {}))
+      .rejects.toMatchObject({ code: "USAGE_ACCESS_DENIED" });
+  });
+
+  it("keeps a sibling project out of the archive", async () => {
+    const mine = randomUUID();
+    const other = randomUUID();
+    await project(mine, "Export Mine");
+    await project(other, "Export Other");
+    const scope = { organizationId, projectId: mine, environment: "development" as const };
+    await usage.record(meter, scope, {
+      metric: "queue_operations", source: "project_queues", quantity: 1,
+      idempotencyKey: "export-mine-1",
+    });
+    await usage.record(meter, { ...scope, projectId: other }, {
+      metric: "queue_operations", source: "project_queues", quantity: 99,
+      idempotencyKey: "export-other-1",
+    });
+
+    // Beide Projekte liegen in derselben Organisation. Nur das Praedikat der
+    // Abfrage trennt sie — deshalb ist genau das hier die Zusage.
+    const page = await usage.exportEvents(operator, scope, {});
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]?.quantity).toBe("1");
+  });
+});

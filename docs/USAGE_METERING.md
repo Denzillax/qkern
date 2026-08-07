@@ -245,8 +245,13 @@ Tabelle ist zweierlei zugleich: der Beleg hinter jedem Zählerstand und der
 Idempotenz-Speicher. Ein gelöschtes Ereignis heisst, dass derselbe Schlüssel
 später erneut zählt.
 
-Die Antwort auf ihr Wachstum ist deshalb **Export**, nicht Löschen — und der
-fehlt noch. Sie ist damit die einzige Tabelle, die absichtlich wächst.
+Die Antwort auf ihr Wachstum ist deshalb **Export**, nicht Löschen. Seit `1.41.0`
+gibt es ihn: `npm run usage:export` schreibt die Ereignisse eines Monats als
+NDJSON nach stdout, seitenweise über einen Keyset-Cursor auf `(recorded_at, id)`.
+
+Der Export nimmt der Tabelle das Wachstum **nicht** — er macht es tragbar. Wer
+sie kleiner haben will, braucht ausserdem eine Entscheidung darüber, wie lange
+Idempotenz gelten soll; die ist nicht getroffen.
 
 Alle Tabellen tragen Organisation, Projekt und Umgebung, besitzen zusammengesetzte
 Projekt-Fremdschlüssel und RLS. Die Runtime arbeitet ausschließlich innerhalb
@@ -332,5 +337,6 @@ ergeben genau acht Nachrichten und Zählerstand acht.
 
 Vor kommerziellem Betrieb fehlen weiterhin echte archivierte PostgreSQL-Last- und
 Crash-Races, Emitter in Data/Storage/Realtime, Reconciliation mit Providerwerten,
-Metrics/Alerts, Retention/Export, Tarife, Rechnungs- und Zahlungsintegration
+Metrics/Alerts, eine Aufbewahrungsentscheidung für `usage_events`, Tarife,
+Rechnungs- und Zahlungsintegration
 sowie unabhängige Security-/Finanzprüfung.

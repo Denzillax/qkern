@@ -118,6 +118,28 @@ export type PublicUsageDecision = {
   windowEnd: string;
 };
 
+/**
+ * Ein Ereignis, wie es ein Archiv sieht: die Entscheidung, nicht ihre Herkunft.
+ *
+ * Ohne Verifier und ohne Rohschlüssel — beide tragen für einen Abgleich nichts
+ * bei. Mengen sind Dezimalstrings, damit JavaScript nichts abschneidet.
+ */
+export type PublicUsageEvent = {
+  id: string;
+  metric: UsageMetric;
+  source: UsageSource;
+  quantity: string;
+  observedAt: string;
+  period: string;
+  accepted: boolean;
+  rejectionCode: "QUOTA_EXCEEDED" | null;
+  resultingQuantity: string;
+  limitAtDecision: string | null;
+  modeAtDecision: UsageDecisionMode;
+  quotaRevision: number | null;
+  recordedAt: string;
+};
+
 export type PublicUsageProjection = {
   projectId: string;
   environment: Environment;

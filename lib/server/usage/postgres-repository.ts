@@ -122,6 +122,44 @@ export class PostgresUsageRepository implements UsageRepository {
     });
   }
 
+  /**
+   * Seitenweise über `(recorded_at, id)` — beides unveränderlich, zusammen
+   * eindeutig. Ohne die Kennung als zweiten Schlüssel könnten zwei Ereignisse
+   * derselben Mikrosekunde eine Seitengrenze teilen und dabei eines verlieren.
+   */
+  listEvents(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    input: {
+      windowStart: Date; windowEnd: Date;
+      after: { recordedAt: string; id: string } | null; limit: number;
+    },
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const values: SqlValue[] = [
+        ...scopeValues(scope), input.windowStart, input.windowEnd, input.limit,
+      ];
+      let keyset = "";
+      if (input.after) {
+        values.push(input.after.recordedAt, input.after.id);
+        // `$7::timestamptz` und nicht `$7`: Der Cursor kommt als Text zurueck,
+        // damit die Mikrosekunden erhalten bleiben; PostgreSQL liest ihn hier
+        // wieder als genau denselben Zeitpunkt.
+        keyset = " AND (recorded_at, id) > ($7::timestamptz, $8)";
+      }
+      const result = await database.query(`SELECT ${EVENT_COLUMNS},
+          recorded_at::text AS recorded_at_text
+        FROM usage_events
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          AND window_start >= $4 AND window_start < $5${keyset}
+        ORDER BY recorded_at, id
+        LIMIT $6`, values);
+      return result.rows.map((row) => ({
+        ...eventFromRow(row), recordedAtText: String(row.recorded_at_text),
+      }));
+    });
+  }
+
   setPolicy(
     principal: UsagePrincipal,
     input: Omit<UsageQuotaPolicy, "revision" | "createdAt" | "updatedAt">,

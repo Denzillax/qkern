@@ -1424,3 +1424,38 @@ Nicht erbracht: Die Zuordnung Modul zu Testdateien steht als Liste im Test und
 ist selbst handgepflegt — wer eine neue Real-DB-Datei anlegt und sie dort
 vergisst, faellt nicht auf. Ungeprueft bleiben ausserdem die Zahl der
 uebersprungenen Faelle und die Zahlen in `docs/QA.md` selbst.
+
+## Der Cursor, der zu wenig weiss — Release 1.41
+
+`usage_events` ist die einzige Tabelle, die absichtlich waechst; ihr Trigger
+weist UPDATE und DELETE ab, weil sie zugleich Beleg und Idempotenz-Speicher ist.
+`docs/USAGE_METERING.md` fuehrte „Retention/Export" seit Alpha 1 als fehlend.
+Release 1.41 liefert den Export: seitenweise ueber einen Keyset-Cursor auf
+`(recorded_at, id)`, als NDJSON, mit `npm run usage:export` als Aufrufweg.
+
+Der erste Zertifizierungslauf war rot, und zwar an der einzigen Zusage, die
+zaehlt: sieben Ereignisse kamen als dreizehn zurueck. Der Cursor wurde als
+`Date.toISOString()` gereicht — Millisekunden. `recorded_at` speichert
+Mikrosekunden. Der abgeschnittene Wert liess die letzte Zeile jeder Seite erneut
+durch; die Seiten ueberlappten sich, statt aneinanderzustossen.
+
+Der Cursor traegt jetzt die Textform der Datenbank und wird als
+`$7::timestamptz` zurueckgegeben — nicht umgerechnet, sondern durchgereicht.
+Wer einen Cursor ueber einen Typ des Clients fuehrt, muss beweisen, dass dieser
+Typ den Wert der Datenbank vollstaendig traegt.
+
+Mutationsprobe zweimal, beide nach der Regel aus 1.38 nur am Praedikat:
+
+- `>` zu `>=`: genau der Seitenfall faellt, mit denselben dreizehn Zeilen wie der
+  echte Defekt. 113 von 114.
+- `project_id=$2` zu `(project_id=$2 OR $2 IS NOT NULL)`: die beiden Faelle
+  fallen, die die Projektgrenze tragen. 112 von 114.
+
+Checkpoint `1.41.0` am 7. August 2026: Lokal 990 bestanden, 0 fehlgeschlagen;
+PostgreSQL 114 von 114, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Der Export nimmt der Tabelle das Wachstum nicht — er macht es
+tragbar. Ungeprueft bleibt, ob eine Seite unter gleichzeitigem Schreiben stabil
+bleibt; die Fenstergrenze `window_start` ist zwar unveraenderlich, aber ein
+Export ueber Stunden hat keinen Beleg. Es gibt keine Route und keine
+Console-Flaeche, nur das Skript.

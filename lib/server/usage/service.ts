@@ -5,6 +5,7 @@ import {
   UNENFORCEABLE_USAGE_METRICS,
   USAGE_METRIC_DEFINITIONS,
   type PublicUsageDecision,
+  type PublicUsageEvent,
   type PublicUsageProjection,
   type UsageDecisionMode,
   type UsageMetric,
@@ -15,7 +16,10 @@ import {
   type UsageStatus,
 } from "@/lib/server/usage/model";
 import { UsageRepositoryConflictError, type UsageRepository } from "@/lib/server/usage/repository";
+import type { UsageDecisionRecord } from "@/lib/server/usage/model";
 
+/** Die Textform von PostgreSQL, nicht ISO-8601: `2026-08-06 21:04:11.123456+00`. */
+const CURSOR_MARK = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]{3,128}$/;
 const SUBJECT = /^[A-Za-z0-9@+._:-]{1,320}$/;
 const EVENT_KEY = /^[A-Za-z0-9._:-]{8,128}$/;
@@ -141,6 +145,69 @@ export class UsageService {
     };
   }
 
+  /**
+   * Gibt die Ereignisse eines Monats seitenweise heraus.
+   *
+   * `usage_events` ist die einzige Tabelle, die **absichtlich** wächst: Der
+   * Trigger weist DELETE ab, weil sie zugleich der Beleg hinter jedem Zähler
+   * und der Idempotenz-Speicher ist (siehe `docs/USAGE_METERING.md`). Wer sie
+   * archivieren will, braucht einen Weg, sie zu lesen — diesen hier.
+   *
+   * Nur `operator`. Der Browser bekommt die Projektion, nicht die Einzelbelege:
+   * Eine Ereignisliste zeigt Takt und Muster einer fremden Anwendung.
+   *
+   * **Die Verifier bleiben drin.** `eventKeyHash` und `eventFingerprint` sind
+   * zwar schon Hashes, tragen aber für ein Archiv nichts bei und laden dazu
+   * ein, Schlüssel zu raten. Was hier herauskommt, ist der Entscheid, nicht
+   * seine Herkunft.
+   */
+  async exportEvents(principal: UsagePrincipal, scope: UsageScope, input: {
+    period?: string;
+    cursor?: { recordedAt: string; id: string } | null;
+    limit?: number;
+  } = {}): Promise<{
+    period: string;
+    events: PublicUsageEvent[];
+    nextCursor: { recordedAt: string; id: string } | null;
+  }> {
+    assertPrincipal(principal, scope, "operator");
+    await this.assertProject(principal, scope);
+    const list = this.dependencies.repository.listEvents?.bind(this.dependencies.repository);
+    // Ein Port ohne Export ist kein Fehler des Aufrufers, aber auch keine
+    // leere Liste: Eine leere Antwort hiesse „nichts da", und das waere falsch.
+    if (!list) throw new UsageError("USAGE_METERING_DISABLED");
+
+    const window = parsePeriod(input.period, this.now());
+    const limit = input.limit ?? 500;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new UsageError("USAGE_INVALID_INPUT");
+    }
+    // Der Cursor wird nicht umgerechnet, sondern durchgereicht. Jede Umrechnung
+    // ueber `Date` kostet die Mikrosekunden von `recorded_at`, und ein
+    // abgeschnittener Cursor liefert die letzte Zeile einer Seite noch einmal.
+    let after: { recordedAt: string; id: string } | null = null;
+    if (input.cursor) {
+      if (!CURSOR_MARK.test(input.cursor.recordedAt) || !IDENTIFIER.test(input.cursor.id)) {
+        throw new UsageError("USAGE_INVALID_INPUT");
+      }
+      after = { recordedAt: input.cursor.recordedAt, id: input.cursor.id };
+    }
+
+    const records = await list(principal, scope, {
+      windowStart: window.start, windowEnd: window.end, after, limit,
+    });
+    const last = records.at(-1);
+    return {
+      period: period(window.start),
+      events: records.map(publicEvent),
+      // Nur wenn die Seite voll war. Eine halbe Seite ist das Ende, und ein
+      // Cursor darauf brächte den Aufrufer zu einer überflüssigen Runde.
+      nextCursor: last && records.length === limit
+        ? { recordedAt: last.recordedAtText, id: last.id }
+        : null,
+    };
+  }
+
   async setQuota(principal: UsagePrincipal, scope: UsageScope, input: {
     metric: UsageMetric;
     limit: number | string | bigint;
@@ -245,6 +312,24 @@ function publicDecision(decision: Awaited<ReturnType<UsageRepository["consume"]>
     period: period(decision.windowStart),
     windowStart: decision.windowStart.toISOString(),
     windowEnd: decision.windowEnd.toISOString(),
+  };
+}
+
+function publicEvent(record: UsageDecisionRecord): PublicUsageEvent {
+  return {
+    id: record.id,
+    metric: record.metric,
+    source: record.source,
+    quantity: record.quantity.toString(),
+    observedAt: record.observedAt.toISOString(),
+    period: period(record.windowStart),
+    accepted: record.accepted,
+    rejectionCode: record.rejectionCode,
+    resultingQuantity: record.resultingQuantity.toString(),
+    limitAtDecision: record.limitAtDecision?.toString() ?? null,
+    modeAtDecision: record.modeAtDecision,
+    quotaRevision: record.quotaRevision,
+    recordedAt: record.recordedAt.toISOString(),
   };
 }
 
