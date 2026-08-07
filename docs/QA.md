@@ -1491,7 +1491,7 @@ in allen sieben fehlte schon der Import.
 
 Mutationsproben:
 
-- Prozesseinstieg `workers/project-queue-runtime.ts` entfernt: Der Vertrag nennt
+- Prozesseinstieg `workers/project-queue-runtime.mts` entfernt: Der Vertrag nennt
   die ganze Kette, nicht nur ihr Ende — Dispatch, Komposition, Wirt, Runtime und
   Worker.
 - Wirt hoert auf `functionName` statt auf `queue`: alle drei Real-DB-Faelle
@@ -1543,3 +1543,59 @@ Nicht erbracht: Der Lauf startet den Wirt als Objekt, nicht als Prozess —
 Nebenlaeufigkeit mehrerer Wirte auf derselben Queue ist ueber die Lease
 zertifiziert, aber nicht mit echten Containern. Und der Retry-Fall belegt, dass
 die Nachricht bleibt — nicht, dass ein spaeterer Versuch sie zustellt.
+
+## Kein einziger Prozess startete — Release 1.44
+
+Release 1.43 hat die Kette bis in den Container belegt und offen gelassen, dass
+der Wirt dabei als Objekt lief: `npm run worker:queues` selbst hatte keinen
+Lauf. Der Fall, der das nachholen sollte, war beim ersten Anlauf rot — und nicht
+wegen des Tests.
+
+**Keiner der sieben Worker konnte starten.** `package.json` hat kein
+`"type": "module"`, also uebersetzt tsx jede `.ts` als CommonJS, und jeder
+Worker benutzt Top-Level-await. Der Prozess brach ab, bevor eine Zeile eigenen
+Codes lief:
+
+```
+ERROR: Top-level await is currently not supported with the "cjs" output format
+```
+
+Betroffen waren alle: Realtime, Compute, Migrationen, Apply-Publisher,
+Incident-Publisher, Provisioner und der Queue-Wirt. Sieben Prozesse, jeder in
+einer eigenen Scheibe gebaut, jeder dokumentiert, mehrere davon ausdruecklich
+die Antwort auf ein frueher gefundenes „ruft niemand" — und kein einziger lief
+je.
+
+Die Endung entscheidet: `.mts` ist fuer tsx ein ES-Modul, `.ts` ohne
+`"type": "module"` nicht. Alle sieben heissen jetzt `.mts`; `package.json`,
+`lib/server/operations/runtime-deployment.ts` und die Vertragstests zeigen
+darauf.
+
+Der neue Vertrag `tests/worker-boot-contract.test.ts` startet jede Datei in
+`workers/` wirklich und prueft, dass sie **ihre eigene** Konfigurationsgrenze
+erreicht. Ob sie danach ohne Datenbank weiterlaeuft, ist nicht die Frage; dass
+sie dorthin gelangt, war es. Genau diese Klasse Fehler — Abbruch vor der ersten
+eigenen Zeile — ist durch jede bisherige Zertifizierung gefallen, weil immer
+geprueft wurde, was ein Prozess aufruft, nie sein Start.
+
+Mutationsproben:
+
+- Eine Worker-Datei wieder als `.ts`: Der Boot-Vertrag benennt sie namentlich.
+- Der Wirt startet, ruft aber seine Schleife nicht auf: 25 von 26 — genau der
+  Prozess-Fall faellt, die beiden Objekt-Faelle bleiben gruen. Der Unterschied
+  zwischen „startet" und „arbeitet" ist damit einzeln getragen.
+
+Checkpoint `1.44.0` am 7. August 2026: Lokal 1009 bestanden, 0 fehlgeschlagen;
+PostgreSQL 117 von 117 und Functions 26 von 26, jeweils exit 0 und zweimal
+reproduziert.
+
+Nebenbefund, **nicht** behoben: `npm run verify:dx:full` bricht auf Windows mit
+Node 24 in `scripts/verify-package-tarballs.mjs` ab (`spawnSync npm.cmd
+EINVAL`). Das reproduziert sich auf dem unveraenderten Stand von `1.43.0` und
+haengt nicht an dieser Aenderung. STATUS.md nennt die Tarball-Pruefung deshalb
+jetzt ausdruecklich als hier nicht belegt.
+
+Nicht erbracht: Der Boot-Vertrag prueft nur, dass ein Prozess bis zu seiner
+Konfigurationsgrenze kommt — nicht, dass er mit gueltiger Konfiguration seine
+Arbeit tut. Das ist nur fuer den Queue-Wirt belegt; die anderen sechs Prozesse
+haben weiterhin keinen Lauf, der sie arbeiten sieht.

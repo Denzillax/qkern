@@ -186,7 +186,7 @@ Zertifizierung, 1.15 den Betrieb als Dauerschleife und die Vermittlung je
 Projekt.
 
 Ausdrücklich festgehalten, ohne die Stufe offen zu halten: `changes:`-Kanäle
-sind in `workers/realtime-runtime.ts` **noch nicht betriebsbereit**. Registry,
+sind in `workers/realtime-runtime.mts` **noch nicht betriebsbereit**. Registry,
 Quelle und Reader sind zertifiziert, aber die Runtime besitzt keinen Port, der
 je Scope eine Projektdatenbank auflöst; ein Abonnement bleibt dort leer. Der
 technische Production-Deny der Runtime bleibt ein Go-live-Gate der Stufe 2.0.
@@ -234,7 +234,7 @@ Umgehungsversuch am Trigger vorbei bestaetigte zudem, dass
 Owner-Zugang schuetzt.
 
 **Nachtrag Release 1.20.** Cron und Webhooks haben jetzt eine Laufzeit:
-`workers/compute-runtime.ts` loest faellige Vorkommen aus und stellt Webhooks
+`workers/compute-runtime.mts` loest faellige Vorkommen aus und stellt Webhooks
 zu. Sechs Faelle zertifizieren die Zustellkette Ende zu Ende gegen echtes
 PostgreSQL, mit einem Empfaenger, der die HMAC-Signatur wirklich verifiziert.
 

@@ -372,7 +372,7 @@ Fälle fallen, weil alle drei die Verdrahtung tragen. Zweite Welle: Der Handler
 verschluckt den Fehlschlag statt ihn zu melden — genau der Retry-Fall fällt.
 
 Die dritte Probe dieses Release hat kein Manifest, weil sie nicht am
-Zertifizierungsstack hängt: Wird `workers/project-queue-runtime.ts` entfernt,
+Zertifizierungsstack hängt: Wird `workers/project-queue-runtime.mts` entfernt,
 nennt der Erreichbarkeitsvertrag die ganze Kette vom Dispatch bis zum Worker.
 
 ## Läufe zu Release 1.43 (7. August 2026)
@@ -390,3 +390,25 @@ gebundenen Funktionsnamens — genau der Erfolgsfall fällt.
 
 Dass jede Welle **einen anderen** Fall umwirft, ist die eigentliche Aussage:
 Die beiden Fälle hängen nicht am selben Pfad.
+
+## Läufe zu Release 1.44 (7. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/queue-process-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0 |
+| `2026-08-06/queue-process-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0, Wiederholung |
+| `2026-08-06/queue-process-mutation.log` | Docker 29.5, registry:2 und PostgreSQL 17 | **25 von 26, exit 1 — absichtlich** |
+| `2026-08-06/worker-boot-run1.log` | PostgreSQL 17 | 117 von 117, exit 0, 35 Migrationen |
+| `2026-08-06/worker-boot-run2.log` | PostgreSQL 17 | 117 von 117, exit 0, Wiederholung |
+
+Die Mutation lässt den Wirt starten, aber seine Schleife nicht aufrufen: Genau
+der Prozess-Fall fällt, die beiden Objekt-Fälle bleiben grün. Damit ist
+„startet" von „arbeitet" getrennt.
+
+Die zweite Probe dieses Release hat kein Manifest, weil sie ohne Stack läuft:
+Wird eine Worker-Datei wieder `.ts` genannt, benennt der Boot-Vertrag sie
+namentlich — und genau daran sind bis `1.44.0` alle sieben Prozesse gescheitert.
+
+Die beiden PostgreSQL-Läufe zeigen keine neue Zahl. Sie stehen hier, weil die
+Umbenennung nach `.mts` `lib/server/operations/runtime-deployment.ts` berührt
+und ein unveränderter Lauf danach keine Selbstverständlichkeit ist.

@@ -428,10 +428,10 @@ function runtimeLabels(component: BackgroundRuntimeComponent): Record<string, st
 
 function componentEntry(component: BackgroundRuntimeComponent): string {
   return ({
-    "project-provisioner": "workers/project-provisioning-runtime.ts",
-    "migration-worker": "workers/migration-runtime.ts",
-    "apply-publisher": "workers/apply-outbox-runtime.ts",
-    "incident-publisher": "workers/incident-outbox-runtime.ts",
+    "project-provisioner": "workers/project-provisioning-runtime.mts",
+    "migration-worker": "workers/migration-runtime.mts",
+    "apply-publisher": "workers/apply-outbox-runtime.mts",
+    "incident-publisher": "workers/incident-outbox-runtime.mts",
   } as const)[component];
 }
 

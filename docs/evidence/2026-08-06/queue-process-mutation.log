@@ -1,0 +1,62 @@
+﻿
+> qkern-platform@1.43.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.5.3
+node.exe :  Network qkern-functions-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Healthy 
+ Container qkern-functions-certification-registry-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:69633af46a2d0c26be1b0675c3a1ace5360c90977bf824de9e93e49e57fcac23 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-chain.integration.test.ts (8 tests | 1 failed) 112270ms
+     × consumes a message when started as the shipped process 100463ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > consumes a message when started as 
+the shipped process
+AssertionError: Prozessausgabe: QKERN project queue host serving 1 binding(s)
+: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/function-chain.integration.test.ts:264:65
+    262|         completed = (await queues.status(admin, scope, queue)).complet…
+    263|       }
+    264|       expect(completed, `Prozessausgabe: ${noise.slice(-800)}`).toBe(1…
+       |                                                                 ^
+    265|     } finally {
+    266|       child.kill();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 25 passed (26)
+   Start at  21:46:39
+   Duration  135.79s (transform 323ms, setup 0ms, import 442ms, tests 135.06s, environment 0ms)
+
+EXIT=1

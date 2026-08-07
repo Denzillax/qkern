@@ -118,7 +118,7 @@ vorhanden und gegen echtes PostgreSQL zertifiziert.
 
 ## Betrieb
 
-`workers/compute-runtime.ts` (`npm run worker:compute`) löst fällige
+`workers/compute-runtime.mts` (`npm run worker:compute`) löst fällige
 Cron-Vorkommen aus und stellt Webhooks zu. Bis `1.19.0` waren beide
 Bibliotheken, die niemand aufrief.
 

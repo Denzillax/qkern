@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
@@ -211,6 +212,66 @@ describe.runIf(enabled)("Function chain certification", () => {
     expect(status.completed).toBe(1);
     expect(status.available + status.inFlight + status.deadLettered).toBe(0);
   }, 120_000);
+
+  /**
+   * Derselbe Weg, aber gestartet wie im Betrieb: als eigener Prozess.
+   *
+   * Release 1.43 hat die Kette bis in den Container belegt und offen gelassen,
+   * dass der Wirt dabei als Objekt lief. `npm run worker:queues` selbst hatte
+   * keinen Lauf — und genau der Unterschied zwischen „das Modul tut es" und
+   * „der Prozess tut es" ist das Muster, das dieser Sprint siebenmal gefunden
+   * hat.
+   *
+   * Gestartet wird deshalb nichts nachgebaut, sondern die Datei, die hinter
+   * `npm run worker:queues` steht.
+   */
+  it("consumes a message when started as the shipped process", async () => {
+    const created = await define();
+    const queue = uniqueName("chain-process");
+    await queues.createQueue(admin, scope, { name: queue });
+    await queues.enqueue(serviceRole, scope, queue, {
+      payload: { mode: "echo", value: "from-the-process" },
+    });
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/project-queue-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_QUEUE_WORKER_ENABLED: "true",
+        QKERN_PROJECT_QUEUES_ENABLED: "true",
+        QKERN_FUNCTIONS_ENABLED: "true",
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+        QKERN_QUEUE_WORKER_IDLE_MS: "100",
+        QKERN_QUEUE_WORKER_BINDINGS_JSON: JSON.stringify([{
+          ...scope, queue, functionName: created.name,
+        }]),
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 100_000;
+      let completed = 0;
+      while (Date.now() < deadline && completed === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        completed = (await queues.status(admin, scope, queue)).completed;
+      }
+      expect(completed, `Prozessausgabe: ${noise.slice(-800)}`).toBe(1);
+    } finally {
+      child.kill();
+    }
+
+    // Der Prozess meldet die Zahl seiner Bindungen und sonst nichts aus der
+    // Konfiguration. Ein Passwort in einem Worker-Log ueberlebt jede Rotation.
+    expect(noise).toContain("binding(s)");
+    expect(noise).not.toContain("qkern_runtime_local_only");
+    expect(noise).not.toContain("from-the-process");
+  }, 180_000);
 
   it("keeps the message when the container answers with a failure", async () => {
     const created = await define();

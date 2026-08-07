@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.43.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.44.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -65,7 +65,7 @@ Release Notes bleiben unverändert.
 - Der Soak-Lauf laeuft jetzt **mit** eingeschaltetem Emitter und kleinem Flush-Schwellwert; die Latenzschranken gelten fuer den gemessenen Pfad
 - Vorheriger Slice: 1.33 Realtime buendelt — `lib/server/usage/buffered-emitter.ts`
 - Alle sechs Metriken melden; `UNENFORCEABLE_USAGE_METRICS` sammelt die drei, fuer die `enforce` nicht setzbar ist
-- Der Puffer wird beim Herunterfahren geschrieben (`workers/realtime-runtime.ts`); ein Absturz verliert ihn absichtlich
+- Der Puffer wird beim Herunterfahren geschrieben (`workers/realtime-runtime.mts`); ein Absturz verliert ihn absichtlich
 - Vorheriger Slice: 1.32 Zaehlung an der HTTP-Grenze — `lib/server/usage/api-requests.ts`
 - `admitApiRequest` steht am Ende der Kontext-Resolver von Queues, Storage und Generated Data API
 - Nicht in `usage/http.ts`: dort steht die HTTP-Flaeche der Usage-Projektion selbst
@@ -102,7 +102,7 @@ Release Notes bleiben unverändert.
 - Routen: `app/api/v1/projects/[projectId]/environments/[environment]/compute/`
 - Berechtigung: `project_compute_admin` (nur owner und administrator)
 - Console: Ansicht `Functions & Jobs` in `components/console/console-app.tsx`
-- Vorheriger Slice: 1.20 Zustellprozess — Cron und Webhooks laufen in `workers/compute-runtime.ts`
+- Vorheriger Slice: 1.20 Zustellprozess — Cron und Webhooks laufen in `workers/compute-runtime.mts`
 - Compute-Betrieb: `lib/server/compute/runtime-composition.ts`, `webhook-delivery-runtime.ts`
 - Signatur und Transport: `lib/server/compute/webhook-signer.ts`, `webhook-transport.ts`
 - Start: `QKERN_COMPUTE_RUNTIME_ENABLED=true npm run worker:compute`
@@ -125,7 +125,7 @@ Release Notes bleiben unverändert.
 - REST-Routen: `app/api/v1/projects/[projectId]/environments/[environment]/queues/`
 - Vertrag: `docs/PROJECT_QUEUES.md` und `lib/openapi.ts`
 - Worker: `lib/server/project-queues/worker.ts` und `worker-runtime.ts`;
-  gestartet von `workers/project-queue-runtime.ts` (`npm run worker:queues`).
+  gestartet von `workers/project-queue-runtime.mts` (`npm run worker:queues`).
   Kein neues Modul in `lib/server` ohne Prozesseinstieg — der
   Erreichbarkeitsvertrag faellt sonst um, und das ist Absicht.
 - DLQ-Routen: `.../queues/[queue]/dead-letters/`
@@ -294,6 +294,10 @@ Lauf beweist nicht, dass der Aufbau deterministisch ist.
 - Usage-Zähler nicht als Rechnung darstellen, solange Tarife/Reconciliation fehlen.
 - Service Role ist kein PostgreSQL-/RLS-Privilegien-Bypass.
 - Historische `docs/RELEASE_*.md` niemals nachträglich ändern.
+- Worker-Einstiege heissen `.mts`. Ohne `"type": "module"` uebersetzt tsx
+  jede `.ts` als CommonJS, und Top-Level-await bricht den Start ab, bevor eine
+  eigene Zeile laeuft. Bis `1.44.0` konnte deshalb kein einziger der sieben
+  Prozesse starten.
 
 ## Pflichtprüfung und Checkpoint
 

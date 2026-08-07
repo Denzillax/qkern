@@ -105,8 +105,8 @@ describe("entrypoint reachability contract", () => {
     // Ohne diese Zusage waere der Test bei einem Umbau der Ordnerstruktur
     // lautlos gruen: Null Einstiege heissen null Funde.
     expect(found.length).toBeGreaterThan(50);
-    expect(found).toContain("workers/realtime-runtime.ts");
-    expect(found).toContain("workers/compute-runtime.ts");
+    expect(found).toContain("workers/realtime-runtime.mts");
+    expect(found).toContain("workers/compute-runtime.mts");
   });
 
   it("reaches every server module from some process entrypoint", () => {

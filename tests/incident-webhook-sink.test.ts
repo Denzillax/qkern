@@ -283,7 +283,7 @@ describe("incident webhook configuration and host", () => {
   });
 
   it("ships a dedicated fail-closed host without logging configuration details", () => {
-    const source = readFileSync(new URL("../workers/incident-outbox-runtime.ts", import.meta.url), "utf8");
+    const source = readFileSync(new URL("../workers/incident-outbox-runtime.mts", import.meta.url), "utf8");
     const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
       scripts: Record<string, string>;
     };
@@ -291,6 +291,6 @@ describe("incident webhook configuration and host", () => {
     expect(source).toContain("SIGINT");
     expect(source).toContain("SIGTERM");
     expect(source).not.toMatch(/console\.(info|error).*QKERN_INCIDENT_WEBHOOK/i);
-    expect(packageJson.scripts["publisher:incidents"]).toContain("workers/incident-outbox-runtime.ts");
+    expect(packageJson.scripts["publisher:incidents"]).toContain("workers/incident-outbox-runtime.mts");
   });
 });
