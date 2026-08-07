@@ -374,3 +374,19 @@ verschluckt den Fehlschlag statt ihn zu melden — genau der Retry-Fall fällt.
 Die dritte Probe dieses Release hat kein Manifest, weil sie nicht am
 Zertifizierungsstack hängt: Wird `workers/project-queue-runtime.ts` entfernt,
 nennt der Erreichbarkeitsvertrag die ganze Kette vom Dispatch bis zum Worker.
+
+## Läufe zu Release 1.43 (7. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/queue-container-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 25 von 25, exit 0 |
+| `2026-08-06/queue-container-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 25 von 25, exit 0, Wiederholung |
+| `2026-08-06/queue-container-mutation.log` | Docker 29.5, registry:2 und PostgreSQL 17 | **24 von 25, exit 1 — absichtlich** |
+| `2026-08-06/queue-container-mutation2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | **24 von 25, exit 1 — absichtlich** |
+
+Erste Welle: Die Statuscode-Prüfung des Handlers entschärft — genau der
+Fehlschlag-Fall fällt. Zweite Welle: Der Wirt ruft `message.queue` statt des
+gebundenen Funktionsnamens — genau der Erfolgsfall fällt.
+
+Dass jede Welle **einen anderen** Fall umwirft, ist die eigentliche Aussage:
+Die beiden Fälle hängen nicht am selben Pfad.

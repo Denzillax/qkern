@@ -1508,3 +1508,38 @@ abgeschaltet und nicht bestanden. Der Wirt kann genau eines: eine Nachricht an
 eine Function geben. Ein allgemeiner Handler-Host und ein Consumer-SDK fehlen.
 Und der Vertrag deckt nur `lib/server`; `app/`, `lib/client` und `components/`
 sind ungeprueft.
+
+## Bis ans andere Ende — Release 1.43
+
+Release 1.42 hat dem Queue-Worker einen Wirt gegeben und ausdruecklich offen
+gelassen, dass die Kette Queue → Container in einem Lauf unbelegt bleibt: Die
+drei Real-DB-Faelle dort verwenden einen erfundenen Aufrufer.
+
+Release 1.43 schliesst das im Functions-Stack, wo seit 1.35 nichts mehr ersetzt
+ist. Die Definition kommt aus der Datenbank, das Image ueber seinen Digest aus
+einer echten Registry, der Aufruf aus dem Wirt — und was der Container
+antwortet, entscheidet ueber den Zustand der Nachricht. Zwischen `enqueue` und
+dem Container liegen Wirt, Worker und Lease; kein Fall ruft `invoke` selbst.
+
+Der zweite Fall braucht keinen kaputten Container: Ein unbekannter Modus laesst
+die Testfunction mit 400 antworten. Der Container laeuft also wirklich — er sagt
+nur Nein, und die Nachricht bleibt erhalten.
+
+Mutationsproben, beide am Handler und beide nur an einem Wert:
+
+- Statuscode-Pruefung entschaerft (`< 200 || > 299` zu `< 0`): genau der
+  Fehlschlag-Fall faellt, 24 von 25.
+- Wirt ruft `message.queue` statt `functionName`: genau der Erfolgsfall faellt,
+  24 von 25.
+
+Beide Faelle sind also einzeln getragen und nicht durch denselben Pfad.
+
+Checkpoint `1.43.0` am 7. August 2026: Lokal 1001 bestanden, 0 fehlgeschlagen;
+Functions gegen Docker, Registry und PostgreSQL 25 von 25, exit 0, zweimal
+reproduziert. Der PostgreSQL-Hauptlauf ist unveraendert gegenueber `1.42.0`.
+
+Nicht erbracht: Der Lauf startet den Wirt als Objekt, nicht als Prozess —
+`npm run worker:queues` selbst hat weiterhin keinen archivierten Lauf. Die
+Nebenlaeufigkeit mehrerer Wirte auf derselben Queue ist ueber die Lease
+zertifiziert, aber nicht mit echten Containern. Und der Retry-Fall belegt, dass
+die Nachricht bleibt — nicht, dass ein spaeterer Versuch sie zustellt.

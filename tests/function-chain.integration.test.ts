@@ -7,6 +7,10 @@ import { FunctionInvocationService } from "@/lib/server/compute/function-invocat
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
+import { ProjectQueueFunctionDispatch } from "@/lib/server/project-queues/function-dispatch";
+import { ProjectQueueHostRuntime } from "@/lib/server/project-queues/host-runtime";
+import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
+import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 
@@ -53,6 +57,7 @@ describe.runIf(enabled)("Function chain certification", () => {
   let definitions: ComputeDefinitionService;
   let repository: PostgresComputeDefinitionRepository;
   let invocation: FunctionInvocationService;
+  let queues: ProjectQueueService;
 
   const uniqueName = (prefix: string) => `${prefix}-${randomUUID().slice(0, 8)}`;
 
@@ -89,6 +94,9 @@ describe.runIf(enabled)("Function chain certification", () => {
           });
         },
       },
+    });
+    queues = new ProjectQueueService({
+      repository: new PostgresProjectQueueRepository(new PostgresControlPlane(pool)),
     });
   });
 
@@ -160,4 +168,62 @@ describe.runIf(enabled)("Function chain certification", () => {
       created.name, { mode: "echo" },
     )).rejects.toMatchObject({ code: "COMPUTE_NOT_FOUND" });
   });
+  /**
+   * Die Kette bis ans andere Ende: einreihen, und ein echter Container laeuft.
+   *
+   * Release 1.42 hat dem Queue-Worker einen Wirt gegeben und dabei ausdruecklich
+   * offen gelassen, dass die Kette Queue → Container in einem Lauf unbelegt
+   * bleibt: Die Real-DB-Faelle dort verwenden einen erfundenen Aufrufer.
+   *
+   * Hier ist nichts erfunden. Die Definition kommt aus der Datenbank, das Image
+   * aus der Registry, der Aufruf aus dem Wirt — und was der Container antwortet,
+   * entscheidet ueber den Zustand der Nachricht.
+   */
+  function host(queue: string, functionName: string, workerId: string) {
+    const principal = serviceRole;
+    return new ProjectQueueHostRuntime({
+      service: queues,
+      entries: [{
+        binding: { ...scope, queue, functionName },
+        principal,
+        workerId,
+        handler: new ProjectQueueFunctionDispatch({
+          functions: invocation, principal, scope, functionName,
+        }),
+      }],
+      idleDelayMs: 10, errorDelayMs: 10, maxIterations: 3,
+    });
+  }
+
+  it("runs a real container for an enqueued message", async () => {
+    const created = await define();
+    const queue = uniqueName("chain-queue");
+    await queues.createQueue(admin, scope, { name: queue });
+    await queues.enqueue(serviceRole, scope, queue, {
+      payload: { mode: "echo", value: "from-the-queue" },
+    });
+
+    await host(queue, created.name, uniqueName("worker")).run();
+
+    // Nichts in diesem Fall ruft `invoke` selbst. Zwischen `enqueue` und dem
+    // Container liegen der Wirt, der Worker und die Lease.
+    const status = await queues.status(admin, scope, queue);
+    expect(status.completed).toBe(1);
+    expect(status.available + status.inFlight + status.deadLettered).toBe(0);
+  }, 120_000);
+
+  it("keeps the message when the container answers with a failure", async () => {
+    const created = await define();
+    const queue = uniqueName("chain-fail");
+    await queues.createQueue(admin, scope, { name: queue });
+    // Ein unbekannter Modus laesst die Testfunction mit 400 antworten. Der
+    // Container laeuft also wirklich — er sagt nur Nein.
+    await queues.enqueue(serviceRole, scope, queue, { payload: { mode: "kein-modus" } });
+
+    await host(queue, created.name, uniqueName("worker")).run();
+
+    const status = await queues.status(admin, scope, queue);
+    expect(status.completed).toBe(0);
+    expect(status.available + status.scheduled + status.deadLettered).toBe(1);
+  }, 120_000);
 });

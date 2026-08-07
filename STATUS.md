@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 7. August 2026 · Release: `1.42.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 7. August 2026 · Release: `1.43.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 8 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 24 Real-DB-Fälle; **alle sechs Metriken melden**, Realtime auch für CDC; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 40 Real-DB-Fälle, dazu 23 im Functions-Lauf und 10 gegen einen echten HTTPS-Empfänger; Kette in einem Lauf |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 40 Real-DB-Fälle, dazu 25 im Functions-Lauf und 10 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **PostgreSQL-17-Zertifizierung** | **117 von 117 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
-| **Functions gegen Docker plus PostgreSQL** | **23 von 23 bestanden, exit 0, zweimal reproduziert** |
+| **Functions gegen Docker plus PostgreSQL** | **25 von 25 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **10 von 10 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
