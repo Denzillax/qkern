@@ -5,6 +5,7 @@ import { CronDispatcher } from "@/lib/server/compute/cron";
 import { PostgresCronRepository } from "@/lib/server/compute/cron-postgres-repository";
 import { CronScheduler } from "@/lib/server/compute/cron-scheduler";
 import { WebhookDeliveryRuntime } from "@/lib/server/compute/webhook-delivery-runtime";
+import { WebhookRetentionRuntime } from "@/lib/server/compute/webhook-retention-runtime";
 import { WebhookOutbox } from "@/lib/server/compute/webhook-outbox";
 import { PostgresWebhookOutboxRepository } from "@/lib/server/compute/webhook-postgres-repository";
 import { createVaultWebhookSecretProviderFromEnv } from "@/lib/server/compute/webhook-secret-vault";
@@ -147,11 +148,36 @@ export function createComputeRuntimeFromEnv(
   const outbox = new WebhookOutbox({ repository: webhooks, visibilityMs });
   const sleep = dependencies.sleep;
 
+  // `project_webhook_deliveries` wuchs seit Release 1.19 unbegrenzt: Eine
+  // zugestellte Zeile blieb fuer immer liegen. Aufgefallen ist das erst, als
+  // Release 1.37 dieselbe Luecke beim Realtime-Event-Log geschlossen hat.
+  //
+  // Der Aufraeumer laeuft hier, weil dieser Prozess die Scopes ohnehin kennt —
+  // und weil er derselbe ist, der die Zeilen erzeugt.
+  const retention = webhooksEnabled ? new WebhookRetentionRuntime({
+    repository: webhooks,
+    scopes,
+    deliveredRetentionMs: integer(env.QKERN_COMPUTE_WEBHOOK_DELIVERED_RETENTION_MS,
+      7 * 86_400_000, 60_000, 365 * 86_400_000),
+    // Laenger, und zwar bewusst: Eine tote Zustellung ist der Grund, warum
+    // jemand ueberhaupt in diese Tabelle schaut.
+    deadLetterRetentionMs: integer(env.QKERN_COMPUTE_WEBHOOK_DEAD_LETTER_RETENTION_MS,
+      30 * 86_400_000, 60_000, 365 * 86_400_000),
+    intervalMs: integer(env.QKERN_COMPUTE_WEBHOOK_RETENTION_INTERVAL_MS,
+      3_600_000, 1_000, 86_400_000),
+    ...(sleep ? { sleep } : {}),
+  }) : undefined;
+
   return {
     scopes,
     async run(signal: AbortSignal): Promise<void> {
       const loops: Promise<void>[] = [];
       const stops: Array<() => void> = [];
+
+      if (retention) {
+        stops.push(() => retention.stop());
+        loops.push(retention.run());
+      }
 
       for (const scope of scopes) {
         if (deliverer) {

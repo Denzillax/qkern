@@ -318,3 +318,22 @@ Fall fiel um, der Altes von Neuem unterscheidet.
 Die Tenant-Grenze des zweiten Falls trägt RLS und nicht der Aufräumer; sie lässt
 sich vom Adapter aus nicht brechen und ist deshalb nicht durch eine Mutation
 belegt.
+
+## Läufe zu Release 1.38 (6. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/webhook-retention-run1.log` | PostgreSQL 17 | 110 von 110, exit 0, 35 Migrationen |
+| `2026-08-06/webhook-retention-run2.log` | PostgreSQL 17 | 110 von 110, exit 0, Wiederholung |
+| `2026-08-06/webhook-retention-mutation.log` | PostgreSQL 17 | **109 von 110, exit 1 — absichtlich** |
+| `2026-08-06/webhook-retention-mutation2.log` | PostgreSQL 17 | **109 von 110, exit 1 — absichtlich** |
+
+Erste Welle: Status und Zeitstempel ignoriert, also nach `created_at` gelöscht —
+der Fall mit der wartenden Zustellung fällt um. Zweite Welle: tote Zustellungen
+mit dem Fenster der zugestellten behandelt — der Fall mit dem Dead Letter fällt
+um.
+
+Die abgelegte zweite Welle ist der **dritte** Anlauf. Die ersten beiden liessen
+PostgreSQL werfen (`$5 IS NOT NULL`, dann ein unbenutzter Parameter) und warfen
+deshalb den falschen Fall um. Daraus die Regel in `docs/QA.md`: Eine Mutation
+ändert einen Wert oder ein Prädikat, nie die Parameterzahl.

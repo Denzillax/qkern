@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebhookOutbox, WebhookOutboxError } from "@/lib/server/compute/webhook-outbox";
 import { PostgresWebhookOutboxRepository } from "@/lib/server/compute/webhook-postgres-repository";
+import { WebhookRetentionRuntime } from "@/lib/server/compute/webhook-retention-runtime";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool } from "@/lib/server/db/sql";
@@ -225,5 +226,119 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
       { ...scope, organizationId: randomUUID() }, { workerId: "outsider" },
     );
     expect(claims).toEqual([]);
+  });
+});
+
+/**
+ * Aufbewahrung abgeschlossener Zustellungen gegen echtes PostgreSQL.
+ *
+ * `project_webhook_deliveries` wuchs seit Release 1.19 unbegrenzt. Gemessen wird
+ * hier die Wirkung: Was abgeschlossen und alt ist, verschwindet; was noch
+ * aussteht, bleibt — unabhaengig von seinem Alter.
+ */
+describe.runIf(enabled)("Webhook retention PostgreSQL certification", () => {
+  const controlUser = randomUUID();
+  const organizationId = randomUUID();
+  const projectId = randomUUID();
+  const scope = { organizationId, projectId, environment: "development" as const };
+
+  let owner: SqlPool;
+  let runtimePool: SqlPool;
+  let repository: PostgresWebhookOutboxRepository;
+  let webhookId: string;
+
+  async function delivery(status: string, ageDays: number) {
+    const id = randomUUID();
+    const stamp = status === "delivered" ? "delivered_at" : "dead_lettered_at";
+    const extra = ["delivered", "dead_lettered"].includes(status)
+      ? `, ${stamp} = now() - ($6 || ' days')::interval` : "";
+    await owner.query(
+      `INSERT INTO project_webhook_deliveries
+         (id, organization_id, project_id, environment, webhook_id, event_type, payload,
+          occurred_at, status, attempt_count, available_at, created_at${extra ? `, ${stamp}` : ""})
+       VALUES ($1,$2,$3,'development',$4,'order.created','{}', now(), $5, 1, now(), now()`
+       + (extra ? `, now() - ($6 || ' days')::interval)` : ")"),
+      extra
+        ? [id, organizationId, projectId, webhookId, status, String(ageDays)]
+        : [id, organizationId, projectId, webhookId, status],
+    );
+    return id;
+  }
+
+  async function remaining() {
+    const result = await owner.query<{ status: string; count: string }>(
+      `SELECT status, count(*)::text AS count FROM project_webhook_deliveries
+        WHERE organization_id=$1 AND project_id=$2 GROUP BY status`,
+      [organizationId, projectId],
+    );
+    return new Map(result.rows.map((row) => [row.status, Number(row.count)]));
+  }
+
+  beforeAll(async () => {
+    owner = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
+    runtimePool = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
+    );
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [controlUser, `retention-hook-${controlUser}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Webhook Retention', $2, $3)`,
+    [organizationId, `hook-retention-${organizationId}`, controlUser]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Webhook Retention', $3, 'test', 'ready', $4)`,
+    [projectId, organizationId, `hook-retention-${projectId}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [organizationId, projectId, `managed:${projectId}`]);
+
+    webhookId = randomUUID();
+    await owner.query(
+      `INSERT INTO project_webhooks
+         (id, organization_id, project_id, environment, name, url, event_types,
+          signing_secret_ref, max_attempts)
+       VALUES ($1,$2,$3,'development','retention','https://receiver.example.com/hooks',
+               $4,'vault:webhook/test',5)`,
+      [webhookId, organizationId, projectId, ["order.created"]],
+    );
+    repository = new PostgresWebhookOutboxRepository(new PostgresControlPlane(runtimePool));
+  });
+
+  afterAll(async () => {
+    await Promise.allSettled([owner?.end(), runtimePool?.end()]);
+  });
+
+  it("removes what is finished and old, and never what is still waiting", async () => {
+    await delivery("delivered", 30);
+    await delivery("delivered", 1);
+    await delivery("pending", 0);
+
+    const runtime = new WebhookRetentionRuntime({
+      repository, scopes: [scope],
+      deliveredRetentionMs: 7 * 86_400_000,
+      deadLetterRetentionMs: 30 * 86_400_000,
+    });
+    await expect(runtime.runOnce()).resolves.toMatchObject({ delivered: 1 });
+
+    const left = await remaining();
+    expect(left.get("delivered")).toBe(1);
+    // Eine ausstehende Zustellung ist keine Altlast. Sie zu loeschen waere der
+    // stille Verlust genau der Nachricht, die noch ankommen soll.
+    expect(left.get("pending")).toBe(1);
+  });
+
+  it("keeps a dead letter that a delivered row of the same age would lose", async () => {
+    await delivery("dead_lettered", 10);
+    await delivery("delivered", 10);
+
+    const runtime = new WebhookRetentionRuntime({
+      repository, scopes: [scope],
+      deliveredRetentionMs: 7 * 86_400_000,
+      deadLetterRetentionMs: 30 * 86_400_000,
+    });
+    await runtime.runOnce();
+
+    const left = await remaining();
+    expect(left.get("dead_lettered")).toBe(1);
   });
 });

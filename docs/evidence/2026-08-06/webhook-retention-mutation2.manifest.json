@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "webhook-retention-mutation2.log",
+  "commit": "c6ee836318ccc1a871f71f09d18a4534233fa980",
+  "commitSubject": "release: 1.37.0 Aufraeumen laeuft",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 35,
+  "testFiles": "1 failed | 17 passed (18)",
+  "tests": "1 failed | 109 passed (110)",
+  "passed": 109,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.37.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.38.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.37.0`
-- Aktueller Slice: 1.37 Aufraeumen laeuft — `lib/server/realtime/retention-runtime.ts`
+- Paketversion: `1.38.0`
+- Aktueller Slice: 1.38 Was noch waechst — `lib/server/compute/webhook-retention-runtime.ts`
+- Zugestellte und tote Zustellungen haben getrennte Fenster; **wartende bleiben unberuehrt**
+- `usage_events` bekommt bewusst **keinen** Aufraeumer: Trigger und fehlendes DELETE-Recht sind Absicht, die Antwort auf Wachstum ist Export
+- Regel fuer Mutationsproben: nie die Parameterzahl oder einen untypisierten Bezug aendern — PostgreSQL wirft dann, und die Probe misst das Werkzeug statt der Zusage
+- Vorheriger Slice: 1.37 Aufraeumen laeuft — `lib/server/realtime/retention-runtime.ts`
 - Beide `prune`-Pfade hatten bis 1.36 **keinen Aufrufer**; Event-Log und Change-Feed wuchsen unbegrenzt
 - Scope-Liste ausdruecklich in `QKERN_REALTIME_RETENTION_SCOPES_JSON` — RLS gibt keine organisationsuebergreifende Suche her
 - Aufbewahrt wird nach **Alter**, nicht nach Position: Ein laenger ausgefallener Poller verliert Aenderungen

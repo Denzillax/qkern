@@ -1289,3 +1289,64 @@ nicht durch eine Mutation belegt. Aufbewahrt wird nach Alter, nicht nach
 Position: Ein Poller, der laenger als das Fenster ausgefallen war, verliert
 Aenderungen; die Cursor-Pruefung meldet die Luecke, statt sie zu verschweigen.
 Ein Lauf, der genau das zeigt, fehlt.
+
+## Was noch waechst — Release 1.38
+
+Release 1.37 schloss mit dem Satz, dass `usage_events` und
+`project_webhook_deliveries` weiterhin ohne Aufraeumer wachsen. Der Blick auf
+beide hat zwei verschiedene Antworten ergeben, und das ist das Ergebnis dieses
+Slices.
+
+**Webhook-Zustellungen bekommen eine Aufbewahrung.** Zugestellte und tote Zeilen
+haben getrennte Fenster (sieben beziehungsweise dreissig Tage), und **wartende
+oder laufende bleiben unberuehrt** — unabhaengig von ihrem Alter. Eine
+ausstehende Zustellung ist keine Altlast; sie zu loeschen waere der stille
+Verlust genau der Nachricht, die noch ankommen soll. Eine tote Zustellung ist
+der Grund, warum ein Betreiber ueberhaupt in diese Tabelle schaut, und darf
+nicht mit dem Alltagsrauschen verschwinden.
+
+Zwei Faelle im PostgreSQL-Lauf messen die Wirkung, fuenf lokale die Runtime.
+
+**`usage_events` bekommt bewusst keine.** Der Trigger aus Migration 0028 weist
+UPDATE **und DELETE** ab, und die Runtime-Rolle hat kein DELETE-Recht — beides
+Absicht. Diese Tabelle ist zweierlei zugleich: der Beleg hinter jedem
+Zaehlerstand und der Idempotenz-Speicher. Ein geloeschtes Ereignis heisst, dass
+derselbe Schluessel spaeter erneut zaehlt. Die Antwort auf ihr Wachstum ist
+**Export**, nicht Loeschen; `docs/USAGE_METERING.md` fuehrt Retention/Export
+seit Alpha 1 als offen.
+
+Der Schlusssatz von 1.37 war damit zu schnell: Er behandelte beide Tabellen
+gleich, obwohl nur eine einen Aufraeumer vertraegt.
+
+Mutationsprobe in zwei Wellen, jede genau ein Fall: Status und Zeitstempel
+ignoriert (nach `created_at` geloescht) — der Fall mit der wartenden Zustellung
+faellt um. Tote Zustellungen mit dem Fenster der zugestellten behandelt — der
+Fall mit dem Dead Letter faellt um.
+
+**Drei Anlaeufe waren dabei wertlos, und zwar aus demselben Grund wie in Release
+1.36.** Eine Mutation, die `$5 IS NOT NULL` einfuegt, `$5 - interval` rechnet
+oder einen Parameter unbenutzt laesst, laesst PostgreSQL werfen: Der Typ ist
+nicht bestimmbar beziehungsweise die Parameterzahl passt nicht. Der Adapter
+scheitert dann geschlossen, und alle Faelle fallen um — die Probe misst das
+Werkzeug statt der Zusage.
+
+Daraus eine Regel, die kuenftig gilt: **Eine Mutationsprobe an einer SQL-Abfrage
+aendert einen Wert oder ein Praedikat, nie die Parameterzahl und nie eine
+untypisierte Referenz.** Faellt mehr um als vorhergesagt, ist zuerst die Probe
+verdaechtig, nicht die Zusage.
+
+Nebenbei: Ein Nebenlaeufigkeitsfall aus Release 1.17 riss unter Last die
+Vorgabe von fuenf Sekunden. Er laeuft normalerweise in einer Sekunde, unter
+mehreren parallelen Container-Stacks in knapp drei. Die Zusage bleibt
+unveraendert — genau einmal je Nachricht —, nur die Wartezeit passt jetzt zur
+Streuung. Ein Gate, das zufaellig rot wird, entwertet jeden anderen.
+
+Checkpoint `1.38.0` am 6. August 2026: **110 von 110** Faellen des
+PostgreSQL-Laufs bestanden, zweimal reproduziert **vor** dem Release-Commit.
+Lokal 987 bestanden, 0 fehlgeschlagen.
+
+Nicht erbracht: Ein Export- oder Archivweg fuer `usage_events` fehlt, und damit
+bleibt diese Tabelle die einzige, die absichtlich waechst. Auch
+`usage_counters`, `project_function_slots` (abgelaufene Zeilen ohne neuen
+Aufruf) und `audit_logs` haben keinen Aufraeumer; die ersten beiden sind
+klein und beschraenkt, das dritte ist absichtlich unveraenderlich.

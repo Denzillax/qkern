@@ -239,6 +239,15 @@ Migration `0028_usage_metering.sql` ergänzt:
 | `usage_counters` | monatlicher atomarer Zähler je Metrik |
 | `usage_events` | unveränderliche, redigierte Entscheidungsbelege |
 
+`usage_events` bekommt bewusst **keine Aufbewahrung**. Der Trigger weist UPDATE
+und DELETE ab, und die Runtime-Rolle hat kein DELETE-Recht — beides Absicht. Die
+Tabelle ist zweierlei zugleich: der Beleg hinter jedem Zählerstand und der
+Idempotenz-Speicher. Ein gelöschtes Ereignis heisst, dass derselbe Schlüssel
+später erneut zählt.
+
+Die Antwort auf ihr Wachstum ist deshalb **Export**, nicht Löschen — und der
+fehlt noch. Sie ist damit die einzige Tabelle, die absichtlich wächst.
+
 Alle Tabellen tragen Organisation, Projekt und Umgebung, besitzen zusammengesetzte
 Projekt-Fremdschlüssel und RLS. Die Runtime arbeitet ausschließlich innerhalb
 einer tenantgebundenen Transaktion. Trigger verhindern Event-Updates/-Deletes,

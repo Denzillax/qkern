@@ -102,7 +102,13 @@ describe.runIf(enabled)("Project Queues multi-instance certification", () => {
       [organizationId, queue],
     );
     expect(inFlight.rows[0]?.count).toBe(ids.length);
-  });
+    // Sechs Instanzen mit 180 Nachrichten dauern hier normalerweise etwa eine
+    // Sekunde, unter Last aber auch drei. Die Voreinstellung von fuenf Sekunden
+    // hat in Release 1.38 einmal gerissen — auf einem Rechner, der gerade
+    // mehrere Container-Stacks hintereinander fuhr. Die Zusage bleibt
+    // unveraendert (genau einmal je Nachricht); nur die Wartezeit passt jetzt
+    // zur Streuung, damit ein roter Lauf wirklich etwas bedeutet.
+  }, 30_000);
 
   it("gives a message to exactly one instance when many claim at the same moment", async () => {
     const queue = `single-${randomUUID().slice(0, 8)}`;

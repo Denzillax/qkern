@@ -218,6 +218,41 @@ implements WebhookOutboxRepository, WebhookDefinitionSource {
     });
   }
 
+  /**
+   * Entfernt abgeschlossene Zustellungen jenseits ihrer Aufbewahrung.
+   *
+   * **Wartende und laufende Zustellungen bleiben unberührt**, unabhängig von
+   * ihrem Alter. Eine Zustellung, die noch aussteht, ist keine Altlast — sie zu
+   * löschen wäre ein stiller Verlust genau der Nachricht, die noch ankommen
+   * soll.
+   *
+   * Zugestellte und tote Zustellungen haben eigene Fenster. Eine tote ist der
+   * Grund, warum ein Betreiber überhaupt in diese Tabelle schaut; sie darf
+   * nicht mit dem Alltagsrauschen verschwinden.
+   */
+  async pruneDeliveries(scope: WebhookOutboxScope, input: {
+    deliveredBefore: Date; deadLetteredBefore: Date;
+  }): Promise<{ delivered: number; deadLettered: number }> {
+    return await this.withTenant(scope, false, async (database) => {
+      const removed = await database.query<{ status: string; count: string }>(
+        `WITH deleted AS (
+           DELETE FROM project_webhook_deliveries
+            WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+              AND ((status='delivered' AND delivered_at < $4)
+                OR (status='dead_lettered' AND dead_lettered_at < $5))
+            RETURNING status
+         ) SELECT status, count(*)::text AS count FROM deleted GROUP BY status`,
+        [scope.organizationId, scope.projectId, scope.environment,
+          input.deliveredBefore, input.deadLetteredBefore],
+      );
+      const byStatus = new Map(removed.rows.map((row) => [row.status, Number(row.count)]));
+      return {
+        delivered: byStatus.get("delivered") ?? 0,
+        deadLettered: byStatus.get("dead_lettered") ?? 0,
+      };
+    });
+  }
+
   async maxAttempts(scope: WebhookOutboxScope, webhookId: string): Promise<number | null> {
     return await this.withTenant(scope, true, async (database) => {
       const result = await database.query<{ max_attempts: number }>(
