@@ -1,6 +1,6 @@
 {
   "name": "qkern-platform",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "private": true,
   "engines": {
     "node": ">=24.7.0"
@@ -41,6 +41,7 @@
     "publisher:apply": "node --import tsx workers/apply-outbox-runtime.ts",
     "publisher:incidents": "node --import tsx workers/incident-outbox-runtime.ts",
     "worker:compute": "node --import tsx workers/compute-runtime.ts",
+    "worker:queues": "node --import tsx workers/project-queue-runtime.ts",
     "test:auth:provider": "vitest run tests/project-auth-provider.integration.test.ts",
     "test:auth:docker": "node scripts/auth-certification.mjs",
     "test:functions:docker": "node scripts/functions-certification.mjs",

@@ -1459,3 +1459,52 @@ tragbar. Ungeprueft bleibt, ob eine Seite unter gleichzeitigem Schreiben stabil
 bleibt; die Fenstergrenze `window_start` ist zwar unveraenderlich, aber ein
 Export ueber Stunden hat keinen Beleg. Es gibt keine Route und keine
 Console-Flaeche, nur das Skript.
+
+## Wer ruft das eigentlich? — Release 1.42
+
+Dieser Sprint hat sechsmal dasselbe gefunden: gebaut, zertifiziert und trotzdem
+wirkungslos, weil niemand es aufruft. Realtime-Poller (1.14), Event-Log (1.15),
+Webhook-Outbox (1.19), Functions-Sandbox (1.22), Usage-Emitter (1.29),
+Prune-Pfade (1.37). Jedes Mal war es Handarbeit, und jedes Mal spaeter, als es
+haette sein muessen.
+
+Release 1.42 macht daraus eine stehende Pruefung. Der Importgraph wird von jedem
+Prozesseinstieg aus gelaufen — App-Routen, `workers/`, `scripts/`, Middleware —
+und was in `lib/server` liegt, ohne dabei beruehrt zu werden, ist ein Fund.
+
+Der erste Lauf fand fuenf Module. Drei waren tote Barrel-Dateien
+(`control-plane/index.ts`, `db/index.ts`, `migrations/index.ts`), die niemand
+importierte; sie sind geloescht. Die anderen beiden waren der **siebte Fall**:
+`ProjectQueueWorker` und `ProjectQueueWorkerRuntime` gab es seit Alpha 1,
+getestet und ohne Wirt. Nachrichten liessen sich einreihen, und kein Prozess nahm
+sie heraus.
+
+Der Wirt ist jetzt da: `npm run worker:queues` gibt eine Nachricht an eine
+hinterlegte Function. Nebenbei fiel auf, dass die Alpha-Grenzen in
+`docs/PROJECT_QUEUES.md` noch „keine Functions, Cron-Scheduler,
+Webhook-Zustellung" nannten — alles seit 1.20 bis 1.26 vorhanden.
+
+Der Vertrag beweist **Erreichbarkeit, nicht Wirkung**. Ein Modul kann importiert
+und nie ausgefuehrt werden. Das ist die schwaechere Aussage und die einzige, die
+ein Importgraph tragen kann — sie haette aber alle sieben Faelle gefunden, denn
+in allen sieben fehlte schon der Import.
+
+Mutationsproben:
+
+- Prozesseinstieg `workers/project-queue-runtime.ts` entfernt: Der Vertrag nennt
+  die ganze Kette, nicht nur ihr Ende — Dispatch, Komposition, Wirt, Runtime und
+  Worker.
+- Wirt hoert auf `functionName` statt auf `queue`: alle drei Real-DB-Faelle
+  fallen, 114 von 117. Alle drei tragen die Verdrahtung.
+- Handler verschluckt den Fehlschlag statt ihn zu melden: genau der Retry-Fall
+  faellt, 116 von 117.
+
+Checkpoint `1.42.0` am 7. August 2026: Lokal 1001 bestanden, 0 fehlgeschlagen;
+PostgreSQL 117 von 117, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Die `ALLOWED`-Liste des Vertrags ist leer und soll es bleiben —
+wer dort etwas eintraegt, ohne den Grund zu meinen, hat die Pruefung
+abgeschaltet und nicht bestanden. Der Wirt kann genau eines: eine Nachricht an
+eine Function geben. Ein allgemeiner Handler-Host und ein Consumer-SDK fehlen.
+Und der Vertrag deckt nur `lib/server`; `app/`, `lib/client` und `components/`
+sind ungeprueft.

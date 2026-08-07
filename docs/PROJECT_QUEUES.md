@@ -84,7 +84,17 @@ Neustart des Webprozesses verliert PostgreSQL-Queues und aktive Leases nicht.
 
 ## Worker und Dead Letters
 
-`ProjectQueueWorker` ist ein injizierbarer Port für einen separaten Prozess. Ein
+`ProjectQueueWorker` ist ein injizierbarer Port für einen separaten Prozess.
+
+Bis `1.42.0` war das ein Port **ohne Wirt**: Der Worker war gebaut und getestet,
+und kein Prozesseinstieg startete ihn — Nachrichten liessen sich einreihen, und
+niemand nahm sie heraus. Gefunden hat das nicht Handarbeit, sondern der
+Erreichbarkeitsvertrag in `tests/entrypoint-reachability-contract.test.ts`.
+
+`npm run worker:queues` startet den Wirt. Jede Bindung in
+`QKERN_QUEUE_WORKER_BINDINGS_JSON` gibt genau eine Queue an genau eine
+hinterlegte Function; Kapazität und eine fehlende Function gelten als
+`DEPENDENCY_UNAVAILABLE` und damit als wiederholbar. Ein
 Handler erhält genau eine bounded Message und ein AbortSignal. Der Worker claimt
 höchstens eine Nachricht gleichzeitig, erneuert ihre Lease periodisch, erzwingt
 einen festen Timeout und acked oder failed ausschließlich mit dem ursprünglichen
@@ -152,9 +162,9 @@ Memory-Modus geht der Zustand bei Prozessneustart verloren.
 
 - PostgreSQL-Adapter vorhanden, aber reale Multi-Instance-/Crash-/Load-Läufe in
   dieser Umgebung nicht ausgeführt;
-- Worker-/Runtime-Port vorhanden, aber noch kein allgemeiner Sandbox- oder
-  frei konfigurierbarer Handler-Host und kein Consumer-SDK;
-- keine Functions, Cron-Scheduler, Webhook-Zustellung oder Vault-Secret-Injektion;
+- seit `1.42.0` verarbeitet `npm run worker:queues` Nachrichten wirklich; der
+  Wirt kann genau eines — eine Nachricht an eine hinterlegte Function geben —
+  und ein allgemeiner Handler-Host sowie ein Consumer-SDK fehlen weiter;
 - redigierte Prozesszähler vorhanden, aber kein Metrics-Exporter, Tracing,
   Last-/Soak-Test oder archiviertes Real-Broker-E2E;
 - keine Production-Freigabe.

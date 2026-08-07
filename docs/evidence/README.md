@@ -357,3 +357,20 @@ liefen in der Nacht zum 7. August auf demselben Stack wie die Läufe zu 1.38.
 Dass die erste Welle **dieselben dreizehn Zeilen** liefert wie der Defekt, den
 der erste Zertifizierungslauf gefunden hatte, ist der eigentliche Beleg: Die
 Probe misst die Zusage und nicht das Werkzeug.
+
+## Läufe zu Release 1.42 (7. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/queue-host-run1.log` | PostgreSQL 17 | 117 von 117, exit 0, 35 Migrationen |
+| `2026-08-06/queue-host-run2.log` | PostgreSQL 17 | 117 von 117, exit 0, Wiederholung |
+| `2026-08-06/queue-host-mutation.log` | PostgreSQL 17 | **114 von 117, exit 1 — absichtlich** |
+| `2026-08-06/queue-host-mutation2.log` | PostgreSQL 17 | **116 von 117, exit 1 — absichtlich** |
+
+Erste Welle: Der Wirt hört auf `functionName` statt auf `queue` — alle drei
+Fälle fallen, weil alle drei die Verdrahtung tragen. Zweite Welle: Der Handler
+verschluckt den Fehlschlag statt ihn zu melden — genau der Retry-Fall fällt.
+
+Die dritte Probe dieses Release hat kein Manifest, weil sie nicht am
+Zertifizierungsstack hängt: Wird `workers/project-queue-runtime.ts` entfernt,
+nennt der Erreichbarkeitsvertrag die ganze Kette vom Dispatch bis zum Worker.

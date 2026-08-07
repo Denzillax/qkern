@@ -6,6 +6,11 @@ import type { SqlPool } from "@/lib/server/db/sql";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+import { ProjectQueueFunctionDispatch } from "@/lib/server/project-queues/function-dispatch";
+import { ProjectQueueHostRuntime } from "@/lib/server/project-queues/host-runtime";
+import { ComputeDefinitionError } from "@/lib/server/compute/definitions";
+import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
+import type { FunctionInvocationResult } from "@/lib/server/compute/model";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
@@ -130,5 +135,153 @@ describe.runIf(enabled)("Project Queues PostgreSQL certification", () => {
       role: "admin",
       subject: randomUUID(),
     }, { ...scope, organizationId: otherOrganizationId })).resolves.toEqual([]);
+  });
+});
+
+/**
+ * Der Wirt verarbeitet wirklich — gegen echtes PostgreSQL.
+ *
+ * `ProjectQueueWorker` war seit Alpha 1 gebaut und getestet, und kein Prozess
+ * startete ihn: Nachrichten liessen sich einreihen, niemand nahm sie heraus.
+ * Gefunden hat das der Erreichbarkeitsvertrag, nicht Handarbeit.
+ *
+ * Gemessen wird deshalb die Wirkung: Nach einem echten `enqueue` ist die
+ * Nachricht verarbeitet und die Function gerufen — ohne dass der Test selbst
+ * `runOnce` aufruft. Die Sandbox ist eigens zertifiziert; hier steht der Weg
+ * von der Queue zur Function auf dem Pruefstand.
+ */
+describe.runIf(enabled)("Project queue host PostgreSQL certification", () => {
+  let owner2: SqlPool;
+  let runtime2: SqlPool;
+  let service2: ProjectQueueService;
+
+  const controlUser2 = randomUUID();
+  const org2 = randomUUID();
+  const project2 = randomUUID();
+  const scope2 = { organizationId: org2, projectId: project2, environment: "development" as const };
+  const admin2: ProjectQueuePrincipal = {
+    organizationId: org2, actorRef: "host-owner@qkern.test", role: "admin", subject: controlUser2,
+  };
+  const service_role2: ProjectQueuePrincipal = {
+    organizationId: org2, actorRef: "service-role:host", role: "service_role", subject: "host",
+  };
+
+  beforeAll(async () => {
+    owner2 = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
+    runtime2 = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: runtimeUrl!, max: 6 }), "runtime",
+    );
+    await owner2.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [controlUser2, `queue-host-${controlUser2}@qkern.test`]);
+    await owner2.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Queue Host', $2, $3)`, [org2, `queue-host-${org2}`, controlUser2]);
+    await owner2.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Queue Host', $3, 'test', 'ready', $4)`,
+    [project2, org2, `queue-host-${project2}`, controlUser2]);
+    await owner2.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [org2, project2, `managed:${project2}`]);
+    service2 = new ProjectQueueService({
+      repository: new PostgresProjectQueueRepository(new PostgresControlPlane(runtime2)),
+    });
+  });
+
+  afterAll(async () => {
+    await Promise.allSettled([owner2?.end(), runtime2?.end()]);
+  });
+
+  /**
+   * Ruft den Wirt mit einer festen Rundenzahl statt endlos. Eine echte
+   * Endlosschleife waere in einem Test nur ueber einen Timeout zu beenden, und
+   * ein Timeout ist keine Zusage.
+   */
+  function host(
+    queue: string,
+    functionName: string,
+    invoke: (name: string, payload: ProjectQueueJson) => Promise<FunctionInvocationResult>,
+  ) {
+    const handler = new ProjectQueueFunctionDispatch({
+      functions: {
+        invoke: (_principal: unknown, _scope: unknown, name: string, payload: ProjectQueueJson) =>
+          invoke(name, payload),
+      } as never,
+      principal: service_role2,
+      scope: { organizationId: org2, projectId: project2, environment: "development" },
+      functionName,
+    });
+    return new ProjectQueueHostRuntime({
+      service: service2,
+      entries: [{
+        binding: { ...scope2, queue, functionName },
+        handler, principal: service_role2, workerId: `host-${randomUUID()}`,
+      }],
+      idleDelayMs: 10, errorDelayMs: 10, maxIterations: 4,
+    });
+  }
+
+  it("consumes an enqueued message and calls the function", async () => {
+    const calls: ProjectQueueJson[] = [];
+    await service2.createQueue(admin2, scope2, { name: "host-happy" });
+    const receipt = await service2.enqueue(service_role2, scope2, "host-happy", {
+      payload: { order: "o-1" },
+    });
+
+    await host("host-happy", "settle-order", async (name, payload) => {
+      expect(name).toBe("settle-order");
+      calls.push(payload);
+      return { statusCode: 200, headers: {}, body: { ok: true } };
+    }).run();
+
+    // Die Nachricht ist verarbeitet, ohne dass dieser Test `runOnce` gerufen
+    // haette — genau das war bis 1.42 unmoeglich.
+    expect(calls).toEqual([{ order: "o-1" }]);
+    expect(receipt.id).toBeTruthy();
+    const status = await service2.status(admin2, scope2, "host-happy");
+    expect(status.completed).toBe(1);
+    expect(status.available + status.inFlight).toBe(0);
+  });
+
+  it("retries when the function is unavailable", async () => {
+    await service2.createQueue(admin2, scope2, { name: "host-unavailable" });
+    const receipt = await service2.enqueue(service_role2, scope2, "host-unavailable", {
+      payload: { order: "o-2" },
+    });
+
+    let attempts = 0;
+    await host("host-unavailable", "missing-function", async () => {
+      attempts += 1;
+      throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    }).run();
+
+    // Eine fehlende Function ist ein Zustand der Umgebung, kein Fehler der
+    // Nachricht: Sie bleibt erhalten und wird spaeter erneut versucht.
+    expect(attempts).toBeGreaterThanOrEqual(1);
+    expect(receipt.id).toBeTruthy();
+    const status = await service2.status(admin2, scope2, "host-unavailable");
+    expect(status.completed).toBe(0);
+    expect(status.available + status.scheduled + status.deadLettered).toBe(1);
+  });
+
+  it("keeps a foreign queue untouched", async () => {
+    await service2.createQueue(admin2, scope2, { name: "host-mine" });
+    await service2.createQueue(admin2, scope2, { name: "host-other" });
+    const mine = await service2.enqueue(service_role2, scope2, "host-mine", { payload: { n: 1 } });
+    const other = await service2.enqueue(service_role2, scope2, "host-other", { payload: { n: 2 } });
+
+    const seen: ProjectQueueJson[] = [];
+    await host("host-mine", "only-mine", async (_name, payload) => {
+      seen.push(payload);
+      return { statusCode: 200, headers: {}, body: { ok: true } };
+    }).run();
+
+    // Eine Bindung bedient genau ihre Queue. Sonst zoege ein Wirt Nachrichten
+    // aus Queues, die ihm niemand gegeben hat.
+    expect(seen).toEqual([{ n: 1 }]);
+    expect(mine.id).not.toBe(other.id);
+    expect((await service2.status(admin2, scope2, "host-mine")).completed).toBe(1);
+    const untouched = await service2.status(admin2, scope2, "host-other");
+    expect(untouched.completed).toBe(0);
+    expect(untouched.available).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.40.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.42.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -124,7 +124,10 @@ Release Notes bleiben unverändert.
 - PostgreSQL-Adapter: `lib/server/project-queues/postgres-repository.ts`
 - REST-Routen: `app/api/v1/projects/[projectId]/environments/[environment]/queues/`
 - Vertrag: `docs/PROJECT_QUEUES.md` und `lib/openapi.ts`
-- Worker: `lib/server/project-queues/worker.ts` und `worker-runtime.ts`
+- Worker: `lib/server/project-queues/worker.ts` und `worker-runtime.ts`;
+  gestartet von `workers/project-queue-runtime.ts` (`npm run worker:queues`).
+  Kein neues Modul in `lib/server` ohne Prozesseinstieg — der
+  Erreichbarkeitsvertrag faellt sonst um, und das ist Absicht.
 - DLQ-Routen: `.../queues/[queue]/dead-letters/`
 - Compute-Ports: `lib/server/compute/`
 - SDK: `sdk/typescript/src/index.ts`
