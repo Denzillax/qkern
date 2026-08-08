@@ -460,3 +460,21 @@ Wird dem Wirt der Probe-Aufruf genommen, nennt der Vertrag die Datei namentlich.
 Der PostgreSQL-Lauf zeigt keine neue Zahl. Er steht hier, weil die Verdrahtung
 `lib/server/project-queues/host-runtime.ts` berührt und ein unveränderter Lauf
 danach keine Selbstverständlichkeit ist.
+
+## Läufe zu Release 1.48 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/migration-process-run1.log` | PostgreSQL 17 | 122 von 122, exit 0, 35 Migrationen |
+| `2026-08-08/migration-process-run2.log` | PostgreSQL 17 | 122 von 122, exit 0, Wiederholung |
+| `2026-08-08/migration-process-mutation.log` | PostgreSQL 17 | **121 von 122, exit 1 — absichtlich** |
+
+Die Mutation entfernt den CTE-Alias in `quarantineExpiredReconciliations` wieder:
+Der Auftrag bleibt `queued`, weil PostgreSQL die Abfrage als mehrdeutig abweist.
+Genau der Prozess-Fall fällt.
+
+Kein Lauf belegt das **Anwenden** in einer echten Projektdatenbank. Lokal
+gelingt es nach beiden Fixes; im Zertifizierungscluster weist der Zaun mit
+`INVALID_MIGRATION_FENCE` ab, und der Grund ist nicht isoliert. Der lokale Lauf
+ist nicht abgelegt: Er lief ausserhalb eines Stacks und trägt deshalb keine
+Evidenz im Sinne dieses Ordners.

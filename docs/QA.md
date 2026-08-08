@@ -1756,3 +1756,64 @@ Nicht erbracht: Der Vertrag prueft, **dass** ein Prozess die Fabrik aufruft,
 nicht dass die Probe danach etwas Wahres meldet. Zertifiziert ist das fuer
 Compute und den Queue-Wirt; die vier Migrations-Prozesse melden seit `1.8.0`
 und haben dafuer keinen archivierten Lauf.
+
+## Zwei Defekte auf dem Pfad zur Kundendatenbank — Release 1.48
+
+Von den fuenf Prozessen ohne Arbeitsnachweis ist der Migrations-Worker der
+folgenreichste: Er ist der einzige, der Kundendatenbanken schreibt. Zertifiziert
+war er seit Stufe 0.1 — immer als Bibliothek. Ein Lauf, der
+`npm run worker:migrations` startet und danach nachsieht, gab es nie.
+
+Der erste Lauf war rot, und zwar zweimal hintereinander an verschiedenen
+Stellen.
+
+**Erster Defekt: `quarantineExpiredReconciliations`.** Die Abfrage baut ein CTE
+mit `SELECT id` und schreibt dann `RETURNING <spalten>` mit unqualifizierten
+Namen. PostgreSQL weist das als mehrdeutig ab. Sie laeuft bei **jedem** Claim,
+also konnte der Worker keinen einzigen Auftrag uebernehmen: Der Auftrag blieb
+`queued`, die Schleife meldete `iteration_failed`, und niemand sah es. Die
+Nachbarabfrage `claimNext` aliasiert ihr CTE seit jeher als `candidate_id`; hier
+fehlte der Alias.
+
+**Zweiter Defekt: die Zaun-Grenzpruefung.** `aclexplode(coalesce(a.attacl,
+'{}'::aclitem[]))` — `'{}'::aclitem[]` ist nulldimensional, `aclexplode`
+verlangt genau eine Dimension, und PostgreSQL weist die ganze Abfrage mit „ACL
+arrays must be one-dimensional" ab. Die Funktion ist strikt; ein NULL liefert im
+LATERAL ohnehin keine Zeile, und genau das ist gemeint. Die Nachbarpruefungen
+benutzen `acldefault(...)` und waren nie betroffen.
+
+Beide Fehler liegen auf demselben Pfad, und beide machten jede Migration ueber
+den ausgelieferten Prozess unmoeglich. Gefunden hat sie kein Test, sondern der
+Versuch, den Prozess einmal wirklich laufen zu lassen.
+
+**Was nicht belegt ist, und das ist der unbequeme Teil.** Nach beiden Fixes
+wendet der Prozess lokal gegen eine echte Projektdatenbank an — Auftrag
+`applied`, Tabelle vorhanden, Ledger geschrieben. Im Zertifizierungscluster
+weist derselbe Zaun mit `INVALID_MIGRATION_FENCE` ab. Gemessen wurden
+Eigentuemer, Mitgliedschaften, Schema- und Tabellen-ACL, Spaltenrechte, RLS und
+Relationsart: alle wie erwartet. Der Grund ist nicht isoliert.
+
+Deshalb sagt der Fall nur, was er tragen kann: Der Auftrag verlaesst `queued`,
+und die Schleife meldet keinen Rundenfehlschlag mehr. Ein gescheiterter Auftrag
+ist etwas anderes als eine gescheiterte Runde — dieser Unterschied ist der Kern
+des ersten Fixes.
+
+Ein Produkt, das in einem echten Cluster migriert und in einem anderen nicht,
+ist selbst ein Befund. Er wird hier festgehalten, nicht weggelassen.
+
+Mutationsprobe: Der Alias wird wieder entfernt. Genau der Prozess-Fall faellt,
+121 von 122.
+
+Nebenbefund: Der Aenderungsschutz auf `change_sets` ist staerker als der erste
+Testaufbau annahm — ein Trigger weist jedes nachtraegliche UPDATE ab („change
+set artifact is immutable after preview creation"). Der Manipulationsfall geht
+deshalb ueber eine Freigabe, die zu einer anderen Handlung gehoert, und genau
+das erkennt der Worker.
+
+Checkpoint `1.48.0` am 8. August 2026: Lokal 1012 bestanden, 0 fehlgeschlagen;
+PostgreSQL 122 von 122, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Das Anwenden in einer echten Projektdatenbank hat im
+Zertifizierungscluster keinen Lauf. Vier Prozesse haben weiterhin keinen
+Arbeitsnachweis. Und die Provisionierung der Zieldatenbank steht im Testaufbau
+von Hand — der Provisioner, der sie im Betrieb erledigt, ist selbst unbelegt.

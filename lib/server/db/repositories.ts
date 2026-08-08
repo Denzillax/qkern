@@ -1601,8 +1601,14 @@ export class MigrationJobRepository {
   async quarantineExpiredReconciliations(limit = 50): Promise<MigrationJobRecord[]> {
     const bounded = boundedInteger(limit, 50, 1, 250, "reconciliation quarantine limit");
     const result = await this.tx.query(
+      // `candidate_id` und nicht `id`: Im RETURNING stehen die Spalten
+       // unqualifiziert, und mit einem `id` im FROM ist der Bezug mehrdeutig.
+       // PostgreSQL weist die ganze Abfrage ab — und weil sie bei jedem Claim
+       // laeuft, konnte der Migrations-Worker bis Release 1.48 keinen einzigen
+       // Auftrag uebernehmen. Die Nachbarabfrage `claimNext` macht es seit
+       // jeher richtig; hier fehlte der Alias.
       `WITH candidates AS (
-         SELECT id
+         SELECT id AS candidate_id
          FROM migration_jobs
          WHERE organization_id = $1 AND status = 'running' AND reconciliation_required
            AND reconciliation_attempt_count >= max_reconciliation_attempts
@@ -1618,7 +1624,7 @@ export class MigrationJobRepository {
            last_error_message = 'Migration outcome requires manual review.',
            finished_at = now(), updated_at = now()
        FROM candidates
-       WHERE job.organization_id = $1 AND job.id = candidates.id
+       WHERE job.organization_id = $1 AND job.id = candidates.candidate_id
        RETURNING ${MIGRATION_JOB_COLUMNS}`,
       [this.tx.organizationId, bounded],
     );

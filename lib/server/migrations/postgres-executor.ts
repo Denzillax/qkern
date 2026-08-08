@@ -450,7 +450,13 @@ const FENCE_BOUNDARY_SQL = `SELECT relation.relkind, relation.relpersistence,
   EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid=relation.oid AND c.contype='c' AND pg_get_constraintdef(c.oid) LIKE '%statement_sha256%64%') AS has_hash_check,
   EXISTS (SELECT 1 FROM aclexplode(coalesce(relation.relacl, acldefault('r', relation.relowner))) acl
           WHERE NOT (acl.grantee=relation.relowner OR (acl.grantee=migration_role.oid AND acl.privilege_type IN ('SELECT','INSERT','UPDATE') AND NOT acl.is_grantable))) AS has_unexpected_table_acl,
-  EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(coalesce(a.attacl, '{}'::aclitem[])) acl
+  -- aclexplode(a.attacl) ohne coalesce: '{}'::aclitem[] ist nulldimensional,
+  -- und aclexplode verlangt genau eine Dimension. PostgreSQL wies die ganze
+  -- Abfrage mit "ACL arrays must be one-dimensional" ab. Die Funktion ist
+  -- strikt; ein NULL liefert im LATERAL schlicht keine Zeile, und genau das
+  -- ist gemeint: Eine Spalte ohne eigene ACL hat keine unerwartete ACL. Die
+  -- Nachbarpruefungen benutzen acldefault(...) und waren nie betroffen.
+  EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) acl
           WHERE a.attrelid=relation.oid AND NOT a.attisdropped AND
             NOT (a.attname IN ('fence_epoch','lease_token','statement_sha256','fenced_at') AND
                  acl.grantee=migration_role.oid AND acl.privilege_type='UPDATE' AND NOT acl.is_grantable)) AS has_unexpected_column_acl,

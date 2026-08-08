@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 const MODULES: ReadonlyArray<{ label: string; files: readonly string[] }> = [
   {
     label: "Control Plane, Approval/Audit, Migration Runtime",
-    files: ["postgres", "postgres-incident-recovery"],
+    files: ["postgres", "postgres-incident-recovery", "migration-process-postgres"],
   },
   { label: "Generated Data API", files: ["generated-data-postgres"] },
   { label: "Object Storage", files: ["project-storage-postgres"] },

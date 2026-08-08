@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.47.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.48.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -20,7 +20,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
-| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 9 Real-DB-Fälle |
+| Control Plane, Approval/Audit, Migration Runtime | ja | teilweise — 11 Real-DB-Fälle; der Migrations-**Prozess** übernimmt und entscheidet Aufträge seit `1.48.0` belegt, das Anwenden in einer echten Projektdatenbank ist im Zertifizierungscluster **nicht** belegt |
 | Generated Data API | ja | ja — 2 Real-DB-Fälle, RLS und Injection |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
@@ -38,13 +38,13 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Strict TypeScript | grün |
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
-| **Arbeitende Prozesse** | **2 von 7 belegt: Queue-Wirt (`1.44.0`) und Compute (`1.45.0`); die übrigen 5 haben keinen Lauf, der sie arbeiten sieht** |
+| **Arbeitende Prozesse** | **2 von 7 vollständig belegt: Queue-Wirt (`1.44.0`) und Compute (`1.45.0`); der Migrations-Prozess übernimmt Aufträge (`1.48.0`), wendet im Zertifizierungscluster aber nicht an; die übrigen 4 haben keinen Lauf, der sie arbeiten sieht** |
 | **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **120 von 120 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **122 von 122 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **2 von 2 bestanden, exit 0, zweimal reproduziert** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
