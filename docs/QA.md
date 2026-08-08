@@ -1706,3 +1706,53 @@ Belegt ist ausserdem nur der Cron-Zweig; dass der Webhook-Zweig seinen
 Fehlschlag meldet, ist verdrahtet und nicht zertifiziert. Und `/ready` sagt, dass
 etwas klemmt, nicht seit wann und nicht wie oft — wer den Verlauf sehen will,
 braucht einen Exporter, den es nicht gibt.
+
+## Korrektur zu 1.46, und ein Vertrag dagegen — Release 1.47
+
+**Die Aussage in Release 1.46 war falsch.** Dort steht,
+`createLoopbackRuntimeProbeFromEnv` rufe „kein einziger Prozess" auf. Richtig
+ist: **Vier von sieben taten es seit der Baseline `1.8.0`** — Migrationen,
+Apply-Publisher, Incident-Publisher und Provisioner. Ohne Probe waren nur
+Compute, Realtime und der Queue-Wirt.
+
+Der Fehler war meiner und banal: Ich hatte mit
+`grep "new RuntimeProbeState\|createRuntimeProbeServer\|runtimeProbe"` gesucht.
+Der erste Name kommt nur in der Fabrik selbst vor, den zweiten gibt es nicht,
+und der dritte traf `createLoopbackRuntimeProbeFromEnv` wegen der
+Gross-/Kleinschreibung nicht. Drei Muster, kein Treffer, und daraus eine Aussage
+ueber sieben Prozesse.
+
+`docs/RELEASE_1.46.md` bleibt unveraendert — historische Release Notes werden
+nicht nachtraeglich geglaettet. Die Korrektur steht hier, in
+`docs/RELEASE_1.47.md` und in `STATUS.md`.
+
+Was inhaltlich stimmt: Der Compute-Prozess startete die Probe wirklich nicht,
+das Ordnungsproblem mit dem Erfolgssignal war echt, und die Zertifizierung von
+1.46 belegt, was sie belegt. Falsch war allein die Reichweite.
+
+Dieselbe Lehre wie in Release 1.39 und 1.40, diesmal an einer Aussage statt an
+einer Zahl: `tests/worker-probe-contract.test.ts` zaehlt jetzt aus, welche
+Prozesse die Probe starten. Realtime steht mit Begruendung auf der
+Ausnahmeliste — es ist ein Server ohne Runde, und `ready` verlangt eine
+gelungene Runde. Ein Herzschlag-Timer waere ein Signal, das nur behauptet, dass
+der Prozess lebt; das sagt `live` bereits.
+
+Der Queue-Wirt speist die Probe seit diesem Release. `ProjectQueueWorkerRuntime`
+nimmt seit Alpha 1 einen `probe` entgegen — durchgereicht hat ihn niemand.
+
+Zwei Mutationsproben:
+
+- Der Wirt reicht den Beobachter nicht mehr durch: 25 von 26 im Functions-Lauf,
+  genau der Prozess-Fall. `/ready` bliebe 503, waehrend Nachrichten verarbeitet
+  werden.
+- Dem Wirt wird der Probe-Aufruf genommen: Der Vertrag nennt die Datei
+  namentlich.
+
+Checkpoint `1.47.0` am 8. August 2026: Lokal 1012 bestanden, 0 fehlgeschlagen;
+PostgreSQL 120 von 120 und Functions 26 von 26, je exit 0 und zweimal
+reproduziert.
+
+Nicht erbracht: Der Vertrag prueft, **dass** ein Prozess die Fabrik aufruft,
+nicht dass die Probe danach etwas Wahres meldet. Zertifiziert ist das fuer
+Compute und den Queue-Wirt; die vier Migrations-Prozesse melden seit `1.8.0`
+und haben dafuer keinen archivierten Lauf.

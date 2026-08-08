@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.46.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.47.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -39,7 +39,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
 | **Arbeitende Prozesse** | **2 von 7 belegt: Queue-Wirt (`1.44.0`) und Compute (`1.45.0`); die übrigen 5 haben keinen Lauf, der sie arbeiten sieht** |
-| **Health-Probe** | **seit `1.46.0` im Compute-Prozess gestartet und aus den Schleifen gespeist; die übrigen 6 Prozesse starten sie weiterhin nicht** |
+| **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |

@@ -1,6 +1,7 @@
 import { ProjectQueueWorker } from "@/lib/server/project-queues/worker";
 import { ProjectQueueWorkerRuntime } from "@/lib/server/project-queues/worker-runtime";
 import type { ProjectQueueHandler } from "@/lib/server/project-queues/worker";
+import type { RuntimeProbeObserver } from "@/lib/server/operations/runtime-probe";
 import type { ProjectQueueService } from "@/lib/server/project-queues/service";
 import type { ProjectQueuePrincipal, ProjectQueueScope } from "@/lib/server/project-queues/model";
 
@@ -41,6 +42,14 @@ export class ProjectQueueHostRuntime {
     idleDelayMs?: number;
     errorDelayMs?: number;
     maxIterations?: number;
+    /**
+     * Nimmt Erfolg und Fehlschlag jeder Runde entgegen.
+     *
+     * `ProjectQueueWorkerRuntime` speist ihn seit Alpha 1 — nur erzeugt hat ihn
+     * fuer diesen Prozess niemand. Ohne Beobachter ist ein Wirt, dessen Claim
+     * jedes Mal scheitert, von einem untaetigen nicht zu unterscheiden.
+     */
+    probe?: RuntimeProbeObserver;
   }) {}
 
   run(): Promise<unknown[]> {
@@ -62,6 +71,7 @@ export class ProjectQueueHostRuntime {
         idleDelayMs: this.options.idleDelayMs,
         errorDelayMs: this.options.errorDelayMs,
         maxIterations: this.options.maxIterations,
+        probe: this.options.probe,
       });
       // `catch` und nicht `finally`: Eine gescheiterte Schleife darf die
       // anderen nicht ueber ein abgewiesenes Promise mitreissen.

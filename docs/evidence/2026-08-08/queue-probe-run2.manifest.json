@@ -1,0 +1,18 @@
+{
+  "stack": "Docker 29.5, registry:2 und PostgreSQL 17",
+  "log": "queue-probe-run2.log",
+  "commit": "46e1485adc6637fe94127217daf5d7c82421b13b",
+  "commitSubject": "release: 1.46.0 Wer merkt, dass es klemmt?",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "26 passed (26)",
+  "passed": 26,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

@@ -441,3 +441,22 @@ belegt nichts über das Produkt, nur über den Stack.
 Die Mutation nimmt dem `onError` des Cron-Schedulers seine Meldung: Genau der
 negative Fall fällt — `/ready` bliebe grün, während jede Definition scheitert.
 Der positive Fall bleibt bestehen, die beiden hängen also nicht am selben Pfad.
+
+## Läufe zu Release 1.47 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/queue-probe-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0 |
+| `2026-08-08/queue-probe-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0, Wiederholung |
+| `2026-08-08/queue-probe-mutation.log` | Docker 29.5, registry:2 und PostgreSQL 17 | **25 von 26, exit 1 — absichtlich** |
+| `2026-08-08/queue-probe-postgres.log` | PostgreSQL 17 | 120 von 120, exit 0, unverändert |
+
+Die Mutation nimmt dem Queue-Wirt den durchgereichten Beobachter: `/ready` bliebe
+503, während Nachrichten verarbeitet werden. Genau der Prozess-Fall fällt.
+
+Die zweite Probe dieses Release hat kein Manifest, weil sie ohne Stack läuft:
+Wird dem Wirt der Probe-Aufruf genommen, nennt der Vertrag die Datei namentlich.
+
+Der PostgreSQL-Lauf zeigt keine neue Zahl. Er steht hier, weil die Verdrahtung
+`lib/server/project-queues/host-runtime.ts` berührt und ein unveränderter Lauf
+danach keine Selbstverständlichkeit ist.

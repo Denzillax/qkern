@@ -1,0 +1,62 @@
+﻿
+> qkern-platform@1.46.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.5.3
+node.exe :  Network qkern-functions-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-registry-1 Healthy 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:a75f35318843fe9c18f83f5f92d7dad973f346461c3328b0ef86086d6f92e6f5 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/function-chain.integration.test.ts (8 tests | 1 failed) 13574ms
+     × consumes a message when started as the shipped process 1123ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > consumes a message when started as 
+the shipped process
+AssertionError: Prozessausgabe: QKERN project queue host serving 1 binding(s) (probe on http://127.0.0.1:9473/ready)
+: expected 503 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 503
+
+ ❯ tests/function-chain.integration.test.ts:273:68
+    271|       // niemand mehr, und der Fall waere gruen aus dem falschen Grund.
+    272|       const ready = await fetch("http://127.0.0.1:9473/ready");
+    273|       expect(ready.status, `Prozessausgabe: ${noise.slice(-400)}`).toB…
+       |                                                                    ^
+    274|       expect((await ready.text()).trim()).toBe("ready");
+    275|     } finally {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 25 passed (26)
+   Start at  17:50:18
+   Duration  41.73s (transform 389ms, setup 0ms, import 562ms, tests 40.76s, environment 0ms)
+
+EXIT=1

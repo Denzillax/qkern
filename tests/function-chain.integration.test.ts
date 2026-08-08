@@ -245,6 +245,8 @@ describe.runIf(enabled)("Function chain certification", () => {
         QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
         QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
         QKERN_QUEUE_WORKER_IDLE_MS: "100",
+        QKERN_RUNTIME_PROBE_ENABLED: "true",
+        QKERN_RUNTIME_PROBE_PORT: "9473",
         QKERN_QUEUE_WORKER_BINDINGS_JSON: JSON.stringify([{
           ...scope, queue, functionName: created.name,
         }]),
@@ -262,6 +264,14 @@ describe.runIf(enabled)("Function chain certification", () => {
         completed = (await queues.status(admin, scope, queue)).completed;
       }
       expect(completed, `Prozessausgabe: ${noise.slice(-800)}`).toBe(1);
+
+      // Der Wirt war bis 1.47 der letzte Prozess mit einer Schleife und ohne
+      // Beobachter: Ein Claim, der jedes Mal scheitert, sah aus wie Leerlauf.
+      // Gefragt wird, **solange er laeuft** — nach dem Beenden antwortet
+      // niemand mehr, und der Fall waere gruen aus dem falschen Grund.
+      const ready = await fetch("http://127.0.0.1:9473/ready");
+      expect(ready.status, `Prozessausgabe: ${noise.slice(-400)}`).toBe(200);
+      expect((await ready.text()).trim()).toBe("ready");
     } finally {
       child.kill();
     }
