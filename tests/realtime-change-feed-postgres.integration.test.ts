@@ -65,7 +65,16 @@ describe.runIf(enabled)("Realtime change feed PostgreSQL certification", () => {
         // kollidieren.
         if (!String(error).includes("duplicate key value")) throw error;
       });
-    await admin.query("GRANT qkern_ledger_owner TO CURRENT_USER");
+    // **Kein** dauerhaftes `GRANT qkern_ledger_owner TO CURRENT_USER` mehr.
+    //
+    // Die Rolle ist clusterweit, und die Grenzpruefung des Migrationszaunes
+    // verlangt einen Ledger-Eigentuemer **ohne jede** Mitgliedschaft. Ein
+    // Grant hier machte jede Migration in jeder parallel laufenden Testdatei
+    // unmoeglich — gefunden in Release 1.49, nachdem der Migrations-Prozess
+    // lokal anwendete und im Zertifizierungslauf nicht.
+    //
+    // Gebraucht wurde der Grant, um Objekte im Namen des Eigentuemers
+    // anzulegen. Der Zertifizierungs-Admin ist Superuser und darf das ohnehin.
 
     const migration = await readFile(
       path.resolve(process.cwd(), "db/project/0003_qkern_change_feed.sql"), "utf8",

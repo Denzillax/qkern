@@ -478,3 +478,19 @@ gelingt es nach beiden Fixes; im Zertifizierungscluster weist der Zaun mit
 `INVALID_MIGRATION_FENCE` ab, und der Grund ist nicht isoliert. Der lokale Lauf
 ist nicht abgelegt: Er lief ausserhalb eines Stacks und trägt deshalb keine
 Evidenz im Sinne dieses Ordners.
+
+## Läufe zu Release 1.49 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/migration-apply-run1.log` | PostgreSQL 17 | 122 von 122, exit 0, 35 Migrationen |
+| `2026-08-08/migration-apply-run2.log` | PostgreSQL 17 | 122 von 122, exit 0, Wiederholung |
+| `2026-08-08/migration-apply-mutation.log` | PostgreSQL 17 | **121 von 122, exit 1 — absichtlich** |
+
+Die Mutation stellt den Stand von `1.48.0` wieder her: drei dauerhafte Grants auf
+die clusterweite Ledger-Rolle und kein Aufräumen vor dem Lauf. Genau der
+Anwendungsfall fällt.
+
+Eine erste, kleinere Probe — ein einzelner wiederhergestellter Grant — traf
+nicht, weil das Aufräumen vor dem Lauf ihn einholte. Das steht hier, weil es
+etwas über die Zusage sagt: Sie hängt an zwei Dingen, nicht an einem.

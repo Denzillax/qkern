@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AesGcmStatementCipher, approvalActionHash, sha256 } from "@/lib/server/control-plane/crypto";
 import { createPostgresPool } from "@/lib/server/db/pool";
+import { FENCE_BOUNDARY_SQL } from "@/lib/server/migrations/postgres-executor";
 import type { SqlPool } from "@/lib/server/db/sql";
 
 /**
@@ -68,6 +69,7 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
         CREATE ROLE qkern_project_migrator LOGIN PASSWORD '${MIGRATOR_PASSWORD}';
       END IF;
     END $$;`);
+    await freeLedgerOwner();
     await admin.query(`CREATE DATABASE ${identifier(databaseName)}`);
 
     // Genau das, was der Provisioner taete — hier von Hand, weil er selbst
@@ -106,6 +108,41 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
       .catch(() => undefined);
     await admin?.end();
   }, 120_000);
+
+  /**
+   * Nimmt dem Ledger-Eigentuemer jede Mitgliedschaft — in beide Richtungen.
+   *
+   * Der Zaun verlangt das, und PostgreSQL arbeitet dagegen: Seit Version 16
+   * teilt `CREATE ROLE` die neue Rolle dem Erzeuger automatisch mit ADMIN
+   * OPTION zu. Wer eine Rolle anlegt, verletzt die Bedingung also im selben
+   * Atemzug.
+   *
+   * Aufgeraeumt wird **vor jedem Lauf**, nicht einmal im Setup: Die Rolle ist
+   * clusterweit, und drei Realtime-Testdateien legen dieselbe Rolle an — sie
+   * kommentieren das Wettrennen sogar selbst. Ein einmaliges Aufraeumen im
+   * `beforeAll` haelt deshalb nicht.
+   *
+   * Genau daran hat Release 1.48 einen Zertifizierungslauf verloren: lokal
+   * lief der Prozess allein im Cluster, hier nicht.
+   */
+  async function freeLedgerOwner() {
+    await admin.query(`DO $$ DECLARE entry record; BEGIN
+      FOR entry IN SELECT m.member::regrole::text AS role FROM pg_auth_members m
+        WHERE m.roleid = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE qkern_ledger_owner FROM %I', entry.role);
+      END LOOP;
+      FOR entry IN SELECT m.roleid::regrole::text AS role FROM pg_auth_members m
+        WHERE m.member = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE %I FROM qkern_ledger_owner', entry.role);
+      END LOOP;
+    END $$;`);
+    const left = await admin.query<{ member: string }>(
+      `SELECT m.member::regrole::text AS member FROM pg_auth_members m
+       WHERE m.roleid='qkern_ledger_owner'::regrole OR m.member='qkern_ledger_owner'::regrole`);
+    if (left.rows.length > 0) {
+      throw new Error(`REVOKE wirkungslos: ${JSON.stringify(left.rows)}`);
+    }
+  }
 
   /** Legt Change Set, Freigabe und Auftrag so an, wie die Control Plane es taete. */
   async function queueJob(statement: string, title: string, approvedTitle = title) {
@@ -205,59 +242,87 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
    * deshalb genug, um den Grund zu benennen.
    */
   async function fenceShape() {
-    const result = await project.query(`SELECT
-      owner.rolname AS owner_name,
-      owner.rolcanlogin AS owner_can_login,
-      EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = owner.oid) AS owner_has_memberships,
-      has_schema_privilege('qkern_project_migrator', 'qkern_internal', 'CREATE') AS can_create_in_schema,
-      relation.relrowsecurity AS row_security,
-      relation.relkind AS relkind,
-      has_table_privilege('qkern_project_migrator', relation.oid, 'SELECT') AS can_select,
-      has_table_privilege('qkern_project_migrator', relation.oid, 'INSERT') AS can_insert,
-      has_column_privilege('qkern_project_migrator', relation.oid, 'fence_epoch', 'UPDATE') AS can_update_epoch,
-      has_column_privilege('qkern_project_migrator', relation.oid, 'lease_token', 'UPDATE') AS can_update_token,
-      (SELECT count(*) FROM pg_attribute a WHERE a.attrelid=relation.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns,
-      (SELECT count(*) FROM pg_attribute a WHERE a.attrelid=relation.oid AND a.attacl IS NOT NULL) AS columns_with_acl
-      FROM pg_class AS relation
-      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-      JOIN pg_roles AS owner ON owner.oid = relation.relowner
-      WHERE namespace.nspname='qkern_internal' AND relation.relname='migration_fences'`);
-    return JSON.stringify(result.rows[0] ?? { fence: "fehlt" });
+    // Dieselbe Abfrage, die der Executor stellt, und dieselbe Rolle. Eine
+    // nachgebaute Diagnose hat in 1.48 einen Lauf gekostet, weil sie
+    // `owner_has_memberships` nur in eine Richtung prueft.
+    const migrator = createPostgresPool({
+      connectionString: databaseUrl(
+        adminUrl!.replace(/\/\/[^@]+@/, `//qkern_project_migrator:${MIGRATOR_PASSWORD}@`),
+        databaseName,
+      ),
+      max: 1,
+    });
+    try {
+      const result = await migrator.query(FENCE_BOUNDARY_SQL);
+      const row = result.rows[0] as Record<string, unknown> | undefined;
+      if (!row) return "keine Zeile fuer den Zaun";
+      // Nur die Abweichungen: Die Liste ist lang, und die Antwort steht in
+      // dem, was nicht stimmt.
+      const expected: Record<string, unknown> = {
+        relkind: "r", relpersistence: "p", owned_by_current_user: false,
+        member_of_relation_owner: false, member_of_schema_owner: false, row_security: false,
+        can_select: true, can_insert: true, can_update_allowed_columns: true,
+        has_dangerous_table_privileges: false, can_create_in_schema: false,
+        has_exact_columns: true, has_exact_column_types: true, has_job_primary_key: true,
+        has_epoch_check: true, has_hash_check: true, has_unexpected_table_acl: false,
+        has_unexpected_column_acl: false, has_unexpected_schema_acl: false,
+        owner_can_login: false, owner_is_privileged: false, owner_has_memberships: false,
+        owner_matches_schema: true, has_user_triggers: false, has_user_rules: false,
+      };
+      const deviations = Object.entries(expected)
+        .filter(([key, value]) => row[key] !== value)
+        .map(([key]) => `${key}=${JSON.stringify(row[key])}`);
+      if (deviations.length === 0) return "Zaun in Ordnung";
+      const memberships = await migrator.query<{ roleid: string; member: string; grantor: string }>(
+        `SELECT m.roleid::regrole::text AS roleid, m.member::regrole::text AS member,
+                m.grantor::regrole::text AS grantor
+         FROM pg_auth_members m
+         WHERE m.roleid='qkern_ledger_owner'::regrole OR m.member='qkern_ledger_owner'::regrole`);
+      return `${deviations.join(", ")} | ${JSON.stringify(memberships.rows)}`;
+    } finally {
+      await migrator.end();
+    }
   }
 
   /**
-   * Der Prozess uebernimmt den Auftrag und entscheidet ihn.
+   * Der Prozess wendet wirklich an — in einer echten Zieldatenbank.
    *
-   * Bis Release 1.48 kam er nicht einmal so weit: `quarantineExpiredRecon-
+   * Bis Release 1.48 kam er nicht einmal zum Claim: `quarantineExpiredRecon-
    * ciliations` hatte eine mehrdeutige Spaltenreferenz, lief bei **jedem**
-   * Claim und liess die ganze Abfrage von PostgreSQL abweisen. Der Auftrag
-   * blieb `queued`, und die Schleife scheiterte still.
+   * Claim und liess PostgreSQL die ganze Abfrage abweisen. Danach brach die
+   * Grenzpruefung des Zaunes an einem nulldimensionalen ACL-Array.
    *
-   * Zugesagt wird hier genau das: Der Auftrag verlaesst `queued`. Ob er
-   * angewendet wird, haengt am Zaun der Zieldatenbank — und der weist in
-   * diesem Cluster ab, waehrend er in einem anderen durchlaesst. Solange das
-   * nicht verstanden ist, wird es nicht behauptet.
+   * Der Beleg steht nicht in der Control Plane, sondern in der Zieldatenbank:
+   * Die Tabelle gibt es, und im Ledger steht, wer sie angelegt hat.
    */
-  it("claims and decides a queued job instead of leaving it stuck", async () => {
+  it("applies a queued statement to the real project database", async () => {
     const table = `probe_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const jobId = await queueJob(
       `CREATE TABLE public.${table} (id integer PRIMARY KEY)`, "certification apply");
 
+    await freeLedgerOwner();
     const runner = workerProcess();
     try {
       const deadline = Date.now() + 120_000;
       let status = "queued";
-      while (Date.now() < deadline && status === "queued") {
+      while (Date.now() < deadline && status !== "applied" && status !== "failed") {
         await new Promise((resolve) => setTimeout(resolve, 500));
         status = await jobStatus(jobId);
       }
       expect(status, `Fehlercode: ${await jobError(jobId)}; Zaun: ${await fenceShape()}`)
-        .not.toBe("queued");
+        .toBe("applied");
+
+      const created = await project.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM pg_tables
+          WHERE schemaname='public' AND tablename=$1`, [table]);
+      expect(created.rows[0]?.count).toBe(1);
+
+      const ledger = await project.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM qkern_internal.migration_ledger");
+      expect(ledger.rows[0]?.count).toBeGreaterThanOrEqual(1);
 
       // Und die Schleife laeuft sauber. Vor dem Fix meldete sie bei **jeder**
       // Runde `iteration_failed`, weil die Abfrage selbst abgewiesen wurde.
-      // Ein gescheiterter Auftrag ist etwas anderes als eine gescheiterte
-      // Runde — das ist der Unterschied, den dieser Fall traegt.
       expect(runner.output()).not.toContain("iteration_failed");
     } finally {
       runner.child.kill();
@@ -279,6 +344,7 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
       `CREATE TABLE public.${table} (id integer PRIMARY KEY)`,
       "certification tamper", "eine andere handlung");
 
+    await freeLedgerOwner();
     const runner = workerProcess();
     try {
       const deadline = Date.now() + 90_000;

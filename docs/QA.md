@@ -1817,3 +1817,47 @@ Nicht erbracht: Das Anwenden in einer echten Projektdatenbank hat im
 Zertifizierungscluster keinen Lauf. Vier Prozesse haben weiterhin keinen
 Arbeitsnachweis. Und die Provisionierung der Zieldatenbank steht im Testaufbau
 von Hand — der Provisioner, der sie im Betrieb erledigt, ist selbst unbelegt.
+
+## Die Zertifizierung stand sich selbst im Weg — Release 1.49
+
+Release 1.48 hat als wichtigste offene Frage hinterlassen: Der Migrations-Prozess
+wendet lokal an und im Zertifizierungscluster nicht, Grund unbekannt.
+
+Der Grund war die Zertifizierung selbst.
+
+Die Grenzpruefung des Zaunes verlangt einen Ledger-Eigentuemer **ohne jede**
+Mitgliedschaft, in beide Richtungen. Drei Realtime-Testdateien fuehrten
+`GRANT qkern_ledger_owner TO CURRENT_USER` aus, damit ihr eigenes DDL im Namen
+des Eigentuemers durchgeht. Die Rolle ist **clusterweit**. Damit war in jedem
+Lauf, in dem eine dieser Dateien mitlief, jede Migration unmoeglich — nicht nur
+im Migrationstest, sondern grundsaetzlich.
+
+Der Grant war ausserdem unnoetig: Der Zertifizierungs-Admin ist Superuser und
+darf ohnehin Objekte im Namen anderer Rollen anlegen.
+
+Dazu kommt eine Eigenheit von PostgreSQL 16: `CREATE ROLE` teilt die neue Rolle
+dem Erzeuger automatisch mit ADMIN OPTION zu. Wer die Rolle anlegt, verletzt die
+Bedingung im selben Atemzug. Der Migrationstest raeumt deshalb **vor jedem
+Lauf** auf, nicht einmal im Setup: Die Rolle ist geteilt, und andere Dateien
+legen sie parallel an.
+
+**Wie viel Zeit die Diagnose gekostet hat, und warum.** Der erste Messversuch
+baute die Grenzpruefung nach und prueft `owner_has_memberships` nur in eine
+Richtung — die echte Abfrage prueft beide. Zwei Laeufe gingen dafuer verloren.
+`FENCE_BOUNDARY_SQL` ist jetzt exportiert, und die Zertifizierung stellt
+dieselbe Abfrage mit derselben Rolle statt einer Kopie. Wer eine Pruefung
+nachbaut, prueft etwas anderes.
+
+Die erste Mutationsprobe traf nicht: Ein einzelner wiederhergestellter Grant
+blieb wirkungslos, weil das Aufraeumen vor dem Lauf ihn einholte. Die Probe, die
+traegt, stellt den ganzen Stand von 1.48 wieder her — drei Grants und kein
+Aufraeumen — und laesst genau den Anwendungsfall fallen, 121 von 122.
+
+Checkpoint `1.49.0` am 8. August 2026: Lokal 1012 bestanden, 0 fehlgeschlagen;
+PostgreSQL 122 von 122, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Dass eine Testdatei den Zustand einer anderen kippen kann, ist
+behoben und nicht **verhindert**. Es gibt keine Pruefung, die einen dauerhaften
+Grant auf eine clusterweite Rolle bemerkt. Wie viele frueheren Laeufe davon
+betroffen waren, ist nicht rekonstruiert — die Realtime-Faelle selbst brauchen
+den Zaun nicht und blieben gruen.

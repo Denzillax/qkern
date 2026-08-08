@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.48.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.49.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -20,7 +20,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
-| Control Plane, Approval/Audit, Migration Runtime | ja | teilweise — 11 Real-DB-Fälle; der Migrations-**Prozess** übernimmt und entscheidet Aufträge seit `1.48.0` belegt, das Anwenden in einer echten Projektdatenbank ist im Zertifizierungscluster **nicht** belegt |
+| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 11 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
 | Generated Data API | ja | ja — 2 Real-DB-Fälle, RLS und Injection |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 6 Real-DB-Fälle plus MinIO/ClamAV |
@@ -38,7 +38,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Strict TypeScript | grün |
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
-| **Arbeitende Prozesse** | **2 von 7 vollständig belegt: Queue-Wirt (`1.44.0`) und Compute (`1.45.0`); der Migrations-Prozess übernimmt Aufträge (`1.48.0`), wendet im Zertifizierungscluster aber nicht an; die übrigen 4 haben keinen Lauf, der sie arbeiten sieht** |
+| **Arbeitende Prozesse** | **3 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`) und Migrationen (`1.49.0`); die übrigen 4 haben keinen Lauf, der sie arbeiten sieht** |
 | **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |

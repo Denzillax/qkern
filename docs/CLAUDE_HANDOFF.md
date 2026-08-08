@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.48.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.49.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -294,6 +294,9 @@ Lauf beweist nicht, dass der Aufbau deterministisch ist.
 - Usage-Zähler nicht als Rechnung darstellen, solange Tarife/Reconciliation fehlen.
 - Service Role ist kein PostgreSQL-/RLS-Privilegien-Bypass.
 - Historische `docs/RELEASE_*.md` niemals nachträglich ändern.
+- Niemals dauerhaft `GRANT qkern_ledger_owner TO …` in einem Test: Die Rolle
+  ist clusterweit, und der Migrationszaun verlangt sie ohne jede
+  Mitgliedschaft. Ein Grant macht jede Migration im ganzen Lauf unmöglich.
 - Worker-Einstiege heissen `.mts`. Ohne `"type": "module"` uebersetzt tsx
   jede `.ts` als CommonJS, und Top-Level-await bricht den Start ab, bevor eine
   eigene Zeile laeuft. Bis `1.44.0` konnte deshalb kein einziger der sieben

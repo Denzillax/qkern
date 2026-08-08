@@ -421,7 +421,15 @@ export class PostgresProjectDatabaseExecutor implements ProjectDatabaseExecutor 
 
 }
 
-const FENCE_BOUNDARY_SQL = `SELECT relation.relkind, relation.relpersistence,
+/**
+ * Die Grenzpruefung des Zaunes.
+ *
+ * Exportiert, damit eine Zertifizierung dieselbe Abfrage stellen kann statt
+ * einer Kopie. Release 1.48 hat einen Lauf verloren, weil eine nachgebaute
+ * Diagnose `owner_has_memberships` nur in eine Richtung prueft — die echte
+ * Abfrage prueft beide.
+ */
+export const FENCE_BOUNDARY_SQL = `SELECT relation.relkind, relation.relpersistence,
   relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user) AS owned_by_current_user,
   pg_has_role(current_user, relation.relowner, 'MEMBER') AS member_of_relation_owner,
   pg_has_role(current_user, namespace.nspowner, 'MEMBER') AS member_of_schema_owner,
