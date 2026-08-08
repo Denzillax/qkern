@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CronDispatcher } from "@/lib/server/compute/cron";
@@ -176,4 +177,73 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     );
     expect(foreign).toEqual([]);
   });
+
+  /**
+   * Derselbe Weg, aber gestartet wie im Betrieb: als eigener Prozess.
+   *
+   * Release 1.44 hat gefunden, dass **keiner** der sieben Worker starten konnte,
+   * und dabei offen gelassen, dass nur der Queue-Wirt einen Lauf hat, der ihn
+   * arbeiten sieht. Die anderen sechs erreichten ihre Konfigurationsgrenze —
+   * mehr wusste niemand.
+   *
+   * Dieser Fall holt den groessten davon nach. Gestartet wird nichts
+   * nachgebaut, sondern die Datei hinter `npm run worker:compute`, und gemessen
+   * wird die Wirkung in der Datenbank: Ein faelliges Vorkommen wird zu einer
+   * Nachricht, ohne dass dieser Test einen Scheduler anfasst.
+   */
+  it("dispatches from the shipped process", async () => {
+    const node = instance();
+    const queue = `cron-process-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 3600 });
+    // Drei Minuten Rueckstand auf einen Minutentakt: Der Prozess hat etwas
+    // nachzuholen, sobald er laeuft, und muss dafuer nicht auf den naechsten
+    // Takt warten.
+    await defineCron(queue, "*/1 * * * *", new Date(Date.now() - 180_000));
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+        QKERN_COMPUTE_CRON_ENABLED: "true",
+        // Ohne Signaturschluessel wuerde der Zusteller den Start verweigern —
+        // zu Recht. Hier steht Cron auf dem Pruefstand, nicht die Zustellung.
+        QKERN_COMPUTE_WEBHOOKS_ENABLED: "false",
+        QKERN_COMPUTE_CRON_INTERVAL_MS: "1000",
+        QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+        QKERN_PROJECT_QUEUES_ENABLED: "true",
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 100_000;
+      let count = 0;
+      while (Date.now() < deadline && count === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const messages = await owner.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM project_queue_messages
+            WHERE organization_id=$1 AND queue_id=(SELECT id FROM project_queues
+              WHERE organization_id=$1 AND name=$2)`,
+          [organizationId, queue],
+        );
+        count = messages.rows[0]?.count ?? 0;
+      }
+      expect(count, `Prozessausgabe: ${noise.slice(-800)}`).toBeGreaterThanOrEqual(1);
+    } finally {
+      child.kill();
+    }
+
+    // Der Prozess meldet die Zahl seiner Scopes und sonst nichts aus der
+    // Konfiguration. Ein Passwort in einem Worker-Log ueberlebt jede Rotation.
+    expect(noise).toContain("scope(s)");
+    expect(noise).not.toContain("qkern_runtime_local_only");
+    expect(noise).not.toContain(projectId);
+  }, 180_000);
 });

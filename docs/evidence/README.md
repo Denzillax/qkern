@@ -412,3 +412,20 @@ namentlich — und genau daran sind bis `1.44.0` alle sieben Prozesse gescheiter
 Die beiden PostgreSQL-Läufe zeigen keine neue Zahl. Sie stehen hier, weil die
 Umbenennung nach `.mts` `lib/server/operations/runtime-deployment.ts` berührt
 und ein unveränderter Lauf danach keine Selbstverständlichkeit ist.
+
+## Läufe zu Release 1.45 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-06/compute-process-run1.log` | PostgreSQL 17 | 118 von 118, exit 0, 35 Migrationen |
+| `2026-08-06/compute-process-run2.log` | PostgreSQL 17 | 118 von 118, exit 0, Wiederholung |
+| `2026-08-06/compute-process-mutation.log` | PostgreSQL 17 | **117 von 118, exit 1 — absichtlich** |
+
+Die Mutation lässt die Cron-Schleife vor jedem `scheduler.run` werfen: Genau der
+Prozess-Fall fällt, die zwölf übrigen Cron-Fälle bleiben grün.
+
+Ein verworfener Lauf dieses Release zeigte Fehler in Dateien unter
+`.claude/worktrees/…` — der Stack kopierte ein fremdes Verzeichnis mit und
+zertifizierte damit etwas anderes als den Arbeitsstand. Die fünf tar-basierten
+Compose-Stacks schliessen `.claude` seither aus. Der Lauf ist nicht abgelegt: Er
+belegt nichts über das Produkt, nur über den Stack.

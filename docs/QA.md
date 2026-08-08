@@ -1599,3 +1599,62 @@ Nicht erbracht: Der Boot-Vertrag prueft nur, dass ein Prozess bis zu seiner
 Konfigurationsgrenze kommt — nicht, dass er mit gueltiger Konfiguration seine
 Arbeit tut. Das ist nur fuer den Queue-Wirt belegt; die anderen sechs Prozesse
 haben weiterhin keinen Lauf, der sie arbeiten sieht.
+
+## Zwei von sieben arbeiten belegt — Release 1.45
+
+Release 1.44 hat gefunden, dass keiner der sieben Worker starten konnte, und
+offen gelassen, dass nur der Queue-Wirt einen Lauf hat, der ihn **arbeiten**
+sieht. Die anderen sechs erreichten ihre Konfigurationsgrenze; mehr wusste
+niemand.
+
+Release 1.45 holt den groessten davon nach. Der Compute-Prozess — die Datei
+hinter `npm run worker:compute` — wird gestartet, nicht nachgebaut, und
+gemessen wird die Wirkung in der Datenbank: Ein faelliges Cron-Vorkommen wird zu
+einer Nachricht in der Projekt-Queue, ohne dass der Test einen Scheduler
+anfasst.
+
+**Der erste Anlauf war rot, und der Fehler lag im Testaufbau.** Die Definition
+trug `* * * * *`; unterstuetzt sind `*/N * * * *` und `M H * * *`. Sichtbar
+wurde das nur, weil ich `onError: () => undefined` in der Komposition
+voruebergehend gegen eine Ausgabe getauscht habe — der Prozess meldete
+„serving 1 scope(s)" und schwieg danach, waehrend seine Schleife jede Sekunde
+an derselben Stelle scheiterte.
+
+Das ist kein Produktfehler: Der Definitionsdienst prueft den Ausdruck beim
+Anlegen, ein direkter INSERT umgeht das. Es ist aber ein Befund ueber
+Beobachtbarkeit, und er steht unten.
+
+**Ein zweiter Fund betraf den Zertifizierungsstack selbst.** Ein Lauf zeigte
+Fehler in Dateien unter `.claude/worktrees/…`: Der Stack kopiert das
+Arbeitsverzeichnis per `tar` und schliesst `node_modules`, `.next`, `.git`,
+`coverage` und `docs/evidence` aus — `.claude` nicht. Ein fremdes Verzeichnis
+im Baum aenderte damit, **was** zertifiziert wird, und die Zahl im Manifest
+haette es nicht verraten. Alle fuenf Compose-Stacks schliessen `.claude` jetzt
+aus; der Functions-Stack ist nicht betroffen, weil er seine Dateien namentlich
+aufruft.
+
+Dieselbe Luecke bestand ein zweites Mal, an anderer Stelle: `npm test` meldete
+kurz darauf 304 Dateien und 2018 Faelle statt 152 und 1009 — exakt das Doppelte.
+Vitest globbte den Worktree mit. `vitest.config.ts` schliesst `.claude` jetzt
+aus. Wer nur die Zahl gelesen haette, haette einen Sprung nach oben gesehen und
+sich gefreut.
+
+Mutationsprobe: Die Cron-Schleife wirft vor jedem `scheduler.run`. Genau der
+Prozess-Fall faellt, 117 von 118 — die zwoelf uebrigen Cron-Faelle bleiben
+gruen. Der neue Fall traegt seine Zusage also allein.
+
+Checkpoint `1.45.0` am 8. August 2026: Lokal 1009 bestanden, 0 fehlgeschlagen;
+PostgreSQL 118 von 118, exit 0, zweimal reproduziert.
+
+Nicht erbracht: **Fuenf der sieben Prozesse haben weiterhin keinen Lauf, der sie
+arbeiten sieht** — Realtime, Migrationen, Apply-Publisher, Incident-Publisher
+und Provisioner. Belegt ist ausserdem nur der Cron-Zweig des Compute-Prozesses;
+die Webhook-Zustellung ist in diesem Lauf ausgeschaltet, weil sie einen
+Signaturschluessel verlangt.
+
+Und der Befund zur Beobachtbarkeit bleibt offen: Eine Cron-Schleife, die jede
+Sekunde scheitert, sagt es niemandem. Die Redaktion ist richtig — eine
+Datenbankmeldung gehoert nicht ins Log —, aber „diese Schleife kommt seit N
+Versuchen nicht durch" waere weder ein Geheimnis noch eine Datenbankmeldung.
+Das ist eine eigene Scheibe und keine Nebenbei-Aenderung an einem
+Sicherheitsvertrag.

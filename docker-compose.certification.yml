@@ -63,6 +63,7 @@ services:
           --exclude=./.next \
           --exclude=./.git \
           --exclude=./coverage \
+          --exclude=./.claude \
           --exclude=./docs/evidence \
           -cf - . | tar -C /workspace/qkern -xf -
         npm ci --ignore-scripts
