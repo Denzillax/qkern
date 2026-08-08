@@ -429,3 +429,15 @@ Ein verworfener Lauf dieses Release zeigte Fehler in Dateien unter
 zertifizierte damit etwas anderes als den Arbeitsstand. Die fünf tar-basierten
 Compose-Stacks schliessen `.claude` seither aus. Der Lauf ist nicht abgelegt: Er
 belegt nichts über das Produkt, nur über den Stack.
+
+## Läufe zu Release 1.46 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/probe-run1.log` | PostgreSQL 17 | 120 von 120, exit 0, 35 Migrationen |
+| `2026-08-08/probe-run2.log` | PostgreSQL 17 | 120 von 120, exit 0, Wiederholung |
+| `2026-08-08/probe-mutation.log` | PostgreSQL 17 | **119 von 120, exit 1 — absichtlich** |
+
+Die Mutation nimmt dem `onError` des Cron-Schedulers seine Meldung: Genau der
+negative Fall fällt — `/ready` bliebe grün, während jede Definition scheitert.
+Der positive Fall bleibt bestehen, die beiden hängen also nicht am selben Pfad.

@@ -13,6 +13,8 @@ import { EnvWebhookSecretProvider, HmacWebhookSigner } from "@/lib/server/comput
 import { FetchWebhookTransport } from "@/lib/server/compute/webhook-transport";
 import { WebhookDeliverer, type WebhookSignerPort, type WebhookTransportPort } from
   "@/lib/server/compute/webhooks";
+import { safeRuntimeProbe, type RuntimeProbeObserver } from
+  "@/lib/server/operations/runtime-probe";
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
@@ -33,6 +35,14 @@ export type ComputeRuntimeDependencies = {
   transport?: WebhookTransportPort;
   /** Ersetzt den Standardtakt in Tests. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Nimmt Erfolg und Fehlschlag jeder Runde entgegen.
+   *
+   * Ohne diesen Beobachter ist eine Schleife, die jede Sekunde scheitert, von
+   * einer untaetigen nicht zu unterscheiden. Genau daran hat Release 1.45 eine
+   * Stunde verloren: Der Prozess meldete seinen Start und schwieg danach.
+   */
+  probe?: RuntimeProbeObserver;
 };
 
 /**
@@ -121,13 +131,23 @@ export function createComputeRuntimeFromEnv(
 
   const controlPlane = new PostgresControlPlane(getPostgresPool(env));
 
+  // Der Scheduler faengt Fehler einzelner Definitionen selbst ab und kehrt
+  // normal zurueck. Ohne diesen Zaehler meldete die Schleife danach Erfolg und
+  // loeschte den eben gesetzten Fehlschlag wieder — eine Runde, in der jede
+  // Definition scheitert, saehe aus wie eine gelungene.
+  const cronFailures = { count: 0 };
   const scheduler = cronEnabled ? new CronScheduler({
     repository: new PostgresCronRepository(controlPlane),
     dispatcher: new CronDispatcher(createProjectQueueServiceFromEnv(env)),
     maxCatchUp: cronMaxCatchUp,
     // Redigiert: der Fehler kann eine Datenbankmeldung oder einen Queue-Namen
-    // tragen und gehoert nicht ins Log dieses Prozesses.
-    onError: () => undefined,
+    // tragen und gehoert nicht ins Log dieses Prozesses. Gezaehlt wird er
+    // trotzdem — sonst sieht eine Schleife, in der jede Definition scheitert,
+    // von aussen aus wie eine, die nichts zu tun hat.
+    onError: () => {
+      cronFailures.count += 1;
+      safeRuntimeProbe(dependencies.probe, "iterationFailed");
+    },
   }) : undefined;
 
   // Ohne Signaturschluessel wird nicht zugestellt. Ein Zusteller, der
@@ -189,7 +209,9 @@ export function createComputeRuntimeFromEnv(
             workerId,
             batchSize: webhookBatch,
             idleIntervalMs: webhookIdleMs,
-            onFailure: () => undefined,
+            // Redigiert wie bisher — aber nicht mehr stumm: Der Beobachter
+            // erfaehrt den Fehlschlag, ohne seinen Inhalt zu sehen.
+            onFailure: () => safeRuntimeProbe(dependencies.probe, "iterationFailed"),
             ...(sleep ? { sleep } : {}),
           });
           stops.push(() => runtime.stop());
@@ -202,7 +224,10 @@ export function createComputeRuntimeFromEnv(
             role: "service_role",
             subject: workerId,
           };
-          loops.push(runCronLoop(scheduler, principal, scope, cronIntervalMs, signal, sleep));
+          loops.push(runCronLoop(
+            scheduler, principal, scope, cronIntervalMs, signal, sleep,
+            dependencies.probe, cronFailures,
+          ));
         }
       }
 
@@ -229,14 +254,23 @@ async function runCronLoop(
   intervalMs: number,
   signal: AbortSignal,
   sleep?: (ms: number) => Promise<void>,
+  probe?: RuntimeProbeObserver,
+  failures?: { count: number },
 ): Promise<void> {
   while (!signal.aborted) {
     try {
+      const before = failures?.count ?? 0;
       await scheduler.run(principal, scope);
+      // Erfolg nur, wenn in dieser Runde keine Definition gescheitert ist.
+      // Sonst waere die Meldung eine Behauptung ueber etwas, das nicht
+      // stattgefunden hat.
+      safeRuntimeProbe(probe,
+        (failures?.count ?? 0) === before ? "iterationSucceeded" : "iterationFailed");
     } catch {
       // Der Scheduler faengt Fehler einzelner Definitionen bereits ab; hier
       // bleibt nur ein Fehler beim Lesen der Liste. Er darf den Takt nicht
-      // beenden, und seine Meldung gehoert nicht ins Log.
+      // beenden, und seine Meldung gehoert nicht ins Log — gezaehlt wird er.
+      safeRuntimeProbe(probe, "iterationFailed");
     }
     if (signal.aborted) return;
     await (sleep ? sleep(intervalMs) : waitOrAbort(intervalMs, signal));

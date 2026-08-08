@@ -246,4 +246,133 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     expect(noise).not.toContain("qkern_runtime_local_only");
     expect(noise).not.toContain(projectId);
   }, 180_000);
+
+  /**
+   * Die Probe sagt, ob es klemmt — und sonst nichts.
+   *
+   * `createLoopbackRuntimeProbeFromEnv` gab es seit Alpha 1, und kein Prozess
+   * hat sie je gestartet: Vier Kompositionen reichten einen `probe` durch, den
+   * niemand erzeugte. Der Erreichbarkeitsvertrag aus 1.42 hat das nicht
+   * gesehen, weil das Modul importiert war — nur die Fabrik rief niemand.
+   *
+   * Release 1.45 hat eine Stunde gekostet, weil eine Schleife, die jede
+   * Sekunde scheitert, von einer untaetigen nicht zu unterscheiden war.
+   */
+  function computeProcess(port: number, extra: Record<string, string> = {}) {
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+        QKERN_COMPUTE_CRON_ENABLED: "true",
+        QKERN_COMPUTE_WEBHOOKS_ENABLED: "false",
+        QKERN_COMPUTE_CRON_INTERVAL_MS: "1000",
+        QKERN_PROJECT_QUEUES_ENABLED: "true",
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+        QKERN_RUNTIME_PROBE_ENABLED: "true",
+        QKERN_RUNTIME_PROBE_PORT: String(port),
+        ...extra,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    return { child, output: () => noise };
+  }
+
+  /**
+   * Ein eigenes Projekt je Probe-Fall.
+   *
+   * Der Prozess bedient einen ganzen Scope, nicht eine Definition. Teilten
+   * sich zwei Faelle ein Projekt, saehe der eine die Definitionen des anderen —
+   * und „bereit" haette nichts mehr mit dem zu tun, was der Fall aufgebaut hat.
+   * Genau daran ist der erste Anlauf gescheitert.
+   */
+  async function freshProject() {
+    const id = randomUUID();
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Cron Probe', $3, 'test', 'ready', $4)`,
+    [id, organizationId, `cron-probe-${id}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [organizationId, id, `managed:${id}`]);
+    return { organizationId, projectId: id, environment: "development" as const };
+  }
+
+  async function defineCronIn(
+    target: { projectId: string }, queue: string, expression: string, lastDispatchedAt: Date,
+  ) {
+    const id = randomUUID();
+    await owner.query(
+      `INSERT INTO project_cron_definitions
+         (id, organization_id, project_id, environment, name, expression, queue, payload,
+          last_dispatched_at)
+       VALUES ($1,$2,$3,'development',$4,$5,$6,$7,$8)`,
+      [id, organizationId, target.projectId, `cron-${id.slice(0, 8)}`, expression, queue,
+        { task: "run" }, lastDispatchedAt],
+    );
+  }
+
+  /** Wartet, bis `/ready` den erwarteten Status meldet — oder gibt auf. */
+  async function readyBecomes(port: number, expected: number, timeoutMs = 60_000) {
+    const deadline = Date.now() + timeoutMs;
+    let last = 0;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/ready`);
+        last = response.status;
+        if (last === expected) return { status: last, body: await response.text() };
+      } catch { last = 0; }
+    }
+    return { status: last, body: "" };
+  }
+
+  it("reports ready while the cron loop is doing its rounds", async () => {
+    const node = instance();
+    const own = await freshProject();
+    const queue = `probe-ok-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, own, { name: queue, dedupeWindowSeconds: 3600 });
+    await defineCronIn(own, queue, "*/1 * * * *", new Date(Date.now() - 120_000));
+
+    const port = 9471;
+    const process_ = computeProcess(port, { QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([own]) });
+    try {
+      const ready = await readyBecomes(port, 200);
+      expect(ready.status, `Prozessausgabe: ${process_.output().slice(-600)}`).toBe(200);
+      expect(ready.body.trim()).toBe("ready");
+    } finally {
+      process_.child.kill();
+    }
+  }, 120_000);
+
+  it("stops reporting ready when every definition fails", async () => {
+    const node = instance();
+    const own = await freshProject();
+    const queue = `probe-bad-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, own, { name: queue, dedupeWindowSeconds: 3600 });
+    // `* * * * *` unterstuetzt der Ausdruck nicht. Der Definitionsdienst wiese
+    // das ab; ein direkter INSERT nicht — und genau so entstand der Zustand,
+    // den 1.45 nur durch Handarbeit sichtbar machen konnte.
+    await defineCronIn(own, queue, "* * * * *", new Date(Date.now() - 120_000));
+
+    const port = 9472;
+    const process_ = computeProcess(port, { QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([own]) });
+    try {
+      const ready = await readyBecomes(port, 503);
+      expect(ready.status, `Prozessausgabe: ${process_.output().slice(-600)}`).toBe(503);
+      // Die Antwort sagt, dass es klemmt — nicht woran. Ein Ausdruck, ein
+      // Projekt oder eine Datenbankmeldung an dieser Stelle waere ein Leck.
+      expect(ready.body.trim()).toBe("not ready");
+      expect(ready.body).not.toContain("*");
+      expect(process_.output()).not.toContain(own.projectId);
+      expect(process_.output()).not.toContain("qkern_runtime_local_only");
+      expect(process_.output()).not.toContain("cron expression");
+    } finally {
+      process_.child.kill();
+    }
+  }, 120_000);
 });

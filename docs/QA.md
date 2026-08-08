@@ -1658,3 +1658,51 @@ Datenbankmeldung gehoert nicht ins Log —, aber „diese Schleife kommt seit N
 Versuchen nicht durch" waere weder ein Geheimnis noch eine Datenbankmeldung.
 Das ist eine eigene Scheibe und keine Nebenbei-Aenderung an einem
 Sicherheitsvertrag.
+
+## Wer merkt, dass es klemmt? — Release 1.46
+
+Release 1.45 hat eine Stunde gekostet, weil eine Schleife, die jede Sekunde
+scheitert, von einer untaetigen nicht zu unterscheiden war. Der Prozess meldete
+seinen Start und schwieg danach. Sichtbar wurde der Fehler erst, als ich
+`onError: () => undefined` von Hand gegen eine Ausgabe getauscht habe.
+
+Beim Nachsehen stand die Antwort schon im Baum: `RuntimeProbeState` und
+`LoopbackRuntimeProbeServer` mit `/live` und `/ready` gibt es seit Alpha 1, vier
+Kompositionen reichen einen `probe` durch — und
+`createLoopbackRuntimeProbeFromEnv` rief **kein einziger Prozess** auf.
+
+Das ist derselbe Fund wie siebenmal zuvor, an einer Stelle, die der
+Erreichbarkeitsvertrag aus 1.42 nicht sehen kann: Das Modul **war** importiert,
+denn `safeRuntimeProbe` und die Typen kommen von dort. Nur die Fabrik rief
+niemand. Der Vertrag misst Erreichbarkeit, nicht Ausfuehrung — hier zeigt sich,
+was das kostet.
+
+Der Compute-Prozess startet die Probe jetzt und speist sie aus beiden Schleifen.
+Zwei Details entscheiden ueber die Aussage:
+
+**Der Scheduler faengt Fehler selbst ab.** `scheduler.run` kehrt normal zurueck,
+auch wenn jede Definition gescheitert ist. Eine Erfolgsmeldung am Rundenende
+haette den eben gesetzten Fehlschlag wieder geloescht. Ein Zaehler entscheidet
+deshalb, ob die Runde sauber war; nur dann gilt sie als gelungen.
+
+**Die Antwort sagt, dass es klemmt — nicht woran.** `/ready` liefert 503 mit
+`not ready`. Kein Ausdruck, kein Projekt, keine Datenbankmeldung. Die Redaktion
+bleibt, was sie war; sie gilt jetzt nur nicht mehr fuer die Tatsache selbst.
+
+Der erste Anlauf des positiven Falls war rot, und der Fehler war meiner: Beide
+Faelle teilten sich ein Projekt, und der Prozess bedient einen ganzen Scope. Er
+sah die Definitionen der frueheren Faelle mit. Dieselbe Regel wie in 1.29 —
+jeder Fall bekommt sein eigenes Projekt — und dieselbe Lektion zum zweiten Mal.
+
+Mutationsprobe: `onError` meldet nichts mehr. Genau der negative Fall faellt,
+119 von 120; der positive bleibt gruen. Die beiden haengen also nicht am selben
+Pfad.
+
+Checkpoint `1.46.0` am 8. August 2026: Lokal 1009 bestanden, 0 fehlgeschlagen;
+PostgreSQL 120 von 120, exit 0, zweimal reproduziert.
+
+Nicht erbracht: **Sechs der sieben Prozesse starten die Probe weiterhin nicht.**
+Belegt ist ausserdem nur der Cron-Zweig; dass der Webhook-Zweig seinen
+Fehlschlag meldet, ist verdrahtet und nicht zertifiziert. Und `/ready` sagt, dass
+etwas klemmt, nicht seit wann und nicht wie oft — wer den Verlauf sehen will,
+braucht einen Exporter, den es nicht gibt.

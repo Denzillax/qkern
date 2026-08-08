@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "probe-run1.log",
+  "commit": "217466d819c3c93dd3af4349879e4ad8eada4e3a",
+  "commitSubject": "release: 1.45.0 Wer ruft das eigentlich? Teil zwei",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 35,
+  "testFiles": "18 passed (18)",
+  "tests": "120 passed (120)",
+  "passed": 120,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
