@@ -27,6 +27,23 @@ function signatureMatches(header, timestamp, body) {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+/**
+ * Der Incident-Publisher signiert anders als der Projekt-Webhook.
+ *
+ * Dasselbe Verfahren — HMAC-SHA256 ueber `${timestamp}.${body}` —, aber die
+ * Kennung steht in einem eigenen Header, und die Signatur ist hexadezimal statt
+ * base64url. Wer beide Formate in eine Pruefung zwaengt, prueft am Ende keines
+ * von beiden richtig.
+ */
+function incidentSignatureMatches(header, timestamp, body) {
+  const presented = /^v1=([0-9a-f]{64})$/.exec(header ?? "")?.[1];
+  if (!presented) return false;
+  const expected = createHmac("sha256", secret)
+    .update(`${timestamp}.${body}`, "utf8").digest();
+  const given = Buffer.from(presented, "hex");
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
 function readBody(request) {
   return new Promise((resolve) => {
     const chunks = [];
@@ -61,6 +78,30 @@ const server = createServer(options, async (request, response) => {
     if (path === "/hooks") headers["x-qkern-delivery-id"] = request.headers["x-qkern-delivery-id"];
     response.writeHead(200, headers);
     response.end('{"received":true}');
+    return;
+  }
+
+  // Der Incident-Publisher hat ein eigenes Bestaetigungsformat: Er verlangt
+  // genau `{"status":"ack","eventId":"…"}` mit der Kennung, die er geschickt
+  // hat. Ein Empfaenger, der `{"received":true}` antwortet, gilt ihm als
+  // ungueltig — und das ist der Grund, warum dieser Pfad existiert.
+  //
+  // Das Signaturschema ist dasselbe wie beim Projekt-Webhook: HMAC ueber
+  // `${timestamp}.${body}`. Nachgerechnet wird auch hier.
+  if (path === "/incidents") {
+    const ok = incidentSignatureMatches(
+      request.headers["x-qkern-signature"],
+      request.headers["x-qkern-timestamp"],
+      body,
+    );
+    if (!ok) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end('{"error":"signature"}');
+      return;
+    }
+    const eventId = request.headers["x-qkern-event-id"];
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ status: "ack", eventId }));
     return;
   }
 

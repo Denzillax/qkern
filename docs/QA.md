@@ -2072,3 +2072,45 @@ Nicht erbracht: Belegt sind Erfolg und Fehlschlag **einer** Zustellung. Was der
 Prozess zwischen erstem Versuch und Dead Letter meldet, sieht dieser Fall nicht
 — er laesst nur einen Versuch zu. Und die Ereignisse tragen weiterhin keinen
 Zeitbezug.
+
+## Der vierte Prozess — Release 1.56
+
+Seit Release 1.44 stand dieselbe Zeile in jeder „Ehrlich offen"-Liste: Vier
+Prozesse haben keinen Lauf, der sie arbeiten sieht. Der Incident-Publisher ist
+der erste davon, der sich schliessen liess — er liefert an einen Webhook, und
+der echte Empfaenger steht seit `1.28.0`.
+
+Zwei Dinge waren zu tun.
+
+**Der Empfaenger brauchte einen eigenen Pfad.** Der Incident-Publisher verlangt
+genau `{"status":"ack","eventId":"…"}` mit der Kennung, die er geschickt hat;
+`{"received":true}` gilt ihm als ungueltig. Und er signiert anders: dasselbe
+Verfahren, aber die Schluesselkennung steht in einem eigenen Header und die
+Signatur ist hexadezimal statt base64url. Wer beide Formate in eine Pruefung
+zwaengt, prueft am Ende keines von beiden richtig — `/incidents` hat deshalb
+seine eigene.
+
+**Das Geheimnis wird an zwei Stellen verschieden gelesen.** Der Empfaenger
+dekodiert `QKERN_RECEIVER_SECRET` als base64url und rechnet mit den Bytes; der
+Projekt-Webhook-Signierer tut dasselbe. Der Incident-Publisher nimmt
+`QKERN_INCIDENT_WEBHOOK_HMAC_SECRET` als **rohe Zeichenkette**. Beide sind in
+sich stimmig und passen nur zusammen, wenn man die eine Seite dekodiert
+konfiguriert. Wer das uebersieht, bekommt 401 und keine Erklaerung — mich hat es
+zwei Laeufe gekostet.
+
+Gefunden habe ich es erst, nachdem der Fall den Empfaenger **direkt** befragt
+hat, bevor er den Prozess startet. Wer den Prozess misst, ohne die Gegenstelle
+zu kennen, sucht den Fehler an der falschen Stelle. Diese Vorabfrage bleibt im
+Fall stehen.
+
+Mutationsprobe: Der Empfaenger bestaetigt eine andere Kennung. Genau der neue
+Fall faellt, 12 von 13 — die Zustellung kommt an, gilt aber zu Recht nicht als
+angekommen.
+
+Checkpoint `1.56.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+Empfaenger-Lauf 13 von 13, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Belegt ist die gelungene Veroeffentlichung. Wiederholung,
+Dead Letter und die Wiederaufnahme ueber ein Delivery Command sind gegen echtes
+PostgreSQL zertifiziert, aber nicht durch diesen Prozess. Drei Prozesse haben
+weiterhin keinen Arbeitsnachweis: Realtime, Apply-Publisher und Provisioner.

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
@@ -41,6 +42,19 @@ const enabled = process.env.QKERN_TEST_RECEIVER_E2E === "true" &&
   Boolean(ownerUrl && runtimeUrl);
 
 const ORIGIN = "https://receiver.qkern.test";
+const workerUrl = process.env.QKERN_TEST_WORKER_DATABASE_URL;
+/**
+ * Der Schluessel des Empfaengers — **dekodiert**.
+ *
+ * Der Empfaenger liest `QKERN_RECEIVER_SECRET` als base64url und rechnet mit den
+ * Bytes. Der Projekt-Webhook-Signierer tut dasselbe; der Incident-Publisher
+ * dagegen nimmt `QKERN_INCIDENT_WEBHOOK_HMAC_SECRET` als rohe Zeichenkette.
+ * Beide sind in sich stimmig und passen nur zusammen, wenn man die eine Seite
+ * dekodiert konfiguriert. Wer das uebersieht, bekommt 401 und keine Erklaerung.
+ */
+const RECEIVER_SECRET = Buffer
+  .from("cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi", "base64url")
+  .toString("utf8");
 const SECRET_REF = "webhook/certification";
 /** Formgültige Registry-Referenz; hier wird kein Container gestartet. */
 const IMAGE = `registry.example.com/qkern/probe@sha256:${"b".repeat(64)}`;
@@ -348,4 +362,112 @@ describe.runIf(enabled)("Receiver certification", () => {
       expect(outcome).toEqual({ error: "EGRESS_BLOCKED" });
     });
   });
+
+  /**
+   * Der Incident-Publisher — der vierte Prozess mit Arbeitsnachweis.
+   *
+   * Realtime, beide Publisher und der Provisioner hatten seit `1.44.0` keinen
+   * Lauf, der sie arbeiten sieht; seit sieben Releases ist das die groesste
+   * Luecke dieser Reihe. Dieser hier laesst sich schliessen, weil er an einen
+   * Webhook liefert und der echte Empfaenger schon steht.
+   *
+   * Sein Bestaetigungsformat ist ein anderes als das des Projekt-Webhooks: Er
+   * verlangt genau `{"status":"ack","eventId":"…"}` mit der Kennung, die er
+   * geschickt hat. Deshalb hat der Empfaenger dafuer einen eigenen Pfad
+   * bekommen — das Signaturschema ist dasselbe und wird auch dort nachgerechnet.
+   */
+  it("publishes an incident from the shipped process", async () => {
+    const jobId = randomUUID();
+    const changeSetId = randomUUID();
+    const approvalId = randomUUID();
+    const incidentId = randomUUID();
+    const eventId = randomUUID();
+    const ref = `managed:${projectId}`;
+
+    await owner.query(`INSERT INTO change_sets
+      (id,organization_id,project_id,environment,title,statement_sha256,encrypted_statement,risk,status,created_by)
+      VALUES ($1,$2,$3,'development','incident',$4,$5,'low','approved',$6)`,
+    [changeSetId, organizationId, projectId, "c".repeat(64), Buffer.alloc(1), controlUser]);
+    await owner.query(`INSERT INTO approval_requests
+      (id,organization_id,project_id,change_set_id,environment,action_hash,status,expires_at)
+      VALUES ($1,$2,$3,$4,'development',$5,'approved',now() + interval '1 hour')`,
+    [approvalId, organizationId, projectId, changeSetId, "d".repeat(64)]);
+    await owner.query(`INSERT INTO migration_jobs
+      (id,organization_id,project_id,environment,database_instance_ref,change_set_id,
+       approval_request_id,status,attempt_count,max_attempts,finished_at,
+       reconciliation_required,reconciliation_attempt_count,max_reconciliation_attempts,
+       review_cycle_count,max_review_cycles)
+      VALUES ($1,$2,$3,'development',$4,$5,$6,'review_required',3,5,now(),
+              true,3,3,3,3)`,
+    [jobId, organizationId, projectId, ref, changeSetId, approvalId]);
+    await owner.query(`INSERT INTO migration_incidents
+      (id,organization_id,migration_job_id,project_id,environment,change_set_id,
+       detected_review_cycle,detected_reconciliation_attempt)
+      VALUES ($1,$2,$3,$4,'development',$5,3,3)`,
+    [incidentId, organizationId, jobId, projectId, changeSetId]);
+    await owner.query(`INSERT INTO migration_incident_outbox
+      (id,organization_id,migration_incident_id,event_type,status)
+      VALUES ($1,$2,$3,'migration.incident.opened','pending')`,
+    [eventId, organizationId, incidentId]);
+
+    // Zuerst den Empfaenger selbst: Wer den Prozess misst, ohne die Gegenstelle
+    // zu kennen, sucht den Fehler spaeter an der falschen Stelle.
+    const probeBody = JSON.stringify({ probe: true });
+    const probeStamp = Math.floor(Date.now() / 1_000).toString(10);
+    const probeSignature = createHmac("sha256", RECEIVER_SECRET)
+      .update(`${probeStamp}.${probeBody}`, "utf8").digest("hex");
+    const probe = await fetch(`${ORIGIN}/incidents`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-qkern-event-id": eventId,
+        "x-qkern-signature": `v1=${probeSignature}`,
+        "x-qkern-timestamp": probeStamp,
+      },
+      body: probeBody,
+    });
+    expect(probe.status, `Empfaengerantwort: ${await probe.text()}`).toBe(200);
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/incident-outbox-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_INCIDENT_OUTBOX_PUBLISHER_ENABLED: "true",
+        QKERN_INCIDENT_OUTBOX_PUBLISHER_ID: "certification-incident-1",
+        QKERN_INCIDENT_OUTBOX_IDLE_MS: "200",
+        QKERN_WORKER_ORGANIZATION_ID: organizationId,
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_WORKER_DATABASE_URL: workerUrl!,
+        QKERN_INCIDENT_WEBHOOK_URL: `${ORIGIN}/incidents`,
+        QKERN_INCIDENT_WEBHOOK_ALLOWED_HOSTS: "receiver.qkern.test",
+        QKERN_INCIDENT_WEBHOOK_HMAC_KEY_ID: "cert-1",
+        QKERN_INCIDENT_WEBHOOK_HMAC_SECRET: RECEIVER_SECRET,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 90_000;
+      let status = "pending";
+      while (Date.now() < deadline && status === "pending") {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const row = await owner.query<{ status: string }>(
+          "SELECT status FROM migration_incident_outbox WHERE id=$1", [eventId]);
+        status = row.rows[0]?.status ?? "pending";
+      }
+      // Der Empfaenger hat die Signatur nachgerechnet und genau die Kennung
+      // bestaetigt, die der Prozess geschickt hat. Ohne beides waere hier kein
+      // `published`.
+      expect(status, `Prozessausgabe: ${noise.slice(-800)}`).toBe("published");
+    } finally {
+      child.kill();
+    }
+
+    // Endpunkt und Geheimnis bleiben aus dem Log dieses Prozesses.
+    expect(noise).not.toContain(RECEIVER_SECRET);
+    expect(noise).not.toContain("receiver.qkern.test");
+  }, 180_000);
 });

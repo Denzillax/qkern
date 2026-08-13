@@ -571,3 +571,14 @@ weiterhin an, aber der Prozess schweigt darüber. Genau der Prozess-Fall fällt.
 
 Die Mutation nimmt dem Zusteller die Meldung des Fehlschlags: Die Zustellung
 landet weiterhin im Dead Letter, aber der Prozess schweigt darüber.
+
+## Läufe zu Release 1.56 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/incident-process-run1.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 13 von 13, exit 0 |
+| `2026-08-08/incident-process-run2.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 13 von 13, exit 0, Wiederholung |
+| `2026-08-08/incident-process-mutation.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | **12 von 13, exit 1 — absichtlich** |
+
+Die Mutation lässt den Empfänger eine andere Kennung bestätigen: Die Zustellung
+kommt an, gilt aber zu Recht nicht als angekommen.

@@ -113,6 +113,7 @@ services:
       DATABASE_SSL: disable
       QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
       QKERN_TEST_RUNTIME_DATABASE_URL: postgresql://qkern_app:qkern_runtime_local_only@postgres:5432/qkern_control
+      QKERN_TEST_WORKER_DATABASE_URL: postgresql://qkern_worker_app:qkern_worker_local_only@postgres:5432/qkern_control
       QKERN_ALLOW_LOCAL_WEBHOOK_SIGNING_SECRETS: "true"
       QKERN_LOCAL_WEBHOOK_SIGNING_SECRETS_JSON: >-
         {"webhook/certification":{"keyId":"cert-1","secret":"cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi"}}

@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.55.md](RELEASE_1.55.md) | Aktueller Release: Auch das Nein wird gemeldet |
+| [RELEASE_1.56.md](RELEASE_1.56.md) | Aktueller Release: Der vierte Prozess |
+| [RELEASE_1.55.md](RELEASE_1.55.md) | Auch das Nein wird gemeldet |
 | [RELEASE_1.54.md](RELEASE_1.54.md) | Der Webhook-Zweig, als Prozess |
 | [RELEASE_1.53.md](RELEASE_1.53.md) | Der Compute-Prozess meldet jetzt auch |
 | [RELEASE_1.52.md](RELEASE_1.52.md) | Wer meldet, was er tut |

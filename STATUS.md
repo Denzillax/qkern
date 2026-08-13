@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.55.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.56.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 8 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 24 Real-DB-Fälle; **alle sechs Metriken melden**, Realtime auch für CDC; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 43 Real-DB-Fälle, dazu 26 im Functions-Lauf und 12 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 43 Real-DB-Fälle, dazu 26 im Functions-Lauf und 13 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -38,7 +38,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Strict TypeScript | grün |
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
-| **Arbeitende Prozesse** | **3 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`) und Migrationen (`1.49.0`); die übrigen 4 haben keinen Lauf, der sie arbeiten sieht** |
+| **Arbeitende Prozesse** | **4 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`), Migrationen (`1.49.0`) und Incident-Publisher (`1.56.0`); die übrigen 3 haben keinen Lauf, der sie arbeiten sieht** |
 | **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
@@ -49,7 +49,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
-| **Ausgehender Weg gegen echten HTTPS-Empfänger** | **12 von 12 bestanden, exit 0, zweimal reproduziert** |
+| **Ausgehender Weg gegen echten HTTPS-Empfänger** | **13 von 13 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-06/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
