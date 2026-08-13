@@ -2223,3 +2223,38 @@ Empfaenger 14 von 14 unveraendert gegenueber `1.58.0`.
 
 Nicht erbracht: Der siebte Prozess bleibt offen, und zwar aus einem Grund, den
 niemand kennt — das ist unangenehmer als der falsche Grund, den er vorher hatte.
+
+## Die offene Frage wird kleiner — Release 1.60
+
+Release 1.59 hat den Versuch abgebrochen, den Provisioner als Prozess zu belegen,
+und eine Spur hinterlassen: Der Fehler tritt im Zweig `quarantineExpired` →
+`claimNext` auf.
+
+Die Spur ist jetzt abgearbeitet, und sie fuehrt nicht dorthin. **Beide
+Operationen funktionieren gegen echtes PostgreSQL**, ausgefuehrt von
+`qkern_provisioner_app` und nicht von einer Eigentuemerrolle: Ein wartender
+Auftrag wird uebernommen und bekommt eine Lease; der Aufraeumer laesst eine
+frische Lease in Ruhe; ein fremder Auftrag bleibt unberuehrt.
+
+Diagnostiziert wurde lokal gegen eine einzeln gestartete Datenbank statt ueber
+den vollen Stack — Sekunden statt Minuten je Versuch. Das ist die Lehre aus
+sieben Zyklen in 1.59: Wer eine Frage verengen will, sollte den kleinsten Aufbau
+waehlen, in dem sie noch dieselbe ist.
+
+Zwei Mutationsproben, und die erste hat etwas gelehrt:
+
+- Die Mandantenbedingung der Abfrage wird zu `(organization_id = $1 OR true)`
+  aufgeweicht: **kein Fall faellt.** Die Grenze traegt hier RLS, nicht das
+  Praedikat — vom Adapter aus laesst sie sich nicht brechen. Dasselbe stand
+  schon in Release 1.37 ueber den Aufraeumer des Change-Feeds.
+- Uebernommen werden nur noch `failed` statt `pending`: Genau der
+  Uebernahmefall faellt, 126 von 127.
+
+Checkpoint `1.60.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 127 von 127, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Der Prozessnachweis fehlt weiterhin. Was jetzt zusaetzlich
+bekannt ist: Er scheitert **nicht** an den beiden Abfragen, die im selben Block
+stehen. Der naechste Kandidat ist der Unterschied zwischen den beiden
+Umgebungen — hier eine einzeln gestartete Datenbank, dort ein Stack mit
+parallelen Testdateien.

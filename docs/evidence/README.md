@@ -608,3 +608,19 @@ weil es die Reichweite des Falls beschreibt.
 
 Die Mutation nimmt dem Empfänger den Pfad `/apply`: Der Prozess veröffentlicht
 weiterhin, die Gegenstelle nimmt es nicht an.
+
+## Läufe zu Release 1.60 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/provisioning-port-run1.log` | PostgreSQL 17 | 127 von 127, exit 0, 35 Migrationen |
+| `2026-08-08/provisioning-port-run2.log` | PostgreSQL 17 | 127 von 127, exit 0, Wiederholung |
+| `2026-08-08/provisioning-port-mutation.log` | PostgreSQL 17 | **126 von 127, exit 1 — absichtlich** |
+
+Die abgelegte Mutation lässt nur noch `failed` statt `pending` übernehmen: Genau
+der Übernahmefall fällt.
+
+Eine erste Probe weichte die Mandantenbedingung zu `OR true` auf und traf
+**nicht** — die Grenze trägt RLS, nicht das Prädikat. Sie ist nicht abgelegt,
+weil ein grüner Lauf keine Evidenz für eine Mutation ist; der Befund steht in der
+Release Note.

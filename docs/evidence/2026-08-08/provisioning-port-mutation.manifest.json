@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "provisioning-port-mutation.log",
+  "commit": "bdcbb2ecec2fa87d59386d16c5c811a7d5bf2c28",
+  "commitSubject": "release: 1.59.0 Eine Korrektur und ein abgebrochener Versuch",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 35,
+  "testFiles": "1 failed | 20 passed (21)",
+  "tests": "1 failed | 126 passed (127)",
+  "passed": 126,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
