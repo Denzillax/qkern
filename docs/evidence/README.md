@@ -537,3 +537,15 @@ Prozess-Fall fällt.
 Die zweite Probe dieses Release hat kein Manifest, weil sie ohne Stack läuft:
 Wird dem Migrations-Prozess der Worker-Logger genommen, nennt der Vertrag Datei,
 Fabrik und Logger.
+
+## Läufe zu Release 1.53 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/compute-logger-run1.log` | PostgreSQL 17 | 123 von 123, exit 0, 35 Migrationen |
+| `2026-08-08/compute-logger-run2.log` | PostgreSQL 17 | 123 von 123, exit 0, Wiederholung |
+| `2026-08-08/compute-logger-mutation.log` | PostgreSQL 17 | **122 von 123, exit 1 — absichtlich** |
+
+Die Mutation nimmt der Cron-Schleife ihre Rundenmeldung: Vorkommen werden
+weiterhin ausgelöst, aber der Prozess schweigt darüber. Genau der Prozess-Fall
+fällt.

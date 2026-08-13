@@ -236,6 +236,20 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
         count = messages.rows[0]?.count ?? 0;
       }
       expect(count, `Prozessausgabe: ${noise.slice(-800)}`).toBeGreaterThanOrEqual(1);
+
+      // Der Prozess meldet seine Arbeit: welcher Scope, wie viele Vorkommen.
+      // Bis Release 1.53 bot seine Komposition gar keine Naht — nach der
+      // Startzeile kam nichts mehr.
+      //
+      // Gewartet wird auf die Meldung, nicht auf einen Moment: Die Nachricht
+      // steht in der Datenbank, bevor die Runde zu Ende ist, und wer sofort
+      // nachsieht, misst den Wettlauf statt die Zusage.
+      const logDeadline = Date.now() + 20_000;
+      while (Date.now() < logDeadline && !noise.includes("compute.cron_round")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(noise).toContain("compute.cron_round");
+      expect(noise).toMatch(/"dispatched":[1-9]/);
     } finally {
       child.kill();
     }

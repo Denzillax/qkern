@@ -14,7 +14,13 @@ process.once("SIGTERM", requestStop);
 const probe = createLoopbackRuntimeProbeFromEnv(process.env);
 
 try {
-  const runtime = createComputeRuntimeFromEnv(process.env, { probe: probe?.observer });
+  const runtime = createComputeRuntimeFromEnv(process.env, {
+    probe: probe?.observer,
+    // Scope-Index, Zahl der ausgeloesten Vorkommen und feste Failure Codes —
+    // keine Ids, keine Endpunkte, keine Datenbankmeldungen. Bis Release 1.53
+    // meldete dieser Prozess nach seiner Startzeile gar nichts.
+    logger: { log: (event) => console.info(JSON.stringify(event)) },
+  });
   const bound = await probe?.start();
   console.error(
     `QKERN compute runtime serving ${runtime.scopes.length} scope(s): cron dispatch and webhook delivery`

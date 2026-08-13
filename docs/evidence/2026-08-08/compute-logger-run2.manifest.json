@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "compute-logger-run2.log",
+  "commit": "a7da765865fe003d77c2649b38fecb22d2d3f6eb",
+  "commitSubject": "release: 1.52.0 Wer meldet, was er tut",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 35,
+  "testFiles": "19 passed (19)",
+  "tests": "123 passed (123)",
+  "passed": 123,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -30,6 +30,35 @@ export type ComputeScopeConfig = Readonly<{
   environment: Environment;
 }>;
 
+/**
+ * Was der Compute-Prozess ueber seine Arbeit meldet.
+ *
+ * **Ein Index statt einer Id.** Die Startzeile des Prozesses nennt seit jeher
+ * nur die Zahl der Scopes, und dabei bleibt es: Der Index zeigt in
+ * `QKERN_COMPUTE_SCOPES_JSON`, die der Betreiber selbst gesetzt hat. Fuer ihn
+ * ist er aufloesbar, fuer jeden anderen bedeutungslos.
+ *
+ * Gemeldet wird nur, was geschehen ist. Eine Runde ohne faelliges Vorkommen
+ * schweigt — sonst schriebe der Prozess im Standardtakt alle 30 Sekunden je
+ * Scope eine Zeile ueber nichts.
+ */
+export type ComputeRuntimeLogEvent = Readonly<{
+  event: "compute.cron_round" | "compute.webhook_failed";
+  scopeIndex: number;
+  dispatched?: number;
+  failures?: number;
+  failureCode?: string;
+}>;
+
+export interface ComputeRuntimeLogger {
+  log(event: ComputeRuntimeLogEvent): void;
+}
+
+function safeComputeLog(logger: ComputeRuntimeLogger | undefined, event: ComputeRuntimeLogEvent) {
+  try { logger?.log(Object.freeze({ ...event })); }
+  catch { /* Beobachtung ist keine Ausfuehrungsautoritaet. */ }
+}
+
 export type ComputeRuntimeDependencies = {
   signer?: WebhookSignerPort;
   transport?: WebhookTransportPort;
@@ -43,6 +72,14 @@ export type ComputeRuntimeDependencies = {
    * Stunde verloren: Der Prozess meldete seinen Start und schwieg danach.
    */
   probe?: RuntimeProbeObserver;
+  /**
+   * Nimmt die Ereignisse je Vorgang entgegen.
+   *
+   * Bis Release 1.53 bot diese Komposition **gar keine** Naht: Der Prozess
+   * meldete seinen Start und danach nichts mehr. Die Probe aus 1.46 sagt, dass
+   * es klemmt — nicht, was geschehen ist.
+   */
+  logger?: ComputeRuntimeLogger;
 };
 
 /**
@@ -199,7 +236,7 @@ export function createComputeRuntimeFromEnv(
         loops.push(retention.run());
       }
 
-      for (const scope of scopes) {
+      for (const [scopeIndex, scope] of scopes.entries()) {
         if (deliverer) {
           const runtime = new WebhookDeliveryRuntime({
             outbox,
@@ -211,7 +248,12 @@ export function createComputeRuntimeFromEnv(
             idleIntervalMs: webhookIdleMs,
             // Redigiert wie bisher — aber nicht mehr stumm: Der Beobachter
             // erfaehrt den Fehlschlag, ohne seinen Inhalt zu sehen.
-            onFailure: () => safeRuntimeProbe(dependencies.probe, "iterationFailed"),
+            onFailure: (code) => {
+              safeRuntimeProbe(dependencies.probe, "iterationFailed");
+              safeComputeLog(dependencies.logger, {
+                event: "compute.webhook_failed", scopeIndex, failureCode: code,
+              });
+            },
             ...(sleep ? { sleep } : {}),
           });
           stops.push(() => runtime.stop());
@@ -226,7 +268,7 @@ export function createComputeRuntimeFromEnv(
           };
           loops.push(runCronLoop(
             scheduler, principal, scope, cronIntervalMs, signal, sleep,
-            dependencies.probe, cronFailures,
+            dependencies.probe, cronFailures, dependencies.logger, scopeIndex,
           ));
         }
       }
@@ -256,16 +298,25 @@ async function runCronLoop(
   sleep?: (ms: number) => Promise<void>,
   probe?: RuntimeProbeObserver,
   failures?: { count: number },
+  logger?: ComputeRuntimeLogger,
+  scopeIndex = 0,
 ): Promise<void> {
   while (!signal.aborted) {
     try {
       const before = failures?.count ?? 0;
-      await scheduler.run(principal, scope);
+      const result = await scheduler.run(principal, scope);
+      const failed = (failures?.count ?? 0) - before;
       // Erfolg nur, wenn in dieser Runde keine Definition gescheitert ist.
       // Sonst waere die Meldung eine Behauptung ueber etwas, das nicht
       // stattgefunden hat.
-      safeRuntimeProbe(probe,
-        (failures?.count ?? 0) === before ? "iterationSucceeded" : "iterationFailed");
+      safeRuntimeProbe(probe, failed === 0 ? "iterationSucceeded" : "iterationFailed");
+      // Nur Runden, in denen etwas geschehen ist. Eine leere Runde zu melden
+      // hiesse, den Takt zu protokollieren statt die Arbeit.
+      if (result.dispatched > 0 || failed > 0) {
+        safeComputeLog(logger, {
+          event: "compute.cron_round", scopeIndex, dispatched: result.dispatched, failures: failed,
+        });
+      }
     } catch {
       // Der Scheduler faengt Fehler einzelner Definitionen bereits ab; hier
       // bleibt nur ein Fehler beim Lesen der Liste. Er darf den Takt nicht

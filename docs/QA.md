@@ -1977,3 +1977,40 @@ Nicht erbracht: Der Compute-Prozess hat weiterhin **keine** Logger-Naht — sein
 Komposition bietet keine an, und der Vertrag kann nur einfordern, was angeboten
 wird. Was Cron und Webhook-Zustellung je Vorgang tun, meldet niemand; belegt ist
 nur die Probe aus 1.46, die sagt, dass es klemmt, nicht was geschah.
+
+## Der Compute-Prozess meldet jetzt auch — Release 1.53
+
+Release 1.52 hat den Queue-Wirt zum Melden gebracht und offen gelassen, dass der
+Compute-Prozess **gar keine** Naht hat: Seine Komposition bot keine an, und der
+Vertrag kann nur einfordern, was angeboten wird.
+
+Beide Bausteine darunter hatten nur Fehler-Haken — `onError` beim Scheduler,
+`onFailure` beim Zusteller — und keinen Ereignisstrom. Die Naht musste also erst
+entstehen.
+
+**Ein Index statt einer Id.** Die Startzeile des Prozesses nennt seit jeher nur
+die Zahl der Scopes, und dabei bleibt es: Der Index zeigt in
+`QKERN_COMPUTE_SCOPES_JSON`, die der Betreiber selbst gesetzt hat. Fuer ihn ist
+er aufloesbar, fuer jeden anderen bedeutungslos. Dazu die Zahl der ausgeloesten
+Vorkommen und feste Failure Codes — keine Endpunkte, keine Datenbankmeldungen.
+
+**Gemeldet wird nur, was geschehen ist.** Eine Runde ohne faelliges Vorkommen
+schweigt. Sonst schriebe der Prozess im Standardtakt alle 30 Sekunden je Scope
+eine Zeile ueber nichts, und ein Log, in dem Leerlauf ueberwiegt, ist so wenig
+lesbar wie gar keines.
+
+Der Fall war beim ersten Anlauf flaky, und der Fehler war meiner: Die Nachricht
+steht in der Datenbank, **bevor** die Runde zu Ende ist. Wer sofort nach der
+Meldung sieht, misst den Wettlauf statt die Zusage. Gewartet wird jetzt auf die
+Meldung, mit eigener Frist.
+
+Mutationsprobe: Die Cron-Schleife meldet ihre Runde nicht mehr. Genau der
+Prozess-Fall faellt, 122 von 123.
+
+Checkpoint `1.53.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 123 von 123, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Der Webhook-Zweig meldet seinen Fehlschlag — verdrahtet, nicht
+zertifiziert, weil dieser Lauf die Zustellung ausschaltet. Eine gelungene
+Zustellung meldet weiterhin niemand: Der Zusteller bietet dafuer keinen Haken,
+und einen zu bauen waere eine eigene Scheibe.
