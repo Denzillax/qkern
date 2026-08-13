@@ -2185,3 +2185,41 @@ lokale Weg deckt nicht dasselbe ab.
 Nicht erbracht: Belegt ist die gelungene Veroeffentlichung. Wiederholung und
 Dead Letter des Apply-Outbox sind gegen echtes PostgreSQL zertifiziert, aber
 nicht durch diesen Prozess.
+
+## Eine Korrektur und ein abgebrochener Versuch — Release 1.59
+
+Release 1.56, 1.57 und 1.58 haben uebereinstimmend festgehalten, der Provisioner
+brauche „einen Vault-Weg". **Das ist falsch.**
+
+Sein Adapter ist `createSignedProjectProvisioningBrokerFromEnv` — ein signierter
+HTTPS-Broker mit denselben vier Variablen wie beim Incident- und beim
+Apply-Publisher: URL, erlaubte Hosts, Schluesselkennung, Geheimnis. Der Vault
+kommt an einer anderen Stelle vor, im Katalog des Migrations-Workers, und den
+hatte ich mit dem Provisioner verwechselt.
+
+Das ist innerhalb von zwei Releases die **zweite** Annahme derselben Art: In 1.58
+war es der „Broker, den es im Stack nicht gibt". Beide Male hatte ich einen Namen
+gelesen und nicht den Code. Wer eine Huerde behauptet, ohne sie geprueft zu
+haben, verschiebt Arbeit, die keine gewesen waere.
+
+**Der Versuch, den siebten Prozess zu belegen, ist abgebrochen.** Empfaengerpfad,
+Fixture und Fall standen; der Prozess uebernimmt den Auftrag nicht, sondern
+meldet `claim_failed`. Dahinter steckt ein `PersistenceError` — dieselbe
+Verpackung wie in Release 1.48, und die Ursache liegt wieder darunter. Nach
+sieben Diagnosezyklen habe ich die Scheibe zurueckgenommen statt sie halbfertig
+abzulegen; unbenutzter Test-Support waere genau das Muster, das dieser Sprint
+beseitigt hat.
+
+Was bleibt: eine belastbare Spur. Der Fehler tritt im Zweig
+`quarantineExpired` → `claimNext` auf, laeuft bei **jedem** Takt und verschluckt
+seine Ursache. In 1.48 war an genau dieser Stelle eine mehrdeutige
+Spaltenreferenz der Grund; die hiesige Abfrage `quarantineExpiredLeases` hat sie
+nicht, also liegt es woanders — Rechte der Provisioner-Rolle waeren der naechste
+Kandidat.
+
+Checkpoint `1.59.0` am 8. August 2026: Keine Code-Aenderung, keine neuen Zahlen.
+Lokal 1023 bestanden; PostgreSQL 124 von 124, Functions 26 von 26 und
+Empfaenger 14 von 14 unveraendert gegenueber `1.58.0`.
+
+Nicht erbracht: Der siebte Prozess bleibt offen, und zwar aus einem Grund, den
+niemand kennt — das ist unangenehmer als der falsche Grund, den er vorher hatte.

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.58.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.59.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -38,7 +38,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Strict TypeScript | grün |
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
-| **Arbeitende Prozesse** | **6 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`), Migrationen (`1.49.0`), Incident-Publisher (`1.56.0`), Realtime (`1.57.0`) und Apply-Publisher (`1.58.0`); nur der Provisioner hat keinen Lauf, der ihn arbeiten sieht — er braucht einen Vault-Weg** |
+| **Arbeitende Prozesse** | **6 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`), Migrationen (`1.49.0`), Incident-Publisher (`1.56.0`), Realtime (`1.57.0`) und Apply-Publisher (`1.58.0`); nur der Provisioner hat keinen Lauf, der ihn arbeiten sieht. **Nicht** wegen eines fehlenden Vaults — sein Adapter ist ein signierter HTTPS-Broker wie bei den anderen beiden; der Versuch scheitert an einem `PersistenceError` beim Übernehmen des Auftrags, dessen Ursache nicht isoliert ist** |
 | **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
