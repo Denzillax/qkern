@@ -21,6 +21,29 @@ e69a830d70f785477af0165667f56735821e25a58bf724a17b46cf33d5358d67
 
 Der Broker muss außerdem die getrennten Rollen `qkern_ledger_owner` (Non-Login) und `qkern_project_migrator` (Least-Privilege-Login ohne unerwartete Mitgliedschaften), die Vault-Static-Role und den Zertifikatspin bereitstellen. Ein abweichender Bootstrap-Hash wird nicht gebunden.
 
+**`qkern_ledger_owner` darf keine einzige Mitgliedschaft haben — in beide
+Richtungen.** Die Grenzprüfung des Migrationszaunes lehnt jede Migration ab,
+sobald jemand Mitglied dieser Rolle ist oder sie Mitglied von etwas ist:
+
+```sql
+EXISTS (SELECT 1 FROM pg_auth_members m
+        WHERE m.roleid = owner.oid OR m.member = owner.oid)
+```
+
+Das ist im Betrieb leicht zu verletzen, weil PostgreSQL dagegen arbeitet: **Seit
+Version 16 teilt `CREATE ROLE` die neue Rolle dem Erzeuger automatisch mit ADMIN
+OPTION zu.** Wer die Rolle anlegt, verletzt die Bedingung im selben Atemzug.
+Nach dem Anlegen gehört deshalb:
+
+```sql
+REVOKE qkern_ledger_owner FROM <erzeugende Rolle>;
+```
+
+Die Rolle ist **clusterweit**. Ein Grant, den irgendjemand irgendwo setzt, macht
+Migrationen für **alle** Projektdatenbanken dieses Clusters unmöglich — nicht
+nur für die eine, um die es gerade ging. Genau daran hat Release 1.49 einen
+Zertifizierungslauf verloren.
+
 ## Brokervertrag
 
 QKERN sendet per HTTPS POST ausschließlich:

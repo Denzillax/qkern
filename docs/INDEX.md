@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.49.md](RELEASE_1.49.md) | Aktueller Release: Die Zertifizierung stand sich selbst im Weg |
+| [RELEASE_1.50.md](RELEASE_1.50.md) | Aktueller Release: Ein Grant, der alle trifft |
+| [RELEASE_1.49.md](RELEASE_1.49.md) | Die Zertifizierung stand sich selbst im Weg |
 | [RELEASE_1.48.md](RELEASE_1.48.md) | Zwei Defekte auf dem Pfad zur Kundendatenbank |
 | [RELEASE_1.47.md](RELEASE_1.47.md) | Die Probe wird Pflicht (mit Korrektur zu 1.46) |
 | [RELEASE_1.46.md](RELEASE_1.46.md) | Wer merkt, dass es klemmt? — Reichweite in 1.47 korrigiert |

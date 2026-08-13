@@ -1861,3 +1861,35 @@ behoben und nicht **verhindert**. Es gibt keine Pruefung, die einen dauerhaften
 Grant auf eine clusterweite Rolle bemerkt. Wie viele frueheren Laeufe davon
 betroffen waren, ist nicht rekonstruiert — die Realtime-Faelle selbst brauchen
 den Zaun nicht und blieben gruen.
+
+## Ein Grant, der alle trifft — Release 1.50
+
+Release 1.49 hat den Konflikt behoben und ausdruecklich offen gelassen, dass er
+damit nicht **verhindert** ist: Es gab keine Pruefung, die einen dauerhaften
+Grant auf eine clusterweite Rolle bemerkt.
+
+`tests/shared-cluster-role-contract.test.ts` schliesst das. Er prueft den
+Quelltext, nicht den Cluster — die schwaechere Aussage und die, die frueh genug
+kommt: beim Schreiben statt nach dem Lauf. Ein Grant, den dieselbe Datei wieder
+zuruecknimmt, ist erlaubt; ein dauerhafter nicht.
+
+Beim ersten Lauf meldete der Vertrag vier Dateien — darunter sich selbst und die
+drei Realtime-Dateien, die den Fund inzwischen nur noch **beschreiben**.
+Kommentare zaehlen deshalb nicht mit. Das ist keine Aufweichung: Was in einem
+Kommentar steht, fuehrt PostgreSQL nicht aus.
+
+Die Bedingung betrifft nicht nur Tests. `docs/PROJECT_DATABASE_PROVISIONING_
+RUNBOOK.md` nennt jetzt beides: dass `qkern_ledger_owner` keine einzige
+Mitgliedschaft haben darf, und dass PostgreSQL 16 dagegen arbeitet, weil
+`CREATE ROLE` die neue Rolle dem Erzeuger automatisch zuteilt. Wer sie anlegt,
+muss sie sich selbst wieder entziehen.
+
+Mutationsprobe: Der Grant wird in einer Realtime-Datei wiederhergestellt. Der
+Vertrag nennt die Datei namentlich.
+
+Checkpoint `1.50.0` am 8. August 2026: Lokal 1015 bestanden, 0 fehlgeschlagen;
+PostgreSQL 122 von 122, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Der Vertrag liest `tests/`, nicht `scripts/`, nicht `db/` und
+nicht die Kubernetes-Vorlagen. Und er erkennt eine Zuteilung nur, wenn sie als
+SQL-Text dasteht — wer sie zusammensetzt, faellt nicht auf.

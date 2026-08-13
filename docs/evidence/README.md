@@ -494,3 +494,18 @@ Anwendungsfall fällt.
 Eine erste, kleinere Probe — ein einzelner wiederhergestellter Grant — traf
 nicht, weil das Aufräumen vor dem Lauf ihn einholte. Das steht hier, weil es
 etwas über die Zusage sagt: Sie hängt an zwei Dingen, nicht an einem.
+
+## Läufe zu Release 1.50 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/cluster-role-run1.log` | PostgreSQL 17 | 122 von 122, exit 0, 35 Migrationen |
+| `2026-08-08/cluster-role-run2.log` | PostgreSQL 17 | 122 von 122, exit 0, Wiederholung |
+
+Die Mutationsprobe dieses Release hat kein Manifest, weil sie ohne Stack läuft:
+Wird der Grant in einer Realtime-Datei wiederhergestellt, nennt der Vertrag die
+Datei namentlich.
+
+Die beiden Läufe zeigen keine neue Zahl. Sie stehen hier, weil der Vertrag zwar
+lokal läuft, sein Gegenstand aber der Zertifizierungslauf ist — ein
+unveränderter Lauf ist die Zusage, dass nichts kippt.
