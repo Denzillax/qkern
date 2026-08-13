@@ -100,15 +100,51 @@ describe.runIf(enabled)("Receiver certification", () => {
     await Promise.allSettled([runtime?.end(), owner?.end()]);
   });
 
-  async function defineWebhook(path: string, host = "receiver.qkern.test") {
+  async function defineWebhook(path: string, host = "receiver.qkern.test", maxAttempts = 3) {
     return await definitions.createWebhook(admin, scope, {
       name: uniqueName("hook"),
       url: `https://${host}${path}`,
       eventTypes: ["order.created"],
       signingSecretRef: SECRET_REF,
       timeoutMs: 10_000,
-      maxAttempts: 3,
+      maxAttempts,
     });
+  }
+
+  /** Startet den ausgelieferten Compute-Prozess mit eingeschaltetem Zustellzweig. */
+  function computeProcess() {
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+        QKERN_COMPUTE_CRON_ENABLED: "false",
+        QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
+        QKERN_COMPUTE_WEBHOOK_IDLE_MS: "200",
+        QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    return { child, output: () => noise };
+  }
+
+  /** Wartet auf einen Endzustand der Zustellung. */
+  async function settledStatus(deliveryId: string, timeoutMs = 90_000) {
+    const deadline = Date.now() + timeoutMs;
+    let status = "pending";
+    while (Date.now() < deadline && status !== "delivered" && status !== "dead_lettered") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const row = await owner.query<{ status: string }>(
+        "SELECT status FROM project_webhook_deliveries WHERE id=$1", [deliveryId]);
+      status = row.rows[0]?.status ?? "pending";
+    }
+    return status;
   }
 
   /** Genau ein Stapel, mit den echten Adaptern, und dann der Zustand aus der Datenbank. */
@@ -156,50 +192,63 @@ describe.runIf(enabled)("Receiver certification", () => {
       webhookId: hook.id, eventType: "order.created", payload: { orderId: "A-process" },
     });
 
-    const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
-      cwd: process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        QKERN_COMPUTE_RUNTIME_ENABLED: "true",
-        QKERN_COMPUTE_CRON_ENABLED: "false",
-        QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
-        QKERN_COMPUTE_WEBHOOK_IDLE_MS: "200",
-        QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
-        QKERN_RUNTIME_MODE: "postgres",
-        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
-        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
-      },
-    });
-    let noise = "";
-    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
-    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
-
+    const runner = computeProcess();
+    const { child } = runner;
     try {
-      const deadline = Date.now() + 90_000;
-      let status = "pending";
-      while (Date.now() < deadline && status !== "delivered" && status !== "dead_lettered") {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const row = await owner.query<{ status: string }>(
-          "SELECT status FROM project_webhook_deliveries WHERE id=$1", [entry.id]);
-        status = row.rows[0]?.status ?? "pending";
-      }
+      const status = await settledStatus(entry.id);
+      const noise = runner.output();
       expect(status, `Prozessausgabe: ${noise.slice(-800)}`).toBe("delivered");
 
       // Auf die Meldung warten, nicht auf einen Moment: Der Zustand steht in
       // der Datenbank, bevor die Runde zu Ende ist.
       const logDeadline = Date.now() + 20_000;
-      while (Date.now() < logDeadline && !noise.includes("compute.webhook_delivered")) {
+      while (Date.now() < logDeadline && !runner.output().includes("compute.webhook_delivered")) {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
-      expect(noise).toContain("compute.webhook_delivered");
+      expect(runner.output()).toContain("compute.webhook_delivered");
 
       // Und sonst nichts: kein Endpunkt, kein Geheimnis, keine Id.
-      expect(noise).not.toContain("receiver.qkern.test");
-      expect(noise).not.toContain(SECRET_REF);
-      expect(noise).not.toContain(projectId);
+      expect(runner.output()).not.toContain("receiver.qkern.test");
+      expect(runner.output()).not.toContain(SECRET_REF);
+      expect(runner.output()).not.toContain(projectId);
     } finally {
       child.kill();
+    }
+  }, 180_000);
+
+  /**
+   * Derselbe Prozess, aber der Empfaenger sagt Nein.
+   *
+   * Release 1.54 hat die gelungene Zustellung belegt und offen gelassen, dass
+   * der **Fehlschlag** verdrahtet und ungeprueft bleibt. `/hooks/no-echo`
+   * antwortet mit 200, ohne die Zustell-Id zu spiegeln — fuer den Zusteller ein
+   * Fehlschlag, und genau den soll der Prozess melden.
+   */
+  it("reports a refused delivery from the shipped process", async () => {
+    // Ein einziger Versuch: Der Fall misst die Meldung, nicht die Geduld des
+    // Wiederholens — die ist eigens zertifiziert.
+    const hook = await defineWebhook("/hooks/no-echo", "receiver.qkern.test", 1);
+    const entry = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "A-refused" },
+    });
+
+    const runner = computeProcess();
+    try {
+      const status = await settledStatus(entry.id);
+      expect(status, `Prozessausgabe: ${runner.output().slice(-800)}`).toBe("dead_lettered");
+
+      const logDeadline = Date.now() + 20_000;
+      while (Date.now() < logDeadline && !runner.output().includes("compute.webhook_failed")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(runner.output()).toContain("compute.webhook_failed");
+      expect(runner.output()).toMatch(/"failureCode":"[A-Z_]+"/);
+
+      // Ein fester Code, kein Endpunkt und keine Antwort des Empfaengers.
+      expect(runner.output()).not.toContain("no-echo");
+      expect(runner.output()).not.toContain(SECRET_REF);
+    } finally {
+      runner.child.kill();
     }
   }, 180_000);
 

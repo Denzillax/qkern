@@ -560,3 +560,14 @@ fällt.
 
 Die Mutation nimmt dem Zusteller seinen Erfolgshaken: Die Zustellung kommt
 weiterhin an, aber der Prozess schweigt darüber. Genau der Prozess-Fall fällt.
+
+## Läufe zu Release 1.55 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/webhook-refused-run1.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 12 von 12, exit 0 |
+| `2026-08-08/webhook-refused-run2.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 12 von 12, exit 0, Wiederholung |
+| `2026-08-08/webhook-refused-mutation.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | **11 von 12, exit 1 — absichtlich** |
+
+Die Mutation nimmt dem Zusteller die Meldung des Fehlschlags: Die Zustellung
+landet weiterhin im Dead Letter, aber der Prozess schweigt darüber.

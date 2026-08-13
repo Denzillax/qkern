@@ -2043,3 +2043,32 @@ einen **Fehlschlag** meldet, ist verdrahtet und ungeprueft — der Empfaenger
 antwortet in diesem Fall nicht falsch. Und die Ereignisse tragen keinen
 Zeitbezug: Wer wissen will, wie lange eine Zustellung brauchte, findet es hier
 nicht.
+
+## Auch das Nein wird gemeldet — Release 1.55
+
+Release 1.54 hat die gelungene Zustellung als Prozess belegt und offen gelassen,
+dass der **Fehlschlag** verdrahtet und ungeprueft bleibt.
+
+`/hooks/no-echo` im Empfaenger-Stack antwortet mit 200, ohne die Zustell-Id zu
+spiegeln — fuer den Zusteller ein Fehlschlag. Der Fall definiert einen Webhook
+mit genau **einem** Versuch, startet `npm run worker:compute` und sieht danach
+zweimal nach: dass die Zustellung im Dead Letter liegt und dass der Prozess
+`compute.webhook_failed` mit festem Code gemeldet hat.
+
+Ein Versuch statt drei, weil dieser Fall die Meldung misst und nicht die Geduld
+des Wiederholens — die ist eigens zertifiziert.
+
+Gemeldet wird ein fester Code, kein Endpunkt und keine Antwort des Empfaengers;
+der Fall prueft das mit.
+
+Mutationsprobe: Der Fehlerhaken meldet nichts mehr. Genau der neue Fall faellt,
+11 von 12.
+
+Checkpoint `1.55.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+Empfaenger-Lauf 12 von 12, exit 0, zweimal reproduziert. PostgreSQL und
+Functions unveraendert.
+
+Nicht erbracht: Belegt sind Erfolg und Fehlschlag **einer** Zustellung. Was der
+Prozess zwischen erstem Versuch und Dead Letter meldet, sieht dieser Fall nicht
+— er laesst nur einen Versuch zu. Und die Ereignisse tragen weiterhin keinen
+Zeitbezug.

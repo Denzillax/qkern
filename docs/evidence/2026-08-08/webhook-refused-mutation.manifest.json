@@ -1,0 +1,21 @@
+{
+  "stack": "Node 24 HTTPS-Empfaenger und PostgreSQL 17",
+  "log": "webhook-refused-mutation.log",
+  "commit": "c0670142307e3195fadb6853bb73ffd0f9b065dc",
+  "commitSubject": "release: 1.54.0 Der Webhook-Zweig, als Prozess",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 11 passed (12)",
+  "passed": 11,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine",
+    "node:24.7.0-alpine",
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}

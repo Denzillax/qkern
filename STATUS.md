@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. August 2026 · Release: `1.54.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. August 2026 · Release: `1.55.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -27,7 +27,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Queues | ja | ja — 8 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
 | Usage Metering | teilweise | teilweise — 24 Real-DB-Fälle; **alle sechs Metriken melden**, Realtime auch für CDC; keine Preise, keine Rechnungen |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 43 Real-DB-Fälle, dazu 26 im Functions-Lauf und 11 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 43 Real-DB-Fälle, dazu 26 im Functions-Lauf und 12 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -49,7 +49,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
-| **Ausgehender Weg gegen echten HTTPS-Empfänger** | **11 von 11 bestanden, exit 0, zweimal reproduziert** |
+| **Ausgehender Weg gegen echten HTTPS-Empfänger** | **12 von 12 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-06/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
