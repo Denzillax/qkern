@@ -1,0 +1,99 @@
+﻿
+> qkern-platform@1.53.0 test:receiver:docker
+> node scripts/receiver-certification.mjs
+
+node.exe :  Network qkern-receiver-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-receiver-certification_default Created 
+ Network qkern-receiver-certification_internal Creating 
+ Network qkern-receiver-certification_internal Created 
+ Volume qkern-receiver-certification_receiver-certification-certs Creating 
+ Volume qkern-receiver-certification_receiver-certification-certs Created 
+ Container qkern-receiver-certification-internal-1 Creating 
+ Container qkern-receiver-certification-certs-1 Creating 
+ Container qkern-receiver-certification-postgres-1 Creating 
+ Container qkern-receiver-certification-certs-1 Created 
+ Container qkern-receiver-certification-receiver-1 Creating 
+ Container qkern-receiver-certification-internal-1 Created 
+ Container qkern-receiver-certification-postgres-1 Created 
+ Container qkern-receiver-certification-receiver-1 Created 
+ Container qkern-receiver-certification-certs-1 Starting 
+ Container qkern-receiver-certification-postgres-1 Starting 
+ Container qkern-receiver-certification-internal-1 Starting 
+ Container qkern-receiver-certification-internal-1 Started 
+ Container qkern-receiver-certification-certs-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Started 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Starting 
+ Container qkern-receiver-certification-receiver-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-receiver-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Healthy 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Healthy 
+ Container qkern-receiver-certification-postgres-1 Healthy 
+ Container qkern-receiver-certification-certification-run-c7bb3f9619d3 Creating 
+ Container qkern-receiver-certification-certification-run-c7bb3f9619d3 Created 
+
+added 286 packages, and audited 287 packages in 10s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.53.0 test:receiver
+> vitest run tests/receiver.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [32m✓[39m tests/receiver.integration.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 1210[2mms[22m[39m
+     [33m[2m✓[22m[39m delivers from the shipped process and reports it [33m 1012[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m11 passed[39m[22m[90m (11)[39m
+[2m   Start at [22m 18:42:04
+[2m   Duration [22m 1.69s[2m (transform 243ms, setup 0ms, import 334ms, tests 1.21s, environment 0ms)[22m
+
+ Container qkern-receiver-certification-receiver-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopping 
+ Container qkern-receiver-certification-internal-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopped 
+ Container qkern-receiver-certification-postgres-1 Removing 
+ Container qkern-receiver-certification-postgres-1 Removed 
+ Container qkern-receiver-certification-receiver-1 Stopped 
+ Container qkern-receiver-certification-receiver-1 Removing 
+ Container qkern-receiver-certification-receiver-1 Removed 
+ Container qkern-receiver-certification-certs-1 Stopping 
+ Container qkern-receiver-certification-certs-1 Stopped 
+ Container qkern-receiver-certification-certs-1 Removing 
+ Container qkern-receiver-certification-internal-1 Stopped 
+ Container qkern-receiver-certification-internal-1 Removing 
+ Container qkern-receiver-certification-certs-1 Removed 
+ Container qkern-receiver-certification-internal-1 Removed 
+ Network qkern-receiver-certification_default Removing 
+ Network qkern-receiver-certification_internal Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removed 
+ Network qkern-receiver-certification_default Removed 
+ Network qkern-receiver-certification_internal Removed 
+EXIT=0

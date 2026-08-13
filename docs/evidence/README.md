@@ -549,3 +549,14 @@ Fabrik und Logger.
 Die Mutation nimmt der Cron-Schleife ihre Rundenmeldung: Vorkommen werden
 weiterhin ausgelöst, aber der Prozess schweigt darüber. Genau der Prozess-Fall
 fällt.
+
+## Läufe zu Release 1.54 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/webhook-process-run1.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 11 von 11, exit 0 |
+| `2026-08-08/webhook-process-run2.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 11 von 11, exit 0, Wiederholung |
+| `2026-08-08/webhook-process-mutation.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | **10 von 11, exit 1 — absichtlich** |
+
+Die Mutation nimmt dem Zusteller seinen Erfolgshaken: Die Zustellung kommt
+weiterhin an, aber der Prozess schweigt darüber. Genau der Prozess-Fall fällt.

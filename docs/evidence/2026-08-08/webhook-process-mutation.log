@@ -1,0 +1,138 @@
+﻿
+> qkern-platform@1.53.0 test:receiver:docker
+> node scripts/receiver-certification.mjs
+
+node.exe :  Network qkern-receiver-certification_internal Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...ernal Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-receiver-certification_internal Created 
+ Network qkern-receiver-certification_default Creating 
+ Network qkern-receiver-certification_default Created 
+ Volume qkern-receiver-certification_receiver-certification-certs Creating 
+ Volume qkern-receiver-certification_receiver-certification-certs Created 
+ Container qkern-receiver-certification-certs-1 Creating 
+ Container qkern-receiver-certification-internal-1 Creating 
+ Container qkern-receiver-certification-postgres-1 Creating 
+ Container qkern-receiver-certification-certs-1 Created 
+ Container qkern-receiver-certification-receiver-1 Creating 
+ Container qkern-receiver-certification-internal-1 Created 
+ Container qkern-receiver-certification-postgres-1 Created 
+ Container qkern-receiver-certification-receiver-1 Created 
+ Container qkern-receiver-certification-certs-1 Starting 
+ Container qkern-receiver-certification-internal-1 Starting 
+ Container qkern-receiver-certification-postgres-1 Starting 
+ Container qkern-receiver-certification-certs-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Started 
+ Container qkern-receiver-certification-internal-1 Started 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Starting 
+ Container qkern-receiver-certification-receiver-1 Started 
+ Container qkern-receiver-certification-receiver-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Waiting 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-internal-1 Healthy 
+ Container qkern-receiver-certification-receiver-1 Healthy 
+ Container qkern-receiver-certification-postgres-1 Healthy 
+ Container qkern-receiver-certification-certification-run-676fe009a015 Creating 
+ Container qkern-receiver-certification-certification-run-676fe009a015 Created 
+
+added 286 packages, and audited 287 packages in 11s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.53.0 test:receiver
+> vitest run tests/receiver.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [31m❯[39m tests/receiver.integration.test.ts [2m([22m[2m11 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 21291[2mms[22m[39m
+     [32m✓[39m delivers a signed webhook over real TLS and takes the receiver's acknowledgement[32m 87[2mms[22m[39m
+[31m     [31m×[31m delivers from the shipped process and reports it[39m[33m 21065[2mms[22m[39m
+     [32m✓[39m fails when the receiver answers 200 without reflecting the delivery id[32m 22[2mms[22m[39m
+     [32m✓[39m refuses to follow a redirect the receiver sends[32m 16[2mms[22m[39m
+     [32m✓[39m refuses a receiver whose certificate does not carry the requested name[32m 20[2mms[22m[39m
+     [32m✓[39m names the reason for the rejected certificate[32m 5[2mms[22m[39m
+       [32m✓[39m reaches an allowed origin over real TLS[32m 9[2mms[22m[39m
+       [32m✓[39m stops a response that exceeds the size limit[32m 8[2mms[22m[39m
+       [32m✓[39m refuses a redirect instead of handing the function a new target[32m 3[2mms[22m[39m
+       [32m✓[39m refuses an origin that is not on the stored allowlist[32m 0[2mms[22m[39m
+       [32m✓[39m blocks a name that a real resolver maps to a private address[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/receiver.integration.test.ts[2m > [22mReceiver certification[2m > [22mdelivers 
+from the shipped process and reports it
+[31m[1mAssertionError[22m: expected 'QKERN compute runtime serving 1 scope…' to contain 
+'compute.webhook_delivered'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- compute[7m.[27mwebhook[7m_[27mdeliver[7med[27m[39m
+[31m+ [7mQKERN [27mcompute[7m runtime serving 1 scope(s): cron dispatch and [27mwebhook[7m 
+[27mdeliver[7my[27m[39m
+[31m+[39m
+
+[36m [2m❯[22m tests/receiver.integration.test.ts:[2m195:21[22m[39m
+    [90m193|[39m         [35mawait[39m [35mnew[39m [33mPromise[39m((resolve) [33m=>[39m 
+[34msetTimeout[39m(resolve[33m,[39m [34m250[39m))[33m;[39m
+    [90m194|[39m       }
+    [90m195|[39m       
+[34mexpect[39m(noise)[33m.[39m[34mtoContain[39m([32m"compute.webhook_delivered"[39m)[33m;[39m
+    [90m   |[39m                     [31m^[39m
+    [90m196|[39m
+    [90m197|[39m       [90m// Und sonst nichts: kein Endpunkt, kein Geheimnis, keine Id.[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (11)[39m
+[2m   Start at [22m 18:40:36
+[2m   Duration [22m 21.75s[2m (transform 226ms, setup 0ms, import 323ms, tests 21.29s, environment 0ms)[22m
+
+
+ Container qkern-receiver-certification-receiver-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopping 
+ Container qkern-receiver-certification-internal-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopped 
+ Container qkern-receiver-certification-postgres-1 Removing 
+ Container qkern-receiver-certification-postgres-1 Removed 
+ Container qkern-receiver-certification-internal-1 Stopped 
+ Container qkern-receiver-certification-internal-1 Removing 
+ Container qkern-receiver-certification-internal-1 Removed 
+ Container qkern-receiver-certification-receiver-1 Stopped 
+ Container qkern-receiver-certification-receiver-1 Removing 
+ Container qkern-receiver-certification-receiver-1 Removed 
+ Container qkern-receiver-certification-certs-1 Stopping 
+ Container qkern-receiver-certification-certs-1 Stopped 
+ Container qkern-receiver-certification-certs-1 Removing 
+ Container qkern-receiver-certification-certs-1 Removed 
+ Network qkern-receiver-certification_internal Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removing 
+ Network qkern-receiver-certification_default Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removed 
+ Network qkern-receiver-certification_internal Removed 
+ Network qkern-receiver-certification_default Removed 
+EXIT=1

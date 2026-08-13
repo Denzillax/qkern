@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
@@ -136,6 +137,71 @@ describe.runIf(enabled)("Receiver certification", () => {
     expect(result).toMatchObject({ delivered: 1, failed: 0 });
     expect(row.status).toBe("delivered");
   });
+
+  /**
+   * Dieselbe Zustellung, aber ausgeloest vom **Prozess**.
+   *
+   * Release 1.53 hat den Webhook-Zweig verdrahtet und offen gelassen, dass er
+   * nicht zertifiziert ist: Jener Lauf schaltet die Zustellung aus, weil sie
+   * einen Signaturschluessel verlangt. Hier gibt es ihn — und einen echten
+   * Empfaenger, der den HMAC selbst nachrechnet.
+   *
+   * Gemessen wird beides: dass die Zustellung ankommt und dass der Prozess es
+   * sagt. Bis Release 1.54 gab es nur einen Fehlerhaken; ein Log, das nur
+   * Fehler kennt, beantwortet die haeufigste Frage nicht — laeuft es?
+   */
+  it("delivers from the shipped process and reports it", async () => {
+    const hook = await defineWebhook("/hooks");
+    const entry = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "A-process" },
+    });
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+        QKERN_COMPUTE_CRON_ENABLED: "false",
+        QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
+        QKERN_COMPUTE_WEBHOOK_IDLE_MS: "200",
+        QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 90_000;
+      let status = "pending";
+      while (Date.now() < deadline && status !== "delivered" && status !== "dead_lettered") {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const row = await owner.query<{ status: string }>(
+          "SELECT status FROM project_webhook_deliveries WHERE id=$1", [entry.id]);
+        status = row.rows[0]?.status ?? "pending";
+      }
+      expect(status, `Prozessausgabe: ${noise.slice(-800)}`).toBe("delivered");
+
+      // Auf die Meldung warten, nicht auf einen Moment: Der Zustand steht in
+      // der Datenbank, bevor die Runde zu Ende ist.
+      const logDeadline = Date.now() + 20_000;
+      while (Date.now() < logDeadline && !noise.includes("compute.webhook_delivered")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(noise).toContain("compute.webhook_delivered");
+
+      // Und sonst nichts: kein Endpunkt, kein Geheimnis, keine Id.
+      expect(noise).not.toContain("receiver.qkern.test");
+      expect(noise).not.toContain(SECRET_REF);
+      expect(noise).not.toContain(projectId);
+    } finally {
+      child.kill();
+    }
+  }, 180_000);
 
   it("fails when the receiver answers 200 without reflecting the delivery id", async () => {
     const hook = await defineWebhook("/hooks/no-echo");

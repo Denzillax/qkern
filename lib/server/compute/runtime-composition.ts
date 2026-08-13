@@ -43,7 +43,7 @@ export type ComputeScopeConfig = Readonly<{
  * Scope eine Zeile ueber nichts.
  */
 export type ComputeRuntimeLogEvent = Readonly<{
-  event: "compute.cron_round" | "compute.webhook_failed";
+  event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed";
   scopeIndex: number;
   dispatched?: number;
   failures?: number;
@@ -248,6 +248,9 @@ export function createComputeRuntimeFromEnv(
             idleIntervalMs: webhookIdleMs,
             // Redigiert wie bisher — aber nicht mehr stumm: Der Beobachter
             // erfaehrt den Fehlschlag, ohne seinen Inhalt zu sehen.
+            onDelivered: () => safeComputeLog(dependencies.logger, {
+              event: "compute.webhook_delivered", scopeIndex,
+            }),
             onFailure: (code) => {
               safeRuntimeProbe(dependencies.probe, "iterationFailed");
               safeComputeLog(dependencies.logger, {

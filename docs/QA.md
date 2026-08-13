@@ -2014,3 +2014,32 @@ Nicht erbracht: Der Webhook-Zweig meldet seinen Fehlschlag — verdrahtet, nicht
 zertifiziert, weil dieser Lauf die Zustellung ausschaltet. Eine gelungene
 Zustellung meldet weiterhin niemand: Der Zusteller bietet dafuer keinen Haken,
 und einen zu bauen waere eine eigene Scheibe.
+
+## Der Webhook-Zweig, als Prozess — Release 1.54
+
+Release 1.53 hat zwei Stuecke offen gelassen: Der Webhook-Zweig des
+Compute-Prozesses war verdrahtet, aber nicht zertifiziert, und eine **gelungene**
+Zustellung meldete niemand — der Zusteller bot nur einen Fehlerhaken.
+
+Beides ist geschlossen, und zwar an derselben Stelle: im Empfaenger-Stack, wo
+seit `1.28.0` ein echter HTTPS-Server steht, der den HMAC selbst nachrechnet.
+Der Fall startet `npm run worker:compute` mit eingeschaltetem Zustellzweig und
+echtem Signaturschluessel und sieht danach zweimal nach: ob die Zustellung
+`delivered` ist und ob der Prozess es gesagt hat.
+
+Ein Log, das nur Fehler kennt, beantwortet die haeufigste Frage nicht — laeuft
+es? `compute.webhook_delivered` beantwortet sie, mit Scope-Index und sonst
+nichts: kein Endpunkt, kein Geheimnisbezug, keine Id.
+
+Mutationsprobe: Der Erfolgshaken meldet nichts mehr. Die Zustellung kommt
+weiterhin an, aber niemand erfaehrt es. Genau der Prozess-Fall faellt, 10 von 11.
+
+Checkpoint `1.54.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+Empfaenger-Lauf 11 von 11, exit 0, zweimal reproduziert. PostgreSQL und
+Functions unveraendert gegenueber `1.53.0`.
+
+Nicht erbracht: Der Fall belegt eine gelungene Zustellung. Dass der Prozess
+einen **Fehlschlag** meldet, ist verdrahtet und ungeprueft — der Empfaenger
+antwortet in diesem Fall nicht falsch. Und die Ereignisse tragen keinen
+Zeitbezug: Wer wissen will, wie lange eine Zustellung brauchte, findet es hier
+nicht.

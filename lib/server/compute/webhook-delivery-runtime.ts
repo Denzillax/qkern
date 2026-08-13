@@ -29,6 +29,14 @@ export type WebhookDeliveryRuntimeOptions = {
   errorIntervalMs?: number;
   /** Erhält nur den Fehlercode, niemals Payload, URL oder Signatur. */
   onFailure?: (code: WebhookFailureCode) => void;
+  /**
+   * Meldet eine gelungene Zustellung.
+   *
+   * Bis Release 1.54 gab es nur den Fehlerhaken: Ein Prozess konnte melden,
+   * dass etwas schiefging, nie dass etwas ankam. Ein Log, das nur Fehler kennt,
+   * beantwortet die haeufigste Frage nicht — laeuft es?
+   */
+  onDelivered?: () => void;
   sleep?: (ms: number) => Promise<void>;
 };
 
@@ -98,6 +106,7 @@ export class WebhookDeliveryRuntime {
           workerId: this.options.workerId, leaseToken: claim.leaseToken,
         });
         result.delivered += 1;
+        this.options.onDelivered?.();
       } catch (error) {
         // Ein anderer Fehler als der des Zustellers bleibt ein Fehlschlag des
         // Empfaengers: Er darf die Zustellung nicht stillschweigend verlieren.
