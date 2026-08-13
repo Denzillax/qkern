@@ -1940,3 +1940,40 @@ Nicht erbracht: Nur Zaun und Ledger nennen ihre Bedingungen. Die uebrigen
 Fehlercodes des Executors sagen weiterhin nur, dass etwas nicht stimmt. Und die
 Namen stehen im Prozesslog, nicht in der Projektion fuer den Mandanten — wer
 kein Log sieht, sieht sie nicht.
+
+## Wer meldet, was er tut — Release 1.52
+
+Release 1.51 hat gefunden, dass der Migrations-Prozess seinen Worker-Logger nie
+setzte, und ausdruecklich offen gelassen: Es gibt keinen Vertrag, der verlangt,
+dass ein Prozess die Logger setzt, die seine Komposition anbietet.
+
+Beim Messen zeigte sich, dass die Luecke groesser war. Zwei Kompositionen boten
+**gar keine** Naht: der Queue-Wirt und der Compute-Prozess. `ProjectQueueWorker`
+fuehrt seit Alpha 1 Ereignisse je Nachricht — Queue, Message-Id, Attempt, feste
+Outcomes und feste Failure Codes, niemals Payload, Worker-Id oder
+Lease-Geheimnis. Durchgereicht hat sie fuer den Prozess niemand. Der Wirt
+verarbeitete Nachrichten und schwieg darueber.
+
+Der Wirt reicht den Logger jetzt durch, und `npm run worker:queues` setzt ihn.
+
+`tests/worker-logger-contract.test.ts` verlangt das kuenftig von jedem Prozess.
+Die Erwartung wird **abgeleitet**, nicht gepflegt: Der Test liest, welche
+`…Logger`-Abhaengigkeiten die aufgerufene Fabrik entgegennimmt, und sucht sie im
+Prozess. Eine handgepflegte Liste waere die naechste Stelle, an der etwas
+vergessen wird — die Lektion aus Release 1.40.
+
+Mutationsproben:
+
+- Dem Migrations-Prozess wird der Worker-Logger genommen: Der Vertrag nennt
+  Datei, Fabrik und Logger.
+- Der Wirt reicht den Logger nicht mehr durch: 25 von 26 im Functions-Lauf,
+  genau der Prozess-Fall.
+
+Checkpoint `1.52.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 123 von 123 und Functions 26 von 26, je exit 0 und zweimal
+reproduziert.
+
+Nicht erbracht: Der Compute-Prozess hat weiterhin **keine** Logger-Naht — seine
+Komposition bietet keine an, und der Vertrag kann nur einfordern, was angeboten
+wird. Was Cron und Webhook-Zustellung je Vorgang tun, meldet niemand; belegt ist
+nur die Probe aus 1.46, die sagt, dass es klemmt, nicht was geschah.

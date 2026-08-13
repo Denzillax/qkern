@@ -1,0 +1,18 @@
+{
+  "stack": "Docker 29.5, registry:2 und PostgreSQL 17",
+  "log": "host-logger-run1.log",
+  "commit": "6cc69be419ed9305b22cf4d7f314246392f11a62",
+  "commitSubject": "release: 1.51.0 Der Zaun sagt jetzt, woran es liegt",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "26 passed (26)",
+  "passed": 26,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

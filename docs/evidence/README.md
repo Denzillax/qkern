@@ -520,3 +520,20 @@ unveränderter Lauf ist die Zusage, dass nichts kippt.
 
 Die Mutation lässt den Zaun wieder eine leere Liste melden: Der Auftrag scheitert
 weiterhin, aber niemand erfährt woran. Genau der neue Fall fällt.
+
+## Läufe zu Release 1.52 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/host-logger-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0 |
+| `2026-08-08/host-logger-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 26 von 26, exit 0, Wiederholung |
+| `2026-08-08/host-logger-mutation.log` | Docker 29.5, registry:2 und PostgreSQL 17 | **25 von 26, exit 1 — absichtlich** |
+| `2026-08-08/host-logger-postgres.log` | PostgreSQL 17 | 123 von 123, exit 0, unverändert |
+
+Die Mutation nimmt dem Queue-Wirt die Durchreichung des Loggers: Nachrichten
+werden weiterhin verarbeitet, aber der Prozess schweigt darüber. Genau der
+Prozess-Fall fällt.
+
+Die zweite Probe dieses Release hat kein Manifest, weil sie ohne Stack läuft:
+Wird dem Migrations-Prozess der Worker-Logger genommen, nennt der Vertrag Datei,
+Fabrik und Logger.

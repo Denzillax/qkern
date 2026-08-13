@@ -16,7 +16,13 @@ const probe = createLoopbackRuntimeProbeFromEnv(process.env);
 
 const host = (() => {
   try {
-    return createProjectQueueHostFromEnv(process.env, { probe: probe?.observer });
+    return createProjectQueueHostFromEnv(process.env, {
+      probe: probe?.observer,
+      // Queue, Message-Id, Attempt und feste Codes — niemals Payload,
+      // Worker-Id oder Lease-Geheimnis. Der Wirt meldete bis Release 1.52
+      // ueber seine Arbeit gar nichts.
+      logger: { log: (event) => console.info(JSON.stringify(event)) },
+    });
   } catch {
     // Bindungen, Datenbankmeldungen und Function-Namen bleiben aus dem Log
     // dieses Prozesses.

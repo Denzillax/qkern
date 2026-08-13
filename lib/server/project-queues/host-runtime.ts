@@ -1,6 +1,8 @@
 import { ProjectQueueWorker } from "@/lib/server/project-queues/worker";
 import { ProjectQueueWorkerRuntime } from "@/lib/server/project-queues/worker-runtime";
-import type { ProjectQueueHandler } from "@/lib/server/project-queues/worker";
+import type {
+  ProjectQueueHandler, ProjectQueueWorkerLogger,
+} from "@/lib/server/project-queues/worker";
 import type { RuntimeProbeObserver } from "@/lib/server/operations/runtime-probe";
 import type { ProjectQueueService } from "@/lib/server/project-queues/service";
 import type { ProjectQueuePrincipal, ProjectQueueScope } from "@/lib/server/project-queues/model";
@@ -50,6 +52,15 @@ export class ProjectQueueHostRuntime {
      * jedes Mal scheitert, von einem untaetigen nicht zu unterscheiden.
      */
     probe?: RuntimeProbeObserver;
+    /**
+     * Nimmt die Ereignisse je Nachricht entgegen.
+     *
+     * `ProjectQueueWorker` fuehrt sie seit Alpha 1 — Queue, Message-Id,
+     * Attempt, feste Outcomes und feste Failure Codes, niemals Payload,
+     * Worker-Id oder Lease-Geheimnis. Durchgereicht hat sie fuer diesen Prozess
+     * niemand, und damit meldete der Wirt ueber seine Arbeit gar nichts.
+     */
+    logger?: ProjectQueueWorkerLogger;
   }) {}
 
   run(): Promise<unknown[]> {
@@ -66,6 +77,7 @@ export class ProjectQueueHostRuntime {
         queue: entry.binding.queue,
         workerId: entry.workerId,
         handler: entry.handler,
+        logger: this.options.logger,
       });
       const runtime = new ProjectQueueWorkerRuntime(worker, {
         idleDelayMs: this.options.idleDelayMs,

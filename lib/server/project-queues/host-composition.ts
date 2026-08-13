@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/project-queues/host-runtime";
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
 import type { RuntimeProbeObserver } from "@/lib/server/operations/runtime-probe";
+import type { ProjectQueueWorkerLogger } from "@/lib/server/project-queues/worker";
 import type { Environment } from "@/lib/types";
 
 const NAME = /^[a-z][a-z0-9-]{1,62}[a-z0-9]$/;
@@ -24,7 +25,7 @@ const NAME = /^[a-z][a-z0-9-]{1,62}[a-z0-9]$/;
  */
 export function createProjectQueueHostFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
-  dependencies: { probe?: RuntimeProbeObserver } = {},
+  dependencies: { probe?: RuntimeProbeObserver; logger?: ProjectQueueWorkerLogger } = {},
 ) {
   if (env.QKERN_QUEUE_WORKER_ENABLED !== "true") {
     throw new ConfigurationError("Set QKERN_QUEUE_WORKER_ENABLED=true explicitly.");
@@ -75,6 +76,7 @@ export function createProjectQueueHostFromEnv(
       idleDelayMs: integer(env.QKERN_QUEUE_WORKER_IDLE_MS, 1_000, 10, 60_000),
       errorDelayMs: integer(env.QKERN_QUEUE_WORKER_ERROR_MS, 2_000, 10, 60_000),
       probe: dependencies.probe,
+      logger: dependencies.logger,
     }),
   };
 }

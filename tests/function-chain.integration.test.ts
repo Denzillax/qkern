@@ -276,6 +276,12 @@ describe.runIf(enabled)("Function chain certification", () => {
       child.kill();
     }
 
+    // Der Wirt meldet seine Arbeit je Nachricht: Queue, Message-Id, Attempt und
+    // feste Outcomes. Bis Release 1.52 reichte niemand den Logger durch, und er
+    // schwieg ueber jede verarbeitete Nachricht.
+    expect(noise).toContain("project_queue_worker.completed");
+    expect(noise).toContain(queue);
+
     // Der Prozess meldet die Zahl seiner Bindungen und sonst nichts aus der
     // Konfiguration. Ein Passwort in einem Worker-Log ueberlebt jede Rotation.
     expect(noise).toContain("binding(s)");
