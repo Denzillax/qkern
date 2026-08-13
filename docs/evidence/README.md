@@ -582,3 +582,18 @@ landet weiterhin im Dead Letter, aber der Prozess schweigt darüber.
 
 Die Mutation lässt den Empfänger eine andere Kennung bestätigen: Die Zustellung
 kommt an, gilt aber zu Recht nicht als angekommen.
+
+## Läufe zu Release 1.57 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/realtime-process-run1.log` | PostgreSQL 17 | 124 von 124, exit 0, 35 Migrationen |
+| `2026-08-08/realtime-process-run2.log` | PostgreSQL 17 | 124 von 124, exit 0, Wiederholung |
+| `2026-08-08/realtime-process-mutation.log` | PostgreSQL 17 | **123 von 124, exit 1 — absichtlich** |
+
+Die Mutation gibt jedem Projekt-Key die Rolle `anon`: Die Anmeldung gelingt
+weiterhin, das Abonnement eines `private:`-Kanals nicht mehr.
+
+Eine erste, gröbere Probe traf nicht — sie nahm der Fernzustellung ihre
+Verdrahtung, und ein Client auf einer Instanz merkt davon nichts. Das steht hier,
+weil es die Reichweite des Falls beschreibt.

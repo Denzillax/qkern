@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "realtime-process-run2.log",
+  "commit": "f614defc8ace3315be5c670ce5d1b38f51dc9ae1",
+  "commitSubject": "release: 1.56.0 Der vierte Prozess",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 35,
+  "testFiles": "20 passed (20)",
+  "tests": "124 passed (124)",
+  "passed": 124,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

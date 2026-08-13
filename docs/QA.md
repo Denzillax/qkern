@@ -2114,3 +2114,43 @@ Nicht erbracht: Belegt ist die gelungene Veroeffentlichung. Wiederholung,
 Dead Letter und die Wiederaufnahme ueber ein Delivery Command sind gegen echtes
 PostgreSQL zertifiziert, aber nicht durch diesen Prozess. Drei Prozesse haben
 weiterhin keinen Arbeitsnachweis: Realtime, Apply-Publisher und Provisioner.
+
+## Der fuenfte Prozess — Release 1.57
+
+Realtime ist ein Server, also kann ein Client ihn befragen. Der Fall startet
+`npm run realtime` und laeuft die Kette, die ein Kunde sieht: verbinden, mit
+einem **echten** Projekt-Key anmelden, abonnieren, senden, empfangen. Nichts
+davon ist eingespeist.
+
+Vier Anlaeufe, und jedes Mal war der Fehler meiner:
+
+- `QKERN_AUTH_DATABASE_URL` fehlte. Der Prozess baut den Projekt-Key-Dienst
+  ueber die Auth-Rolle auf — Schluessel liegen in der Control Plane, der Weg
+  dorthin fuehrt ueber eine eigene Verbindung.
+- Der Endpunkt ist `/realtime/v1/projects/<id>/environments/<env>`, nicht ein
+  Pfad mit Query-Parametern. Die Antwort auf die falsche Adresse war 403 und
+  sonst nichts.
+- Ein **oeffentlicher** Schluessel authentifiziert als `anon`, und `anon` darf
+  ausschliesslich `public:`-Kanaele abonnieren und niemals senden. Wer damit
+  einen Rundlauf messen will, misst die Policy statt den Prozess.
+- Der Service-Schluessel war ein Zeichen zu kurz: Nach dem Praefix stehen genau
+  43 Zeichen, und `qk_service_` ist um eines laenger als `qk_public_`. Der
+  Schluessel war formungueltig, bevor ihn irgendjemand nachschlug.
+
+Keiner dieser vier Punkte ist ein Produktfehler. Alle vier sind Dinge, die ein
+Aussenstehender beim ersten Anschluss ebenfalls falsch macht — und drei davon
+antworten mit einer Zahl statt mit einem Grund.
+
+Die erste Mutationsprobe traf nicht: Sie nahm der Fernzustellung ihre
+Verdrahtung, und ein Client auf einer Instanz merkt davon nichts. Die Probe, die
+traegt, gibt jedem Schluessel die Rolle `anon` — dann scheitert das Abonnement,
+und genau der neue Fall faellt, 123 von 124.
+
+Checkpoint `1.57.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 124 von 124, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Belegt ist ein Client auf einer Instanz. Fan-out ueber zwei
+Instanzen, Replay ueber den Cursor und Postgres Changes sind als Bibliothek
+zertifiziert, nicht durch diesen Prozess. Und zwei Prozesse bleiben ohne
+Arbeitsnachweis: Der Apply-Publisher braucht einen Broker, den es im Stack nicht
+gibt, der Provisioner einen Vault-Weg.
