@@ -237,7 +237,13 @@ export class PostgresProjectDatabaseExecutor implements ProjectDatabaseExecutor 
           !ledger.has_hash_check || ledger.has_unexpected_table_acl || ledger.has_unexpected_schema_acl ||
           ledger.owner_name !== resolved.expectedLedgerOwner || ledger.owner_can_login || ledger.owner_is_privileged ||
           ledger.owner_has_memberships || !ledger.owner_matches_schema) {
-        throw new ProjectDatabaseExecutionError({ code: "INVALID_MIGRATION_LEDGER", outcome: "rolled_back" });
+        throw new ProjectDatabaseExecutionError({
+          code: "INVALID_MIGRATION_LEDGER", outcome: "rolled_back",
+          failedChecks: failedBoundaryChecks(
+            ledger as unknown as Record<string, unknown> | undefined,
+            LEDGER_BOUNDARY_EXPECTATIONS, resolved.expectedLedgerOwner,
+          ),
+        });
       }
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [input.changeSetId]);
       if (!reconcileOnly) {
@@ -368,7 +374,13 @@ export class PostgresProjectDatabaseExecutor implements ProjectDatabaseExecutor 
           fence.has_unexpected_table_acl || fence.has_unexpected_column_acl || fence.has_unexpected_schema_acl ||
           fence.owner_name !== expectedLedgerOwner || fence.owner_can_login || fence.owner_is_privileged ||
           fence.owner_has_memberships || !fence.owner_matches_schema) {
-        throw new ProjectDatabaseExecutionError({ code: "INVALID_MIGRATION_FENCE", outcome: "rolled_back" });
+        throw new ProjectDatabaseExecutionError({
+          code: "INVALID_MIGRATION_FENCE", outcome: "rolled_back",
+          failedChecks: failedBoundaryChecks(
+            fence as unknown as Record<string, unknown> | undefined,
+            FENCE_BOUNDARY_EXPECTATIONS, expectedLedgerOwner,
+          ),
+        });
       }
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 684321))", [input.jobId]);
       const written = await client.query<{ fence_epoch: string; lease_token: string; statement_sha256: string }>(
@@ -419,6 +431,60 @@ export class PostgresProjectDatabaseExecutor implements ProjectDatabaseExecutor 
     }
   }
 
+}
+
+/**
+ * Was eine Zieldatenbank erfuellen muss, damit der Ledger benutzbar ist.
+ *
+ * Die Liste stand bis Release 1.51 nur als eine lange `if`-Bedingung da. Wer
+ * `INVALID_MIGRATION_LEDGER` las, wusste, **dass** etwas nicht stimmt, und
+ * musste die Bedingung von Hand nachbauen, um zu erfahren, **was**. Genau daran
+ * hat Release 1.48 zwei Zertifizierungslaeufe verloren.
+ */
+export const LEDGER_BOUNDARY_EXPECTATIONS: Readonly<Record<string, unknown>> = {
+  relkind: "r", relpersistence: "p", owned_by_current_user: false,
+  member_of_relation_owner: false, member_of_schema_owner: false,
+  has_user_triggers: false, has_user_rules: false, row_security: false,
+  can_select: true, can_insert: true, has_dangerous_table_privileges: false,
+  can_create_in_schema: false, has_change_set_uuid: true, has_statement_hash_text: true,
+  has_applied_at_timestamp: true, has_exact_columns: true, has_change_set_primary_key: true,
+  has_hash_check: true, has_unexpected_table_acl: false, has_unexpected_schema_acl: false,
+  owner_can_login: false, owner_is_privileged: false, owner_has_memberships: false,
+  owner_matches_schema: true,
+};
+
+/** Dasselbe fuer den Zaun. */
+export const FENCE_BOUNDARY_EXPECTATIONS: Readonly<Record<string, unknown>> = {
+  relkind: "r", relpersistence: "p", owned_by_current_user: false,
+  member_of_relation_owner: false, member_of_schema_owner: false,
+  has_user_triggers: false, has_user_rules: false, row_security: false,
+  can_select: true, can_insert: true, can_update_allowed_columns: true,
+  has_dangerous_table_privileges: false, can_create_in_schema: false,
+  has_exact_columns: true, has_exact_column_types: true, has_job_primary_key: true,
+  has_epoch_check: true, has_hash_check: true, has_unexpected_table_acl: false,
+  has_unexpected_column_acl: false, has_unexpected_schema_acl: false,
+  owner_can_login: false, owner_is_privileged: false, owner_has_memberships: false,
+  owner_matches_schema: true,
+};
+
+/**
+ * Die Namen der verletzten Bedingungen — und sonst nichts.
+ *
+ * Ein Name wie `owner_has_memberships` ist eine Struktureigenschaft der
+ * Zieldatenbank und im Runbook nachlesbar. Kein Rollenname, kein Schema, kein
+ * Wert: Was die Datenbank **ist**, sagt diese Liste nicht, nur was ihr fehlt.
+ */
+export function failedBoundaryChecks(
+  row: Record<string, unknown> | undefined,
+  expectations: Readonly<Record<string, unknown>>,
+  expectedOwner?: string,
+): readonly string[] {
+  if (!row) return ["boundary_row_missing"];
+  const failed = Object.entries(expectations)
+    .filter(([key, value]) => row[key] !== value)
+    .map(([key]) => key);
+  if (expectedOwner !== undefined && row.owner_name !== expectedOwner) failed.push("owner_name");
+  return failed;
 }
 
 /**

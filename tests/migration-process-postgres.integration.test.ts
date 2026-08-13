@@ -349,7 +349,7 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
     try {
       const deadline = Date.now() + 90_000;
       let status = "queued";
-      while (Date.now() < deadline && status === "queued") {
+      while (Date.now() < deadline && (status === "queued" || status === "running")) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         status = await jobStatus(jobId);
       }
@@ -361,6 +361,61 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
       expect(created.rows[0]?.count).toBe(0);
     } finally {
       runner.child.kill();
+    }
+  }, 240_000);
+
+  /**
+   * Der Zaun sagt, **welche** Bedingung fehlt — und sonst nichts.
+   *
+   * Bis Release 1.51 meldete er nur `INVALID_MIGRATION_FENCE`. Wer erfahren
+   * wollte, welche der fuenfundzwanzig Bedingungen verletzt ist, musste die
+   * Pruefung von Hand nachbauen; Release 1.48 hat daran zwei
+   * Zertifizierungslaeufe verloren, und ein Betreiber haette keinen Zugang zur
+   * Datenbank, um es nachzustellen.
+   */
+  it("names the violated boundary condition without describing the database", async () => {
+    const table = `named_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const jobId = await queueJob(
+      `CREATE TABLE public.${table} (id integer PRIMARY KEY)`, "certification naming");
+
+    await freeLedgerOwner();
+    // Genau die Bedingung verletzen, die 1.49 gefunden hat: eine Mitgliedschaft
+    // am Ledger-Eigentuemer. Ueber eine **dritte** Rolle, nicht ueber die
+    // Migrationsrolle — die pruet schon der Katalog, und zwar frueher und mit
+    // eigenem Code. Genau so lag der Fall in 1.49: Der Erzeuger der Rolle hielt
+    // die Mitgliedschaft, nicht der Migrator.
+    await admin.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='qkern_boundary_probe') THEN
+        CREATE ROLE qkern_boundary_probe NOLOGIN;
+      END IF;
+    END $$;`);
+    await admin.query("GRANT qkern_ledger_owner TO qkern_boundary_probe");
+    const runner = workerProcess();
+    try {
+      // Auf einen **Endzustand** warten, nicht auf „nicht mehr queued":
+      // `running` ist ein Durchgangszustand, und wer dort stehenbleibt, misst
+      // den Zeitpunkt statt das Ergebnis.
+      const deadline = Date.now() + 90_000;
+      let status = "queued";
+      while (Date.now() < deadline && (status === "queued" || status === "running")) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        status = await jobStatus(jobId);
+      }
+      expect(status, `Prozessausgabe: ${runner.output().slice(-600)}`).toBe("failed");
+      expect(await jobError(jobId)).toBe("INVALID_MIGRATION_FENCE");
+
+      // Der Name der Bedingung steht im Prozesslog.
+      expect(runner.output()).toContain("failedChecks");
+      expect(runner.output()).toContain("owner_has_memberships");
+
+      // Und sonst nichts: kein Rollenname, kein Schema, kein Passwort, keine
+      // Datenbankmeldung. Was die Zieldatenbank **ist**, sagt die Liste nicht.
+      expect(runner.output()).not.toContain("qkern_ledger_owner");
+      expect(runner.output()).not.toContain(MIGRATOR_PASSWORD);
+      expect(runner.output()).not.toContain(databaseName);
+    } finally {
+      runner.child.kill();
+      await admin.query("REVOKE qkern_ledger_owner FROM qkern_boundary_probe");
     }
   }, 240_000);
 });

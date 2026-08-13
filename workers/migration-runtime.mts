@@ -39,6 +39,12 @@ try {
   }
   const runtime = createMigrationWorkerRuntimeFromEnv(process.env, {
     catalog,
+    // Der Runtime-Logger meldet Runden, der Worker-Logger einzelne Auftraege.
+    // Bis Release 1.51 setzte dieser Prozess nur den ersten und verwarf damit
+    // jedes auftragsbezogene Ereignis — auch die Namen der verletzten
+    // Grenzbedingungen. Beide Ereignisse sind redigiert: Ids und feste Codes,
+    // keine Meldungen der Datenbank.
+    workerLogger: { log: (event) => console.info(JSON.stringify(event)) },
     runtimeLogger: { log: (event) => console.info(JSON.stringify(event)) },
     probe: probe?.observer,
   });

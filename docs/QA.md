@@ -1893,3 +1893,50 @@ PostgreSQL 122 von 122, exit 0, zweimal reproduziert.
 Nicht erbracht: Der Vertrag liest `tests/`, nicht `scripts/`, nicht `db/` und
 nicht die Kubernetes-Vorlagen. Und er erkennt eine Zuteilung nur, wenn sie als
 SQL-Text dasteht — wer sie zusammensetzt, faellt nicht auf.
+
+## Der Zaun sagt jetzt, woran es liegt — Release 1.51
+
+Release 1.48 und 1.49 haben zusammen fuenf Zertifizierungslaeufe gekostet, und
+der Grund war jedes Mal derselbe: `INVALID_MIGRATION_FENCE` sagt, **dass** eine
+von fuenfundzwanzig Bedingungen verletzt ist, nicht **welche**. Ich konnte die
+Pruefung von Hand nachbauen — ein Betreiber haette keinen Zugang zur
+Zieldatenbank, um das zu tun.
+
+Die Erwartungen stehen jetzt als Liste im Produkt, nicht als lange
+`if`-Bedingung, und die verletzten Namen gehen ins **Prozesslog**:
+
+```
+{"event":"migration.failed","errorCode":"INVALID_MIGRATION_FENCE",
+ "failedChecks":["owner_has_memberships"], …}
+```
+
+Ein Name wie `owner_has_memberships` ist eine Struktureigenschaft und im Runbook
+nachlesbar. Kein Rollenname, kein Schema, kein Wert, keine Datenbankmeldung: Was
+die Zieldatenbank **ist**, sagt die Liste nicht — nur, was ihr fehlt. Die
+Meldung an den Mandanten bleibt unveraendert redigiert.
+
+**Und dabei fiel der eigentliche Grund auf, warum niemand je etwas sah.** Der
+Prozess setzte nur den Runtime-Logger. Der Worker-Logger — der jedes einzelne
+Auftragsereignis fuehrt, von `migration.claimed` bis `migration.failed` — war
+nie gesetzt. Alles Auftragsbezogene ging verloren, seit es den Prozess gibt.
+
+Der Fall traf beim ersten Versuch die falsche Grenze: Ein Grant an die
+Migrationsrolle faengt schon der Katalog ab, frueher und mit eigenem Code
+(`INVALID_PROJECT_DATABASE_ROLE`). Verletzt wird die Bedingung deshalb ueber
+eine **dritte** Rolle — genau so lag der Fall in 1.49, wo der Erzeuger der Rolle
+die Mitgliedschaft hielt.
+
+Ein zweiter Anlauf war flaky: Die Warteschleife brach bei `running` ab statt bei
+einem Endzustand. Wer auf „nicht mehr `queued`" wartet, misst den Zeitpunkt
+statt das Ergebnis.
+
+Mutationsprobe: Der Zaun meldet wieder eine leere Liste. Genau der neue Fall
+faellt, 122 von 123.
+
+Checkpoint `1.51.0` am 8. August 2026: Lokal 1015 bestanden, 0 fehlgeschlagen;
+PostgreSQL 123 von 123, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Nur Zaun und Ledger nennen ihre Bedingungen. Die uebrigen
+Fehlercodes des Executors sagen weiterhin nur, dass etwas nicht stimmt. Und die
+Namen stehen im Prozesslog, nicht in der Projektion fuer den Mandanten — wer
+kein Log sieht, sieht sie nicht.

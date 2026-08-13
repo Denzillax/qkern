@@ -31,6 +31,15 @@ export type MigrationWorkerLogEvent = {
   reconciliationAttempt: number;
   status: string;
   errorCode?: string;
+  /**
+   * Welche Bedingungen der Grenzpruefung verletzt sind — nur ihre Namen.
+   *
+   * Ohne sie sagt `INVALID_MIGRATION_FENCE` nur, **dass** etwas nicht stimmt.
+   * Wer erfahren wollte **was**, musste die Bedingung von Hand nachbauen; das
+   * hat Release 1.48 zwei Zertifizierungslaeufe gekostet und einen Betreiber
+   * kostet es mehr.
+   */
+  failedChecks?: readonly string[];
 };
 
 export interface MigrationWorkerLogger {
@@ -336,12 +345,16 @@ export class MigrationWorker {
       redactedMessage: errorCode === "MIGRATION_EXECUTION_OUTCOME_UNKNOWN"
         ? "Migration execution outcome is unknown; automatic retry is disabled."
         : "Migration execution failed.",
-    });
+    }, error.failedChecks);
   }
 
   private async finishFailure(
     claim: ClaimedMigrationJob,
     failure: Pick<FailMigrationInput, "disposition" | "errorCode" | "redactedMessage" | "retryAt">,
+    // Nur ins Prozesslog, nicht in die Meldung an den Mandanten: Ein Betreiber
+    // muss wissen, was fehlt, ohne dass die Zieldatenbank sich dabei
+    // beschreibt.
+    failedChecks?: readonly string[],
   ): Promise<MigrationWorkerResult> {
     let result: LeaseMutationResult;
     try {
@@ -370,6 +383,7 @@ export class MigrationWorker {
       failure.disposition === "retry" ? "migration.retry_scheduled" : "migration.failed",
       status,
       failure.errorCode,
+      failedChecks,
     ));
     return { status, jobId: claim.jobId };
   }
@@ -484,6 +498,7 @@ function logEvent(
   event: MigrationWorkerLogEvent["event"],
   status: string,
   errorCode?: string,
+  failedChecks?: readonly string[],
 ): MigrationWorkerLogEvent {
   return {
     event,
@@ -493,6 +508,7 @@ function logEvent(
     reconciliationAttempt: claim.reconciliationAttempt,
     status,
     ...(errorCode ? { errorCode } : {}),
+    ...(failedChecks && failedChecks.length > 0 ? { failedChecks } : {}),
   };
 }
 

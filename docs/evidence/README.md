@@ -509,3 +509,14 @@ Datei namentlich.
 Die beiden Läufe zeigen keine neue Zahl. Sie stehen hier, weil der Vertrag zwar
 lokal läuft, sein Gegenstand aber der Zertifizierungslauf ist — ein
 unveränderter Lauf ist die Zusage, dass nichts kippt.
+
+## Läufe zu Release 1.51 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/boundary-names-run1.log` | PostgreSQL 17 | 123 von 123, exit 0, 35 Migrationen |
+| `2026-08-08/boundary-names-run2.log` | PostgreSQL 17 | 123 von 123, exit 0, Wiederholung |
+| `2026-08-08/boundary-names-mutation.log` | PostgreSQL 17 | **122 von 123, exit 1 — absichtlich** |
+
+Die Mutation lässt den Zaun wieder eine leere Liste melden: Der Auftrag scheitert
+weiterhin, aber niemand erfährt woran. Genau der neue Fall fällt.

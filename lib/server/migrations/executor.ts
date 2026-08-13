@@ -46,6 +46,14 @@ export class ProjectDatabaseExecutionError extends Error {
   readonly outcome: ExecutionOutcome;
   readonly retryable: boolean;
   readonly fenceStatus: TargetFenceStatus;
+  /**
+   * Welche Bedingungen der Grenzpruefung verletzt sind — nur ihre Namen.
+   *
+   * Sie gehoeren ins Prozesslog, nicht in die Meldung an den Mandanten: Ein
+   * Betreiber muss wissen, **was** fehlt, ohne dass die Zieldatenbank sich
+   * dabei beschreibt.
+   */
+  readonly failedChecks: readonly string[];
 
   constructor(input: {
     code: string;
@@ -53,6 +61,7 @@ export class ProjectDatabaseExecutionError extends Error {
     retryable?: boolean;
     cause?: unknown;
     fenceStatus?: TargetFenceStatus;
+    failedChecks?: readonly string[];
   }) {
     super("The project database migration could not be completed.", { cause: input.cause });
     this.name = "ProjectDatabaseExecutionError";
@@ -61,6 +70,7 @@ export class ProjectDatabaseExecutionError extends Error {
     this.retryable = input.retryable === true &&
       (input.outcome === "rolled_back" || input.outcome === "not_started");
     this.fenceStatus = input.fenceStatus ?? "unknown";
+    this.failedChecks = input.failedChecks ?? [];
   }
 }
 
