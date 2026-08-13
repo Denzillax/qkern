@@ -88,7 +88,12 @@ const server = createServer(options, async (request, response) => {
   //
   // Das Signaturschema ist dasselbe wie beim Projekt-Webhook: HMAC ueber
   // `${timestamp}.${body}`. Nachgerechnet wird auch hier.
-  if (path === "/incidents") {
+  // Der Apply-Publisher spricht dasselbe Format wie der Incident-Publisher:
+  // `v1=<hex>`, Schluesselkennung im eigenen Header, Bestaetigung mit genau
+  // `{"status":"ack","eventId":"…"}`. Ein eigener Pfad, damit beide Faelle
+  // unabhaengig voneinander fallen koennen — dieselbe Pruefung, weil es
+  // dieselbe Zusage ist.
+  if (path === "/incidents" || path === "/apply") {
     const ok = incidentSignatureMatches(
       request.headers["x-qkern-signature"],
       request.headers["x-qkern-timestamp"],

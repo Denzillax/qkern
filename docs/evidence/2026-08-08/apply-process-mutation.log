@@ -1,0 +1,143 @@
+﻿
+> qkern-platform@1.57.0 test:receiver:docker
+> node scripts/receiver-certification.mjs
+
+node.exe :  Network qkern-receiver-certification_default Creating 
+In Zeile:1 Zeichen:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Network qkern-...fault Creating :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Network qkern-receiver-certification_default Created 
+ Network qkern-receiver-certification_internal Creating 
+ Network qkern-receiver-certification_internal Created 
+ Volume qkern-receiver-certification_receiver-certification-certs Creating 
+ Volume qkern-receiver-certification_receiver-certification-certs Created 
+ Container qkern-receiver-certification-certs-1 Creating 
+ Container qkern-receiver-certification-postgres-1 Creating 
+ Container qkern-receiver-certification-internal-1 Creating 
+ Container qkern-receiver-certification-certs-1 Created 
+ Container qkern-receiver-certification-receiver-1 Creating 
+ Container qkern-receiver-certification-internal-1 Created 
+ Container qkern-receiver-certification-postgres-1 Created 
+ Container qkern-receiver-certification-receiver-1 Created 
+ Container qkern-receiver-certification-certs-1 Starting 
+ Container qkern-receiver-certification-internal-1 Starting 
+ Container qkern-receiver-certification-postgres-1 Starting 
+ Container qkern-receiver-certification-internal-1 Started 
+ Container qkern-receiver-certification-certs-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Started 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Starting 
+ Container qkern-receiver-certification-receiver-1 Started 
+ Container qkern-receiver-certification-postgres-1 Waiting 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-receiver-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Waiting 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-internal-1 Healthy 
+ Container qkern-receiver-certification-receiver-1 Healthy 
+ Container qkern-receiver-certification-postgres-1 Healthy 
+ Container qkern-receiver-certification-certification-run-d960304fe610 Creating 
+ Container qkern-receiver-certification-certification-run-d960304fe610 Created 
+
+added 286 packages, and audited 287 packages in 28s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.57.0 test:receiver
+> vitest run tests/receiver.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [31m❯[39m tests/receiver.integration.test.ts [2m([22m[2m14 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 93853[2mms[22m[39m
+     [32m✓[39m delivers a signed webhook over real TLS and takes the receiver's acknowledgement[32m 179[2mms[22m[39m
+     [33m[2m✓[22m[39m delivers from the shipped process and reports it [33m 1530[2mms[22m[39m
+     [33m[2m✓[22m[39m reports a refused delivery from the shipped process [33m 511[2mms[22m[39m
+     [32m✓[39m fails when the receiver answers 200 without reflecting the delivery id[32m 20[2mms[22m[39m
+     [32m✓[39m refuses to follow a redirect the receiver sends[32m 22[2mms[22m[39m
+     [32m✓[39m refuses a receiver whose certificate does not carry the requested name[32m 22[2mms[22m[39m
+     [32m✓[39m names the reason for the rejected certificate[32m 6[2mms[22m[39m
+       [32m✓[39m reaches an allowed origin over real TLS[32m 14[2mms[22m[39m
+       [32m✓[39m stops a response that exceeds the size limit[32m 21[2mms[22m[39m
+       [32m✓[39m refuses a redirect instead of handing the function a new target[32m 6[2mms[22m[39m
+       [32m✓[39m refuses an origin that is not on the stored allowlist[32m 0[2mms[22m[39m
+       [32m✓[39m blocks a name that a real resolver maps to a private address[32m 1[2mms[22m[39m
+     [33m[2m✓[22m[39m publishes an incident from the shipped process [33m 1047[2mms[22m[39m
+[31m     [31m×[31m publishes an apply request from the shipped process[39m[33m 90334[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/receiver.integration.test.ts[2m > [22mReceiver certification[2m > [22mpublishes an 
+apply request from the shipped process
+[31m[1mAssertionError[22m: Prozessausgabe: d":"a9b58154-fbd9-4a7a-bc48-6979df219444","eventId":"975441a2-0e12-436c-b
+30c-1acabdf66bd7","migrationJobId":"5278194c-e02c-4f0f-a5f2-82874b7339d3","attempt":6,"failureCount":6,"retryCycle":0,"
+errorCode":"DESTINATION_REJECTED"}
+{"event":"migration_outbox.claimed","status":"claimed","organizationId":"a9b58154-fbd9-4a7a-bc48-6979df219444","eventId
+":"975441a2-0e12-436c-b30c-1acabdf66bd7","migrationJobId":"5278194c-e02c-4f0f-a5f2-82874b7339d3","attempt":7,"failureCo
+unt":6,"retryCycle":0}
+{"event":"migration_outbox.retry_scheduled","status":"retry_scheduled","organizationId":"a9b58154-fbd9-4a7a-bc48-6979df
+219444","eventId":"975441a2-0e12-436c-b30c-1acabdf66bd7","migrationJobId":"5278194c-e02c-4f0f-a5f2-82874b7339d3","attem
+pt":7,"failureCount":7,"retryCycle":0,"errorCode":"DESTINATION_REJECTED"}
+: expected 'pending' to be 'published' // Object.is equality[39m
+
+Expected: [32m"p[7mublished[27m"[39m
+Received: [31m"p[7mending[27m"[39m
+
+[36m [2m❯[22m tests/receiver.integration.test.ts:[2m538:62[22m[39m
+    [90m536|[39m         status [33m=[39m row[33m.[39mrows[[34m0[39m][33m?.[39mstatus [33m??[39m 
+[32m"pending"[39m[33m;[39m
+    [90m537|[39m       }
+    [90m538|[39m       expect(status, `Prozessausgabe: ${noise.slice(-800)}`).toBe("pub…
+    [90m   |[39m                                                              [31m^[39m
+    [90m539|[39m     } [35mfinally[39m {
+    [90m540|[39m       child[33m.[39m[34mkill[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m13 passed[39m[22m[90m (14)[39m
+[2m   Start at [22m 20:06:06
+[2m   Duration [22m 94.56s[2m (transform 352ms, setup 0ms, import 539ms, tests 93.85s, environment 0ms)[22m
+
+
+ Container qkern-receiver-certification-postgres-1 Stopping 
+ Container qkern-receiver-certification-receiver-1 Stopping 
+ Container qkern-receiver-certification-internal-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopped 
+ Container qkern-receiver-certification-postgres-1 Removing 
+ Container qkern-receiver-certification-postgres-1 Removed 
+ Container qkern-receiver-certification-internal-1 Stopped 
+ Container qkern-receiver-certification-internal-1 Removing 
+ Container qkern-receiver-certification-internal-1 Removed 
+ Container qkern-receiver-certification-receiver-1 Stopped 
+ Container qkern-receiver-certification-receiver-1 Removing 
+ Container qkern-receiver-certification-receiver-1 Removed 
+ Container qkern-receiver-certification-certs-1 Stopping 
+ Container qkern-receiver-certification-certs-1 Stopped 
+ Container qkern-receiver-certification-certs-1 Removing 
+ Container qkern-receiver-certification-certs-1 Removed 
+ Network qkern-receiver-certification_internal Removing 
+ Network qkern-receiver-certification_default Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removed 
+ Network qkern-receiver-certification_default Removed 
+ Network qkern-receiver-certification_internal Removed 
+EXIT=1

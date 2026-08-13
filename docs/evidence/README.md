@@ -597,3 +597,14 @@ weiterhin, das Abonnement eines `private:`-Kanals nicht mehr.
 Eine erste, gröbere Probe traf nicht — sie nahm der Fernzustellung ihre
 Verdrahtung, und ein Client auf einer Instanz merkt davon nichts. Das steht hier,
 weil es die Reichweite des Falls beschreibt.
+
+## Läufe zu Release 1.58 (8. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-08/apply-process-run1.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 14 von 14, exit 0 |
+| `2026-08-08/apply-process-run2.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 14 von 14, exit 0, Wiederholung |
+| `2026-08-08/apply-process-mutation.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | **13 von 14, exit 1 — absichtlich** |
+
+Die Mutation nimmt dem Empfänger den Pfad `/apply`: Der Prozess veröffentlicht
+weiterhin, die Gegenstelle nimmt es nicht an.

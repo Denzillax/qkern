@@ -2154,3 +2154,34 @@ Instanzen, Replay ueber den Cursor und Postgres Changes sind als Bibliothek
 zertifiziert, nicht durch diesen Prozess. Und zwei Prozesse bleiben ohne
 Arbeitsnachweis: Der Apply-Publisher braucht einen Broker, den es im Stack nicht
 gibt, der Provisioner einen Vault-Weg.
+
+## Der sechste Prozess, und eine widerlegte Annahme — Release 1.58
+
+Release 1.56 und 1.57 haben festgehalten, der Apply-Publisher brauche „einen
+Broker, den es im Stack nicht gibt". Das war eine **Annahme**, kein Hindernis.
+
+Der Broker ist eine HTTPS-Gegenstelle mit genau demselben Format wie beim
+Incident-Publisher: `v1=<hex>` als Signatur, Schluesselkennung im eigenen
+Header, Bestaetigung mit genau der gesendeten Kennung. Derselbe Empfaenger
+genuegt; er bekommt nur einen zweiten Pfad, damit beide Faelle unabhaengig
+voneinander fallen koennen.
+
+Der Fall lief beim ersten Anlauf gruen — nach sechs Prozessen ist das Muster
+eingeuebt: Fixture in die Control Plane, Prozess starten, Zustand in der
+Datenbank abwarten, Redaktion mitpruefen.
+
+Mutationsprobe: Der Empfaenger kennt `/apply` nicht mehr. Genau der neue Fall
+faellt, 13 von 14.
+
+Checkpoint `1.58.0` am 8. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+Empfaenger-Lauf 14 von 14, exit 0, zweimal reproduziert.
+
+**Damit haben sechs von sieben Prozessen einen Arbeitsnachweis.** Offen bleibt
+der Provisioner: Er legt Datenbanken an und braucht dafuer einen Vault-Weg, den
+der Stack nicht hat. Das ist diesmal keine Annahme — der Kompositionscode
+verlangt in Produktion ausdruecklich einen Vault-gestuetzten Katalog, und der
+lokale Weg deckt nicht dasselbe ab.
+
+Nicht erbracht: Belegt ist die gelungene Veroeffentlichung. Wiederholung und
+Dead Letter des Apply-Outbox sind gegen echtes PostgreSQL zertifiziert, aber
+nicht durch diesen Prozess.

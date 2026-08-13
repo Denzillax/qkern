@@ -470,4 +470,77 @@ describe.runIf(enabled)("Receiver certification", () => {
     expect(noise).not.toContain(RECEIVER_SECRET);
     expect(noise).not.toContain("receiver.qkern.test");
   }, 180_000);
+
+  /**
+   * Der Apply-Publisher — der sechste Prozess mit Arbeitsnachweis.
+   *
+   * Der „Broker" ist eine HTTPS-Gegenstelle mit demselben Format wie beim
+   * Incident-Publisher: `v1=<hex>`, Schluesselkennung im eigenen Header und
+   * eine Bestaetigung mit genau der gesendeten Kennung. Damit reicht dieselbe
+   * Gegenstelle — dass er einen „Broker" braucht, war eine Annahme, kein
+   * Hindernis.
+   */
+  it("publishes an apply request from the shipped process", async () => {
+    const jobId = randomUUID();
+    const changeSetId = randomUUID();
+    const approvalId = randomUUID();
+    const eventId = randomUUID();
+    const ref = `managed:${projectId}`;
+
+    await owner.query(`INSERT INTO change_sets
+      (id,organization_id,project_id,environment,title,statement_sha256,encrypted_statement,risk,status,created_by)
+      VALUES ($1,$2,$3,'development','apply',$4,$5,'low','approved',$6)`,
+    [changeSetId, organizationId, projectId, "e".repeat(64), Buffer.alloc(1), controlUser]);
+    await owner.query(`INSERT INTO approval_requests
+      (id,organization_id,project_id,change_set_id,environment,action_hash,status,expires_at)
+      VALUES ($1,$2,$3,$4,'development',$5,'approved',now() + interval '1 hour')`,
+    [approvalId, organizationId, projectId, changeSetId, "f".repeat(64)]);
+    await owner.query(`INSERT INTO migration_jobs
+      (id,organization_id,project_id,environment,database_instance_ref,change_set_id,
+       approval_request_id,status)
+      VALUES ($1,$2,$3,'development',$4,$5,$6,'queued')`,
+    [jobId, organizationId, projectId, ref, changeSetId, approvalId]);
+    await owner.query(`INSERT INTO migration_outbox
+      (id,organization_id,migration_job_id,event_type,status)
+      VALUES ($1,$2,$3,'migration.apply.requested','pending')`,
+    [eventId, organizationId, jobId]);
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/apply-outbox-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_OUTBOX_PUBLISHER_ENABLED: "true",
+        QKERN_OUTBOX_PUBLISHER_ID: "certification-apply-1",
+        QKERN_OUTBOX_IDLE_MS: "200",
+        QKERN_WORKER_ORGANIZATION_ID: organizationId,
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_WORKER_DATABASE_URL: workerUrl!,
+        QKERN_APPLY_BROKER_URL: `${ORIGIN}/apply`,
+        QKERN_APPLY_BROKER_ALLOWED_HOSTS: "receiver.qkern.test",
+        QKERN_APPLY_BROKER_HMAC_KEY_ID: "cert-1",
+        QKERN_APPLY_BROKER_HMAC_SECRET: RECEIVER_SECRET,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 90_000;
+      let status = "pending";
+      while (Date.now() < deadline && status === "pending") {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const row = await owner.query<{ status: string }>(
+          "SELECT status FROM migration_outbox WHERE id=$1", [eventId]);
+        status = row.rows[0]?.status ?? "pending";
+      }
+      expect(status, `Prozessausgabe: ${noise.slice(-800)}`).toBe("published");
+    } finally {
+      child.kill();
+    }
+
+    expect(noise).not.toContain(RECEIVER_SECRET);
+    expect(noise).not.toContain("receiver.qkern.test");
+  }, 180_000);
 });

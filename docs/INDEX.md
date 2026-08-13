@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.57.md](RELEASE_1.57.md) | Aktueller Release: Der fünfte Prozess |
+| [RELEASE_1.58.md](RELEASE_1.58.md) | Aktueller Release: Der sechste Prozess, und eine widerlegte Annahme |
+| [RELEASE_1.57.md](RELEASE_1.57.md) | Der fünfte Prozess |
 | [RELEASE_1.56.md](RELEASE_1.56.md) | Der vierte Prozess |
 | [RELEASE_1.55.md](RELEASE_1.55.md) | Auch das Nein wird gemeldet |
 | [RELEASE_1.54.md](RELEASE_1.54.md) | Der Webhook-Zweig, als Prozess |
