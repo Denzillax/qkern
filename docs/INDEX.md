@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.76.md](RELEASE_1.76.md) | Aktueller Release: Zwei Provider, ein Konto, klare Grenzen |
+| [RELEASE_1.77.md](RELEASE_1.77.md) | Aktueller Release: Rechnungen bekommen Leser |
+| [RELEASE_1.76.md](RELEASE_1.76.md) | Zwei Provider, ein Konto, klare Grenzen |
 | [RELEASE_1.75.md](RELEASE_1.75.md) | Der Editor hört auf zu schauspielern |
 | [RELEASE_1.74.md](RELEASE_1.74.md) | Die eine Tür für neue Images |
 | [RELEASE_1.73.md](RELEASE_1.73.md) | Das Verbot wird ein Tor |

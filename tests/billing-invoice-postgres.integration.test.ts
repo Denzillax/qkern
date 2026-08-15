@@ -4,7 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { BillingService } from "@/lib/server/usage/billing";
-import { PostgresBillingRateCardRepository } from "@/lib/server/usage/billing-postgres-repository";
+import {
+  PostgresBillingInvoiceReader,
+  PostgresBillingRateCardRepository,
+} from "@/lib/server/usage/billing-postgres-repository";
 import type { UsagePrincipal } from "@/lib/server/usage/model";
 import type { SqlPool } from "@/lib/server/db/sql";
 
@@ -179,5 +182,88 @@ describe.runIf(enabled)("Billing invoice process PostgreSQL certification", () =
        WHERE organization_id=$1 AND period_start=$2::date`,
       [organizationId, `${openPeriod}-01`]);
     expect(count.rows[0]?.n).toBe(0);
+  }, 120_000);
+
+  /**
+   * Die Leseflaeche aus 1.68 — mit der Laufzeitrolle, nicht der des Schreibers.
+   *
+   * Der Rechnungslauf schreibt als Worker; gelesen wird als Laufzeit ueber das
+   * Leserecht aus Migration 0040. Die Mandantengrenze traegt die RLS: Eine
+   * fremde Organisation sieht eine leere Liste, kein gefiltertes Etwas.
+   */
+  it("lists the issued invoice with its lines through the runtime role", async () => {
+    const billing = new BillingService({
+      rateCards: new PostgresBillingRateCardRepository(new PostgresControlPlane(runtime)),
+      invoices: new PostgresBillingInvoiceReader(new PostgresControlPlane(runtime)),
+      usage: { readWindow: async () => [] },
+    });
+    const reader = { organizationId, actorRef: "reader@qkern.test", subject: controlUser, role: "reader" as const };
+    const listed = await billing.listInvoices(reader,
+      { organizationId, projectId, environment: "development" });
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({
+      projectId, environment: "development", currency: "CHF",
+      totalMicros: "430000", total: "0.430000", periodStart: "2026-07-01",
+    });
+    expect(listed[0]!.lines.map((line) => [line.metric, line.amountMicros])).toEqual([
+      ["queue_operations", "250000"],
+      ["storage_egress_bytes", "180000"],
+    ]);
+
+    const foreignOrganization = randomUUID();
+    await owner.query(`INSERT INTO organizations (id,name,slug,created_by)
+      VALUES ($1,'Invoice Foreign',$2,$3)`,
+    [foreignOrganization, `invoice-foreign-${foreignOrganization}`, controlUser]);
+    const foreign = await billing.listInvoices(
+      { organizationId: foreignOrganization, actorRef: "reader@qkern.test",
+        subject: controlUser, role: "reader" },
+      { organizationId: foreignOrganization, projectId, environment: "development" });
+    expect(foreign).toEqual([]);
+  }, 60_000);
+
+  /**
+   * Zwei Rechnungslaeufe im Wettlauf um dieselbe Periode — der Fall, der seit
+   * 1.68 offen stand. Die Idempotenz traegt der benannte ON-CONFLICT-Arbiter
+   * aus Migration 0040, und genau ihn nimmt die Mutationsprobe dieses
+   * Releases heraus: Dann verliert der zweite Lauf nicht still, sondern
+   * scheitert.
+   */
+  it("issues exactly one invoice when two runs race for the same period", async () => {
+    const raceProject = randomUUID();
+    await owner.query(`INSERT INTO projects (id,organization_id,name,slug,region,status,created_by)
+      VALUES ($1,$2,'Invoice Race',$3,'test','ready',$4)`,
+    [raceProject, organizationId, `invoice-race-${raceProject}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id,project_id,environment,database_instance_ref)
+      VALUES ($1,$2,'development',$3)`, [organizationId, raceProject, `managed:${raceProject}`]);
+    await owner.query(`INSERT INTO usage_counters
+      (organization_id,project_id,environment,metric,window_start,window_end,quantity)
+      VALUES ($1,$2,'development','queue_operations','2026-06-01T00:00:00Z','2026-07-01T00:00:00Z',500)`,
+    [organizationId, raceProject]);
+
+    const first = invoiceProcess("2026-06");
+    const second = invoiceProcess("2026-06");
+    try {
+      await Promise.all([
+        waitFor(first.output, "billing.invoice.run_completed"),
+        waitFor(second.output, "billing.invoice.run_completed"),
+      ]);
+    } finally {
+      first.child.kill();
+      second.child.kill();
+    }
+    expect(`${first.output()}${second.output()}`).not.toContain('"event":"billing.invoice.run_failed"');
+
+    const count = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM billing_invoices
+       WHERE organization_id=$1 AND project_id=$2 AND period_start='2026-06-01'::date`,
+      [organizationId, raceProject]);
+    expect(count.rows[0]?.n).toBe(1);
+    const lines = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM billing_invoice_lines l
+       JOIN billing_invoices i ON i.id = l.invoice_id
+       WHERE i.organization_id=$1 AND i.project_id=$2 AND i.period_start='2026-06-01'::date`,
+      [organizationId, raceProject]);
+    expect(lines.rows[0]?.n).toBe(1);
   }, 120_000);
 });

@@ -2830,3 +2830,34 @@ Nicht erbracht: Dex ist kein GitHub — kommerzielle Provider-Eigenheiten
 brauchen echte Konten. Die E-Mail-Verknüpfung vertraut der Verifizierung des
 Providers; ein `email_verified`-Erfordernis je Provider fehlt. Kein
 Console-Fluss für die Provider-Auswahl.
+
+## Rechnungen bekommen Leser — Release 1.77
+
+Zwei offene Punkte aus 1.68 sind geschlossen — beides lokal voll belegbar:
+die Rechnungs-Lesefläche und der Wettlauf zweier Rechnungsläufe.
+
+`GET …/usage/invoices` liefert die ausgestellten Rechnungen mit Posten,
+neueste Periode zuerst, hinter demselben Schalter und derselben Fehlergrenze
+wie die Usage-Fläche. Der Rechnungslauf schreibt als Worker, gelesen wird als
+Laufzeit über das Leserecht aus Migration 0040 — die Grenze war gezogen, bevor
+die Fläche existierte.
+
+Der Wettlauf: Zwei Prozesse starten gleichzeitig für dieselbe Periode, beide
+laufen sauber durch, und es entsteht genau eine Rechnung. Die Idempotenz trägt
+der benannte ON-CONFLICT-Arbiter aus 0040.
+
+Zertifiziert: Liste durch die Laufzeitrolle (eine Rechnung, zwei Posten,
+total 0.430000; fremde Organisation sieht eine **leere** Liste — RLS, nicht
+WHERE) und der Wettlauf (zwei ausgelieferte Prozesse, eine Rechnung, kein
+run_failed).
+
+Mutationsprobe: Der Arbiter aus dem Rechnungs-INSERT entfernt — **149 von
+151**, genau die zwei idempotenzgebundenen Fälle: der zweite Lauf und der
+Wettlauf. Dass beide fallen, ist der Punkt — Wiederholung und Wettlauf sind
+dieselbe Zusage, getragen von derselben Zeile.
+
+Checkpoint `1.77.0` am 16. August 2026: Lokal 1064 bestanden, 0 fehlgeschlagen;
+PostgreSQL 151 von 151, exit 0, zweimal reproduziert, 42 Migrationen.
+
+Nicht erbracht: keine Console-Fläche für Rechnungen; keine kaufmännische
+Nummer, keine Fälligkeit; die Invoices-Route spricht in keinem Fall HTTP.

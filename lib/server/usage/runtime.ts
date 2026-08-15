@@ -17,7 +17,10 @@ import {
   MemoryBillingRateCardRepository,
   type BillingRateCardRepository,
 } from "@/lib/server/usage/billing";
-import { PostgresBillingRateCardRepository } from "@/lib/server/usage/billing-postgres-repository";
+import {
+  PostgresBillingInvoiceReader,
+  PostgresBillingRateCardRepository,
+} from "@/lib/server/usage/billing-postgres-repository";
 
 export function createUsageServiceFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -91,7 +94,10 @@ export function createBillingServiceFromEnv(
   if (env.NODE_ENV === "production" && !postgres) {
     throw new ConfigurationError("Production billing requires the durable PostgreSQL repositories.");
   }
-  return new BillingService({ rateCards, usage, controlPlane: controlPlaneService });
+  const invoices = postgres
+    ? new PostgresBillingInvoiceReader(new PostgresControlPlane(getPostgresPool(env)))
+    : undefined;
+  return new BillingService({ rateCards, usage, invoices, controlPlane: controlPlaneService });
 }
 
 type GlobalBilling = typeof globalThis & { __qkernBillingService?: BillingService };

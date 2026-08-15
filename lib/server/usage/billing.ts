@@ -72,6 +72,37 @@ export type BillingProjection = Readonly<{
   unpricedMetrics: UsageMetric[];
 }>;
 
+export type BillingInvoiceLine = Readonly<{
+  metric: UsageMetric;
+  quantity: string;
+  unitPriceMicros: string;
+  perUnits: string;
+  amountMicros: string;
+  amount: string;
+}>;
+
+export type BillingInvoiceSummary = Readonly<{
+  id: string;
+  projectId: string;
+  environment: string;
+  periodStart: string;
+  periodEnd: string;
+  currency: string;
+  totalMicros: string;
+  total: string;
+  unpricedMetrics: string[];
+  issuedAt: string;
+  lines: BillingInvoiceLine[];
+}>;
+
+export interface BillingInvoiceReader {
+  listInvoices(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    limit: number,
+  ): Promise<BillingInvoiceSummary[]>;
+}
+
 const CURRENCY = /^[A-Z]{3}$/;
 const EFFECTIVE_FROM = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 const MAX_PRICE = 1_000_000_000_000n;
@@ -80,6 +111,8 @@ export class BillingService {
   constructor(private readonly dependencies: {
     rateCards: BillingRateCardRepository;
     usage: Pick<UsageRepository, "readWindow">;
+    /** Ohne Leser gibt es keine Rechnungsliste — und keinen stillen Ersatz. */
+    invoices?: BillingInvoiceReader;
     controlPlane?: Pick<ControlPlaneService, "getProjectEnvironment">;
     now?: () => Date;
   }) {}
@@ -118,6 +151,32 @@ export class BillingService {
       effectiveFrom: input.effectiveFrom,
       createdBy: principal.subject,
     });
+  }
+
+  /**
+   * Die ausgestellten Rechnungen — die Leseflaeche, die seit 1.68 offen stand.
+   *
+   * Der Rechnungslauf schreibt mit der Worker-Rolle; gelesen wird mit der
+   * Laufzeitrolle ueber das Leserecht aus Migration 0040. Was hier
+   * zurueckkommt, ist das eingefrorene Dokument: append-only, mit Posten,
+   * neueste Periode zuerst.
+   */
+  async listInvoices(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    input: { limit?: number } = {},
+  ): Promise<BillingInvoiceSummary[]> {
+    if (!["reader", "operator"].includes(principal.role) ||
+        principal.organizationId !== scope.organizationId) {
+      throw new UsageError("USAGE_ACCESS_DENIED");
+    }
+    const limit = input.limit ?? 24;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new UsageError("USAGE_INVALID_INPUT");
+    }
+    await this.assertProject(principal, scope);
+    if (!this.dependencies.invoices) throw new UsageError("USAGE_METERING_DISABLED");
+    return this.dependencies.invoices.listInvoices(principal, scope, limit);
   }
 
   async readBillingProjection(
@@ -194,6 +253,8 @@ export class BillingService {
 }
 
 /** `123456789` Mikro → `"123.456789"`. Dezimalstring, nie ein Float. */
+export function microsToDecimal(micros: bigint): string { return decimal(micros); }
+
 function decimal(micros: bigint): string {
   const whole = micros / 1_000_000n;
   const fraction = (micros % 1_000_000n).toString().padStart(6, "0");

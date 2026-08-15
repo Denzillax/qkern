@@ -840,3 +840,15 @@ scheiterte dort mit dem falschen Fehler.
 Ein erster Lauf scheiterte an `ENOTFOUND partner.qkern.test`: Das Startskript
 fährt Dienste namentlich hoch, und der neue Dex stand in der Compose-Datei,
 aber nicht in der Liste. Der Lauf wurde verworfen und nach dem Fix wiederholt.
+
+## Läufe zu Release 1.77 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/invoice-read-run1.log` | PostgreSQL 17 | 151 von 151, exit 0, 42 Migrationen |
+| `2026-08-16/invoice-read-run2.log` | PostgreSQL 17 | 151 von 151, exit 0, Wiederholung |
+| `2026-08-16/invoice-read-mutation.log` | PostgreSQL 17 | **149 von 151, exit 1 — absichtlich** |
+
+Die Mutation entfernt den ON-CONFLICT-Arbiter aus dem Rechnungs-INSERT. Genau
+die zwei idempotenzgebundenen Fälle fallen: der zweite Lauf und der Wettlauf —
+dieselbe Zusage, getragen von derselben Zeile.
