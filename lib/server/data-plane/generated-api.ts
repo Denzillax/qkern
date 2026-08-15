@@ -283,6 +283,32 @@ const FUNCTION_METADATA_SQL = `
   WHERE n.nspname = $1 AND p.proname = $2 AND p.prokind = 'f'
   LIMIT 3`;
 
+/**
+ * Alle Funktionen eines Schemas fuer das OpenAPI-Dokument — dieselben Spalten
+ * wie `FUNCTION_METADATA_SQL`, damit dieselben Eignungsregeln gelten koennen.
+ * Ueberladungen bleiben absichtlich in der Liste: Erst ihr Anblick erlaubt es,
+ * den Namen vollstaendig auszuschliessen, statt zufaellig einen Rumpf zu
+ * dokumentieren.
+ */
+const SCHEMA_FUNCTIONS_SQL = `
+  SELECT p.proname AS function_name,
+         p.prosecdef AS security_definer,
+         p.provolatile AS volatility,
+         p.proretset AS returns_set,
+         p.pronargs::integer AS arg_count,
+         p.pronargdefaults::integer AS default_count,
+         COALESCE(p.proargnames, ARRAY[]::text[]) AS arg_names,
+         COALESCE((SELECT array_agg(pg_catalog.format_type(args.t, NULL) ORDER BY args.o)
+                   FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS args(t, o)),
+                  ARRAY[]::text[]) AS arg_types,
+         pg_catalog.format_type(p.prorettype, NULL) AS return_type,
+         has_function_privilege(current_user, p.oid, 'EXECUTE') AS can_execute
+  FROM pg_catalog.pg_proc AS p
+  JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+  WHERE n.nspname = $1 AND p.prokind = 'f'
+  ORDER BY p.proname
+  LIMIT 200`;
+
 type FunctionMetadataRow = {
   function_name: string;
   security_definer: boolean;
@@ -667,9 +693,18 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
   ): Promise<Record<string, unknown>> {
     assertRequest(context, scope, schema);
     return this.run(context, scope, false, async (client) => {
-      const tables = (await this.loadTables(client, schema))
-        .filter((table) => table.rowSecurityEnabled && (!table.ownedByCurrentRole || table.forceRowSecurity) &&
+      const relations = await this.loadTables(client, schema);
+      const tables = relations
+        .filter((table) => table.kind === "table" &&
+          table.rowSecurityEnabled && (!table.ownedByCurrentRole || table.forceRowSecurity) &&
           table.primaryKey.length > 0 && table.canSelect &&
+          table.columns.some((column) => column.selectable && !column.sensitive));
+      // Views nur mit `security_invoker` — dieselbe Grenze wie beim Bedienen:
+      // Ein View ohne sie wird von der Flaeche abgewiesen und gehoert deshalb
+      // auch nicht ins Dokument. Die Mutationsprobe dieses Releases nimmt
+      // genau diese Bedingung heraus.
+      const views = relations
+        .filter((table) => table.kind === "view" && table.securityInvoker && table.canSelect &&
           table.columns.some((column) => column.selectable && !column.sensitive));
       const paths: Record<string, unknown> = {};
       const schemas: Record<string, unknown> = {};
@@ -685,6 +720,79 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
           ...(table.canInsert ? { post: generatedOperation(`insert_${table.name}`, "Insert RLS-checked rows", componentName) } : {}),
           ...(table.canUpdate ? { patch: generatedOperation(`update_${table.name}`, "Update one row by primary key", componentName) } : {}),
           ...(table.canDelete ? { delete: generatedOperation(`delete_${table.name}`, "Delete one row by primary key", componentName) } : {}),
+        };
+      }
+      for (const view of views) {
+        const componentName = `Row_${view.name}`;
+        schemas[componentName] = { type: "object", additionalProperties: false,
+          properties: Object.fromEntries(view.columns
+            .filter((column) => column.selectable && !column.sensitive)
+            .map((column) => [column.name, openApiType(column.dataType, column.nullable)])) };
+        const path = `/v1/projects/${scope.projectId}/environments/${scope.environment}/tables/${view.name}/rows`;
+        // Nur GET: Ein View ist an dieser Flaeche ausschliesslich lesbar, und
+        // ohne Primaerschluessel verlangt die Liste eine ausdrueckliche
+        // Sortierspalte; Cursor werden abgewiesen statt still falsch zu
+        // blaettern.
+        paths[path] = {
+          get: {
+            ...generatedOperation(`list_view_${view.name}`,
+              "List rows of a security_invoker view (read-only, cursorless)", componentName),
+            parameters: [{
+              name: "order", in: "query", required: true,
+              description: "Explicit order as column.asc or column.desc — a view has no primary key to imply one.",
+              schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}\\.(asc|desc)$" },
+            }],
+          },
+        };
+      }
+      // RPC: nur was `callFunction` auch bedienen wuerde — SECURITY INVOKER,
+      // ausfuehrbar, nicht ueberladen, benannte Argumente mit sicheren Typen.
+      // Hoechstens 200 Funktionen je Schema; mehr kappt das Dokument bewusst.
+      const functionRows = await client.query<FunctionMetadataRow>(SCHEMA_FUNCTIONS_SQL, [schema]);
+      const overloadsByName = new Map<string, FunctionMetadataRow[]>();
+      for (const row of functionRows.rows) {
+        overloadsByName.set(row.function_name, [...(overloadsByName.get(row.function_name) ?? []), row]);
+      }
+      for (const [name, overloads] of [...overloadsByName.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+        if (overloads.length > 1) continue;
+        const fn = overloads[0];
+        const argNames = fn.arg_names.slice(0, fn.arg_count);
+        const argTypes = fn.arg_types.slice(0, fn.arg_count);
+        if (fn.security_definer || !fn.can_execute) continue;
+        if (!SAFE_TYPE.test(fn.return_type) && !fn.returns_set) continue;
+        if (argNames.length !== fn.arg_count || argNames.some((argName) => !IDENTIFIER.test(argName)) ||
+            argTypes.some((argType) => !SAFE_TYPE.test(argType))) continue;
+        const requiredArgs = argNames.slice(0, fn.arg_count - fn.default_count);
+        const path = `/v1/projects/${scope.projectId}/environments/${scope.environment}/rpc/${name}`;
+        paths[path] = {
+          post: {
+            operationId: `call_${name}`,
+            // Die Volatilitaet steht im Dokument, weil sie das Verhalten
+            // bestimmt: Alles ausser volatile laeuft in einer
+            // READ-ONLY-Transaktion und kann nicht schreiben.
+            summary: fn.volatility === "v"
+              ? "Call a SECURITY INVOKER function (volatile — runs in a write transaction)"
+              : "Call a SECURITY INVOKER function (read-only transaction)",
+            security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
+            requestBody: {
+              required: requiredArgs.length > 0,
+              content: { "application/json": { schema: { type: "object", additionalProperties: false, properties: {
+                schema: { type: "string" },
+                args: {
+                  type: "object", additionalProperties: false,
+                  properties: Object.fromEntries(argNames.map((argName, index) =>
+                    [argName, openApiType(argTypes[index] ?? "", false)])),
+                  ...(requiredArgs.length > 0 ? { required: requiredArgs } : {}),
+                },
+              }, ...(requiredArgs.length > 0 ? { required: ["args"] } : {}) } } },
+            },
+            responses: {
+              "200": {
+                description: fn.returns_set ? "Set-returning result rows" : "Single result value",
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
         };
       }
       return {

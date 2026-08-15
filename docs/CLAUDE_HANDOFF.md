@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.79.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.80.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.79.0`
-- Aktueller Slice: 1.79 Deployments stehen im Audit — `deployFunction` schreibt
+- Paketversion: `1.80.0`
+- Aktueller Slice: 1.80 Das Dokument sagt die Wahrheit — das OpenAPI-Dokument
+  der Generated Data API beschreibt Views (nur GET, Pflicht-Sortierspalte, nur
+  mit security_invoker) und RPC (nur was callFunction annaehme; Volatilitaet
+  steht im Summary); hoechstens 200 Funktionen je Schema
+- Vorheriger Slice: 1.79 Deployments stehen im Audit — `deployFunction` schreibt
   den Audit-Eintrag in **derselben** Transaktion wie die Tuer aus 0042; die
   Hash-Kette fuellt der Trigger aus 0002
 - Vorheriger Slice: 1.78 Waisen altern weg — `expireLifecycle` raeumt verfallene

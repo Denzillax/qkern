@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.77.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.80.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -22,7 +22,7 @@ zählt.
 | --- | --- | --- | --- |
 | Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`) | ein Broker, der wirklich Datenbanken einrichtet; Betrieb (unten) |
 | Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE, JWKS — zertifiziert gegen echtes SMTP und echtes OIDC | seit `1.76.0` ist der Provider-Katalog gegen zwei echte, getrennte OIDC-Gegenstellen belegt; offen: kommerzielle Provider-Eigenheiten (echte Konten), SAML, SMS |
-| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views, seit `1.72.0` RPC ueber SECURITY-INVOKER-Funktionen | Aggregate, eingebettete Joins, OpenAPI fuer Views und RPC |
+| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views, seit `1.72.0` RPC ueber SECURITY-INVOKER-Funktionen, seit `1.80.0` beschreibt das OpenAPI-Dokument beide nach denselben Grenzen | Aggregate, eingebettete Joins |
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert; seit `1.78.0` räumt der Lifecycle verfallene Reservierungen und Provider-Waisen ab | Bildtransformation, CDN |
 | Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | seit `1.73.0` ersetzt ein Tor mit benannten Bedingungen das Production-Verbot; offen: belegter Production-Start gegen SSL-PostgreSQL, persistente Presence/History, Lastprofil jenseits Soak |
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; offen: Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
@@ -38,7 +38,7 @@ zählt.
 1. ~~Billing: Preisblatt und Monatsprojektion~~ — **erledigt in `1.67.0`.**
 2. ~~Billing: Rechnungslauf als Prozess mit Periodenabschluss~~ — **erledigt in `1.68.0`.**
 3. ~~Storage: Multipart/Resumable~~ — **erledigt in `1.70.0`** (Provider-Schicht `1.69.0`, Dienstweg `1.70.0`).
-4. ~~Data API: Views und RPC~~ — **erledigt** (Views `1.71.0`, RPC `1.72.0`).
+4. ~~Data API: Views und RPC~~ — **erledigt** (Views `1.71.0`, RPC `1.72.0`; seit `1.80.0` beschreibt auch das OpenAPI-Dokument beide nach denselben Grenzen).
 5. ~~Realtime: Production-Binding mit begründeter Aufhebung des Verbots~~ — **erledigt in `1.73.0`** (Tor statt Verbot; der belegte Production-Start braucht SSL-PostgreSQL und liegt bei Sprosse 10).
 6. ~~Compute: Image-Deployment-Fluss~~ — **erledigt in `1.74.0`.**
 7. **SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI — nächster Slice (braucht CI-Infrastruktur ausserhalb dieser Maschine).**

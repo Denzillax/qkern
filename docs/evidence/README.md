@@ -878,3 +878,15 @@ wie eine Waise abgebrochen.
 Die Mutation entfernt den Audit-Append aus der Deployment-Transaktion. Genau
 der Audit-Fall fällt — Tür und Historie bestehen weiter, aber der zentrale
 Audit-Weg sieht nichts mehr.
+
+## Läufe zu Release 1.80 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/openapi-views-rpc-run1.log` | PostgreSQL 17 | 154 von 154, exit 0 |
+| `2026-08-16/openapi-views-rpc-run2.log` | PostgreSQL 17 | 154 von 154, exit 0, Wiederholung |
+| `2026-08-16/openapi-views-rpc-mutation.log` | PostgreSQL 17 | **153 von 154, exit 1 — absichtlich** |
+
+Die Mutation entfernt die security_invoker-Bedingung aus dem Views-Filter des
+OpenAPI-Dokuments. Das Dokument bewirbt dann einen View, den die Fläche
+abweist — genau der OpenAPI-Fall fällt.

@@ -200,4 +200,67 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
       schema, function: "items_like",
     })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
   }, 30_000);
+
+  /**
+   * Das OpenAPI-Dokument sagt, was die Flaeche wirklich bedient — die offenen
+   * Punkte aus 1.71 und 1.72.
+   *
+   * Ein View erscheint nur mit `security_invoker` und nur mit GET samt
+   * Pflicht-Sortierspalte; eine Funktion nur, wenn `callFunction` sie auch
+   * annaehme — SECURITY INVOKER, nicht ueberladen, benannte sichere Argumente.
+   * Die Mutationsprobe dieses Releases nimmt die `security_invoker`-Bedingung
+   * aus dem Views-Filter — dann bewirbt das Dokument einen View, den die
+   * Flaeche abweist, und genau dieser Fall faellt.
+   */
+  it("documents views read-only and only callable functions as RPC", async () => {
+    await owner.query(`CREATE VIEW "${schema}".doc_view WITH (security_invoker = true)
+      AS SELECT id, name FROM "${schema}".items`);
+    await owner.query(`CREATE VIEW "${schema}".doc_leaky
+      AS SELECT id, name FROM "${schema}".items`);
+    await owner.query(`GRANT SELECT ON "${schema}".doc_view TO qkern_project_api_app`);
+    await owner.query(`GRANT SELECT ON "${schema}".doc_leaky TO qkern_project_api_app`);
+    await owner.query(`CREATE FUNCTION "${schema}".doc_count(prefix text DEFAULT '')
+      RETURNS bigint LANGUAGE sql STABLE
+      AS $$ SELECT count(*) FROM "${schema}".items WHERE name LIKE prefix || '%' $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".doc_prune(item_name text)
+      RETURNS void LANGUAGE sql VOLATILE
+      AS $$ DELETE FROM "${schema}".items WHERE name = item_name $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".doc_secret(prefix text)
+      RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER
+      AS $$ SELECT count(*) FROM "${schema}".items WHERE name LIKE prefix || '%' $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".doc_dup(a integer)
+      RETURNS integer LANGUAGE sql IMMUTABLE AS $$ SELECT a $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".doc_dup(a text)
+      RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT a $$`);
+
+    const document = await service.generateOpenApi(context(ownerA), scope, schema) as {
+      paths: Record<string, {
+        get?: { parameters?: Array<{ name: string; required: boolean }> };
+        post?: { summary: string; requestBody: { required: boolean } };
+      } | undefined>;
+    };
+    const tablesBase = "/v1/projects/certification-project/environments/development/tables/";
+    const rpcBase = "/v1/projects/certification-project/environments/development/rpc/";
+
+    // Der invoker-View: nur GET, mit Pflicht-Sortierspalte. Der leaky-View
+    // fehlt ganz — was die Flaeche abweist, wird nicht beworben.
+    const viewPath = document.paths[`${tablesBase}doc_view/rows`];
+    expect(viewPath).toBeDefined();
+    expect(Object.keys(viewPath!)).toEqual(["get"]);
+    expect(viewPath!.get!.parameters).toMatchObject([{ name: "order", required: true }]);
+    expect(document.paths[`${tablesBase}doc_leaky/rows`]).toBeUndefined();
+
+    // Die Tabelle selbst bleibt mit allen gewaehrten Verben beschrieben.
+    expect(Object.keys(document.paths[`${tablesBase}items/rows`] ?? {}).sort())
+      .toEqual(["delete", "get", "patch", "post"]);
+
+    // RPC: stabil heisst read-only, volatile heisst Schreibtransaktion;
+    // DEFINER und Ueberladung fehlen — genau wie beim Aufruf selbst.
+    expect(document.paths[`${rpcBase}doc_count`]?.post?.summary).toContain("read-only");
+    expect(document.paths[`${rpcBase}doc_count`]?.post?.requestBody.required).toBe(false);
+    expect(document.paths[`${rpcBase}doc_prune`]?.post?.summary).toContain("write transaction");
+    expect(document.paths[`${rpcBase}doc_prune`]?.post?.requestBody.required).toBe(true);
+    expect(document.paths[`${rpcBase}doc_secret`]).toBeUndefined();
+    expect(document.paths[`${rpcBase}doc_dup`]).toBeUndefined();
+  }, 30_000);
 });

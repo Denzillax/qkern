@@ -2930,3 +2930,36 @@ Nicht erbracht: Die Console zeigt die Deployment-Historie, aber keine
 Audit-Ansicht dafür. Wer die Tür per Hand-SQL mit der Laufzeitrolle ruft,
 umgeht den Audit-Weg — die Zusage gilt für den Dienstweg, nicht für die
 Datenbank selbst.
+
+## Das Dokument sagt die Wahrheit — Release 1.80
+
+Die offenen Punkte aus 1.71 und 1.72: Das OpenAPI-Dokument der Generated Data
+API kannte weder die Nur-Lese-Natur der Views noch die /rpc-Pfade. Jetzt
+beschreibt es beide — **nach denselben Grenzen, nach denen die Fläche
+bedient**: Ein View erscheint nur mit `security_invoker` und nur mit GET samt
+Pflicht-Sortierspalte (`column.asc|desc`, Cursor gibt es nicht); eine
+Funktion erscheint nur, wenn `callFunction` sie annähme — SECURITY INVOKER,
+ausführbar, nicht überladen, benannte Argumente mit sicheren Typen. Die
+Volatilität steht im Summary, weil sie das Verhalten bestimmt: Alles ausser
+volatile läuft in einer READ-ONLY-Transaktion. Argumente mit Default sind im
+Schema optional, Pflichtargumente stehen in `required`.
+
+Zertifiziert gegen echtes PostgreSQL: Der invoker-View steht mit genau einem
+GET und Pflicht-`order` im Dokument, der View ohne `security_invoker` fehlt
+ganz; die stabile Funktion trägt „read-only", die flüchtige „write
+transaction"; DEFINER und Überladung fehlen — genau wie beim Aufruf selbst.
+
+Mutationsprobe: Die `security_invoker`-Bedingung aus dem Views-Filter
+entfernt — **153 von 154**, genau der OpenAPI-Fall: Das Dokument bewürbe
+einen View, den die Fläche mit demselben Code abweist wie eine Tabelle ohne
+RLS.
+
+Checkpoint `1.80.0` am 16. August 2026: Lokal 1065 bestanden, 0
+fehlgeschlagen; PostgreSQL 154 von 154, exit 0, zweimal reproduziert, 43
+Migrationen.
+
+Nicht erbracht: Höchstens 200 Funktionen je Schema landen im Dokument — mehr
+kappt es bewusst und ohne Hinweiszeile im Dokument selbst. Die
+Antwortschemata der RPC-Pfade sind generisch (`type: object`), nicht aus dem
+Rückgabetyp abgeleitet. Typen ausserhalb des Suchpfads bleiben wie beim
+Aufruf aussen vor.
