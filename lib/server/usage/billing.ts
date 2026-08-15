@@ -83,6 +83,10 @@ export type BillingInvoiceLine = Readonly<{
 
 export type BillingInvoiceSummary = Readonly<{
   id: string;
+  /** Lueckenlos je Organisation, vergeben im Rechnungslauf (Migration 0044). */
+  invoiceNumber: string;
+  /** Fest 30 Tage nach Ausstellung — per DEFAULT vergeben, von niemandem schreibbar. */
+  dueAt: string;
   projectId: string;
   environment: string;
   periodStart: string;

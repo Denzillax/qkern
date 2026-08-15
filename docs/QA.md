@@ -2963,3 +2963,40 @@ kappt es bewusst und ohne Hinweiszeile im Dokument selbst. Die
 Antwortschemata der RPC-Pfade sind generisch (`type: object`), nicht aus dem
 Rückgabetyp abgeleitet. Typen ausserhalb des Suchpfads bleiben wie beim
 Aufruf aussen vor.
+
+## Der Kreis ohne Lücken — Release 1.81
+
+Der letzte rein datenbankseitige Billing-Punkt aus 1.68: Die Rechnung hatte
+weder kaufmännische Nummer noch Fälligkeit. Migration 0044 gibt ihr beides.
+Die Nummer ist **lückenlos je Organisation** und entsteht im selben Statement
+wie die Rechnung: Eine datenmodifizierende CTE upsertet den Zähler
+(`billing_invoice_counters`, serialisiert den Kreis je Organisation über die
+Zeilensperre), der äussere INSERT trägt die Nummer. Die Rechnungen bleiben
+append-only — kein UPDATE trägt je eine Nummer nach. Weil die CTE auch läuft,
+wenn der äussere INSERT im ON CONFLICT verliert, steht das Ganze in einem
+SAVEPOINT: Der Verlierer rollt seinen Zählerstand zurück, eine vergebene
+Nummer ohne Rechnung ist nicht ausdrückbar.
+
+Die Fälligkeit ist eine feste Regel — 30 Tage nach Ausstellung — als DEFAULT
+auf derselben Transaktionszeit wie `issued_at`. Eine generierte Spalte
+scheiterte ehrlich: `timestamptz + interval` ist in PostgreSQL nicht
+immutable; der erste Stack-Lauf wies die Migration ab, bevor ein Test lief.
+Schreibbar ist die Spalte für niemanden: kein Spalten-Grant, keine Policy.
+
+Zertifiziert gegen echtes PostgreSQL: Vier Rechnungen über vier Perioden
+tragen exakt die Nummern 1 bis 4 — quer über Projekte, mit einem verlorenen
+Wiederholungslauf dazwischen, der keine Lücke hinterlässt; `due_at` ist für
+jede Rechnung exakt `issued_at + 30 Tage`; der Leser liefert `invoiceNumber`
+und `dueAt` mit.
+
+Mutationsprobe: Der SAVEPOINT-Rollback des Verlierers entfernt — **154 von
+155**, genau der Nummernkreis-Fall.
+
+Checkpoint `1.81.0` am 16. August 2026: Lokal 1065 bestanden, 0
+fehlgeschlagen; PostgreSQL 155 von 155, exit 0, zweimal reproduziert, 44
+Migrationen.
+
+Nicht erbracht: Die 30 Tage sind fest, keine Zahlungsbedingung je
+Organisation. Der Zähler serialisiert Rechnungsläufe je Organisation — bei
+sehr vielen gleichzeitigen Läufen ist das eine bewusste Bremse. Keine
+Console-Fläche, keine Zahlungsanbindung.

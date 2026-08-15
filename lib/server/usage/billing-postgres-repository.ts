@@ -110,11 +110,13 @@ export class PostgresBillingInvoiceReader implements BillingInvoiceReader {
       { organizationId: scope.organizationId, actorRef: principal.actorRef, readOnly: true },
       async (repositories) => {
         const invoices = await repositories.transaction.query<{
-          id: string; project_id: string; environment: string;
+          id: string; invoice_number: string; due_at: string;
+          project_id: string; environment: string;
           period_start: string; period_end: string; currency: string;
           total_micros: string; unpriced_metrics: string[]; issued_at: string;
         }>(
-          `SELECT id, project_id, environment, period_start::text AS period_start,
+          `SELECT id, invoice_number::text AS invoice_number, due_at::text AS due_at,
+                  project_id, environment, period_start::text AS period_start,
                   period_end::text AS period_end, currency, total_micros::text AS total_micros,
                   unpriced_metrics, issued_at::text AS issued_at
            FROM billing_invoices
@@ -150,6 +152,8 @@ export class PostgresBillingInvoiceReader implements BillingInvoiceReader {
         }
         return invoices.rows.map((row): BillingInvoiceSummary => ({
           id: row.id,
+          invoiceNumber: row.invoice_number,
+          dueAt: row.due_at,
           projectId: row.project_id,
           environment: row.environment,
           periodStart: row.period_start,

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 16. August 2026 · Release: `1.80.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 16. August 2026 · Release: `1.81.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -25,7 +25,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 7 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 8 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
-| Usage Metering | teilweise | teilweise — 33 Real-DB-Fälle; **alle sechs Metriken melden**, append-only Preisblatt mit Monatsprojektion (`1.67.0`) und ein Rechnungslauf, der abgeschlossene Monate als eigener Prozess fakturiert (`1.68.0`), mit REST-Lesefläche und belegtem Wettlauf zweier Läufe (`1.77.0`); keine Zahlungsanbindung |
+| Usage Metering | teilweise | teilweise — 34 Real-DB-Fälle; **alle sechs Metriken melden**, append-only Preisblatt mit Monatsprojektion (`1.67.0`) und ein Rechnungslauf, der abgeschlossene Monate als eigener Prozess fakturiert (`1.68.0`), mit REST-Lesefläche und belegtem Wettlauf zweier Läufe (`1.77.0`) und lückenlosem Nummernkreis samt Fälligkeit (`1.81.0`); keine Zahlungsanbindung |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 45 Real-DB-Fälle, dazu 26 im Functions-Lauf und 14 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **154 von 154 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **155 von 155 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **6 von 6 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |

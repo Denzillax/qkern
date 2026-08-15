@@ -890,3 +890,15 @@ Audit-Weg sieht nichts mehr.
 Die Mutation entfernt die security_invoker-Bedingung aus dem Views-Filter des
 OpenAPI-Dokuments. Das Dokument bewirbt dann einen View, den die Fläche
 abweist — genau der OpenAPI-Fall fällt.
+
+## Läufe zu Release 1.81 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/invoice-numbers-run1.log` | PostgreSQL 17 | 155 von 155, exit 0 |
+| `2026-08-16/invoice-numbers-run2.log` | PostgreSQL 17 | 155 von 155, exit 0, Wiederholung |
+| `2026-08-16/invoice-numbers-mutation.log` | PostgreSQL 17 | **154 von 155, exit 1 — absichtlich** |
+
+Die Mutation entfernt den SAVEPOINT-Rollback des Wettlauf-Verlierers. Ein
+verlorener zweiter Lauf lässt seinen Zählerstand stehen und reisst eine Lücke
+in den Nummernkreis — genau der Nummernkreis-Fall fällt.

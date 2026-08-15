@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "invoice-numbers-mutation.log",
+  "commit": "caca7efacf02c984105aa7fb5ed4933fd958c306",
+  "commitSubject": "release: 1.80.0 Das Dokument sagt die Wahrheit",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "testFiles": "1 failed | 26 passed (27)",
+  "tests": "1 failed | 154 passed (155)",
+  "passed": 154,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ],
+  "migrationsApplied": 44
+}

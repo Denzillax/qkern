@@ -133,24 +133,42 @@ export class BillingInvoiceRun {
           });
           continue;
         }
+        await repositories.transaction.query("SAVEPOINT invoice_numbering");
         const inserted = await repositories.transaction.query<{ id: string }>(
-          `INSERT INTO billing_invoices
+          // Die Nummer entsteht im selben Statement wie die Rechnung: Der
+          // Zaehler-Upsert serialisiert den Kreis je Organisation, und die
+          // Rechnungen bleiben append-only — kein UPDATE traegt je eine
+          // Nummer nach. Die CTE laeuft auch, wenn der aeussere INSERT im
+          // ON CONFLICT verliert; deshalb steht das Ganze in einem SAVEPOINT,
+          // und der Verlierer rollt seinen Zaehlerstand zurueck — eine
+          // vergebene Nummer ohne Rechnung ist nicht ausdrueckbar.
+          `WITH numbered AS (
+             INSERT INTO billing_invoice_counters AS counter (organization_id, next_number)
+             VALUES ($1, 1)
+             ON CONFLICT (organization_id)
+               DO UPDATE SET next_number = counter.next_number + 1
+             RETURNING next_number
+           )
+           INSERT INTO billing_invoices
              (organization_id, project_id, environment, period_start, period_end,
-              currency, total_micros, unpriced_metrics, issued_by)
-           VALUES ($1, $2, $3, $4::date, $5::date, $6, $7, $8, $9)
+              currency, total_micros, unpriced_metrics, issued_by, invoice_number)
+           SELECT $1, $2, $3, $4::date, $5::date, $6, $7, $8, $9, numbered.next_number
+           FROM numbered
            ON CONFLICT (organization_id, project_id, environment, period_start) DO NOTHING
-           RETURNING id`,
+           RETURNING id, invoice_number`,
           [this.options.organizationId, projectId, environment, iso(window.start), iso(window.end),
             computed.currency, computed.totalMicros.toString(), computed.unpriced, this.options.runnerId],
         );
         const invoiceId = inserted.rows[0]?.id;
         if (!invoiceId) {
+          await repositories.transaction.query("ROLLBACK TO SAVEPOINT invoice_numbering");
           existing += 1;
           safeLog(this.options.logger, {
             event: "billing.invoice.exists", period: window.period, projectId, environment,
           });
           continue;
         }
+        await repositories.transaction.query("RELEASE SAVEPOINT invoice_numbering");
         for (const line of computed.lines) {
           await repositories.transaction.query(
             `INSERT INTO billing_invoice_lines

@@ -204,7 +204,9 @@ describe.runIf(enabled)("Billing invoice process PostgreSQL certification", () =
     expect(listed[0]).toMatchObject({
       projectId, environment: "development", currency: "CHF",
       totalMicros: "430000", total: "0.430000", periodStart: "2026-07-01",
+      invoiceNumber: "1",
     });
+    expect(listed[0]!.dueAt).toMatch(/^\d{4}-\d{2}-\d{2}/);
     expect(listed[0]!.lines.map((line) => [line.metric, line.amountMicros])).toEqual([
       ["queue_operations", "250000"],
       ["storage_egress_bytes", "180000"],
@@ -265,5 +267,51 @@ describe.runIf(enabled)("Billing invoice process PostgreSQL certification", () =
        WHERE i.organization_id=$1 AND i.project_id=$2 AND i.period_start='2026-06-01'::date`,
       [organizationId, raceProject]);
     expect(lines.rows[0]?.n).toBe(1);
+  }, 120_000);
+
+  /**
+   * Der Nummernkreis aus Migration 0044 — lueckenlos je Organisation, mit
+   * Faelligkeit als generierter Spalte.
+   *
+   * Die Nummer entsteht im selben Statement wie die Rechnung; wer den
+   * ON-CONFLICT-Wettlauf verliert, rollt seinen Zaehlerstand per SAVEPOINT
+   * zurueck. Die Mutationsprobe dieses Releases nimmt genau diesen Rollback
+   * heraus — dann reisst der verlorene zweite Lauf eine Luecke in den Kreis,
+   * und dieser Fall faellt.
+   */
+  it("numbers invoices gaplessly per organization and stamps the due date", async () => {
+    const issue = async (period: string, windowStart: string) => {
+      const gapProject = randomUUID();
+      await owner.query(`INSERT INTO projects (id,organization_id,name,slug,region,status,created_by)
+        VALUES ($1,$2,'Invoice Gapless',$3,'test','ready',$4)`,
+      [gapProject, organizationId, `invoice-${gapProject}`, controlUser]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id,project_id,environment,database_instance_ref)
+        VALUES ($1,$2,'development',$3)`, [organizationId, gapProject, `managed:${gapProject}`]);
+      await owner.query(`INSERT INTO usage_counters
+        (organization_id,project_id,environment,metric,window_start,window_end,quantity)
+        VALUES ($1,$2,'development','queue_operations',$3::timestamptz,$3::timestamptz + interval '1 month',100)`,
+      [organizationId, gapProject, windowStart]);
+      const { child, output } = invoiceProcess(period);
+      try { await waitFor(output, "billing.invoice.run_completed"); } finally { child.kill(); }
+      expect(output()).toContain('"event":"billing.invoice.issued"');
+    };
+
+    await issue("2026-05", "2026-05-01T00:00:00.000Z");
+    // Ein zweiter Lauf derselben Periode verliert still — und laesst keine
+    // Luecke: Sein Zaehlerstand faellt mit dem SAVEPOINT.
+    const rerun = invoiceProcess("2026-05");
+    try { await waitFor(rerun.output, "billing.invoice.run_completed"); } finally { rerun.child.kill(); }
+    expect(rerun.output()).toContain('"event":"billing.invoice.exists"');
+    await issue("2026-04", "2026-04-01T00:00:00.000Z");
+
+    const numbers = await owner.query<{ invoice_number: string }>(
+      `SELECT invoice_number::text AS invoice_number FROM billing_invoices
+       WHERE organization_id=$1 ORDER BY invoice_number::bigint ASC`, [organizationId]);
+    expect(numbers.rows.map((row) => row.invoice_number)).toEqual(["1", "2", "3", "4"]);
+    const due = await owner.query<{ consistent: boolean }>(
+      `SELECT bool_and(due_at = issued_at + interval '30 days') AS consistent
+       FROM billing_invoices WHERE organization_id=$1`, [organizationId]);
+    expect(due.rows[0]?.consistent).toBe(true);
   }, 120_000);
 });

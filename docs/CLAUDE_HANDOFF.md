@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.80.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.81.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.80.0`
-- Aktueller Slice: 1.80 Das Dokument sagt die Wahrheit — das OpenAPI-Dokument
+- Paketversion: `1.81.0`
+- Aktueller Slice: 1.81 Der Kreis ohne Luecken — Rechnungsnummern lueckenlos je
+  Organisation (Migration 0044): Nummer und Rechnung entstehen in **einem**
+  Statement (CTE-Upsert auf billing_invoice_counters), der ON-CONFLICT-Verlierer
+  rollt seinen Zaehlerstand per SAVEPOINT zurueck; due_at per DEFAULT
+  (timestamptz + interval ist nicht immutable — keine generierte Spalte)
+- Vorheriger Slice: 1.80 Das Dokument sagt die Wahrheit — das OpenAPI-Dokument
   der Generated Data API beschreibt Views (nur GET, Pflicht-Sortierspalte, nur
   mit security_invoker) und RPC (nur was callFunction annaehme; Volatilitaet
   steht im Summary); hoechstens 200 Funktionen je Schema
@@ -126,7 +131,7 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0043_project_storage_upload_id_check_fix.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0044_billing_invoice_numbers.sql`
   — die eine Tuer fuer Image-Deployments: Wechsel nur zusammen mit der
   append-only Historienzeile. Davor: `db/migrations/0041_project_storage_multipart.sql`
   — `kind` und `provider_upload_id` an der Upload-Reservierung fuer
