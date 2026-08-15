@@ -2258,3 +2258,49 @@ bekannt ist: Er scheitert **nicht** an den beiden Abfragen, die im selben Block
 stehen. Der naechste Kandidat ist der Unterschied zwischen den beiden
 Umgebungen — hier eine einzeln gestartete Datenbank, dort ein Stack mit
 parallelen Testdateien.
+
+## Der Herzschlag, den niemand schreiben konnte — Release 1.61
+
+Release 1.60 hat belegt, dass Übernehmen und Aufräumen des Provisioners gegen
+echtes PostgreSQL funktionieren, und die offene Frage damit verengt. Sie ist
+jetzt beantwortet, und die Antwort stand die ganze Zeit eine Zeile darüber.
+
+`heartbeat()` schreibt mit `INSERT … ON CONFLICT (organization_id,
+provisioner_id) DO UPDATE`. PostgreSQL verlangt für den Konfliktpfad
+**SELECT-Recht auf den Spalten des Arbiter-Index**; Migration 0021 hat mit
+`REVOKE ALL` alles genommen und danach nur `INSERT` und `UPDATE (last_seen_at)`
+erteilt. Der Aufruf endet mit `permission denied for table` — und zwar schon
+beim ersten Einfügen, weil das Recht beim Planen geprüft wird und nicht erst
+beim Konflikt.
+
+Er steht als **erster** Aufruf in demselben `try`, das auch `quarantineExpired`
+umfasst, und dessen `catch` verschluckt die Ursache. Jede Runde des Prozesses
+endete deshalb in `claim_failed`, bevor sie einen Auftrag auch nur gesucht hat.
+Seit es diesen Prozess gibt, hat er nie etwas getan.
+
+Migration 0036 erteilt genau die beiden Arbiter-Spalten und keine weitere. Die
+Zeilenpolitik aus 0021 bleibt die Grenze: Sie bindet jeden Zugriff an
+`qkern.actor_ref`.
+
+Zwei neue Fälle, beide gegen echtes PostgreSQL mit der echten Rolle:
+
+- Der Heartbeat wird geschrieben und danach aufgefrischt — beide Wege, der
+  Einfüge- und der Konfliktpfad.
+- Ein Provisioner sieht den Heartbeat eines anderen nicht. Das neue Leserecht
+  darf die Grenze nicht aufmachen, und es tut es nicht.
+
+Mutationsprobe: Das Leserecht wird auf `started_at, last_seen_at` gelegt statt
+auf die Arbiter-Spalten — **genau die zwei neuen Fälle fallen**, 127 von 129.
+Damit ist belegt, dass die Arbiter-Spalten es tragen und nicht das Leserecht
+als solches.
+
+Diagnostiziert wurde wieder lokal gegen eine einzeln gestartete Datenbank, mit
+der Fehlerursache ausgepackt statt verschluckt. Das ist derselbe Weg wie in
+1.60 und hat wieder Minuten statt Stunden gekostet.
+
+Checkpoint `1.61.0` am 15. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 129 von 129, exit 0, zweimal reproduziert, 36 Migrationen.
+
+Nicht erbracht: Der Prozessnachweis fehlt weiterhin. Was ihm im Weg stand, ist
+weg; was noch fehlt, ist ein Broker, den der Provisioner rufen kann — der
+Zertifizierungsstack hat noch keinen.

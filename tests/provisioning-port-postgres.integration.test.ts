@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { PostgresProjectDatabaseProvisioningPort } from "@/lib/server/provisioning/postgres-port";
+import { withTenantTransaction } from "@/lib/server/db/transaction";
 import type { SqlPool } from "@/lib/server/db/sql";
 
 /**
@@ -51,6 +52,17 @@ describe.runIf(enabled)("Provisioning port PostgreSQL certification", () => {
     return { projectId, jobId };
   }
 
+  /** Nachgesehen wird mit der Eigentuemerrolle: Der Beleg soll nicht davon
+   * abhaengen, was der Provisioner selbst lesen darf. */
+  async function heartbeatRow(provisionerId: string) {
+    const result = await owner.query<{ started_at: string; last_seen_at: string }>(
+      `SELECT started_at::text AS started_at, last_seen_at::text AS last_seen_at
+       FROM project_database_provisioner_heartbeats
+       WHERE organization_id = $1 AND provisioner_id = $2`,
+      [organizationId, provisionerId]);
+    return result.rows[0];
+  }
+
   beforeAll(async () => {
     owner = createPostgresPool({ connectionString: ownerUrl!, max: 2 });
     await owner.query(`INSERT INTO users (id,email,password_hash,status)
@@ -73,6 +85,57 @@ describe.runIf(enabled)("Provisioning port PostgreSQL certification", () => {
 
   afterAll(async () => {
     await Promise.allSettled([provisioner?.end(), owner?.end()]);
+  });
+
+  /**
+   * Der Aufruf, an dem der Prozess seit Migration 0021 scheiterte.
+   *
+   * `heartbeat()` schreibt mit `INSERT … ON CONFLICT DO UPDATE`, und
+   * PostgreSQL verlangt dafuer SELECT-Recht auf den Spalten des
+   * Arbiter-Index. Migration 0021 hat nur INSERT und UPDATE erteilt — der
+   * Aufruf endete mit `permission denied for table`, schon beim ersten
+   * Einfuegen, weil das Recht beim Planen geprueft wird und nicht erst beim
+   * Konflikt.
+   *
+   * Er steht als **erster** Aufruf in dem `try`, das auch `quarantineExpired`
+   * umfasst. Damit endete jede Runde in `claim_failed`, bevor sie einen
+   * Auftrag ueberhaupt gesucht hat. Release 1.60 hat die beiden anderen
+   * Operationen dieses Blocks belegt und den Grund damit hierher verengt.
+   *
+   * Zweimal gerufen, weil beide Wege zaehlen: der erste schreibt, der zweite
+   * laeuft ueber den Konfliktpfad.
+   */
+  it("writes and refreshes its heartbeat", async () => {
+    const provisionerId = `certification-heartbeat-${randomUUID()}`;
+    await port.heartbeat(provisionerId);
+    const first = await heartbeatRow(provisionerId);
+    expect(first, "Kein Heartbeat geschrieben").not.toBeUndefined();
+
+    await port.heartbeat(provisionerId);
+    const second = await heartbeatRow(provisionerId);
+    expect(second?.started_at).toBe(first?.started_at);
+    expect(Date.parse(second!.last_seen_at)).toBeGreaterThanOrEqual(Date.parse(first!.last_seen_at));
+  });
+
+  /**
+   * Das neue Leserecht darf die Grenze nicht aufmachen.
+   *
+   * Es ist auf zwei Spalten beschraenkt, und die Zeilenpolitik aus 0021 bindet
+   * jeden Zugriff an `qkern.actor_ref`. Ein Provisioner sieht also weiterhin
+   * ausschliesslich seinen eigenen Heartbeat.
+   */
+  it("cannot read another provisioner's heartbeat", async () => {
+    const mine = `certification-visible-${randomUUID()}`;
+    const peer = `certification-hidden-${randomUUID()}`;
+    await port.heartbeat(mine);
+    await port.heartbeat(peer);
+
+    const seen = await withTenantTransaction(
+      provisioner, { organizationId, actorRef: mine },
+      (transaction) => transaction.query<{ provisioner_id: string }>(
+        "SELECT provisioner_id FROM project_database_provisioner_heartbeats"),
+    );
+    expect(seen.rows.map((row) => row.provisioner_id)).toEqual([mine]);
   });
 
   it("claims a pending job and takes a lease", async () => {

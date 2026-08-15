@@ -624,3 +624,15 @@ Eine erste Probe weichte die Mandantenbedingung zu `OR true` auf und traf
 **nicht** — die Grenze trägt RLS, nicht das Prädikat. Sie ist nicht abgelegt,
 weil ein grüner Lauf keine Evidenz für eine Mutation ist; der Befund steht in der
 Release Note.
+
+## Läufe zu Release 1.61 (15. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-15/provisioner-heartbeat-run1.log` | PostgreSQL 17 | 129 von 129, exit 0, 36 Migrationen |
+| `2026-08-15/provisioner-heartbeat-run2.log` | PostgreSQL 17 | 129 von 129, exit 0, Wiederholung |
+| `2026-08-15/provisioner-heartbeat-mutation.log` | PostgreSQL 17 | **127 von 129, exit 1 — absichtlich** |
+
+Die Mutation legt das Leserecht auf `started_at, last_seen_at` statt auf die
+Arbiter-Spalten des `ON CONFLICT`. Genau die zwei Heartbeat-Fälle fallen — die
+Arbiter-Spalten tragen es, nicht das Leserecht als solches.

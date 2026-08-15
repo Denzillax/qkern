@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.60.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.61.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -110,7 +110,10 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0035_project_function_slots.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0036_provisioner_heartbeat_upsert_grant.sql`
+  — sie erteilt dem Provisioner das Leserecht auf den Arbiter-Spalten seines
+  Heartbeat-`ON CONFLICT`. Ohne dieses Recht scheiterte der erste Aufruf jeder
+  Runde, und der Prozess hat seit Migration 0021 nie gearbeitet.
 - Webhook-Outbox: `lib/server/compute/webhook-outbox.ts` und `webhook-postgres-repository.ts`
 - Cron: `lib/server/compute/cron-scheduler.ts` und `cron-postgres-repository.ts`
 - Realtime-Domäne: `lib/server/realtime/` mit `postgres-repository.ts`, `event-bus.ts` und `change-source.ts`

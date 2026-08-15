@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "provisioner-heartbeat-run1.log",
+  "commit": "c00b12d8dae4798b09c4b0632580faa5ce31bc04",
+  "commitSubject": "release: 1.60.0 Die offene Frage wird kleiner",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 36,
+  "testFiles": "21 passed (21)",
+  "tests": "129 passed (129)",
+  "passed": 129,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
