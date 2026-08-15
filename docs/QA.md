@@ -2341,3 +2341,45 @@ reproduziert, 37 Migrationen.
 Nicht erbracht: Der Broker richtet keine Datenbank ein — belegt ist der Weg bis
 zur Bindung. Ablehnung, Zeitablauf und verlorene Lease sind als Bibliothek
 zertifiziert, nicht als Prozess.
+
+## Ein Muster, das sich selbst findet — Release 1.63
+
+Release 1.62 endete mit dem Satz, drei Treffer desselben Rechtemusters in zwei
+Releases seien kein Zufall. Dieses Release macht daraus einen Vertrag — und der
+Vertrag hat sofort einen vierten gefunden, den schwersten von allen.
+
+**Seit Migration 0019 konnte die Control Plane keinen Apply-Auftrag mehr
+einreihen.** `enqueueApproved()` schreibt das Auftragsereignis mit
+`INSERT … ON CONFLICT (organization_id, migration_job_id, event_type)
+DO NOTHING`; ein benannter Arbiter verlangt Leserecht auf diesen Spalten, und
+0019 hat der Laufzeit `SELECT ON migration_outbox` entzogen. Auftrag und
+Ereignis stehen in einer Transaktion — es entstand nicht ein Auftrag ohne
+Ereignis, sondern gar nichts.
+
+Alles dahinter war zertifiziert. Nur konnte nie jemand einen Auftrag
+davorstellen; die Testaufbauten haben ihre Zeilen als Eigentümer geschrieben.
+
+Gemessen statt angenommen, welche Form das Recht verlangt:
+
+| Anweisung | ohne Leserecht |
+| --- | --- |
+| `INSERT` schlicht | läuft bis zur Zeilenpolitik |
+| `INSERT … ON CONFLICT DO NOTHING` | läuft bis zur Zeilenpolitik |
+| `INSERT … ON CONFLICT (spalten) DO NOTHING` | **permission denied** |
+
+Der Vertrag liest die Anweisungen aus dem Adapter und die Rechte aus dem
+laufenden Cluster — beides abgeleitet, nichts von Hand gepflegt. 95 Anweisungen
+fallen darunter; 9 Spaltenlisten und 471 Platzhalter meldet er als nicht
+auswertbar, statt sie zu verschweigen.
+
+Migration 0038 erteilt genau die drei Arbiter-Spalten. Lease- und Broker-Zustand
+bleiben unlesbar, belegt durch einen eigenen Fall.
+
+Mutationsprobe: Leserecht auf `created_at` statt auf die Arbiter-Spalten — die
+beiden Einreihungsfälle und der Vertrag selbst fallen. Ein vierter Fall ist
+mitgefallen, der nichts damit zu tun hat: ein Lastfall auf dem Queue-Weg, den
+beide grünen Läufe bestanden haben. Er ist nicht erklärt und steht so in den
+Belegen.
+
+Checkpoint `1.63.0` am 15. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 134 von 134, exit 0, zweimal reproduziert, 38 Migrationen.

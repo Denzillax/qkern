@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "privilege-clause-run2.log",
+  "commit": "ef2fb02e18a6cc537cb6af635c23f335c1f86736",
+  "commitSubject": "release: 1.62.0 Der siebte Prozess",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 38,
+  "testFiles": "23 passed (23)",
+  "tests": "134 passed (134)",
+  "passed": 134,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

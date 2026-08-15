@@ -649,3 +649,21 @@ Arbiter-Spalten tragen es, nicht das Leserecht als solches.
 
 Die Mutation macht das `RETURNING` in `complete()` wieder unqualifiziert. Genau
 der Provisionierungsfall fällt.
+
+## Läufe zu Release 1.63 (15. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-15/privilege-clause-run1.log` | PostgreSQL 17 | 134 von 134, exit 0, 38 Migrationen |
+| `2026-08-15/privilege-clause-run2.log` | PostgreSQL 17 | 134 von 134, exit 0, Wiederholung |
+| `2026-08-15/privilege-clause-mutation.log` | PostgreSQL 17 | **130 von 134, exit 1 — drei absichtlich, einer nicht** |
+
+Die Mutation legt das Leserecht auf `created_at` statt auf die drei
+Arbiter-Spalten. Es fallen die beiden Einreihungsfälle und der Vertrag selbst —
+genau die drei, die davon abhängen.
+
+Der **vierte** Fall — `claims every message exactly once across six competing
+instances` — hat mit der Mutation nichts zu tun: Er liegt auf dem Queue-Weg, den
+sie nicht berührt, und beide grünen Läufe haben ihn bestanden. Er ist einmal in
+drei Läufen mit einem `PersistenceError` beim Einreihen gescheitert. Das ist
+nicht erklärt, und es steht hier, statt weggelassen zu werden.
