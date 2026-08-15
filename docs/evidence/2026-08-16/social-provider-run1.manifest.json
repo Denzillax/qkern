@@ -1,0 +1,19 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "social-provider-run1.log",
+  "commit": "a605b085337a0740f083a17041a319e180ec016b",
+  "commitSubject": "release: 1.75.0 Der Editor hoert auf zu schauspielern",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "testFiles": "1 passed (1)",
+  "tests": "6 passed (6)",
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "dexidp/dex:v2.41.1",
+    "axllent/mailpit:v1.21.8",
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine"
+  ]
+}

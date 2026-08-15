@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.75.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.76.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -21,7 +21,7 @@ zählt.
 | Fähigkeit | Supabase | QKERN heute | Was fehlt |
 | --- | --- | --- | --- |
 | Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`) | ein Broker, der wirklich Datenbanken einrichtet; Betrieb (unten) |
-| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE, JWKS — zertifiziert gegen echtes SMTP und echtes OIDC | Social-Provider-Katalog, SAML, SMS; jede Integration braucht eine echte Gegenstelle im Stack |
+| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE, JWKS — zertifiziert gegen echtes SMTP und echtes OIDC | seit `1.76.0` ist der Provider-Katalog gegen zwei echte, getrennte OIDC-Gegenstellen belegt; offen: kommerzielle Provider-Eigenheiten (echte Konten), SAML, SMS |
 | Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views, seit `1.72.0` RPC ueber SECURITY-INVOKER-Funktionen | Aggregate, eingebettete Joins, OpenAPI fuer Views und RPC |
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert | Bildtransformation, CDN |
 | Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | seit `1.73.0` ersetzt ein Tor mit benannten Bedingungen das Production-Verbot; offen: belegter Production-Start gegen SSL-PostgreSQL, persistente Presence/History, Lastprofil jenseits Soak |
@@ -42,7 +42,7 @@ zählt.
 5. ~~Realtime: Production-Binding mit begründeter Aufhebung des Verbots~~ — **erledigt in `1.73.0`** (Tor statt Verbot; der belegte Production-Start braucht SSL-PostgreSQL und liegt bei Sprosse 10).
 6. ~~Compute: Image-Deployment-Fluss~~ — **erledigt in `1.74.0`.**
 7. **SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI — nächster Slice (braucht CI-Infrastruktur ausserhalb dieser Maschine).**
-8. Auth: erster Social-Provider gegen echte Gegenstelle.
+8. ~~Auth: erster Social-Provider gegen echte Gegenstelle~~ — **erledigt in `1.76.0`** (zwei getrennte Dex-Provider; kommerzielle Anbieter brauchen echte Konten).
 9. ~~Console: SQL-Editor (read-only beginnend)~~ — **erledigt in `1.75.0`**; die vorige Fassung zeigte hartkodierte Beispielzeilen und rief die Route nie.
 10. Betrieb: PITR-/Restore-Drill gegen echtes WAL-Archiv — der erste Schritt,
     der eine Infrastruktur ausserhalb des Wegwerfstacks braucht.

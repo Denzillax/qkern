@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 16. August 2026 · Release: `1.75.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 16. August 2026 · Release: `1.76.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -46,7 +46,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
 | **PostgreSQL-17-Zertifizierung** | **149 von 149 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **6 von 6 bestanden, exit 0, zweimal reproduziert — seit `1.70.0` läuft der fortsetzbare Upload über den ganzen Dienstweg, und der Virenscanner verifiziert die Ganzdatei-Prüfsumme** |
-| **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
+| **Project-Auth-Provider-Zertifizierung** | **6 von 6 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **14 von 14 bestanden, exit 0, zweimal reproduziert** |

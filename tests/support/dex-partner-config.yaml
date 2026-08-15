@@ -1,0 +1,38 @@
+# Zweiter, eigenstaendiger OIDC-Provider des Auth-Zertifizierungsstacks.
+#
+# Er existiert, damit die Provider-Trennung gegen zwei **echte** Gegenstellen
+# belegt ist: eigener Issuer, eigene Schluessel, eigener Client. Dieselbe
+# E-Mail-Adresse existiert bei beiden Providern — genau daran zeigt sich, wie
+# Identitaeten verknuepft werden und dass ein State des einen Providers beim
+# anderen nichts wert ist.
+
+issuer: https://partner.qkern.test:5557/dex
+
+storage:
+  type: memory
+
+web:
+  https: 0.0.0.0:5557
+  tlsCert: /certs/partner.crt
+  tlsKey: /certs/partner.key
+
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: qkern-partner
+    secret: qkern-partner-secret
+    name: QKERN Partner Certification
+    redirectURIs:
+      - http://localhost:3000/api/v1/projects/11111111-1111-4111-8111-111111111111/environments/development/auth/oidc/partner/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  # Dieselbe E-Mail wie beim ersten Provider, aber ein anderes Subject: Die
+  # Verknuepfung darf ueber die verifizierte E-Mail laufen, niemals ueber die
+  # Subject-Gleichheit zweier Provider.
+  - email: oidc-user@qkern.test
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: partneruser
+    userID: 9f8e7d6c-5b4a-4392-8170-6e5d4c3b2a19

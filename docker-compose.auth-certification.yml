@@ -22,7 +22,12 @@ services:
           -subj /CN=dex.qkern.test \
           -addext subjectAltName=DNS:dex.qkern.test \
           -keyout /certs/dex.key -out /certs/dex.crt
-        chmod 0644 /certs/dex.key /certs/dex.crt
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=partner.qkern.test \
+          -addext subjectAltName=DNS:partner.qkern.test \
+          -keyout /certs/partner.key -out /certs/partner.crt
+        cat /certs/dex.crt /certs/partner.crt > /certs/oidc-bundle.crt
+        chmod 0644 /certs/dex.key /certs/dex.crt /certs/partner.key /certs/partner.crt /certs/oidc-bundle.crt
     volumes:
       - auth-certification-certs:/certs
 
@@ -54,11 +59,31 @@ services:
         aliases:
           - dex.qkern.test
 
+  # Der zweite echte Provider: eigener Issuer, eigene Schluessel, eigener
+  # Client. Er belegt die Provider-Trennung — ein State des einen Providers
+  # ist beim anderen nichts wert, und Identitaeten verknuepfen sich ueber die
+  # verifizierte E-Mail, nie ueber Subject-Gleichheit.
+  dex-partner:
+    image: dexidp/dex:v2.41.1
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    volumes:
+      - auth-certification-certs:/certs:ro
+      - ./tests/support/dex-partner-config.yaml:/etc/dex/config.yaml:ro
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    networks:
+      default:
+        aliases:
+          - partner.qkern.test
+
   certification:
     image: node:24.7.0-alpine
     working_dir: /workspace/qkern
     depends_on:
       dex:
+        condition: service_started
+      dex-partner:
         condition: service_started
       mailpit:
         condition: service_healthy
@@ -67,7 +92,7 @@ services:
       - auth-certification-certs:/certs:ro
     environment:
       NODE_ENV: test
-      NODE_EXTRA_CA_CERTS: /certs/dex.crt
+      NODE_EXTRA_CA_CERTS: /certs/oidc-bundle.crt
       QKERN_TEST_PROJECT_AUTH_PROVIDER_E2E: "true"
       QKERN_TEST_AUTH_SMTP_HOST: mailpit
       QKERN_TEST_AUTH_SMTP_PORT: "1025"
@@ -77,6 +102,9 @@ services:
       QKERN_PROJECT_AUTH_OIDC_SECRET_CERTIFICATION: qkern-certification-secret
       QKERN_TEST_AUTH_OIDC_USER: oidc-user@qkern.test
       QKERN_TEST_AUTH_OIDC_PASSWORD: password
+      QKERN_TEST_AUTH_OIDC_PARTNER_ISSUER: https://partner.qkern.test:5557/dex
+      QKERN_TEST_AUTH_OIDC_PARTNER_CLIENT_ID: qkern-partner
+      QKERN_PROJECT_AUTH_OIDC_SECRET_PARTNER: qkern-partner-secret
     command:
       - "sh"
       - "-ec"

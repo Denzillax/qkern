@@ -30,6 +30,8 @@ const MAILBOX = process.env.QKERN_TEST_AUTH_MAILBOX_URL ?? "http://mailpit:8025"
 const ISSUER = process.env.QKERN_TEST_AUTH_OIDC_ISSUER ?? "";
 const CLIENT_ID = process.env.QKERN_TEST_AUTH_OIDC_CLIENT_ID ?? "";
 const OIDC_USER = process.env.QKERN_TEST_AUTH_OIDC_USER ?? "";
+const PARTNER_ISSUER = process.env.QKERN_TEST_AUTH_OIDC_PARTNER_ISSUER ?? "";
+const PARTNER_CLIENT_ID = process.env.QKERN_TEST_AUTH_OIDC_PARTNER_CLIENT_ID ?? "";
 const OIDC_PASSWORD = process.env.QKERN_TEST_AUTH_OIDC_PASSWORD ?? "";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -71,6 +73,17 @@ function createService() {
       jwksUri: `${ISSUER}/keys`,
       clientId: CLIENT_ID,
       clientSecretEnv: "QKERN_PROJECT_AUTH_OIDC_SECRET_CERTIFICATION",
+      scopes: ["openid", "email", "profile"],
+    }, {
+      // Der zweite echte Provider (eigener Dex, eigene Schluessel). Er steht
+      // im Katalog wie ein Social-Login stuende: eigener Slug, eigener Client.
+      id: "partner",
+      issuer: PARTNER_ISSUER,
+      authorizationEndpoint: `${PARTNER_ISSUER}/auth`,
+      tokenEndpoint: `${PARTNER_ISSUER}/token`,
+      jwksUri: `${PARTNER_ISSUER}/keys`,
+      clientId: PARTNER_CLIENT_ID,
+      clientSecretEnv: "QKERN_PROJECT_AUTH_OIDC_SECRET_PARTNER",
       scopes: ["openid", "email", "profile"],
     }]),
     oidcClient: new ProjectAuthOidcClient(process.env),
@@ -121,8 +134,8 @@ function tokenFromMail(text: string, expectedType: string): string {
  * folgen. Die Formularadresse wird aus dem HTML gelesen statt geraten, damit
  * der Nachweis nicht an einem Versionsdetail von Dex haengt.
  */
-async function authorizeWithDex(authorizationUrl: string): Promise<{ code: string; state: string }> {
-  const origin = new URL(ISSUER).origin;
+async function authorizeWithDex(authorizationUrl: string, issuer = ISSUER): Promise<{ code: string; state: string }> {
+  const origin = new URL(issuer).origin;
   const callbackOrigin = new URL(CALLBACK_BASE).origin;
   let current = authorizationUrl;
 
@@ -273,6 +286,59 @@ describe.runIf(enabled)("Project Auth provider certification", () => {
     await expect(service.completeOidc(scope, { provider: "certification", state, code }))
       .rejects.toMatchObject({ name: "ProjectAuthError" });
   });
+
+  /**
+   * Der Provider-Katalog mit zwei **echten** Gegenstellen — Sprosse 8.
+   *
+   * Derselbe Mensch existiert bei beiden Providern unter derselben E-Mail,
+   * aber mit verschiedenen Subjects. Die Verknuepfung laeuft ueber die
+   * verifizierte E-Mail; ein State des einen Providers ist beim anderen
+   * nichts wert — genau diese Bindung nimmt die Mutationsprobe dieses
+   * Releases heraus.
+   */
+  it("keeps two real providers separate and links identities by verified mail", async () => {
+    const service = createService();
+
+    const first = await service.startOidc(scope, {
+      provider: "certification", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const certification = await authorizeWithDex(first.authorizationUrl);
+    const sessionA = await service.completeOidc(scope, {
+      provider: "certification", state: certification.state, code: certification.code,
+    });
+    if ("mfaRequired" in sessionA) throw new Error("unexpected MFA");
+    const principalA = await service.verifyAccess(scope, sessionA.accessToken);
+
+    const second = await service.startOidc(scope, {
+      provider: "partner", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const partner = await authorizeWithDex(second.authorizationUrl, PARTNER_ISSUER);
+    const sessionB = await service.completeOidc(scope, {
+      provider: "partner", state: partner.state, code: partner.code,
+    });
+    if ("mfaRequired" in sessionB) throw new Error("unexpected MFA");
+    const principalB = await service.verifyAccess(scope, sessionB.accessToken);
+
+    // Gleiche verifizierte E-Mail bei zwei Providern: ein Konto, zwei
+    // Identitaeten — nicht zwei Konten und nicht eine uebernommene Identitaet.
+    expect(principalB.user.id).toBe(principalA.user.id);
+    expect(principalB.user.email).toBe(OIDC_USER);
+
+    // Ein State, der fuer den einen Provider ausgestellt wurde, ist beim
+    // anderen genau das: ungueltig.
+    const crossed = await service.startOidc(scope, {
+      provider: "certification", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const crossedLogin = await authorizeWithDex(crossed.authorizationUrl);
+    await expect(service.completeOidc(scope, {
+      provider: "partner", state: crossedLogin.state, code: crossedLogin.code,
+    })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+
+    // Ein Provider, den der Katalog nicht kennt, existiert nicht.
+    await expect(service.startOidc(scope, {
+      provider: "github", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+  }, 60_000);
 });
 
 /** Wie waitForMail, aber wartet auf eine bestimmte Betreffzeile an diese Adresse. */

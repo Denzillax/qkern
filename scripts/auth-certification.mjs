@@ -18,7 +18,10 @@ const run = (...args) => spawnSync("docker", [...compose, ...args], { stdio: "in
 
 // --wait blockiert, bis dex und mailpit gesund beziehungsweise gestartet sind
 // und der Zertifikatsdienst erfolgreich beendet ist.
-const up = run("up", "--detach", "--wait", "--force-recreate", "dex", "mailpit");
+// Die Dienste stehen hier namentlich — wer einen in der Compose-Datei
+// ergaenzt und diese Liste vergisst, hat einen Dienst, der nie laeuft.
+// Genau so fehlte dex-partner beim ersten Zwei-Provider-Lauf.
+const up = run("up", "--detach", "--wait", "--force-recreate", "dex", "dex-partner", "mailpit");
 
 let status = up.status ?? 1;
 if (status === 0) {

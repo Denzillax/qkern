@@ -49,7 +49,7 @@ describe("Project Auth provider certification harness", () => {
     expect(dex).toContain("issuer: https://dex.qkern.test:5556/dex");
     expect(dex).toContain("tlsCert: /certs/dex.crt");
     expect(compose).toContain("- dex.qkern.test");
-    expect(compose).toContain("NODE_EXTRA_CA_CERTS: /certs/dex.crt");
+    expect(compose).toContain("NODE_EXTRA_CA_CERTS: /certs/oidc-bundle.crt");
     expect(compose).not.toMatch(/NODE_TLS_REJECT_UNAUTHORIZED/);
   });
 

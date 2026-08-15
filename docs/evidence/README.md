@@ -824,3 +824,19 @@ der Fall fällt, der verlangt, dass jede Image-Änderung ihre Historie trägt.
 Die Mutation entfernt den Parser-Wächter der Read-only-Abfrage. Genau der
 Abwehrfall fällt: Der zugesagte Fehlercode fehlt — die Daten blieben auch unter
 Mutation unverändert, weil `BEGIN READ ONLY` als zweite Linie stand.
+
+## Läufe zu Release 1.76 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/social-provider-run1.log` | Mailpit und Dex (2 Provider) | 6 von 6, exit 0 |
+| `2026-08-16/social-provider-run2.log` | Mailpit und Dex (2 Provider) | 6 von 6, exit 0, Wiederholung |
+| `2026-08-16/social-provider-mutation.log` | Mailpit und Dex (2 Provider) | **5 von 6, exit 1 — absichtlich** |
+
+Die Mutation entfernt die Provider-Bindung des Autorisierungs-States. Genau der
+Zwei-Provider-Fall fällt: Der fremde State liefe bis zum Code-Austausch und
+scheiterte dort mit dem falschen Fehler.
+
+Ein erster Lauf scheiterte an `ENOTFOUND partner.qkern.test`: Das Startskript
+fährt Dienste namentlich hoch, und der neue Dex stand in der Compose-Datei,
+aber nicht in der Liste. Der Lauf wurde verworfen und nach dem Fix wiederholt.

@@ -2800,3 +2800,33 @@ PostgreSQL 149 von 149, exit 0, zweimal reproduziert, 42 Migrationen.
 Nicht erbracht: Die Console-Ansicht selbst ist nicht automatisiert getestet
 (kein Browser-E2E im Projekt). Die Ergebnisdarstellung ist bewusst schlicht.
 Das 5-Sekunden-Zeitbudget ist nicht als Fall belegt.
+
+## Zwei Provider, ein Konto, klare Grenzen — Release 1.76
+
+Sprosse 8 der Paritätsleiter: Der Provider-Katalog ist gegen zwei echte,
+getrennte OIDC-Gegenstellen belegt. Der Katalog existierte seit der
+OIDC-Einführung, belegt war ein einziger Provider.
+
+Der Aufbau: ein zweiter, eigenständiger Dex — eigener Issuer, eigene
+Schlüssel, eigener Client. Derselbe Mensch existiert bei beiden Providern
+unter derselben E-Mail mit verschiedenen Subjects. Belegt: Der Login über den
+zweiten Provider landet beim selben Auth-User, verknüpft über die verifizierte
+E-Mail und niemals über Subject-Gleichheit; ein Autorisierungs-State des einen
+Providers wird beim anderen mit `INVALID_TOKEN` abgewiesen; ein unbekannter
+Slug existiert nicht.
+
+Ein Fund am Werkzeug: Der erste Lauf scheiterte an `ENOTFOUND` — das
+Startskript des Auth-Stacks fährt seine Dienste namentlich hoch, und der neue
+Dex stand in der Compose-Datei, aber nicht in der Liste. Ein Dienst, der
+existiert und nie läuft, diesmal am Zertifizierungswerkzeug selbst.
+
+Mutationsprobe: Die Provider-Bindung des States entfernt — **5 von 6**, genau
+der Zwei-Provider-Fall.
+
+Checkpoint `1.76.0` am 16. August 2026: Lokal 1064 bestanden, 0 fehlgeschlagen;
+Mailpit/Dex 6 von 6, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Dex ist kein GitHub — kommerzielle Provider-Eigenheiten
+brauchen echte Konten. Die E-Mail-Verknüpfung vertraut der Verifizierung des
+Providers; ein `email_verified`-Erfordernis je Provider fehlt. Kein
+Console-Fluss für die Provider-Auswahl.
