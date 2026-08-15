@@ -79,7 +79,13 @@ describe("status numbers contract", () => {
       const best = Math.max(...green.map((entry) => entry.passed));
       expect(`${claim.label}: ${passed}`).toBe(`${claim.label}: ${best}`);
     }
-  });
+    // Explizites Budget statt der 5-Sekunden-Voreinstellung: Der Vertrag
+    // liest inzwischen jedes archivierte Manifest, und unter I/O-Last eines
+    // vollen Suitenlaufs riss die Voreinstellung — als transienter Einzelfall
+    // in 1.83 zuerst unerklaert, in 1.84 mit diesem Timeout als Ursache
+    // identifiziert. Dieselbe Regel wie bei den Webhook-Faellen aus 1.63:
+    // Budgets werden ausgesprochen, Aussagen nicht abgeschwaecht.
+  }, 30_000);
 
   it("makes no numeric claim that no manifest could back", async () => {
     // Die lokale Vitest-Zeile trug bis Release 1.38 absolute Zahlen, die kein

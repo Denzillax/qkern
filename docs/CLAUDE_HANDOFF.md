@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.83.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.84.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,15 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.83.0`
-- Aktueller Slice: 1.83 Die Auswahl wird aufzählbar — `listOidcProviders` als
+- Paketversion: `1.84.0`
+- Aktueller Slice: 1.84 Der Login kennt seine Türen — öffentlicher
+  Provider-Chooser `GET auth/oidc/providers` hinter derselben pre-auth-Grenze
+  wie authorize (Projekt-Key, Origin-Gate, CORS, no-store); fremder Schlüssel
+  bekommt 404, nicht 403. Drei Quellscan-Verträge (Zahlen, Routen-Grenzen,
+  Erreichbarkeit) tragen jetzt explizite 30s-Budgets — die
+  5-Sekunden-Voreinstellung riss unter Volllast (der transiente Einzelfall aus
+  1.83 war genau das)
+- Vorheriger Slice: 1.83 Die Auswahl wird aufzählbar — `listOidcProviders` als
   Zwei-Felder-Projektion (Slug, Issuer; nie Client-ID oder Secret-Env-Name);
   Admin-Route `auth/admin/providers`, Console zeigt echte Provider; der Katalog
   kannte `list()` seit 1.76, gerufen hat es niemand (zehnter Fund der Klasse

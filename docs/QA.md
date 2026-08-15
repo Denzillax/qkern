@@ -3065,3 +3065,34 @@ Nicht erbracht: Die öffentliche Login-Auswahl (App-seitig, mit Projekt-Key)
 fehlt weiterhin — die Admin-Route ist die Console-Fläche, kein
 Login-Chooser. Die React-Anzeige selbst rendert ungeprüft; geprüft ist der
 Ladeweg.
+
+## Der Login kennt seine Türen — Release 1.84
+
+Der bewusst offene Punkt aus 1.83: Die Admin-Route war die Console-Fläche,
+ein App-seitiger Login-Chooser fehlte. Jetzt gibt es ihn:
+`GET …/auth/oidc/providers` hinter derselben pre-auth-Grenze wie `authorize`
+daneben — Projekt-Key, Origin-Gate, CORS-Echo, `private, no-store`, keine
+Query-Parameter. Eine App kann ihre Login-Buttons aufzählen, statt Slugs zu
+raten. Was zurückkommt, ist die Zwei-Felder-Projektion aus 1.83, gegen zwei
+echte Dex-Provider zertifiziert; ein fremder Schlüssel bekommt **404, nicht
+403** — er erfährt nicht, dass es das Projekt gibt, derselbe Vertrag wie an
+den übrigen Auth-Routen.
+
+Nebenbefund mit Ursache: Der transiente Einzelfall aus 1.83 ist erklärt.
+Drei Quellscan-Verträge (Zertifizierungszahlen, Routen-Grenzen,
+Erreichbarkeitsgraph) lesen inzwischen jedes Manifest bzw. jede Quelle und
+rissen unter der I/O-Last eines vollen Suitenlaufs die
+5-Sekunden-Voreinstellung. Alle drei tragen jetzt explizite 30s-Budgets —
+dieselbe Regel wie bei den Webhook-Fällen aus 1.63: Budgets werden
+ausgesprochen, Aussagen nicht abgeschwächt.
+
+Mutationsprobe: Die Schlüsselprüfung aus der Chooser-Route entfernt — **1 von
+1075 fällt**, genau der Abweisungs-Fall (anonym bekäme 200).
+
+Checkpoint `1.84.0` am 16. August 2026: Lokal 1075 bestanden, 0
+fehlgeschlagen, zweimal reproduziert, exit 0; Mutationslauf archiviert.
+Stacks unverändert: PostgreSQL 155, MinIO/ClamAV 8, Mailpit/Dex 7.
+
+Nicht erbracht: Das SDK kennt den Chooser noch nicht als typisierte Methode.
+Die Route ist lokal gegen die echte Grenz-Implementierung belegt, aber kein
+Stack-Fall spricht sie über das Netz.

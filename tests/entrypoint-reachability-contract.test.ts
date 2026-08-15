@@ -123,7 +123,10 @@ describe("entrypoint reachability contract", () => {
       "— dann ist das der Fund — oder sie sind tot und gehoeren geloescht.",
       "Ein Eintrag in ALLOWED braucht einen Grund, der traegt.",
     ].join(" ")).toEqual([]);
-  });
+  // Explizites Budget wie bei den anderen Quellscan-Vertraegen (1.84): Der
+  // Erreichbarkeitsgraph liest jedes Servermodul, und unter der I/O-Last
+  // eines vollen Suitenlaufs riss die 5-Sekunden-Voreinstellung.
+  }, 30_000);
 
   it("keeps the allowlist honest", () => {
     for (const entry of ALLOWED) {

@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "login-chooser-run2.log",
+  "commit": "b93d7cc3bb1b748f873860c81204b35b3dda32a7",
+  "commitSubject": "release: 1.83.0 Die Auswahl wird aufzaehlbar",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1075 passed | 235 skipped (1310)",
+  "passed": 1075,
+  "failed": 0,
+  "skipped": 235,
+  "images": []
+}

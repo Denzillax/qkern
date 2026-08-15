@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.83.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.84.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -42,7 +42,7 @@ zählt.
 5. ~~Realtime: Production-Binding mit begründeter Aufhebung des Verbots~~ — **erledigt in `1.73.0`** (Tor statt Verbot; der belegte Production-Start braucht SSL-PostgreSQL und liegt bei Sprosse 10).
 6. ~~Compute: Image-Deployment-Fluss~~ — **erledigt in `1.74.0`.**
 7. **SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI — nächster Slice (braucht CI-Infrastruktur ausserhalb dieser Maschine).**
-8. ~~Auth: erster Social-Provider gegen echte Gegenstelle~~ — **erledigt in `1.76.0`** (zwei getrennte Dex-Provider; kommerzielle Anbieter brauchen echte Konten; seit `1.83.0` ist die Provider-Auswahl für Console und Admin-Fläche aufzählbar).
+8. ~~Auth: erster Social-Provider gegen echte Gegenstelle~~ — **erledigt in `1.76.0`** (zwei getrennte Dex-Provider; kommerzielle Anbieter brauchen echte Konten; seit `1.83.0` ist die Provider-Auswahl für Console und Admin-Fläche aufzählbar; seit `1.84.0` auch pre-auth für die App als Login-Chooser).
 9. ~~Console: SQL-Editor (read-only beginnend)~~ — **erledigt in `1.75.0`**; die vorige Fassung zeigte hartkodierte Beispielzeilen und rief die Route nie.
 10. Betrieb: PITR-/Restore-Drill gegen echtes WAL-Archiv — der erste Schritt,
     der eine Infrastruktur ausserhalb des Wegwerfstacks braucht.

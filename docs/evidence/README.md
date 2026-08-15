@@ -926,3 +926,16 @@ des Console-Ladewegs auf die Usage-Route — genau der Ladeweg-Vertrag fällt.
 Die Mutation macht aus der Zwei-Felder-Projektion eine Durchreichung der
 vollen Provider-Objekte — genau der Projektions-Fall fällt, am
 Geheimnis-Muster und an der Form.
+
+## Läufe zu Release 1.84 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/login-chooser-run1.log` | Vitest lokal (Windows) | 1075 bestanden, exit 0 |
+| `2026-08-16/login-chooser-run2.log` | Vitest lokal (Windows) | 1075 bestanden, exit 0, Wiederholung |
+| `2026-08-16/login-chooser-mutation.log` | Vitest lokal (Windows) | **1 fehlgeschlagen, exit 1 — absichtlich** |
+
+Dieser Slice ändert keinen Dienst-Code; die Projektion dahinter ist seit 1.83
+gegen zwei echte Dex-Provider zertifiziert. Die Mutation nimmt die
+Schlüsselprüfung aus der Chooser-Route — ein anonymer Aufrufer bekäme die
+Liste, und genau der Abweisungs-Fall fällt.

@@ -1,0 +1,33 @@
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/project-auth-public-providers-route.test.ts (2 tests | 1 failed) 134ms
+     × refuses anonymous callers, foreign keys, foreign origins and query noise 91ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/project-auth-public-providers-route.test.ts > project auth public providers route > refuses anonymous callers, foreign keys, foreign origins and query noise
+AssertionError: expected 200 to be 401 // Object.is equality
+
+- Expected
++ Received
+
+- 401
++ 200
+
+ ❯ tests/project-auth-public-providers-route.test.ts:63:54
+     61|       { headers: { origin: "https://app.test" } },
+     62|     );
+     63|     expect((await handler(anonymous, route)).status).toBe(401);
+       |                                                      ^
+     64|
+     65|     const foreignKey = createProjectAuthPublicProvidersHandler(() => b…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 164 passed | 33 skipped (198)
+      Tests  1 failed | 1074 passed | 235 skipped (1310)
+   Start at  23:15:19
+   Duration  27.54s (transform 101.33s, setup 0ms, import 206.11s, tests 94.09s, environment 71ms)
+

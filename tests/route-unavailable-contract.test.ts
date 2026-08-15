@@ -84,7 +84,10 @@ const CHECKED: ReadonlyArray<readonly [string, (error: unknown) => Response | Pr
 describe("route unavailable contract", () => {
   it("checks every route error boundary the source declares", () => {
     expect(declaredHandlers()).toEqual(CHECKED.map(([name]) => name).sort());
-  });
+    // Explizites Budget wie beim Zahlen-Vertrag in 1.84: Der Scan liest jede
+    // Routenquelle, und unter der I/O-Last eines vollen Suitenlaufs riss die
+    // 5-Sekunden-Voreinstellung.
+  }, 30_000);
 
   it.each(CHECKED)("answers 503 from %s when no connection was available", async (_name, handler) => {
     const response = await handler(new ConnectionUnavailableError(new Error("timeout")));
