@@ -400,6 +400,21 @@ export class ProjectAuthService {
     return this.createSessionResult(scope, user, "aal2", now);
   }
 
+  /**
+   * Die konfigurierten OIDC-Provider — als Projektion, nie als Durchreichung.
+   *
+   * Der Katalog kannte `list()` seit 1.76; gerufen hat es bis 1.83 niemand —
+   * weder Console noch App konnten die Auswahl aufzaehlen. Nach aussen gehen
+   * genau zwei Felder: Slug und Issuer. Client-ID, Endpunkte und der Name der
+   * Secret-Umgebungsvariablen bleiben drinnen.
+   */
+  listOidcProviders(): Array<{ id: string; issuer: string }> {
+    return this.dependencies.oidcCatalog.list().flatMap((id) => {
+      const provider = this.dependencies.oidcCatalog.get(id);
+      return provider ? [{ id: provider.id, issuer: provider.issuer }] : [];
+    });
+  }
+
   async startOidc(scope: ProjectAuthScope, input: {
     provider: string;
     redirectTo: string;

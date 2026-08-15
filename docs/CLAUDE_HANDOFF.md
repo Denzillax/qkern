@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.82.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.83.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.82.0`
-- Aktueller Slice: 1.82 Rechnungen erreichen den Browser — Console-Karte in
+- Paketversion: `1.83.0`
+- Aktueller Slice: 1.83 Die Auswahl wird aufzählbar — `listOidcProviders` als
+  Zwei-Felder-Projektion (Slug, Issuer; nie Client-ID oder Secret-Env-Name);
+  Admin-Route `auth/admin/providers`, Console zeigt echte Provider; der Katalog
+  kannte `list()` seit 1.76, gerufen hat es niemand (zehnter Fund der Klasse
+  "gebaut und nie gerufen")
+- Vorheriger Slice: 1.82 Rechnungen erreichen den Browser — Console-Karte in
   der Monitoring-Ansicht; der Ladeweg ist als reine Funktion extrahiert
   (`components/console/invoices.ts`) und lokal vertraglich geprueft; die
   Invoices-Route spricht erstmals HTTP (`tests/billing-invoice-routes.test.ts`)

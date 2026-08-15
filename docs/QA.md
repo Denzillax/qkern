@@ -3031,3 +3031,37 @@ Nicht erbracht: Die React-Karte selbst rendert ungeprüft — geprüft ist der
 Ladeweg als Funktion, nicht das Einhängen in React (keine
 Browser-Testumgebung im Repo). Keine Detailansicht der Posten, keine
 Zahlungsanbindung.
+
+## Die Auswahl wird aufzählbar — Release 1.83
+
+Der offene Punkt aus 1.76: Kein Console-Fluss für die Provider-Auswahl. Und
+dahinter der zehnte Fund der Sprint-Klasse „gebaut und nie gerufen": Der
+Provider-Katalog kannte `list()` seit 1.76 — gerufen hat es niemand, weder
+Console noch App konnten die konfigurierten Provider aufzählen.
+
+`listOidcProviders` liefert eine **Zwei-Felder-Projektion**: Slug und Issuer.
+Client-ID, Endpunkte und der Name der Secret-Umgebungsvariablen bleiben
+drinnen. Die Admin-Route `auth/admin/providers` bedient die Console über
+dieselbe Session-Grenze wie die Nutzerliste (kein Projekt-Key, kein
+Query-Parameter, `private, no-store`); die AuthView zeigt statt „Configured
+by environment" die echten Slugs, über einen extrahierten, vertraglich
+geprüften Ladeweg (Muster aus 1.82).
+
+Zertifiziert gegen die zwei echten Dex-Provider des Auth-Stacks: Die Liste
+nennt exakt `certification` und `partner` mit ihren Issuern — und die
+Serialisierung enthält kein Client-, Secret-, Endpoint- oder JWKS-Muster.
+
+Mutationsprobe: Die Projektion wird zur Durchreichung der vollen
+Provider-Objekte — **6 von 7**, genau der Projektions-Fall.
+
+Checkpoint `1.83.0` am 16. August 2026: Lokal 1073 bestanden, 0
+fehlgeschlagen, zweimal reproduziert (exit 0); Mailpit/Dex 7 von 7, exit 0,
+zweimal reproduziert. Ehrlich vermerkt: Ein erster lokaler Lauf zeigte einen
+einzelnen transienten Fehlschlag, dessen Fall im ungespeicherten Output nicht
+identifizierbar war; zwei anschliessende vollständige Läufe waren grün — die
+beiden archivierten Läufe sind diese.
+
+Nicht erbracht: Die öffentliche Login-Auswahl (App-seitig, mit Projekt-Key)
+fehlt weiterhin — die Admin-Route ist die Console-Fläche, kein
+Login-Chooser. Die React-Anzeige selbst rendert ungeprüft; geprüft ist der
+Ladeweg.

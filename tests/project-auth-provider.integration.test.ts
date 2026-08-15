@@ -339,6 +339,23 @@ describe.runIf(enabled)("Project Auth provider certification", () => {
       provider: "github", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
     })).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
   }, 60_000);
+  /**
+   * Die Auswahlflaeche aus 1.83: Der Katalog kannte `list()` seit 1.76 —
+   * gerufen hat es bis jetzt niemand, weder Console noch App. Die Liste ist
+   * eine **Projektion**: Slug und Issuer, nichts sonst. Die Mutationsprobe
+   * dieses Releases reicht stattdessen die vollen Provider-Objekte durch —
+   * dann faellt genau dieser Fall, am Geheimnis-Muster und an der Form.
+   */
+  it("lists exactly the configured providers as a two-field projection", () => {
+    const service = createService();
+    const listed = service.listOidcProviders();
+    expect(listed).toEqual([
+      { id: "certification", issuer: ISSUER },
+      { id: "partner", issuer: PARTNER_ISSUER },
+    ]);
+    expect(JSON.stringify(listed)).not.toMatch(/client|secret|endpoint|jwks/i);
+  });
+
 });
 
 /** Wie waitForMail, aber wartet auf eine bestimmte Betreffzeile an diese Adresse. */

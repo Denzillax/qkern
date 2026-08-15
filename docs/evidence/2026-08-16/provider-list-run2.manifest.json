@@ -1,0 +1,17 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "provider-list-run2.log",
+  "commit": "e2b95cf30a91ee59c12a369635c96bca1eea538c",
+  "commitSubject": "release: 1.82.0 Rechnungen erreichen den Browser",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "7 passed (7)",
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "axllent/mailpit",
+    "dexidp/dex",
+    "node:24-alpine"
+  ]
+}

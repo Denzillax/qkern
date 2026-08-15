@@ -914,3 +914,15 @@ in den Nummernkreis — genau der Nummernkreis-Fall fällt.
 Dieser Slice ändert keinen Server-Code; die Dienste dahinter sind seit
 1.77/1.81 gegen echtes PostgreSQL zertifiziert. Die Mutation verbiegt die URL
 des Console-Ladewegs auf die Usage-Route — genau der Ladeweg-Vertrag fällt.
+
+## Läufe zu Release 1.83 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/provider-list-run1.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-08-16/provider-list-run2.log` | Mailpit und Dex | 7 von 7, exit 0, Wiederholung |
+| `2026-08-16/provider-list-mutation.log` | Mailpit und Dex | **6 von 7, exit 1 — absichtlich** |
+
+Die Mutation macht aus der Zwei-Felder-Projektion eine Durchreichung der
+vollen Provider-Objekte — genau der Projektions-Fall fällt, am
+Geheimnis-Muster und an der Form.

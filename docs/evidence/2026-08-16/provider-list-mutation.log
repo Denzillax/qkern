@@ -1,0 +1,143 @@
+ Network qkern-auth-v13-certification_default Creating 
+ Network qkern-auth-v13-certification_default Created 
+ Volume qkern-auth-v13-certification_auth-certification-certs Creating 
+ Volume qkern-auth-v13-certification_auth-certification-certs Created 
+ Container qkern-auth-v13-certification-mailpit-1 Creating 
+ Container qkern-auth-v13-certification-certs-1 Creating 
+ Container qkern-auth-v13-certification-certs-1 Created 
+ Container qkern-auth-v13-certification-dex-1 Creating 
+ Container qkern-auth-v13-certification-mailpit-1 Created 
+ Container qkern-auth-v13-certification-dex-partner-1 Creating 
+ Container qkern-auth-v13-certification-dex-1 Created 
+ Container qkern-auth-v13-certification-dex-partner-1 Created 
+ Container qkern-auth-v13-certification-certs-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-partner-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Starting 
+ Container qkern-auth-v13-certification-dex-1 Started 
+ Container qkern-auth-v13-certification-dex-partner-1 Started 
+ Container qkern-auth-v13-certification-dex-1 Waiting 
+ Container qkern-auth-v13-certification-dex-partner-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-mailpit-1 Waiting 
+ Container qkern-auth-v13-certification-dex-partner-1 Healthy 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Healthy 
+ Container qkern-auth-v13-certification-mailpit-1 Healthy 
+ Container qkern-auth-v13-certification-certification-run-fca58ea441dc Creating 
+ Container qkern-auth-v13-certification-certification-run-fca58ea441dc Created 
+
+added 286 packages, and audited 287 packages in 1m
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.82.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+ RUN  v4.1.10 /workspace/qkern
+
+ ❯ tests/project-auth-provider.integration.test.ts (7 tests | 1 failed) 1792ms
+     ✓ delivers a verification mail over real SMTP and only the mail carries the token  340ms
+     ✓ delivers a magic link that signs the user in 91ms
+     ✓ delivers a password reset that a new password can be set with 126ms
+     ✓ completes a real OIDC authorization code flow with PKCE against Dex  468ms
+     ✓ refuses a replayed authorization state 225ms
+     ✓ keeps two real providers separate and links identities by verified mail  493ms
+     × lists exactly the configured providers as a two-field projection 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/project-auth-provider.integration.test.ts > Project Auth provider certification > lists exactly the configured providers as a two-field projection
+AssertionError: expected [ { id: 'certification', …(7) }, …(1) ] to deeply equal [ { id: 'certification', …(1) }, …(1) ]
+
+- Expected
++ Received
+
+  [
+    {
++     "authorizationEndpoint": "https://dex.qkern.test:5556/dex/auth",
++     "clientId": "qkern-certification",
++     "clientSecretEnv": "QKERN_PROJECT_AUTH_OIDC_SECRET_CERTIFICATION",
+      "id": "certification",
+      "issuer": "https://dex.qkern.test:5556/dex",
++     "jwksUri": "https://dex.qkern.test:5556/dex/keys",
++     "scopes": [
++       "openid",
++       "email",
++       "profile",
++     ],
++     "tokenEndpoint": "https://dex.qkern.test:5556/dex/token",
+    },
+    {
++     "authorizationEndpoint": "https://partner.qkern.test:5557/dex/auth",
++     "clientId": "qkern-partner",
++     "clientSecretEnv": "QKERN_PROJECT_AUTH_OIDC_SECRET_PARTNER",
+      "id": "partner",
+      "issuer": "https://partner.qkern.test:5557/dex",
++     "jwksUri": "https://partner.qkern.test:5557/dex/keys",
++     "scopes": [
++       "openid",
++       "email",
++       "profile",
++     ],
++     "tokenEndpoint": "https://partner.qkern.test:5557/dex/token",
+    },
+  ]
+
+ ❯ tests/project-auth-provider.integration.test.ts:352:20
+    350|     const service = createService();
+    351|     const listed = service.listOidcProviders();
+    352|     expect(listed).toEqual([
+       |                    ^
+    353|       { id: "certification", issuer: ISSUER },
+    354|       { id: "partner", issuer: PARTNER_ISSUER },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  20:39:14
+   Duration  3.68s (transform 916ms, setup 0ms, import 1.22s, tests 1.79s, environment 0ms)
+
+
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-dex-partner-1 Stopping 
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-dex-1 Removing 
+ Container qkern-auth-v13-certification-dex-partner-1 Stopped 
+ Container qkern-auth-v13-certification-dex-partner-1 Removing 
+ Container qkern-auth-v13-certification-dex-1 Removed 
+ Container qkern-auth-v13-certification-dex-partner-1 Removed 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Removing 
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Removing 
+ Container qkern-auth-v13-certification-certs-1 Removed 
+ Container qkern-auth-v13-certification-mailpit-1 Removed 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removing 
+ Network qkern-auth-v13-certification_default Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removed 
+ Network qkern-auth-v13-certification_default Removed 
