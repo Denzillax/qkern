@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 16. August 2026 · Release: `1.72.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 16. August 2026 · Release: `1.73.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **144 von 144 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **146 von 146 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **6 von 6 bestanden, exit 0, zweimal reproduziert — seit `1.70.0` läuft der fortsetzbare Upload über den ganzen Dienstweg, und der Virenscanner verifiziert die Ganzdatei-Prüfsumme** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
@@ -118,7 +118,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert; Multipart/Resumable seit `1.70.0`** | Transform-Service und CDN als eigener Slice |
-| Realtime | **abgeschlossen und zertifiziert** | Runtime-Komposition gegen echtes PostgreSQL; Lueckennachweis bei zu langem Poller-Ausfall |
+| Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`** | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence/History |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
 | SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
@@ -172,8 +172,12 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
   Docker-Netzes und ein öffentlich vertrauenswürdiges Zertifikat bleiben offen.
 - Queue-Claims und Settlement verlangen eine Service Role sowie exakten Worker,
   Token und Ablauf. Roh-Dedupe-/Lease-Secrets werden nicht persistiert.
-- Realtime bindet nur Loopback, verweigert Production und hält History/Presence
-  weiterhin im Prozessspeicher.
+- Realtime bindet standardmässig Loopback; seit `1.73.0` ersetzt ein Tor mit
+  benannten Bedingungen (dauerhafter Log, Cursor-Geheimnis, Aufbewahrung,
+  https-Origins, TLS-Attestierung bei öffentlichem Binding) das pauschale
+  Production-Verbot. Ein vollständiger Production-Start ist mangels
+  SSL-PostgreSQL im Stack nicht belegt; History/Presence liegen weiter im
+  Prozessspeicher.
 - Usage Metering ist disabled-by-default. Browser und MCP dürfen keine Quota-
   Policies mutieren; `meter`/`operator` bleiben interne Autoritäten.
 - Seit `1.29.0` melden Project Queues und Functions ihre Operationen selbst; ein

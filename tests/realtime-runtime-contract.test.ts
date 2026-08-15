@@ -2,15 +2,26 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("Realtime standalone runtime contract", () => {
-  it("is explicit, loopback-only and refuses the incomplete production topology", async () => {
+  it("is explicit, loopback by default and gates production through named conditions", async () => {
+    // Bis 1.72 stand hier ein bedingungsloses Production-Verbot. Seit 1.73
+    // traegt das Tor in production-gate.ts jede Bedingung einzeln; der Vertrag
+    // verlangt, dass der Prozess durch genau dieses Tor geht und keinen
+    // festen Nicht-Loopback-Host kennt.
     const source = await readFile(new URL("../workers/realtime-runtime.mts", import.meta.url), "utf8");
     expect(source).toContain('QKERN_REALTIME_ENABLED !== "true"');
-    expect(source).toContain('process.env.NODE_ENV === "production"');
+    expect(source).toContain("realtimeBindPlan(process.env");
+    expect(source).toContain("host: bindPlan.host");
     expect(source).toContain('runtimeModeFromEnv(process.env) !== "postgres"');
-    expect(source).toContain('host: "127.0.0.1"');
     expect(source).toContain("QKERN_REALTIME_ALLOWED_ORIGINS");
     expect(source).toContain("QKERN_REALTIME_MAX_BUFFERED_BYTES");
     expect(source).not.toContain('host: "0.0.0.0"');
+
+    const gate = await readFile(new URL("../lib/server/realtime/production-gate.ts", import.meta.url), "utf8");
+    for (const condition of ["QKERN_REALTIME_PUBLIC_BIND", "QKERN_REALTIME_EPHEMERAL_LOG",
+      "QKERN_REALTIME_CURSOR_SECRET", "QKERN_REALTIME_RETENTION_SCOPES_JSON",
+      "QKERN_REALTIME_TLS_TERMINATED"]) {
+      expect(gate, `Das Production-Tor verliert die Bedingung ${condition}`).toContain(condition);
+    }
   });
 
   it("uses the durable event log by default and the ephemeral one only on request", async () => {

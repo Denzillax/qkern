@@ -2697,3 +2697,40 @@ PostgreSQL 144 von 144, exit 0, zweimal reproduziert, 41 Migrationen.
 Nicht erbracht: Eigene Typen ausserhalb des Suchpfads sind nicht aufrufbar
 (bewusste Cast-Grenze). Die RPC-Route spricht in keinem Fall HTTP. OpenAPI
 kennt `/rpc` nicht. Prozeduren (`CALL`) sind nicht dabei.
+
+## Das Verbot wird ein Tor — Release 1.73
+
+Sprosse 5 der Paritätsleiter: Das bedingungslose Production-Verbot des
+Realtime-Transports ist durch ein Tor mit benannten, einzeln geprüften
+Bedingungen ersetzt. Das Verbot aus Alpha 1 nannte seine Gründe selbst — TLS,
+dauerhafter Log, Fan-out —, und zwei der drei sind seit 1.11 beziehungsweise
+1.16 gebaut und zertifiziert. Ein Verbot, dessen Gründe erfüllt sind, ist
+keine Sicherheit mehr, sondern eine Erinnerung.
+
+Production startet genau dann, wenn jede Bedingung hält: dauerhafter Log,
+Cursor-Geheimnis mit mindestens 32 Bytes (sonst überlebt kein Replay-Cursor
+einen Neustart), Aufbewahrung konfiguriert, https-only Origins — und bei
+öffentlichem Binding die TLS-Attestierung `TLS_TERMINATED=proxy`, die genau
+das ist: eine Attestierung, kein Beweis. Nicht-Loopback-Binding verlangt in
+jeder Umgebung ein ausdrückliches `PUBLIC_BIND=true`; ohne neue Variablen ist
+das Verhalten unverändert.
+
+Zertifiziert als Prozess: Die Abweisung benennt die verletzte Bedingung
+(Memory-Log an, alles andere erfüllt — der Worker weigert sich zu lauschen
+und sagt warum), und das öffentliche Binding arbeitet wirklich (Prozess auf
+0.0.0.0, echter Client, echter Projekt-Key). Der alte Vertrag ist auf das Tor
+fortgeschrieben und verlangt dessen fünf Bedingungen namentlich.
+
+Mutationsprobe: Die Log-Bedingung aus dem Tor entfernt — **145 von 146**,
+genau der Abweisungsfall.
+
+Ein Befund am Rand: Der erste Lauf scheiterte vor dem Tor, weil die
+Pool-Konfiguration in Production `DATABASE_SSL=require` beim Import verlangt.
+Die Reihenfolge ist dokumentiert: Die SSL-Regel steht vor dem Tor.
+
+Checkpoint `1.73.0` am 16. August 2026: Lokal 1064 bestanden, 0 fehlgeschlagen;
+PostgreSQL 146 von 146, exit 0, zweimal reproduziert, 41 Migrationen.
+
+Nicht erbracht: Ein vollständiger Production-Start (der Wegwerfstack hat kein
+SSL-PostgreSQL). Die TLS-Attestierung ist keine Prüfung. History und Presence
+liegen weiter im Prozessspeicher.

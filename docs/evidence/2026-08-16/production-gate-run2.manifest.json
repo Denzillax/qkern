@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "production-gate-run2.log",
+  "commit": "3105e7d1fe19f06ac7f537fb2acffd98386fe3ab",
+  "commitSubject": "release: 1.72.0 Die Funktion laeuft als Aufrufer",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 41,
+  "testFiles": "26 passed (26)",
+  "tests": "146 passed (146)",
+  "passed": 146,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

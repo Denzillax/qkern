@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.72.md](RELEASE_1.72.md) | Aktueller Release: Die Funktion läuft als Aufrufer |
+| [RELEASE_1.73.md](RELEASE_1.73.md) | Aktueller Release: Das Verbot wird ein Tor |
+| [RELEASE_1.72.md](RELEASE_1.72.md) | Die Funktion läuft als Aufrufer |
 | [RELEASE_1.71.md](RELEASE_1.71.md) | Der View trägt die Grenze des Aufrufers |
 | [RELEASE_1.70.md](RELEASE_1.70.md) | Der Scanner rechnet nach |
 | [RELEASE_1.69.md](RELEASE_1.69.md) | Teile, die ankommen |

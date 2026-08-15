@@ -164,4 +164,99 @@ describe.runIf(enabled)("Realtime process PostgreSQL certification", () => {
       child.kill();
     }
   }, 180_000);
+
+  /**
+   * Das Production-Tor aus 1.73 — als Prozess.
+   *
+   * Alle Bedingungen sind erfuellt bis auf eine: Der Memory-Log ist an. Der
+   * ausgelieferte Prozess muss sich weigern zu lauschen und die verletzte
+   * Bedingung **benennen** — pauschales Verbieten war der alte Zustand.
+   * Die Mutationsprobe dieses Releases nimmt genau diese Bedingung heraus;
+   * dann lauscht ein Production-Prozess mit fluechtigem Log.
+   */
+  it("refuses production with an ephemeral log and names the condition", async () => {
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/realtime-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        // Production verlangt SSL schon bei der Pool-Konfiguration — die
+        // laeuft beim Import, vor dem Tor. Verbunden wird nie: Das Tor wirft
+        // zuerst, und genau das prueft dieser Fall.
+        DATABASE_SSL: "require",
+        QKERN_REALTIME_ENABLED: "true",
+        QKERN_REALTIME_PORT: String(PORT + 1),
+        QKERN_REALTIME_ALLOWED_ORIGINS: "https://app.qkern.test",
+        QKERN_REALTIME_EPHEMERAL_LOG: "true",
+        QKERN_REALTIME_CURSOR_SECRET: Buffer.alloc(32, 5).toString("base64url"),
+        QKERN_REALTIME_RETENTION_SCOPES_JSON: JSON.stringify([{
+          organizationId, projectId, environment: "development",
+        }]),
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+        QKERN_AUTH_DATABASE_URL: authUrl!,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    const exitCode = await new Promise<number | null>((resolve) => child.once("exit", resolve));
+    expect(exitCode, `Prozessausgabe: ${noise.slice(-600)}`).not.toBe(0);
+    expect(noise).toContain("durable event log");
+    expect(noise).not.toContain("listening");
+  }, 60_000);
+
+  /**
+   * Ein Binding jenseits von Loopback funktioniert wirklich — mit dem
+   * ausdruecklichen Opt-in, das es in jeder Umgebung verlangt.
+   */
+  it("serves a client on a public bind after the explicit opt-in", async () => {
+    const publicPort = PORT + 2;
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/realtime-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        QKERN_REALTIME_ENABLED: "true",
+        QKERN_REALTIME_PORT: String(publicPort),
+        QKERN_REALTIME_BIND_HOST: "0.0.0.0",
+        QKERN_REALTIME_PUBLIC_BIND: "true",
+        QKERN_REALTIME_ALLOWED_ORIGINS: ORIGIN,
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+        QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+        QKERN_AUTH_DATABASE_URL: authUrl!,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    try {
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline && !noise.includes("listening")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(noise, "Der Prozess hat nicht gemeldet, dass er lauscht").toContain("listening");
+      expect(noise).toContain("ws://0.0.0.0:");
+
+      const url = `ws://127.0.0.1:${publicPort}/realtime/v1/projects/${projectId}/environments/development`;
+      const socket = new WebSocket(url, QKERN_REALTIME_PROTOCOL, { origin: ORIGIN });
+      await new Promise<void>((resolve, reject) => {
+        socket.once("open", () => resolve());
+        socket.once("error", reject);
+      });
+      try {
+        const ready = nextMessage(socket, "ready");
+        socket.send(JSON.stringify({ type: "auth", requestId: "auth-public", projectKey }));
+        expect(await ready, `Prozessausgabe: ${noise.slice(-600)}`).toMatchObject({ requestId: "auth-public" });
+      } finally {
+        socket.close();
+      }
+    } finally {
+      child.kill();
+    }
+  }, 120_000);
 });

@@ -18,6 +18,7 @@ import {
 import { RealtimeChangePollerRegistry } from "@/lib/server/realtime/change-poller-registry";
 import { GeneratedApiRealtimeChangeReader } from "@/lib/server/realtime/change-reader";
 import { PrefixRealtimeAuthorization } from "@/lib/server/realtime/policy";
+import { realtimeBindPlan } from "@/lib/server/realtime/production-gate";
 import { PostgresRealtimeChangeSource } from "@/lib/server/realtime/postgres-change-source";
 import { ControlPlaneRealtimeProjectConnection } from
   "@/lib/server/realtime/project-connection";
@@ -34,9 +35,11 @@ import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 if (process.env.QKERN_REALTIME_ENABLED !== "true") {
   throw new Error("QKERN Realtime is disabled. Set QKERN_REALTIME_ENABLED=true explicitly.");
 }
-if (process.env.NODE_ENV === "production") {
-  throw new Error("Realtime Alpha 1 transport is local-only. Production requires the documented TLS, persistent event-log and fan-out gates.");
-}
+// Das bedingungslose Production-Verbot ist seit 1.73 ein Tor mit benannten
+// Bedingungen: dauerhafter Log, stabiles Cursor-Geheimnis, Aufbewahrung,
+// https-Origins — und bei oeffentlichem Binding die TLS-Attestierung.
+// Jede verletzte Bedingung nennt sich selbst, statt pauschal zu verbieten.
+const bindPlan = realtimeBindPlan(process.env, [...allowedOrigins()]);
 if (runtimeModeFromEnv(process.env) !== "postgres") {
   throw new Error("The standalone Realtime runtime requires PostgreSQL-backed Project API keys.");
 }
@@ -117,7 +120,7 @@ const runtime = createRealtimeWebSocketServer({
   authenticator: new ProjectRealtimeAuthenticator(projectApiKeyService, () => getProjectAuthService()),
   service,
   allowedOrigins: allowedOrigins(),
-  host: "127.0.0.1",
+  host: bindPlan.host,
   port: integer("QKERN_REALTIME_PORT", 8788, 1, 65_535),
   maxConnections: integer("QKERN_REALTIME_MAX_CONNECTIONS", 500, 1, 10_000),
   maxMessageBytes: integer("QKERN_REALTIME_MAX_MESSAGE_BYTES", 32 * 1024, 1024, 512 * 1024),
@@ -174,7 +177,7 @@ const retentionLoop = retention?.run();
 
 const port = await runtime.listen();
 console.error(
-  `QKERN Realtime listening on ws://127.0.0.1:${port} with protocol qkern.realtime.v1 `
+  `QKERN Realtime listening on ws://${bindPlan.host}:${port} with protocol qkern.realtime.v1 `
   + `(${ephemeralLog ? "ephemeral log, single instance" : "durable log, cross-instance fan-out"})`,
 );
 

@@ -790,3 +790,14 @@ Views-Fall ist vom späteren Härten unberührt.
 Die Mutation entfernt die Abweisung von SECURITY-DEFINER-Funktionen. Genau der
 RPC-Fall fällt: Die Definer-Variante würde bedient und liefe mit fremden
 Rechten.
+
+## Läufe zu Release 1.73 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/production-gate-run1.log` | PostgreSQL 17 | 146 von 146, exit 0, 41 Migrationen |
+| `2026-08-16/production-gate-run2.log` | PostgreSQL 17 | 146 von 146, exit 0, Wiederholung |
+| `2026-08-16/production-gate-mutation.log` | PostgreSQL 17 | **145 von 146, exit 1 — absichtlich** |
+
+Die Mutation entfernt die Log-Bedingung aus dem Production-Tor. Genau der
+Abweisungsfall fällt: Ein Production-Prozess mit flüchtigem Log würde lauschen.
