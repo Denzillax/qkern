@@ -65,6 +65,12 @@ export type ProjectStorageServiceDependencies = {
   grantTtlSeconds?: number;
   /** Lebensdauer einer Multipart-Reservierung; Teil-Grants behalten grantTtlSeconds. */
   multipartTtlSeconds?: number;
+  /**
+   * Mindestalter, ab dem ein Provider-Upload ohne lebende Reservierung als
+   * Waise gilt. Standard ist die Reservierungsdauer: Was aelter ist als jede
+   * moegliche Reservierung und keiner gehoert, gehoert niemandem.
+   */
+  multipartOrphanAgeSeconds?: number;
 };
 
 export class ProjectStorageService {
@@ -73,6 +79,7 @@ export class ProjectStorageService {
   private readonly completionToken: () => string;
   private readonly grantTtlSeconds: number;
   private readonly multipartTtlSeconds: number;
+  private readonly multipartOrphanAgeSeconds: number;
   private readonly usage: UsageEmitterPort;
 
   constructor(private readonly dependencies: ProjectStorageServiceDependencies) {
@@ -90,6 +97,11 @@ export class ProjectStorageService {
     this.multipartTtlSeconds = dependencies.multipartTtlSeconds ?? 21_600;
     if (!Number.isInteger(this.multipartTtlSeconds) ||
         this.multipartTtlSeconds < this.grantTtlSeconds || this.multipartTtlSeconds > 86_400) {
+      throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    }
+    this.multipartOrphanAgeSeconds = dependencies.multipartOrphanAgeSeconds ?? this.multipartTtlSeconds;
+    if (!Number.isInteger(this.multipartOrphanAgeSeconds) ||
+        this.multipartOrphanAgeSeconds < 0 || this.multipartOrphanAgeSeconds > 604_800) {
       throw new ProjectStorageError("STORAGE_INVALID_INPUT");
     }
   }
@@ -670,7 +682,43 @@ export class ProjectStorageService {
         if (await this.dependencies.repository.markObjectDeleted(principal, scope, object.id, now)) deleted += 1;
       } catch { /* leave metadata for the next bounded retry */ }
     }
-    return { examined: expired.length, deleted };
+    // Verfallene Reservierungen: Quota freigeben und dem Provider Bescheid
+    // sagen — bis 1.78 verfielen sie nur lazy beim naechsten reserveUpload,
+    // und der begonnene Provider-Upload blieb fuer immer liegen.
+    let expiredUploads = 0;
+    let orphanedUploadsAborted = 0;
+    try {
+      const stale = await this.dependencies.repository.expireUploads(
+        principal, scope, now, integer(limit, 1, 100),
+      );
+      expiredUploads = stale.length;
+      for (const upload of stale) {
+        if (upload.kind !== "multipart" || !upload.providerUploadId) continue;
+        await this.dependencies.provider.abortMultipartUpload({
+          providerKey: upload.providerKey, uploadId: upload.providerUploadId,
+        }).catch(() => undefined); // das Waisen-Netz unten faengt den naechsten Lauf
+      }
+      // Provider-Waisen: begonnene Multipart-Uploads, die alt genug sind und
+      // zu keiner lebenden Reservierung gehoeren. Das faengt jeden
+      // Strandungsweg — Absturz vor der Reservierung, lazy verfallene
+      // Reservierungen, fehlgeschlagene Abbrueche.
+      const pending = await this.dependencies.repository.listPendingMultipartUploads(principal, scope, now);
+      const alive = new Set(pending.map((upload) => `${upload.providerKey}\n${upload.providerUploadId}`));
+      const started = await this.dependencies.provider.listMultipartUploads({
+        keyPrefix: `${scope.organizationId}/${scope.projectId}/${scope.environment}/`,
+      });
+      for (const candidate of started) {
+        if (alive.has(`${candidate.providerKey}\n${candidate.uploadId}`)) continue;
+        if (now.getTime() - candidate.initiatedAt.getTime() < this.multipartOrphanAgeSeconds * 1_000) continue;
+        try {
+          await this.dependencies.provider.abortMultipartUpload({
+            providerKey: candidate.providerKey, uploadId: candidate.uploadId,
+          });
+          orphanedUploadsAborted += 1;
+        } catch { /* naechster Lauf */ }
+      }
+    } catch { /* Objekt-Aufraeumen oben gilt trotzdem; naechster Lauf */ }
+    return { examined: expired.length, deleted, expiredUploads, orphanedUploadsAborted };
   }
 
   private async bucket(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, idOrName: string) {

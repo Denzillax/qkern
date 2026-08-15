@@ -2861,3 +2861,43 @@ PostgreSQL 151 von 151, exit 0, zweimal reproduziert, 42 Migrationen.
 
 Nicht erbracht: keine Console-Fläche für Rechnungen; keine kaufmännische
 Nummer, keine Fälligkeit; die Invoices-Route spricht in keinem Fall HTTP.
+
+## Waisen altern weg — Release 1.78
+
+Der offene Punkt aus 1.70: Verwaiste Provider-Uploads alterten nicht weg.
+`expireLifecycle` räumt jetzt zusätzlich verfallene Multipart-Reservierungen
+ab (Quota frei, Provider-Abbruch — bis dahin verfielen sie nur lazy beim
+nächsten reserveUpload, und niemand sagte dem Provider Bescheid) und bricht
+Provider-Waisen ab: begonnene Uploads, alt genug und ohne lebende
+Reservierung, über das neue Provider-Verb `listMultipartUploads` (eine Seite,
+höchstens 1000). Lebende Reservierungen sind ausdrücklich geschützt.
+
+Zwei Produktfunde. Erstens: MinIO beantwortet ListMultipartUploads mit
+Verzeichnis-Präfixen **leer** — nur ohne Präfix oder mit vollem
+Objektschlüssel kommen Einträge; der erste Zertifizierungslauf fiel genau
+daran, der Präfix wird jetzt clientseitig gefiltert. Zweitens: Der CHECK auf
+`provider_upload_id` aus Migration 0041 nutzte `{1,1024}` — PostgreSQL
+erlaubt in POSIX-Regexen höchstens 255 Wiederholungen, die Bedingung warf zur
+Laufzeit `invalid regular expression`. **Seit 1.70 konnte keine
+Multipart-Reservierung in eine echte Datenbank geschrieben werden**;
+Single-Uploads blieben unberührt (NULL wertet die Bedingung nie aus).
+Gefunden vom ersten Real-DB-Fall, der gezielt einen Multipart-Upload
+reserviert — exakt die in 1.70 offen ausgewiesene Lücke. Migration 0043
+ersetzt die Bedingung (Länge über length(), Alphabet ohne Zählgrenze).
+
+Zertifiziert gegen echtes MinIO/ClamAV: verfallene Reservierung → Provider-
+Abbruch und STORAGE_INVALID_TOKEN für spätere Teil-URLs; Waise fällt, der
+Upload einer lebenden Reservierung bleibt und läuft bis clean durch. Gegen
+echtes PostgreSQL: reservieren, verfallen, aufräumen — expired,
+reserved_bytes 0, Provider-Upload weg.
+
+Mutationsprobe: Die Schutzprüfung für lebende Reservierungen entfernt —
+**7 von 8**, genau der Verschonungsfall.
+
+Checkpoint `1.78.0` am 16. August 2026: Lokal 1065 bestanden, 0
+fehlgeschlagen; MinIO/ClamAV 8 von 8 zweimal, PostgreSQL 152 von 152 zweimal
+mit 43 Migrationen, alle exit 0.
+
+Nicht erbracht: Die eine Seite (1000) ist die Grenze, den Rückstand misst
+niemand. Kein Prozess ruft den Lifecycle von selbst. Die Waisen-Schwelle
+vertraut der Provider-Uhr.

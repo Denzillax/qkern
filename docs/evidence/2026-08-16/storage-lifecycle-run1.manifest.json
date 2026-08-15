@@ -1,0 +1,18 @@
+{
+  "stack": "MinIO und ClamAV",
+  "log": "storage-lifecycle-run1.log",
+  "commit": "f354fdf580606c3bf217bb422722082d5f78f012",
+  "commitSubject": "release: 1.77.0 Rechnungen bekommen Leser",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

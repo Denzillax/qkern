@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.77.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.78.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,17 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.40.0`
-- Aktueller Slice: 1.40 Die letzte ungepruefte Zahl — `tests/status-module-counts-contract.test.ts`
+- Paketversion: `1.78.0`
+- Aktueller Slice: 1.78 Waisen altern weg — `expireLifecycle` raeumt verfallene
+  Multipart-Reservierungen und Provider-Waisen; Migration 0043 ersetzt den nie
+  erfuellbaren CHECK auf `provider_upload_id` (POSIX-Regex kann keine 1024
+  Wiederholungen; jede Multipart-Reservierung gegen echtes PostgreSQL scheiterte
+  seit 0041)
+- MinIO beantwortet ListMultipartUploads mit Verzeichnis-Praefixen **leer** —
+  der Provider filtert deshalb clientseitig ueber einer Seite (max. 1000)
+- Die Slices 1.41 bis 1.77 stehen chronologisch in `docs/QA.md`; diese Liste
+  hier war seit 1.40 nicht weitergefuehrt worden (Fund aus 1.78)
+- Vorheriger Slice: 1.40 Die letzte ungepruefte Zahl — `tests/status-module-counts-contract.test.ts`
 - Die Fortschrittstabelle nennt jetzt nur noch Zahlen, die aus den Testdateien zaehlbar sind
 - Compute Contracts behauptete 116 Faelle; rekonstruierbar waren 73
 - Vorheriger Slice: 1.39 Zahlen pruefen sich — `tests/status-numbers-contract.test.ts`
@@ -110,7 +119,7 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0042_project_function_deployments.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0043_project_storage_upload_id_check_fix.sql`
   — die eine Tuer fuer Image-Deployments: Wechsel nur zusammen mit der
   append-only Historienzeile. Davor: `db/migrations/0041_project_storage_multipart.sql`
   — `kind` und `provider_upload_id` an der Upload-Reservierung fuer

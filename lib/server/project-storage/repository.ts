@@ -93,6 +93,25 @@ export interface ProjectStorageRepository {
     now: Date,
     limit: number,
   ): Promise<ProjectStorageObject[]>;
+  /**
+   * Markiert verfallene `pending`-Reservierungen als `expired`, gibt ihre
+   * Quota frei und liefert sie zurueck — mit `providerUploadId`, damit der
+   * Aufrufer den Provider-Upload abbrechen kann. Bisher verfielen
+   * Reservierungen nur lazy beim naechsten `reserveUpload` desselben Buckets,
+   * und niemand sagte dem Provider Bescheid.
+   */
+  expireUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+    limit: number,
+  ): Promise<ProjectStorageUpload[]>;
+  /** Lebende Multipart-Reservierungen — die Schutzliste des Waisen-Aufraeumers. */
+  listPendingMultipartUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+  ): Promise<ProjectStorageUpload[]>;
 }
 
 export class MemoryProjectStorageRepository implements ProjectStorageRepository {
@@ -306,6 +325,38 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
     return [...this.objects.values()].filter((object) => object.organizationId === principal.organizationId &&
       sameScope(object, scope) && !object.deletedAt && object.deleteAfter !== null && object.deleteAfter <= now)
       .sort((a, b) => a.deleteAfter!.getTime() - b.deleteAfter!.getTime()).slice(0, limit).map(cloneObject);
+  }
+
+  async expireUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+    limit: number,
+  ) {
+    const stale = [...this.uploads.values()].filter((upload) =>
+      upload.organizationId === principal.organizationId && sameScope(upload, scope) &&
+      upload.status === "pending" && upload.expiresAt <= now)
+      .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime()).slice(0, limit);
+    for (const upload of stale) {
+      upload.status = "expired";
+      const bucket = this.buckets.get(upload.bucketId);
+      if (bucket) {
+        bucket.reservedBytes = Math.max(0, bucket.reservedBytes - upload.sizeBytes);
+        bucket.updatedAt = new Date(now);
+      }
+    }
+    return stale.map(cloneUpload);
+  }
+
+  async listPendingMultipartUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+  ) {
+    return [...this.uploads.values()].filter((upload) =>
+      upload.organizationId === principal.organizationId && sameScope(upload, scope) &&
+      upload.kind === "multipart" && upload.status === "pending" && upload.expiresAt > now)
+      .map(cloneUpload);
   }
 
   private releaseExpiredReservations(bucket: ProjectStorageBucket, now: Date) {

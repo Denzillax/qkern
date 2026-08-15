@@ -387,6 +387,49 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
     });
   }
 
+  expireUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+    limit: number,
+  ) {
+    return this.withTenant(principal, false, async (database) => {
+      const result = await database.query(`UPDATE project_storage_uploads SET status='expired'
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id IN (
+          SELECT id FROM project_storage_uploads
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+            AND status='pending' AND expires_at <= $4
+          ORDER BY expires_at ASC,id ASC LIMIT $5 FOR UPDATE SKIP LOCKED)
+        RETURNING ${UPLOAD_COLUMNS}`, [...scopeValues(scope), now, limit]);
+      const expired = result.rows.map(uploadFromRow);
+      const releasedByBucket = new Map<string, number>();
+      for (const upload of expired) {
+        releasedByBucket.set(upload.bucketId, (releasedByBucket.get(upload.bucketId) ?? 0) + upload.sizeBytes);
+      }
+      for (const [bucketId, released] of releasedByBucket) {
+        await database.query(`UPDATE project_storage_buckets
+          SET reserved_bytes=greatest(0,reserved_bytes-$5), updated_at=$6
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4`,
+        [...scopeValues(scope), bucketId, released, now]);
+      }
+      return expired;
+    });
+  }
+
+  listPendingMultipartUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    now: Date,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`${UPLOAD_SELECT}
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          AND kind='multipart' AND status='pending' AND expires_at > $4
+        ORDER BY created_at ASC,id ASC LIMIT 1000`, [...scopeValues(scope), now]);
+      return result.rows.map(uploadFromRow);
+    });
+  }
+
   private withTenant<T>(
     principal: ProjectStoragePrincipal,
     readOnly: boolean,

@@ -237,7 +237,9 @@ describe("Project Storage service", () => {
       uploadId: prepared.uploadId, completionToken: prepared.completionToken,
     });
     advance(2 * 24 * 60 * 60 * 1_000);
-    expect(await service.expireLifecycle(admin, scope, 1)).toEqual({ examined: 1, deleted: 1 });
+    expect(await service.expireLifecycle(admin, scope, 1)).toEqual({
+      examined: 1, deleted: 1, expiredUploads: 0, orphanedUploadsAborted: 0,
+    });
     expect((await service.listBuckets(admin, scope))[0].usedBytes).toBe(0);
   });
 
@@ -263,6 +265,41 @@ describe("Project Storage service", () => {
     expect((await service.listBuckets(admin, scope))[0]).toMatchObject({ usedBytes: 0, reservedBytes: 0 });
     expect((await service.listObjects(admin, scope, bucket.id, {})).objects).toHaveLength(0);
     expect(await provider.headObject(prepared.upload.fields.key)).toBeNull();
+  });
+
+  it("expires stale multipart reservations, aborts provider orphans and spares living uploads", async () => {
+    const alice = app("alice");
+    const { service: svc, provider: prov, advance } = fixture();
+    const bucketA = await svc.createBucket(admin, scope, {
+      name: "stale-bucket", readPolicy: "authenticated", writePolicy: "authenticated",
+      allowedMimeTypes: ["application/octet-stream"], maxObjectBytes: 1024, quotaBytes: 4096,
+    });
+    const bucketB = await svc.createBucket(admin, scope, {
+      name: "live-bucket", readPolicy: "authenticated", writePolicy: "authenticated",
+      allowedMimeTypes: ["application/octet-stream"], maxObjectBytes: 1024, quotaBytes: 4096,
+    });
+    await svc.prepareMultipartUpload(alice, scope, bucketA.id, {
+      key: "stale.bin", contentType: "application/octet-stream", sizeBytes: 512, checksumSha256: checksum,
+    });
+    await prov.createMultipartUpload({
+      providerKey: `${scope.organizationId}/${scope.projectId}/${scope.environment}/crashed/orphan/orphan.bin`,
+      contentType: "application/octet-stream",
+    });
+    advance(21_601_000);
+    await svc.prepareMultipartUpload(alice, scope, bucketB.id, {
+      key: "live.bin", contentType: "application/octet-stream", sizeBytes: 512, checksumSha256: checksum,
+    });
+    expect(await svc.expireLifecycle(admin, scope)).toEqual({
+      examined: 0, deleted: 0, expiredUploads: 1, orphanedUploadsAborted: 1,
+    });
+    const keys = (await prov.listMultipartUploads({ keyPrefix: `${scope.organizationId}/` }))
+      .map((upload) => upload.providerKey);
+    expect(keys.some((key) => key.endsWith("/stale.bin"))).toBe(false);
+    expect(keys.some((key) => key.endsWith("/orphan.bin"))).toBe(false);
+    expect(keys.some((key) => key.endsWith("/live.bin"))).toBe(true);
+    const buckets = await svc.listBuckets(admin, scope);
+    expect(buckets.find((bucket) => bucket.id === bucketA.id)?.reservedBytes).toBe(0);
+    expect(buckets.find((bucket) => bucket.id === bucketB.id)?.reservedBytes).toBe(512);
   });
 
   it("rejects cross-tenant principals without revealing existence", async () => {

@@ -283,9 +283,87 @@ describe.runIf(enabled)("real MinIO and ClamAV Project Storage certification", (
     });
     expect(object.status).toBe("quarantined");
   }, 180_000);
+
+  /**
+   * Verfallene Reservierungen verfielen bis 1.78 nur in der Datenbank — der
+   * begonnene Multipart-Upload blieb beim Provider fuer immer liegen. Jetzt
+   * gibt der Lifecycle die Quota frei und bricht den Provider-Upload ab.
+   */
+  it("expires a stale multipart reservation and aborts it at the provider", async () => {
+    const { service, provider, repository, scanner } = await certificationRuntime();
+    const bucket = await service.createBucket(principal, scope, {
+      name: `cert-mp-stale-${Date.now()}`,
+      allowedMimeTypes: ["application/octet-stream"],
+      maxObjectBytes: 16 * 1024 * 1024,
+      quotaBytes: 32 * 1024 * 1024,
+    });
+    const bytes = randomBytes(64 * 1024);
+    const prepared = await service.prepareMultipartUpload(principal, scope, bucket.id, {
+      key: "stale.bin", contentType: "application/octet-stream",
+      sizeBytes: bytes.byteLength, checksumSha256: sha256Base64(bytes),
+    });
+    const staleKey = `${scope.organizationId}/${scope.projectId}/${scope.environment}/${bucket.id}/${prepared.uploadId}/stale.bin`;
+    expect(await provider.listMultipartUploads({ keyPrefix: staleKey })).toHaveLength(1);
+    // Dieselben Ports, sieben Stunden spaeter: die Reservierung ist verfallen.
+    const later = new ProjectStorageService({
+      repository, provider, scanner, grantTtlSeconds: 60,
+      now: () => new Date(Date.now() + 7 * 3600 * 1_000),
+    });
+    const result = await later.expireLifecycle(principal, scope);
+    expect(result.expiredUploads).toBe(1);
+    await expect(service.createPartUploadGrant(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      partNumber: 1, checksumSha256: sha256Base64(bytes),
+    })).rejects.toMatchObject({ code: "STORAGE_INVALID_TOKEN" });
+    expect(await provider.listMultipartUploads({ keyPrefix: staleKey })).toHaveLength(0);
+  }, 120_000);
+
+  /**
+   * Der Waisen-Aufraeumer bricht nur ab, was niemandem gehoert: Ein
+   * Provider-Upload ohne Reservierung faellt, der einer lebenden Reservierung
+   * bleibt stehen und laeuft danach normal zu Ende. Die Mutationsprobe dieses
+   * Releases nimmt genau die Schutzpruefung heraus — dann faellt dieser Fall.
+   */
+  it("aborts an orphaned provider upload and spares the one a live reservation owns", async () => {
+    const { service, provider } = await certificationRuntime({ multipartOrphanAgeSeconds: 0 });
+    const bucket = await service.createBucket(principal, scope, {
+      name: `cert-mp-orphan-${Date.now()}`,
+      allowedMimeTypes: ["application/octet-stream"],
+      maxObjectBytes: 16 * 1024 * 1024,
+      quotaBytes: 32 * 1024 * 1024,
+    });
+    const orphanKey = `${scope.organizationId}/${scope.projectId}/${scope.environment}/${bucket.id}/crashed-${Date.now()}/orphan.bin`;
+    await provider.createMultipartUpload({ providerKey: orphanKey, contentType: "application/octet-stream" });
+    const bytes = randomBytes(256 * 1024);
+    const prepared = await service.prepareMultipartUpload(principal, scope, bucket.id, {
+      key: "survivor.bin", contentType: "application/octet-stream",
+      sizeBytes: bytes.byteLength, checksumSha256: sha256Base64(bytes),
+    });
+    const liveKey = `${scope.organizationId}/${scope.projectId}/${scope.environment}/${bucket.id}/${prepared.uploadId}/survivor.bin`;
+
+    const result = await service.expireLifecycle(principal, scope);
+    expect(result.orphanedUploadsAborted).toBeGreaterThanOrEqual(1);
+    expect(await provider.listMultipartUploads({ keyPrefix: orphanKey })).toHaveLength(0);
+    expect(await provider.listMultipartUploads({ keyPrefix: liveKey })).toHaveLength(1);
+
+    // Der verschonte Upload laeuft danach unveraendert zu Ende.
+    const grant = await service.createPartUploadGrant(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      partNumber: 1, checksumSha256: sha256Base64(bytes),
+    });
+    const response = await fetch(grant.url, {
+      method: "PUT", headers: grant.headers, body: bytes, redirect: "error",
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const object = await service.completeMultipartUpload(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      parts: [{ partNumber: 1, etag: response.headers.get("etag")! }],
+    });
+    expect(object.status).toBe("clean");
+  }, 180_000);
 });
 
-async function certificationRuntime() {
+async function certificationRuntime(overrides: { multipartOrphanAgeSeconds?: number } = {}) {
   await waitForProviderBucket();
   const credentials = new StaticS3ProjectStorageCredentialsProvider({ accessKeyId, secretAccessKey });
   const provider = new S3ProjectStorageProvider({
@@ -308,13 +386,17 @@ async function certificationRuntime() {
     client,
     { downloadTimeoutMs: 30_000, maxObjectBytes: 25 * 1024 * 1024 },
   );
+  const repository = new MemoryProjectStorageRepository();
   return {
     provider,
+    repository,
+    scanner,
     service: new ProjectStorageService({
-      repository: new MemoryProjectStorageRepository(),
+      repository,
       provider,
       scanner,
       grantTtlSeconds: 60,
+      ...overrides,
     }),
   };
 }

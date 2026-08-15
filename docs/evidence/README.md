@@ -852,3 +852,17 @@ aber nicht in der Liste. Der Lauf wurde verworfen und nach dem Fix wiederholt.
 Die Mutation entfernt den ON-CONFLICT-Arbiter aus dem Rechnungs-INSERT. Genau
 die zwei idempotenzgebundenen Fälle fallen: der zweite Lauf und der Wettlauf —
 dieselbe Zusage, getragen von derselben Zeile.
+
+## Läufe zu Release 1.78 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/storage-lifecycle-run1.log` | MinIO und ClamAV | 8 von 8, exit 0 |
+| `2026-08-16/storage-lifecycle-run2.log` | MinIO und ClamAV | 8 von 8, exit 0, Wiederholung |
+| `2026-08-16/storage-lifecycle-mutation.log` | MinIO und ClamAV | **7 von 8, exit 1 — absichtlich** |
+| `2026-08-16/storage-lifecycle-postgres-run1.log` | PostgreSQL 17 | 152 von 152, exit 0 |
+| `2026-08-16/storage-lifecycle-postgres-run2.log` | PostgreSQL 17 | 152 von 152, exit 0, Wiederholung |
+
+Die Mutation entfernt die Schutzprüfung für lebende Reservierungen aus dem
+Waisen-Aufräumer. Genau der Verschonungsfall fällt: Der lebende Upload wird
+wie eine Waise abgebrochen.

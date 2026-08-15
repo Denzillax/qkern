@@ -72,6 +72,21 @@ export interface ProjectStorageProvider {
     providerKey: string;
     uploadId: string;
   }, signal?: AbortSignal): Promise<void>;
+  /**
+   * Begonnene, nicht abgeschlossene Multipart-Uploads unter einem Praefix.
+   *
+   * Das ist das Netz fuer alle Strandungswege: Absturz zwischen Provider-Start
+   * und Reservierung, still verfallene Reservierungen, fehlgeschlagene
+   * Abbrueche. Eine Seite von hoechstens 1000 Eintraegen je Aufruf — der
+   * Aufraeumer laeuft wiederholt, nicht erschoepfend.
+   */
+  listMultipartUploads(input: {
+    keyPrefix: string;
+  }, signal?: AbortSignal): Promise<Array<{
+    providerKey: string;
+    uploadId: string;
+    initiatedAt: Date;
+  }>>;
 }
 
 export type ProjectStoragePartUploadGrant = {
@@ -366,9 +381,39 @@ export class S3ProjectStorageProvider implements ProjectStorageProvider {
     if (!response.ok && response.status !== 404) throw new ProjectStorageProviderError();
   }
 
+  async listMultipartUploads(input: {
+    keyPrefix: string;
+  }, signal?: AbortSignal): Promise<Array<{ providerKey: string; uploadId: string; initiatedAt: Date }>> {
+    assertKeyPrefix(input.keyPrefix);
+    // Bucket-weiter Aufruf: der leere Schluessel signiert die Bucket-URL.
+    // Der Praefix wird bewusst NICHT als Server-Parameter gesendet: MinIO
+    // beantwortet ListMultipartUploads mit Verzeichnis-Praefixen leer und
+    // liefert nur ohne Praefix oder mit vollem Objektschluessel Eintraege.
+    // Gefiltert wird deshalb clientseitig ueber der einen Seite.
+    const response = await this.signedApiRequest("GET", "", {
+      uploads: "",
+      "max-uploads": "1000",
+    }, "", {}, signal);
+    if (!response.ok) throw new ProjectStorageProviderError();
+    const text = await response.text();
+    const uploads: Array<{ providerKey: string; uploadId: string; initiatedAt: Date }> = [];
+    for (const match of text.matchAll(/<Upload>([\s\S]{1,8192}?)<[/]Upload>/g)) {
+      const key = /<Key>([^<]{1,2048})<[/]Key>/.exec(match[1])?.[1];
+      const uploadId = /<UploadId>([^<]{1,1024})<[/]UploadId>/.exec(match[1])?.[1];
+      const initiated = /<Initiated>([^<]{1,64})<[/]Initiated>/.exec(match[1])?.[1];
+      const initiatedAt = initiated ? new Date(initiated) : null;
+      if (!key || !uploadId || !initiatedAt || Number.isNaN(initiatedAt.getTime())) {
+        throw new ProjectStorageProviderError();
+      }
+      if (!key.startsWith(input.keyPrefix)) continue;
+      uploads.push({ providerKey: key, uploadId, initiatedAt });
+    }
+    return uploads;
+  }
+
   /** Signierter S3-API-Aufruf mit Query und Rumpf — fuer die Multipart-Verben. */
   private async signedApiRequest(
-    method: "POST" | "DELETE",
+    method: "GET" | "POST" | "DELETE",
     providerKey: string,
     query: Record<string, string>,
     body: string,
@@ -380,7 +425,9 @@ export class S3ProjectStorageProvider implements ProjectStorageProvider {
     const date = amzDate(now);
     const day = date.slice(0, 8);
     const scope = `${day}/${this.config.region}/s3/aws4_request`;
-    const url = objectUrl(this.endpoint, this.config.bucket, providerKey);
+    const url = providerKey === ""
+      ? objectBucketUrl(this.endpoint, this.config.bucket)
+      : objectUrl(this.endpoint, this.config.bucket, providerKey);
     const payloadHash = sha256Hex(body);
     const headers: Record<string, string> = {
       host: canonicalHost(url),
@@ -506,14 +553,26 @@ export class MemoryProjectStorageProvider implements ProjectStorageProvider {
    * Ordnung, ein Abbruch laesst nichts zurueck.
    */
   private readonly multipart = new Map<string, {
-    providerKey: string; contentType: string; parts: Map<number, string>;
+    providerKey: string; contentType: string; initiatedAt: Date; parts: Map<number, string>;
   }>();
 
   async createMultipartUpload(input: { providerKey: string; contentType: string }) {
     assertProviderKey(input.providerKey);
     const uploadId = randomBytes(16).toString("hex");
-    this.multipart.set(uploadId, { providerKey: input.providerKey, contentType: input.contentType, parts: new Map() });
+    this.multipart.set(uploadId, {
+      providerKey: input.providerKey, contentType: input.contentType,
+      initiatedAt: this.now(), parts: new Map(),
+    });
     return { uploadId };
+  }
+
+  async listMultipartUploads(input: { keyPrefix: string }) {
+    assertKeyPrefix(input.keyPrefix);
+    return [...this.multipart.entries()]
+      .filter(([, upload]) => upload.providerKey.startsWith(input.keyPrefix))
+      .map(([uploadId, upload]) => ({
+        providerKey: upload.providerKey, uploadId, initiatedAt: new Date(upload.initiatedAt),
+      }));
   }
 
   async createPartUploadGrant(input: {
@@ -639,6 +698,11 @@ function assertCredentials(credentials: S3ProjectStorageCredentials) {
         credentials.sessionToken.length > 4096 || /[\r\n\0]/.test(credentials.sessionToken)))) {
     throw new ConfigurationError("Invalid S3 Project Storage credentials.");
   }
+}
+
+/** Ein Praefix darf — anders als ein Schluessel — auf "/" enden. */
+function assertKeyPrefix(prefix: string) {
+  assertProviderKey(prefix.endsWith("/") ? prefix.slice(0, -1) : prefix);
 }
 
 function assertProviderKey(key: string) {

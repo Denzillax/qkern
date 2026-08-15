@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "storage-lifecycle-postgres-run2.log",
+  "commit": "f354fdf580606c3bf217bb422722082d5f78f012",
+  "commitSubject": "release: 1.77.0 Rechnungen bekommen Leser",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "testFiles": "27 passed (27)",
+  "tests": "152 passed (152)",
+  "passed": 152,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ],
+  "migrationsApplied": 43
+}

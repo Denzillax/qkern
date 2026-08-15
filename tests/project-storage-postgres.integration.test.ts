@@ -233,6 +233,38 @@ describe.runIf(enabled)("Project Storage PostgreSQL certification", () => {
     });
   });
 
+  it("expires a stale multipart reservation, frees quota and aborts the provider upload", async () => {
+    let current = new Date();
+    const timedService = new ProjectStorageService({
+      repository, provider, scanner: { async scan() { return "clean"; } },
+      now: () => new Date(current),
+    });
+    const bucket = await timedService.createBucket(admin, scope, {
+      name: `mp-stale-${randomUUID().slice(0, 8)}`,
+      readPolicy: "authenticated", writePolicy: "authenticated",
+      allowedMimeTypes: ["application/octet-stream"], maxObjectBytes: 1024, quotaBytes: 1024,
+    });
+    const prepared = await timedService.prepareMultipartUpload(application, scope, bucket.id, {
+      key: "stale.bin", contentType: "application/octet-stream", sizeBytes: 512, checksumSha256: checksum,
+    });
+    const providerKey = `${organizationId}/${projectId}/development/${bucket.id}/${prepared.uploadId}/stale.bin`;
+    expect(await provider.listMultipartUploads({ keyPrefix: providerKey })).toHaveLength(1);
+
+    current = new Date(current.getTime() + 7 * 3600 * 1_000);
+    const result = await timedService.expireLifecycle(admin, scope, 100);
+    expect(result.expiredUploads).toBeGreaterThanOrEqual(1);
+    // Der Provider-Upload ist abgebrochen, die Reservierung expired, die
+    // Quota zurueckgegeben — vorher blieb all das bis zum naechsten
+    // reserveUpload desselben Buckets liegen, der Provider-Teil fuer immer.
+    expect(await provider.listMultipartUploads({ keyPrefix: providerKey })).toHaveLength(0);
+    const state = await owner.query<{ status: string; reserved_bytes: number }>(
+      `SELECT upload.status, bucket.reserved_bytes::int AS reserved_bytes
+       FROM project_storage_uploads upload
+       JOIN project_storage_buckets bucket ON bucket.id=upload.bucket_id
+       WHERE upload.id=$1`, [prepared.uploadId]);
+    expect(state.rows[0]).toEqual({ status: "expired", reserved_bytes: 0 });
+  }, 30_000);
+
   it("keeps the runtime role inside RLS and rejects direct cross-tenant reads", async () => {
     const direct = await runtime.query("SELECT id FROM project_storage_buckets");
     expect(direct.rows).toEqual([]);
