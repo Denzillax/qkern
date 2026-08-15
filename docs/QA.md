@@ -2769,3 +2769,34 @@ PostgreSQL 147 von 147, exit 0, zweimal reproduziert, 42 Migrationen.
 Nicht erbracht: Kein Aufruf-Fall wechselt das Image unter Last. Die
 Deployment-Route spricht in keinem Fall HTTP. Der zentrale Audit-Weg kennt
 Deployments noch nicht.
+
+## Der Editor hört auf zu schauspielern — Release 1.75
+
+Sprosse 9 der Paritätsleiter: Der SQL-Editor der Console ist echt.
+
+Der Fund: Der Editor zeigte auf „Validate query" vorbereitete Beispielzeilen —
+hartkodiert — und rief die Query-Route nie, obwohl der echte Weg seit langem
+existiert (`POST …/query` mit Parser-Wächter, `BEGIN READ ONLY`, Zeitbudgets,
+Limits, Redaktion). Die Signatur-Fehlerklasse dieser Sprint in ihrer neunten
+Ausprägung, diesmal als Fläche. Und das Rückgrat darunter war ausschliesslich
+mit Mocks getestet.
+
+Jetzt führt die Console Read-only-SQL wirklich aus — echte Spalten, echte
+Zeilen, ehrliches `truncated`, Fehlercodes im Klartext; schreibende Statements
+werden weiter ein geprüftes Change Set. Und das Rückgrat ist erstmals gegen
+echtes PostgreSQL zertifiziert: echte SELECT-Zeilen mit `truncated`; eine
+Spalte, die wie ein Geheimnis heisst, verlässt QKERN nie im Klartext; ein
+getarntes UPDATE und ein Multi-Statement werden abgewiesen, und die Daten
+bleiben nachweislich unverändert.
+
+Mutationsprobe: Der Parser-Wächter entfernt — **148 von 149**, genau der
+Abwehrfall. Bemerkenswert: Die Daten blieben auch unter Mutation unverändert,
+weil `BEGIN READ ONLY` als zweite Linie stand — aber der zugesagte Fehlercode
+fehlte, und genau daran fiel der Fall.
+
+Checkpoint `1.75.0` am 16. August 2026: Lokal 1064 bestanden, 0 fehlgeschlagen;
+PostgreSQL 149 von 149, exit 0, zweimal reproduziert, 42 Migrationen.
+
+Nicht erbracht: Die Console-Ansicht selbst ist nicht automatisiert getestet
+(kein Browser-E2E im Projekt). Die Ergebnisdarstellung ist bewusst schlicht.
+Das 5-Sekunden-Zeitbudget ist nicht als Fall belegt.

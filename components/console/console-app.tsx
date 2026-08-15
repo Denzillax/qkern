@@ -256,16 +256,52 @@ function TableView({ projectId, environment }: { projectId: string; environment:
 }
 
 function SqlView({ projectId, environment, reload, navigate }: { projectId: string; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void }) {
-  const [sql, setSql] = useState("SELECT id, customer_id, total, status\nFROM orders\nWHERE status = 'paid'\nORDER BY created_at DESC\nLIMIT 20");
+  const [sql, setSql] = useState("SELECT table_name, table_type\nFROM information_schema.tables\nWHERE table_schema = 'public'\nORDER BY table_name\nLIMIT 20");
   const [result, setResult] = useState<"idle"|"rows"|"approval"|"error">("idle");
+  const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [message, setMessage] = useState("");
+  const [running, setRunning] = useState(false);
   const risk = useMemo(() => classifySqlRisk(sql, environment), [sql, environment]);
+  const readOnly = isReadOnlySql(sql.replace(/\n/g, " "));
+  // Bis Release 1.75 zeigte diese Ansicht vorbereitete Beispielzeilen und rief
+  // die Query-Route nie — die Flaeche sah vorhanden aus, ohne es zu sein.
+  // Jetzt laeuft ein Read-only-Statement wirklich: durch den Parser-Waechter,
+  // in einer READ-ONLY-Transaktion, mit Zeilenlimit und Redaktion.
   async function run() {
-    if (isReadOnlySql(sql.replace(/\n/g," "))) { setResult("rows"); return; }
-    const response = await fetch("/api/v1/changesets", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ projectId, environment, title:"SQL change from Console", statement:sql }) });
-    if (!response.ok) { setResult("error"); return; }
-    setResult("approval"); await reload();
+    setRunning(true);
+    setMessage("");
+    try {
+      if (readOnly) {
+        const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/query`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ statement: sql, limit: 50 }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          setResult("error");
+          setMessage(payload.code ? `${payload.error} (${payload.code})` : payload.error ?? "Query failed");
+          return;
+        }
+        setColumns(payload.data.columns as string[]);
+        setRows(payload.data.rows as Array<Record<string, unknown>>);
+        setTruncated(Boolean(payload.data.truncated));
+        setResult("rows");
+        return;
+      }
+      const response = await fetch("/api/v1/changesets", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, environment, title: "SQL change from Console", statement: sql }),
+      });
+      if (!response.ok) { setResult("error"); setMessage("The change set could not be created."); return; }
+      setResult("approval");
+      await reload();
+    } finally {
+      setRunning(false);
+    }
   }
-  return <div className="sql-layout"><article className="console-card sql-editor"><div className="editor-tabs"><span className="active">Query 1 <X size={12}/></span><button><Plus size={13}/></button><div className={`risk ${risk}`}>{risk} risk</div></div><div className="editor-body"><div className="line-numbers">1<br/>2<br/>3<br/>4<br/>5</div><textarea value={sql} onChange={(event)=>setSql(event.target.value)} aria-label="SQL query" spellCheck={false}/></div><div className="editor-footer"><span>Read-only SQL is validated and shows sample output. Writes become reviewed Change Sets.</span><button className="button small" onClick={run}><Play size={13}/> {isReadOnlySql(sql.replace(/\n/g," ")) ? "Validate query" : "Create preview"}</button></div></article><article className="console-card result-panel"><div className="card-head"><div><span>RESULT</span><h3>{result === "rows" ? "Sample preview · not executed" : result === "approval" ? "Change Set created" : "Ready"}</h3></div></div>{result === "idle" && <EmptyState icon={Terminal} title="Validate a query" text="SELECT statements return clearly marked sample results in this preview."/>}{result === "rows" && <div className="query-result"><code>ord_01JZ · CHF 184.00 · paid</code><code>ord_01JW · CHF 39.90 · paid</code><code>ord_01JT · CHF 116.20 · paid</code><code>ord_01JR · CHF 52.90 · paid</code></div>}{result === "approval" && <div className="success-state"><ShieldCheck size={34}/><h3>Preview is ready</h3><p>No database change was applied. Review the diff and risk in the Approval Center.</p><button className="button small" onClick={()=>navigate("approvals")}>Open Approval Center</button></div>}{result === "error" && <EmptyState icon={X} title="Could not create preview" text="Check the statement and try again."/>}</article></div>;
+  return <div className="sql-layout"><article className="console-card sql-editor"><div className="editor-tabs"><span className="active">Query 1 <X size={12}/></span><button><Plus size={13}/></button><div className={`risk ${risk}`}>{risk} risk</div></div><div className="editor-body"><div className="line-numbers">1<br/>2<br/>3<br/>4<br/>5</div><textarea value={sql} onChange={(event)=>setSql(event.target.value)} aria-label="SQL query" spellCheck={false}/></div><div className="editor-footer"><span>Read-only SQL runs against the project database, bounded and redacted. Writes become reviewed Change Sets.</span><button className="button small" onClick={()=>void run()} disabled={running}><Play size={13}/> {running ? "Running…" : readOnly ? "Run query" : "Create preview"}</button></div></article><article className="console-card result-panel"><div className="card-head"><div><span>RESULT</span><h3>{result === "rows" ? `${rows.length} rows${truncated ? " · truncated" : ""}` : result === "approval" ? "Change Set created" : result === "error" ? "Query failed" : "Ready"}</h3></div></div>{result === "idle" && <EmptyState icon={Terminal} title="Run a query" text="SELECT statements run read-only against the live project database."/>}{result === "rows" && rows.length === 0 && <EmptyState icon={Terminal} title="No rows" text="The query ran and returned an empty result."/>}{result === "rows" && rows.length > 0 && <div className="query-result">{rows.slice(0, 50).map((row, index) => <code key={index}>{columns.map((column) => String(row[column] ?? "∅")).join(" · ")}</code>)}</div>}{result === "approval" && <div className="success-state"><ShieldCheck size={34}/><h3>Preview is ready</h3><p>No database change was applied. Review the diff and risk in the Approval Center.</p><button className="button small" onClick={()=>navigate("approvals")}>Open Approval Center</button></div>}{result === "error" && <EmptyState icon={X} title="Could not run" text={message || "Check the statement and try again."}/>}</article></div>;
 }
 
 type ProjectAuthUserItem={id:string;email:string;status:"active"|"disabled";emailVerifiedAt:string|null;createdAt:string;appMetadata:Record<string,unknown>};

@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.74.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.75.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -29,7 +29,7 @@ zählt.
 | Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`) | Metrics-Export; sonst **vor** Supabase-Stand |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`) | Cron-Ausdrücke jenseits `*/N` und `M H * * *` |
 | Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent | Rechnungsnummernkreis, Lesefläche, Zahlungsanbindung |
-| Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung | SQL-Editor, Auth-/Storage-/Realtime-Flächen, Logs |
+| Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung; seit `1.75.0` ein echter Read-only-SQL-Editor (die vorige Fassung war eine Attrappe) | Auth-/Storage-/Realtime-Flächen vertiefen, Logs |
 | SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI, Fresh-Smoke Linux | Registry-Publishing, Windows/macOS-Evidenz, Upgrade-E2E |
 | Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Nachweisverträge und Provisioning-Sicherheitsverträge | im Grunde alles: Provider-Onboarding, HA, PITR, Restore-Drills — **grösste Lücke, nicht im Docker-Stack zertifizierbar** |
 
@@ -43,7 +43,7 @@ zählt.
 6. ~~Compute: Image-Deployment-Fluss~~ — **erledigt in `1.74.0`.**
 7. **SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI — nächster Slice (braucht CI-Infrastruktur ausserhalb dieser Maschine).**
 8. Auth: erster Social-Provider gegen echte Gegenstelle.
-9. Console: SQL-Editor (read-only beginnend).
+9. ~~Console: SQL-Editor (read-only beginnend)~~ — **erledigt in `1.75.0`**; die vorige Fassung zeigte hartkodierte Beispielzeilen und rief die Route nie.
 10. Betrieb: PITR-/Restore-Drill gegen echtes WAL-Archiv — der erste Schritt,
     der eine Infrastruktur ausserhalb des Wegwerfstacks braucht.
 

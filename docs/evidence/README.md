@@ -812,3 +812,15 @@ Abweisungsfall fällt: Ein Production-Prozess mit flüchtigem Log würde lausche
 
 Die Mutation nimmt der Deployment-Tür das Schreiben der Historienzeile. Genau
 der Fall fällt, der verlangt, dass jede Image-Änderung ihre Historie trägt.
+
+## Läufe zu Release 1.75 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/sql-editor-run1.log` | PostgreSQL 17 | 149 von 149, exit 0, 42 Migrationen |
+| `2026-08-16/sql-editor-run2.log` | PostgreSQL 17 | 149 von 149, exit 0, Wiederholung |
+| `2026-08-16/sql-editor-mutation.log` | PostgreSQL 17 | **148 von 149, exit 1 — absichtlich** |
+
+Die Mutation entfernt den Parser-Wächter der Read-only-Abfrage. Genau der
+Abwehrfall fällt: Der zugesagte Fehlercode fehlt — die Daten blieben auch unter
+Mutation unverändert, weil `BEGIN READ ONLY` als zweite Linie stand.
