@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.70.md](RELEASE_1.70.md) | Aktueller Release: Der Scanner rechnet nach |
+| [RELEASE_1.71.md](RELEASE_1.71.md) | Aktueller Release: Der View trägt die Grenze des Aufrufers |
+| [RELEASE_1.70.md](RELEASE_1.70.md) | Der Scanner rechnet nach |
 | [RELEASE_1.69.md](RELEASE_1.69.md) | Teile, die ankommen |
 | [RELEASE_1.68.md](RELEASE_1.68.md) | Der achte Prozess schliesst den Monat |
 | [RELEASE_1.67.md](RELEASE_1.67.md) | Die erste Sprosse |

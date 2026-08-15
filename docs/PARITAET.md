@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.70.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.71.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -22,7 +22,7 @@ zählt.
 | --- | --- | --- | --- |
 | Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`) | ein Broker, der wirklich Datenbanken einrichtet; Betrieb (unten) |
 | Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE, JWKS — zertifiziert gegen echtes SMTP und echtes OIDC | Social-Provider-Katalog, SAML, SMS; jede Integration braucht eine echte Gegenstelle im Stack |
-| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI — 2 Real-DB-Fälle | Views, RPC, Aggregate, eingebettete Joins |
+| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views | RPC, Aggregate, eingebettete Joins |
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert | Bildtransformation, CDN |
 | Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | Production-Binding (bindet nur Loopback, verweigert Production — absichtlich), persistente Presence/History, Lastprofil jenseits Soak |
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | Image-Deployment-Fluss, Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
@@ -38,7 +38,7 @@ zählt.
 1. ~~Billing: Preisblatt und Monatsprojektion~~ — **erledigt in `1.67.0`.**
 2. ~~Billing: Rechnungslauf als Prozess mit Periodenabschluss~~ — **erledigt in `1.68.0`.**
 3. ~~Storage: Multipart/Resumable~~ — **erledigt in `1.70.0`** (Provider-Schicht `1.69.0`, Dienstweg `1.70.0`).
-4. **Data API: Views und RPC — nächster Slice.**
+4. **Data API: Views und RPC — Views erledigt in `1.71.0`; RPC ist der nächste Slice.**
 5. Realtime: Production-Binding mit begründeter Aufhebung des Verbots.
 6. Compute: Image-Deployment-Fluss.
 7. SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI.

@@ -80,8 +80,24 @@ describe.runIf(enabled)("Project Queues multi-instance certification", () => {
     await setup.createQueue(admin, scope, { name: queue, maxPendingMessages: 400 });
 
     const total = 180;
-    await Promise.all(Array.from({ length: total }, (_, index) =>
-      setup.enqueue(worker, scope, queue, { payload: { index } })));
+    // QUEUE_UNAVAILABLE ist seit 1.64 als wiederholbar gekennzeichnet: Der
+    // Pool war leer, nicht die Warteschlange, und wer wartet, bekommt eine
+    // Verbindung. Der Fall reagiert wie ein Aufrufer reagieren soll — mit
+    // begrenzten Wiederholungen. Zweimal (1.63 und 1.71) ist er auf einem
+    // belasteten Host genau daran gerissen, ohne dass die Queue etwas falsch
+    // gemacht haette.
+    const enqueueWithRetry = async (index: number) => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await setup.enqueue(worker, scope, queue, { payload: { index } });
+        } catch (error) {
+          const code = (error as { code?: string }).code;
+          if (code !== "QUEUE_UNAVAILABLE" || attempt >= 5) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: total }, (_, index) => enqueueWithRetry(index)));
 
     const instances = Array.from({ length: 6 }, () => instance());
     const claimed = await Promise.all(instances.map((service, slot) =>

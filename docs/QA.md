@@ -2632,3 +2632,36 @@ MinIO/ClamAV 6 von 6 zweimal, PostgreSQL 142 von 142 zweimal, alle exit 0.
 Nicht erbracht: Kein Fall lädt 5 GiB. Verwaiste Provider-Uploads altern nicht
 weg. Die Multipart-REST-Routen sind lokal getestet. Kein Real-DB-Fall
 reserviert gezielt einen Multipart-Upload.
+
+## Der View trägt die Grenze des Aufrufers — Release 1.71
+
+Sprosse 4 der Paritätsleiter, erste Hälfte: Die Generated Data API bedient
+Views — lesend, und nur solche mit `security_invoker`. Ein View läuft sonst mit
+den Rechten seines Eigentümers, und die RLS der Basistabellen gilt für den
+Aufrufer nicht; er wird mit demselben Code abgewiesen wie eine Tabelle ohne
+RLS, denn es ist derselbe Mangel. Schreibversuche enden mit dem neuen
+`GENERATED_DATA_API_READ_ONLY` (405). Ein View trägt keinen Primärschlüssel:
+verlangt wird eine ausdrückliche Sortierspalte, Cursor werden abgewiesen statt
+still falsch zu blättern.
+
+Zertifiziert gegen echtes PostgreSQL: Der Invoker-View zeigt Mandant A nur A;
+der View ohne `security_invoker`, der beide zeigen würde, wird nicht bedient.
+Mutationsprobe: Die Invoker-Bedingung entfernt — der Views-Fall fällt.
+
+Zwei Zertifizierungsbefunde nebenbei: Der Queue-Lastfall riss zum zweiten Mal
+(nach 1.63), diesmal mit dem seit 1.64 ehrlichen `QUEUE_UNAVAILABLE` — der als
+wiederholbar gekennzeichnet ist, aber der Fall wiederholte nicht. Er reagiert
+jetzt wie ein Aufrufer reagieren soll: begrenzte Wiederholungen; die Zusage
+(genau einmal je Nachricht) ist unverändert. Und ein Webhook-Fall riss am
+5-Sekunden-Standardbudget auf einem Host, der nach fünfzehn Docker-Läufen 200
+Sekunden für Imports brauchte — die Lektion aus 1.38 an der nächsten Datei;
+alle Fälle dort tragen jetzt ein ausdrückliches Budget. Ein roter Zwischenlauf
+wurde verworfen, der Stand zweimal frisch belegt.
+
+Checkpoint `1.71.0` am 16. August 2026: Lokal 1060 bestanden, 0 fehlgeschlagen;
+PostgreSQL 143 von 143, exit 0, zweimal reproduziert, 41 Migrationen.
+
+Nicht erbracht: RPC (zweite Hälfte der Sprosse). Materialisierte Views sind
+nicht dabei. OpenAPI unterscheidet Views nicht und bewirbt Schreiboperationen,
+die mit 405 enden. Der Mutationslauf lief vor der Härtung des Lastfalls; sein
+Views-Fall ist unverändert.

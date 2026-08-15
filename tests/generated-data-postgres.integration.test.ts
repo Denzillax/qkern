@@ -88,4 +88,54 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
       schema, table: "items", filters: [{ column: "name) OR true --", operator: "eq", value: "x" }],
     })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
   });
+
+  /**
+   * Views — Sprosse 4 der Paritaetsleiter, erste Haelfte.
+   *
+   * Nur ein View mit `security_invoker` laesst die RLS der Basistabellen fuer
+   * den **Aufrufer** gelten; alle anderen laufen mit den Rechten ihres
+   * Eigentuemers und wuerden die Mandantengrenze aushebeln. Genau diese
+   * Bedingung nimmt die Mutationsprobe dieses Releases heraus.
+   */
+  it("serves security-invoker views read-only under the caller's RLS", async () => {
+    await owner.query(`CREATE VIEW "${schema}".items_named
+      WITH (security_invoker = true)
+      AS SELECT id, owner_id, name FROM "${schema}".items`);
+    await owner.query(`CREATE VIEW "${schema}".items_leaky
+      AS SELECT id, owner_id, name FROM "${schema}".items`);
+    await owner.query(`GRANT SELECT ON "${schema}".items_named, "${schema}".items_leaky
+      TO qkern_project_api_app`);
+    await owner.query(`INSERT INTO "${schema}".items (id, owner_id, name)
+      VALUES ($1, $2, 'view-a'), ($3, $4, 'view-b')`,
+    [randomUUID(), ownerA, randomUUID(), ownerB]);
+
+    // Durch den View gilt die RLS des Aufrufers: A sieht nur A.
+    const listed = await service.listRows(context(ownerA), scope, {
+      schema, table: "items_named", order: { column: "name", direction: "asc" },
+    });
+    expect(listed.table.kind).toBe("view");
+    expect(listed.rows.length).toBeGreaterThan(0);
+    expect(listed.rows.every((row) => row.owner_id === ownerA)).toBe(true);
+    // Kein Cursor auf einem View: Ohne eindeutige Ordnung wuerde er still
+    // Zeilen ueberspringen oder doppeln.
+    expect(listed.nextCursor).toBeNull();
+    await expect(service.listRows(context(ownerA), scope, {
+      schema, table: "items_named", order: { column: "name", direction: "asc" },
+      cursor: "irgendein-cursor",
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    await expect(service.listRows(context(ownerA), scope, {
+      schema, table: "items_named",
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+
+    // Ein View ist eine Leseflaeche.
+    await expect(service.insertRows(context(ownerA), scope, {
+      schema, table: "items_named", rows: [{ id: randomUUID(), owner_id: ownerA, name: "nope" }],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_READ_ONLY" });
+
+    // Ohne security_invoker laeuft der View mit den Rechten des Eigentuemers —
+    // er wuerde beide Mandanten zeigen. Er wird abgewiesen, nicht bedient.
+    await expect(service.listRows(context(ownerA), scope, {
+      schema, table: "items_leaky", order: { column: "name", direction: "asc" },
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+  });
 });

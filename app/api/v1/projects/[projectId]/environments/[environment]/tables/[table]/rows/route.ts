@@ -63,6 +63,9 @@ export function routeError(error: unknown) {
     if (error.code === "GENERATED_DATA_API_TABLE_NOT_FOUND" || error.code === "GENERATED_DATA_API_FORBIDDEN") {
       return noStore({ error: "Resource not found", code: error.code }, 404);
     }
+    if (error.code === "GENERATED_DATA_API_READ_ONLY") {
+      return noStore({ error: "Views are read-only", code: error.code }, 405);
+    }
     if (error.code === "GENERATED_DATA_API_NOT_READY" ||
         error.code === "GENERATED_DATA_API_RLS_REQUIRED" ||
         error.code === "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED") {

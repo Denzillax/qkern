@@ -62,6 +62,8 @@ export type GeneratedTableColumn = {
 export type GeneratedTable = {
   schema: string;
   name: string;
+  /** Views sind lesend; Schreibversuche enden mit GENERATED_DATA_API_READ_ONLY. */
+  kind: "table" | "view";
   rowSecurityEnabled: boolean;
   primaryKey: string[];
   columns: GeneratedTableColumn[];
@@ -130,6 +132,7 @@ export type GeneratedDataApiErrorCode =
   | "GENERATED_DATA_API_BOUNDARY_REJECTED"
   | "GENERATED_DATA_API_TABLE_NOT_FOUND"
   | "GENERATED_DATA_API_RLS_REQUIRED"
+  | "GENERATED_DATA_API_READ_ONLY"
   | "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED"
   | "GENERATED_DATA_API_FORBIDDEN";
 
@@ -154,7 +157,7 @@ export class GeneratedDataApiError extends Error {
 function metadataRowRejection(row: MetadataRow): string | null {
   if (!IDENTIFIER.test(row.table_name)) return "table_name";
   if (!IDENTIFIER.test(row.column_name)) return "column_name";
-  if (!["r", "p"].includes(row.relation_kind)) return "relation_kind";
+  if (!["r", "p", "v"].includes(row.relation_kind)) return "relation_kind";
   if (typeof row.data_type !== "string" || row.data_type.length > 160) return "data_type";
   if (!Number.isSafeInteger(row.ordinal_position) || row.ordinal_position < 1) {
     return `ordinal_position:${typeof row.ordinal_position}`;
@@ -168,7 +171,8 @@ function metadataRowRejection(row: MetadataRow): string | null {
 
 type MetadataRow = {
   table_name: string;
-  relation_kind: "r" | "p";
+  relation_kind: "r" | "p" | "v";
+  security_invoker: boolean;
   row_security_enabled: boolean;
   force_row_security: boolean;
   owned_by_current_role: boolean;
@@ -191,6 +195,12 @@ type MetadataRow = {
 const METADATA_SQL = `
   SELECT relation.relname AS table_name,
          relation.relkind AS relation_kind,
+         -- security_invoker steht in den reloptions. Nur ein View mit dieser
+         -- Option laesst die RLS der Basistabellen fuer den Aufrufer gelten;
+         -- alle anderen laufen mit den Rechten des View-Eigentuemers und sind
+         -- fuer diese API keine Kandidaten.
+         COALESCE(relation.reloptions::text[] && ARRAY['security_invoker=true','security_invoker=on'], false)
+           AS security_invoker,
          relation.relrowsecurity AS row_security_enabled,
          relation.relforcerowsecurity AS force_row_security,
          relation.relowner = role.oid AS owned_by_current_role,
@@ -221,7 +231,7 @@ const METADATA_SQL = `
     ON primary_index.indrelid = relation.oid AND primary_index.indisprimary
   WHERE namespace.nspname = $1
     AND ($2::text IS NULL OR relation.relname = $2)
-    AND relation.relkind IN ('r', 'p')
+    AND relation.relkind IN ('r', 'p', 'v')
     AND relation.relpersistence <> 't'
     AND attribute.attnum > 0
     AND NOT attribute.attisdropped
@@ -229,6 +239,7 @@ const METADATA_SQL = `
   LIMIT $3`;
 
 type InternalTable = GeneratedTable & {
+  securityInvoker: boolean;
   canSelect: boolean;
   canInsert: boolean;
   canUpdate: boolean;
@@ -292,8 +303,14 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     return this.run(context, scope, false, async (client) => {
       const table = await this.loadTable(client, input.schema, input.table);
       assertTableBoundary(table, "select");
-      if (table.primaryKey.length === 0) {
+      if (table.kind === "table" && table.primaryKey.length === 0) {
         throw new GeneratedDataApiError("GENERATED_DATA_API_PRIMARY_KEY_REQUIRED");
+      }
+      // Ein View traegt keinen Primaerschluessel und damit keine Ordnung, auf
+      // der ein Keyset-Cursor stehen koennte. Verlangt wird eine ausdrueckliche
+      // Sortierspalte; Cursor werden abgewiesen statt still falsch zu blaettern.
+      if (table.kind === "view" && (input.cursor !== undefined || !input.order?.column)) {
+        throw invalidInput();
       }
       const byName = new Map(table.columns.map((column) => [column.name, column]));
       const selectedNames = input.select?.length
@@ -311,7 +328,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       }
 
       const direction = input.order?.direction ?? "asc";
-      const primaryOrder = input.order?.column ?? table.primaryKey[0];
+      const primaryOrder = input.order?.column ?? table.primaryKey[0]!;
       const primaryOrderColumn = byName.get(primaryOrder);
       if (!primaryOrderColumn?.selectable || primaryOrderColumn.sensitive ||
           !isSortableDataType(primaryOrderColumn.dataType)) throw invalidInput();
@@ -357,7 +374,9 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         rows,
         rowCount: rows.length,
         hasMore,
-        nextCursor: hasMore && cursorSource
+        // Ein View bekommt keinen Cursor: Ohne eindeutige Ordnung wuerde er
+        // Zeilen ueberspringen oder doppeln, und beides still.
+        nextCursor: table.kind === "table" && hasMore && cursorSource
           ? encodeCursor(input.schema, input.table, orderColumns, direction,
             orderColumns.map((name) => normalizeDataValue(cursorSource[name])))
           : null,
@@ -547,6 +566,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         mapped = {
           schema,
           name: row.table_name,
+          kind: row.relation_kind === "v" ? "view" as const : "table" as const,
+          securityInvoker: row.security_invoker === true,
           rowSecurityEnabled: row.row_security_enabled === true,
           primaryKey: [],
           columns: [],
@@ -740,6 +761,20 @@ function assertResolvedBoundary(resolved: ResolvedProjectDatabaseConnection): vo
 }
 
 function assertTableBoundary(table: InternalTable, action: "select" | "insert" | "update" | "delete"): void {
+  if (table.kind === "view") {
+    // Ein View ist hier eine Leseflaeche. Schreibbare Views existieren in
+    // PostgreSQL, aber ihre Update-Regeln liegen ausserhalb dessen, was diese
+    // API zusagen kann — ein Schreibversuch ist ein Fehler des Aufrufs.
+    if (action !== "select") throw new GeneratedDataApiError("GENERATED_DATA_API_READ_ONLY");
+    // Ohne security_invoker laeuft der View mit den Rechten seines
+    // Eigentuemers und die RLS der Basistabellen gilt fuer den Aufrufer
+    // nicht. Das ist derselbe Mangel wie eine Tabelle ohne RLS, und er
+    // bekommt denselben Code.
+    if (!table.securityInvoker) throw new GeneratedDataApiError("GENERATED_DATA_API_RLS_REQUIRED");
+    if (table.ownedByCurrentRole) throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+    if (!table.canSelect) throw new GeneratedDataApiError("GENERATED_DATA_API_FORBIDDEN");
+    return;
+  }
   if (!table.rowSecurityEnabled) throw new GeneratedDataApiError("GENERATED_DATA_API_RLS_REQUIRED");
   if (table.ownedByCurrentRole && !table.forceRowSecurity) {
     throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
@@ -763,6 +798,7 @@ function publicTable(table: InternalTable): GeneratedTable {
   return {
     schema: table.schema,
     name: table.name,
+    kind: table.kind,
     rowSecurityEnabled: table.rowSecurityEnabled,
     primaryKey: [...table.primaryKey],
     columns: table.columns.filter((column) => !column.sensitive).map((column) => ({ ...column })),

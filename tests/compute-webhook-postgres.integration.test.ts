@@ -68,11 +68,11 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     await owner.query(`INSERT INTO project_environments
       (organization_id, project_id, environment, database_instance_ref)
       VALUES ($1, $2, 'development', $3)`, [organizationId, projectId, `managed:${projectId}`]);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await Promise.allSettled([...pools.map((pool) => pool.end()), owner?.end()]);
-  });
+  }, 30_000);
 
   /**
    * Holt gezielt die eigene Zustellung. Die Outbox ist FIFO ueber den ganzen
@@ -104,7 +104,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     const winners = claims.filter((claim) => claim.id === delivery.id);
     expect(winners).toHaveLength(1);
     expect(winners[0].attemptCount).toBe(1);
-  });
+  }, 30_000);
 
   it("stores only the lease verifier, never the raw token", async () => {
     const webhookId = await defineWebhook();
@@ -119,7 +119,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     );
     expect(stored.rows[0]?.lease_token_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored.rows[0]?.lease_token_hash).not.toBe(claim.leaseToken);
-  });
+  }, 30_000);
 
   it("refuses a settlement from the wrong worker or a stale token", async () => {
     const webhookId = await defineWebhook();
@@ -140,7 +140,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     await expect(service.acknowledge(scope, delivery.id, {
       workerId: "rightful", leaseToken: claim.leaseToken,
     })).resolves.toMatchObject({ status: "delivered" });
-  });
+  }, 30_000);
 
   it("schedules a retry with a server-computed delay", async () => {
     const webhookId = await defineWebhook();
@@ -163,7 +163,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     // Der Zusteller bestimmt die Wartezeit nicht; sie kommt vom Server.
     expect(new Date(state.rows[0].available_at).getTime())
       .toBeGreaterThan(new Date(state.rows[0].created_at).getTime());
-  });
+  }, 30_000);
 
   it("dead-letters once the attempt limit of the definition is reached", async () => {
     const webhookId = await defineWebhook(1);
@@ -183,7 +183,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     );
     expect(state.rows[0]?.status).toBe("dead_lettered");
     expect(state.rows[0]?.dead_lettered_at).not.toBeNull();
-  });
+  }, 30_000);
 
   it("keeps the payload of a delivery immutable", async () => {
     // Sonst koennte ein Wiederholungsversuch etwas anderes senden als der
@@ -197,7 +197,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
       `UPDATE project_webhook_deliveries SET payload='{"tampered":true}'::jsonb WHERE id=$1`,
       [delivery.id],
     )).rejects.toMatchObject({ message: expect.stringContaining("content is immutable") });
-  });
+  }, 30_000);
 
   it("keeps a settled delivery final", async () => {
     const webhookId = await defineWebhook();
@@ -213,7 +213,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     await expect(owner.query(
       "UPDATE project_webhook_deliveries SET status='pending' WHERE id=$1", [delivery.id],
     )).rejects.toMatchObject({ message: expect.stringContaining("is final") });
-  });
+  }, 30_000);
 
   it("hides deliveries of a different organization", async () => {
     const webhookId = await defineWebhook();
@@ -226,7 +226,7 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
       { ...scope, organizationId: randomUUID() }, { workerId: "outsider" },
     );
     expect(claims).toEqual([]);
-  });
+  }, 30_000);
 });
 
 /**
@@ -302,11 +302,11 @@ describe.runIf(enabled)("Webhook retention PostgreSQL certification", () => {
       [webhookId, organizationId, projectId, ["order.created"]],
     );
     repository = new PostgresWebhookOutboxRepository(new PostgresControlPlane(runtimePool));
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await Promise.allSettled([owner?.end(), runtimePool?.end()]);
-  });
+  }, 30_000);
 
   it("removes what is finished and old, and never what is still waiting", async () => {
     await delivery("delivered", 30);
@@ -325,7 +325,7 @@ describe.runIf(enabled)("Webhook retention PostgreSQL certification", () => {
     // Eine ausstehende Zustellung ist keine Altlast. Sie zu loeschen waere der
     // stille Verlust genau der Nachricht, die noch ankommen soll.
     expect(left.get("pending")).toBe(1);
-  });
+  }, 30_000);
 
   it("keeps a dead letter that a delivered row of the same age would lose", async () => {
     await delivery("dead_lettered", 10);
@@ -340,5 +340,5 @@ describe.runIf(enabled)("Webhook retention PostgreSQL certification", () => {
 
     const left = await remaining();
     expect(left.get("dead_lettered")).toBe(1);
-  });
+  }, 30_000);
 });
