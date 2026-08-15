@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QKERNLogo, QKERNSymbol } from "@/components/brand";
+import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type {
   Approval,
@@ -541,7 +542,32 @@ function UsageView({projectId,environment}:{projectId:string;environment:Environ
         {projection.metrics.map(item=><div key={item.metric}><span>{item.label}<small>{item.mode} · Revision {item.revision??"–"}</small></span><strong className={item.status==="exceeded"||item.status==="exhausted"?"risk high":item.status==="warning"?"risk medium":"secure"}>{formatUsageAmount(item.used,item.unit)}{item.limit===null?"":` / ${formatUsageAmount(item.limit,item.unit)}`} · {usageStatusLabel(item.status)}</strong></div>)}
       </div>
     </article>
+    <InvoicesCard projectId={projectId} environment={environment}/>
   </>;
+}
+
+/**
+ * Die ausgestellten Rechnungen — lesend, aus dem eingefrorenen Dokument des
+ * Rechnungslaufs. Der Ladeweg steckt in `loadConsoleInvoices`, damit er ohne
+ * Browser-Testumgebung pruefbar ist; hier wird er nur eingehaengt.
+ */
+function InvoicesCard({projectId,environment}:{projectId:string;environment:Environment}) {
+  const [result,setResult]=useState<ConsoleInvoiceResult|null>(null);
+  const load=useCallback(async()=>{
+    setResult(null);
+    setResult(await loadConsoleInvoices(projectId,environment));
+  },[projectId,environment]);
+  useEffect(()=>{void load();},[load]);
+  return <article className="console-card chart-card">
+    <div className="card-head"><div><span>INVOICES</span><h3>Ausgestellte Rechnungen</h3></div><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> Aktualisieren</button></div>
+    {result===null&&<p className="muted">Rechnungen werden geladen…</p>}
+    {result?.state==="disabled"&&<p className="muted">Usage Metering ist deaktiviert — ohne Zähler kein Rechnungslauf.</p>}
+    {result?.state==="error"&&<p className="muted">Die Rechnungen konnten nicht geladen werden.</p>}
+    {result?.state==="ready"&&result.invoices.length===0&&<p className="muted">Noch keine Rechnung — der Rechnungslauf fakturiert abgeschlossene Monate.</p>}
+    {result?.state==="ready"&&result.invoices.length>0&&<div className="detail-list">
+      {result.invoices.map(invoice=><div key={invoice.invoiceNumber}><span>Rechnung Nr. {invoice.invoiceNumber}<small>{invoice.periodStart} bis {invoice.periodEnd} · fällig {invoice.dueAt.slice(0,10)} · {invoice.lines.length} {invoice.lines.length===1?"Posten":"Posten"}</small></span><strong>{invoice.total} {invoice.currency}</strong></div>)}
+    </div>}
+  </article>;
 }
 
 function BackupsView(){return <div className="module-grid"><article className="console-card backup-hero"><ArchiveRestore size={24}/><div><span>BACKUP STATUS</span><h2>Protected</h2><p>Last verified backup today at 03:00 UTC</p></div><button className="button small">Create backup</button></article><article className="console-card"><div className="card-head"><div><span>RETENTION</span><h3>7 daily backups</h3></div></div><div className="detail-list"><div><span>Encryption</span><strong className="secure">Active</strong></div><div><span>Point-in-time</span><strong>Roadmap</strong></div><div><span>Restore tests</span><strong>Weekly</strong></div></div></article><article className="console-card span-2"><div className="card-head"><div><span>BACKUP HISTORY</span><h3>Available restore points</h3></div></div>{["17 Jul 2026 · 03:00","16 Jul 2026 · 03:00","15 Jul 2026 · 03:00"].map((date,index)=><div className="backup-row" key={date}><span className="secure"><ShieldCheck size={15}/></span><div><strong>{date}</strong><small>284 MB · encrypted · checksum verified</small></div><span>{index===0?"Automatic":"Daily"}</span><button className="secondary-button">Restore preview</button></div>)}</article></div>}

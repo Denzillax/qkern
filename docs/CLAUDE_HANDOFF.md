@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.81.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.82.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.81.0`
-- Aktueller Slice: 1.81 Der Kreis ohne Luecken — Rechnungsnummern lueckenlos je
+- Paketversion: `1.82.0`
+- Aktueller Slice: 1.82 Rechnungen erreichen den Browser — Console-Karte in
+  der Monitoring-Ansicht; der Ladeweg ist als reine Funktion extrahiert
+  (`components/console/invoices.ts`) und lokal vertraglich geprueft; die
+  Invoices-Route spricht erstmals HTTP (`tests/billing-invoice-routes.test.ts`)
+- Vorheriger Slice: 1.81 Der Kreis ohne Luecken — Rechnungsnummern lueckenlos je
   Organisation (Migration 0044): Nummer und Rechnung entstehen in **einem**
   Statement (CTE-Upsert auf billing_invoice_counters), der ON-CONFLICT-Verlierer
   rollt seinen Zaehlerstand per SAVEPOINT zurueck; due_at per DEFAULT

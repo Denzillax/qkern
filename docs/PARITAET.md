@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.81.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.82.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -28,7 +28,7 @@ zählt.
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; offen: Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
 | Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`) | Metrics-Export; sonst **vor** Supabase-Stand |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`) | Cron-Ausdrücke jenseits `*/N` und `M H * * *` |
-| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent — seit `1.77.0` mit REST-Lesefläche und belegtem Wettlauf; seit `1.81.0` lückenloser Nummernkreis je Organisation mit Fälligkeit | Console-Fläche, Zahlungsanbindung |
+| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent — seit `1.77.0` mit REST-Lesefläche und belegtem Wettlauf; seit `1.81.0` lückenloser Nummernkreis je Organisation mit Fälligkeit; seit `1.82.0` liest die Console die Rechnungen | Zahlungsanbindung |
 | Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung; seit `1.75.0` ein echter Read-only-SQL-Editor (die vorige Fassung war eine Attrappe) | Auth-/Storage-/Realtime-Flächen vertiefen, Logs |
 | SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI, Fresh-Smoke Linux | Registry-Publishing, Windows/macOS-Evidenz, Upgrade-E2E |
 | Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Nachweisverträge und Provisioning-Sicherheitsverträge | im Grunde alles: Provider-Onboarding, HA, PITR, Restore-Drills — **grösste Lücke, nicht im Docker-Stack zertifizierbar** |

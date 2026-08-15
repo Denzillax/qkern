@@ -3000,3 +3000,34 @@ Nicht erbracht: Die 30 Tage sind fest, keine Zahlungsbedingung je
 Organisation. Der Zähler serialisiert Rechnungsläufe je Organisation — bei
 sehr vielen gleichzeitigen Läufen ist das eine bewusste Bremse. Keine
 Console-Fläche, keine Zahlungsanbindung.
+
+## Rechnungen erreichen den Browser — Release 1.82
+
+Zwei offene Punkte aus 1.77: Die Invoices-Route sprach in keinem Fall HTTP,
+und die Console kannte keine Rechnungen.
+
+Die Route spricht jetzt — durch dieselbe authentifizierte Grenze wie die
+Usage-Fläche: 200 mit `private, no-store` und dem eingefrorenen Dokument
+samt `invoiceNumber` und `dueAt`; doppelte, unbekannte oder missgeformte
+`limit`-Parameter enden mit 400 **vor** dem Dienstzugriff. Der Dienst
+dahinter ist seit 1.77/1.81 gegen echtes PostgreSQL zertifiziert; Gegenstand
+hier ist die HTTP-Grenze.
+
+Die Console-Monitoring-Ansicht trägt eine Rechnungs-Karte. Die Lektion aus
+1.75 (ein Editor, der nie eine Route rief) bestimmt den Zuschnitt: Der
+Ladeweg ist als reine Funktion extrahiert (`components/console/invoices.ts`)
+und vertraglich geprüft — exakte URL, `no-store`, eigene Zustände für 503,
+Fehler und missgeformte Antworten. Die React-Karte hängt ihn nur ein.
+
+Dieser Slice ändert keinen Server-Code; es gibt bewusst keinen neuen
+Stack-Lauf. Mutationsprobe lokal: Die URL des Ladewegs auf die Usage-Route
+verbogen — **1 von 1069 fällt**, genau der Ladeweg-Vertrag.
+
+Checkpoint `1.82.0` am 16. August 2026: Lokal 1069 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Mutationslauf archiviert. PostgreSQL
+bleibt auf dem Stand von 1.81: 155 von 155.
+
+Nicht erbracht: Die React-Karte selbst rendert ungeprüft — geprüft ist der
+Ladeweg als Funktion, nicht das Einhängen in React (keine
+Browser-Testumgebung im Repo). Keine Detailansicht der Posten, keine
+Zahlungsanbindung.

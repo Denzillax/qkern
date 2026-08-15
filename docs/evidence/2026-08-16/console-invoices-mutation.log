@@ -1,0 +1,42 @@
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/console-invoices.test.ts (2 tests | 1 failed) 73ms
+     × calls the invoices route with no-store and maps the frozen document 68ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-invoices.test.ts > console invoices loader > calls the invoices route with no-store and maps the frozen document
+AssertionError: expected "vi.fn()" to be called with arguments: [ …(2) ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+-   "/api/v1/projects/prj-1/environments/development/usage/invoices?limit=12",
++   "/api/v1/projects/prj-1/environments/development/usage?limit=12",
+    {
+      "cache": "no-store",
+    },
+  ]
+
+
+Number of calls: 1
+
+ ❯ tests/console-invoices.test.ts:25:21
+     23|       new Response(JSON.stringify(wire), { status: 200 }));
+     24|     const result = await loadConsoleInvoices("prj-1", "development", f…
+     25|     expect(fetcher).toHaveBeenCalledWith(
+       |                     ^
+     26|       "/api/v1/projects/prj-1/environments/development/usage/invoices?…
+     27|       { cache: "no-store" },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 161 passed | 33 skipped (195)
+      Tests  1 failed | 1068 passed | 234 skipped (1303)
+   Start at  22:27:01
+   Duration  23.11s (transform 52.18s, setup 0ms, import 130.32s, tests 74.57s, environment 82ms)
+

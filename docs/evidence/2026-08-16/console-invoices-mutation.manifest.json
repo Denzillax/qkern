@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "console-invoices-mutation.log",
+  "commit": "2dc34f7308b36d3c160a40c704972f92625eab06",
+  "commitSubject": "release: 1.81.0 Der Kreis ohne Luecken",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 1068 passed | 234 skipped (1303)",
+  "passed": 1068,
+  "failed": 1,
+  "skipped": 234,
+  "images": []
+}

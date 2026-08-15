@@ -902,3 +902,15 @@ abweist — genau der OpenAPI-Fall fällt.
 Die Mutation entfernt den SAVEPOINT-Rollback des Wettlauf-Verlierers. Ein
 verlorener zweiter Lauf lässt seinen Zählerstand stehen und reisst eine Lücke
 in den Nummernkreis — genau der Nummernkreis-Fall fällt.
+
+## Läufe zu Release 1.82 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/console-invoices-run1.log` | Vitest lokal (Windows) | 1069 bestanden, exit 0 |
+| `2026-08-16/console-invoices-run2.log` | Vitest lokal (Windows) | 1069 bestanden, exit 0, Wiederholung |
+| `2026-08-16/console-invoices-mutation.log` | Vitest lokal (Windows) | **1 fehlgeschlagen, exit 1 — absichtlich** |
+
+Dieser Slice ändert keinen Server-Code; die Dienste dahinter sind seit
+1.77/1.81 gegen echtes PostgreSQL zertifiziert. Die Mutation verbiegt die URL
+des Console-Ladewegs auf die Usage-Route — genau der Ladeweg-Vertrag fällt.

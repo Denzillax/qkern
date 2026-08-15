@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.81.md](RELEASE_1.81.md) | Aktueller Release: Der Kreis ohne Luecken |
+| [RELEASE_1.82.md](RELEASE_1.82.md) | Aktueller Release: Rechnungen erreichen den Browser |
+| [RELEASE_1.81.md](RELEASE_1.81.md) | Der Kreis ohne Luecken |
 | [RELEASE_1.80.md](RELEASE_1.80.md) | Das Dokument sagt die Wahrheit |
 | [RELEASE_1.79.md](RELEASE_1.79.md) | Deployments stehen im Audit |
 | [RELEASE_1.78.md](RELEASE_1.78.md) | Waisen altern weg |
