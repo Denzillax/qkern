@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.67.md](RELEASE_1.67.md) | Aktueller Release: Die erste Sprosse |
+| [RELEASE_1.68.md](RELEASE_1.68.md) | Aktueller Release: Der achte Prozess schliesst den Monat |
+| [RELEASE_1.67.md](RELEASE_1.67.md) | Die erste Sprosse |
 | [RELEASE_1.66.md](RELEASE_1.66.md) | Der Schritt bekommt einen Namen |
 | [PARITAET.md](PARITAET.md) | Die Lücke zu Supabase, vermessen — mit Abbaureihenfolge |
 | [RELEASE_1.65.md](RELEASE_1.65.md) | Neun Grenzen, nicht sechs |

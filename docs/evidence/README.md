@@ -718,3 +718,19 @@ Die Mutation lässt das `step`-Feld weg. Genau der Fall fällt, der den Fehler a
 
 Die Mutation dreht die Ordnung der Preisauswahl um (`DESC` → `ASC`): der älteste
 Preis gewinnt. Genau der Fall „der neueste Preis gewinnt" fällt.
+
+## Läufe zu Release 1.68 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/invoice-run1.log` | PostgreSQL 17 | 142 von 142, exit 0, 40 Migrationen |
+| `2026-08-16/invoice-run2.log` | PostgreSQL 17 | 142 von 142, exit 0, Wiederholung |
+| `2026-08-16/invoice-mutation.log` | PostgreSQL 17 | **141 von 142, exit 1 — absichtlich** |
+
+Die Mutation entfernt den Periodenabschluss des Rechnungslaufs. Genau der Fall
+fällt, der einen Lauf über die offene Periode an der Konfigurationsgrenze
+scheitern sieht.
+
+Ein erster Mutationslauf endete mit exit 1, ohne dass die Probe lief: Docker
+Desktop war ausgefallen. Der Lauf wurde verworfen und wiederholt — ein
+Exit-Code allein beglaubigt keine Mutationsprobe.

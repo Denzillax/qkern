@@ -2530,3 +2530,38 @@ Nicht erbracht: keine Rechnung (Sprosse 2); der Preis am Fensterende gilt für
 den ganzen Monat; eine Währung je Organisation prüft der Dienst, nicht die
 Datenbank; `setRate` hat keine Produktfläche; die REST-Route ist lokal
 getestet, nicht im Stack.
+
+## Der achte Prozess schliesst den Monat — Release 1.68
+
+Sprosse 2 der Paritätsleiter: Der Rechnungslauf existiert, läuft als eigener
+Prozess (`npm run worker:billing-invoices`) und ist bei der Arbeit belegt — der
+achte Prozess mit Arbeitsnachweis.
+
+Eine Rechnung unterscheidet sich von der Projektion aus 1.67 in genau einem
+Punkt: Sie friert ein. Das Fenster muss abgeschlossen sein, die Rechnung ist
+append-only, und je (Projekt, Umgebung, Periode) entsteht höchstens eine — die
+eindeutige Beschränkung aus Migration 0040 trägt die Idempotenz, nicht der
+Code. Rechnung und Posten entstehen in einer Tenant-Transaktion. Die
+Worker-Rolle bekam mit 0040 erst ihre Leserechte auf Umgebungen, Zähler und
+Preisblatt — sie hatte keines davon.
+
+Drei Prozessfälle gegen echtes PostgreSQL: Aus echten Juli-Zählern und dem
+echten Preisblatt entsteht die Rechnung mit zwei Posten und Summe 430000
+Mikro-CHF, und der Preis vom 1. August gilt für den Juli nicht; ein zweiter
+Lauf meldet `exists` und lässt sie unangetastet; ein Lauf über die offene
+Periode scheitert an der Konfigurationsgrenze. Dazu fünf lokale Fälle.
+
+Mutationsprobe: Periodenabschluss entfernt — **141 von 142**, genau der
+Abschlussfall. Der erste Mutationslauf endete mit exit 1, ohne dass die Probe
+lief: Docker Desktop war ausgefallen. Nur der Blick in den Log hat das
+unterschieden; der Lauf wurde verworfen und wiederholt. Ein Exit-Code allein
+beglaubigt keine Mutationsprobe.
+
+Checkpoint `1.68.0` am 16. August 2026: Lokal 1054 bestanden, 0 fehlgeschlagen;
+PostgreSQL 142 von 142, exit 0, zweimal reproduziert, 40 Migrationen.
+
+Nicht erbracht: keine kaufmännische Nummer, keine Fälligkeit, keine
+Zahlungsanbindung; keine Lesefläche in REST/Console; die Juli-Zähler des
+Prozessfalls sind als Eigentümer eingelegt (der Schreibweg ist seit 1.29 eigens
+zertifiziert); kein Deployment-Rendering; kein Fall für zwei konkurrierende
+Läufe.
