@@ -110,6 +110,57 @@ const server = createServer(options, async (request, response) => {
     return;
   }
 
+  /**
+   * Der Provisionierungs-Broker.
+   *
+   * Der Provisioner signiert wie der Incident- und der Apply-Publisher:
+   * `v1=<hex>`, Schluesselkennung im eigenen Header, HMAC ueber
+   * `${timestamp}.${body}`. Geantwortet wird mit **genau** den Feldern, die
+   * der Adapter erwartet — jedes zusaetzliche oder fehlende Feld macht die
+   * Antwort ungueltig, und das ist Absicht: Ein Broker, dessen Bindung nur
+   * ungefaehr passt, darf keine Bindung setzen.
+   *
+   * Der Vertragshash kommt aus der Umgebung, nicht aus dem Code hier: Er
+   * gehoert dem Produkt, und ein Empfaenger, der ihn selbst erfinden koennte,
+   * wuerde die Zusage aushebeln, die er belegen soll.
+   */
+  if (path === "/provision") {
+    const ok = incidentSignatureMatches(
+      request.headers["x-qkern-signature"],
+      request.headers["x-qkern-timestamp"],
+      body,
+    );
+    if (!ok) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end('{"error":"signature"}');
+      return;
+    }
+    let parsed;
+    try { parsed = JSON.parse(body); } catch { parsed = null; }
+    if (!parsed || parsed.provisioningJobId !== request.headers["x-qkern-provisioning-job-id"]) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end('{"error":"job id"}');
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      status: "ready",
+      provisioningJobId: parsed.provisioningJobId,
+      binding: {
+        databaseInstanceRef: `managed:${parsed.projectId}`,
+        vaultStaticRole: `qkern-project-${parsed.projectId}`,
+        host: "receiver.qkern.test",
+        port: 5432,
+        expectedRole: "qkern_project_app",
+        expectedDatabase: "qkern_project_certification",
+        expectedLedgerOwner: "qkern_ledger_owner",
+        serverCertificateSha256: "a".repeat(64),
+        bootstrapContractSha256: process.env.QKERN_RECEIVER_BOOTSTRAP_CONTRACT_SHA256 ?? "",
+      },
+    }));
+    return;
+  }
+
   if (path === "/hooks/redirect") {
     response.writeHead(302, { location: "https://elsewhere.qkern.test/hooks" });
     response.end();

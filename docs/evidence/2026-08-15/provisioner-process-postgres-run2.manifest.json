@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "provisioner-process-postgres-run2.log",
+  "commit": "d948c5e606bdb9e9fdc57509e29c1dd44b67f5f5",
+  "commitSubject": "release: 1.61.0 Der Herzschlag, den niemand schreiben konnte",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 37,
+  "testFiles": "21 passed (21)",
+  "tests": "129 passed (129)",
+  "passed": 129,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

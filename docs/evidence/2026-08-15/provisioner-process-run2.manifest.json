@@ -1,0 +1,19 @@
+{
+  "stack": "HTTPS-Empfaenger plus PostgreSQL 17",
+  "log": "provisioner-process-run2.log",
+  "commit": "d948c5e606bdb9e9fdc57509e29c1dd44b67f5f5",
+  "commitSubject": "release: 1.61.0 Der Herzschlag, den niemand schreiben konnte",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 37,
+  "testFiles": "1 passed (1)",
+  "tests": "15 passed (15)",
+  "passed": 15,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24.7.0-alpine",
+    "alpine/openssl:3.3.2"
+  ]
+}

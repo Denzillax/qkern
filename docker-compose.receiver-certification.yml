@@ -47,6 +47,9 @@ services:
       # Der Empfaenger rechnet den HMAC selbst nach; ein Empfaenger, der alles
       # bestaetigt, wuerde nur belegen, dass irgendetwas ankam.
       QKERN_RECEIVER_SECRET: cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi
+      # Der Vertragshash gehoert dem Produkt. Der Empfaenger bekommt ihn
+      # gesagt, damit er ihn nicht erfinden kann.
+      QKERN_RECEIVER_BOOTSTRAP_CONTRACT_SHA256: e69a830d70f785477af0165667f56735821e25a58bf724a17b46cf33d5358d67
     volumes:
       - receiver-certification-certs:/certs:ro
       - ./tests/support/receiver/server.mjs:/receiver/server.mjs:ro
@@ -114,6 +117,7 @@ services:
       QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
       QKERN_TEST_RUNTIME_DATABASE_URL: postgresql://qkern_app:qkern_runtime_local_only@postgres:5432/qkern_control
       QKERN_TEST_WORKER_DATABASE_URL: postgresql://qkern_worker_app:qkern_worker_local_only@postgres:5432/qkern_control
+      QKERN_TEST_PROVISIONER_DATABASE_URL: postgresql://qkern_provisioner_app:qkern_provisioner_local_only@postgres:5432/qkern_control
       QKERN_ALLOW_LOCAL_WEBHOOK_SIGNING_SECRETS: "true"
       QKERN_LOCAL_WEBHOOK_SIGNING_SECRETS_JSON: >-
         {"webhook/certification":{"keyId":"cert-1","secret":"cXFrZXJuLWNlcnRpZmljYXRpb24tc2lnbmluZy1zZWNyZXQtMzJi"}}

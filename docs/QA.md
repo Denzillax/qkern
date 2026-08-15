@@ -2304,3 +2304,40 @@ PostgreSQL 129 von 129, exit 0, zweimal reproduziert, 36 Migrationen.
 Nicht erbracht: Der Prozessnachweis fehlt weiterhin. Was ihm im Weg stand, ist
 weg; was noch fehlt, ist ein Broker, den der Provisioner rufen kann — der
 Zertifizierungsstack hat noch keinen.
+
+## Der siebte Prozess — Release 1.62
+
+Seit Release 1.44 stand in jeder „Ehrlich offen"-Liste, dass Prozesse ohne
+Arbeitsnachweis bleiben. Diese Liste ist leer: **Alle sieben Prozesse sind bei
+der Arbeit belegt.**
+
+Der Provisioner macht aus einem wartenden Auftrag eine Bindung in der Datenbank
+und ein Projekt im Zustand `ready` — als ausgelieferter Prozess, gegen einen
+echten HTTPS-Broker mit nachgerechneter Signatur, mit der echten
+Provisioner-Rolle.
+
+Der Weg zum ersten grünen Lauf führte durch zwei weitere Produktfehler:
+
+- `column reference "id" is ambiguous` in `complete()`. `FROM inserted_binding,
+  bound_environment` bringt zwei Relationen mit `id` in denselben Namensraum;
+  das unqualifizierte `RETURNING` ist mehrdeutig. Derselbe Fehler wie in 1.48,
+  an anderer Stelle.
+- `permission denied for table project_database_bindings`. `INSERT … RETURNING`
+  verlangt SELECT-Recht auf den zurückgegebenen Spalten; Migration 0020 hat nur
+  `INSERT` erteilt.
+
+Der zweite ist die dritte Ausprägung desselben Musters in zwei Releases: ein
+Recht, das nicht die Operation verlangt, sondern eine ihrer Klauseln — `ON
+CONFLICT` beim Heartbeat, `RETURNING` bei der Bindung. Kein Test hat es
+gefunden, weil kein Test die Operation je mit der echten Rolle ausgeführt hat.
+
+Mutationsprobe: `RETURNING` wieder unqualifiziert — **14 von 15**, genau der
+Provisionierungsfall.
+
+Checkpoint `1.62.0` am 15. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+Empfänger 15 von 15 und PostgreSQL 129 von 129, beide exit 0 und zweimal
+reproduziert, 37 Migrationen.
+
+Nicht erbracht: Der Broker richtet keine Datenbank ein — belegt ist der Weg bis
+zur Bindung. Ablehnung, Zeitablauf und verlorene Lease sind als Bibliothek
+zertifiziert, nicht als Prozess.

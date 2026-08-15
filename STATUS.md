@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 15. August 2026 · Release: `1.61.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 15. August 2026 · Release: `1.62.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -38,7 +38,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Strict TypeScript | grün |
 | Vitest (Windows) | grün, 0 fehlgeschlagen; die Zahlen je Release stehen in `docs/QA.md` |
 | **Startfähigkeit der Worker** | **alle 7 Prozesse erreichen ihre eigene Konfigurationsgrenze — seit `1.44.0` als Vertrag geprüft** |
-| **Arbeitende Prozesse** | **6 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`), Migrationen (`1.49.0`), Incident-Publisher (`1.56.0`), Realtime (`1.57.0`) und Apply-Publisher (`1.58.0`); nur der Provisioner hat keinen Lauf, der ihn arbeiten sieht. Der Grund ist seit `1.61.0` **gefunden und behoben**: Sein Heartbeat konnte seit Migration 0021 nie geschrieben werden, weil `ON CONFLICT DO UPDATE` ein Leserecht auf den Arbiter-Spalten verlangt, das nie erteilt wurde. Er steht als erster Aufruf in dem Block, dessen `catch` die Ursache verschluckt — jede Runde endete deshalb in `claim_failed`, bevor sie einen Auftrag gesucht hat. Alle drei Port-Operationen sind jetzt gegen echtes PostgreSQL mit der echten Rolle belegt; der Prozesslauf selbst steht noch aus** |
+| **Arbeitende Prozesse** | **7 von 7 belegt: Queue-Wirt (`1.44.0`), Compute (`1.45.0`), Migrationen (`1.49.0`), Incident-Publisher (`1.56.0`), Realtime (`1.57.0`), Apply-Publisher (`1.58.0`) und seit `1.62.0` der Provisioner — er macht aus einem wartenden Auftrag eine Bindung in der Datenbank und ein Projekt im Zustand `ready`, gegen einen echten HTTPS-Broker mit der echten Rolle. Der Weg dorthin führte durch drei Produktfehler: das fehlende Leserecht des Heartbeat-`ON CONFLICT` (`1.61.0`), ein mehrdeutiges `RETURNING` und ein fehlendes Leserecht für `INSERT … RETURNING` (beide `1.62.0`)** |
 | **Health-Probe** | **6 von 7 Prozessen starten sie: vier seit Baseline `1.8.0`, Compute seit `1.46.0`, der Queue-Wirt seit `1.47.0`. Realtime ist ausgenommen und begründet — es hat keine Runde, die `ready` tragen könnte** |
 | Next.js Production Build | grün |
 | Production Dependency Audit | 0 bekannte Schwachstellen |
@@ -51,7 +51,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **14 von 14 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
-| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-06/` |
+| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-15/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |

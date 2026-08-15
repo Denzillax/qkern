@@ -636,3 +636,16 @@ Release Note.
 Die Mutation legt das Leserecht auf `started_at, last_seen_at` statt auf die
 Arbiter-Spalten des `ON CONFLICT`. Genau die zwei Heartbeat-Fälle fallen — die
 Arbiter-Spalten tragen es, nicht das Leserecht als solches.
+
+## Läufe zu Release 1.62 (15. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-15/provisioner-process-run1.log` | Empfänger plus PostgreSQL 17 | 15 von 15, exit 0 |
+| `2026-08-15/provisioner-process-run2.log` | Empfänger plus PostgreSQL 17 | 15 von 15, exit 0, Wiederholung |
+| `2026-08-15/provisioner-process-mutation.log` | Empfänger plus PostgreSQL 17 | **14 von 15, exit 1 — absichtlich** |
+| `2026-08-15/provisioner-process-postgres-run1.log` | PostgreSQL 17 | 129 von 129, exit 0, 37 Migrationen |
+| `2026-08-15/provisioner-process-postgres-run2.log` | PostgreSQL 17 | 129 von 129, exit 0, Wiederholung |
+
+Die Mutation macht das `RETURNING` in `complete()` wieder unqualifiziert. Genau
+der Provisionierungsfall fällt.

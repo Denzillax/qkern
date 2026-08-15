@@ -898,6 +898,21 @@ const PROJECT_PROVISIONING_JOB_COLUMNS = `
   available_at, lease_owner, lease_token, lease_expires_at, last_error_code,
   binding_id, started_at, finished_at, created_at, updated_at`;
 
+/**
+ * Dieselbe Spaltenliste, auf die Zieltabelle qualifiziert.
+ *
+ * `complete()` bringt ueber `FROM inserted_binding, bound_environment` zwei
+ * weitere Relationen in denselben Namensraum, und beide fuehren ein `id`.
+ * Ein unqualifiziertes `RETURNING id, …` ist damit mehrdeutig, und PostgreSQL
+ * weist die ganze Anweisung ab — sichtbar erst gegen eine echte Datenbank.
+ *
+ * Genau diese Klasse Fehler hat Release 1.48 auf dem Migrationsweg gefunden.
+ * Sie ist hier ein zweites Mal aufgetreten, und deshalb steht die Qualifikation
+ * jetzt an einer Stelle statt in jeder Abfrage neu.
+ */
+const PROJECT_PROVISIONING_JOB_COLUMNS_QUALIFIED = PROJECT_PROVISIONING_JOB_COLUMNS
+  .split(",").map((column) => `target.${column.trim()}`).join(", ");
+
 const PROJECT_DATABASE_BINDING_COLUMNS = `
   id, organization_id, project_id, environment, provisioning_job_id,
   database_instance_ref, vault_static_role, host, port, expected_role,
@@ -1100,7 +1115,7 @@ export class ProjectDatabaseProvisioningRepository {
              finished_at = now(), updated_at = now()
          FROM inserted_binding AS inserted, bound_environment
          WHERE target.organization_id = $1 AND target.id = $2
-         RETURNING ${PROJECT_PROVISIONING_JOB_COLUMNS}
+         RETURNING ${PROJECT_PROVISIONING_JOB_COLUMNS_QUALIFIED}
        )
        SELECT completed.*, inserted.id AS provisioned_binding_id,
               inserted.organization_id AS binding_organization_id,

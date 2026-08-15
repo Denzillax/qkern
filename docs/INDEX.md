@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.61.md](RELEASE_1.61.md) | Aktueller Release: Der Herzschlag, den niemand schreiben konnte |
+| [RELEASE_1.62.md](RELEASE_1.62.md) | Aktueller Release: Der siebte Prozess |
+| [RELEASE_1.61.md](RELEASE_1.61.md) | Der Herzschlag, den niemand schreiben konnte |
 | [RELEASE_1.60.md](RELEASE_1.60.md) | Die offene Frage wird kleiner |
 | [RELEASE_1.59.md](RELEASE_1.59.md) | Eine Korrektur und ein abgebrochener Versuch |
 | [RELEASE_1.58.md](RELEASE_1.58.md) | Der sechste Prozess, und eine widerlegte Annahme |

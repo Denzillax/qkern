@@ -43,6 +43,7 @@ const enabled = process.env.QKERN_TEST_RECEIVER_E2E === "true" &&
 
 const ORIGIN = "https://receiver.qkern.test";
 const workerUrl = process.env.QKERN_TEST_WORKER_DATABASE_URL;
+const provisionerUrl = process.env.QKERN_TEST_PROVISIONER_DATABASE_URL;
 /**
  * Der Schluessel des Empfaengers — **dekodiert**.
  *
@@ -540,6 +541,111 @@ describe.runIf(enabled)("Receiver certification", () => {
       child.kill();
     }
 
+    expect(noise).not.toContain(RECEIVER_SECRET);
+    expect(noise).not.toContain("receiver.qkern.test");
+  }, 180_000);
+
+  /**
+   * Der Provisioner — der **siebte und letzte** Prozess ohne Arbeitsnachweis.
+   *
+   * Er ist der einzige, der bis Release 1.61 gar nicht arbeiten konnte: Sein
+   * Heartbeat scheiterte an einem fehlenden Leserecht, und weil er als erster
+   * Aufruf in einem `try` mit verschluckender `catch` steht, endete jede Runde
+   * in `claim_failed`. Migration 0036 hat das behoben; dieser Fall belegt, dass
+   * damit die ganze Kette laeuft.
+   *
+   * Gemessen wird das, was ein Kunde bekommt: Aus einem wartenden Auftrag wird
+   * eine Bindung in der Datenbank und ein Projekt im Zustand `ready`. Der
+   * „Broker" ist dieselbe HTTPS-Gegenstelle wie beim Apply-Publisher, mit einem
+   * eigenen Pfad und derselben nachgerechneten Signatur.
+   */
+  it("provisions a project database from the shipped process", async () => {
+    const provisioningProject = randomUUID();
+    const jobId = randomUUID();
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Receiver Provisioning', $3, 'test', 'provisioning', $4)`,
+    [provisioningProject, organizationId, `receiver-prov-${provisioningProject}`, controlUser]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [organizationId, provisioningProject, `pending:${provisioningProject}`]);
+    await owner.query(`INSERT INTO project_database_provisioning_jobs
+      (id, organization_id, project_id, environment, requested_by, status)
+      VALUES ($1, $2, $3, 'development', 'certification', 'pending')`,
+    [jobId, organizationId, provisioningProject]);
+
+    // Erst den Empfaenger befragen. Release 1.56 hat gezeigt, was diese
+    // Vorpruefung wert ist: Dort lag der Fehler in der Kodierung des
+    // Geheimnisses, und ohne sie haette die Suche beim Prozess begonnen.
+    const probeBody = JSON.stringify({ provisioningJobId: jobId, projectId: provisioningProject });
+    const probeStamp = Math.floor(Date.now() / 1_000).toString(10);
+    const probeSignature = createHmac("sha256", RECEIVER_SECRET)
+      .update(`${probeStamp}.${probeBody}`, "utf8").digest("hex");
+    const probe = await fetch(`${ORIGIN}/provision`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-qkern-provisioning-job-id": jobId,
+        "x-qkern-signature": `v1=${probeSignature}`,
+        "x-qkern-timestamp": probeStamp,
+      },
+      body: probeBody,
+    });
+    expect(probe.status, `Empfaengerantwort: ${await probe.clone().text()}`).toBe(200);
+
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/project-provisioning-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_PROJECT_PROVISIONER_ENABLED: "true",
+        QKERN_PROJECT_PROVISIONER_ID: "certification-provisioner-1",
+        QKERN_PROVISIONER_ORGANIZATION_ID: organizationId,
+        QKERN_PROVISIONER_IDLE_MS: "200",
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_PROVISIONER_DATABASE_URL: provisionerUrl!,
+        QKERN_PROVISIONING_BROKER_URL: `${ORIGIN}/provision`,
+        QKERN_PROVISIONING_BROKER_ALLOWED_HOSTS: "receiver.qkern.test",
+        QKERN_PROVISIONING_BROKER_HMAC_KEY_ID: "cert-1",
+        QKERN_PROVISIONING_BROKER_HMAC_SECRET: RECEIVER_SECRET,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      // Gewartet wird auf einen **endgueltigen** Zustand, nicht auf „nicht mehr
+      // pending": Ein Auftrag, der in `failed` landet, soll hier auffallen und
+      // nicht in einen Zeitablauf laufen.
+      const deadline = Date.now() + 90_000;
+      let status = "pending";
+      while (Date.now() < deadline && !["succeeded", "failed"].includes(status)) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const row = await owner.query<{ status: string }>(
+          "SELECT status FROM project_database_provisioning_jobs WHERE id=$1", [jobId]);
+        status = row.rows[0]?.status ?? "pending";
+      }
+      expect(status, `Prozessausgabe: ${noise.slice(-1200)}`).toBe("succeeded");
+
+      // Die Bindung ist die eigentliche Wirkung: Ohne sie hat der Prozess einen
+      // Auftrag abgehakt, aber nichts hinterlassen.
+      const binding = await owner.query<{ host: string; bootstrap_contract_sha256: string }>(
+        `SELECT host, bootstrap_contract_sha256 FROM project_database_bindings
+         WHERE provisioning_job_id = $1`, [jobId]);
+      expect(binding.rows).toHaveLength(1);
+      expect(binding.rows[0]?.bootstrap_contract_sha256)
+        .toBe("e69a830d70f785477af0165667f56735821e25a58bf724a17b46cf33d5358d67");
+
+      const project = await owner.query<{ status: string }>(
+        "SELECT status FROM projects WHERE id=$1", [provisioningProject]);
+      expect(project.rows[0]?.status).toBe("ready");
+    } finally {
+      child.kill();
+    }
+
+    // Der Prozess nennt Auftrag und Zustand — und weder das Geheimnis noch die
+    // Gegenstelle.
     expect(noise).not.toContain(RECEIVER_SECRET);
     expect(noise).not.toContain("receiver.qkern.test");
   }, 180_000);
