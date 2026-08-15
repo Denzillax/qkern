@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, safeJson } from "@/lib/server/auth/http";
 import {
@@ -39,7 +40,19 @@ async function routeScope(routeContext: RouteContext) {
   return parsed.success ? parsed.data : null;
 }
 
-function routeError(error: unknown) {
+/**
+ * Exportiert, damit der Vertrag ihn erreicht.
+ *
+ * Diese Grenze ist die einzige, die in einer Route-Datei statt in
+ * `lib/server` steht. Genau solche uebersieht eine Regel, die nur die
+ * bekannten Stellen kennt — deshalb zaehlt der Vertrag die Grenzen selbst.
+ */
+export function routeError(error: unknown) {
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar.
+  if (isConnectionUnavailable(error)) {
+    return noStore({ error: "Generated project data API unavailable" }, 503);
+  }
   if (error instanceof RequestAuthenticationError) return noStore({ error: "Authentication required" }, 401);
   if (error instanceof RequestAuthorizationError) return noStore({ error: "Resource not found" }, 404);
   if (error instanceof UsageQuotaExceededError) return noStore({ error: "Usage quota exceeded" }, 429);

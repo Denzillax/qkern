@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import type { NextRequest } from "next/server";
 import type { Environment } from "@/lib/types";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
@@ -47,6 +48,11 @@ export function usageNoStore(data: unknown, status = 200) {
 }
 
 export function usageRouteError(error: unknown) {
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar. Diese Regel steht an jeder
+  // Grenze gleich, und der Vertrag in tests/route-unavailable-contract prueft,
+  // dass keine sie vergisst.
+  if (isConnectionUnavailable(error)) return usageNoStore({ error: "Usage unavailable" }, 503);
   if (error instanceof RequestAuthenticationError) return usageNoStore({ error: "Authentication required" }, 401);
   if (error instanceof RequestAuthorizationError) return usageNoStore({ error: "Resource not found" }, 404);
   if (error instanceof UsageError) {

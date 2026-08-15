@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import type { Environment } from "@/lib/types";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
@@ -114,6 +115,13 @@ export function projectQueuePreflight(request: NextRequest, methods = "POST, OPT
 
 export function projectQueueRouteError(error: unknown, request?: NextRequest) {
   const respond = (response: NextResponse) => request ? withProjectQueueCors(request, response) : response;
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar. Diese Regel steht an jeder
+  // Grenze gleich, und der Vertrag in tests/route-unavailable-contract prueft,
+  // dass keine sie vergisst.
+  if (isConnectionUnavailable(error)) {
+    return respond(projectQueueNoStore({ error: "Project Queues unavailable" }, 503));
+  }
   if (error instanceof RequestAuthenticationError) return respond(projectQueueNoStore({ error: "Authentication required" }, 401));
   if (error instanceof RequestAuthorizationError) return respond(projectQueueNoStore({ error: "Resource not found" }, 404));
   if (error instanceof UsageQuotaExceededError) {

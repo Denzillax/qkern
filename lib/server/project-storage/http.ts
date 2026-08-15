@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import type { Environment } from "@/lib/types";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
@@ -133,6 +134,13 @@ export function projectStoragePreflight(request: NextRequest, methods: string): 
 
 export function projectStorageRouteError(error: unknown, request?: NextRequest): NextResponse {
   const respond = (response: NextResponse) => request ? withProjectStorageCors(request, response) : response;
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar. Diese Regel steht an jeder
+  // Grenze gleich, und der Vertrag in tests/route-unavailable-contract prueft,
+  // dass keine sie vergisst.
+  if (isConnectionUnavailable(error)) {
+    return respond(projectStorageNoStore({ error: "Project Storage unavailable" }, 503));
+  }
   if (error instanceof RequestAuthenticationError) {
     return respond(projectStorageNoStore({ error: "Authentication required" }, 401));
   }

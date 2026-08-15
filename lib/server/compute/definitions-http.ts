@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { ConfigurationError } from "@/lib/server/db/errors";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { ComputeDefinitionError } from "@/lib/server/compute/definitions";
@@ -101,6 +102,13 @@ export function computeNoStore(data: unknown, status = 200) {
 }
 
 export function computeRouteError(error: unknown) {
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar. Diese Regel steht an jeder
+  // Grenze gleich, und der Vertrag in tests/route-unavailable-contract prueft,
+  // dass keine sie vergisst.
+  if (isConnectionUnavailable(error)) {
+    return computeNoStore({ error: "Compute contracts unavailable" }, 503);
+  }
   if (error instanceof RequestAuthenticationError) {
     return computeNoStore({ error: "Authentication required" }, 401);
   }

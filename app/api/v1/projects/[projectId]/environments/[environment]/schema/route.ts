@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
 import { getProjectDataPlane } from "@/lib/server/data-plane/runtime";
 import {
@@ -53,7 +54,12 @@ export function GET(
   return handleProjectSchema(request, input);
 }
 
-function dataPlaneRouteError(error: unknown) {
+export function dataPlaneRouteError(error: unknown) {
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar.
+  if (isConnectionUnavailable(error)) {
+    return NextResponse.json({ error: "Project schema unavailable" }, { status: 503 });
+  }
   if (error instanceof RequestAuthenticationError) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }

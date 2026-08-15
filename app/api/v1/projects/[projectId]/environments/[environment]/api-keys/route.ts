@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, safeJson } from "@/lib/server/auth/http";
 import { domainErrorCode } from "@/lib/server/domain-errors";
@@ -34,7 +35,10 @@ async function scope(routeContext: RouteContext) {
     : null;
 }
 
-function routeError(error: unknown) {
+export function routeError(error: unknown) {
+  // Ein erschoepfter Verbindungspool ist weder ein Fehler der Anfrage noch
+  // einer der Datenbank: 503 und wiederholbar.
+  if (isConnectionUnavailable(error)) return noStore({ error: "Project API keys unavailable" }, 503);
   if (error instanceof RequestAuthenticationError) return noStore({ error: "Authentication required" }, 401);
   if (error instanceof RequestAuthorizationError || domainErrorCode(error) === "RESOURCE_NOT_FOUND") {
     return noStore({ error: "Resource not found" }, 404);

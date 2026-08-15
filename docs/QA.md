@@ -2424,3 +2424,43 @@ Nicht erbracht: Nur Project Queues übersetzt die Klassifikation in eine eigene
 Antwort. Der direkte `pool.query()`-Weg ohne Transaktion ist nicht erfasst.
 Wiederholt wird nichts von selbst, und die Poolgrösse bleibt unverändert — das
 Release macht die Erschöpfung sichtbar, es verhindert sie nicht.
+
+## Neun Grenzen, nicht sechs — Release 1.65
+
+Release 1.64 hat den erschöpften Verbindungspool klassifizierbar gemacht und in
+**einer** Grenze richtig beantwortet. Die anderen meldeten ihn weiter als 500 —
+eine Aussage, die dem Aufrufer sagt, es sei etwas kaputt, obwohl nur gerade
+keine Verbindung frei war.
+
+Die Regel ist überall dieselbe: 503, wiederholbar. `isConnectionUnavailable` ist
+ein Prädikat und keine Antwort, denn jede Grenze hat ihr eigenes Antwortformat.
+Geprüft wird auch die verpackte Form — Dienste hüllen den Fehler in ihre eigene
+Fehlerklasse, bevor er die Grenze erreicht.
+
+Ich hätte sechs Grenzen bedient. Es sind **neun**. Der Vertrag zählt sie selbst
+und hat drei gefunden, die in Route-Dateien statt in `lib/server` stehen:
+Projekt-API-Keys, Automation Policy und Schema-Introspektion. Dabei kam noch
+etwas heraus: Drei Grenzen heissen schlicht `routeError`, und die erste Fassung
+des Vertrags zählte nach Namen und hielt drei für eine. Er zählt jetzt
+`datei:name`.
+
+Zwei Mutationsproben:
+
+- Die Regel in einer Grenze entfernt — **17 von 19**, genau deren zwei Fälle.
+- Eine zehnte Grenze angelegt, die der Vertrag nicht kennt — **16 von 19**, die
+  Abdeckungsprüfung schlägt an und nennt sie. Das ist die wichtigere Probe: Sie
+  belegt, dass der Vertrag die nächste Grenze mitbekommt.
+
+Checkpoint `1.65.0` am 16. August 2026: Lokal 1042 bestanden, 0 fehlgeschlagen;
+Vertrag 19 von 19 zweimal reproduziert; PostgreSQL 135 von 135, exit 0, zweimal
+reproduziert.
+
+Nicht erbracht: Der Vertrag prüft die Antwort, nicht den Weg dorthin, und
+erkennt Grenzen an ihrem Namen. Nur Project Queues hat einen eigenen Code für
+diesen Fall; die übrigen acht antworten richtig, nennen aber keinen
+maschinenlesbaren Grund.
+
+Beim Zurücknehmen der ersten Mutationsprobe habe ich mit `git checkout` eine
+noch nicht eingecheckte Änderung derselben Datei mitgelöscht und neu schreiben
+müssen. Der Lauf danach war grün; erwähnt, weil ein stiller Verlust die
+gefährlichere Variante gewesen wäre.

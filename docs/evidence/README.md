@@ -681,3 +681,18 @@ klassifizieren. Genau der neue Fall fällt.
 
 Der in Release 1.63 offen gebliebene Lastfall ist damit erklärt: Es war der
 Verbindungspool, nicht die Warteschlange.
+
+## Läufe zu Release 1.65 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/route-unavailable-run1.log` | lokal | 19 von 19, exit 0 |
+| `2026-08-16/route-unavailable-run2.log` | lokal | 19 von 19, exit 0, Wiederholung |
+| `2026-08-16/route-unavailable-mutation-a.log` | lokal | **17 von 19, exit 1 — absichtlich** |
+| `2026-08-16/route-unavailable-mutation-b.log` | lokal | **16 von 19, exit 1 — absichtlich** |
+| `2026-08-16/route-unavailable-postgres-run1.log` | PostgreSQL 17 | 135 von 135, exit 0, 38 Migrationen |
+| `2026-08-16/route-unavailable-postgres-run2.log` | PostgreSQL 17 | 135 von 135, exit 0, Wiederholung |
+
+Mutation A entfernt die Regel aus einer Grenze — deren zwei Fälle fallen.
+Mutation B legt eine zehnte Grenze an, die der Vertrag nicht kennt — die
+Abdeckungsprüfung schlägt an und nennt sie beim Namen.

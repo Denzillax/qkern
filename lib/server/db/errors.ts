@@ -175,3 +175,20 @@ export function mapPostgresError(error: unknown): RepositoryError {
       return new PersistenceError(error);
   }
 }
+
+/**
+ * Ist der Prozess an einer freien Verbindung gescheitert?
+ *
+ * Die Frage stellt jede HTTP-Grenze, und sie beantworten alle gleich: 503
+ * statt 500 oder 409, denn es liegt nichts an der Anfrage und nichts an der
+ * Datenbank. Ein Praedikat statt einer Antwort — jede Grenze hat ihr eigenes
+ * Antwortformat, und keine soll es hier verlieren.
+ *
+ * `cause` wird mitgeprueft: Dienste verpacken den Fehler in ihre eigene
+ * Fehlerklasse, bevor er die Grenze erreicht.
+ */
+export function isConnectionUnavailable(error: unknown): boolean {
+  if (error instanceof ConnectionUnavailableError) return true;
+  const cause = (error as { cause?: unknown } | null | undefined)?.cause;
+  return cause instanceof ConnectionUnavailableError;
+}

@@ -1,0 +1,53 @@
+
+ RUN  v4.1.10 C:/Projekte/QKERN
+
+ ❯ tests/route-unavailable-contract.test.ts (19 tests | 2 failed) 52ms
+     × answers 503 from lib/server/project-storage/http.ts:projectStorageRouteError when no connection was available 4ms
+     × answers 503 from lib/server/project-storage/http.ts:projectStorageRouteError when the failure is wrapped 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/route-unavailable-contract.test.ts > route unavailable contract > answers 503 from lib/server/project-storage/http.ts:projectStorageRouteError when no connection was available
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ tests/route-unavailable-contract.test.ts:91:29
+     89|   it.each(CHECKED)("answers 503 from %s when no connection was availab…
+     90|     const response = await handler(new ConnectionUnavailableError(new …
+     91|     expect(response.status).toBe(503);
+       |                             ^
+     92|   });
+     93|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/route-unavailable-contract.test.ts > route unavailable contract > answers 503 from lib/server/project-storage/http.ts:projectStorageRouteError when the failure is wrapped
+AssertionError: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ tests/route-unavailable-contract.test.ts:102:29
+    100|     const wrapped = new Error("service failure", { cause: new Connecti…
+    101|     const response = await handler(wrapped);
+    102|     expect(response.status).toBe(503);
+       |                             ^
+    103|   });
+    104| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 17 passed (19)
+   Start at  13:47:29
+   Duration  1.05s (transform 524ms, setup 0ms, import 819ms, tests 52ms, environment 0ms)
+
