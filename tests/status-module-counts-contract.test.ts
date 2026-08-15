@@ -26,7 +26,7 @@ const MODULES: ReadonlyArray<{ label: string; files: readonly string[] }> = [
   { label: "Project Queues", files: ["project-queues-postgres"] },
   {
     label: "Usage Metering",
-    files: ["usage-metering-postgres", "usage-emitters-postgres"],
+    files: ["usage-metering-postgres", "usage-emitters-postgres", "usage-billing-postgres"],
   },
   {
     label: "Compute Contracts",

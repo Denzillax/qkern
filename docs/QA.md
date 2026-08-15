@@ -2498,3 +2498,35 @@ Nicht erbracht: `reason` ist so grob wie `RepositoryError`. Nur der
 Heartbeat-Schritt ist rot belegt. Der PostgreSQL-Stack wurde nicht neu gefahren;
 die Änderung liegt im Prozesslog, und der Empfängerstack führt genau diesen
 Prozess.
+
+## Die erste Sprosse — Release 1.67
+
+Sprosse 1 der Paritätsleiter: Die sechs Metriken haben Preise, und aus echten
+Zählern wird ein projizierter Monatsbetrag.
+
+Migration 0039 legt `billing_rate_cards` an — append-only wie das Audit-Log und
+aus demselben Grund: Ein Preis, der rückwirkend umgeschrieben werden kann,
+taugt nicht als Grundlage einer Abrechnung. FORCE RLS ohne UPDATE-/DELETE-Policy
+lässt auch den Eigentümer nichts umschreiben. Ein Preis ist ein Bruch
+(`unit_price_micros` je `per_units`), gerechnet wird in BigInt, abgerundet auf
+den Mikro — der angebrochene Mikro-Franken gehört dem Kunden.
+
+`setRate` ist Operatoren vorbehalten wie die Quota-Policies; die REST-Fläche
+(`GET …/usage/billing`) ist lesend und trägt `kind: "projection"` — keine
+Rechnung, keine Nummer, keine Fälligkeit.
+
+Zertifiziert mit der echten Kette: Nutzung über den Usage-Dienst verbucht,
+Projektion durch die Laufzeitrolle, RLS scharf. 1000 echte `queue_operations`
+× 250 Mikro → `0.250000` CHF; späterer Stichtag schlägt früheren; fremde
+Organisation sieht ein leeres Preisblatt; UPDATE/DELETE scheitern.
+
+Mutationsprobe: `ORDER BY effective_from DESC` → `ASC` — **138 von 139**, genau
+der Fall „der neueste Preis gewinnt".
+
+Checkpoint `1.67.0` am 16. August 2026: Lokal 1049 bestanden, 0 fehlgeschlagen;
+PostgreSQL 139 von 139, exit 0, zweimal reproduziert, 39 Migrationen.
+
+Nicht erbracht: keine Rechnung (Sprosse 2); der Preis am Fensterende gilt für
+den ganzen Monat; eine Währung je Organisation prüft der Dienst, nicht die
+Datenbank; `setRate` hat keine Produktfläche; die REST-Route ist lokal
+getestet, nicht im Stack.

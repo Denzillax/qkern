@@ -707,3 +707,14 @@ Abdeckungsprüfung schlägt an und nennt sie beim Namen.
 
 Die Mutation lässt das `step`-Feld weg. Genau der Fall fällt, der den Fehler aus
 1.61 absichtlich wiederherstellt und den benannten Schritt verlangt.
+
+## Läufe zu Release 1.67 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/billing-run1.log` | PostgreSQL 17 | 139 von 139, exit 0, 39 Migrationen |
+| `2026-08-16/billing-run2.log` | PostgreSQL 17 | 139 von 139, exit 0, Wiederholung |
+| `2026-08-16/billing-mutation.log` | PostgreSQL 17 | **138 von 139, exit 1 — absichtlich** |
+
+Die Mutation dreht die Ordnung der Preisauswahl um (`DESC` → `ASC`): der älteste
+Preis gewinnt. Genau der Fall „der neueste Preis gewinnt" fällt.

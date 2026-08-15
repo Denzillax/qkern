@@ -280,7 +280,7 @@ function positiveBigInt(value: number | string | bigint, max: bigint) {
   return parsed;
 }
 
-function parsePeriod(value: string | undefined, now: Date) {
+export function parsePeriod(value: string | undefined, now: Date) {
   if (!value) return monthWindow(now);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw new UsageError("USAGE_INVALID_INPUT");
   const start = new Date(`${value}-01T00:00:00.000Z`);
@@ -340,7 +340,7 @@ function usageStatus(used: bigint, limit: bigint | null): UsageStatus {
   if (used * 100n >= limit * 80n) return "warning";
   return "ok";
 }
-function period(start: Date) { return start.toISOString().slice(0, 7); }
+export function period(start: Date) { return start.toISOString().slice(0, 7); }
 function maxBigInt(left: bigint, right: bigint) { return left > right ? left : right; }
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
 function mapError(error: unknown) {

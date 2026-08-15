@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.66.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.67.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -110,7 +110,9 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0038_runtime_outbox_arbiter_grant.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0039_billing_rate_cards.sql`
+  — das append-only Preisblatt der sechs Nutzungsmetriken. Davor:
+  `db/migrations/0038_runtime_outbox_arbiter_grant.sql`
   — sie erteilt der Laufzeit das Leserecht auf den drei Arbiter-Spalten des
   Einreihungs-`ON CONFLICT`. Ohne dieses Recht konnte seit 0019 kein
   Apply-Auftrag eingereiht werden. Davor:

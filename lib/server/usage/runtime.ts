@@ -12,6 +12,12 @@ import type { UsageSource } from "@/lib/server/usage/model";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { MemoryUsageRepository, type UsageRepository } from "@/lib/server/usage/repository";
 import { UsageError, UsageService } from "@/lib/server/usage/service";
+import {
+  BillingService,
+  MemoryBillingRateCardRepository,
+  type BillingRateCardRepository,
+} from "@/lib/server/usage/billing";
+import { PostgresBillingRateCardRepository } from "@/lib/server/usage/billing-postgres-repository";
 
 export function createUsageServiceFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -59,4 +65,39 @@ export function getUsageService() {
   const runtime = globalThis as GlobalUsage;
   runtime.__qkernUsageService ??= createUsageServiceFromEnv();
   return runtime.__qkernUsageService;
+}
+
+/**
+ * Baut den Billing-Dienst — hinter demselben Schalter wie das Metering.
+ *
+ * Preise ohne Zaehler waeren eine Projektion aus nichts; wer misst, darf
+ * bepreisen, wer nicht misst, bekommt hier dieselbe Abweisung wie dort.
+ */
+export function createBillingServiceFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  dependencies: {
+    rateCards?: BillingRateCardRepository;
+    usage?: UsageRepository;
+  } = {},
+) {
+  if (env.QKERN_USAGE_METERING_ENABLED !== "true") throw new UsageError("USAGE_METERING_DISABLED");
+  const postgres = runtimeModeFromEnv(env) === "postgres";
+  const usage = dependencies.usage ?? (postgres
+    ? new PostgresUsageRepository(new PostgresControlPlane(getPostgresPool(env)))
+    : new MemoryUsageRepository());
+  const rateCards = dependencies.rateCards ?? (postgres
+    ? new PostgresBillingRateCardRepository(new PostgresControlPlane(getPostgresPool(env)))
+    : new MemoryBillingRateCardRepository());
+  if (env.NODE_ENV === "production" && !postgres) {
+    throw new ConfigurationError("Production billing requires the durable PostgreSQL repositories.");
+  }
+  return new BillingService({ rateCards, usage, controlPlane: controlPlaneService });
+}
+
+type GlobalBilling = typeof globalThis & { __qkernBillingService?: BillingService };
+
+export function getBillingService() {
+  const runtime = globalThis as GlobalBilling;
+  runtime.__qkernBillingService ??= createBillingServiceFromEnv();
+  return runtime.__qkernBillingService;
 }

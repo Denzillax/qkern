@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.66.0`, 16. August 2026. Diese Datei wird bei jedem Release
+> Stand: `1.67.0`, 16. August 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -28,16 +28,15 @@ zählt.
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | Image-Deployment-Fluss, Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
 | Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`) | Metrics-Export; sonst **vor** Supabase-Stand |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`) | Cron-Ausdrücke jenseits `*/N` und `M H * * *` |
-| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console | Preisblatt, Rechnungsdokumente, Zahlungsanbindung — **nächster Slice** |
+| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld | Rechnungsdokumente, Zahlungsanbindung |
 | Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung | SQL-Editor, Auth-/Storage-/Realtime-Flächen, Logs |
 | SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI, Fresh-Smoke Linux | Registry-Publishing, Windows/macOS-Evidenz, Upgrade-E2E |
 | Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Nachweisverträge und Provisioning-Sicherheitsverträge | im Grunde alles: Provider-Onboarding, HA, PITR, Restore-Drills — **grösste Lücke, nicht im Docker-Stack zertifizierbar** |
 
 ## Reihenfolge des Abbaus
 
-1. **Billing: Preisblatt und Monatsprojektion** — die sechs Metriken bekommen
-   Preise; aus Zählern wird ein projizierter Betrag. Kein Rechnungsdokument.
-2. Billing: Rechnungslauf als Prozess mit Periodenabschluss.
+1. ~~Billing: Preisblatt und Monatsprojektion~~ — **erledigt in `1.67.0`.**
+2. **Billing: Rechnungslauf als Prozess mit Periodenabschluss — nächster Slice.**
 3. Storage: Multipart/Resumable gegen echtes MinIO.
 4. Data API: Views und RPC.
 5. Realtime: Production-Binding mit begründeter Aufhebung des Verbots.
