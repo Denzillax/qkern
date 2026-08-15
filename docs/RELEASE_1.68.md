@@ -57,7 +57,7 @@ wiederholt — ein Exit-Code allein beglaubigt keine Mutationsprobe.
 | PostgreSQL 142/142, exit 0 | `docs/evidence/2026-08-16/invoice-run2.manifest.json` |
 | Mutation 141/142 | `docs/evidence/2026-08-16/invoice-mutation.manifest.json` |
 
-40 Migrationen. Lokal: 1054 bestanden, 0 fehlgeschlagen.
+40 Migrationen. Lokal: 1056 bestanden, 0 fehlgeschlagen.
 
 ## Ehrlich offen
 

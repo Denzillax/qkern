@@ -2557,7 +2557,7 @@ lief: Docker Desktop war ausgefallen. Nur der Blick in den Log hat das
 unterschieden; der Lauf wurde verworfen und wiederholt. Ein Exit-Code allein
 beglaubigt keine Mutationsprobe.
 
-Checkpoint `1.68.0` am 16. August 2026: Lokal 1054 bestanden, 0 fehlgeschlagen;
+Checkpoint `1.68.0` am 16. August 2026: Lokal 1056 bestanden, 0 fehlgeschlagen;
 PostgreSQL 142 von 142, exit 0, zweimal reproduziert, 40 Migrationen.
 
 Nicht erbracht: keine kaufmännische Nummer, keine Fälligkeit, keine
