@@ -866,3 +866,15 @@ dieselbe Zusage, getragen von derselben Zeile.
 Die Mutation entfernt die Schutzprüfung für lebende Reservierungen aus dem
 Waisen-Aufräumer. Genau der Verschonungsfall fällt: Der lebende Upload wird
 wie eine Waise abgebrochen.
+
+## Läufe zu Release 1.79 (16. August 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/deploy-audit-run1.log` | PostgreSQL 17 | 153 von 153, exit 0 |
+| `2026-08-16/deploy-audit-run2.log` | PostgreSQL 17 | 153 von 153, exit 0, Wiederholung |
+| `2026-08-16/deploy-audit-mutation.log` | PostgreSQL 17 | **152 von 153, exit 1 — absichtlich** |
+
+Die Mutation entfernt den Audit-Append aus der Deployment-Transaktion. Genau
+der Audit-Fall fällt — Tür und Historie bestehen weiter, aber der zentrale
+Audit-Weg sieht nichts mehr.

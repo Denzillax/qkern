@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.78.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.79.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,11 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.78.0`
-- Aktueller Slice: 1.78 Waisen altern weg — `expireLifecycle` raeumt verfallene
+- Paketversion: `1.79.0`
+- Aktueller Slice: 1.79 Deployments stehen im Audit — `deployFunction` schreibt
+  den Audit-Eintrag in **derselben** Transaktion wie die Tuer aus 0042; die
+  Hash-Kette fuellt der Trigger aus 0002
+- Vorheriger Slice: 1.78 Waisen altern weg — `expireLifecycle` raeumt verfallene
   Multipart-Reservierungen und Provider-Waisen; Migration 0043 ersetzt den nie
   erfuellbaren CHECK auf `provider_upload_id` (POSIX-Regex kann keine 1024
   Wiederholungen; jede Multipart-Reservierung gegen echtes PostgreSQL scheiterte

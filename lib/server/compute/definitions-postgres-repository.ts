@@ -219,13 +219,28 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
 
   async deployFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
     id: string, image: string): Promise<number> {
-    return await this.write(principal, async (database) => {
-      const result = await database.query<{ revision: number }>(
+    return await this.database.withTenant({
+      organizationId: principal.organizationId, actorRef: principal.actorRef, readOnly: false,
+    }, async (repositories) => {
+      const result = await repositories.transaction.query<{ revision: number }>(
         "SELECT qkern_deploy_project_function($1, $2) AS revision", [id, image]);
       const revision = result.rows[0]?.revision;
       if (!Number.isSafeInteger(revision) || (revision as number) < 1) {
         throw new Error("deployment returned no revision");
       }
+      // Der Audit-Eintrag entsteht in **derselben** Transaktion wie die Tuer:
+      // Ein Deployment ohne Audit ist vom Dienstweg aus nicht ausdrueckbar,
+      // und die Hash-Kette fuellt der Trigger aus 0002 wie fuer jeden Eintrag.
+      await repositories.audit.append({
+        projectId: scope.projectId,
+        environment: scope.environment,
+        actorType: "user",
+        actorRef: principal.actorRef,
+        action: "project.compute.function.deployed",
+        resourceRef: id,
+        status: "success",
+        metadata: { image, revision },
+      });
       return revision as number;
     });
   }

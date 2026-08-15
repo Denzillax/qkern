@@ -212,4 +212,41 @@ describe.runIf(enabled)("Compute definitions PostgreSQL certification", () => {
     ]);
     expect(history.every((entry) => entry.deployedBy === "owner@qkern.test")).toBe(true);
   }, 30_000);
+
+  /**
+   * Der zentrale Audit-Weg kennt Deployments — der offene Punkt aus 1.74.
+   *
+   * Der Eintrag entsteht in **derselben** Transaktion wie die Tuer aus 0042;
+   * die Hash-Kette fuellt der Trigger aus 0002 wie fuer jeden anderen
+   * Eintrag. Die Mutationsprobe dieses Releases nimmt genau den Append
+   * heraus — dann faellt dieser Fall, und nur er.
+   */
+  it("writes one chained audit entry per deployment", async () => {
+    const imageA = `registry.example.com/qkern/app@sha256:${"c".repeat(64)}`;
+    const imageB = `registry.example.com/qkern/app@sha256:${"d".repeat(64)}`;
+    const fn = await service.createFunction(admin, scope, {
+      name: uniqueName("deploy-audit"), image: imageA, entrypoint: "index.mjs",
+    });
+    await service.deployFunction(admin, scope, fn.id, { image: imageB });
+    await service.deployFunction(admin, scope, fn.id, { image: imageA });
+
+    const entries = await owner.query<{
+      actor_ref: string; status: string; redacted_metadata: { image?: string; revision?: number };
+      previous_hash: string | null; entry_hash: string;
+    }>(
+      `SELECT actor_ref, status, redacted_metadata, previous_hash, entry_hash
+       FROM audit_logs
+       WHERE organization_id=$1 AND action='project.compute.function.deployed' AND resource_ref=$2
+       ORDER BY created_at ASC, entry_hash ASC`,
+      [scope.organizationId, fn.id]);
+    expect(entries.rows.map((row) => [row.redacted_metadata.image, row.redacted_metadata.revision]))
+      .toEqual([[imageB, 1], [imageA, 2]]);
+    expect(entries.rows.every((row) => row.actor_ref === "owner@qkern.test" && row.status === "success"))
+      .toBe(true);
+    // Verkettet, nicht nur vorhanden: Jeder Eintrag traegt einen echten Hash,
+    // und der zweite zeigt auf einen Vorgaenger.
+    expect(entries.rows.every((row) => /^[0-9a-f]{64}$/.test(row.entry_hash) &&
+      row.entry_hash !== "0".repeat(64))).toBe(true);
+    expect(entries.rows[1].previous_hash).not.toBeNull();
+  }, 30_000);
 });

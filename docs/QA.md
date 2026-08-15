@@ -2901,3 +2901,32 @@ mit 43 Migrationen, alle exit 0.
 Nicht erbracht: Die eine Seite (1000) ist die Grenze, den Rückstand misst
 niemand. Kein Prozess ruft den Lifecycle von selbst. Die Waisen-Schwelle
 vertraut der Provider-Uhr.
+
+## Deployments stehen im Audit — Release 1.79
+
+Der offene Punkt aus 1.74: Der zentrale Audit-Weg kannte Deployments nicht.
+`deployFunction` schreibt den Eintrag jetzt in **derselben** Transaktion wie
+den Aufruf der Tür aus 0042 — Aktion
+`project.compute.function.deployed`, Ressource ist die Function, Metadaten
+tragen Image-Digest und Revision. Die Hash-Kette füllt der Trigger aus 0002
+wie für jeden anderen Eintrag; ein Deployment ohne Audit ist vom Dienstweg
+aus nicht ausdrückbar. Bewusst **kein** SQL-seitiger Audit-Insert in der
+DEFINER-Tür: Die Kette wird app-seitig über denselben Appender geführt wie
+überall, und eine zweite Hash-Implementierung in plpgsql wäre eine zweite
+Wahrheit.
+
+Zertifiziert gegen echtes PostgreSQL: zwei Deployments, zwei verkettete
+Einträge mit Revision 1 und 2, echte Hashes, der zweite zeigt auf einen
+Vorgänger.
+
+Mutationsprobe: Der Append aus der Transaktion entfernt — **152 von 153**,
+genau der Audit-Fall, und nur er.
+
+Checkpoint `1.79.0` am 16. August 2026: Lokal 1065 bestanden, 0
+fehlgeschlagen; PostgreSQL 153 von 153, exit 0, zweimal reproduziert, 43
+Migrationen.
+
+Nicht erbracht: Die Console zeigt die Deployment-Historie, aber keine
+Audit-Ansicht dafür. Wer die Tür per Hand-SQL mit der Laufzeitrolle ruft,
+umgeht den Audit-Weg — die Zusage gilt für den Dienstweg, nicht für die
+Datenbank selbst.
