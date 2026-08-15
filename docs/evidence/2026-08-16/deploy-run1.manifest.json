@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "deploy-run1.log",
+  "commit": "1e067293687e5f1e6762d775d138fd178fa3b558",
+  "commitSubject": "release: 1.73.0 Das Verbot wird ein Tor",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 42,
+  "testFiles": "26 passed (26)",
+  "tests": "147 passed (147)",
+  "passed": 147,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

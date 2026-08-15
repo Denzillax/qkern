@@ -2734,3 +2734,38 @@ PostgreSQL 146 von 146, exit 0, zweimal reproduziert, 41 Migrationen.
 Nicht erbracht: Ein vollständiger Production-Start (der Wegwerfstack hat kein
 SSL-PostgreSQL). Die TLS-Attestierung ist keine Prüfung. History und Presence
 liegen weiter im Prozessspeicher.
+
+## Die eine Tür für neue Images — Release 1.74
+
+Sprosse 6 der Paritätsleiter: Der Image-Deployment-Fluss existiert. Eine
+Function bekommt ein neues digest-gepinntes Image, ohne gelöscht und neu
+angelegt zu werden — und ohne dass ihre Unveränderlichkeit fällt.
+
+Die Konstruktion: Spaltenrecht und Wachtrigger aus 0033 bleiben; neu ist genau
+eine Tür hindurch. `qkern_deploy_project_function` wechselt das Image und
+schreibt im selben Atemzug die Historienzeile — über ein transaktionslokales
+Flag, das nur diese Funktion setzt. Eine Image-Änderung ohne ihre Historie ist
+auf Datenbankebene nicht ausdrückbar, auch nicht für den Eigentümer:
+`project_function_deployments` ist append-only mit FORCE RLS ohne UPDATE- und
+DELETE-Policy. Rollback ist ein Deployment auf den alten Digest — dieselbe
+Tür, die nächste Revision.
+
+Zertifiziert gegen echtes PostgreSQL mit der echten Laufzeitrolle: Der direkte
+UPDATE auf das Image scheitert weiter an `permission denied`; durch die Tür
+ist Image B Revision 1, der Rollback auf A Revision 2, die Definition zeigt A,
+und die Historie nennt beide Schritte mit Akteur.
+
+Mutationsprobe: Die Tür schreibt die Historienzeile nicht mehr — **146 von
+147**, genau der Deployment-Fall.
+
+Beinahe zum dritten Mal: Ein reflexhaftes `git checkout` zielte auf die
+uncommittierte Migrationsdatei — es schlug fehl, und das vorbereitete
+Python-Fallback stellte den Stand wieder her. Der Reflex ist das Problem;
+Wiederherstellung nach Mutationen läuft ausschliesslich über Kopien.
+
+Checkpoint `1.74.0` am 16. August 2026: Lokal 1064 bestanden, 0 fehlgeschlagen;
+PostgreSQL 147 von 147, exit 0, zweimal reproduziert, 42 Migrationen.
+
+Nicht erbracht: Kein Aufruf-Fall wechselt das Image unter Last. Die
+Deployment-Route spricht in keinem Fall HTTP. Der zentrale Audit-Weg kennt
+Deployments noch nicht.

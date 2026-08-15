@@ -65,6 +65,11 @@ function harness(options: {
   const functions = options.functions ?? [];
 
   const repository: ComputeDefinitionRepository = {
+    async deployFunction(_principal, _scope, id, image) {
+      calls.push({ method: "deployFunction", payload: { id, image } });
+      return 1;
+    },
+    async listFunctionDeployments() { return []; },
     async listCron() { return cron; },
     async createCron(_principal, _scope, input) {
       calls.push({ method: "createCron", payload: input });

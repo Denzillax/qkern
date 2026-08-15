@@ -801,3 +801,14 @@ Rechten.
 
 Die Mutation entfernt die Log-Bedingung aus dem Production-Tor. Genau der
 Abweisungsfall fällt: Ein Production-Prozess mit flüchtigem Log würde lauschen.
+
+## Läufe zu Release 1.74 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/deploy-run1.log` | PostgreSQL 17 | 147 von 147, exit 0, 42 Migrationen |
+| `2026-08-16/deploy-run2.log` | PostgreSQL 17 | 147 von 147, exit 0, Wiederholung |
+| `2026-08-16/deploy-mutation.log` | PostgreSQL 17 | **146 von 147, exit 1 — absichtlich** |
+
+Die Mutation nimmt der Deployment-Tür das Schreiben der Historienzeile. Genau
+der Fall fällt, der verlangt, dass jede Image-Änderung ihre Historie trägt.

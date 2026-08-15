@@ -173,4 +173,43 @@ describe.runIf(enabled)("Compute definitions PostgreSQL certification", () => {
     expect(await service.listCron(outsider, foreign)).toEqual([]);
     expect(await service.listWebhooks(outsider, foreign)).toEqual([]);
   });
+
+  /**
+   * Der Image-Deployment-Fluss — Sprosse 6 der Paritaetsleiter.
+   *
+   * Die Unveraenderlichkeit aus 0033 bleibt: Die Laufzeitrolle darf das Image
+   * weiterhin nicht direkt schreiben. Neu ist die eine Tuer aus 0042, die den
+   * Wechsel nur zusammen mit seiner Historienzeile zulaesst — genau diesen
+   * Zusammenhang nimmt die Mutationsprobe dieses Releases heraus.
+   */
+  it("deploys images only through the door that writes their history", async () => {
+    const imageA = `registry.example.com/qkern/app@sha256:${"a".repeat(64)}`;
+    const imageB = `registry.example.com/qkern/app@sha256:${"b".repeat(64)}`;
+    const fn = await service.createFunction(admin, scope, {
+      name: uniqueName("deploy"), image: imageA, entrypoint: "index.mjs",
+    });
+
+    // Direkt bleibt verboten — das Spaltenrecht aus 0033 lebt.
+    await expect(pool().query(
+      "UPDATE project_functions SET image=$1 WHERE id=$2", [imageB, fn.id],
+    )).rejects.toMatchObject({ message: expect.stringContaining("permission denied") });
+
+    // Durch die Tuer: neues Image, Revision 1; Rollback ist Revision 2.
+    const first = await service.deployFunction(admin, scope, fn.id, { image: imageB });
+    expect(first.revision).toBe(1);
+    const rolledBack = await service.deployFunction(admin, scope, fn.id, { image: imageA });
+    expect(rolledBack.revision).toBe(2);
+
+    const current = await service.getFunction(admin, scope, fn.id);
+    expect(current.image).toBe(imageA);
+
+    // Die Historie traegt jede Aenderung, neueste zuerst — wer heute liest,
+    // sieht, was gestern lief.
+    const history = await service.listFunctionDeployments(admin, scope, fn.id);
+    expect(history.map((entry) => [entry.revision, entry.image])).toEqual([
+      [2, imageA],
+      [1, imageB],
+    ]);
+    expect(history.every((entry) => entry.deployedBy === "owner@qkern.test")).toBe(true);
+  }, 30_000);
 });

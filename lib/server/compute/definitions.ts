@@ -107,6 +107,13 @@ export type FunctionDefinitionInput = {
   enabled?: boolean;
 };
 
+export type FunctionDeploymentRecord = {
+  revision: number;
+  image: string;
+  deployedBy: string;
+  deployedAt: string;
+};
+
 export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -132,6 +139,15 @@ export interface ComputeDefinitionRepository {
   listDeliveries(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, webhookId: string,
     limit: number): Promise<WebhookDeliveryRecord[]>;
 
+  /**
+   * Wechselt das Image einer Function ueber die eine Tuer aus Migration 0042
+   * und liefert die neue Revision. Eine Image-Aenderung ohne Historienzeile
+   * ist auf Datenbankebene nicht ausdrueckbar.
+   */
+  deployFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, image: string): Promise<number>;
+  listFunctionDeployments(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string): Promise<FunctionDeploymentRecord[]>;
   listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
     Promise<FunctionDefinitionRecord[]>;
   createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -386,6 +402,38 @@ export class ComputeDefinitionService {
       secretRefs: candidate.secretRefs,
       enabled: input.enabled ?? true,
     });
+  }
+
+  /**
+   * Rollt ein neues Image aus — Sprosse 6 der Paritaetsleiter.
+   *
+   * Alles andere an der Definition bleibt unveraenderlich, und genau deshalb
+   * ist ein Deployment kein Loeschen-und-Neuanlegen: Der Name, die Grenzen
+   * und die Bindungen der Function bleiben stehen, nur das Image wandert —
+   * mit erzwungener Historie. Rollback ist ein Deployment auf den alten
+   * Digest, keine Sonderoperation.
+   */
+  async deployFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, input: { image: string }): Promise<{ revision: number; image: string }> {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    if (typeof input.image !== "string" ||
+        !/^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$/.test(input.image)) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    const existing = await this.options.repository.getFunction(principal, scope, id);
+    if (!existing) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    const revision = await this.options.repository.deployFunction(principal, scope, id, input.image);
+    return { revision, image: input.image };
+  }
+
+  async listFunctionDeployments(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string): Promise<FunctionDeploymentRecord[]> {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    const existing = await this.options.repository.getFunction(principal, scope, id);
+    if (!existing) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return await this.options.repository.listFunctionDeployments(principal, scope, id);
   }
 
   async getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {

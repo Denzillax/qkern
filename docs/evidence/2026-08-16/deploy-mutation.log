@@ -1,0 +1,1454 @@
+ Network qkern-v023-certification_default Creating 
+ Network qkern-v023-certification_default Created 
+ Container qkern-v023-certification-postgres-1 Creating 
+ Container qkern-v023-certification-postgres-1 Created 
+ Container qkern-v023-certification-certification-1 Creating 
+ Container qkern-v023-certification-certification-1 Created 
+Attaching to certification-1, postgres-1
+ Container qkern-v023-certification-postgres-1 Starting 
+ Container qkern-v023-certification-postgres-1 Started 
+ Container qkern-v023-certification-postgres-1 Waiting 
+postgres-1  | The files belonging to this database system will be owned by user "postgres".
+postgres-1  | This user must also own the server process.
+postgres-1  | 
+postgres-1  | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1  | The default database encoding has accordingly been set to "UTF8".
+postgres-1  | The default text search configuration will be set to "english".
+postgres-1  | 
+postgres-1  | Data page checksums are disabled.
+postgres-1  | 
+postgres-1  | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1  | creating subdirectories ... ok
+postgres-1  | selecting dynamic shared memory implementation ... posix
+postgres-1  | selecting default "max_connections" ... 100
+postgres-1  | selecting default "shared_buffers" ... 128MB
+postgres-1  | selecting default time zone ... UTC
+postgres-1  | creating configuration files ... ok
+postgres-1  | running bootstrap script ... ok
+postgres-1  | sh: locale: not found
+postgres-1  | 2026-08-15 16:00:08.463 UTC [36] WARNING:  no usable system locales were found
+postgres-1  | performing post-bootstrap initialization ... ok
+postgres-1  | initdb: warning: enabling "trust" authentication for local connections
+postgres-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1  | syncing data to disk ... ok
+postgres-1  | 
+postgres-1  | 
+postgres-1  | Success. You can now start the database server using:
+postgres-1  | 
+postgres-1  |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1  | 
+postgres-1  | waiting for server to start....2026-08-15 16:00:10.194 UTC [51] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-08-15 16:00:10.200 UTC [51] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-08-15 16:00:10.203 UTC [54] LOG:  database system was shut down at 2026-08-15 16:00:10 UTC
+postgres-1  | 2026-08-15 16:00:10.211 UTC [51] LOG:  database system is ready to accept connections
+postgres-1  |  done
+postgres-1  | server started
+postgres-1  | CREATE DATABASE
+postgres-1  | 
+postgres-1  | 
+postgres-1  | /usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/000-certification-init.sh
+postgres-1  | certification-init: applying 0001_control_plane.sql
+postgres-1  | CREATE EXTENSION
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applying 0002_repository_hardening.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0003_auth_and_memberships.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0004_artifact_and_workspace_integrity.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0005_migration_apply_queue.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0006_worker_runtime_boundary.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0007_migration_claim_sequence.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0008_migration_reconciliation_quarantine.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0009_migration_review_commands.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0010_migration_incident_escalations.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0011_migration_incident_outbox.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | INSERT 0 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0012_migration_incident_dead_letters.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0013_migration_incident_delivery_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0014_migration_incident_delivery_visibility.sql
+postgres-1  | BEGIN
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0015_migration_incident_delivery_failure_classification.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0016_migration_incident_delivery_recovery_binding.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0017_migration_incident_verified_resolution.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0018_migration_incident_delivery_recovery_generation.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0019_migration_apply_delivery_resilience.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0020_project_database_provisioning.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0021_project_database_provisioning_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0022_project_automation_policies.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0023_project_api_keys.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0024_project_auth.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0025_project_storage.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0026_project_queues.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0027_project_queue_dead_letter_replay.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0028_usage_metering.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0029_project_queue_definition_row_lock.sql
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applying 0030_realtime_event_log.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0031_project_cron.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0032_project_webhooks.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0033_project_functions.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0034_project_functions_registry.sql
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | certification-init: applying 0035_project_function_slots.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0036_provisioner_heartbeat_upsert_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0037_provisioner_binding_returning_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0038_runtime_outbox_arbiter_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0039_billing_rate_cards.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0040_billing_invoices.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0041_project_storage_multipart.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0042_project_function_deployments.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applied 42 migrations
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | 2026-08-15 16:00:17.537 UTC [236] WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.538 UTC [236] WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-15 16:00:17.540 UTC [236] WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.540 UTC [236] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.541 UTC [236] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-15 16:00:17.542 UTC [236] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-15 16:00:17.544 UTC [236] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.544 UTC [236] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.544 UTC [236] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.545 UTC [236] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.546 UTC [236] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.546 UTC [236] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-08-15 16:00:17.548 UTC [236] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.548 UTC [236] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.548 UTC [236] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-08-15 16:00:17.548 UTC [236] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | 
+postgres-1  | waiting for server to shut down...2026-08-15 16:00:17.578 UTC [51] LOG:  received fast shutdown request
+postgres-1  | 2026-08-15 16:00:17.578 UTC [51] LOG:  aborting any active transactions
+postgres-1  | .2026-08-15 16:00:17.581 UTC [51] LOG:  background worker "logical replication launcher" (PID 57) exited with exit code 1
+postgres-1  | 2026-08-15 16:00:17.589 UTC [52] LOG:  shutting down
+postgres-1  | 2026-08-15 16:00:17.589 UTC [52] LOG:  checkpoint starting: shutdown immediate
+postgres-1  | 2026-08-15 16:00:17.628 UTC [52] LOG:  checkpoint complete: wrote 1180 buffers (7.2%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.032 s, sync=0.008 s, total=0.040 s; sync files=628, longest=0.001 s, average=0.001 s; distance=7426 kB, estimate=7426 kB; lsn=0/1C327C8, redo lsn=0/1C327C8
+postgres-1  | 2026-08-15 16:00:17.666 UTC [51] LOG:  database system is shut down
+postgres-1  |  done
+postgres-1  | server stopped
+postgres-1  | 
+postgres-1  | PostgreSQL init process complete; ready for start up.
+postgres-1  | 
+postgres-1  | 2026-08-15 16:00:17.771 UTC [1] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-08-15 16:00:17.772 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1  | 2026-08-15 16:00:17.772 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1  | 2026-08-15 16:00:17.781 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-08-15 16:00:17.792 UTC [241] LOG:  database system was shut down at 2026-08-15 16:00:17 UTC
+postgres-1  | 2026-08-15 16:00:17.818 UTC [1] LOG:  database system is ready to accept connections
+ Container qkern-v023-certification-postgres-1 Healthy 
+ Container qkern-v023-certification-certification-1 Starting 
+ Container qkern-v023-certification-certification-1 Started 
+certification-1  | 
+certification-1  | added 204 packages, and audited 205 packages in 1m
+certification-1  | 
+certification-1  | 58 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 1 high severity vulnerability
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New major version of npm available! 11.17.0 -> 12.0.2
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+certification-1  | npm notice To update run: npm install -g npm@12.0.2
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@1.73.0 test:postgres
+certification-1  | > vitest run tests/postgres.integration.test.ts tests/postgres-incident-recovery.integration.test.ts tests/generated-data-postgres.integration.test.ts tests/project-auth-postgres.integration.test.ts tests/project-storage-postgres.integration.test.ts tests/project-queues-postgres.integration.test.ts tests/usage-metering-postgres.integration.test.ts tests/realtime-postgres.integration.test.ts tests/realtime-change-feed-postgres.integration.test.ts tests/realtime-change-chain-postgres.integration.test.ts tests/realtime-change-soak-postgres.integration.test.ts tests/project-queues-multi-instance.integration.test.ts tests/compute-cron-postgres.integration.test.ts tests/compute-webhook-postgres.integration.test.ts tests/compute-webhook-chain.integration.test.ts tests/compute-definitions-postgres.integration.test.ts tests/compute-functions-postgres.integration.test.ts tests/usage-emitters-postgres.integration.test.ts tests/migration-process-postgres.integration.test.ts tests/realtime-process-postgres.integration.test.ts tests/provisioning-port-postgres.integration.test.ts tests/migration-enqueue-postgres.integration.test.ts tests/sql-privilege-clause-contract.integration.test.ts tests/queue-connection-pressure-postgres.integration.test.ts tests/usage-billing-postgres.integration.test.ts tests/billing-invoice-postgres.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+postgres-1       | 2026-08-15 16:01:41.968 UTC [583] ERROR:  change capture requires a primary key on public.cdc_keyless_fdb0a24c02c5
+postgres-1       | 2026-08-15 16:01:41.968 UTC [583] CONTEXT:  PL/pgSQL function capture_change() line 15 at RAISE
+postgres-1       | 2026-08-15 16:01:41.968 UTC [583] STATEMENT:  INSERT INTO public.cdc_keyless_fdb0a24c02c5 (label) VALUES ('orphan')
+postgres-1       | 2026-08-15 16:01:42.396 UTC [592] ERROR:  permission denied for table change_feed
+postgres-1       | 2026-08-15 16:01:42.396 UTC [592] STATEMENT:  INSERT INTO qkern_internal.change_feed (schema_name, table_name, operation, row_key)
+postgres-1       | 	       VALUES ('public', 'forged', 'insert', '{"id":"forged"}'::jsonb)
+certification-1  |  [32m✓[39m tests/realtime-change-feed-postgres.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 2043[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:43.392 UTC [605] ERROR:  duplicate key value violates unique constraint "project_cron_definitions_name_key"
+postgres-1       | 2026-08-15 16:01:43.392 UTC [605] STATEMENT:  INSERT INTO project_cron_definitions
+postgres-1       | 	           (organization_id, project_id, environment, name, expression, queue, payload, enabled)
+postgres-1       | 	         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+postgres-1       | 	         RETURNING id, organization_id, project_id, environment, name, expression, queue,
+postgres-1       | 	  payload, enabled, last_dispatched_at, created_at
+certification-1  | [90mstdout[2m | tests/sql-privilege-clause-contract.integration.test.ts[2m > [22m[2mSQL privilege clause contract[2m > [22m[2mfinds statements to check
+certification-1  | [22m[39mprivilege clause contract: 98 Anweisungen, 10 Spaltenlisten nicht auswertbar, 506 Platzhalter offen
+certification-1  | 
+postgres-1       | 2026-08-15 16:01:43.620 UTC [616] ERROR:  permission denied for table project_cron_definitions
+postgres-1       | 2026-08-15 16:01:43.620 UTC [616] STATEMENT:  UPDATE project_cron_definitions SET expression='*/1 * * * *' WHERE id=$1
+postgres-1       | 2026-08-15 16:01:43.626 UTC [618] ERROR:  permission denied for table project_functions
+postgres-1       | 2026-08-15 16:01:43.626 UTC [618] STATEMENT:  UPDATE project_functions SET image=$2 WHERE id=$1
+postgres-1       | 2026-08-15 16:01:43.973 UTC [619] ERROR:  permission denied for table project_functions
+postgres-1       | 2026-08-15 16:01:43.973 UTC [619] STATEMENT:  UPDATE project_functions SET memory_mib=2048 WHERE id=$1
+postgres-1       | 2026-08-15 16:01:44.014 UTC [606] ERROR:  new row for relation "project_functions" violates check constraint "project_functions_image_check"
+postgres-1       | 2026-08-15 16:01:44.014 UTC [606] DETAIL:  Failing row contains (90459b56-cae4-4645-8018-ec38fbfab5af, be807e92-fd95-4e6a-ab6a-781b729980f9, 1175218b-91f8-4bf1-b26d-b3dbcf57b8b1, development, tagged-81217c79, nodejs24, registry.example.com/qkern/probe:latest, handler.mjs, 30000, 128, 1, {}, {}, t, 2026-08-15 16:01:44.006562+00).
+postgres-1       | 2026-08-15 16:01:44.014 UTC [606] STATEMENT:  INSERT INTO project_functions
+postgres-1       | 	         (organization_id, project_id, environment, name, runtime, image, entrypoint)
+postgres-1       | 	       VALUES ($1,$2,'development',$3,'nodejs24','registry.example.com/qkern/probe:latest','handler.mjs')
+postgres-1       | 2026-08-15 16:01:44.330 UTC [622] ERROR:  permission denied for table project_webhooks
+postgres-1       | 2026-08-15 16:01:44.330 UTC [622] STATEMENT:  UPDATE project_webhooks SET url='https://elsewhere.example.com/hooks' WHERE id=$1
+postgres-1       | 2026-08-15 16:01:44.472 UTC [610] ERROR:  duplicate key value violates unique constraint "project_functions_name_key"
+postgres-1       | 2026-08-15 16:01:44.472 UTC [610] STATEMENT:  INSERT INTO project_functions
+postgres-1       | 	           (organization_id, project_id, environment, name, runtime, image, entrypoint,
+postgres-1       | 	            timeout_ms, memory_mib, max_concurrency, egress_origins, secret_refs, enabled)
+postgres-1       | 	         VALUES ($1,$2,$3,$4,'nodejs24',$5,$6,$7,$8,$9,$10,$11,$12)
+postgres-1       | 	         RETURNING id, organization_id, project_id, environment, name, runtime, image,
+postgres-1       | 	  entrypoint, timeout_ms, memory_mib, max_concurrency, egress_origins, secret_refs, enabled,
+postgres-1       | 	  created_at
+postgres-1       | 2026-08-15 16:01:45.440 UTC [625] ERROR:  relation "change_feed" already exists
+postgres-1       | 2026-08-15 16:01:45.440 UTC [625] STATEMENT:  -- Run once after 0002_qkern_migration_fence.sql as the trusted project database
+postgres-1       | 	-- provisioner. Provides trigger-based change capture for Realtime.
+postgres-1       | 	--
+postgres-1       | 	-- ## Warum Trigger und nicht logische Replikation
+postgres-1       | 	--
+postgres-1       | 	-- Logische Replikation sieht jede Aenderung ohne Schemaeingriff, verlangt aber
+postgres-1       | 	-- eine Rolle mit Replikationsrecht und einen Slot. Beides steht im direkten
+postgres-1       | 	-- Widerspruch zu diesem Schema: 0001 prueft fuer jede beteiligte Rolle
+postgres-1       | 	-- ausdruecklich rolreplication = false. Ein hängender Konsument laesst den Slot
+postgres-1       | 	-- ausserdem unbegrenzt WAL halten, bis die Platte voll ist -- ein
+postgres-1       | 	-- Betriebsrisiko, das der Kunde traegt und QKERN nicht begrenzen kann.
+postgres-1       | 	--
+postgres-1       | 	-- Trigger sind begrenzbar: der Feed hat Groessengrenzen und Aufbewahrung, und
+postgres-1       | 	-- das Anschalten je Tabelle ist eine Schemaaenderung, die den vorhandenen
+postgres-1       | 	-- Change-Set- und Approval-Weg durchlaeuft.
+postgres-1       | 	--
+postgres-1       | 	-- ## Warum keine Zeilenwerte gespeichert werden
+postgres-1       | 	--
+postgres-1       | 	-- Der Feed haelt ausschliesslich die Primaerschluesselwerte. Die eigentlichen
+postgres-1       | 	-- Zeilenwerte werden je Abonnent frisch gelesen, und zwar mit dessen Claims.
+postgres-1       | 	-- Row Level Security autorisiert und erzeugt die Nutzlast damit in einem
+postgres-1       | 	-- Schritt. Wuerden die Werte hier liegen, muesste eine zweite, unabhaengige
+postgres-1       | 	-- Sichtbarkeitspruefung sie korrekt filtern -- eine Kopie der RLS-Logik
+postgres-1       | 	-- ausserhalb der Datenbank und damit eine dauerhafte Fehlerquelle.
+postgres-1       | 	
+postgres-1       | 	BEGIN;
+postgres-1       | 	
+postgres-1       | 	CREATE TABLE qkern_internal.change_feed (
+postgres-1       | 	  position bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+postgres-1       | 	  schema_name text NOT NULL CHECK (schema_name ~ '^[a-z_][a-z0-9_]{0,62}$'),
+postgres-1       | 	  table_name text NOT NULL CHECK (table_name ~ '^[a-z_][a-z0-9_]{0,62}$'),
+postgres-1       | 	  operation text NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+postgres-1       | 	  -- Nur Primaerschluesselwerte. Die Grenze verhindert, dass ein zusammengesetzter
+postgres-1       | 	  -- Schluessel den Feed aufblaeht.
+postgres-1       | 	  row_key jsonb NOT NULL CHECK (octet_length(row_key::text) <= 4096),
+postgres-1       | 	  committed_at timestamptz NOT NULL DEFAULT now()
+postgres-1       | 	);
+postgres-1       | 	
+postgres-1       | 	CREATE INDEX change_feed_retention_idx ON qkern_internal.change_feed (committed_at);
+postgres-1       | 	
+postgres-1       | 	ALTER TABLE qkern_internal.change_feed OWNER TO qkern_ledger_owner;
+postgres-1       | 	
+postgres-1       | 	-- SECURITY DEFINER: Der Schreiber einer Zeile besitzt keine Rechte auf dem
+postgres-1       | 	-- Feed und soll sie auch nicht bekommen. Der Trigger schreibt stellvertretend.
+postgres-1       | 	-- search_path wird fest gesetzt, damit kein Aufrufer die aufgeloesten Objekte
+postgres-1       | 	-- umlenken kann.
+postgres-1       | 	CREATE OR REPLACE FUNCTION qkern_internal.capture_change()
+postgres-1       | 	RETURNS trigger
+postgres-1       | 	LANGUAGE plpgsql
+postgres-1       | 	SECURITY DEFINER
+postgres-1       | 	SET search_path = qkern_internal, pg_catalog
+postgres-1       | 	AS $$
+postgres-1       | 	DECLARE
+postgres-1       | 	  key_columns text[];
+postgres-1       | 	  source record;
+postgres-1       | 	  key jsonb;
+postgres-1       | 	BEGIN
+postgres-1       | 	  SELECT array_agg(attribute.attname ORDER BY attribute.attnum)
+postgres-1       | 	    INTO key_columns
+postgres-1       | 	    FROM pg_index index
+postgres-1       | 	    JOIN pg_attribute attribute
+postgres-1       | 	      ON attribute.attrelid = index.indrelid AND attribute.attnum = ANY (index.indkey)
+postgres-1       | 	   WHERE index.indrelid = TG_RELID AND index.indisprimary;
+postgres-1       | 	
+postgres-1       | 	  IF key_columns IS NULL THEN
+postgres-1       | 	    RAISE EXCEPTION 'change capture requires a primary key on %.%', TG_TABLE_SCHEMA, TG_TABLE_NAME
+postgres-1       | 	      USING ERRCODE = '55000';
+postgres-1       | 	  END IF;
+postgres-1       | 	
+postgres-1       | 	  source := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+postgres-1       | 	  SELECT jsonb_object_agg(entry.key, entry.value)
+postgres-1       | 	    INTO key
+postgres-1       | 	    FROM jsonb_each(to_jsonb(source)) AS entry
+postgres-1       | 	   WHERE entry.key = ANY (key_columns);
+postgres-1       | 	
+postgres-1       | 	  INSERT INTO qkern_internal.change_feed (schema_name, table_name, operation, row_key)
+postgres-1       | 	  VALUES (TG_TABLE_SCHEMA, TG_TABLE_NAME, lower(TG_OP), key);
+postgres-1       | 	
+postgres-1       | 	  RETURN NULL;
+postgres-1       | 	END;
+postgres-1       | 	$$;
+postgres-1       | 	
+postgres-1       | 	ALTER FUNCTION qkern_internal.capture_change() OWNER TO qkern_ledger_owner;
+postgres-1       | 	
+postgres-1       | 	REVOKE ALL ON qkern_internal.change_feed FROM PUBLIC;
+postgres-1       | 	REVOKE ALL ON FUNCTION qkern_internal.capture_change() FROM PUBLIC;
+postgres-1       | 	
+postgres-1       | 	-- Die Laufzeitrolle liest den Feed und raeumt ihn auf. Sie darf ihn niemals
+postgres-1       | 	-- schreiben: ein erfundenes Aenderungsereignis wuerde einen Lesevorgang mit
+postgres-1       | 	-- fremden Claims ausloesen.
+postgres-1       | 	GRANT USAGE ON SCHEMA qkern_internal TO qkern_project_api_app;
+postgres-1       | 	GRANT SELECT, DELETE ON qkern_internal.change_feed TO qkern_project_api_app;
+postgres-1       | 	
+postgres-1       | 	COMMIT;
+postgres-1       | 	
+postgres-1       | 2026-08-15 16:01:45.786 UTC [604] ERROR:  new row violates row-level security policy for table "items"
+postgres-1       | 2026-08-15 16:01:45.786 UTC [604] CONTEXT:  SQL function "add_item" statement 1
+postgres-1       | 2026-08-15 16:01:45.786 UTC [604] STATEMENT:  SELECT "generated_bda50ec6_3408_4c2a_99c8_0198b7fc63f3"."add_item"("item_name" => $1::text, "item_owner" => $2::text) AS result
+postgres-1       | 2026-08-15 16:01:45.983 UTC [635] ERROR:  permission denied for table project_functions
+postgres-1       | 2026-08-15 16:01:45.983 UTC [635] STATEMENT:  UPDATE project_functions SET image=$1 WHERE id=$2
+certification-1  |  [32m✓[39m tests/generated-data-postgres.integration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 3934[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m enforces RLS across insert, list, update and delete [33m 703[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serves security-invoker views read-only under the caller's RLS [33m 952[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m calls security-invoker functions under the caller's RLS [33m 1501[2mms[22m[39m
+certification-1  |  [31m❯[39m tests/compute-definitions-postgres.integration.test.ts [2m([22m[2m8 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 3723[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m creates, lists and pauses a cron definition through the unprivileged runtime role [33m 590[2mms[22m[39m
+certification-1  |      [32m✓[39m refuses a second definition with the same name[32m 32[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m denies the runtime role any change beyond the enabled flag [33m 944[2mms[22m[39m
+certification-1  |      [32m✓[39m refuses to delete a webhook while it is still enabled[32m 22[2mms[22m[39m
+certification-1  |      [32m✓[39m deletes a disabled webhook together with its pending deliveries[32m 52[2mms[22m[39m
+certification-1  |      [32m✓[39m lists delivery status without ever returning a payload[32m 206[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m hides definitions of a different organization [33m 799[2mms[22m[39m
+certification-1  | [31m     [31m×[31m deploys images only through the door that writes their history[39m[33m 634[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:46.358 UTC [657] ERROR:  relation "change_feed" already exists
+postgres-1       | 2026-08-15 16:01:46.358 UTC [657] STATEMENT:  -- Run once after 0002_qkern_migration_fence.sql as the trusted project database
+postgres-1       | 	-- provisioner. Provides trigger-based change capture for Realtime.
+postgres-1       | 	--
+postgres-1       | 	-- ## Warum Trigger und nicht logische Replikation
+postgres-1       | 	--
+postgres-1       | 	-- Logische Replikation sieht jede Aenderung ohne Schemaeingriff, verlangt aber
+postgres-1       | 	-- eine Rolle mit Replikationsrecht und einen Slot. Beides steht im direkten
+postgres-1       | 	-- Widerspruch zu diesem Schema: 0001 prueft fuer jede beteiligte Rolle
+postgres-1       | 	-- ausdruecklich rolreplication = false. Ein hängender Konsument laesst den Slot
+postgres-1       | 	-- ausserdem unbegrenzt WAL halten, bis die Platte voll ist -- ein
+postgres-1       | 	-- Betriebsrisiko, das der Kunde traegt und QKERN nicht begrenzen kann.
+postgres-1       | 	--
+postgres-1       | 	-- Trigger sind begrenzbar: der Feed hat Groessengrenzen und Aufbewahrung, und
+postgres-1       | 	-- das Anschalten je Tabelle ist eine Schemaaenderung, die den vorhandenen
+postgres-1       | 	-- Change-Set- und Approval-Weg durchlaeuft.
+postgres-1       | 	--
+postgres-1       | 	-- ## Warum keine Zeilenwerte gespeichert werden
+postgres-1       | 	--
+postgres-1       | 	-- Der Feed haelt ausschliesslich die Primaerschluesselwerte. Die eigentlichen
+postgres-1       | 	-- Zeilenwerte werden je Abonnent frisch gelesen, und zwar mit dessen Claims.
+postgres-1       | 	-- Row Level Security autorisiert und erzeugt die Nutzlast damit in einem
+postgres-1       | 	-- Schritt. Wuerden die Werte hier liegen, muesste eine zweite, unabhaengige
+postgres-1       | 	-- Sichtbarkeitspruefung sie korrekt filtern -- eine Kopie der RLS-Logik
+postgres-1       | 	-- ausserhalb der Datenbank und damit eine dauerhafte Fehlerquelle.
+postgres-1       | 	
+postgres-1       | 	BEGIN;
+postgres-1       | 	
+postgres-1       | 	CREATE TABLE qkern_internal.change_feed (
+postgres-1       | 	  position bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+postgres-1       | 	  schema_name text NOT NULL CHECK (schema_name ~ '^[a-z_][a-z0-9_]{0,62}$'),
+postgres-1       | 	  table_name text NOT NULL CHECK (table_name ~ '^[a-z_][a-z0-9_]{0,62}$'),
+postgres-1       | 	  operation text NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
+postgres-1       | 	  -- Nur Primaerschluesselwerte. Die Grenze verhindert, dass ein zusammengesetzter
+postgres-1       | 	  -- Schluessel den Feed aufblaeht.
+postgres-1       | 	  row_key jsonb NOT NULL CHECK (octet_length(row_key::text) <= 4096),
+postgres-1       | 	  committed_at timestamptz NOT NULL DEFAULT now()
+postgres-1       | 	);
+postgres-1       | 	
+postgres-1       | 	CREATE INDEX change_feed_retention_idx ON qkern_internal.change_feed (committed_at);
+postgres-1       | 	
+postgres-1       | 	ALTER TABLE qkern_internal.change_feed OWNER TO qkern_ledger_owner;
+postgres-1       | 	
+postgres-1       | 	-- SECURITY DEFINER: Der Schreiber einer Zeile besitzt keine Rechte auf dem
+postgres-1       | 	-- Feed und soll sie auch nicht bekommen. Der Trigger schreibt stellvertretend.
+postgres-1       | 	-- search_path wird fest gesetzt, damit kein Aufrufer die aufgeloesten Objekte
+postgres-1       | 	-- umlenken kann.
+postgres-1       | 	CREATE OR REPLACE FUNCTION qkern_internal.capture_change()
+postgres-1       | 	RETURNS trigger
+postgres-1       | 	LANGUAGE plpgsql
+postgres-1       | 	SECURITY DEFINER
+postgres-1       | 	SET search_path = qkern_internal, pg_catalog
+postgres-1       | 	AS $$
+postgres-1       | 	DECLARE
+postgres-1       | 	  key_columns text[];
+postgres-1       | 	  source record;
+postgres-1       | 	  key jsonb;
+postgres-1       | 	BEGIN
+postgres-1       | 	  SELECT array_agg(attribute.attname ORDER BY attribute.attnum)
+postgres-1       | 	    INTO key_columns
+postgres-1       | 	    FROM pg_index index
+postgres-1       | 	    JOIN pg_attribute attribute
+postgres-1       | 	      ON attribute.attrelid = index.indrelid AND attribute.attnum = ANY (index.indkey)
+postgres-1       | 	   WHERE index.indrelid = TG_RELID AND index.indisprimary;
+postgres-1       | 	
+postgres-1       | 	  IF key_columns IS NULL THEN
+postgres-1       | 	    RAISE EXCEPTION 'change capture requires a primary key on %.%', TG_TABLE_SCHEMA, TG_TABLE_NAME
+postgres-1       | 	      USING ERRCODE = '55000';
+postgres-1       | 	  END IF;
+postgres-1       | 	
+postgres-1       | 	  source := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+postgres-1       | 	  SELECT jsonb_object_agg(entry.key, entry.value)
+postgres-1       | 	    INTO key
+postgres-1       | 	    FROM jsonb_each(to_jsonb(source)) AS entry
+postgres-1       | 	   WHERE entry.key = ANY (key_columns);
+postgres-1       | 	
+postgres-1       | 	  INSERT INTO qkern_internal.change_feed (schema_name, table_name, operation, row_key)
+postgres-1       | 	  VALUES (TG_TABLE_SCHEMA, TG_TABLE_NAME, lower(TG_OP), key);
+postgres-1       | 	
+postgres-1       | 	  RETURN NULL;
+postgres-1       | 	END;
+postgres-1       | 	$$;
+postgres-1       | 	
+postgres-1       | 	ALTER FUNCTION qkern_internal.capture_change() OWNER TO qkern_ledger_owner;
+postgres-1       | 	
+postgres-1       | 	REVOKE ALL ON qkern_internal.change_feed FROM PUBLIC;
+postgres-1       | 	REVOKE ALL ON FUNCTION qkern_internal.capture_change() FROM PUBLIC;
+postgres-1       | 	
+postgres-1       | 	-- Die Laufzeitrolle liest den Feed und raeumt ihn auf. Sie darf ihn niemals
+postgres-1       | 	-- schreiben: ein erfundenes Aenderungsereignis wuerde einen Lesevorgang mit
+postgres-1       | 	-- fremden Claims ausloesen.
+postgres-1       | 	GRANT USAGE ON SCHEMA qkern_internal TO qkern_project_api_app;
+postgres-1       | 	GRANT SELECT, DELETE ON qkern_internal.change_feed TO qkern_project_api_app;
+postgres-1       | 	
+postgres-1       | 	COMMIT;
+postgres-1       | 	
+postgres-1       | 2026-08-15 16:01:46.977 UTC [627] ERROR:  new row for relation "migration_incident_delivery_commands" violates check constraint "migration_incident_delivery_commands_expected_failure_code"
+postgres-1       | 2026-08-15 16:01:46.977 UTC [627] DETAIL:  Failing row contains (4d747475-6bb5-49b6-be41-253278f8ac12, c30d2418-f6fd-4350-83fd-412e8be87822, b779cc47-4231-41b2-b3e4-eaf41cb96dab, constraint-test, destination_recovered, pending, null, 2026-08-15 16:01:46.971983+00, 2026-08-15 16:01:46.971983+00, null, null).
+postgres-1       | 2026-08-15 16:01:46.977 UTC [627] STATEMENT:  INSERT INTO migration_incident_delivery_commands
+postgres-1       | 	           (organization_id, migration_incident_id, requested_by, reason_code,
+postgres-1       | 	            expected_failure_code, expected_retry_cycle)
+postgres-1       | 	         VALUES ($1, $2, 'constraint-test', 'destination_recovered', NULL, NULL)
+postgres-1       | 2026-08-15 16:01:47.030 UTC [595] ERROR:  webhook delivery content is immutable
+postgres-1       | 2026-08-15 16:01:47.030 UTC [595] CONTEXT:  PL/pgSQL function qkern_validate_project_webhook_delivery_update() line 8 at RAISE
+postgres-1       | 2026-08-15 16:01:47.030 UTC [595] STATEMENT:  UPDATE project_webhook_deliveries SET payload='{"tampered":true}'::jsonb WHERE id=$1
+postgres-1       | 2026-08-15 16:01:47.062 UTC [678] ERROR:  new row for relation "migration_incident_delivery_commands" violates check constraint "migration_incident_delivery_commands_expected_retry_cycle"
+postgres-1       | 2026-08-15 16:01:47.062 UTC [678] DETAIL:  Failing row contains (e243a075-05a9-45ac-9459-0008c1c86b24, c30d2418-f6fd-4350-83fd-412e8be87822, b779cc47-4231-41b2-b3e4-eaf41cb96dab, constraint-test, destination_recovered, pending, null, 2026-08-15 16:01:47.049617+00, 2026-08-15 16:01:47.049617+00, PUBLISH_FAILED, null).
+postgres-1       | 2026-08-15 16:01:47.062 UTC [678] STATEMENT:  INSERT INTO migration_incident_delivery_commands
+postgres-1       | 	           (organization_id, migration_incident_id, requested_by, reason_code,
+postgres-1       | 	            expected_failure_code, expected_retry_cycle)
+postgres-1       | 	         VALUES ($1, $2, 'constraint-test', 'destination_recovered', 'PUBLISH_FAILED', NULL)
+postgres-1       | 2026-08-15 16:01:47.249 UTC [680] ERROR:  a settled webhook delivery is final
+postgres-1       | 2026-08-15 16:01:47.249 UTC [680] CONTEXT:  PL/pgSQL function qkern_validate_project_webhook_delivery_update() line 14 at RAISE
+postgres-1       | 2026-08-15 16:01:47.249 UTC [680] STATEMENT:  UPDATE project_webhook_deliveries SET status='pending' WHERE id=$1
+certification-1  |  [32m✓[39m tests/compute-webhook-chain.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 4980[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m carries an enqueued event all the way to a verified, acknowledged delivery [33m 344[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m schedules a retry when the receiver rejects, without losing the delivery [33m 847[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m treats a receiver that does not echo the delivery id as a failure [33m 1325[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m does not send for a switched-off definition [33m 632[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m recovers a delivery whose deliverer died mid-attempt [33m 756[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:47.799 UTC [628] ERROR:  cron progress must not move backwards
+postgres-1       | 2026-08-15 16:01:47.799 UTC [628] CONTEXT:  PL/pgSQL function qkern_validate_project_cron_update() line 10 at RAISE
+postgres-1       | 2026-08-15 16:01:47.799 UTC [628] STATEMENT:  UPDATE project_cron_definitions SET last_dispatched_at=$2 WHERE id=$1
+postgres-1       | 2026-08-15 16:01:48.032 UTC [711] ERROR:  cron identity is immutable
+postgres-1       | 2026-08-15 16:01:48.032 UTC [711] CONTEXT:  PL/pgSQL function qkern_validate_project_cron_update() line 6 at RAISE
+postgres-1       | 2026-08-15 16:01:48.032 UTC [711] STATEMENT:  UPDATE project_cron_definitions SET project_id=$2 WHERE id=$1
+certification-1  |  [32m✓[39m tests/compute-webhook-postgres.integration.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 5956[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m persists a delivery and hands it to exactly one of many claimants [33m 893[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m stores only the lease verifier, never the raw token [33m 674[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m refuses a settlement from the wrong worker or a stale token [33m 1283[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m schedules a retry with a server-computed delay [33m 963[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m dead-letters once the attempt limit of the definition is reached [33m 323[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m hides deliveries of a different organization [33m 441[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/provisioning-port-postgres.integration.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1438[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m claims a pending job and takes a lease [33m 500[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:49.222 UTC [632] ERROR:  function slots are immutable
+postgres-1       | 2026-08-15 16:01:49.222 UTC [632] CONTEXT:  PL/pgSQL function qkern_reject_project_function_slot_update() line 3 at RAISE
+postgres-1       | 2026-08-15 16:01:49.222 UTC [632] STATEMENT:  UPDATE project_function_slots SET expires_at = now() + interval '1 hour'
+postgres-1       | 	        WHERE organization_id=$1 AND function_id=$2
+certification-1  |  [32m✓[39m tests/compute-functions-postgres.integration.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 6675[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m denies the runtime role any change beyond the enabled flag [33m 433[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m refuses a second function with the same name [33m 443[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m stops a second instance once the shared limit is reached [33m 1436[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m hands the place on once the first instance is done [33m 620[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m counts the places of one definition only [33m 1351[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:49.342 UTC [692] ERROR:  migration incident resolution requires worker-verified ledger evidence
+postgres-1       | 2026-08-15 16:01:49.342 UTC [692] CONTEXT:  PL/pgSQL function qkern_validate_migration_incident_acknowledgement() line 49 at RAISE
+postgres-1       | 2026-08-15 16:01:49.342 UTC [692] STATEMENT:  UPDATE migration_incidents
+postgres-1       | 	       SET status = 'resolved',
+postgres-1       | 	           resolution_code = 'target_ledger_match'::qkern_migration_incident_resolution_code
+postgres-1       | 	       WHERE organization_id = $1 AND migration_job_id = $2
+postgres-1       | 	         AND status IN ('open', 'acknowledged')
+postgres-1       | 	       RETURNING 
+postgres-1       | 	  id, organization_id, migration_job_id, project_id, environment, change_set_id,
+postgres-1       | 	  kind, severity, status, detected_review_cycle, detected_reconciliation_attempt,
+postgres-1       | 	  acknowledged_by, acknowledgement_code, acknowledged_at,
+postgres-1       | 	  resolved_by, resolution_code, resolved_at, created_at, updated_at
+postgres-1       | 2026-08-15 16:01:49.465 UTC [697] ERROR:  project storage object identity is immutable
+postgres-1       | 2026-08-15 16:01:49.465 UTC [697] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_object_mutation() line 12 at RAISE
+postgres-1       | 2026-08-15 16:01:49.465 UTC [697] STATEMENT:  UPDATE project_storage_objects SET deleted_at=coalesce(deleted_at,$5)
+postgres-1       | 	        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+postgres-1       | 	        RETURNING id,organization_id,project_id,environment,bucket_id,object_key,owner_subject,
+postgres-1       | 	  provider_key,size_bytes,content_type,checksum_sha256,etag,status,created_at,delete_after,deleted_at
+postgres-1       | 2026-08-15 16:01:49.549 UTC [739] ERROR:  permission denied for table billing_rate_cards
+postgres-1       | 2026-08-15 16:01:49.549 UTC [739] STATEMENT:  UPDATE billing_rate_cards SET unit_price_micros = 1 WHERE organization_id = $1
+postgres-1       | 2026-08-15 16:01:49.571 UTC [739] ERROR:  permission denied for table billing_rate_cards
+postgres-1       | 2026-08-15 16:01:49.571 UTC [739] STATEMENT:  DELETE FROM billing_rate_cards WHERE organization_id = $1
+certification-1  |  [32m✓[39m tests/usage-billing-postgres.integration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1076[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m projects real usage against the effective rate card [33m 430[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:49.614 UTC [239] LOG:  checkpoint starting: immediate force wait
+postgres-1       | 2026-08-15 16:01:49.647 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.647 UTC [712] STATEMENT:  SELECT status FROM migration_outbox
+certification-1  |  [32m✓[39m tests/project-storage-postgres.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 5254[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m persists an exact verified upload and moves quota from reserved to used [33m 965[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serializes concurrent quota reservations without overbooking [33m 491[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m commits concurrent completion replays exactly once [33m 426[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m cleans the provider object when expiry wins a slow completion [33m 672[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m releases used quota once when delete and lifecycle expiration race [33m 530[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:49.727 UTC [239] LOG:  checkpoint complete: wrote 1532 buffers (9.4%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.110 s, sync=0.001 s, total=0.114 s; sync files=555, longest=0.001 s, average=0.000 s; distance=11760 kB, estimate=11760 kB; lsn=0/27BC5B8, redo lsn=0/27AE9B0
+postgres-1       | 2026-08-15 16:01:49.733 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.733 UTC [712] STATEMENT:  SELECT lease_owner FROM migration_outbox
+postgres-1       | 2026-08-15 16:01:49.739 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.739 UTC [712] STATEMENT:  SELECT lease_token FROM migration_outbox
+postgres-1       | 2026-08-15 16:01:49.770 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.770 UTC [712] STATEMENT:  SELECT lease_expires_at FROM migration_outbox
+postgres-1       | 2026-08-15 16:01:49.775 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.775 UTC [712] STATEMENT:  SELECT failure_count FROM migration_outbox
+postgres-1       | 2026-08-15 16:01:49.784 UTC [712] ERROR:  permission denied for table migration_outbox
+postgres-1       | 2026-08-15 16:01:49.784 UTC [712] STATEMENT:  SELECT available_at FROM migration_outbox
+certification-1  |  [32m✓[39m tests/postgres-incident-recovery.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 7414[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m rejects an old command when the same failure code returns in a later generation [33m 408[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps duplicate runtime inserts behind the worker's command-first lock [33m 749[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m allows incident resolution only after worker-verified applied state [33m 973[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/migration-enqueue-postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 2537[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m queues an approved change set and its outbox event [33m 1263[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m stays idempotent when the same change set is queued twice [33m 360[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m still hides lease and broker state from the runtime [33m 433[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/sql-privilege-clause-contract.integration.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 9464[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m finds statements to check [33m 2070[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m grants every write role the read right its clauses require [33m 7077[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:50.802 UTC [633] ERROR:  realtime events are append-only
+postgres-1       | 2026-08-15 16:01:50.802 UTC [633] CONTEXT:  PL/pgSQL function qkern_reject_realtime_event_update() line 3 at RAISE
+postgres-1       | 2026-08-15 16:01:50.802 UTC [633] STATEMENT:  UPDATE realtime_events SET event='tampered'
+postgres-1       | 	        WHERE organization_id=$1 AND channel=$2
+certification-1  |  [32m✓[39m tests/project-queues-postgres.integration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 4732[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m persists only the dedupe verifier and returns the same durable receipt [33m 371[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m claims each ready row at most once across concurrent workers [33m 1125[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps lease verifiers durable and fences the wrong or stale worker [33m 754[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m consumes an enqueued message and calls the function [33m 589[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m retries when the function is unavailable [33m 484[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps a foreign queue untouched [33m 399[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:51.046 UTC [775] ERROR:  permission denied for table project_auth_users
+postgres-1       | 2026-08-15 16:01:51.046 UTC [775] STATEMENT:  SELECT id FROM project_auth_users LIMIT 1
+postgres-1       | 2026-08-15 16:01:51.165 UTC [777] ERROR:  permission denied for table users
+postgres-1       | 2026-08-15 16:01:51.165 UTC [777] STATEMENT:  SELECT id FROM users LIMIT 1
+postgres-1       | 2026-08-15 16:01:51.251 UTC [780] ERROR:  permission denied for table projects
+postgres-1       | 2026-08-15 16:01:51.251 UTC [780] STATEMENT:  SELECT id FROM projects LIMIT 1
+certification-1  |  [32m✓[39m tests/usage-metering-postgres.integration.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 760[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serializes concurrent hard-quota decisions and persists verifier-only events [33m 449[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/realtime-postgres.integration.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 6676[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m delivers a broadcast to a subscriber on a second instance through PostgreSQL [33m 1153[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m assigns one global sequence per channel across instances [33m 1199[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps events after a restart of every instance [33m 1691[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps the event log invisible to a different organization [33m 304[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m refuses to change a stored event [33m 337[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/queue-connection-pressure-postgres.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 944[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m names an exhausted pool instead of calling it a queue conflict [33m 616[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/project-auth-postgres.integration.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 1107[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m persists app users only through the auth role and keeps runtime access closed [33m 375[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 842[2mms[22m[39m
+certification-1  | [90mstderr[2m | tests/realtime-change-soak-postgres.integration.test.ts[2m > [22m[2mRealtime change soak PostgreSQL certification[2m > [22m[2mdelivers every change of a sustained writer without loss, gap or stall
+certification-1  | [22m[39msoak: 120 Aenderungen, p50 1639 ms, p95 3380 ms, max 3578 ms
+certification-1  | 
+certification-1  | [90mstderr[2m | tests/realtime-change-soak-postgres.integration.test.ts[2m > [22m[2mRealtime change soak PostgreSQL certification[2m > [22m[2mdelivers every change of a sustained writer without loss, gap or stall
+certification-1  | [22m[39msoak: 5 Buchungen fuer 120 Nachrichten
+certification-1  | 
+certification-1  |  [32m✓[39m tests/realtime-change-soak-postgres.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 6041[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m delivers every change of a sustained writer without loss, gap or stall [33m 4988[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/billing-invoice-postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 9216[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m issues the closed month's invoice from the shipped process [33m 5045[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m leaves the issued invoice untouched on a second run [33m 2308[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m refuses an open period at its configuration boundary [33m 1008[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/usage-emitters-postgres.integration.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 5936[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m counts a real enqueue in the durable ledger [33m 671[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m counts a real function invocation [33m 662[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m counts every simultaneous enqueue across queues exactly once [33m 1127[2mms[22m[39m
+certification-1  |        [33m[2m✓[22m[39m counts the rows a real read actually returned [33m 360[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m pages through every event exactly once [33m 379[2mms[22m[39m
+postgres-1       | 2026-08-15 16:01:56.283 UTC [239] LOG:  checkpoint starting: immediate force wait
+postgres-1       | 2026-08-15 16:01:56.293 UTC [239] LOG:  checkpoint complete: wrote 228 buffers (1.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.008 s, sync=0.001 s, total=0.011 s; sync files=165, longest=0.001 s, average=0.001 s; distance=915 kB, estimate=10676 kB; lsn=0/28939A8, redo lsn=0/2893950
+certification-1  |  [32m✓[39m tests/migration-process-postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 14388[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m applies a queued statement to the real project database [33m 6514[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps a tampered statement out of the project database [33m 2102[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m names the violated boundary condition without describing the database [33m 2061[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/realtime-process-postgres.integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 13987[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serves a real client from the shipped process [33m 7154[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m refuses production with an ephemeral log and names the condition [33m 1932[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serves a client on a public bind after the explicit opt-in [33m 2354[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/compute-cron-postgres.integration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 14118[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m dispatches a due occurrence into the queue and advances the progress [33m 1616[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m produces exactly one message when two schedulers fire the same occurrence [33m 709[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m dispatches from the shipped process [33m 5387[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m reports ready while the cron loop is doing its rounds [33m 2435[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m stops reporting ready when every definition fails [33m 1662[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/realtime-change-chain-postgres.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 13934[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps order and delivers each change exactly once under a burst [33m 1832[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps every subscriber's subset correct with many subscribers at once [33m 9853[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/project-queues-multi-instance.integration.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 16566[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m claims every message exactly once across six competing instances [33m 5626[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m gives a message to exactly one instance when many claim at the same moment [33m 415[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m fences a vanished worker: the lease survives, the stale token does not [33m 6346[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps retry authority on the server when instances fail concurrently [33m 473[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m enforces the capacity limit even when instances enqueue at the same time [33m 1396[2mms[22m[39m
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/compute-definitions-postgres.integration.test.ts[2m > [22mCompute definitions PostgreSQL certification[2m > [22mdeploys images only through the door that writes their history
+certification-1  | [31m[1mAssertionError[22m: expected 1 to be 2 // Object.is equality[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- 2[39m
+certification-1  | [31m+ 1[39m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/compute-definitions-postgres.integration.test.ts:[2m201:33[22m[39m
+certification-1  |     [90m199|[39m     [34mexpect[39m(first[33m.[39mrevision)[33m.[39m[34mtoBe[39m([34m1[39m)[33m;[39m
+certification-1  |     [90m200|[39m     const rolledBack = await service.deployFunction(admin, scope, fn.i…
+certification-1  |     [90m201|[39m     [34mexpect[39m(rolledBack[33m.[39mrevision)[33m.[39m[34mtoBe[39m([34m2[39m)[33m;[39m
+certification-1  |     [90m   |[39m                                 [31m^[39m
+certification-1  |     [90m202|[39m
+certification-1  |     [90m203|[39m     [35mconst[39m current [33m=[39m [35mawait[39m service[33m.[39m[34mgetFunction[39m(admin[33m,[39m scope[33m,[39m fn[33m.[39mid)[33m;[39m
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m25 passed[39m[22m[90m (26)[39m
+certification-1  | [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m146 passed[39m[22m[90m (147)[39m
+certification-1  | [2m   Start at [22m 16:01:37
+certification-1  | [2m   Duration [22m 22.65s[2m (transform 46.67s, setup 0ms, import 85.97s, tests 163.74s, environment 18ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 1
+ Compose Stopping Aborting on container exit...
+ Container qkern-v023-certification-certification-1 Stopping 
+ Container qkern-v023-certification-certification-1 Stopped 
+ Container qkern-v023-certification-postgres-1 Stopping 
+postgres-1       | 2026-08-15 16:02:01.759 UTC [1] LOG:  received fast shutdown request
+postgres-1       | 2026-08-15 16:02:01.759 UTC [1] LOG:  aborting any active transactions
+postgres-1       | 2026-08-15 16:02:01.776 UTC [1] LOG:  background worker "logical replication launcher" (PID 244) exited with exit code 1
+postgres-1       | 2026-08-15 16:02:01.797 UTC [239] LOG:  shutting down
+postgres-1       | 2026-08-15 16:02:01.797 UTC [239] LOG:  checkpoint starting: shutdown immediate
+postgres-1       | 2026-08-15 16:02:01.803 UTC [239] LOG:  checkpoint complete: wrote 95 buffers (0.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.001 s, total=0.006 s; sync files=46, longest=0.001 s, average=0.000 s; distance=454 kB, estimate=9653 kB; lsn=0/29052E8, redo lsn=0/29052E8
+postgres-1       | 2026-08-15 16:02:01.856 UTC [1] LOG:  database system is shut down
+ Container qkern-v023-certification-postgres-1 Stopped 
+[Kpostgres-1 exited with code 0
+
+ Container qkern-v023-certification-certification-1 Stopping 
+ Container qkern-v023-certification-certification-1 Stopped 
+ Container qkern-v023-certification-certification-1 Removing 
+ Container qkern-v023-certification-certification-1 Removed 
+ Container qkern-v023-certification-postgres-1 Stopping 
+ Container qkern-v023-certification-postgres-1 Stopped 
+ Container qkern-v023-certification-postgres-1 Removing 
+ Container qkern-v023-certification-postgres-1 Removed 
+ Network qkern-v023-certification_default Removing 
+ Network qkern-v023-certification_default Removed 
+EXIT=1

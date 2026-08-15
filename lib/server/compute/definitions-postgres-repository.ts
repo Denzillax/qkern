@@ -217,6 +217,40 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
     });
   }
 
+  async deployFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, image: string): Promise<number> {
+    return await this.write(principal, async (database) => {
+      const result = await database.query<{ revision: number }>(
+        "SELECT qkern_deploy_project_function($1, $2) AS revision", [id, image]);
+      const revision = result.rows[0]?.revision;
+      if (!Number.isSafeInteger(revision) || (revision as number) < 1) {
+        throw new Error("deployment returned no revision");
+      }
+      return revision as number;
+    });
+  }
+
+  async listFunctionDeployments(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string) {
+    return await this.read(principal, async (database) => {
+      const result = await database.query<{
+        revision: number; image: string; deployed_by: string; deployed_at: string;
+      }>(
+        `SELECT revision, image, deployed_by, deployed_at::text AS deployed_at
+         FROM project_function_deployments
+         WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND function_id = $4
+         ORDER BY revision DESC
+         LIMIT 100`,
+        [...scopeValues(scope), id]);
+      return result.rows.map((row) => ({
+        revision: row.revision,
+        image: row.image,
+        deployedBy: row.deployed_by,
+        deployedAt: row.deployed_at,
+      }));
+    });
+  }
+
   async createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
     name: string; image: string; entrypoint: string; timeoutMs: number; memoryMiB: number;
     maxConcurrency: number; egressOrigins: readonly string[]; secretRefs: readonly string[];
