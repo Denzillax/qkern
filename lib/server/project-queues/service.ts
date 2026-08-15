@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { ConnectionUnavailableError } from "@/lib/server/db/errors";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
 import type {
   ProjectQueue,
@@ -34,7 +35,15 @@ export type ProjectQueueErrorCode =
   | "QUEUE_CAPACITY_EXCEEDED"
   /** Das monatliche Kontingent ist erschöpft — nicht die Warteschlange. */
   | "QUEUE_QUOTA_EXCEEDED"
-  | "QUEUE_LEASE_LOST";
+  | "QUEUE_LEASE_LOST"
+  /**
+   * Der Prozess hatte keine freie Datenbankverbindung.
+   *
+   * Nicht dasselbe wie `QUEUE_CONFLICT`: Die Warteschlange ist in Ordnung, die
+   * Abfrage ist nie gelaufen. Bis Release 1.64 kam an dieser Stelle eine 409,
+   * die dem Aufrufer sagte, jemand anderes sei schneller gewesen.
+   */
+  | "QUEUE_UNAVAILABLE";
 
 export class ProjectQueueError extends Error {
   /**
@@ -111,7 +120,8 @@ export class ProjectQueueService {
 
   async listQueues(principal: ProjectQueuePrincipal, scope: ProjectQueueScope) {
     await this.assertAdmin(principal, scope);
-    return (await this.dependencies.repository.listQueues(principal, scope)).map(publicProjectQueue);
+    try { return (await this.dependencies.repository.listQueues(principal, scope)).map(publicProjectQueue); }
+    catch (error) { throw mapError(error); }
   }
 
   async enqueue(principal: ProjectQueuePrincipal, scope: ProjectQueueScope, queueName: string, input: {
@@ -304,9 +314,20 @@ export class ProjectQueueService {
     } catch (error) { throw mapError(error); }
   }
 
+  /**
+   * Die Suche steht am Anfang fast jeder Methode — und lag bis Release 1.64
+   * ausserhalb der Fehlerabbildung.
+   *
+   * Ein Infrastrukturfehler hier verliess den Dienst als roher
+   * `RepositoryError`, obwohl sein Vertrag `ProjectQueueError` zusagt.
+   * Aufgefallen ist es an einem erschoepften Verbindungspool: Der Fehler kam
+   * aus der Suche, nicht aus dem Einreihen, und ging an `mapError` vorbei.
+   */
   private async queue(principal: ProjectQueuePrincipal, scope: ProjectQueueScope, queueName: string) {
     if (!QUEUE_NAME.test(queueName)) throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
-    const queue = await this.dependencies.repository.findQueue(principal, scope, queueName);
+    let queue;
+    try { queue = await this.dependencies.repository.findQueue(principal, scope, queueName); }
+    catch (error) { throw mapError(error); }
     if (!queue) throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
     return queue;
   }
@@ -396,5 +417,11 @@ function hash(value: string) { return createHash("sha256").update(value, "utf8")
 function mapError(error: unknown): ProjectQueueError {
   if (error instanceof ProjectQueueError) return error;
   if (error instanceof ProjectQueueConflictError) return new ProjectQueueError(error.code);
+  // Ein erschoepfter Pool ist kein Konflikt. Er stand bis Release 1.64 im
+  // Sammelzweig und wurde als 409 beantwortet — eine Aussage ueber die
+  // Warteschlange, die nicht stimmte.
+  if (error instanceof ConnectionUnavailableError) {
+    return new ProjectQueueError("QUEUE_UNAVAILABLE", { cause: error });
+  }
   return new ProjectQueueError("QUEUE_CONFLICT", { cause: error });
 }

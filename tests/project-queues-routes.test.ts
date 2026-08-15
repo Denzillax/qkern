@@ -86,5 +86,12 @@ describe("Project Queues routes", () => {
     expect(JSON.stringify(await lease.json())).not.toMatch(/qk_lease_|workerId|tokenHash/i);
     const disabled = projectQueueRouteError(new ProjectQueueError("PROJECT_QUEUES_DISABLED"));
     expect(disabled.status).toBe(503);
+    // Ein erschoepfter Verbindungspool ist keine 409. Bis Release 1.64 hat die
+    // Grenze hier „Queue conflict" geantwortet und dem Aufrufer damit gesagt,
+    // jemand anderes sei schneller gewesen — waehrend die Warteschlange in
+    // Ordnung war und die Abfrage nie gelaufen ist.
+    const unavailable = projectQueueRouteError(new ProjectQueueError("QUEUE_UNAVAILABLE"));
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ error: "Project Queues unavailable" });
   });
 });

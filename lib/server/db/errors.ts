@@ -14,6 +14,7 @@ export type RepositoryErrorCode =
   | "PROJECT_PROVISIONING_LEASE_LOST"
   | "TRANSACTION_CONFLICT"
   | "QUERY_TIMEOUT"
+  | "CONNECTION_UNAVAILABLE"
   | "PERSISTENCE_ERROR";
 
 export class RepositoryError extends Error {
@@ -118,6 +119,30 @@ export class TransactionConflictError extends RepositoryError {
 export class QueryTimeoutError extends RepositoryError {
   constructor(cause?: unknown) {
     super("QUERY_TIMEOUT", "The database operation timed out and can be retried.", { cause, retryable: true });
+  }
+}
+
+/**
+ * Der Pool hat keine Verbindung mehr hergegeben.
+ *
+ * Das ist kein Datenbankfehler: Die Abfrage ist nie gelaufen, und die Datenbank
+ * hat nichts abgewiesen. Der Prozess hat schlicht mehr gleichzeitige Arbeit
+ * angenommen, als sein Pool tragen kann.
+ *
+ * Bis Release 1.64 war das von einem echten Fehlschlag nicht zu unterscheiden.
+ * `pg` meldet den Zeitablauf beim Verbindungsholen ohne SQLSTATE, er landete
+ * deshalb im Sammelzweig als `PERSISTENCE_ERROR` — und der Queue-Dienst hat
+ * daraus ein `QUEUE_CONFLICT` und die HTTP-Grenze eine 409 gemacht. Ein
+ * Aufrufer las: „jemand anderes war schneller", obwohl die Warteschlange in
+ * Ordnung war.
+ *
+ * Wiederholbar ist er, und zwar sinnvoll: Wer wartet, bekommt eine Verbindung.
+ */
+export class ConnectionUnavailableError extends RepositoryError {
+  constructor(cause?: unknown) {
+    super("CONNECTION_UNAVAILABLE",
+      "No database connection was available and the operation can be retried.",
+      { cause, retryable: true });
   }
 }
 

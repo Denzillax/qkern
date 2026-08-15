@@ -2383,3 +2383,44 @@ Belegen.
 
 Checkpoint `1.63.0` am 15. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
 PostgreSQL 134 von 134, exit 0, zweimal reproduziert, 38 Migrationen.
+
+## Der Pool war leer, nicht die Warteschlange — Release 1.64
+
+Release 1.63 hat einen Lastfall offen gelassen: einmal in drei Läufen
+gescheitert, mit einem `PersistenceError` beim Einreihen, nicht erklärt. Er ist
+jetzt erklärt, reproduziert und behoben.
+
+Die Ursache war keine Datenbank. `pg` meldet den Zeitablauf beim **Holen** einer
+Verbindung ohne SQLSTATE; er fiel deshalb in den Sammelzweig und wurde zu
+`PERSISTENCE_ERROR`. Der Queue-Dienst machte daraus ein `QUEUE_CONFLICT`, die
+HTTP-Grenze eine 409 „Queue conflict". Ein Aufrufer las: *jemand anderes war
+schneller* — während die Warteschlange in Ordnung und die Abfrage nie gelaufen
+war.
+
+Reproduziert mit einem Pool aus zwei Verbindungen und 100 ms Wartezeit: 165 von
+180 Einreihungen abgewiesen, jede als `QUEUE_CONFLICT`.
+
+Beim Schreiben des Falls kam ein zweiter Fehler heraus: Die Suche am Anfang fast
+jeder Methode lag **ausserhalb** der Fehlerabbildung. Ein Infrastrukturfehler
+dort verliess den Dienst als roher `RepositoryError`, obwohl sein Vertrag
+`ProjectQueueError` zusagt. Der neue Fall ist zuerst genau daran gescheitert.
+
+Neu: `ConnectionUnavailableError` mit Code `CONNECTION_UNAVAILABLE`, als
+wiederholbar gekennzeichnet, klassifiziert beim Holen der Verbindung — dort ist
+eindeutig, was gescheitert ist, und nur dort geht es ohne Textvergleich am
+Treiberfehler. Im Queue-Dienst `QUEUE_UNAVAILABLE`, an der HTTP-Grenze 503.
+
+Der Druck wird im Fall hergestellt, nicht abgewartet: ein Pool mit einer
+Verbindung und 50 ms Wartezeit, davor der Gegenbeweis mit genug Verbindungen.
+Ein Fall, der auf eine Zufallslast wartet, belegt nichts.
+
+Mutationsprobe: Der Fehler beim Verbindungsholen wird wieder durchgereicht statt
+klassifiziert — **134 von 135**, genau der neue Fall.
+
+Checkpoint `1.64.0` am 15. August 2026: Lokal 1023 bestanden, 0 fehlgeschlagen;
+PostgreSQL 135 von 135, exit 0, zweimal reproduziert, 38 Migrationen.
+
+Nicht erbracht: Nur Project Queues übersetzt die Klassifikation in eine eigene
+Antwort. Der direkte `pool.query()`-Weg ohne Transaktion ist nicht erfasst.
+Wiederholt wird nichts von selbst, und die Poolgrösse bleibt unverändert — das
+Release macht die Erschöpfung sichtbar, es verhindert sie nicht.

@@ -667,3 +667,17 @@ instances` — hat mit der Mutation nichts zu tun: Er liegt auf dem Queue-Weg, d
 sie nicht berührt, und beide grünen Läufe haben ihn bestanden. Er ist einmal in
 drei Läufen mit einem `PersistenceError` beim Einreihen gescheitert. Das ist
 nicht erklärt, und es steht hier, statt weggelassen zu werden.
+
+## Läufe zu Release 1.64 (15. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-15/connection-pressure-run1.log` | PostgreSQL 17 | 135 von 135, exit 0, 38 Migrationen |
+| `2026-08-15/connection-pressure-run2.log` | PostgreSQL 17 | 135 von 135, exit 0, Wiederholung |
+| `2026-08-15/connection-pressure-mutation.log` | PostgreSQL 17 | **134 von 135, exit 1 — absichtlich** |
+
+Die Mutation reicht den Fehler beim Verbindungsholen wieder durch, statt ihn zu
+klassifizieren. Genau der neue Fall fällt.
+
+Der in Release 1.63 offen gebliebene Lastfall ist damit erklärt: Es war der
+Verbindungspool, nicht die Warteschlange.

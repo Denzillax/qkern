@@ -1,4 +1,5 @@
 import {
+  ConnectionUnavailableError,
   InvalidTenantContextError,
   RepositoryError,
   ResourceNotFoundError,
@@ -60,7 +61,14 @@ export async function withTenantTransaction<T>(
   let client: SqlPoolClient | undefined;
   let transactionStarted = false;
   try {
-    client = await pool.connect();
+    // Das Holen der Verbindung wird eigens gefangen. Hier ist eindeutig, was
+    // gescheitert ist — keine Abfrage, sondern der Pool —, und nur hier laesst
+    // sich das ohne Textvergleich am Treiberfehler feststellen.
+    try {
+      client = await pool.connect();
+    } catch (error) {
+      throw new ConnectionUnavailableError(error);
+    }
     await client.query(context.readOnly ? "BEGIN TRANSACTION READ ONLY" : "BEGIN");
     transactionStarted = true;
     await client.query(
