@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 16. August 2026 · Release: `1.69.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 16. August 2026 · Release: `1.70.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -45,7 +45,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
 | **PostgreSQL-17-Zertifizierung** | **142 von 142 bestanden, exit 0, zweimal reproduziert** |
-| **MinIO-/ClamAV-Zertifizierung** | **4 von 4 bestanden, exit 0, zweimal reproduziert — seit `1.69.0` mit fortsetzbaren Teil-Uploads auf der Provider-Schicht** |
+| **MinIO-/ClamAV-Zertifizierung** | **6 von 6 bestanden, exit 0, zweimal reproduziert — seit `1.70.0` läuft der fortsetzbare Upload über den ganzen Dienstweg, und der Virenscanner verifiziert die Ganzdatei-Prüfsumme** |
 | **Project-Auth-Provider-Zertifizierung** | **5 von 5 bestanden, exit 0, zweimal reproduziert** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
@@ -117,7 +117,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Modul | Stand | Nächster belastbarer Slice |
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
-| Storage | **abgeschlossen und zertifiziert** | Multipart/Resumable und Transform-Service als eigener Slice |
+| Storage | **abgeschlossen und zertifiziert; Multipart/Resumable seit `1.70.0`** | Transform-Service und CDN als eigener Slice |
 | Realtime | **abgeschlossen und zertifiziert** | Runtime-Komposition gegen echtes PostgreSQL; Lueckennachweis bei zu langem Poller-Ausfall |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |

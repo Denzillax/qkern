@@ -752,3 +752,16 @@ trägt der mitgesendete Header, nicht die Signatur. Der Fall wurde daraufhin um
 den Versuch ohne Header erweitert; erst damit trifft die Probe. Ausserdem war
 ein als Mutation beschrifteter Lauf ein grüner Lauf (Skript scheiterte vor dem
 Schreiben); er wurde verworfen und wiederholt.
+
+## Läufe zu Release 1.70 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/multipart-service-run1.log` | MinIO und ClamAV | 6 von 6, exit 0 |
+| `2026-08-16/multipart-service-run2.log` | MinIO und ClamAV | 6 von 6, exit 0, Wiederholung |
+| `2026-08-16/multipart-service-mutation.log` | MinIO und ClamAV | **5 von 6, exit 1 — absichtlich** |
+| `2026-08-16/multipart-postgres-run1.log` | PostgreSQL 17 | 142 von 142, exit 0, 41 Migrationen |
+| `2026-08-16/multipart-postgres-run2.log` | PostgreSQL 17 | 142 von 142, exit 0, Wiederholung |
+
+Die Mutation nimmt dem Scanner den Prüfsummenvergleich. Genau der Fall fällt,
+in dem eine gelogene Ganzdatei-Prüfsumme das Objekt in Quarantäne halten muss.

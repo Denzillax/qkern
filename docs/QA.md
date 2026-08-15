@@ -2600,3 +2600,35 @@ Nicht erbracht: Der Dienstweg (Upload-Zeilen, Quota, Virenprüfung, REST) kennt
 Multipart nicht — ein Kunde kann es noch nicht benutzen. `headObject` liefert
 für Multipart-Objekte eine zusammengesetzte Prüfsumme, die die bestehende
 Formprüfung abweisen würde; der Dienstweg muss das behandeln.
+
+## Der Scanner rechnet nach — Release 1.70
+
+Sprosse 3 der Paritätsleiter ist abgebaut: Fortsetzbare Uploads laufen über den
+ganzen Dienstweg — Reservierung, Quota, Teil-Grants, Abschluss, Virenprüfung,
+REST.
+
+Die Architekturentscheidung: Ein Multipart-Objekt hat beim Provider keine
+Ganzdatei-Prüfsumme (MinIO liefert im HEAD gar keinen Header). Verifiziert wird
+über den Virenscanner, der das fertige Objekt ohnehin lädt und die SHA-256
+mitrechnet. Ein Multipart-Objekt wird **nur** sauber, wenn der Scanner Bytes
+gesehen hat, die zur deklarierten Summe passen; ohne nachrechnenden Scanner
+bleibt es in Quarantäne, weil seine Summe sonst niemand geprüft hat.
+
+Ein Fund: `headObject` warf für jedes Multipart-Objekt
+`STORAGE_PROVIDER_UNAVAILABLE`, weil es einen wohlgeformten Prüfsummen-Header
+verlangte. Ein fehlender Wert wird jetzt leer durchgereicht; die Zusage des
+einfachen Wegs trägt der Gleichheitsvergleich im Dienst. Gefunden in Minuten
+gegen ein einzelnes MinIO.
+
+Zertifiziert über den Dienst gegen echtes MinIO/ClamAV: zwei Teile, Abschluss,
+clean, Download byte-identisch; und eine gelogene Ganzdatei-Prüfsumme bei
+korrekt geprüften Teilen bleibt quarantined. Mutationsprobe: Der Scanner
+vergleicht die Prüfsumme nicht mehr — **5 von 6**, genau der Lügen-Fall.
+PostgreSQL-Regression 142 von 142 mit Migration 0041, zweimal.
+
+Checkpoint `1.70.0` am 16. August 2026: Lokal 1060 bestanden, 0 fehlgeschlagen;
+MinIO/ClamAV 6 von 6 zweimal, PostgreSQL 142 von 142 zweimal, alle exit 0.
+
+Nicht erbracht: Kein Fall lädt 5 GiB. Verwaiste Provider-Uploads altern nicht
+weg. Die Multipart-REST-Routen sind lokal getestet. Kein Real-DB-Fall
+reserviert gezielt einen Multipart-Upload.

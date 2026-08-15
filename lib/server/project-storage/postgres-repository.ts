@@ -183,8 +183,8 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
         const result = await database.query(`INSERT INTO project_storage_uploads
           (id,organization_id,project_id,environment,bucket_id,object_key,provider_key,
            owner_subject,content_type,size_bytes,checksum_sha256,completion_token_hash,status,
-           created_at,expires_at,completed_at,object_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL,NULL)
+           created_at,expires_at,completed_at,object_id,kind,provider_upload_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL,NULL,$16,$17)
           RETURNING ${UPLOAD_COLUMNS}`, uploadValues(upload));
         await database.query(`UPDATE project_storage_buckets
           SET reserved_bytes=reserved_bytes+$5,updated_at=$6
@@ -405,7 +405,7 @@ const BUCKET_COLUMNS = `id,organization_id,project_id,environment,name,read_poli
 const BUCKET_SELECT = `SELECT ${BUCKET_COLUMNS} FROM project_storage_buckets`;
 const UPLOAD_COLUMNS = `id,organization_id,project_id,environment,bucket_id,object_key,provider_key,
   owner_subject,content_type,size_bytes,checksum_sha256,completion_token_hash,status,created_at,
-  expires_at,completed_at,object_id`;
+  expires_at,completed_at,object_id,kind,provider_upload_id`;
 const UPLOAD_SELECT = `SELECT ${UPLOAD_COLUMNS} FROM project_storage_uploads`;
 const OBJECT_COLUMNS = `id,organization_id,project_id,environment,bucket_id,object_key,owner_subject,
   provider_key,size_bytes,content_type,checksum_sha256,etag,status,created_at,delete_after,deleted_at`;
@@ -418,7 +418,8 @@ function scopeValues(scope: ProjectStorageScope): SqlValue[] {
 function uploadValues(upload: ProjectStorageUpload): SqlValue[] {
   return [upload.id, upload.organizationId, upload.projectId, upload.environment, upload.bucketId,
     upload.objectKey, upload.providerKey, upload.ownerSubject, upload.contentType, upload.sizeBytes,
-    upload.checksumSha256, upload.completionTokenHash, upload.status, upload.createdAt, upload.expiresAt];
+    upload.checksumSha256, upload.completionTokenHash, upload.status, upload.createdAt, upload.expiresAt,
+    upload.kind, upload.providerUploadId];
 }
 
 function objectValues(object: ProjectStorageObject): SqlValue[] {
@@ -457,6 +458,9 @@ function uploadFromRow(row: Row): ProjectStorageUpload {
     status: status as ProjectStorageUpload["status"], createdAt: date(row.created_at),
     expiresAt: date(row.expires_at), completedAt: nullableDate(row.completed_at),
     objectId: row.object_id === null ? null : String(row.object_id),
+    kind: String(row.kind) === "multipart" ? "multipart" : "single",
+    providerUploadId: row.provider_upload_id === null || row.provider_upload_id === undefined
+      ? null : String(row.provider_upload_id),
   };
 }
 

@@ -196,6 +196,93 @@ describe.runIf(enabled)("real MinIO and ClamAV Project Storage certification", (
       providerKey: key, uploadId, parts: [{ partNumber: 1, etag }],
     })).rejects.toBeInstanceOf(ProjectStorageProviderError);
   }, 120_000);
+
+  /**
+   * Der ganze Dienstweg — Sprosse 3, zweite Haelfte.
+   *
+   * prepare, Teil-Grants, Teile hochladen, complete: Der ClamAV-Scanner laedt
+   * das fertige Objekt, prueft es auf Schadcode und rechnet dabei die
+   * **Ganzdatei**-Pruefsumme nach. Nur dieser Abgleich macht ein
+   * Multipart-Objekt sauber — der Provider prueft je Teil, niemand sonst die
+   * ganze Datei.
+   */
+  it("serves a resumable upload through the full service path", async () => {
+    const { service } = await certificationRuntime();
+    const bucket = await service.createBucket(principal, scope, {
+      name: `cert-multipart-${Date.now()}`,
+      allowedMimeTypes: ["application/octet-stream"],
+      maxObjectBytes: 16 * 1024 * 1024,
+      quotaBytes: 32 * 1024 * 1024,
+    });
+    const partOne = randomBytes(5 * 1024 * 1024);
+    const partTwo = randomBytes(128 * 1024);
+    const whole = Buffer.concat([partOne, partTwo]);
+
+    const prepared = await service.prepareMultipartUpload(principal, scope, bucket.id, {
+      key: "resumable.bin", contentType: "application/octet-stream",
+      sizeBytes: whole.byteLength, checksumSha256: sha256Base64(whole),
+    });
+    const etags: Array<{ partNumber: number; etag: string }> = [];
+    for (const [partNumber, bytes] of [[1, partOne], [2, partTwo]] as const) {
+      const grant = await service.createPartUploadGrant(principal, scope, {
+        uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+        partNumber, checksumSha256: sha256Base64(bytes),
+      });
+      const response = await fetch(grant.url, {
+        method: "PUT", headers: grant.headers, body: bytes, redirect: "error",
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      etags.push({ partNumber, etag: response.headers.get("etag")! });
+    }
+    const object = await service.completeMultipartUpload(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken, parts: etags,
+    });
+    // clean, nicht quarantined: Der echte Scanner hat Bytes und Pruefsumme
+    // wirklich gesehen.
+    expect(object.status).toBe("clean");
+
+    const download = await service.createDownloadGrant(principal, scope, bucket.id, { key: "resumable.bin" });
+    const served = await fetch(download.url, { redirect: "error" });
+    expect(served.status).toBe(200);
+    expect(sha256Base64(Buffer.from(await served.arrayBuffer()))).toBe(sha256Base64(whole));
+  }, 180_000);
+
+  /**
+   * Eine gelogene Ganzdatei-Pruefsumme macht kein sauberes Objekt.
+   *
+   * Jeder Teil ist korrekt geprueft hochgeladen — nur die deklarierte Summe
+   * der ganzen Datei gehoert zu anderen Bytes. Der Scanner rechnet nach und
+   * verweigert das Urteil; das Objekt bleibt in Quarantaene. Die
+   * Mutationsprobe dieses Releases nimmt genau diesen Abgleich heraus.
+   */
+  it("keeps a multipart object quarantined when the declared checksum lies", async () => {
+    const { service } = await certificationRuntime();
+    const bucket = await service.createBucket(principal, scope, {
+      name: `cert-mp-lie-${Date.now()}`,
+      allowedMimeTypes: ["application/octet-stream"],
+      maxObjectBytes: 16 * 1024 * 1024,
+      quotaBytes: 32 * 1024 * 1024,
+    });
+    const bytes = randomBytes(256 * 1024);
+    const prepared = await service.prepareMultipartUpload(principal, scope, bucket.id, {
+      key: "liar.bin", contentType: "application/octet-stream",
+      sizeBytes: bytes.byteLength,
+      checksumSha256: sha256Base64(Buffer.from("andere bytes", "utf8")),
+    });
+    const grant = await service.createPartUploadGrant(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      partNumber: 1, checksumSha256: sha256Base64(bytes),
+    });
+    const response = await fetch(grant.url, {
+      method: "PUT", headers: grant.headers, body: bytes, redirect: "error",
+    });
+    expect(response.status).toBe(200);
+    const object = await service.completeMultipartUpload(principal, scope, {
+      uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      parts: [{ partNumber: 1, etag: response.headers.get("etag")! }],
+    });
+    expect(object.status).toBe("quarantined");
+  }, 180_000);
 });
 
 async function certificationRuntime() {

@@ -63,6 +63,8 @@ export type ProjectStorageServiceDependencies = {
   id?: () => string;
   completionToken?: () => string;
   grantTtlSeconds?: number;
+  /** Lebensdauer einer Multipart-Reservierung; Teil-Grants behalten grantTtlSeconds. */
+  multipartTtlSeconds?: number;
 };
 
 export class ProjectStorageService {
@@ -70,6 +72,7 @@ export class ProjectStorageService {
   private readonly id: () => string;
   private readonly completionToken: () => string;
   private readonly grantTtlSeconds: number;
+  private readonly multipartTtlSeconds: number;
   private readonly usage: UsageEmitterPort;
 
   constructor(private readonly dependencies: ProjectStorageServiceDependencies) {
@@ -80,6 +83,13 @@ export class ProjectStorageService {
       (() => `qk_upload_${randomBytes(32).toString("base64url")}`);
     this.grantTtlSeconds = dependencies.grantTtlSeconds ?? 300;
     if (!Number.isInteger(this.grantTtlSeconds) || this.grantTtlSeconds < 30 || this.grantTtlSeconds > 900) {
+      throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    }
+    // Fortsetzbar heisst: laenger als ein einzelner Grant. Ein 5-GiB-Upload
+    // ueber eine langsame Leitung ueberlebt keine 300 Sekunden.
+    this.multipartTtlSeconds = dependencies.multipartTtlSeconds ?? 21_600;
+    if (!Number.isInteger(this.multipartTtlSeconds) ||
+        this.multipartTtlSeconds < this.grantTtlSeconds || this.multipartTtlSeconds > 86_400) {
       throw new ProjectStorageError("STORAGE_INVALID_INPUT");
     }
   }
@@ -197,6 +207,8 @@ export class ProjectStorageService {
       contentType,
       sizeBytes,
       checksumSha256,
+      kind: "single" as const,
+      providerUploadId: null,
       completionTokenHash: hashStorageToken(completionToken),
       status: "pending" as const,
       createdAt: now,
@@ -228,6 +240,236 @@ export class ProjectStorageService {
     } catch (error) { throw mapStorageError(error); }
   }
 
+  /**
+   * Fortsetzbarer Upload — Reservierung plus Provider-Upload-Kennung.
+   *
+   * Die Pruefsumme ist die der **ganzen** Datei. Der Provider prueft je Teil
+   * (signierter Header, Release 1.69); die volle Summe rechnet der Scanner
+   * beim Abschluss nach, und nur dieser Abgleich macht das Objekt sauber.
+   */
+  async prepareMultipartUpload(principal: ProjectStoragePrincipal, scope: ProjectStorageScope,
+    bucketIdOrName: string, input: {
+      key: string;
+      contentType: string;
+      sizeBytes: number;
+      checksumSha256: string;
+    }) {
+    assertPrincipal(principal, scope);
+    const bucket = await this.bucket(principal, scope, bucketIdOrName);
+    if (!canWrite(bucket, principal, null)) throw new ProjectStorageError("STORAGE_ACCESS_DENIED");
+    const key = validateObjectKey(input.key);
+    const contentType = validateObjectContentType(input.contentType, bucket.allowedMimeTypes);
+    const sizeBytes = integer(input.sizeBytes, 1, Math.min(bucket.maxObjectBytes, MAX_OBJECT_BYTES));
+    const checksumSha256 = validateChecksum(input.checksumSha256);
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + this.multipartTtlSeconds * 1_000);
+    const completionToken = this.completionToken();
+    if (!COMPLETION_TOKEN.test(completionToken)) throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    const uploadId = this.id();
+    const providerKey = storageProviderKey(scope, bucket.id, uploadId, key);
+    try {
+      const created = await this.dependencies.provider.createMultipartUpload({ providerKey, contentType });
+      const upload = {
+        ...scope,
+        id: uploadId,
+        bucketId: bucket.id,
+        objectKey: key,
+        providerKey,
+        kind: "multipart" as const,
+        providerUploadId: created.uploadId,
+        ownerSubject: boundedSubject(principal.subject),
+        contentType,
+        sizeBytes,
+        checksumSha256,
+        completionTokenHash: hashStorageToken(completionToken),
+        status: "pending" as const,
+        createdAt: now,
+        expiresAt,
+        completedAt: null,
+        objectId: null,
+      };
+      try {
+        await this.dependencies.repository.reserveUpload(principal, scope, upload, now);
+      } catch (error) {
+        // Die Reservierung traegt Schluessel-Eindeutigkeit und Quota. Ohne sie
+        // darf beim Provider nichts liegen bleiben.
+        await this.dependencies.provider.abortMultipartUpload({
+          providerKey, uploadId: created.uploadId,
+        }).catch(() => undefined);
+        throw error;
+      }
+      return {
+        uploadId,
+        completionToken,
+        key,
+        requiredSizeBytes: sizeBytes,
+        requiredContentType: contentType,
+        requiredChecksumSha256: checksumSha256,
+        expiresAt: expiresAt.toISOString(),
+      };
+    } catch (error) { throw mapStorageError(error); }
+  }
+
+  /** Eine signierte URL je Teil; die Teil-Pruefsumme steckt in der Signatur. */
+  async createPartUploadGrant(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, input: {
+    uploadId: string;
+    completionToken: string;
+    partNumber: number;
+    checksumSha256: string;
+  }) {
+    assertPrincipal(principal, scope);
+    const upload = await this.multipartUpload(principal, scope, input.uploadId, input.completionToken);
+    const partNumber = integer(input.partNumber, 1, 10_000);
+    const checksumSha256 = validateChecksum(input.checksumSha256);
+    const now = this.now();
+    // Nur eine lebende Reservierung stellt Teil-URLs aus: Ein abgebrochener
+    // oder abgeschlossener Upload hat beim Provider nichts mehr, worauf eine
+    // Signatur zeigen koennte.
+    if (upload.status !== "pending" || upload.expiresAt <= now) {
+      throw new ProjectStorageError("STORAGE_INVALID_TOKEN");
+    }
+    const expiresAt = new Date(Math.min(
+      now.getTime() + this.grantTtlSeconds * 1_000, upload.expiresAt.getTime()));
+    try {
+      const grant = await this.dependencies.provider.createPartUploadGrant({
+        providerKey: upload.providerKey,
+        uploadId: upload.providerUploadId!,
+        partNumber,
+        checksumSha256,
+        expiresAt,
+      });
+      return { partNumber, ...grant, expiresAt: grant.expiresAt.toISOString() };
+    } catch (error) { throw mapStorageError(error); }
+  }
+
+  async completeMultipartUpload(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, input: {
+    uploadId: string;
+    completionToken: string;
+    parts: ReadonlyArray<{ partNumber: number; etag: string }>;
+  }): Promise<PublicProjectStorageObject> {
+    assertPrincipal(principal, scope);
+    const upload = await this.multipartUpload(principal, scope, input.uploadId, input.completionToken);
+    const tokenHash = hashStorageToken(input.completionToken);
+    if (upload.status === "completed" && upload.objectId) {
+      const existing = await this.dependencies.repository.findObject(principal, scope, upload.bucketId, upload.objectId);
+      if (existing) return publicStorageObject(existing);
+    }
+    const now = this.now();
+    if (upload.status !== "pending" || upload.expiresAt <= now) {
+      if (upload.status === "pending") {
+        await this.dependencies.repository.cancelUpload(principal, scope, upload.id, tokenHash, "expired", now);
+        await this.dependencies.provider.abortMultipartUpload({
+          providerKey: upload.providerKey, uploadId: upload.providerUploadId!,
+        }).catch(() => undefined);
+      }
+      throw new ProjectStorageError("STORAGE_INVALID_TOKEN");
+    }
+    if (input.parts.length < 1 || input.parts.length > 10_000) {
+      throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    }
+    try {
+      await this.dependencies.provider.completeMultipartUpload({
+        providerKey: upload.providerKey,
+        uploadId: upload.providerUploadId!,
+        parts: input.parts,
+      });
+    } catch (error) { throw mapStorageError(error); }
+    let providerObject;
+    try { providerObject = await this.dependencies.provider.headObject(upload.providerKey); }
+    catch (error) { throw mapStorageError(error); }
+    if (!providerObject) throw new ProjectStorageError("STORAGE_OBJECT_NOT_READY");
+    // Groesse und Typ prueft der HEAD exakt. Die Pruefsumme dort ist bei
+    // Multipart eine zusammengesetzte je Teil — die **ganze** Datei rechnet
+    // der Scanner nach, und ohne diesen Abgleich bleibt das Objekt in
+    // Quarantaene. Deshalb fehlt hier absichtlich der Pruefsummenvergleich
+    // des einfachen Wegs.
+    if (providerObject.sizeBytes !== upload.sizeBytes || providerObject.contentType !== upload.contentType) {
+      await this.dependencies.provider.deleteObject(upload.providerKey).catch(() => undefined);
+      await this.dependencies.repository.cancelUpload(principal, scope, upload.id, tokenHash, "cancelled", now);
+      throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    }
+    let verdict;
+    try {
+      verdict = await this.dependencies.scanner.scan({
+        providerKey: upload.providerKey,
+        contentType: upload.contentType,
+        sizeBytes: upload.sizeBytes,
+        checksumSha256: upload.checksumSha256,
+      });
+    } catch { verdict = "pending" as const; }
+    if (verdict === "infected") {
+      await this.dependencies.provider.deleteObject(upload.providerKey).catch(() => undefined);
+      await this.dependencies.repository.cancelUpload(principal, scope, upload.id, tokenHash, "cancelled", now);
+      throw new ProjectStorageError("STORAGE_OBJECT_INFECTED");
+    }
+    const bucket = await this.bucket(principal, scope, upload.bucketId);
+    const object: ProjectStorageObject = {
+      ...scope,
+      id: this.id(),
+      bucketId: upload.bucketId,
+      key: upload.objectKey,
+      ownerSubject: upload.ownerSubject,
+      providerKey: upload.providerKey,
+      sizeBytes: upload.sizeBytes,
+      contentType: upload.contentType,
+      checksumSha256: upload.checksumSha256,
+      etag: providerObject.etag,
+      status: verdict === "clean" ? "clean" : "quarantined",
+      createdAt: now,
+      deleteAfter: bucket.retentionDays === null ? null :
+        new Date(now.getTime() + bucket.retentionDays * 24 * 60 * 60 * 1_000),
+      deletedAt: null,
+    };
+    try {
+      return publicStorageObject(await this.dependencies.repository.completeUpload(
+        principal, scope, upload.id, tokenHash, object, now,
+      ));
+    } catch (error) {
+      if (error instanceof ProjectStorageConflictError) {
+        await this.dependencies.provider.deleteObject(upload.providerKey).catch(() => undefined);
+        await this.dependencies.repository.cancelUpload(
+          principal, scope, upload.id, tokenHash, "cancelled", now,
+        ).catch(() => undefined);
+      }
+      throw mapStorageError(error);
+    }
+  }
+
+  /** Bricht ab und laesst nichts zurueck — weder Teile noch Reservierung. */
+  async abortMultipartUpload(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, input: {
+    uploadId: string;
+    completionToken: string;
+  }): Promise<void> {
+    assertPrincipal(principal, scope);
+    const upload = await this.multipartUpload(principal, scope, input.uploadId, input.completionToken);
+    if (upload.status !== "pending") return;
+    const tokenHash = hashStorageToken(input.completionToken);
+    try {
+      await this.dependencies.provider.abortMultipartUpload({
+        providerKey: upload.providerKey, uploadId: upload.providerUploadId!,
+      });
+      await this.dependencies.repository.cancelUpload(
+        principal, scope, upload.id, tokenHash, "cancelled", this.now());
+    } catch (error) { throw mapStorageError(error); }
+  }
+
+  private async multipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    completionToken: string,
+  ) {
+    assertIdentifier(uploadId);
+    if (!COMPLETION_TOKEN.test(completionToken)) throw new ProjectStorageError("STORAGE_INVALID_TOKEN");
+    const upload = await this.dependencies.repository.findUploadByToken(
+      principal, scope, uploadId, hashStorageToken(completionToken));
+    if (!upload) throw new ProjectStorageError("STORAGE_INVALID_TOKEN");
+    if (upload.kind !== "multipart" || !upload.providerUploadId) {
+      throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+    }
+    return upload;
+  }
+
   async completeUpload(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, input: {
     uploadId: string;
     completionToken: string;
@@ -238,6 +480,10 @@ export class ProjectStorageService {
     const tokenHash = hashStorageToken(input.completionToken);
     const upload = await this.dependencies.repository.findUploadByToken(principal, scope, input.uploadId, tokenHash);
     if (!upload) throw new ProjectStorageError("STORAGE_INVALID_TOKEN");
+    // Ein fortsetzbarer Upload braucht seine Teileliste; dieser Abschluss
+    // wuerde sie verschweigen und der Provider den Abschluss ablehnen — die
+    // Abweisung hier macht den Fehler zu einem des Aufrufs, nicht des Providers.
+    if (upload.kind !== "single") throw new ProjectStorageError("STORAGE_INVALID_INPUT");
     if (upload.status === "completed" && upload.objectId) {
       const existing = await this.dependencies.repository.findObject(principal, scope, upload.bucketId, upload.objectId);
       if (existing) return publicStorageObject(existing);

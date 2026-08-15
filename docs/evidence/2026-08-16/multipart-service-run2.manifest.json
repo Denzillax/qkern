@@ -1,0 +1,18 @@
+{
+  "stack": "MinIO und ClamAV",
+  "log": "multipart-service-run2.log",
+  "commit": "15acb0f013d308be00e2553773732eadad9f147a",
+  "commitSubject": "release: 1.69.0 Teile, die ankommen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "testFiles": "1 passed (1)",
+  "tests": "6 passed (6)",
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "clamav/clamav",
+    "node:24-alpine"
+  ]
+}

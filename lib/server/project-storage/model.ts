@@ -64,6 +64,9 @@ export type ProjectStorageUpload = ProjectStorageScope & {
   bucketId: string;
   objectKey: string;
   providerKey: string;
+  /** Einfach oder fortsetzbar in Teilen; die Teile sammelt der Provider. */
+  kind: "single" | "multipart";
+  providerUploadId: string | null;
   ownerSubject: string;
   contentType: string;
   sizeBytes: number;

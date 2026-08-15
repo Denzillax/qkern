@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.69.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.70.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -110,7 +110,9 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0040_billing_invoices.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0041_project_storage_multipart.sql`
+  — `kind` und `provider_upload_id` an der Upload-Reservierung fuer
+  fortsetzbare Uploads. Davor: `db/migrations/0040_billing_invoices.sql`
   — append-only Rechnungen ueber abgeschlossene Monatsfenster plus die
   Leserechte des Rechnungslaufs. Davor: `db/migrations/0039_billing_rate_cards.sql`
   — das append-only Preisblatt der sechs Nutzungsmetriken. Davor:

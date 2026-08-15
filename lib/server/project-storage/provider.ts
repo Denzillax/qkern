@@ -244,8 +244,16 @@ export class S3ProjectStorageProvider implements ProjectStorageProvider {
     const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
     const checksumSha256 = response.headers.get("x-amz-checksum-sha256")?.trim() ?? "";
     const etag = response.headers.get("etag")?.replace(/^"|"$/g, "").slice(0, 256) || null;
+    // Multipart-Objekte tragen keine oder eine zusammengesetzte Pruefsumme —
+    // MinIO liefert den Header dort gar nicht. Ein fehlender Wert wird leer
+    // durchgereicht statt abgewiesen: Die Zusage des einfachen Wegs traegt
+    // der Gleichheitsvergleich im Dienst (leer ist niemals gleich einer
+    // deklarierten Summe), und die Ganzdatei-Summe eines Multipart-Objekts
+    // rechnet der Scanner beim Abschluss nach.
     if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || !validContentType(contentType) ||
-        !validChecksum(checksumSha256)) throw new ProjectStorageProviderError();
+        (checksumSha256 !== "" && !/^[A-Za-z0-9+/]{43}=(-\d{1,5})?$/.test(checksumSha256))) {
+      throw new ProjectStorageProviderError();
+    }
     return { sizeBytes, contentType, checksumSha256, etag };
   }
 
