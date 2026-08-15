@@ -1,0 +1,18 @@
+{
+  "stack": "MinIO und ClamAV",
+  "log": "multipart-run1.log",
+  "commit": "8b94d5a509f41cc273f69e2a979daa9f2c9b2a33",
+  "commitSubject": "docs: 1.68.0 nennt die richtige lokale Zahl",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "testFiles": "1 passed (1)",
+  "tests": "4 passed (4)",
+  "passed": 4,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "clamav/clamav",
+    "node:24-alpine"
+  ]
+}

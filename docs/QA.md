@@ -2565,3 +2565,38 @@ Zahlungsanbindung; keine Lesefläche in REST/Console; die Juli-Zähler des
 Prozessfalls sind als Eigentümer eingelegt (der Schreibweg ist seit 1.29 eigens
 zertifiziert); kein Deployment-Rendering; kein Fall für zwei konkurrierende
 Läufe.
+
+## Teile, die ankommen — Release 1.69
+
+Sprosse 3 der Paritätsleiter, erste Hälfte: fortsetzbare Uploads in Teilen, auf
+der Provider-Schicht gegen echtes MinIO zertifiziert — beginnen, je Teil eine
+signierte URL, abschliessen, abbrechen, im S3- und im Memory-Adapter.
+
+Zwei Funde. Erstens: `canonicalQueryString` sortierte mit `localeCompare`, AWS
+verlangt Byte-Ordnung. Bei rein grossgeschriebenen `X-Amz-`-Schlüsseln fiel das
+nie auf; mit `partNumber` und `uploadId` platzt die Signatur
+(`SignatureDoesNotMatch`, erster MinIO-Lauf). Latent betroffen war auch der
+Bestand: signierte Downloads mit Dateinamen hätten dieselbe falsche Ordnung
+erzeugt — kein Fall hatte je einen gesetzt.
+
+Zweitens: Die erste Mutationsprobe traf nicht, und das war die Antwort. Die
+Abweisung manipulierter Bytes trägt der mitgesendete Header, nicht die
+Signatur; die Signatur macht den Header verpflichtend. Der Fall nagelt jetzt
+beides fest, und erst damit trifft die Probe: Prüfsumme nicht mehr signiert —
+**3 von 4**, genau der Resumable-Fall.
+
+Prozessvorfälle, beide offen dokumentiert: Zum zweiten Mal hat ein
+`git checkout` unkommittierte Arbeit gelöscht (die ganze
+Multipart-Implementierung; wiederhergestellt aus den Patch-Skripten —
+Wiederherstellung läuft jetzt über Sicherungskopien). Und ein als Mutation
+beschrifteter Lauf war ein grüner Lauf, weil das Mutationsskript vor dem
+Schreiben scheiterte; aufgefallen an 4/4 im vermeintlichen Mutationslog,
+verworfen, zeilengenau wiederholt.
+
+Checkpoint `1.69.0` am 16. August 2026: Lokal 1056 bestanden, 0 fehlgeschlagen;
+MinIO/ClamAV 4 von 4, exit 0, zweimal reproduziert.
+
+Nicht erbracht: Der Dienstweg (Upload-Zeilen, Quota, Virenprüfung, REST) kennt
+Multipart nicht — ein Kunde kann es noch nicht benutzen. `headObject` liefert
+für Multipart-Objekte eine zusammengesetzte Prüfsumme, die die bestehende
+Formprüfung abweisen würde; der Dienstweg muss das behandeln.

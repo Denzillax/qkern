@@ -43,7 +43,44 @@ export interface ProjectStorageProvider {
   }): Promise<ProjectStorageDownloadGrant>;
   headObject(providerKey: string, signal?: AbortSignal): Promise<ProjectStorageProviderObject | null>;
   deleteObject(providerKey: string, signal?: AbortSignal): Promise<void>;
+  /**
+   * Fortsetzbare Uploads in Teilen — Sprosse 3 der Paritaetsleiter.
+   *
+   * Die Integritaet traegt der Provider je Teil: Jede Teil-URL signiert die
+   * SHA-256-Pruefsumme genau dieses Teils als Pflicht-Header mit, und S3 weist
+   * einen Teil ab, dessen Bytes nicht dazu passen. Ein Client kann nach einem
+   * Abbruch beim naechsten Teil weitermachen, ohne dass ein bereits
+   * hochgeladener Teil verloren waere.
+   */
+  createMultipartUpload(input: {
+    providerKey: string;
+    contentType: string;
+  }, signal?: AbortSignal): Promise<{ uploadId: string }>;
+  createPartUploadGrant(input: {
+    providerKey: string;
+    uploadId: string;
+    partNumber: number;
+    checksumSha256: string;
+    expiresAt: Date;
+  }): Promise<ProjectStoragePartUploadGrant>;
+  completeMultipartUpload(input: {
+    providerKey: string;
+    uploadId: string;
+    parts: ReadonlyArray<{ partNumber: number; etag: string }>;
+  }, signal?: AbortSignal): Promise<void>;
+  abortMultipartUpload(input: {
+    providerKey: string;
+    uploadId: string;
+  }, signal?: AbortSignal): Promise<void>;
 }
+
+export type ProjectStoragePartUploadGrant = {
+  method: "PUT";
+  url: string;
+  /** Muss der Client unveraendert mitsenden; die Pruefsumme ist signiert. */
+  headers: Record<string, string>;
+  expiresAt: Date;
+};
 
 export type ProjectStorageScanVerdict = "clean" | "infected" | "pending";
 
@@ -218,6 +255,153 @@ export class S3ProjectStorageProvider implements ProjectStorageProvider {
     if (!response.ok && response.status !== 404) throw new ProjectStorageProviderError();
   }
 
+  async createMultipartUpload(input: {
+    providerKey: string;
+    contentType: string;
+  }, signal?: AbortSignal): Promise<{ uploadId: string }> {
+    assertProviderKey(input.providerKey);
+    if (!validContentType(input.contentType)) throw new ProjectStorageProviderError();
+    const response = await this.signedApiRequest("POST", input.providerKey, { uploads: "" }, "", {
+      "content-type": input.contentType,
+    }, signal);
+    if (!response.ok) throw new ProjectStorageProviderError();
+    const uploadId = /<UploadId>([^<]{1,1024})<[/]UploadId>/.exec(await response.text())?.[1];
+    if (!uploadId) throw new ProjectStorageProviderError();
+    return { uploadId };
+  }
+
+  async createPartUploadGrant(input: {
+    providerKey: string;
+    uploadId: string;
+    partNumber: number;
+    checksumSha256: string;
+    expiresAt: Date;
+  }): Promise<ProjectStoragePartUploadGrant> {
+    assertProviderKey(input.providerKey);
+    assertUploadId(input.uploadId);
+    if (!Number.isInteger(input.partNumber) || input.partNumber < 1 || input.partNumber > 10_000 ||
+        !validChecksum(input.checksumSha256)) {
+      throw new ProjectStorageProviderError();
+    }
+    const credentials = await this.safeCredentials();
+    const now = this.now();
+    const ttlSeconds = grantTtlSeconds(now, input.expiresAt);
+    const date = amzDate(now);
+    const day = date.slice(0, 8);
+    const scope = `${day}/${this.config.region}/s3/aws4_request`;
+    const url = objectUrl(this.endpoint, this.config.bucket, input.providerKey);
+    // Die Pruefsumme des Teils ist ein **signierter** Header: Der Client muss
+    // sie mitsenden, und der Provider weist Bytes ab, die nicht dazu passen.
+    // Die Mutationsprobe dieses Releases nimmt genau diesen Header aus der
+    // Signatur — dann besteht ein manipulierter Teil.
+    const signedHeaderNames = "host;x-amz-checksum-sha256";
+    const query: Record<string, string> = {
+      "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+      "X-Amz-Credential": `${credentials.accessKeyId}/${scope}`,
+      "X-Amz-Date": date,
+      "X-Amz-Expires": String(ttlSeconds),
+      "X-Amz-SignedHeaders": signedHeaderNames,
+      partNumber: String(input.partNumber),
+      uploadId: input.uploadId,
+      ...(credentials.sessionToken ? { "X-Amz-Security-Token": credentials.sessionToken } : {}),
+    };
+    const canonicalHeaders = `host:${canonicalHost(url)}\nx-amz-checksum-sha256:${input.checksumSha256}\n`;
+    const canonicalRequest = ["PUT", url.pathname, canonicalQueryString(query),
+      canonicalHeaders, signedHeaderNames, "UNSIGNED-PAYLOAD"].join("\n");
+    const stringToSign = ["AWS4-HMAC-SHA256", date, scope, sha256Hex(canonicalRequest)].join("\n");
+    query["X-Amz-Signature"] = createHmac("sha256", signingKey(credentials.secretAccessKey, day, this.config.region))
+      .update(stringToSign, "utf8").digest("hex");
+    url.search = canonicalQueryString(query);
+    return {
+      method: "PUT",
+      url: url.toString(),
+      headers: { "x-amz-checksum-sha256": input.checksumSha256 },
+      expiresAt: new Date(now.getTime() + ttlSeconds * 1_000),
+    };
+  }
+
+  async completeMultipartUpload(input: {
+    providerKey: string;
+    uploadId: string;
+    parts: ReadonlyArray<{ partNumber: number; etag: string }>;
+  }, signal?: AbortSignal): Promise<void> {
+    assertProviderKey(input.providerKey);
+    assertUploadId(input.uploadId);
+    if (input.parts.length < 1 || input.parts.length > 10_000) throw new ProjectStorageProviderError();
+    let previous = 0;
+    for (const part of input.parts) {
+      if (!Number.isInteger(part.partNumber) || part.partNumber <= previous || part.partNumber > 10_000 ||
+          !/^[A-Za-z0-9"-]{1,256}$/.test(part.etag)) {
+        throw new ProjectStorageProviderError();
+      }
+      previous = part.partNumber;
+    }
+    const body = `<CompleteMultipartUpload>${input.parts.map((part) =>
+      `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${part.etag.replace(/"/g, "&quot;")}</ETag></Part>`,
+    ).join("")}</CompleteMultipartUpload>`;
+    const response = await this.signedApiRequest("POST", input.providerKey,
+      { uploadId: input.uploadId }, body, { "content-type": "application/xml" }, signal);
+    // S3 kann 200 antworten und den Fehler in den Rumpf legen. Wer nur den
+    // Status liest, haelt einen abgebrochenen Abschluss fuer gelungen.
+    const text = await response.text();
+    if (!response.ok || text.includes("<Error>")) throw new ProjectStorageProviderError();
+  }
+
+  async abortMultipartUpload(input: {
+    providerKey: string;
+    uploadId: string;
+  }, signal?: AbortSignal): Promise<void> {
+    assertProviderKey(input.providerKey);
+    assertUploadId(input.uploadId);
+    const response = await this.signedApiRequest("DELETE", input.providerKey,
+      { uploadId: input.uploadId }, "", {}, signal);
+    if (!response.ok && response.status !== 404) throw new ProjectStorageProviderError();
+  }
+
+  /** Signierter S3-API-Aufruf mit Query und Rumpf — fuer die Multipart-Verben. */
+  private async signedApiRequest(
+    method: "POST" | "DELETE",
+    providerKey: string,
+    query: Record<string, string>,
+    body: string,
+    extraHeaders: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const credentials = await this.safeCredentials();
+    const now = this.now();
+    const date = amzDate(now);
+    const day = date.slice(0, 8);
+    const scope = `${day}/${this.config.region}/s3/aws4_request`;
+    const url = objectUrl(this.endpoint, this.config.bucket, providerKey);
+    const payloadHash = sha256Hex(body);
+    const headers: Record<string, string> = {
+      host: canonicalHost(url),
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": date,
+      ...extraHeaders,
+      ...(credentials.sessionToken ? { "x-amz-security-token": credentials.sessionToken } : {}),
+    };
+    const headerNames = Object.keys(headers).map((name) => name.toLowerCase()).sort();
+    const canonicalHeaders = headerNames.map((name) => `${name}:${headers[name].trim()}\n`).join("");
+    const signedHeaders = headerNames.join(";");
+    const canonicalQuery = canonicalQueryString(query);
+    const canonicalRequest = [method, url.pathname, canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join("\n");
+    const stringToSign = ["AWS4-HMAC-SHA256", date, scope, sha256Hex(canonicalRequest)].join("\n");
+    const signature = createHmac("sha256", signingKey(credentials.secretAccessKey, day, this.config.region))
+      .update(stringToSign, "utf8").digest("hex");
+    headers.authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    url.search = canonicalQuery;
+    const timeout = AbortSignal.timeout(this.timeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    try {
+      return await this.fetcher(url, {
+        method, headers, body: body === "" ? undefined : body, redirect: "error", signal: combined,
+      });
+    } catch {
+      throw new ProjectStorageProviderError();
+    }
+  }
+
   private async signedRequest(
     method: "HEAD" | "DELETE",
     providerKey: string,
@@ -308,6 +492,64 @@ export class MemoryProjectStorageProvider implements ProjectStorageProvider {
     this.objects.set(providerKey, { ...object });
   }
 
+  /**
+   * Dieselben Zusagen wie der S3-Adapter, ohne Netz: Teile sind nummeriert,
+   * ein Abschluss verlangt genau die begonnenen Teile in aufsteigender
+   * Ordnung, ein Abbruch laesst nichts zurueck.
+   */
+  private readonly multipart = new Map<string, {
+    providerKey: string; contentType: string; parts: Map<number, string>;
+  }>();
+
+  async createMultipartUpload(input: { providerKey: string; contentType: string }) {
+    assertProviderKey(input.providerKey);
+    const uploadId = randomBytes(16).toString("hex");
+    this.multipart.set(uploadId, { providerKey: input.providerKey, contentType: input.contentType, parts: new Map() });
+    return { uploadId };
+  }
+
+  async createPartUploadGrant(input: {
+    providerKey: string; uploadId: string; partNumber: number; checksumSha256: string; expiresAt: Date;
+  }): Promise<ProjectStoragePartUploadGrant> {
+    const upload = this.multipart.get(input.uploadId);
+    if (!upload || upload.providerKey !== input.providerKey ||
+        !Number.isInteger(input.partNumber) || input.partNumber < 1 || input.partNumber > 10_000) {
+      throw new ProjectStorageProviderError();
+    }
+    const ttl = grantTtlSeconds(this.now(), input.expiresAt);
+    // Der Memory-Port laedt nichts wirklich hoch; der ETag entsteht beim
+    // Ausstellen und gilt als "Teil liegt vor", sobald der Grant existiert.
+    upload.parts.set(input.partNumber, `"memory-${input.partNumber}-${input.checksumSha256.slice(0, 8)}"`);
+    return {
+      method: "PUT",
+      url: `${this.baseUrl}/${input.providerKey}?partNumber=${input.partNumber}&uploadId=${input.uploadId}`,
+      headers: { "x-amz-checksum-sha256": input.checksumSha256 },
+      expiresAt: new Date(this.now().getTime() + ttl * 1_000),
+    };
+  }
+
+  async completeMultipartUpload(input: {
+    providerKey: string; uploadId: string; parts: ReadonlyArray<{ partNumber: number; etag: string }>;
+  }) {
+    const upload = this.multipart.get(input.uploadId);
+    if (!upload || upload.providerKey !== input.providerKey || input.parts.length < 1) {
+      throw new ProjectStorageProviderError();
+    }
+    let previous = 0;
+    for (const part of input.parts) {
+      if (part.partNumber <= previous || upload.parts.get(part.partNumber) !== part.etag) {
+        throw new ProjectStorageProviderError();
+      }
+      previous = part.partNumber;
+    }
+    this.multipart.delete(input.uploadId);
+  }
+
+  async abortMultipartUpload(input: { providerKey: string; uploadId: string }) {
+    const upload = this.multipart.get(input.uploadId);
+    if (upload && upload.providerKey === input.providerKey) this.multipart.delete(input.uploadId);
+  }
+
   validateGrant(method: "GET" | "POST", providerKey: string, expiry: number, signature: string, now = this.now()) {
     const expected = this.signature(method, providerKey, expiry);
     const presented = Buffer.from(signature, "hex");
@@ -347,8 +589,17 @@ function objectUrl(endpoint: URL, bucket: string, providerKey: string) {
 
 function canonicalHost(url: URL) { return url.host.toLowerCase(); }
 
+function assertUploadId(value: string) {
+  if (!/^[A-Za-z0-9._-]{1,1024}$/.test(value)) throw new ProjectStorageProviderError();
+}
+
 function canonicalQueryString(query: Record<string, string>) {
-  return Object.entries(query).sort(([a], [b]) => a.localeCompare(b))
+  // Byte-Ordnung, nicht localeCompare: AWS sortiert die kanonische Query nach
+  // Codepunkten. localeCompare ordnet sprachbewusst und stellt Kleinbuchstaben
+  // neben Grossbuchstaben — bei rein grossgeschriebenen X-Amz-Schluesseln fiel
+  // das nie auf, mit gemischten Schluesseln (partNumber, uploadId,
+  // response-content-disposition) platzt die Signatur am Provider.
+  return Object.entries(query).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => `${awsEncode(key)}=${awsEncode(value)}`).join("&");
 }
 

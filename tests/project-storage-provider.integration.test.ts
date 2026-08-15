@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   ClamAvProjectStorageScanner,
@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/project-storage/clamav-scanner";
 import type { ProjectStoragePrincipal, ProjectStorageScope } from "@/lib/server/project-storage/model";
 import {
+  ProjectStorageProviderError,
   S3ProjectStorageProvider,
   StaticS3ProjectStorageCredentialsProvider,
 } from "@/lib/server/project-storage/provider";
@@ -93,6 +94,107 @@ describe.runIf(enabled)("real MinIO and ClamAV Project Storage certification", (
       completionToken: prepared.completionToken,
     })).rejects.toMatchObject({ code: "STORAGE_OBJECT_INFECTED" } satisfies Partial<ProjectStorageError>);
     await expect(provider.headObject(prepared.upload.fields.key)).resolves.toBeNull();
+  }, 120_000);
+
+  /**
+   * Fortsetzbarer Upload in Teilen — Sprosse 3 der Paritaetsleiter.
+   *
+   * Die Kette laeuft ueber den echten Provider: beginnen, zwei Teile ueber
+   * signierte URLs hochladen, abschliessen. Die Integritaet traegt der
+   * Provider je Teil — ein Teil mit fremden Bytes wird **abgewiesen**, weil
+   * seine Pruefsumme in der URL-Signatur steckt. Genau diese Abweisung nimmt
+   * die Mutationsprobe dieses Releases wieder heraus.
+   */
+  it("uploads an object in two resumable parts and rejects a tampered part", async () => {
+    const { provider } = await certificationRuntime();
+    const key = `${scope.organizationId}/${scope.projectId}/development/resumable-${Date.now()}.bin`;
+    // Alle Teile ausser dem letzten muessen bei S3 mindestens 5 MiB tragen.
+    const partOne = randomBytes(5 * 1024 * 1024);
+    const partTwo = randomBytes(64 * 1024);
+    const expiresAt = new Date(Date.now() + 60_000);
+
+    const { uploadId } = await provider.createMultipartUpload({
+      providerKey: key, contentType: "application/octet-stream",
+    });
+
+    const grantOne = await provider.createPartUploadGrant({
+      providerKey: key, uploadId, partNumber: 1, checksumSha256: sha256Base64(partOne), expiresAt,
+    });
+    const putOne = await fetch(grantOne.url, {
+      method: "PUT", headers: grantOne.headers, body: partOne, redirect: "error",
+    });
+    expect(putOne.status, await putOne.clone().text()).toBe(200);
+    const etagOne = putOne.headers.get("etag")!;
+
+    const grantTwo = await provider.createPartUploadGrant({
+      providerKey: key, uploadId, partNumber: 2, checksumSha256: sha256Base64(partTwo), expiresAt,
+    });
+    // Fremde Bytes unter der Signatur des zweiten Teils: Der Provider rechnet
+    // die Pruefsumme selbst nach und weist ab.
+    const tampered = Buffer.from(partTwo);
+    tampered[0] = tampered[0] ^ 0xff;
+    const putTampered = await fetch(grantTwo.url, {
+      method: "PUT", headers: grantTwo.headers, body: tampered, redirect: "error",
+    });
+    expect(putTampered.ok, "Der Provider hat manipulierte Bytes angenommen").toBe(false);
+
+    // Und ohne den Pruefsummen-Header geht es gar nicht: Die Signatur macht
+    // ihn verpflichtend. Eine erste Mutationsprobe hat gezeigt, dass die
+    // Abweisung manipulierter Bytes schon der mitgesendete Header traegt —
+    // die Signatur traegt genau diese Zeile: Weglassen ist keine Option.
+    const putWithoutChecksum = await fetch(grantTwo.url, {
+      method: "PUT", body: tampered, redirect: "error",
+    });
+    expect(putWithoutChecksum.ok, "Der Provider akzeptiert Teile ohne Pruefsumme").toBe(false);
+
+    const putTwo = await fetch(grantTwo.url, {
+      method: "PUT", headers: grantTwo.headers, body: partTwo, redirect: "error",
+    });
+    expect(putTwo.status, await putTwo.clone().text()).toBe(200);
+    const etagTwo = putTwo.headers.get("etag")!;
+
+    await provider.completeMultipartUpload({
+      providerKey: key, uploadId,
+      parts: [{ partNumber: 1, etag: etagOne }, { partNumber: 2, etag: etagTwo }],
+    });
+
+    // Die Wirkung: ein Objekt mit der Groesse beider Teile, dessen Bytes beim
+    // Herunterladen exakt die hochgeladenen sind.
+    const download = await provider.createDownloadGrant({ providerKey: key, expiresAt });
+    const response = await fetch(download.url, { redirect: "error" });
+    expect(response.status).toBe(200);
+    const downloaded = Buffer.from(await response.arrayBuffer());
+    expect(downloaded.byteLength).toBe(partOne.byteLength + partTwo.byteLength);
+    expect(sha256Base64(downloaded)).toBe(sha256Base64(Buffer.concat([partOne, partTwo])));
+    await provider.deleteObject(key);
+  }, 120_000);
+
+  it("aborts a resumable upload and leaves nothing behind", async () => {
+    const { provider } = await certificationRuntime();
+    const key = `${scope.organizationId}/${scope.projectId}/development/aborted-${Date.now()}.bin`;
+    const part = randomBytes(64 * 1024);
+    const expiresAt = new Date(Date.now() + 60_000);
+
+    const { uploadId } = await provider.createMultipartUpload({
+      providerKey: key, contentType: "application/octet-stream",
+    });
+    const grant = await provider.createPartUploadGrant({
+      providerKey: key, uploadId, partNumber: 1, checksumSha256: sha256Base64(part), expiresAt,
+    });
+    const put = await fetch(grant.url, {
+      method: "PUT", headers: grant.headers, body: part, redirect: "error",
+    });
+    expect(put.status).toBe(200);
+    const etag = put.headers.get("etag")!;
+
+    await provider.abortMultipartUpload({ providerKey: key, uploadId });
+
+    // Kein Objekt, und der Abschluss eines abgebrochenen Uploads scheitert:
+    // Ein Teil ohne seinen Upload ist keine halbe Datei, sondern nichts.
+    await expect(provider.headObject(key)).resolves.toBeNull();
+    await expect(provider.completeMultipartUpload({
+      providerKey: key, uploadId, parts: [{ partNumber: 1, etag }],
+    })).rejects.toBeInstanceOf(ProjectStorageProviderError);
   }, 120_000);
 });
 

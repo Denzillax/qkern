@@ -734,3 +734,21 @@ scheitern sieht.
 Ein erster Mutationslauf endete mit exit 1, ohne dass die Probe lief: Docker
 Desktop war ausgefallen. Der Lauf wurde verworfen und wiederholt — ein
 Exit-Code allein beglaubigt keine Mutationsprobe.
+
+## Läufe zu Release 1.69 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/multipart-run1.log` | MinIO plus ClamAV | 4 von 4, exit 0 |
+| `2026-08-16/multipart-run2.log` | MinIO plus ClamAV | 4 von 4, exit 0, Wiederholung |
+| `2026-08-16/multipart-mutation.log` | MinIO plus ClamAV | **3 von 4, exit 1 — absichtlich** |
+
+Die Mutation nimmt die Teil-Prüfsumme aus der URL-Signatur. Genau der
+Resumable-Fall fällt: Ohne Signaturzwang nimmt der Provider Teile ohne
+Prüfsummen-Header an.
+
+Eine erste Fassung der Probe traf nicht — die Abweisung manipulierter Bytes
+trägt der mitgesendete Header, nicht die Signatur. Der Fall wurde daraufhin um
+den Versuch ohne Header erweitert; erst damit trifft die Probe. Ausserdem war
+ein als Mutation beschrifteter Lauf ein grüner Lauf (Skript scheiterte vor dem
+Schreiben); er wurde verworfen und wiederholt.

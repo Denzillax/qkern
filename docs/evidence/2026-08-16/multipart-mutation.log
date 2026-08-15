@@ -1,0 +1,167 @@
+ Network qkern-storage-v140a2-certification_default Creating 
+ Network qkern-storage-v140a2-certification_default Created 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Creating 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Created 
+ Container qkern-storage-v140a2-certification-clamav-1 Creating 
+ Container qkern-storage-v140a2-certification-minio-1 Creating 
+ Container qkern-storage-v140a2-certification-minio-1 Created 
+ Container qkern-storage-v140a2-certification-clamav-1 Created 
+ Container qkern-storage-v140a2-certification-certification-1 Creating 
+ Container qkern-storage-v140a2-certification-certification-1 Created 
+Attaching to certification-1, clamav-1, minio-1
+ Container qkern-storage-v140a2-certification-clamav-1 Starting 
+ Container qkern-storage-v140a2-certification-minio-1 Starting 
+ Container qkern-storage-v140a2-certification-clamav-1 Started 
+ Container qkern-storage-v140a2-certification-minio-1 Started 
+ Container qkern-storage-v140a2-certification-clamav-1 Waiting 
+clamav-1  | Starting Freshclamd
+clamav-1  | Starting ClamAV
+clamav-1  | Socket for clamd not found yet, retrying (0/1800) ...ClamAV update process started at Sat Aug 15 13:17:44 2026
+clamav-1  | WARNING: Your ClamAV installation is OUTDATED!
+clamav-1  | WARNING: Local version: 1.4.5 Recommended version: 1.4.6
+clamav-1  | DON'T PANIC! Read https://docs.clamav.net/manual/Installing.html
+clamav-1  | daily database available for update (local version: 28080, remote version: 28093)
+clamav-1  | LibClamAV Warning: **************************************************
+clamav-1  | LibClamAV Warning: ***  The virus database is older than 7 days!  ***
+clamav-1  | LibClamAV Warning: ***   Please update it as soon as possible.    ***
+clamav-1  | LibClamAV Warning: **************************************************
+minio-1   | INFO: Formatting 1st pool, 1 set(s), 1 drives per set.
+minio-1   | INFO: WARNING: Host local has more than 0 drives of set. A host failure will result in data becoming unavailable.
+minio-1   | MinIO Object Storage Server
+minio-1   | Copyright: 2015-2026 MinIO, Inc.
+minio-1   | License: GNU AGPLv3 - https://www.gnu.org/licenses/agpl-3.0.html
+minio-1   | Version: RELEASE.2025-09-07T16-13-09Z (go1.24.6 linux/amd64)
+minio-1   | 
+minio-1   | API: http://172.24.0.3:9000  http://127.0.0.1:9000 
+minio-1   | WebUI: http://172.24.0.3:32853 http://127.0.0.1:32853  
+minio-1   | 
+minio-1   | Docs: https://docs.min.io
+clamav-1  | Socket for clamd not found yet, retrying (1/1800) ...Socket for clamd not found yet, retrying (2/1800) ...Socket for clamd not found yet, retrying (3/1800) ...Testing database: '/var/lib/clamav/tmp.2b6fba0714/clamav-b1e4b84aab9bf3f8873dd09d51a88468.tmp-daily.cld' ...
+clamav-1  | Socket for clamd not found yet, retrying (4/1800) ...Socket for clamd not found yet, retrying (5/1800) ...Socket for clamd not found yet, retrying (6/1800) ...Socket for clamd not found yet, retrying (7/1800) ...Socket for clamd not found yet, retrying (8/1800) ...Socket for clamd not found yet, retrying (9/1800) ...Socket for clamd not found yet, retrying (10/1800) ...Socket for clamd not found yet, retrying (11/1800) ...Database test passed.
+clamav-1  | daily.cld updated (version: 28093, sigs: 355597, f-level: 90, builder: svc.clamav-publisher)
+clamav-1  | main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge)
+clamav-1  | bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+clamav-1  | WARNING: Clamd was NOT notified: Can't connect to clamd through /tmp/clamd.sock: No such file or directory
+clamav-1  | Socket for clamd not found yet, retrying (12/1800) ...Socket for clamd not found yet, retrying (13/1800) ...Socket for clamd not found yet, retrying (14/1800) ...Socket for clamd not found yet, retrying (15/1800) ...Socket for clamd not found yet, retrying (16/1800) ...Socket for clamd not found yet, retrying (17/1800) ...Socket for clamd not found yet, retrying (18/1800) ...Socket for clamd not found yet, retrying (19/1800) ...Socket for clamd not found yet, retrying (20/1800) ...Sat Aug 15 13:18:04 2026 -> Limits: Global time limit set to 120000 milliseconds.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: Global size limit set to 419430400 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: File size limit set to 104857600 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: Recursion level limit set to 17.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: Files limit set to 10000.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxEmbeddedPE limit set to 41943040 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxHTMLNormalize limit set to 41943040 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxHTMLNoTags limit set to 8388608 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxScriptNormalize limit set to 20971520 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxZipTypeRcg limit set to 1048576 bytes.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxPartitions limit set to 50.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxIconsPE limit set to 100.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: MaxRecHWP3 limit set to 16.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: PCREMatchLimit limit set to 100000.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: PCRERecMatchLimit limit set to 2000.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Limits: PCREMaxFileSize limit set to 104857600.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Archive support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Image (graphics) scanning support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Detection using image fuzzy hash enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> AlertExceedsMax heuristic detection disabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Heuristic alerts enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Portable Executable support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> ELF support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Mail files support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> OLE2 support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> PDF support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> SWF support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> HTML support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> XMLDOCS support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> HWP3 support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> OneNote support enabled.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Self checking every 600 seconds.
+clamav-1  | Sat Aug 15 13:18:04 2026 -> Set stacksize to 1048576
+clamav-1  | socket found, clamd started.
+ Container qkern-storage-v140a2-certification-clamav-1 Healthy 
+ Container qkern-storage-v140a2-certification-certification-1 Starting 
+ Container qkern-storage-v140a2-certification-certification-1 Started 
+certification-1  | 
+certification-1  | added 286 packages, and audited 287 packages in 28s
+certification-1  | 
+certification-1  | 90 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 1 high severity vulnerability
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+certification-1  | npm notice To update run: npm install -g npm@11.19.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@1.68.0 test:storage:provider
+certification-1  | > vitest run tests/project-storage-provider.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+clamav-1         | Sat Aug 15 13:18:42 2026 -> instream(172.24.0.3@46898): Eicar-Test-Signature FOUND
+certification-1  |  [31m❯[39m tests/project-storage-provider.integration.test.ts [2m([22m[2m4 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 263[2mms[22m[39m
+certification-1  |      [32m✓[39m uploads, HEAD-verifies, scans and downloads a clean object[32m 149[2mms[22m[39m
+certification-1  |      [32m✓[39m detects the EICAR test signature and deletes the infected provider object[32m 34[2mms[22m[39m
+certification-1  | [31m     [31m×[31m uploads an object in two resumable parts and rejects a tampered part[39m[32m 55[2mms[22m[39m
+certification-1  |      [32m✓[39m aborts a resumable upload and leaves nothing behind[32m 22[2mms[22m[39m
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-storage-provider.integration.test.ts[2m > [22mreal MinIO and ClamAV Project Storage certification[2m > [22muploads an object in two resumable parts and rejects a tampered part
+certification-1  | [31m[1mAssertionError[22m: Der Provider akzeptiert Teile ohne Pruefsumme: expected true to be false // Object.is equality[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- false[39m
+certification-1  | [31m+ true[39m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/project-storage-provider.integration.test.ts:[2m148:84[22m[39m
+certification-1  |     [90m146|[39m       method[33m:[39m [32m"PUT"[39m[33m,[39m body[33m:[39m tampered[33m,[39m redirect[33m:[39m [32m"error"[39m[33m,[39m
+certification-1  |     [90m147|[39m     })[33m;[39m
+certification-1  |     [90m148|[39m     expect(putWithoutChecksum.ok, "Der Provider akzeptiert Teile ohne …
+certification-1  |     [90m   |[39m                                                                                    [31m^[39m
+certification-1  |     [90m149|[39m
+certification-1  |     [90m150|[39m     [35mconst[39m putTwo [33m=[39m [35mawait[39m [34mfetch[39m(grantTwo[33m.[39murl[33m,[39m {
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+certification-1  | [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m3 passed[39m[22m[90m (4)[39m
+certification-1  | [2m   Start at [22m 13:18:41
+certification-1  | [2m   Duration [22m 805ms[2m (transform 209ms, setup 0ms, import 276ms, tests 263ms, environment 0ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 1
+ Compose Stopping Aborting on container exit...
+ Container qkern-storage-v140a2-certification-certification-1 Stopping 
+ Container qkern-storage-v140a2-certification-certification-1 Stopped 
+ Container qkern-storage-v140a2-certification-minio-1 Stopping 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopping 
+minio-1          | INFO: Exiting on signal: TERMINATED
+ Container qkern-storage-v140a2-certification-minio-1 Stopped 
+[Kminio-1 exited with code 0
+ Container qkern-storage-v140a2-certification-clamav-1 Stopped 
+[Kclamav-1 exited with code 143
+
+ Container qkern-storage-v140a2-certification-certification-1 Stopping 
+ Container qkern-storage-v140a2-certification-certification-1 Stopped 
+ Container qkern-storage-v140a2-certification-certification-1 Removing 
+ Container qkern-storage-v140a2-certification-certification-1 Removed 
+ Container qkern-storage-v140a2-certification-minio-1 Stopping 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopping 
+ Container qkern-storage-v140a2-certification-minio-1 Stopped 
+ Container qkern-storage-v140a2-certification-minio-1 Removing 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopped 
+ Container qkern-storage-v140a2-certification-clamav-1 Removing 
+ Container qkern-storage-v140a2-certification-clamav-1 Removed 
+ Container qkern-storage-v140a2-certification-minio-1 Removed 
+ Network qkern-storage-v140a2-certification_default Removing 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Removing 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Removed 
+ Network qkern-storage-v140a2-certification_default Removed 
