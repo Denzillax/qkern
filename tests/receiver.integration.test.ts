@@ -649,4 +649,59 @@ describe.runIf(enabled)("Receiver certification", () => {
     expect(noise).not.toContain(RECEIVER_SECRET);
     expect(noise).not.toContain("receiver.qkern.test");
   }, 180_000);
+
+  /**
+   * Derselbe Fehler wie in Release 1.61 — absichtlich wiederhergestellt.
+   *
+   * Damals hat der Prozess nur `claim_failed` gemeldet. Release 1.59 hat
+   * daraufhin die falsche Stelle vermutet, 1.60 sie ausgeschlossen, und erst
+   * 1.61 fand den Heartbeat. Drei Releases fuer eine Frage, die eine Zeile im
+   * Log beantwortet haette.
+   *
+   * Hier wird das Leserecht auf den Arbiter-Spalten fuer die Dauer des Falls
+   * entzogen. Der Prozess muss den **Schritt** benennen — und darf dabei keine
+   * Datenbankmeldung ausgeben.
+   */
+  it("names the failing step when its heartbeat cannot be written", async () => {
+    await owner.query(`REVOKE SELECT (organization_id, provisioner_id)
+      ON project_database_provisioner_heartbeats FROM qkern_provisioner`);
+    const child = spawn(process.execPath, ["--import", "tsx", "workers/project-provisioning-runtime.mts"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        QKERN_PROJECT_PROVISIONER_ENABLED: "true",
+        QKERN_PROJECT_PROVISIONER_ID: "certification-provisioner-blind",
+        QKERN_PROVISIONER_ORGANIZATION_ID: organizationId,
+        QKERN_PROVISIONER_IDLE_MS: "200",
+        QKERN_RUNTIME_MODE: "postgres",
+        QKERN_PROVISIONER_DATABASE_URL: provisionerUrl!,
+        QKERN_PROVISIONING_BROKER_URL: `${ORIGIN}/provision`,
+        QKERN_PROVISIONING_BROKER_ALLOWED_HOSTS: "receiver.qkern.test",
+        QKERN_PROVISIONING_BROKER_HMAC_KEY_ID: "cert-1",
+        QKERN_PROVISIONING_BROKER_HMAC_SECRET: RECEIVER_SECRET,
+      },
+    });
+    let noise = "";
+    child.stderr.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+    child.stdout.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+
+    try {
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline && !noise.includes("claim_failed")) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      const line = noise.split(/\r?\n/).find((entry) => entry.includes("claim_failed")) ?? "";
+      const event = JSON.parse(line) as { step?: string; reason?: string };
+      expect(event.step, `Prozessausgabe: ${noise.slice(-600)}`).toBe("heartbeat");
+      // Ein fester Code, keine Meldung. Eine Datenbankmeldung kann Tabellen-
+      // und Spaltennamen fremder Mandanten tragen.
+      expect(event.reason).toBe("PERSISTENCE_ERROR");
+      expect(noise).not.toMatch(/permission denied|relation |column /i);
+    } finally {
+      child.kill();
+      await owner.query(`GRANT SELECT (organization_id, provisioner_id)
+        ON project_database_provisioner_heartbeats TO qkern_provisioner`);
+    }
+  }, 180_000);
 });

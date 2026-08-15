@@ -696,3 +696,14 @@ Verbindungspool, nicht die Warteschlange.
 Mutation A entfernt die Regel aus einer Grenze — deren zwei Fälle fallen.
 Mutation B legt eine zehnte Grenze an, die der Vertrag nicht kennt — die
 Abdeckungsprüfung schlägt an und nennt sie beim Namen.
+
+## Läufe zu Release 1.66 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/provisioner-step-run1.log` | Empfänger plus PostgreSQL 17 | 16 von 16, exit 0 |
+| `2026-08-16/provisioner-step-run2.log` | Empfänger plus PostgreSQL 17 | 16 von 16, exit 0, Wiederholung |
+| `2026-08-16/provisioner-step-mutation.log` | Empfänger plus PostgreSQL 17 | **15 von 16, exit 1 — absichtlich** |
+
+Die Mutation lässt das `step`-Feld weg. Genau der Fall fällt, der den Fehler aus
+1.61 absichtlich wiederherstellt und den benannten Schritt verlangt.

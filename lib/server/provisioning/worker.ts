@@ -5,6 +5,7 @@ import {
   type ProjectDatabaseProvisioningJobRecord,
 } from "@/lib/server/db/models";
 import { isIP } from "node:net";
+import { RepositoryError, type RepositoryErrorCode } from "@/lib/server/db/errors";
 import type { Environment } from "@/lib/types";
 import { PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256 } from "@/lib/server/provisioning/contract";
 import {
@@ -96,7 +97,31 @@ export type ProjectDatabaseProvisioningLogEvent = Readonly<{
   attempt?: number;
   retryCycle?: number;
   errorCode?: ProjectDatabaseProvisioningErrorCode | "CONTROL_PLANE_UPDATE_FAILED";
+  /**
+   * Welcher der drei Aufrufe der Runde gescheitert ist.
+   *
+   * Bis Release 1.66 meldete `claim_failed` nur sich selbst. Release 1.59 hat
+   * daraufhin die falsche Stelle vermutet, 1.60 sie ausgeschlossen, und erst
+   * 1.61 fand den Heartbeat — drei Releases fuer eine Frage, die diese Zeile
+   * beantwortet haette.
+   */
+  step?: ProvisioningStep;
+  /**
+   * Die Fehlerklasse, nicht die Fehlermeldung.
+   *
+   * Fest und aufzaehlbar: die Codes aus `RepositoryError`, sonst `UNKNOWN`.
+   * Eine Datenbankmeldung gehoert nicht in ein Prozesslog — sie kann Tabellen-
+   * und Spaltennamen fremder Mandanten tragen.
+   */
+  reason?: RepositoryErrorCode | "UNKNOWN";
 }>;
+
+export type ProvisioningStep = "heartbeat" | "quarantine" | "claim";
+
+/** Fixer Code statt Meldung. Alles Unbekannte wird zu `UNKNOWN`. */
+function failureReason(error: unknown): RepositoryErrorCode | "UNKNOWN" {
+  return error instanceof RepositoryError ? error.code : "UNKNOWN";
+}
 
 export type ProjectDatabaseProvisioningWorkerResult =
   | { status: "idle" | "claim_failed" }
@@ -188,21 +213,31 @@ export class ProjectDatabaseProvisioningWorker {
 
   private async processOnce(signal?: AbortSignal): Promise<ProjectDatabaseProvisioningWorkerResult> {
     if (signal?.aborted) return { status: "aborted" };
+    // Drei Aufrufe, drei Schritte. Sie standen bis Release 1.66 in zwei
+    // Bloecken, deren `catch` nichts ueber die Stelle sagte.
+    const claimFailed = (step: ProvisioningStep, error: unknown) => {
+      safeLog(this.logger, {
+        event: "project_database_provisioning.claim_failed",
+        status: "claim_failed",
+        step,
+        reason: failureReason(error),
+      });
+      return { status: "claim_failed" } as const;
+    };
+
     try {
       await this.port.heartbeat(this.provisionerId);
+    } catch (error) { return claimFailed("heartbeat", error); }
+
+    try {
       const expired = await this.port.quarantineExpired(this.provisionerId);
       for (const job of expired) safeLog(this.logger, log(job, "expired_lease_quarantined", "PROVIDER_UNAVAILABLE"));
-    } catch {
-      safeLog(this.logger, { event: "project_database_provisioning.claim_failed", status: "claim_failed" });
-      return { status: "claim_failed" };
-    }
+    } catch (error) { return claimFailed("quarantine", error); }
+
     let claim: ProjectDatabaseProvisioningClaim | null;
     try {
       claim = await this.port.claimNext(this.provisionerId, this.leaseDurationMs);
-    } catch {
-      safeLog(this.logger, { event: "project_database_provisioning.claim_failed", status: "claim_failed" });
-      return { status: "claim_failed" };
-    }
+    } catch (error) { return claimFailed("claim", error); }
     if (!claim) return { status: "idle" };
     if (!validClaim(claim, this.provisionerId, this.now())) {
       safeLog(this.logger, log(claim.job, "lease_lost"));

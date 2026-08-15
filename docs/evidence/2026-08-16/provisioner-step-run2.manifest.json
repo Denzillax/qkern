@@ -1,0 +1,19 @@
+{
+  "stack": "HTTPS-Empfaenger plus PostgreSQL 17",
+  "log": "provisioner-step-run2.log",
+  "commit": "f4c16b287ba2f0ce5894f474e307a7f11b18f23d",
+  "commitSubject": "release: 1.65.0 Neun Grenzen, nicht sechs",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 38,
+  "testFiles": "1 passed (1)",
+  "tests": "16 passed (16)",
+  "passed": 16,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24.7.0-alpine",
+    "alpine/openssl:3.3.2"
+  ]
+}

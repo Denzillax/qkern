@@ -2464,3 +2464,37 @@ Beim Zurücknehmen der ersten Mutationsprobe habe ich mit `git checkout` eine
 noch nicht eingecheckte Änderung derselben Datei mitgelöscht und neu schreiben
 müssen. Der Lauf danach war grün; erwähnt, weil ein stiller Verlust die
 gefährlichere Variante gewesen wäre.
+
+## Der Schritt bekommt einen Namen — Release 1.66
+
+`claim_failed` hat drei Releases gekostet: 1.59 vermutete die falsche Stelle,
+1.60 schloss sie aus, erst 1.61 fand den Heartbeat — für eine Frage, die eine
+Zeile im Log beantwortet hätte. Der `catch` des Provisioners verschluckte die
+Ursache, und das stand seither in jeder „Ehrlich offen"-Liste.
+
+`claim_failed` nennt jetzt den **Schritt** (`heartbeat`, `quarantine`, `claim` —
+jeder Aufruf hat sein eigenes `catch`) und die **Fehlerklasse** (`reason`: die
+festen Codes aus `RepositoryError`, sonst `UNKNOWN`). Eine Datenbankmeldung
+gehört nicht in ein Prozesslog — sie kann Tabellen- und Spaltennamen fremder
+Mandanten tragen.
+
+Belegt wird das, indem der Fehler aus 1.61 absichtlich wiederhergestellt wird:
+Leserecht auf den Arbiter-Spalten entzogen, ausgelieferten Prozess gestartet.
+Er meldet `step: "heartbeat"`, `reason: "PERSISTENCE_ERROR"` — und gibt weder
+`permission denied` noch einen Tabellennamen aus.
+
+Mutationsprobe: Das `step`-Feld wird nicht mehr gesetzt — **15 von 16**, genau
+der neue Fall.
+
+Ausserdem: `docs/PARITAET.md` vermisst die Lücke zu Supabase Fähigkeit für
+Fähigkeit und legt die Abbaureihenfolge fest. Ein „Rutsch" auf Supabase-Niveau
+ist unter der Messvorschrift dieses Projekts keine erfüllbare Aufgabe; die
+Leiter ist die ehrliche Form derselben Absicht.
+
+Checkpoint `1.66.0` am 16. August 2026: Lokal 1042 bestanden, 0 fehlgeschlagen;
+Empfänger 16 von 16, exit 0, zweimal reproduziert.
+
+Nicht erbracht: `reason` ist so grob wie `RepositoryError`. Nur der
+Heartbeat-Schritt ist rot belegt. Der PostgreSQL-Stack wurde nicht neu gefahren;
+die Änderung liegt im Prozesslog, und der Empfängerstack führt genau diesen
+Prozess.

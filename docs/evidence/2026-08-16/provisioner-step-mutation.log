@@ -1,0 +1,129 @@
+ Network qkern-receiver-certification_internal Creating 
+ Network qkern-receiver-certification_internal Created 
+ Network qkern-receiver-certification_default Creating 
+ Network qkern-receiver-certification_default Created 
+ Volume qkern-receiver-certification_receiver-certification-certs Creating 
+ Volume qkern-receiver-certification_receiver-certification-certs Created 
+ Container qkern-receiver-certification-certs-1 Creating 
+ Container qkern-receiver-certification-internal-1 Creating 
+ Container qkern-receiver-certification-postgres-1 Creating 
+ Container qkern-receiver-certification-certs-1 Created 
+ Container qkern-receiver-certification-receiver-1 Creating 
+ Container qkern-receiver-certification-internal-1 Created 
+ Container qkern-receiver-certification-postgres-1 Created 
+ Container qkern-receiver-certification-receiver-1 Created 
+ Container qkern-receiver-certification-postgres-1 Starting 
+ Container qkern-receiver-certification-internal-1 Starting 
+ Container qkern-receiver-certification-certs-1 Starting 
+ Container qkern-receiver-certification-internal-1 Started 
+ Container qkern-receiver-certification-postgres-1 Started 
+ Container qkern-receiver-certification-certs-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Starting 
+ Container qkern-receiver-certification-receiver-1 Started 
+ Container qkern-receiver-certification-certs-1 Waiting 
+ Container qkern-receiver-certification-receiver-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Waiting 
+ Container qkern-receiver-certification-postgres-1 Waiting 
+ Container qkern-receiver-certification-internal-1 Healthy 
+ Container qkern-receiver-certification-certs-1 Exited 
+ Container qkern-receiver-certification-receiver-1 Healthy 
+ Container qkern-receiver-certification-postgres-1 Healthy 
+ Container qkern-receiver-certification-certification-run-f9a1f8c0fecd Creating 
+ Container qkern-receiver-certification-certification-run-f9a1f8c0fecd Created 
+
+added 286 packages, and audited 287 packages in 11s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.19.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.19.0
+npm notice To update run: npm install -g npm@11.19.0
+npm notice
+
+> qkern-platform@1.65.0 test:receiver
+> vitest run tests/receiver.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [31m❯[39m tests/receiver.integration.test.ts [2m([22m[2m16 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 6501[2mms[22m[39m
+     [32m✓[39m delivers a signed webhook over real TLS and takes the receiver's acknowledgement[32m 98[2mms[22m[39m
+     [33m[2m✓[22m[39m delivers from the shipped process and reports it [33m 1014[2mms[22m[39m
+     [33m[2m✓[22m[39m reports a refused delivery from the shipped process [33m 514[2mms[22m[39m
+     [32m✓[39m fails when the receiver answers 200 without reflecting the delivery id[32m 27[2mms[22m[39m
+     [32m✓[39m refuses to follow a redirect the receiver sends[32m 21[2mms[22m[39m
+     [32m✓[39m refuses a receiver whose certificate does not carry the requested name[32m 23[2mms[22m[39m
+     [32m✓[39m names the reason for the rejected certificate[32m 8[2mms[22m[39m
+       [32m✓[39m reaches an allowed origin over real TLS[32m 19[2mms[22m[39m
+       [32m✓[39m stops a response that exceeds the size limit[32m 42[2mms[22m[39m
+       [32m✓[39m refuses a redirect instead of handing the function a new target[32m 5[2mms[22m[39m
+       [32m✓[39m refuses an origin that is not on the stored allowlist[32m 0[2mms[22m[39m
+       [32m✓[39m blocks a name that a real resolver maps to a private address[32m 1[2mms[22m[39m
+     [33m[2m✓[22m[39m publishes an incident from the shipped process [33m 1598[2mms[22m[39m
+     [33m[2m✓[22m[39m publishes an apply request from the shipped process [33m 1013[2mms[22m[39m
+     [33m[2m✓[22m[39m provisions a project database from the shipped process [33m 1027[2mms[22m[39m
+[31m     [31m×[31m names the failing step when its heartbeat cannot be written[39m[33m 1019[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/receiver.integration.test.ts[2m > [22mReceiver certification[2m > [22mnames the failing step when its heartbeat cannot be written
+[31m[1mAssertionError[22m: Prozessausgabe: {"event":"project_database_provisioning.claim_failed","status":"claim_failed","reason":"PERSISTENCE_ERROR"}
+{"event":"project_database_provisioning.claim_failed","status":"claim_failed","reason":"PERSISTENCE_ERROR"}
+: expected undefined to be 'heartbeat' // Object.is equality[39m
+
+[32m- Expected:[39m
+"heartbeat"
+
+[31m+ Received:[39m
+undefined
+
+[36m [2m❯[22m tests/receiver.integration.test.ts:[2m696:66[22m[39m
+    [90m694|[39m       const line = noise.split(/\r?\n/).find((entry) => entry.includes…
+    [90m695|[39m       const event = JSON.parse(line) as { step?: string; reason?: stri…
+    [90m696|[39m       expect(event.step, `Prozessausgabe: ${noise.slice(-600)}`).toBe(…
+    [90m   |[39m                                                                  [31m^[39m
+    [90m697|[39m       // Ein fester Code, keine Meldung. Eine Datenbankmeldung kann Ta…
+    [90m698|[39m       [90m// und Spaltennamen fremder Mandanten tragen.[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m15 passed[39m[22m[90m (16)[39m
+[2m   Start at [22m 12:07:38
+[2m   Duration [22m 7.08s[2m (transform 262ms, setup 0ms, import 372ms, tests 6.50s, environment 0ms)[22m
+
+
+ Container qkern-receiver-certification-receiver-1 Stopping 
+ Container qkern-receiver-certification-internal-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopping 
+ Container qkern-receiver-certification-postgres-1 Stopped 
+ Container qkern-receiver-certification-postgres-1 Removing 
+ Container qkern-receiver-certification-postgres-1 Removed 
+ Container qkern-receiver-certification-receiver-1 Stopped 
+ Container qkern-receiver-certification-receiver-1 Removing 
+ Container qkern-receiver-certification-receiver-1 Removed 
+ Container qkern-receiver-certification-certs-1 Stopping 
+ Container qkern-receiver-certification-internal-1 Stopped 
+ Container qkern-receiver-certification-internal-1 Removing 
+ Container qkern-receiver-certification-certs-1 Stopped 
+ Container qkern-receiver-certification-certs-1 Removing 
+ Container qkern-receiver-certification-internal-1 Removed 
+ Container qkern-receiver-certification-certs-1 Removed 
+ Network qkern-receiver-certification_default Removing 
+ Network qkern-receiver-certification_internal Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removing 
+ Volume qkern-receiver-certification_receiver-certification-certs Removed 
+ Network qkern-receiver-certification_default Removed 
+ Network qkern-receiver-certification_internal Removed 
+EXIT=1
