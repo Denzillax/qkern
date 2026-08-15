@@ -778,3 +778,15 @@ Die Mutation entfernt die `security_invoker`-Bedingung: Der Views-Fall fällt,
 weil der undichte View bedient würde. Der zweite rote Fall im Mutationslauf war
 der damals noch ungehärtete Queue-Lastfall (siehe Release Note); der geprobte
 Views-Fall ist vom späteren Härten unberührt.
+
+## Läufe zu Release 1.72 (16. August 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-08-16/rpc-run1.log` | PostgreSQL 17 | 144 von 144, exit 0, 41 Migrationen |
+| `2026-08-16/rpc-run2.log` | PostgreSQL 17 | 144 von 144, exit 0, Wiederholung |
+| `2026-08-16/rpc-mutation.log` | PostgreSQL 17 | **143 von 144, exit 1 — absichtlich** |
+
+Die Mutation entfernt die Abweisung von SECURITY-DEFINER-Funktionen. Genau der
+RPC-Fall fällt: Die Definer-Variante würde bedient und liefe mit fremden
+Rechten.

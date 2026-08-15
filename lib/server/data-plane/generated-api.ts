@@ -97,6 +97,11 @@ export type GeneratedMutationResult = {
 };
 
 export interface GeneratedDataApiPort {
+  callFunction(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedCallInput,
+  ): Promise<GeneratedCallResult>;
   listRows(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
@@ -123,6 +128,21 @@ export interface GeneratedDataApiPort {
     schema: string,
   ): Promise<Record<string, unknown>>;
 }
+
+export type GeneratedCallInput = {
+  schema: string;
+  function: string;
+  args?: Record<string, unknown>;
+};
+
+export type GeneratedCallResult = {
+  source: "postgres";
+  function: { schema: string; name: string; returnType: string; returnsSet: boolean; volatile: boolean };
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  /** Eine Set-Funktion ueber dem Zeilenlimit wurde beschnitten — genannt, nicht verschwiegen. */
+  truncated: boolean;
+};
 
 export type GeneratedDataApiErrorCode =
   | "GENERATED_DATA_API_DISABLED"
@@ -238,6 +258,52 @@ const METADATA_SQL = `
   ORDER BY relation.relname ASC, attribute.attnum ASC
   LIMIT $3`;
 
+/**
+ * Eine Funktion, wie der Aufrufweg sie sehen darf.
+ *
+ * `SECURITY DEFINER` faellt durch dieselbe Tuer wie ein View ohne
+ * `security_invoker`: Der Rumpf liefe mit den Rechten des Eigentuemers, und
+ * die RLS der beruehrten Tabellen gaelte fuer den Aufrufer nicht.
+ */
+const FUNCTION_METADATA_SQL = `
+  SELECT p.proname AS function_name,
+         p.prosecdef AS security_definer,
+         p.provolatile AS volatility,
+         p.proretset AS returns_set,
+         p.pronargs::integer AS arg_count,
+         p.pronargdefaults::integer AS default_count,
+         COALESCE(p.proargnames, ARRAY[]::text[]) AS arg_names,
+         COALESCE((SELECT array_agg(pg_catalog.format_type(args.t, NULL) ORDER BY args.o)
+                   FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS args(t, o)),
+                  ARRAY[]::text[]) AS arg_types,
+         pg_catalog.format_type(p.prorettype, NULL) AS return_type,
+         has_function_privilege(current_user, p.oid, 'EXECUTE') AS can_execute
+  FROM pg_catalog.pg_proc AS p
+  JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+  WHERE n.nspname = $1 AND p.proname = $2 AND p.prokind = 'f'
+  LIMIT 3`;
+
+type FunctionMetadataRow = {
+  function_name: string;
+  security_definer: boolean;
+  volatility: "i" | "s" | "v";
+  returns_set: boolean;
+  arg_count: number;
+  default_count: number;
+  arg_names: string[];
+  arg_types: string[];
+  return_type: string;
+  can_execute: boolean;
+};
+
+/**
+ * Nur Typnamen, die sich gefahrlos als Cast interpolieren lassen. Ein
+ * schema-qualifizierter oder gequoteter Typ faellt heraus — eigene Typen
+ * ausserhalb des Suchpfads sind damit (noch) nicht aufrufbar, und das steht
+ * in der Release Note statt zwischen den Zeilen.
+ */
+const SAFE_TYPE = /^[a-z_][a-z0-9_ ]*(\(\d+(,\d+)?\))?(\[\])?$/;
+
 type InternalTable = GeneratedTable & {
   securityInvoker: boolean;
   canSelect: boolean;
@@ -285,6 +351,110 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       projectId: scope.projectId,
       environment: scope.environment,
     }, { metric: "database_row_reads", quantity: rowCount, reference: randomUUID() });
+  }
+
+  async callFunction(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedCallInput,
+  ): Promise<GeneratedCallResult> {
+    assertRequest(context, scope, input.schema, input.function);
+    const args = input.args ?? {};
+    if (!isPlainRecord(args) || Object.keys(args).length > 32 || byteLength(args) > MAX_INPUT_BYTES) {
+      throw invalidInput();
+    }
+
+    // Erst die Metadaten in einer Lese-Transaktion; erst wenn feststeht, dass
+    // die Funktion fluechtig ist, bekommt der eigentliche Aufruf Schreibrechte.
+    const metadata = await this.run(context, scope, false, async (client) => {
+      const result = await client.query<FunctionMetadataRow>(
+        FUNCTION_METADATA_SQL, [input.schema, input.function]);
+      if (result.rows.length === 0) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_TABLE_NOT_FOUND");
+      }
+      if (result.rows.length > 1) {
+        // Ueberladungen machen den Aufruf mehrdeutig; welcher Rumpf laeuft,
+        // entschiede der Zufall der Typaufloesung.
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+          cause: new Error("function is overloaded"),
+        });
+      }
+      return result.rows[0]!;
+    });
+
+    if (metadata.security_definer) throw new GeneratedDataApiError("GENERATED_DATA_API_RLS_REQUIRED");
+    if (!metadata.can_execute) throw new GeneratedDataApiError("GENERATED_DATA_API_FORBIDDEN");
+    if (!SAFE_TYPE.test(metadata.return_type) && !metadata.returns_set) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+        cause: new Error("unsupported return type"),
+      });
+    }
+
+    const argNames = metadata.arg_names.slice(0, metadata.arg_count);
+    const requiredNames = argNames.slice(0, metadata.arg_count - metadata.default_count);
+    if (argNames.some((name) => !IDENTIFIER.test(name))) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+        cause: new Error("unnamed or invalid argument names"),
+      });
+    }
+    const provided = Object.keys(args);
+    if (provided.some((name) => !argNames.includes(name)) ||
+        requiredNames.some((name) => !(name in args))) {
+      throw invalidInput();
+    }
+
+    const values: SqlValue[] = [];
+    const namedArgs: string[] = [];
+    for (const name of argNames) {
+      if (!(name in args)) continue;
+      const argType = metadata.arg_types[argNames.indexOf(name)] ?? "";
+      if (!SAFE_TYPE.test(argType)) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+          cause: new Error("unsupported argument type"),
+        });
+      }
+      const value = args[name];
+      const isJsonType = argType === "json" || argType === "jsonb";
+      if (value !== null && !["string", "number", "boolean"].includes(typeof value) && !isJsonType) {
+        throw invalidInput();
+      }
+      if (typeof value === "number" && !Number.isFinite(value)) throw invalidInput();
+      values.push(isJsonType && value !== null && typeof value === "object"
+        ? JSON.stringify(value) : value as SqlValue);
+      namedArgs.push(`${quoted(name)} => $${values.length}::${argType}`);
+    }
+
+    const call = `${qualified(input.schema, input.function)}(${namedArgs.join(", ")})`;
+    const sql = metadata.returns_set
+      ? `SELECT * FROM ${call} LIMIT ${MAX_ROWS + 1}`
+      : `SELECT ${call} AS result`;
+
+    // volatile heisst: darf schreiben. Alles andere laeuft in derselben
+    // Lese-Transaktion wie ein Listenaufruf — eine als stabil deklarierte
+    // Funktion, die doch schreibt, scheitert an READ ONLY statt zu wirken.
+    return this.run(context, scope, metadata.volatility === "v", async (client) => {
+      const result = await client.query<Record<string, unknown>>(sql, values);
+      const selected = result.rows.slice(0, MAX_ROWS);
+      const rows = boundedRows(
+        selected.map((row) => projectRow(row, Object.keys(row))), MAX_RESPONSE_BYTES);
+      if (selected.length > 0 && rows.length === 0) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+      }
+      await this.meterRowReads(context, scope, rows.length);
+      return {
+        source: "postgres" as const,
+        function: {
+          schema: input.schema,
+          name: metadata.function_name,
+          returnType: metadata.return_type,
+          returnsSet: metadata.returns_set,
+          volatile: metadata.volatility === "v",
+        },
+        rows,
+        rowCount: rows.length,
+        truncated: result.rows.length > MAX_ROWS || rows.length < selected.length,
+      };
+    });
   }
 
   async listRows(
@@ -699,6 +869,9 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
 
 export class DisabledGeneratedDataApi implements GeneratedDataApiPort {
   private disabled(): never { throw new GeneratedDataApiError("GENERATED_DATA_API_DISABLED"); }
+  async callFunction(
+    _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedCallInput,
+  ): Promise<GeneratedCallResult> { return this.disabled(); }
   async listRows(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedListInput,
   ): Promise<GeneratedListResult> { return this.disabled(); }

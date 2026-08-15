@@ -2665,3 +2665,35 @@ Nicht erbracht: RPC (zweite Hälfte der Sprosse). Materialisierte Views sind
 nicht dabei. OpenAPI unterscheidet Views nicht und bewirbt Schreiboperationen,
 die mit 405 enden. Der Mutationslauf lief vor der Härtung des Lastfalls; sein
 Views-Fall ist unverändert.
+
+## Die Funktion läuft als Aufrufer — Release 1.72
+
+Sprosse 4 der Paritätsleiter ist abgebaut: Nach den Views (1.71) ruft die
+Generated Data API jetzt Funktionen — `POST /rpc/<funktion>` mit benannten
+Argumenten.
+
+Die Regeln: Nur `SECURITY INVOKER` (der Rumpf läuft als Aufrufer, die RLS
+gilt; `DEFINER` wird mit demselben Code abgewiesen wie ein View ohne
+`security_invoker`). Die deklarierte Flüchtigkeit entscheidet über die
+Transaktion — `STABLE`/`IMMUTABLE` laufen READ ONLY, und eine falsch
+deklarierte Funktion scheitert daran, statt zu wirken. Benannte Argumente
+werden parametrisiert mit Cast auf den introspektierten Typ gebunden; nur
+gefahrlos interpolierbare Typnamen sind zugelassen, Überladungen sind
+mehrdeutig und werden abgewiesen. Set-Ergebnisse sind begrenzt und ein
+Beschnitt wird als `truncated` genannt.
+
+Zertifiziert gegen echtes PostgreSQL: Die Set-Funktion sieht durch die RLS des
+Aufrufers (A findet nur A); die flüchtige Funktion schreibt als Aufrufer, und
+ein Schreibversuch für einen fremden Mandanten scheitert an dessen WITH CHECK;
+die DEFINER-Variante wird nicht bedient; unbekannte Funktion und fehlendes
+Pflichtargument sind Aufruffehler.
+
+Mutationsprobe: Die DEFINER-Abweisung entfernt — **143 von 144**, genau der
+RPC-Fall.
+
+Checkpoint `1.72.0` am 16. August 2026: Lokal 1060 bestanden, 0 fehlgeschlagen;
+PostgreSQL 144 von 144, exit 0, zweimal reproduziert, 41 Migrationen.
+
+Nicht erbracht: Eigene Typen ausserhalb des Suchpfads sind nicht aufrufbar
+(bewusste Cast-Grenze). Die RPC-Route spricht in keinem Fall HTTP. OpenAPI
+kennt `/rpc` nicht. Prozeduren (`CALL`) sind nicht dabei.

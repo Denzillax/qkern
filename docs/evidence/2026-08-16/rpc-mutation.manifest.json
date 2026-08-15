@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "rpc-mutation.log",
+  "commit": "7209e1f6a6f42054e2b244e7c2f8925bbaa857a9",
+  "commitSubject": "release: 1.71.0 Der View traegt die Grenze des Aufrufers",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 41,
+  "testFiles": "1 failed | 25 passed (26)",
+  "tests": "1 failed | 143 passed (144)",
+  "passed": 143,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

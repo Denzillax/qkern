@@ -138,4 +138,66 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
       schema, table: "items_leaky", order: { column: "name", direction: "asc" },
     })).rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
   });
+
+  /**
+   * RPC — Sprosse 4, zweite Haelfte.
+   *
+   * Bedient werden nur SECURITY-INVOKER-Funktionen: Ihr Rumpf laeuft als
+   * Aufrufer, die RLS der beruehrten Tabellen gilt. Eine DEFINER-Funktion
+   * liefe mit den Rechten ihres Eigentuemers und wird abgewiesen — genau
+   * diese Bedingung nimmt die Mutationsprobe dieses Releases heraus.
+   */
+  it("calls security-invoker functions under the caller's RLS", async () => {
+    await owner.query(`CREATE FUNCTION "${schema}".items_like(prefix text)
+      RETURNS SETOF "${schema}".items
+      LANGUAGE sql STABLE SECURITY INVOKER
+      AS $$ SELECT * FROM "${schema}".items WHERE name LIKE prefix || '%' $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".items_like_definer(prefix text)
+      RETURNS SETOF "${schema}".items
+      LANGUAGE sql STABLE SECURITY DEFINER
+      AS $$ SELECT * FROM "${schema}".items WHERE name LIKE prefix || '%' $$`);
+    await owner.query(`CREATE FUNCTION "${schema}".add_item(item_name text, item_owner text)
+      RETURNS uuid
+      LANGUAGE sql VOLATILE SECURITY INVOKER
+      AS $$ INSERT INTO "${schema}".items (id, owner_id, name)
+            VALUES (gen_random_uuid(), item_owner, item_name) RETURNING id $$`);
+    await owner.query(`GRANT EXECUTE ON FUNCTION
+      "${schema}".items_like(text), "${schema}".items_like_definer(text),
+      "${schema}".add_item(text, text) TO qkern_project_api_app`);
+    await owner.query(`INSERT INTO "${schema}".items (id, owner_id, name)
+      VALUES ($1, $2, 'rpc-a'), ($3, $4, 'rpc-b')`,
+    [randomUUID(), ownerA, randomUUID(), ownerB]);
+
+    // Die Set-Funktion sieht durch die RLS des Aufrufers: A findet nur A.
+    const listed = await service.callFunction(context(ownerA), scope, {
+      schema, function: "items_like", args: { prefix: "rpc-" },
+    });
+    expect(listed.function.returnsSet).toBe(true);
+    expect(listed.rows.length).toBeGreaterThan(0);
+    expect(listed.rows.every((row) => row.owner_id === ownerA)).toBe(true);
+
+    // Eine fluechtige Funktion schreibt — als Aufrufer, mit dessen WITH CHECK.
+    const inserted = await service.callFunction(context(ownerA), scope, {
+      schema, function: "add_item", args: { item_name: "rpc-added", item_owner: ownerA },
+    });
+    expect(inserted.function.volatile).toBe(true);
+    expect(String(inserted.rows[0]?.result)).toMatch(/^[0-9a-f-]{36}$/);
+    // Ein Schreibversuch fuer einen fremden Mandanten scheitert an der RLS.
+    await expect(service.callFunction(context(ownerA), scope, {
+      schema, function: "add_item", args: { item_name: "rpc-foreign", item_owner: ownerB },
+    })).rejects.toBeDefined();
+
+    // DEFINER laeuft mit fremden Rechten und wird nicht bedient.
+    await expect(service.callFunction(context(ownerA), scope, {
+      schema, function: "items_like_definer", args: { prefix: "rpc-" },
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+
+    // Unbekannte Funktion und fehlendes Pflichtargument sind Aufruffehler.
+    await expect(service.callFunction(context(ownerA), scope, {
+      schema, function: "no_such_function",
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_TABLE_NOT_FOUND" });
+    await expect(service.callFunction(context(ownerA), scope, {
+      schema, function: "items_like",
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+  }, 30_000);
 });
