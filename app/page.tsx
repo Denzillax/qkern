@@ -29,7 +29,7 @@ const modules = [
 const plans = [
   {
     name: "Free", price: 0,
-    summary: "Zum Ausprobieren der geprüften Bausteine in einem Development-Projekt.",
+    summary: "Ein Development-Projekt, um die geprüften Bausteine auszuprobieren.",
     features: ["Ein Projekt, eine Umgebung", "Data API, Auth und Storage", "Lesender Agentenzugriff", "Basisprotokoll", "Community-Support"],
   },
   {
@@ -39,7 +39,7 @@ const plans = [
   },
   {
     name: "Business", price: 99,
-    summary: "Für Organisationen mit Rollen, Protokollpflicht und Production-Freigaben.",
+    summary: "Für Organisationen, die Rollen, Protokolle und Freigaben für Production brauchen.",
     features: ["Teamrollen und Workspace-Verwaltung", "Erweiterte Protokolle und Audit-Export", "Production-Umgebungen mit Schutz", "Eigene Nutzungsgrenzen", "Priorisierter Support"],
   },
 ];
@@ -69,8 +69,8 @@ export default async function HomePage() {
               </span>
               <h1>Backend-Bausteine, die ihre Zusagen belegen.</h1>
               <p>
-                Datenbank, Auth, Storage, Realtime und Functions. Zu jeder Zusage auf dieser
-                Seite gehört ein archivierter Prüflauf.
+                Datenbank, Auth, Storage, Realtime und Functions, jedes gegen echte Dienste
+                geprüft. Die Logs dazu liegen im Repository.
               </p>
               <div className={styles.heroActions}>
                 <Link className="button" href="/register">Projekt erstellen <ArrowRight size={17} /></Link>
@@ -118,8 +118,8 @@ export default async function HomePage() {
           <Reveal className={styles.sectionHead}>
             <h2>Was heute läuft, und wie weit es belegt ist.</h2>
             <p>
-              Gemessen wird zweiachsig: ausführbar vorhanden, und gegen echte Dienste
-              ausgeführt mit archiviertem Lauf. Nur die zweite Achse zählt als zertifiziert.
+              Zwei Fragen pro Modul: Läuft es? Und lief es gegen echte Dienste, mit
+              archiviertem Log? Zertifiziert heisst nur das Zweite.
             </p>
           </Reveal>
           <Reveal className={styles.ledger} stagger>
@@ -151,24 +151,24 @@ export default async function HomePage() {
             <div className={styles.step}>
               <h3>Ausführen</h3>
               <p className={styles.stepLead}>
-                Jeder dauerhafte Adapter läuft gegen echtes PostgreSQL, echtes MinIO, echtes
-                ClamAV, echtes SMTP, einen echten OIDC-Provider und einen echten Vault.
-                Memory-Adapter kennen weder Rechtemodell noch Row-Level Security noch
-                Transaktionsgrenze. Neun Produktfehler kamen genau so ans Licht.
+                Jeder Adapter läuft gegen die echten Dienste: PostgreSQL, MinIO, ClamAV,
+                SMTP, einen OIDC-Provider und Vault. Ein Speicher-Adapter kennt kein
+                Rechtemodell und keine Transaktionsgrenze, also findet er die Fehler nicht,
+                die Kunden treffen. Neun Produktfehler kamen so ans Licht.
               </p>
             </div>
             <div className={styles.step}>
               <h3>Wiederholen</h3>
               <p>
-                Jeder Lauf zweimal, bevor ein Release entsteht. Rohlog und Manifest mit Commit,
-                Exit-Code, Testzahlen und Migrationszahl liegen im Repository.
+                Jeder Lauf zweimal, bevor ein Release entsteht. Rohlog und Manifest liegen im
+                Repository, mit Commit, Exit-Code und Testzahlen.
               </p>
             </div>
             <div className={styles.step}>
               <h3>Brechen</h3>
               <p>
-                Danach schalten wir die geprüfte Garantie ab und lassen erneut laufen. Fällt
-                kein Fall um, prüft der Test nichts.
+                Danach schalten wir die geprüfte Garantie ab und lassen die Suite noch einmal
+                laufen. Fällt dabei kein Fall um, hat der Test nichts geprüft.
               </p>
             </div>
           </Reveal>
@@ -236,8 +236,8 @@ export default async function HomePage() {
           <Reveal className={styles.sectionHead}>
             <h2>Drei Zugänge, die sich nicht gegenseitig übernehmen können.</h2>
             <p>
-              Anwendungszugriff, Agentenwerkzeuge und Modellprovider sind getrennte Wege mit
-              eigenen Schlüsseln. Ein Schlüssel kann die Rolle eines anderen nicht annehmen.
+              Anwendung, Agent und Modellprovider haben je einen eigenen Schlüssel und einen
+              eigenen Weg hinein.
             </p>
           </Reveal>
           <Reveal className={styles.interfaces} stagger>
@@ -263,11 +263,10 @@ export default async function HomePage() {
       <section className={styles.section} id="security">
         <div className={styles.shell}>
           <Reveal className={styles.sectionHead}>
-            <span className={styles.eyebrow}>Was noch fehlt</span>
-            <h2>Diese Punkte sind offen, und sie stehen hier.</h2>
+            <span className={styles.eyebrow}>Offene Punkte</span>
+            <h2>Was QKERN heute nicht kann.</h2>
             <p>
-              Jede Release-Notiz endet mit derselben Liste. Sie hier wegzulassen wäre die
-              erste unbelegte Zusage der Seite.
+              Dieselbe Liste steht am Ende jeder Release-Notiz.
             </p>
           </Reveal>
           <Reveal className={styles.gaps} stagger>
@@ -285,8 +284,8 @@ export default async function HomePage() {
         <div className={styles.shell}>
           <Reveal className={styles.sectionHead}>
             <span className={styles.eyebrow}>Preise</span>
-            <h2>Preise, die mit dir wachsen.</h2>
-            <p>In Schweizer Franken, klein beginnend. Jeder Plan enthält dieselben geprüften Bausteine.</p>
+            <h2>Drei Pläne, in Franken.</h2>
+            <p>Free zum Ausprobieren, Pro für Teams, Business für Organisationen mit Freigabepflicht. Die geprüften Bausteine sind in allen drei gleich.</p>
           </Reveal>
           <Reveal className={styles.plans} stagger>
             {plans.map((plan) => (
@@ -306,9 +305,8 @@ export default async function HomePage() {
             ))}
           </Reveal>
           <p className={styles.draftNote}>
-            Diese Preise sind Entwürfe und vor dem Marktstart zu validieren. Aussagen zu
-            Infrastruktur, Datenresidenz und Compliance werden vor Veröffentlichung technisch
-            und rechtlich geprüft.
+            Die Preise sind ein Entwurf; vor dem Marktstart prüfen wir sie. Dasselbe gilt
+            für Aussagen zu Hosting, Datenresidenz und Compliance.
           </p>
         </div>
       </section>
@@ -316,10 +314,10 @@ export default async function HomePage() {
       <section className={styles.close}>
         <div className={styles.shell}>
           <QKERNSymbol variant="white" size="lg" />
-          <h2>Baue den Kern. Nicht die Infrastruktur.</h2>
+          <h2>Fang mit dem Kern an.</h2>
           <p>
-            Starte mit einem Development-Projekt. Die Belege für alles, was hier steht, liegen
-            im Repository unter docs/evidence.
+            Ein Development-Projekt kostet nichts. Die Belege für diese Seite liegen im
+            Repository unter docs/evidence.
           </p>
           <Link className="white-button" href="/register">Projekt erstellen <ArrowRight size={16} /></Link>
         </div>

@@ -3520,3 +3520,28 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Das Schliessen-Kreuz der Console ist nicht im Browser
 geprüft — ohne Konto (siehe 1.95) bleibt die Console zu.
+
+## Texte ohne Tells — Release 1.98
+
+Denzil hat den Skill `humanizer` installieren lassen (GitHub blader/humanizer
+3.0.0, um einen deutschen Abschnitt ergänzt) und die Landingpage damit
+überarbeiten lassen. Zwölf Passagen in `app/page.tsx`, nur Prosa.
+
+Was gefunden wurde: zwei Absätze, die ihre Überschrift wiederholten (Hero,
+Entwickler); ein Eyebrow und eine Überschrift mit demselben Wortlaut
+(„Was noch fehlt"); eine inszenierte Pointe („Sie hier wegzulassen wäre
+die erste unbelegte Zusage der Seite"); Werbeton bei den Preisen („Preise,
+die mit dir wachsen"); sechsmal „echtes" in einem Satz; Nominalstil und
+Passiv in der Entwurfsnotiz („sind zu validieren", „werden geprüft"); ein
+Nicht-X-sondern-Y als Schlussparole („Baue den Kern. Nicht die
+Infrastruktur."). Behalten wurde, was eine Behauptung des Lesers
+korrigiert: „Ein grüner Testlauf ist keine Zertifizierung."
+
+Keine Zahl und kein Datum kam hinzu oder fiel weg; der Vertrag
+`landing-numbers-contract` ist grün.
+
+Checkpoint `1.98.0` am 24. September 2026: Lokal 1096 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Login, Registrierung und Console-Texte sind noch nicht
+durch den Skill gelaufen.
