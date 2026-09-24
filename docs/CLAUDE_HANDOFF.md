@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.87.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.88.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.87.0`
-- Aktueller Slice: 1.87 Die ganze Uhr — Fünf-Feld-Cron in UTC (`*`, `*/N`, `a`,
+- Paketversion: `1.88.0`
+- Aktueller Slice: 1.88 Zeitreihen, bevor sie sich bewegen — `exportMetrics`
+  (alle Queues des Scopes, auch leere, aus derselben Wahrheit wie `status`),
+  reine Formatierfunktion `renderQueueMetrics` (Prometheus-Text 0.0.4), Route
+  `queues/metrics` mit Admin-Session; eine Queue namens `metrics` verliert nur
+  diesen einen Pfad
+- Vorheriger Slice: 1.87 Die ganze Uhr — Fünf-Feld-Cron in UTC (`*`, `*/N`, `a`,
   `a-b`, `a-b/N`, Listen; dom/dow-ODER-Regel; 7 = Sonntag); `* * * * *` ist
   jetzt gültig. Fund der Mutationsprobe: Der Readiness-Fall im Cron-Stack
   stützte sich auf die Unlesbarkeit von `* * * * *` und bestand seit der

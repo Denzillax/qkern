@@ -277,6 +277,26 @@ export class ProjectQueueService {
     catch (error) { throw mapError(error); }
   }
 
+  /**
+   * Alle Queues des Scopes mit ihren Zaehlern — fuer den Metrics-Export.
+   *
+   * Jede Queue erscheint, auch eine leere: Ein Scraper braucht die Zeitreihe,
+   * bevor sie sich bewegt. Die Zaehler entstehen wie bei `status` — inklusive
+   * Lease-Erholung und Aufraeumen je Queue — und damit in derselben
+   * Wahrheit, die die Einzelroute liefert.
+   */
+  async exportMetrics(principal: ProjectQueuePrincipal, scope: ProjectQueueScope) {
+    await this.assertAdmin(principal, scope);
+    const queues = await this.dependencies.repository.listQueues(principal, scope);
+    const now = this.now();
+    const statuses = [];
+    for (const queue of queues) {
+      try { statuses.push(await this.dependencies.repository.status(principal, scope, queue, now)); }
+      catch (error) { throw mapError(error); }
+    }
+    return { generatedAt: now.toISOString(), queues: statuses };
+  }
+
   async listDeadLetters(
     principal: ProjectQueuePrincipal,
     scope: ProjectQueueScope,

@@ -982,3 +982,16 @@ Die Mutation nimmt die Bereichsform `a-b` aus der Feldgrammatik. Der lokale
 Grammatik-Fall und sein Zwilling im Stack (`0,30 6-8 * * 1-5`) fallen. Ein
 erster Mutationslauf liess zusätzlich den Readiness-Fall fallen — der Fund,
 der ihn repariert hat; die drei Läufe oben sind auf dem Endstand.
+
+## Läufe zu Release 1.88 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/queue-metrics-run1.log` | PostgreSQL 17 | 158 von 158, exit 0 |
+| `2026-09-24/queue-metrics-run2.log` | PostgreSQL 17 | 158 von 158, exit 0, Wiederholung |
+| `2026-09-24/queue-metrics-mutation.log` | PostgreSQL 17 | **157 von 158, exit 1 — absichtlich** |
+| `2026-09-24/queue-metrics-local-run1.log` | Vitest lokal (Windows) | 1083 bestanden, exit 0 |
+
+Die Mutation lässt leere Queues aus dem Export fallen — genau der Export-Fall
+fällt. Lokal bleibt die Suite unter dieser Mutation grün: Die Zusage lebt im
+Dienst, und nur der Real-DB-Fall prüft sie.

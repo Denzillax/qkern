@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.87.0`, 24. September 2026. Diese Datei wird bei jedem Release
+> Stand: `1.88.0`, 24. September 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -26,7 +26,7 @@ zählt.
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert; seit `1.78.0` räumt der Lifecycle verfallene Reservierungen und Provider-Waisen ab | Bildtransformation, CDN |
 | Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | seit `1.73.0` ersetzt ein Tor mit benannten Bedingungen das Production-Verbot; offen: belegter Production-Start gegen SSL-PostgreSQL, persistente Presence/History, Lastprofil jenseits Soak |
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; offen: Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
-| Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`) | Metrics-Export; sonst **vor** Supabase-Stand |
+| Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`); seit `1.88.0` Metrics-Export im Prometheus-Textformat | **vor** Supabase-Stand; offen nur Tracing |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`); seit `1.87.0` die ganze Fünf-Feld-Grammatik | Namen (JAN, MON), `@daily`, `L`/`W`/`#`; Zeitzonen jenseits UTC |
 | Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent — seit `1.77.0` mit REST-Lesefläche und belegtem Wettlauf; seit `1.81.0` lückenloser Nummernkreis je Organisation mit Fälligkeit; seit `1.82.0` liest die Console die Rechnungen | Zahlungsanbindung |
 | Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung; seit `1.75.0` ein echter Read-only-SQL-Editor (die vorige Fassung war eine Attrappe) | Auth-/Storage-/Realtime-Flächen vertiefen, Logs |

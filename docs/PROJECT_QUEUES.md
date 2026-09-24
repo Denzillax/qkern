@@ -165,7 +165,7 @@ Memory-Modus geht der Zustand bei Prozessneustart verloren.
 - seit `1.42.0` verarbeitet `npm run worker:queues` Nachrichten wirklich; der
   Wirt kann genau eines — eine Nachricht an eine hinterlegte Function geben —
   und ein allgemeiner Handler-Host sowie ein Consumer-SDK fehlen weiter;
-- redigierte Prozesszähler vorhanden, aber kein Metrics-Exporter, Tracing,
+- redigierte Prozesszähler vorhanden; seit `1.88.0` ein Metrics-Export je Scope (`GET queues/metrics`, Prometheus-Textformat); kein Tracing,
   Last-/Soak-Test oder archiviertes Real-Broker-E2E;
 - keine Production-Freigabe.
 

@@ -75,6 +75,32 @@ describe.runIf(enabled)("Project Queues PostgreSQL certification", () => {
     expect(JSON.stringify(stored.rows[0])).not.toContain("raw-secret-idempotency-key");
   });
 
+  /**
+   * Der Metrics-Export (1.88): alle Queues des Scopes mit ihren Zaehlern aus
+   * derselben Wahrheit wie `status` — auch die leere Queue, mit allen
+   * Zustaenden auf null. Genau diese Vollstaendigkeit nimmt die
+   * Mutationsprobe dieses Releases heraus: Leere Queues verschwinden, und
+   * dieser Fall faellt.
+   */
+  it("exports every queue of the scope with live counters, empty ones included", async () => {
+    await service.createQueue(admin, scope, { name: "metrics-busy" });
+    await service.createQueue(admin, scope, { name: "metrics-empty" });
+    await service.enqueue(worker, scope, "metrics-busy", { payload: { n: 1 } });
+    await service.enqueue(worker, scope, "metrics-busy", { payload: { n: 2 } });
+    await service.claim(worker, scope, "metrics-busy", { workerId: "metrics-worker", limit: 1 });
+
+    const exported = await service.exportMetrics(admin, scope);
+    const byName = new Map(exported.queues.map((status) => [status.queue, status]));
+    expect(byName.get("metrics-busy")).toMatchObject({ available: 1, inFlight: 1, completed: 0, deadLettered: 0 });
+    expect(byName.get("metrics-busy")?.oldestAvailableAt).not.toBeNull();
+    expect(byName.get("metrics-empty")).toEqual({
+      queue: "metrics-empty", available: 0, scheduled: 0, inFlight: 0, completed: 0, deadLettered: 0,
+      oldestAvailableAt: null,
+    });
+    // Nur Admins exportieren; ein Worker sieht die Zaehler nicht.
+    await expect(service.exportMetrics(worker, scope)).rejects.toBeDefined();
+  });
+
   it("claims each ready row at most once across concurrent workers", async () => {
     await service.createQueue(admin, scope, { name: "claim-race" });
     await Promise.all(Array.from({ length: 4 }, (_, index) => service.enqueue(worker, scope, "claim-race", {

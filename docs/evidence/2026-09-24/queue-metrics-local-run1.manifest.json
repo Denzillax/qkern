@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "queue-metrics-local-run1.log",
+  "commit": "885efc5f88314aa1a5c7b80f2ef5ab9614cf6ba9",
+  "commitSubject": "release: 1.87.0 Die ganze Uhr",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1083 passed | 238 skipped (1321)",
+  "passed": 1083,
+  "failed": 0,
+  "skipped": 238,
+  "images": []
+}

@@ -3201,3 +3201,34 @@ dem Endstand, 44 Migrationen.
 
 Nicht erbracht: keine Namen (JAN, MON), kein `@daily`, kein `L`/`W`/`#`;
 alles in UTC, keine Zeitzone je Definition.
+
+## Zeitreihen, bevor sie sich bewegen — Release 1.88
+
+Der Metrics-Export der Queues, letzter Punkt der Queue-Zeile der
+Paritätsleiter. `GET …/queues/metrics` liefert Prometheus-Textformat (0.0.4)
+über **alle** Queues des Scopes: `qkern_queue_messages` je Queue und Zustand
+(available, scheduled, in_flight, completed, dead_lettered) und
+`qkern_queue_oldest_available_age_seconds`. Jede Queue erscheint mit allen
+fünf Zuständen — auch eine leere, mit 0 statt Abwesenheit: Ein Scraper
+braucht die Zeitreihe, bevor sie sich bewegt. Die Zähler entstehen aus
+derselben Wahrheit wie `status` (inklusive Lease-Erholung und Aufräumen je
+Queue). Die Formatierung ist eine reine Funktion mit maskierten
+Label-Werten; die Route hält dieselbe Admin-Grenze wie `status`, antwortet
+mit Text und `no-store` und weist Query-Parameter ab.
+
+Zertifiziert gegen echtes PostgreSQL: zwei Queues, eine mit einer wartenden
+und einer geleasten Nachricht, eine leer — der Export nennt beide, die leere
+mit allen Zählern auf null; ein Worker darf nicht exportieren.
+
+Mutationsprobe: Leere Queues fallen aus dem Export — **157 von 158**, genau
+der Export-Fall. Lokal bleibt die Suite unter dieser Mutation grün, weil die
+Zusage im Dienst lebt und nur der Real-DB-Fall sie prüft — kein zweiter
+Beleg, ehrlich vermerkt.
+
+Checkpoint `1.88.0` am 24. September 2026: Lokal 1083 bestanden, 0
+fehlgeschlagen; PostgreSQL 158 von 158, exit 0, zweimal reproduziert, 44
+Migrationen.
+
+Nicht erbracht: kein Tracing; keine Prozesszähler des Wirts im Export (nur
+Queue-Zustände); eine Queue namens `metrics` verliert den Pfad
+`/queues/metrics` an den Export, ihre Unterrouten bleiben.
