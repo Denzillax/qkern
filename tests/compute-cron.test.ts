@@ -14,7 +14,38 @@ describe("Compute cron boundary", () => {
       .toBe("2026-08-04T12:15:00.000Z");
     expect(nextCronOccurrence("30 2 * * *", new Date("2026-08-04T03:00:00Z")).toISOString())
       .toBe("2026-08-05T02:30:00.000Z");
-    expect(() => nextCronOccurrence("* * * * *", new Date())).toThrow("Unsupported cron");
+    expect(() => nextCronOccurrence("60 * * * *", new Date())).toThrow("Unsupported cron");
+  });
+
+  /**
+   * Die ganze Fuenf-Feld-Grammatik (1.87): Listen, Bereiche, Schritte, die
+   * ODER-Regel fuer Tag und Wochentag, Monatsgrenzen ueber den Jahreswechsel.
+   * Die Mutationsprobe dieses Releases nimmt die Bereichsform `a-b` heraus —
+   * dann faellt genau dieser Fall (und sein Zwilling im Postgres-Stack).
+   */
+  it("evaluates lists, ranges, steps and the day-of-month/day-of-week rule", () => {
+    const at = (expression: string, after: string) => nextCronOccurrence(expression, new Date(after)).toISOString();
+    // Listen und Bereiche in Minute und Stunde.
+    expect(at("0,30 6-8 * * *", "2026-08-04T06:31:00Z")).toBe("2026-08-04T07:00:00.000Z");
+    expect(at("0,30 6-8 * * *", "2026-08-04T08:30:00Z")).toBe("2026-08-05T06:00:00.000Z");
+    // Schritt ueber einen Bereich: 10-50/20 -> 10, 30, 50.
+    expect(at("10-50/20 * * * *", "2026-08-04T12:31:00Z")).toBe("2026-08-04T12:50:00.000Z");
+    // Nur Wochentage: Freitag 2026-08-07 -> Montag 2026-08-10.
+    expect(at("0 9 * * 1-5", "2026-08-07T09:00:00Z")).toBe("2026-08-10T09:00:00.000Z");
+    // 7 ist Sonntag wie 0.
+    expect(at("0 9 * * 7", "2026-08-04T09:00:00Z")).toBe("2026-08-09T09:00:00.000Z");
+    // Beide eingeschraenkt: der 15. ODER ein Montag — Montag 2026-08-10 kommt vor dem 15.
+    expect(at("0 0 15 * 1", "2026-08-05T00:00:00Z")).toBe("2026-08-10T00:00:00.000Z");
+    // Nur der Tag eingeschraenkt: 2026-08-15 ist ein Samstag und zaehlt trotzdem.
+    expect(at("0 0 15 * *", "2026-08-05T00:00:00Z")).toBe("2026-08-15T00:00:00.000Z");
+    // Monatsgrenze ueber den Jahreswechsel: 1. Januar 2027.
+    expect(at("0 0 1 1 *", "2026-08-05T00:00:00Z")).toBe("2027-01-01T00:00:00.000Z");
+    // Jede Minute ist gueltiges Cron.
+    expect(at("* * * * *", "2026-08-04T12:07:30Z")).toBe("2026-08-04T12:08:00.000Z");
+    // Ungueltig: Schritt 0, verkehrter Bereich, Feld ausserhalb, sechs Felder, nie erreichbar.
+    for (const bad of ["*/0 * * * *", "5-1 * * * *", "0 24 * * *", "0 0 * * * *", "0 0 31 2 *", "a b c d e"]) {
+      expect(() => nextCronOccurrence(bad, new Date("2026-08-04T00:00:00Z")), bad).toThrow("Unsupported cron");
+    }
   });
 
   it("dispatches one deterministic queue dedupe key for an exact occurrence", async () => {

@@ -145,7 +145,9 @@ describe("ComputeDefinitionService — cron", () => {
     // Derselbe Parser wie im Scheduler. Ein Ausdruck, den er abweist, darf gar
     // nicht erst entstehen — sonst scheitert er spaeter bei jedem Vorkommen.
     const { service } = harness({ queues: ["report_jobs"] });
-    for (const expression of ["0 3 * * 1", "*/0 * * * *", "not a cron", "0 3 * *"]) {
+    // "0 3 * * 1" (montags) stand hier bis 1.86 als unlesbar — seit der
+    // vollen Grammatik ist es gueltig; an seine Stelle tritt eine Stunde 24.
+    for (const expression of ["0 24 * * *", "*/0 * * * *", "not a cron", "0 3 * *"]) {
       await expect(service.createCron(admin, scope, {
         name: "nightly-report", expression, queue: "report_jobs",
       })).rejects.toBeInstanceOf(ComputeDefinitionError);

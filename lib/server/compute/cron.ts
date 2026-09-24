@@ -2,28 +2,102 @@ import type { CronDefinition } from "@/lib/server/compute/model";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import type { ProjectQueueService } from "@/lib/server/project-queues/service";
 
-export function nextCronOccurrence(expression: string, after: Date): Date {
+/**
+ * Fuenf-Feld-Cron in UTC — seit 1.87 die ganze klassische Grammatik.
+ *
+ * Bis 1.86 kannte QKERN nur `*\/N * * * *` und `M H * * *`. Jetzt gelten je
+ * Feld `*`, `*\/N`, `a`, `a-b`, `a-b/N` und Listen daraus; Minute 0-59,
+ * Stunde 0-23, Tag 1-31, Monat 1-12, Wochentag 0-7 (7 ist Sonntag wie 0).
+ * Die klassische Regel fuer Tag und Wochentag: Sind **beide** eingeschraenkt,
+ * genuegt einer von beiden; sonst zaehlt der eingeschraenkte. Namen (JAN,
+ * MON) und Sonderformen (@daily, L, W, #) gibt es bewusst nicht — jede davon
+ * waere eine zweite Grammatik, und die Release Note nennt sie als offen.
+ */
+type CronField = { values: Set<number>; restricted: boolean };
+type CronSchedule = {
+  minutes: number[]; hours: number[]; daysOfMonth: CronField; months: number[]; daysOfWeek: CronField;
+};
+
+const UNSUPPORTED = "Unsupported cron expression.";
+const MAX_SEARCH_DAYS = 366 * 5;
+
+export function parseCronExpression(expression: string): CronSchedule {
   const fields = expression.trim().split(/\s+/);
-  if (fields.length !== 5 || fields[2] !== "*" || fields[3] !== "*" || fields[4] !== "*") {
-    throw new Error("Unsupported cron expression.");
+  if (fields.length !== 5) throw new Error(UNSUPPORTED);
+  const minutes = parseField(fields[0], 0, 59);
+  const hours = parseField(fields[1], 0, 23);
+  const daysOfMonth = parseField(fields[2], 1, 31);
+  const months = parseField(fields[3], 1, 12);
+  const daysOfWeek = parseField(fields[4], 0, 7);
+  // 7 ist Sonntag — auf 0 gefaltet, damit die Menge eindeutig bleibt.
+  if (daysOfWeek.values.has(7)) { daysOfWeek.values.delete(7); daysOfWeek.values.add(0); }
+  return {
+    minutes: [...minutes.values].sort((a, b) => a - b),
+    hours: [...hours.values].sort((a, b) => a - b),
+    daysOfMonth,
+    months: [...months.values].sort((a, b) => a - b),
+    daysOfWeek,
+  };
+}
+
+function parseField(field: string, min: number, max: number): CronField {
+  if (field.length < 1 || field.length > 64) throw new Error(UNSUPPORTED);
+  const values = new Set<number>();
+  let restricted = false;
+  for (const part of field.split(",")) {
+    const match = /^(\*|(\d{1,2})(?:-(\d{1,2}))?)(?:\/(\d{1,2}))?$/.exec(part);
+    if (!match) throw new Error(UNSUPPORTED);
+    const step = match[4] === undefined ? 1 : Number(match[4]);
+    if (!Number.isInteger(step) || step < 1 || step > max) throw new Error(UNSUPPORTED);
+    let start: number; let end: number;
+    if (match[1] === "*") {
+      start = min; end = max;
+      if (step > 1) restricted = true;
+    } else {
+      start = Number(match[2]);
+      end = match[3] === undefined ? (match[4] === undefined ? start : max) : Number(match[3]);
+      if (start < min || start > max || end < min || end > max || end < start) throw new Error(UNSUPPORTED);
+      restricted = true;
+    }
+    for (let value = start; value <= end; value += step) values.add(value);
   }
-  const interval = /^\*\/([1-9]|[1-5][0-9])$/.exec(fields[0]);
-  if (interval && fields[1] === "*") {
-    const minutes = Number(interval[1]);
-    const next = new Date(after);
-    next.setUTCSeconds(0, 0);
-    next.setUTCMinutes(next.getUTCMinutes() + 1);
-    while (next.getUTCMinutes() % minutes !== 0) next.setUTCMinutes(next.getUTCMinutes() + 1);
-    return next;
+  if (values.size === 0) throw new Error(UNSUPPORTED);
+  return { values, restricted };
+}
+
+function dayMatches(schedule: CronSchedule, day: Date): boolean {
+  if (!schedule.months.includes(day.getUTCMonth() + 1)) return false;
+  const domOk = schedule.daysOfMonth.values.has(day.getUTCDate());
+  const dowOk = schedule.daysOfWeek.values.has(day.getUTCDay());
+  if (schedule.daysOfMonth.restricted && schedule.daysOfWeek.restricted) return domOk || dowOk;
+  if (schedule.daysOfMonth.restricted) return domOk;
+  if (schedule.daysOfWeek.restricted) return dowOk;
+  return true;
+}
+
+/** Das erste Vorkommen **nach** `after`, minutengenau in UTC. */
+export function nextCronOccurrence(expression: string, after: Date): Date {
+  const schedule = parseCronExpression(expression);
+  const cursor = new Date(after);
+  cursor.setUTCSeconds(0, 0);
+  cursor.setUTCMinutes(cursor.getUTCMinutes() + 1);
+  const day = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
+  for (let offset = 0; offset < MAX_SEARCH_DAYS; offset += 1) {
+    if (dayMatches(schedule, day)) {
+      const sameDay = offset === 0;
+      for (const hour of schedule.hours) {
+        if (sameDay && hour < cursor.getUTCHours()) continue;
+        for (const minute of schedule.minutes) {
+          if (sameDay && hour === cursor.getUTCHours() && minute < cursor.getUTCMinutes()) continue;
+          return new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), hour, minute));
+        }
+      }
+    }
+    day.setUTCDate(day.getUTCDate() + 1);
   }
-  const minute = Number(fields[0]);
-  const hour = Number(fields[1]);
-  if (!Number.isInteger(minute) || minute < 0 || minute > 59 ||
-      !Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error("Unsupported cron expression.");
-  const next = new Date(after);
-  next.setUTCHours(hour, minute, 0, 0);
-  if (next <= after) next.setUTCDate(next.getUTCDate() + 1);
-  return next;
+  // Ein Ausdruck ohne Vorkommen in fuenf Jahren (z. B. 31 2 — den 31. Februar)
+  // ist keine Planung, sondern ein Fehler.
+  throw new Error(UNSUPPORTED);
 }
 
 export class CronDispatcher {

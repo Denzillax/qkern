@@ -118,6 +118,37 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     expect(messages.rows[0]?.count).toBe(1);
   });
 
+  /**
+   * Die volle Cron-Grammatik (1.87) durch Scheduler, Datenbankfortschritt und
+   * Queue: "0,30 6-8 * * 1-5" am Dienstag, 4. August 2026, Fortschritt 06:00,
+   * jetzt 06:31 -> genau das 06:30-Vorkommen wird versendet, 07:00 noch nicht.
+   * Die Mutationsprobe nimmt die Bereichsform `a-b` — dann ist der Ausdruck
+   * unlesbar, und dieser Fall faellt zusammen mit seinem lokalen Zwilling.
+   */
+  it("dispatches a list-range-weekday expression through the real progress", async () => {
+    const node = instance();
+    const queue = `cron-grammar-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 3600 });
+    const id = await defineCron(queue, "0,30 6-8 * * 1-5", new Date("2026-08-04T06:00:00.000Z"));
+    const scheduler = new CronScheduler({
+      repository: node.repository, dispatcher: node.dispatcher,
+      now: () => new Date("2026-08-04T06:31:00.000Z"),
+    });
+    const result = await scheduler.run(service, scope);
+    expect(result.dispatched).toBeGreaterThanOrEqual(1);
+    const progress = await owner.query<{ last_dispatched_at: Date }>(
+      "SELECT last_dispatched_at FROM project_cron_definitions WHERE id=$1", [id],
+    );
+    expect(new Date(progress.rows[0].last_dispatched_at).toISOString()).toBe("2026-08-04T06:30:00.000Z");
+    const messages = await owner.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM project_queue_messages
+        WHERE organization_id=$1 AND queue_id=(SELECT id FROM project_queues
+          WHERE organization_id=$1 AND name=$2)`,
+      [organizationId, queue],
+    );
+    expect(messages.rows[0]?.count).toBe(1);
+  });
+
   it("produces exactly one message when two schedulers fire the same occurrence", async () => {
     // Der eigentliche Pruefpunkt: Einmaligkeit ohne Lease, allein ueber den
     // Occurrence-Dedupe-Key der Queue.
@@ -368,10 +399,14 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     const own = await freshProject();
     const queue = `probe-bad-${randomUUID().slice(0, 8)}`;
     await node.queues.createQueue(admin, own, { name: queue, dedupeWindowSeconds: 3600 });
-    // `* * * * *` unterstuetzt der Ausdruck nicht. Der Definitionsdienst wiese
-    // das ab; ein direkter INSERT nicht — und genau so entstand der Zustand,
-    // den 1.45 nur durch Handarbeit sichtbar machen konnte.
-    await defineCronIn(own, queue, "* * * * *", new Date(Date.now() - 120_000));
+    // Eine Stunde 24 gibt es nicht. Der Definitionsdienst wiese das ab; ein
+    // direkter INSERT nicht (der DB-CHECK prueft nur die Laenge) — und genau
+    // so entstand der Zustand, den 1.45 nur durch Handarbeit sichtbar machen
+    // konnte. Bis 1.86 stand hier `* * * * *`; seit der vollen Grammatik in
+    // 1.87 ist das gueltig, die Definition lief erfolgreich, und der Fall
+    // bestand nur noch, wenn die Probe das anfaengliche 503 vor der ersten
+    // Runde erwischte — die Mutationsprobe von 1.87 hat das aufgedeckt.
+    await defineCronIn(own, queue, "0 24 * * *", new Date(Date.now() - 120_000));
 
     const port = 9472;
     const process_ = computeProcess(port, { QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([own]) });

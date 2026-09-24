@@ -966,3 +966,19 @@ Matrix-Fall fällt.
 
 Die Mutation nimmt die Sensibel-Prüfung aus der Spaltenwahl der Aggregate —
 `min(api_token)` läse dann ein Geheimnis. Genau der Aggregat-Fall fällt.
+
+## Läufe zu Release 1.87 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/cron-grammar-run1.log` | PostgreSQL 17 | 157 von 157, exit 0 |
+| `2026-09-24/cron-grammar-run2.log` | PostgreSQL 17 | 157 von 157, exit 0, Wiederholung |
+| `2026-09-24/cron-grammar-mutation.log` | PostgreSQL 17 | **156 von 157, exit 1 — absichtlich** |
+| `2026-09-24/cron-grammar-soak-red.log` | PostgreSQL 17 | **156 von 157, exit 1 — verworfen**: Realtime-Soak p95 6200 ms > 5000 ms kurz nach Docker-Neustart; nicht der Cron-Slice |
+| `2026-09-24/cron-grammar-local-run1.log` | Vitest lokal (Windows) | 1079 bestanden, exit 0 |
+| `2026-09-24/cron-grammar-local-mutation.log` | Vitest lokal (Windows) | **1 fehlgeschlagen, exit 1 — absichtlich** |
+
+Die Mutation nimmt die Bereichsform `a-b` aus der Feldgrammatik. Der lokale
+Grammatik-Fall und sein Zwilling im Stack (`0,30 6-8 * * 1-5`) fallen. Ein
+erster Mutationslauf liess zusätzlich den Readiness-Fall fallen — der Fund,
+der ihn repariert hat; die drei Läufe oben sind auf dem Endstand.

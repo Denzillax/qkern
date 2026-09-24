@@ -3162,3 +3162,42 @@ Migrationen.
 Nicht erbracht: nur eine Gruppierungsspalte, kein HAVING, keine Aggregate im
 OpenAPI-Dokument und nicht im SDK; eingebettete Joins bleiben die letzte
 Data-API-Lücke der Leiter.
+
+## Die ganze Uhr — Release 1.87
+
+Die Cron-Lücke der Paritätsleiter: Bis 1.86 kannte QKERN nur `*/N * * * *`
+und `M H * * *`. Jetzt gilt die klassische Fünf-Feld-Grammatik in UTC — je
+Feld `*`, `*/N`, `a`, `a-b`, `a-b/N` und Listen; Minute 0-59, Stunde 0-23,
+Tag 1-31, Monat 1-12, Wochentag 0-7 (7 ist Sonntag wie 0). Die klassische
+Regel für Tag und Wochentag: Sind beide eingeschränkt, genügt einer; sonst
+zählt der eingeschränkte. Ein Ausdruck ohne Vorkommen in fünf Jahren (der
+31. Februar) ist ein Fehler, keine Planung. `* * * * *` ist gültig — bis
+1.86 wurde es abgewiesen, was nie eine dokumentierte Zusage war.
+
+Zertifiziert gegen echtes PostgreSQL: `0,30 6-8 * * 1-5` läuft durch
+Scheduler, Datenbankfortschritt und Queue — am Dienstag, 4. August 2026, mit
+Fortschritt 06:00 und Uhr 06:31 wird genau das 06:30-Vorkommen versendet.
+Lokal die Matrix: Listen, Bereiche, Schritte über Bereiche, nur Wochentage,
+7 als Sonntag, die ODER-Regel in beiden Richtungen, Jahreswechsel, jede
+Minute, und sechs ungültige Formen.
+
+Fund der Mutationsprobe: Der Readiness-Fall des Cron-Stacks („stops
+reporting ready when every definition fails") stützte sich darauf, dass
+`* * * * *` unlesbar ist. Seit der Grammatik lief diese Definition
+**erfolgreich**, und der Fall bestand in Lauf 1 nur, weil die Probe das
+anfängliche 503 vor der ersten Runde erwischte — unter der Mutation, mit
+anderem Timing, fiel er mit „expected 200 to be 503". Er nutzt jetzt Stunde
+24 als echten Fehler (der DB-CHECK prüft nur die Länge) und trägt sich
+wieder selbst. Ein Lauf 2 auf dem Zwischenstand fiel am Realtime-Soak (p95
+6200 ms > 5000 ms, kurz nach einem Docker-Neustart) — verworfen, archiviert,
+nicht abgeschwächt; die drei Endstand-Läufe sind frisch.
+
+Mutationsprobe: Bereichsform `a-b` entfernt — Stack **156 von 157** (der
+Zwilling), lokal **1 von 1079** (die Matrix).
+
+Checkpoint `1.87.0` am 24. September 2026: Lokal 1079 bestanden, 0
+fehlgeschlagen; PostgreSQL 157 von 157, exit 0, zweimal reproduziert auf
+dem Endstand, 44 Migrationen.
+
+Nicht erbracht: keine Namen (JAN, MON), kein `@daily`, kein `L`/`W`/`#`;
+alles in UTC, keine Zeitzone je Definition.

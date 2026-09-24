@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.86.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.87.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,13 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.86.0`
-- Aktueller Slice: 1.86 Zählen unter der eigenen Grenze — `aggregateRows`
+- Paketversion: `1.87.0`
+- Aktueller Slice: 1.87 Die ganze Uhr — Fünf-Feld-Cron in UTC (`*`, `*/N`, `a`,
+  `a-b`, `a-b/N`, Listen; dom/dow-ODER-Regel; 7 = Sonntag); `* * * * *` ist
+  jetzt gültig. Fund der Mutationsprobe: Der Readiness-Fall im Cron-Stack
+  stützte sich auf die Unlesbarkeit von `* * * * *` und bestand seit der
+  Grammatik nur per Timing — jetzt mit Stunde 24 als echtem Fehler
+- Vorheriger Slice: 1.86 Zählen unter der eigenen Grenze — `aggregateRows`
   (count/sum/avg/min/max, optionale Gruppierungsspalte) unter der RLS des
   Aufrufers; Route `tables/[table]/aggregate` importiert die Fehlergrenze der
   Zeilenliste statt sie zu duplizieren; Zähler/Summen als Dezimalstrings

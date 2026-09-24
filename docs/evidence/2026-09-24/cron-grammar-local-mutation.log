@@ -1,0 +1,30 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/compute-cron.test.ts (4 tests | 1 failed) 51ms
+     × evaluates lists, ranges, steps and the day-of-month/day-of-week rule 24ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/compute-cron.test.ts > Compute cron boundary > evaluates lists, ranges, steps and the day-of-month/day-of-week rule
+Error: Unsupported cron expression.
+ ❯ parseField lib/server/compute/cron.ts:49:23
+     47|   for (const part of field.split(",")) {
+     48|     const match = /^(\*|(\d{1,2}))(?:\/(\d{1,2}))?$/.exec(part);
+     49|     if (!match) throw new Error(UNSUPPORTED);
+       |                       ^
+     50|     const step = match[3] === undefined ? 1 : Number(match[3]);
+     51|     if (!Number.isInteger(step) || step < 1 || step > max) throw new E…
+ ❯ parseCronExpression lib/server/compute/cron.ts:28:17
+ ❯ nextCronOccurrence lib/server/compute/cron.ts:80:20
+ ❯ at tests/compute-cron.test.ts:27:55
+ ❯ tests/compute-cron.test.ts:29:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 165 passed | 33 skipped (199)
+      Tests  1 failed | 1078 passed | 237 skipped (1316)
+   Start at  20:13:54
+   Duration  23.57s (transform 95.03s, setup 0ms, import 196.61s, tests 74.85s, environment 62ms)
+

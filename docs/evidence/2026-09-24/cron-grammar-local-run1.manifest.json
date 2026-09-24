@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "cron-grammar-local-run1.log",
+  "commit": "30db0b0e5c2abad37401cc265453d52c58f0be8f",
+  "commitSubject": "release: 1.86.0 Zaehlen unter der eigenen Grenze",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1079 passed | 237 skipped (1316)",
+  "passed": 1079,
+  "failed": 0,
+  "skipped": 237,
+  "images": []
+}
