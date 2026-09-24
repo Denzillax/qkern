@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.4.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.5.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,19 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.4.0`
-- Aktueller Slice: 2.4 Knöpfe, die stillhalten — Denzils feste Regel
+- Paketversion: `2.5.0`
+- Aktueller Slice: 2.5 Das Flyout — Untermenüs in der eingeklappten
+  Sidebar, im Brainstorming gewählt (Variante A gegen zweite Spalte und
+  kurz aufklappen; Entwurf in
+  `docs/superpowers/specs/2026-09-25-collapsed-sidebar-flyout-design.md`).
+  `components/console/sidebar-flyout.tsx`: öffnet nach 150 ms Hover oder
+  per Klick, 220 px, per Portal `position: fixed` rechts neben dem Icon,
+  rutscht nach oben, wenn es unten aus dem Fenster ragte, scrollt innen;
+  schliesst bei Wahl, Escape, Klick ausserhalb und 250 ms nach Verlassen
+  (Gnadenfrist). Nur eingeklappt auf Desktop (`collapsed && !isPhone`), auf
+  dem Telefon bleibt das Untermenü inline. Vertrag
+  `tests/console-flyout-contract.test.ts`
+- Vorheriger Slice: 2.4 Knöpfe, die stillhalten — Denzils feste Regel
   (Memory `stable-button-widths`): Buttons ändern ihre Grösse nie, wenn die
   Beschriftung wechselt, weder bei Zustand noch bei Sprache.
   `components/stable-label.tsx` legt alle Varianten in eine Grid-Zelle,

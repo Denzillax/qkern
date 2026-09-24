@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "sidebar-flyout-local-run1.log",
+  "commit": "85c95fc0deb77690b048ef13036145293c4cfd30",
+  "commitSubject": "docs: Entwurf Flyout fuer die eingeklappte Sidebar",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1110 passed | 241 skipped (1351)",
+  "passed": 1110,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

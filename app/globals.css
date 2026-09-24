@@ -1078,3 +1078,16 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
   .console-sidebar .console-brand button.sidebar-collapse { display: none; }
   .console-sidebar .console-brand button.sidebar-close { display: flex; }
 }
+
+/* 2.5: Flyout fuer Gruppen in der eingeklappten Sidebar */
+.sidebar-flyout { position: fixed; z-index: 80; display: flex; flex-direction: column; padding: 8px; background: #0d1928; color: #dce6f6; border: 1px solid #1d293b; border-radius: 14px; box-shadow: 0 14px 34px rgba(0,0,0,.4); animation: environment-in .12s ease-out; }
+.sidebar-flyout-title { padding: 6px 10px 8px; font: 600 12px var(--qkern-font-sans); color: #dce6f6; border-bottom: 1px solid #1b283a; margin-bottom: 4px; }
+.sidebar-flyout-list { overflow-y: auto; min-height: 0; display: grid; gap: 1px; scrollbar-width: thin; }
+.sidebar-flyout-list button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: #9fb0c8; font: 500 12.5px var(--qkern-font-sans); text-align: left; cursor: pointer; white-space: nowrap; }
+.sidebar-flyout-list button > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-flyout-list button:hover, .sidebar-flyout-list button:focus-visible { background: #0e1a2a; color: #dce6f6; outline: none; }
+.sidebar-flyout-list button.active { background: color-mix(in srgb, var(--qkern-primary) 30%, #0b1a33); color: #dce6f6; }
+.sidebar-flyout-list button .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: #3a4a63; flex: none; }
+.sidebar-flyout-list button.is-real-entry .nav-dot { background: var(--qkern-success); }
+.console-nav button.has-flyout[aria-expanded="true"] { color: #dce6f6; background: #0e1a2a; }
+@media (prefers-reduced-motion: reduce) { .sidebar-flyout { animation: none; } }

@@ -14,6 +14,7 @@ import { displayWorkspaceName } from "@/lib/console/workspace-name";
 import { NAV, NAV_ENTRIES, PLACEHOLDERS, groupOf, isPlaceholder, type ViewId } from "@/components/console/navigation";
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
+import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -78,6 +79,10 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   useEffect(() => { try { if (window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "collapsed") setCollapsedState(true); } catch {} }, []);
   const setCollapsed = useCallback((next: boolean) => { setCollapsedState(next); try { window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "collapsed" : "expanded"); } catch {} }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Auf dem Telefon ist die Sidebar eine Schublade in voller Breite; dort
+  // bleibt das Untermenü inline, das Flyout gilt nur eingeklappt auf Desktop.
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => { const query = window.matchMedia("(max-width: 760px)"); const update = () => setIsPhone(query.matches); update(); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
   const [environment, setEnvironment] = useState<Environment>("development");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const pendingApprovals = snapshot?.approvals.filter((item) => item.status === "pending").length ?? 0;
@@ -135,6 +140,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
             const isActive = activeGroup.id === group.id;
             const isOpen = group.children ? openGroups.has(group.id) : false;
             const badge = group.id === "approvals" ? pendingApprovals : 0;
+            if (collapsed && !isPhone && group.children) return <div className="nav-group" key={group.id}><SidebarFlyout group={{ ...group, children: group.children }} view={view} badge={badge} onNavigate={changeView}/></div>;
             return <div className={`nav-group${isOpen ? " is-open" : ""}`} key={group.id}>
               <button className={`${isActive ? "active" : ""}${group.children ? " has-children" : ""}`} onClick={() => { if (!group.children) { changeView(group.id); return; } if (isActive) toggleGroup(group.id); else { toggleGroup(group.id, true); changeView(group.children[0].id); } }} title={t(group.label)} aria-expanded={group.children ? isOpen : undefined}>
                 <Icon size={17}/><span>{t(group.label)}</span>{badge > 0 && <small>{badge}</small>}{group.children && <ChevronDown size={14} className="nav-caret" aria-hidden="true"/>}

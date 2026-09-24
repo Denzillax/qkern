@@ -3752,3 +3752,42 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Navigations-Buttons bleiben volle Breite; Beschriftungen
 in Tabellen (Statuswerte) sind Daten und nicht reserviert.
+
+## Das Flyout — Release 2.5
+
+Denzils Befund: Im eingeklappten Zustand sind die Untermenüs unsichtbar.
+Im Brainstorming standen drei Varianten im Browser: ein Flyout am Icon (wie
+Supabase Studio), eine zweite Spalte (wie VS Code) und ein kurzes
+Aufklappen der ganzen Leiste. Gewählt: das Flyout, per Hover mit
+Verzögerung und per Klick, Gruppen ohne Unterpunkte wechseln direkt, und
+das Flyout schliesst bei Wahl, Escape, Klick ausserhalb und nach einer
+Gnadenfrist beim Verlassen mit der Maus. Der Entwurf liegt unter
+`docs/superpowers/specs/`.
+
+`components/console/sidebar-flyout.tsx` kapselt Icon-Button und Flyout je
+Gruppe: 150 ms Hover-Verzögerung, 250 ms Gnadenfrist, 220 px breit, per
+Portal `position: fixed` rechts neben dem Icon, innen scrollbar bis
+Fensterhöhe minus Rand, und nach dem Rendern nach oben verschoben, wenn es
+unten hinausragte. Pfeiltasten bewegen den Fokus, Escape schliesst und gibt
+den Fokus ans Icon zurück. Auf dem Telefon bleibt das Untermenü inline,
+weil die Schublade voll breit ist.
+
+Im Browser bei 1280 × 720 gemessen: zwölf Flyout-Gruppen, keine
+Inline-Untermenüs; Klick öffnet, Escape schliesst, Wahl eines Unterpunkts
+wechselt die Ansicht („Einstellungen · Infrastruktur") und schliesst; Auth
+zeigt 16 Einträge, Unterkante 708 bei 720 Fensterhöhe; das Flyout von
+Einstellungen (Icon bei 559) rutscht auf 237, damit es im Fenster bleibt.
+Bei 375 px: kein Flyout, zwölf Inline-Untermenüs. Hover: bei 60 ms noch
+zu, bei 260 ms offen; beim Wechsel aufs Flyout bleibt es offen; nach dem
+Verlassen 150 ms später noch offen, nach 350 ms zu. Zwei Prüfversuche davor
+zeigten kein Flyout und waren Fehler des Tests, nicht des Codes: React
+leitet `onMouseEnter` aus dem `mouseout` des verlassenen Elements ab, und
+der `body` ist in Next ein React-Element; ein synthetisches `mouseenter`
+oder ein `mouseover` allein erreicht den Handler nicht. Das Datenbank-Flyout
+mit 18 Einträgen rutscht bei 720 px Fensterhöhe von 252 auf 21.
+
+Checkpoint `2.5.0` am 25. September 2026: Lokal 1110 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Das Flyout merkt sich nichts; bei sehr kleiner Fensterhöhe
+scrollt es, statt sich zu teilen.
