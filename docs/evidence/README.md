@@ -1011,3 +1011,15 @@ Dienst, und nur der Real-DB-Fall prüft sie.
 
 Die Mutation protokolliert nur noch Erfolge — der Real-DB-Fall mit dem
 gescheiterten Eintrag fällt, ebenso sein lokaler Zwilling.
+
+## Läufe zu Release 1.90 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/connection-room-run1.log` | PostgreSQL 17 | 160 von 160, exit 0 |
+| `2026-09-24/connection-room-run2.log` | PostgreSQL 17 | 160 von 160, exit 0, Wiederholung |
+| `2026-09-24/connection-room-mutation.log` | PostgreSQL 17 | **159 von 160, exit 1 — absichtlich** |
+| `2026-09-24/connection-room-local-run1.log` | Vitest lokal (Windows) | 1088 bestanden, exit 0 |
+
+Die Mutation nimmt den `max_connections`-Parameter aus dem Compose — der
+Cluster läuft wieder mit 100, und genau der Verbindungs-Fall fällt.

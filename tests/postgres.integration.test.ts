@@ -56,6 +56,19 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await Promise.all([owner?.end(), runtime?.end(), auth?.end()]);
   });
 
+  /**
+   * Die Verbindungsgrenze des Stacks (1.90): Die Suite deklariert 76 Pools
+   * mit 233 Verbindungen, und vitest faehrt Dateien parallel. Mit der
+   * Voreinstellung 100 riss in 1.89 ein Lauf mit "remaining connection slots
+   * are reserved". Der Wert steht im Compose; hier wird geprueft, dass er
+   * auch wirkt — die Mutationsprobe nimmt den Parameter aus dem Compose, und
+   * genau dieser Fall faellt.
+   */
+  it("runs the certification cluster with room for every declared pool", async () => {
+    const result = await owner.query<{ max_connections: string }>("SHOW max_connections");
+    expect(Number(result.rows[0]?.max_connections)).toBeGreaterThanOrEqual(300);
+  });
+
   it("keeps global auth and tenant runtime privileges separated", async () => {
     await expect(runtime.query("SELECT id FROM users LIMIT 1")).rejects.toBeTruthy();
     await expect(auth.query("SELECT id FROM projects LIMIT 1")).rejects.toBeTruthy();

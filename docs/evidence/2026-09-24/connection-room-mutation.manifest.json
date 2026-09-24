@@ -1,0 +1,17 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "connection-room-mutation.log",
+  "commit": "d965abf5d29e7eefedad157284760423a42e64ca",
+  "commitSubject": "release: 1.89.0 Was gelaufen ist, steht",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 159 passed (160)",
+  "passed": 159,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "node:24-alpine",
+    "postgres:17-alpine"
+  ],
+  "migrationsApplied": 45
+}

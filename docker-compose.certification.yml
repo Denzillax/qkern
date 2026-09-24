@@ -12,6 +12,12 @@ name: qkern-v023-certification
 services:
   postgres:
     image: postgres:17-alpine
+    # 300 statt der Voreinstellung 100: Die Suite deklariert 76 Pools mit 233
+    # Verbindungen, und vitest faehrt Dateien parallel. Mit 100 riss ein Lauf
+    # in 1.89 mit "remaining connection slots are reserved" — in einem fremden
+    # Fall, nicht im Slice. Der Wert steht hier, und ein Real-DB-Fall prueft
+    # ihn (1.90).
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: qkern
       POSTGRES_PASSWORD: qkern_local_only

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.89.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.90.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,14 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.89.0`
-- Aktueller Slice: 1.89 Was gelaufen ist, steht — Aufrufprotokoll je Function
+- Paketversion: `1.90.0`
+- Aktueller Slice: 1.90 Platz für jeden Pool — der Zertifizierungs-Postgres
+  läuft mit `max_connections=300` (Compose-Parameter), und ein Real-DB-Fall
+  prüft `SHOW max_connections` im Lauf. Damit ist die lokal belegbare Liste
+  der Paritätsleiter abgearbeitet; offen bleiben nur Sprosse 7 (SDK/CLI über
+  CI) und 10 (PITR/Restore, SSL-Postgres) — beide brauchen Infrastruktur
+  ausserhalb dieser Maschine
+- Vorheriger Slice: 1.89 Was gelaufen ist, steht — Aufrufprotokoll je Function
   (Migration 0045, append-only): Beginn, Dauer, Ausgang, Statuscode oder fester
   Fehlercode; bewusst kein stdout/stderr (Haltung aus 1.22). Ein Protokollfehler
   stürzt den Aufruf nicht (`onLogFailure`). Route

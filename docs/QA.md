@@ -3273,3 +3273,31 @@ Migrationen; Functions-Stack 27 von 27, exit 0, zweimal reproduziert.
 
 Nicht erbracht: keine Inhaltslogs (stdout/stderr), keine Aufbewahrungsregel
 für das Protokoll (es wächst), keine Console-Fläche.
+
+## Platz für jeden Pool — Release 1.90
+
+Der Befund aus 1.89, behoben: Der Zertifizierungs-Postgres lief mit der
+Voreinstellung `max_connections=100`, während die Suite 76 Pools mit 233
+deklarierten Verbindungen öffnet und vitest Dateien parallel fährt. Einmal
+riss das — `remaining connection slots are reserved for roles with the
+SUPERUSER attribute` in einem fremden, sonst grünen Fall. Jetzt startet der
+Cluster mit `max_connections=300` (Compose-Parameter), und ein Real-DB-Fall
+prüft `SHOW max_connections` im Lauf: Ein Parameter, den niemand prüft, ist
+genau die Art Behauptung, gegen die dieses Projekt seine Mutationsproben
+fährt.
+
+Mutationsprobe: Der Parameter aus dem Compose entfernt — **159 von 160**,
+genau der Verbindungs-Fall; der Cluster läuft dann wieder mit 100.
+
+Checkpoint `1.90.0` am 24. September 2026: Lokal 1088 bestanden, 0
+fehlgeschlagen; PostgreSQL 160 von 160, exit 0, zweimal reproduziert, 45
+Migrationen.
+
+Damit ist die lokal belegbare Liste der Paritätsleiter abgearbeitet (1.78
+bis 1.90: dreizehn Releases, elf davon mit Real-Service-Zertifizierung).
+Offen bleiben Sprosse 7 (SDK/CLI-Publishing mit Multi-OS-Evidenz über CI)
+und Sprosse 10 (PITR-/Restore-Drill, SSL-PostgreSQL, belegter Realtime-
+Production-Start) — beide brauchen Infrastruktur ausserhalb dieser Maschine.
+
+Nicht erbracht: 300 ist eine gemessene Reserve, keine abgeleitete Grenze —
+wächst die Suite weiter, muss der Wert mitwachsen, und der Fall sagt es.

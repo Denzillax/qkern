@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.89.0`, 24. September 2026. Diese Datei wird bei jedem Release
+> Stand: `1.90.0`, 24. September 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein

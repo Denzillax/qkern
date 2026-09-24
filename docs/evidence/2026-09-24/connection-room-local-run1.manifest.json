@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "connection-room-local-run1.log",
+  "commit": "d965abf5d29e7eefedad157284760423a42e64ca",
+  "commitSubject": "release: 1.89.0 Was gelaufen ist, steht",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1088 passed | 241 skipped (1329)",
+  "passed": 1088,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}
