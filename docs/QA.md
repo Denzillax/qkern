@@ -3334,3 +3334,31 @@ MinIO/ClamAV 8, Mailpit/Dex 7, Functions 27).
 
 Nicht erbracht: `modules` und `gaps` sind weiterhin handgepflegter Text ohne
 Vertrag; die Seite liest die Manifeste bei jeder Anfrage (kein Cache).
+
+## Schwebende Flächen — Release 1.92
+
+Redesign von Landingpage, Konto-Seiten und Console nach der Formensprache
+einer Framer-SaaS-Referenz: schwebende Kapsel-Navigation mit weichem
+Schatten, vollrunde Bedienelemente, Flächen mit Radius 24 px, Pill-Badges
+und -Zähler, pastellene Halos — und ein zentrierter Hero, unter dem die
+Belegtafel als „schwebendes Dashboard" steht, dazu eine Kennzahlenreihe aus
+denselben Manifesten. Das Markenblau und der Light/Dark-Modus bleiben
+unverändert die Tokens am Anfang von `globals.css`; die neue Formschicht
+liegt am Ende der Datei und überschreibt ausschliesslich Radien, Schatten,
+Abstände und Grössen, nie Farbe. Die Console bekam keine Markup-Änderung —
+nur gerundete Karten, Navigations-Pills, eine Kapsel-Kopfleiste und lesbare
+Schriftgrössen (die alten 7–9 px sind auf 10–13 px gewachsen).
+
+Belegt am laufenden Dev-Server in beiden Modi: Hero, Belegtafel, Kennzahlen,
+Feature-Karten, Methode, Preise, Anmeldeseite. Die Console konnte in dieser
+Sitzung nicht bebildert werden — sie braucht ein Konto, und Konten lege ich
+nicht an; die Sichtprüfung dort steht aus.
+
+Checkpoint `1.92.0` am 24. September 2026: Lokal 1093 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert. Keine eigene
+Mutationsprobe: Ein Redesign trägt keine neue Zusage; die Verträge aus 1.91
+halten über den Umbau hinweg.
+
+Nicht erbracht: Console nur umgestylt, nicht bebildert; keine Testimonials
+oder FAQ wie in der Referenz (QKERN hat keine Kunden, die zitierbar wären —
+erfundene Stimmen wären die erste unbelegte Zusage der Seite).

@@ -1,23 +1,25 @@
 /*
- * Startseite: Prüfprotokoll.
+ * Startseite, Formensprache seit 1.92: schwebende Flaechen statt Kanten.
  *
- * Formregel dieser Seite, überall eingehalten:
- *   Flächen und Zeilen haben Radius 0. Bedienelemente behalten die 9px der
- *   Marke. Präzision liegt in den Kanten, Bedienbarkeit in den Knöpfen.
+ * Radien 24px fuer Flaechen, vollrund fuer Bedienelemente und Badges, weiche
+ * Schatten statt Linien. Farbe bleibt das eine Markenblau; die pastellenen
+ * Verlaeufe der Feature-Karten sind aus ihm gemischt, nie eine zweite Marke.
+ * Alle Werte haengen an den Variablen aus globals.css, damit der Dark Mode
+ * ohne zweite Pflegestelle weiterlaeuft.
  *
- * Farbe: genau ein Akzent, das Markenblau. Status wird über Typografie und
- * Umkehrung gezeigt, nicht über eine Ampel. Eine Seite, die von Nachprüfbarkeit
- * handelt, braucht kein Grün, das Zustimmung suggeriert.
- *
- * Alle Farbwerte hängen an den Variablen aus globals.css, damit der vorhandene
- * Dark Mode ohne zweite Pflegestelle weiterläuft.
+ * Signaturelement: die Belegtafel, das schwebende Dashboard unter dem
+ * zentrierten Hero. Ihre Zahlen kommen aus den Manifesten (1.91).
  */
 
 .page {
-  --rule: color-mix(in srgb, var(--qkern-border) 88%, transparent);
-  --rule-strong: color-mix(in srgb, var(--qkern-text) 22%, transparent);
   --mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --rule: color-mix(in srgb, var(--qkern-border) 80%, transparent);
+  --tint: color-mix(in srgb, var(--qkern-primary) 7%, var(--qkern-surface));
+  --halo: color-mix(in srgb, var(--qkern-primary) 16%, transparent);
+  --halo-2: color-mix(in srgb, #7c5cff 14%, transparent);
+  --halo-3: color-mix(in srgb, #12b3a6 12%, transparent);
   --gutter: clamp(24px, 5vw, 72px);
+  overflow-x: clip;
 }
 
 .shell {
@@ -25,49 +27,97 @@
   margin: 0 auto;
 }
 
-/* ── Hero ─────────────────────────────────────────────────────────────── */
+/* Hero: zentriert, mit Halo */
 
 .hero {
-  padding: 64px 0 76px;
-  border-bottom: 1px solid var(--rule);
+  position: relative;
+  padding: 96px 0 40px;
+  text-align: center;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -200px 0 auto;
+  height: 720px;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 50% 30%, var(--halo), transparent 70%),
+    radial-gradient(35% 40% at 18% 60%, var(--halo-2), transparent 70%),
+    radial-gradient(35% 40% at 82% 60%, var(--halo-3), transparent 70%);
+  filter: blur(20px);
 }
 
 .heroGrid {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: var(--gutter);
-  align-items: start;
+  gap: 52px;
+  justify-items: center;
+}
+
+.heroCopy {
+  max-width: 820px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 18px 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-soft);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--qkern-text-muted);
+}
+
+.badge i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--qkern-success);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--qkern-success) 18%, transparent);
 }
 
 .heroCopy h1 {
-  margin: 0;
-  font-size: clamp(38px, 5vw, 60px);
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-  font-weight: 750;
+  margin: 28px 0 0;
+  font-size: clamp(44px, 7vw, 88px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  font-weight: 700;
   text-wrap: balance;
 }
 
 .heroCopy p {
-  margin: 22px 0 0;
-  max-width: 46ch;
-  font-size: 17px;
-  line-height: 1.6;
+  margin: 26px auto 0;
+  max-width: 58ch;
+  font-size: clamp(16px, 1.5vw, 20px);
+  line-height: 1.55;
   color: var(--qkern-text-muted);
 }
 
 .heroActions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
-  margin-top: 34px;
+  margin-top: 36px;
 }
 
-/* ── Signaturelement: die Belegtafel ──────────────────────────────────── */
+/* Signaturelement: die Belegtafel als schwebendes Dashboard */
 
 .record {
-  border: 1px solid var(--rule-strong);
+  width: min(880px, 100%);
+  border-radius: var(--radius-card);
   background: var(--qkern-surface);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+  text-align: left;
 }
 
 .recordHead {
@@ -75,10 +125,10 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--rule-strong);
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--rule);
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--qkern-text-muted);
@@ -92,18 +142,16 @@
 .row {
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
-  padding: 13px 18px;
+  padding: 15px 24px;
   border-bottom: 1px solid var(--rule);
 }
 
-.row:last-child {
-  border-bottom: 0;
-}
+.row:last-child { border-bottom: 0; }
 
 .rowName {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -112,215 +160,246 @@
   display: block;
   margin-top: 3px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 400;
-  letter-spacing: 0.04em;
   color: var(--qkern-text-muted);
 }
 
 .count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  background: var(--qkern-primary-muted);
   font-family: var(--mono);
-  font-size: 19px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
   color: var(--qkern-primary);
   white-space: nowrap;
 }
 
-/*
- * Die Gegenprobe. Sie ist absichtlich fehlgeschlagen, und das ist die Pointe
- * der ganzen Tafel: Ein Test, der nicht rot werden kann, prüft nichts. Deshalb
- * kehrt diese eine Zeile die Fläche um, statt eine zweite Farbe einzuführen.
- */
+/* Die Gegenprobe: absichtlich rot, deshalb die einzige umgekehrte Zeile. */
 .rowCounter {
   background: var(--qkern-dark);
   color: #f2f6fd;
   border-bottom: 0;
 }
 
-.rowCounter .rowName small {
-  color: #9db2d6;
-}
+.rowCounter .rowName small { color: #9db2d6; }
 
 .rowCounter .count {
+  background: color-mix(in srgb, #ffffff 12%, transparent);
   color: #f2f6fd;
 }
 
-/*
- * Gestaffelte Einblendung der Belegtafel.
- *
- * Bewegt wird ausschliesslich die Position, nie die Deckkraft. Eine Animation,
- * die Inhalt erst sichtbar macht, laesst ihn unsichtbar zurueck, wenn sie nicht
- * laeuft: bei abgeschaltetem JavaScript, in einem nicht zeichnenden Tab, bei
- * einem Fehler im Stylesheet. Ausgerechnet der Beleg darf nicht von einer
- * Animation abhaengen.
- *
- * Reines CSS und an das Laden gebunden, nicht an das Scrollen: Die Tafel steht
- * ohnehin im ersten Bild. Die Reihenfolge folgt der Leserichtung und macht
- * sichtbar, dass die letzte Zeile eine andere ist als die davor. Mehr Bewegung
- * hat die Seite nicht.
- */
 @media (prefers-reduced-motion: no-preference) {
-  .record > * {
-    animation: settle 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-    animation-delay: calc(var(--index, 0) * 70ms);
-  }
+  .record { animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards 0.1s; }
+  .row { animation: settle 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: calc(0.2s + var(--index, 0) * 60ms); }
 }
 
-@keyframes settle {
-  from { transform: translateY(9px); }
-  to { transform: translateY(0); }
+@keyframes rise { from { transform: translateY(28px); } to { transform: translateY(0); } }
+@keyframes settle { from { transform: translateY(9px); } to { transform: translateY(0); } }
+
+/* Kennzahlen: die grossen Zahlen der Referenz, aus denselben Manifesten */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 56px 0 24px;
 }
 
-/* ── Abschnitte ───────────────────────────────────────────────────────── */
-
-.section {
-  padding: 88px 0;
-  border-bottom: 1px solid var(--rule);
+.stat {
+  padding: 26px 24px;
+  border-radius: var(--radius-card);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
+  text-align: center;
 }
+
+.stat strong {
+  display: block;
+  font-size: clamp(34px, 4vw, 52px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat strong em {
+  font-style: normal;
+  color: var(--qkern-primary);
+}
+
+.stat span {
+  display: block;
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--qkern-text-muted);
+}
+
+/* Abschnitte */
+
+.section { padding: 96px 0; }
 
 .sectionHead {
   max-width: 62ch;
-  margin-bottom: 44px;
+  margin: 0 auto 48px;
+  text-align: center;
 }
 
 .sectionHead h2 {
   margin: 0;
-  font-size: clamp(27px, 3.2vw, 38px);
-  line-height: 1.12;
-  letter-spacing: -0.03em;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.06;
+  letter-spacing: -0.035em;
   font-weight: 700;
+  text-wrap: balance;
 }
 
 .sectionHead p {
-  margin: 16px 0 0;
-  font-size: 16px;
-  line-height: 1.62;
+  margin: 16px auto 0;
+  font-size: 16.5px;
+  line-height: 1.6;
   color: var(--qkern-text-muted);
 }
 
 .eyebrow {
-  display: block;
-  margin-bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--qkern-primary-muted);
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--qkern-primary);
 }
 
-/* ── Modulverzeichnis: zwei Spalten, gruppiert ────────────────────────── */
+/* Modulverzeichnis: Feature-Karten mit pastellenem Verlauf */
 
 .ledger {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 var(--gutter);
-  border-top: 1px solid var(--rule-strong);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .entry {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: baseline;
-  gap: 14px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--rule);
+  align-items: start;
+  gap: 10px 14px;
+  padding: 28px 26px 26px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--rule);
+  background:
+    radial-gradient(120% 80% at 100% 0%, var(--halo), transparent 60%),
+    var(--qkern-surface);
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .25s;
+}
+
+.entry:nth-child(3n+2) { background: radial-gradient(120% 80% at 100% 0%, var(--halo-2), transparent 60%), var(--qkern-surface); }
+.entry:nth-child(3n) { background: radial-gradient(120% 80% at 100% 0%, var(--halo-3), transparent 60%), var(--qkern-surface); }
+
+@media (hover: hover) {
+  .entry:hover { transform: translateY(-4px); box-shadow: var(--shadow-soft); }
 }
 
 .entry h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 650;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.015em;
 }
 
 .entry p {
   grid-column: 1 / -1;
-  margin: 6px 0 0;
-  font-size: 13.5px;
+  margin: 4px 0 0;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--qkern-text-muted);
 }
 
-/*
- * Statuswort je Modul. Bewusst ohne Versalien: Neun grossgeschriebene
- * Mikro-Labels untereinander lesen sich als Dekoration, obwohl sie Daten sind.
- */
 .state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 500;
-  letter-spacing: 0.01em;
   white-space: nowrap;
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
 }
 
 .stateDone { color: var(--qkern-primary); }
 .statePart { color: var(--qkern-text-muted); }
+.stateOpen { color: var(--qkern-text-muted); font-style: italic; }
 
-/*
- * "offen" wird nicht ueber Deckkraft abgesetzt. Das druecke den Kontrast unter
- * die zugaengliche Grenze, und ausgerechnet die offenen Punkte darf niemand
- * schlechter lesen koennen als die erledigten.
- */
-.stateOpen {
-  color: var(--qkern-text-muted);
-  font-style: italic;
-}
-
-/* ── Methode: ein breiter Schritt, zwei schmale ───────────────────────── */
+/* Methode: drei Karten, die erste breit */
 
 .method {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1px;
-  background: var(--rule-strong);
-  border: 1px solid var(--rule-strong);
+  gap: 16px;
 }
 
 .step {
-  background: var(--qkern-background);
-  padding: 30px 26px 32px;
+  padding: 32px 28px;
+  border-radius: var(--radius-card);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
 }
+
+.step:first-child { background: var(--tint); }
 
 .step h3 {
   margin: 0 0 12px;
-  font-size: 21px;
+  font-size: 22px;
   letter-spacing: -0.025em;
   font-weight: 700;
 }
 
 .step p {
   margin: 0;
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.6;
   color: var(--qkern-text-muted);
 }
 
-.stepLead {
-  font-size: 15px;
-}
+.stepLead { font-size: 15.5px; }
 
-/* ── AI Bridge: die eine dunkle Bahn der Seite ────────────────────────── */
+/* AI Bridge: die dunkle Tafel, jetzt als gerundete Flaeche */
 
-.bridge {
-  background: var(--qkern-dark);
-  color: #eef3fb;
-  padding: 92px 0;
-}
+.bridge { padding: 24px 0 96px; }
 
 .bridgeGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
   gap: var(--gutter);
   align-items: center;
+  padding: clamp(32px, 5vw, 64px);
+  border-radius: 32px;
+  background:
+    radial-gradient(70% 90% at 100% 0%, color-mix(in srgb, var(--qkern-primary) 45%, transparent), transparent 60%),
+    var(--qkern-dark);
+  color: #eef3fb;
+  box-shadow: var(--shadow-float);
 }
 
 .bridge h2 {
   margin: 0;
-  font-size: clamp(27px, 3.2vw, 38px);
-  line-height: 1.12;
+  font-size: clamp(28px, 3.4vw, 42px);
+  line-height: 1.08;
   letter-spacing: -0.03em;
   font-weight: 700;
 }
@@ -333,9 +412,7 @@
   color: #a9bcd8;
 }
 
-.bridgeEyebrow {
-  color: #7ea9ff;
-}
+.bridgeEyebrow { background: color-mix(in srgb, #ffffff 12%, transparent); color: #9dc0ff; }
 
 .bridgeList {
   list-style: none;
@@ -345,51 +422,44 @@
   gap: 11px;
 }
 
-.bridgeList li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14.5px;
-  color: #d8e3f5;
-}
-
-.bridgeList svg {
-  color: #7ea9ff;
-  flex: none;
-}
+.bridgeList li { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: #d8e3f5; }
+.bridgeList svg { color: #7ea9ff; flex: none; }
 
 .changeSet {
-  border: 1px solid #26364f;
-  background: #0e1828;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
 }
 
 .changeHead {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #26364f;
+  padding: 16px 20px;
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.06em;
   color: #9db2d6;
 }
 
-.changeHead strong {
-  color: #eef3fb;
-  font-weight: 600;
-}
+.changeHead strong { color: #eef3fb; font-weight: 600; }
 
 .changeHead span {
   margin-left: auto;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #ffffff 10%, transparent);
   font-size: 9.5px;
-  letter-spacing: 0.14em;
-  color: #7ea9ff;
+  letter-spacing: 0.12em;
+  color: #9dc0ff;
 }
 
 .prompt {
-  padding: 18px;
-  border-bottom: 1px solid #26364f;
+  padding: 18px 20px;
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
   font-size: 13.5px;
   line-height: 1.55;
   color: #c3d2ea;
@@ -402,7 +472,7 @@
   font-size: 10.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7ea9ff;
+  color: #9dc0ff;
   font-weight: 600;
 }
 
@@ -410,226 +480,187 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #26364f;
+  padding: 14px 20px;
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
   font-size: 13.5px;
   color: #eef3fb;
 }
 
 .changeStep:last-child { border-bottom: 0; }
+.changeStep small { display: block; margin-top: 3px; font-family: var(--mono); font-size: 10.5px; color: #9db2d6; }
+.changeStep svg { margin-left: auto; color: #7ea9ff; flex: none; }
 
-.changeStep small {
-  display: block;
-  margin-top: 3px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: #9db2d6;
-}
-
-.changeStep svg {
-  margin-left: auto;
-  color: #7ea9ff;
-  flex: none;
-}
-
-/* ── Drei Schnittstellen: vertikaler Stapel ───────────────────────────── */
+/* Drei Schnittstellen: Karten */
 
 .interfaces {
   display: grid;
-  gap: 0;
-  border-top: 1px solid var(--rule-strong);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .interfaceRow {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--gutter);
-  padding: 26px 0;
-  border-bottom: 1px solid var(--rule);
+  gap: 10px;
+  padding: 28px 26px;
+  border-radius: var(--radius-card);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
 }
 
-.interfaceRow h3 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.interfaceRow p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--qkern-text-muted);
-}
+.interfaceRow h3 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.015em; }
+.interfaceRow p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--qkern-text-muted); }
 
 .interfaceRow code {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: start;
+  margin-top: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--qkern-primary-muted);
   font-family: var(--mono);
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
-  color: var(--qkern-text-muted);
+  font-size: 11px;
+  color: var(--qkern-primary);
   white-space: nowrap;
 }
 
-/* ── Was noch fehlt ───────────────────────────────────────────────────── */
+/* Was noch fehlt: Chips */
 
 .gaps {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 var(--gutter);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: 980px;
+  margin: 0 auto;
 }
 
 .gap {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
-  padding: 17px 0;
-  border-bottom: 1px solid var(--rule);
-  font-size: 14.5px;
-  line-height: 1.5;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 18px 12px 14px;
+  border-radius: 18px;
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
-.gap svg {
-  margin-top: 2px;
-  color: var(--qkern-text-muted);
-  flex: none;
-}
+.gap svg { margin-top: 2px; color: var(--qkern-text-muted); flex: none; }
 
-/* ── Preise: ein Angebot gross, zwei begleitend ───────────────────────── */
+/* Preise: gerundete Karten, Pro hervorgehoben */
 
 .plans {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  gap: var(--gutter);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
 }
 
 .planMain {
-  border: 1px solid var(--qkern-primary);
-  padding: 34px 32px 32px;
+  padding: 36px 32px 32px;
+  border-radius: var(--radius-card);
+  background:
+    radial-gradient(90% 70% at 100% 0%, var(--halo), transparent 60%),
+    var(--qkern-surface);
+  border: 1px solid color-mix(in srgb, var(--qkern-primary) 45%, var(--rule));
+  box-shadow: var(--shadow-float);
 }
 
-.planSide {
-  display: grid;
-  gap: 0;
-  border-top: 1px solid var(--rule-strong);
-}
+.planSide { display: grid; gap: 16px; }
 
 .planSide article {
-  padding: 22px 0;
-  border-bottom: 1px solid var(--rule);
+  padding: 26px 26px 24px;
+  border-radius: var(--radius-card);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
 }
 
 .planName {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--qkern-primary-muted);
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--qkern-text-muted);
+  color: var(--qkern-primary);
 }
 
 .price {
   display: flex;
   align-items: baseline;
   gap: 7px;
-  margin: 12px 0 14px;
-  font-family: var(--mono);
+  margin: 16px 0 14px;
   font-variant-numeric: tabular-nums;
 }
 
-.price strong {
-  font-size: 42px;
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
+.price strong { font-size: 48px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
+.planSide .price strong { font-size: 30px; }
+.price span { font-size: 13px; color: var(--qkern-text-muted); }
 
-.planSide .price strong { font-size: 26px; }
-
-.price span {
-  font-size: 12px;
-  color: var(--qkern-text-muted);
-}
-
-.planMain ul {
-  list-style: none;
-  margin: 0 0 26px;
-  padding: 0;
-  display: grid;
-  gap: 9px;
-  font-size: 14.5px;
-}
-
-.planMain li {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
+.planMain ul { list-style: none; margin: 0 0 28px; padding: 0; display: grid; gap: 10px; font-size: 14.5px; }
+.planMain li { display: flex; align-items: center; gap: 9px; }
 .planMain li svg { color: var(--qkern-primary); flex: none; }
-
-.planSide p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--qkern-text-muted);
-}
+.planSide p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--qkern-text-muted); }
 
 .draftNote {
-  margin: 30px 0 0;
-  padding-top: 18px;
-  border-top: 1px solid var(--rule);
+  max-width: 70ch;
+  margin: 28px auto 0;
+  text-align: center;
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.6;
-  letter-spacing: 0.02em;
   color: var(--qkern-text-muted);
 }
 
-/* ── Abschluss ────────────────────────────────────────────────────────── */
+/* Abschluss: die blaue Flaeche */
 
-.close {
-  background: var(--qkern-dark);
-  color: #eef3fb;
-  padding: 96px 0;
+.close { padding: 0 0 96px; }
+
+.close .shell {
+  padding: clamp(48px, 7vw, 96px) 24px;
+  border-radius: 32px;
+  background:
+    radial-gradient(60% 80% at 20% 100%, color-mix(in srgb, #ffffff 18%, transparent), transparent 60%),
+    var(--qkern-primary);
+  color: #ffffff;
   text-align: center;
+  box-shadow: var(--shadow-float);
 }
 
 .close h2 {
   margin: 20px 0 0;
-  font-size: clamp(30px, 4vw, 46px);
-  line-height: 1.1;
-  letter-spacing: -0.035em;
-  font-weight: 750;
+  font-size: clamp(32px, 4.5vw, 56px);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  font-weight: 700;
 }
 
-.close p {
-  margin: 16px auto 32px;
-  max-width: 48ch;
-  font-size: 16px;
-  line-height: 1.6;
-  color: #a9bcd8;
+.close p { margin: 16px auto 32px; max-width: 48ch; font-size: 16px; line-height: 1.6; color: #dbe6ff; }
+
+/* Mobil */
+
+@media (max-width: 960px) {
+  .ledger, .interfaces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .method, .bridgeGrid, .plans { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* ── Mobil ────────────────────────────────────────────────────────────── */
-
-@media (max-width: 900px) {
-  .heroGrid,
-  .bridgeGrid,
-  .plans,
-  .ledger,
-  .gaps { grid-template-columns: minmax(0, 1fr); }
-
-  .method { grid-template-columns: minmax(0, 1fr); }
-
-  .interfaceRow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .hero { padding: 44px 0 60px; }
-  .section { padding: 60px 0; }
-  .bridge, .close { padding: 64px 0; }
-  .planMain { padding: 26px 22px 24px; }
+@media (max-width: 640px) {
+  .hero { padding: 64px 0 32px; }
+  .section { padding: 64px 0; }
+  .ledger, .interfaces, .stats { grid-template-columns: minmax(0, 1fr); }
+  .heroActions { flex-direction: column; align-items: stretch; }
+  .row { padding: 13px 18px; }
+  .recordHead { padding: 14px 18px; }
+  .close .shell { border-radius: 24px; }
+  .bridgeGrid { border-radius: 24px; }
 }

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.91.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.92.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,15 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.91.0`
-- Aktueller Slice: 1.91 Die Seite liest, statt abzuschreiben — die Landingpage
+- Paketversion: `1.92.0`
+- Aktueller Slice: 1.92 Schwebende Flächen — Redesign von Landingpage und
+  Console nach der Formensprache einer Framer-SaaS-Referenz (schwebende
+  Kapsel-Navigation, vollrunde Bedienelemente, Radien 24px, weiche Schatten,
+  pastellene Halos aus dem Markenblau); Farben und beide Modi bleiben die
+  Tokens am Anfang von `globals.css`, die Formschicht liegt bewusst am Ende
+  der Datei und überschreibt nie Farbe. `app/page.module.css` ist neu; die
+  Console ist nur umgestylt, kein Markup geändert
+- Vorheriger Slice: 1.91 Die Seite liest, statt abzuschreiben — die Landingpage
   (`app/page.tsx`) liest ihre Prüflauf-Zahlen aus den archivierten Manifesten
   (`lib/server/evidence/certification-summary.ts`, bester grüner Lauf je Stack,
   Datum des jüngsten, Mutationsläufe als Gegenproben); Vertrag

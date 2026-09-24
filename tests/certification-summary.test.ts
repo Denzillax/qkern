@@ -28,6 +28,7 @@ describe("certification summary", () => {
       { name: "Object Storage", stack: "MinIO und ClamAV", passed: 8, date: "2026-08-16" },
     ]);
     expect(summary.mutationRuns).toBe(1);
+    expect(summary.archivedRuns).toBe(5);
     expect(summary.latestDate).toBe("2026-09-24");
   });
 

@@ -33,6 +33,8 @@ export type CertificationSummary = {
   rows: CertificationRow[];
   /** Archivierte Mutationslaeufe: absichtlich rot, jeder genau dort, wo er soll. */
   mutationRuns: number;
+  /** Alle archivierten Manifeste — gruen wie rot. Das ist die Zahl der Laeufe, nicht der Faelle. */
+  archivedRuns: number;
   latestDate: string | null;
 };
 
@@ -60,7 +62,7 @@ export function summarizeCertification(manifests: readonly ArchivedManifest[]): 
   const mutationRuns = manifests.filter((entry) =>
     /mutation/.test(entry.file) && entry.failed > 0 && entry.exitCode !== 0).length;
   const latestDate = rows.map((row) => row.date).sort().at(-1) ?? null;
-  return { rows, mutationRuns, latestDate };
+  return { rows, mutationRuns, archivedRuns: manifests.length, latestDate };
 }
 
 export async function readArchivedManifests(root = path.resolve(process.cwd(), "docs/evidence")): Promise<ArchivedManifest[]> {

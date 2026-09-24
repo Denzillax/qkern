@@ -1035,3 +1035,14 @@ Cluster läuft wieder mit 100, und genau der Verbindungs-Fall fällt.
 Dieser Slice ändert keinen Dienst-Code. Die Mutation lässt die Seite den
 schlechtesten statt den besten grünen Lauf nehmen (85 statt 160) — genau der
 Zusammenfassungs-Fall und der Landingpage-Vertrag fallen.
+
+## Läufe zu Release 1.92 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/redesign-local-run1.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0 |
+| `2026-09-24/redesign-local-run2.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0, Wiederholung |
+
+Ein Redesign trägt keine eigene Zusage, die eine Mutationsprobe brechen
+könnte; die Verträge aus 1.91 (keine literalen Zahlen, gleiche Zahlen wie
+STATUS.md) halten über den Umbau hinweg.

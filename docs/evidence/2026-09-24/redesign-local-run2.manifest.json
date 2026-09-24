@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "redesign-local-run2.log",
+  "commit": "f3b699d2169e737cb51c49f1d27cd1e08fe6bdd9",
+  "commitSubject": "release: 1.91.0 Die Seite liest, statt abzuschreiben",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1093 passed | 241 skipped (1334)",
+  "passed": 1093,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

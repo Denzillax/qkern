@@ -44,6 +44,10 @@ export default async function HomePage() {
         <div className={styles.shell}>
           <div className={styles.heroGrid}>
             <div className={styles.heroCopy}>
+              <span className={styles.badge}>
+                <i aria-hidden />
+                {certification.archivedRuns} archivierte Prüfläufe
+              </span>
               <h1>Backend-Bausteine, die ihre Zusagen belegen.</h1>
               <p>
                 Datenbank, Auth, Storage, Realtime und Functions. Zu jeder Zusage auf dieser
@@ -77,6 +81,15 @@ export default async function HomePage() {
                 <span className={styles.count}>{certification.mutationRuns} Läufe</span>
               </div>
             </div>
+          </div>
+
+          <div className={styles.stats}>
+            {runs.slice(0, 4).map((run) => (
+              <div className={styles.stat} key={run.name}>
+                <strong>{run.passed}<em>+</em></strong>
+                <span>{run.name} gegen {run.stack}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>

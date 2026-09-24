@@ -666,3 +666,152 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
   .settings-nav { flex-direction: row; overflow-x: auto; }
   .settings-nav button { white-space: nowrap; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Formensprache seit 1.92: schwebende Flaechen, vollrunde Bedienelemente.
+ *
+ * Diese Schicht liegt bewusst am Ende der Datei und ueberschreibt nur Form
+ * (Radien, Schatten, Abstaende, Groessen) — nie Farbe. Markenblau und die
+ * beiden Modi bleiben die Tokens am Anfang der Datei; wer den Dark Mode
+ * pflegt, pflegt ihn weiterhin an genau einer Stelle.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --radius-card: 24px;
+  --radius-control: 14px;
+  --radius-pill: 999px;
+  --shadow-soft: 0 12px 40px rgba(8, 17, 32, 0.08), 0 1px 2px rgba(8, 17, 32, 0.04);
+  --shadow-float: 0 32px 90px rgba(0, 77, 213, 0.16), 0 2px 6px rgba(8, 17, 32, 0.06);
+  --qkern-surface-2: #f1f4f9;
+}
+
+:root[data-theme="dark"] {
+  --shadow-soft: 0 12px 40px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 32px 90px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --qkern-surface-2: #141f33;
+}
+
+body { font-size: 15.5px; }
+
+/* Kopfzeile: die schwebende Kapsel */
+.site-header {
+  height: auto;
+  padding: 14px 0;
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.site-header .header-inner {
+  height: 64px;
+  padding: 0 10px 0 22px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--qkern-surface) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--qkern-border) 80%, transparent);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+}
+.desktop-nav { gap: 22px; font-size: 13.5px; }
+.desktop-nav a { padding: 8px 12px; border-radius: var(--radius-pill); }
+.desktop-nav a:hover { background: var(--qkern-surface-2); }
+
+/* Bedienelemente: vollrund, etwas hoeher */
+.button, .secondary-button, .white-button, .ghost-button {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 650;
+}
+.button { box-shadow: 0 12px 30px rgba(0, 77, 213, 0.28); }
+.button.small { min-height: 40px; padding: 0 16px; font-size: 13px; }
+.icon-button { border-radius: var(--radius-pill); width: 40px; height: 40px; }
+.secondary-button:hover { border-color: var(--qkern-primary); background: var(--qkern-surface); }
+
+/* Konto-Seiten */
+.auth-form input { height: 50px; border-radius: var(--radius-control); font-size: 14px; padding: 0 16px; }
+.auth-form label { font-size: 12px; }
+.auth-card h2 { font-size: 40px; }
+.auth-card > p, .auth-switch, .password-rules, .auth-security { font-size: 13px; }
+.auth-error { border-radius: var(--radius-control); }
+.auth-boundaries div { border-radius: var(--radius-control); font-size: 11px; }
+.password-input button { top: 7px; right: 7px; border-radius: var(--radius-pill); }
+
+/* Console: Flaechen, Navigation, Kopfleiste */
+.console-sidebar { background: var(--qkern-dark); border-right: 0; padding: 12px 0; }
+.console-nav { gap: 4px; padding: 6px 12px; }
+.console-nav button { min-height: 42px; border-radius: 12px; padding: 0 12px; font-size: 13px; }
+.console-nav button.active { box-shadow: none; background: color-mix(in srgb, var(--qkern-primary) 55%, #0b1a33); color: #ffffff; }
+.console-nav button small { font-size: 10px; min-width: 20px; height: 20px; }
+.sidebar-bottom > a, .sidebar-bottom > button { min-height: 38px; border-radius: 12px; font-size: 12px; }
+.console-topbar {
+  height: 76px;
+  padding: 0 28px;
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 0;
+}
+.console-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 10px 16px auto;
+  height: 56px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--qkern-surface) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--qkern-border) 80%, transparent);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
+  z-index: -1;
+}
+.console-crumb { font-size: 13px; }
+.environment-select { min-height: 36px; border-radius: var(--radius-pill); padding: 0 14px; font-size: 12px; }
+.command-button { height: 38px; border-radius: var(--radius-pill); padding: 0 14px; font-size: 12px; min-width: 220px; }
+.command-button kbd { border-radius: 6px; font-size: 10px; }
+.system-online { font-size: 12px; }
+.console-page { padding-top: 28px; }
+.console-titlebar h1 { font-size: 34px; letter-spacing: -.045em; }
+.console-kicker { font-size: 11px; }
+.production-guard, .product-preview-notice { border-radius: var(--radius-control); font-size: 12px; }
+.product-preview-notice strong { font-size: 13px; }
+.product-preview-notice span { font-size: 12px; }
+.console-card { border-radius: var(--radius-card); padding: 24px; box-shadow: var(--shadow-soft); }
+.metric-tile > strong { font-size: 34px; }
+.metric-tile > div span { font-size: 10px; }
+.metric-tile > small { font-size: 11px; }
+.card-head span { font-size: 10px; }
+.card-head h3 { font-size: 16px; }
+.card-head small, .detail-list > div, .service-row, .event-row strong, .event-row small, .event-row time,
+.approval-mini strong, .approval-mini small, .data-row, .auth-user, .bucket-row, .backup-row, .log-row,
+.api-key-list > div, .connected-agent > span, .connected-agent small, .automation-policy > p,
+.approval-card > p, .approval-top, .live-module-state p, .empty-state p, .success-state p,
+.settings-form label, .form-note p, .table-footer, .record-row, .endpoint-list code, .code-note,
+.plain-button, .risk-line, .mcp-config p, .workspace-scope, .inline-success, .connection-meta,
+.automation-check span, .automation-check small, .automation-fields > label, .automation-footer,
+.approval-detail-grid strong, .approval-diff code, .test-chips span, .decision-banner,
+.key-kind, .log-status, .record-status, .automation-status, .method, .risk { font-size: 12px; }
+.detail-list > div { min-height: 44px; }
+.event-icon, .bucket-icon, .db-icon { border-radius: var(--radius-control); }
+.data-row.header, .log-row.log-header, .record-header, .live-records th, .approval-detail-grid span,
+.metric span, .auth-overview span, .storage-total span, .chart-axis { font-size: 10px; }
+.auth-overview strong, .storage-total strong { font-size: 30px; }
+.table-editor, .code-sample, .sql-editor { border-radius: var(--radius-card); }
+.toolbar-search, .table-toolbar .secondary-button, .log-toolbar .secondary-button { border-radius: var(--radius-pill); height: 36px; min-height: 36px; font-size: 12px; }
+.toolbar-search input { font-size: 12px; }
+.editor-body textarea, .line-numbers { font-size: 13px; }
+.settings-form input, .settings-form select, .automation-fields select { height: 44px; border-radius: var(--radius-control); font-size: 13px; }
+.settings-nav button { min-height: 42px; border-radius: 12px; font-size: 13px; }
+.automation-check, .approval-detail-grid, .approval-diff, .diff, .query-result code, .code-sample pre, .mcp-config pre { border-radius: var(--radius-control); }
+.command-palette { border-radius: var(--radius-card); }
+.command-results button { height: 44px; border-radius: 12px; font-size: 13px; }
+.loading-grid i { border-radius: var(--radius-card); }
+.progress { height: 8px; }
+
+/* Fusszeile: Text gross genug */
+.footer-top > div:not(:first-child) { font-size: 13px; }
+.footer-top strong { font-size: 11px; }
+.footer-bottom { font-size: 12px; }
+
+@media (max-width: 760px) {
+  .site-header { padding: 10px 0; }
+  .site-header .header-inner { height: 56px; padding: 0 6px 0 16px; }
+  .console-topbar::before { inset: 8px 10px auto; height: 52px; }
+}
