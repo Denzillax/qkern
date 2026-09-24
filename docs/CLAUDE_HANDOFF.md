@@ -48,8 +48,8 @@ Release Notes bleiben unverändert.
   September (Kalender-Bombe; behoben, Fixture reicht jetzt `now()` durch).
   Ablage: Das Repo liegt seit dem 24. September unter
   `C:\Projekte\QKERN\code\qkern` (Ordnerregel aus `C:\Projekte\QKERN\README.md`:
-  `code/` hält nur Git-Repos). Der Ordner `code/` selbst trägt noch ein leeres
-  Git-Gerüst ohne Commits aus der Neustrukturierung — nicht angefasst
+  `code/` hält nur Git-Repos). Das leere Git-Gerüst, das `code/` selbst aus
+  der Neustrukturierung trug (0 Commits), ist am 24. September entfernt
 - Vorheriger Slice: 1.84 Der Login kennt seine Türen — öffentlicher
   Provider-Chooser `GET auth/oidc/providers` hinter derselben pre-auth-Grenze
   wie authorize (Projekt-Key, Origin-Gate, CORS, no-store); fremder Schlüssel
