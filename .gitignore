@@ -6,3 +6,4 @@ coverage
 !.env.example
 npm-debug.log*
 *.tsbuildinfo
+.superpowers/
