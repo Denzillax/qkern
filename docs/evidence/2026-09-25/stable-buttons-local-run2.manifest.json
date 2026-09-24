@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "stable-buttons-local-run2.log",
+  "commit": "3e0044c42816457c9d3cbb236fffa4090ff9a933",
+  "commitSubject": "release: 2.3.0 Die Console in vier Sprachen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1108 passed | 241 skipped (1349)",
+  "passed": 1108,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.3.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.4.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,23 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.3.0`
-- Aktueller Slice: 2.3 Die Console in vier Sprachen — jeder Text in
+- Paketversion: `2.4.0`
+- Aktueller Slice: 2.4 Knöpfe, die stillhalten — Denzils feste Regel
+  (Memory `stable-button-widths`): Buttons ändern ihre Grösse nie, wenn die
+  Beschriftung wechselt, weder bei Zustand noch bei Sprache.
+  `components/stable-label.tsx` legt alle Varianten in eine Grid-Zelle,
+  nur die aktive ist sichtbar; `tAll()` in `console-i18n.ts` liefert einen
+  Text in allen Sprachen. Angewandt: Sprachknopf, Anmelden/Projekt
+  erstellen, Umgebungsmenü, alle Zustandswechsel der Console
+  (Pausieren/Aktivieren, Läuft…/Abfrage ausführen, Speichern…/Regel
+  speichern, Status ausblenden/Zustellstatus, Deaktivieren/Aktivieren,
+  Wird vorbereitet…/Vorschau erstellen). Das Schliessen-Kreuz der Sidebar
+  war auf Desktop sichtbar, weil `.console-brand button` (1.94)
+  `.sidebar-close` (1.97) in der Spezifität schlug; jetzt
+  `.console-brand .sidebar-close`. Dabei fanden sich fünf Zustandswechsel
+  mit nackten deutschen Literalen, die der Scanner von 2.3 übersprungen
+  hatte (ein Wort, kein Umlaut): jetzt übersetzt, zehn neue Schlüssel
+- Vorheriger Slice: 2.3 Die Console in vier Sprachen — jeder Text in
   `console-app.tsx` steht als `t("deutscher Text")`; `console-i18n.ts`
   hält die aktive Sprache in einer Modulvariablen, die `ConsoleApp` zu
   Beginn des Renderns setzt (bewusst kein Context: rund dreissig kleine

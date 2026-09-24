@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Globe } from "lucide-react";
 import { LOCALES, LOCALE_COOKIE, LOCALE_NAMES, type Locale } from "@/lib/i18n/locales";
+import { StableLabel } from "@/components/stable-label";
 
 /**
  * Sprachwahl der Website (2.2). Schreibt das Cookie und lässt den Server
@@ -30,7 +31,7 @@ export function LanguageSwitcher({ locale, label }: { locale: Locale; label: str
   }
   return <div className="language-switcher" ref={root}>
     <button type="button" className="icon-button language-button" aria-haspopup="listbox" aria-expanded={open} aria-label={label} title={label} onClick={() => setOpen(!open)} disabled={pending}>
-      <Globe size={16} aria-hidden="true"/><span>{locale.toUpperCase()}</span>
+      <Globe size={16} aria-hidden="true"/><StableLabel current={locale.toUpperCase()} variants={LOCALES.map((entry) => entry.toUpperCase())}/>
     </button>
     {open && <ul className="language-list" role="listbox" aria-label={label}>
       {LOCALES.map((entry) => <li key={entry} role="option" aria-selected={entry === locale}>

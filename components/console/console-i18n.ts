@@ -1,5 +1,5 @@
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
-import type { Locale } from "@/lib/i18n/locales";
+import { LOCALES, type Locale } from "@/lib/i18n/locales";
 
 /**
  * Übersetzung der Console (2.3). Der Schlüssel ist der deutsche Text, wie
@@ -26,4 +26,9 @@ export function consoleLocale(): Locale {
 export function t(key: string): string {
   if (active === "de") return key;
   return CONSOLE_TRANSLATIONS[active][key] ?? key;
+}
+
+/** Ein Text in allen Sprachen, damit ein Button die Breite der längsten reservieren kann. */
+export function tAll(...keys: string[]): string[] {
+  return keys.flatMap((key) => LOCALES.map((locale) => (locale === "de" ? key : CONSOLE_TRANSLATIONS[locale][key] ?? key)));
 }

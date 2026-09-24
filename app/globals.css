@@ -1061,3 +1061,20 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 /* 2.3: der Sprachknopf ist eine Pille mit Globus und Kuerzel nebeneinander */
 .language-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: auto; height: 40px; padding: 0 12px 0 10px; }
 .language-button > svg { flex: none; }
+
+/* 2.4: Beschriftungen, die ihre Breite nicht aendern — alle Varianten in einer
+   Zelle, nur die aktive sichtbar. Und das Schliessen-Kreuz der Sidebar nur
+   auf dem Telefon: die Regel von 1.94 (.console-brand button) schlug die
+   von 1.97 (.sidebar-close) in der Spezifitaet. */
+.stable-label { display: inline-grid; grid-template-areas: "label"; justify-items: center; align-items: center; white-space: nowrap; }
+.stable-label > span { grid-area: label; }
+.stable-label-ghost { visibility: hidden; pointer-events: none; }
+.console-brand .sidebar-close { display: none; }
+@media (max-width: 760px) { .console-brand .sidebar-collapse { display: none; } .console-brand .sidebar-close { display: flex; } }
+/* 2.4: das Kreuz auch im eingeklappten Zustand nur auf dem Telefon —
+   `.is-collapsed .console-brand button` (1.94) lag noch darueber. */
+.console-sidebar .console-brand button.sidebar-close { display: none; }
+@media (max-width: 760px) {
+  .console-sidebar .console-brand button.sidebar-collapse { display: none; }
+  .console-sidebar .console-brand button.sidebar-close { display: flex; }
+}

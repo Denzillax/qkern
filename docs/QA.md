@@ -3716,3 +3716,39 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 Nicht erbracht: Werte aus der API (`active`, `delivered`, Modusnamen im
 Audit) bleiben Daten; Datumsformate der Console bleiben `de-CH`; niemand
 hat die Übersetzungen gegengelesen.
+
+## Knöpfe, die stillhalten — Release 2.4
+
+Zwei Nutzerbefunde. Das Schliessen-Kreuz der Sidebar erschien auf dem
+Desktop neben dem Pfeil; und Buttons sollen ihre Grösse nie ändern, wenn
+ihre Beschriftung wechselt — Denzil: „du machst das fast jedesmal, schreib
+das in die memories". Es steht jetzt im Gedächtnis (`stable-button-widths`).
+
+Das Kreuz: Die Regel von 1.94 (`.console-brand button { display: flex }`)
+schlug die von 1.97 (`.sidebar-close { display: none }`) in der
+Spezifität. Jetzt `.console-brand .sidebar-close`, auf dem Telefon
+umgekehrt. Denzil sah das Kreuz danach noch im eingeklappten Zustand: dort
+lag eine dritte Regel (`.is-collapsed .console-brand button`) noch darüber;
+jetzt `.console-sidebar .console-brand button.sidebar-close`. Im Browser bei
+1280 px gemessen: ausgeklappt und eingeklappt kein Kreuz, bei 375 px Kreuz
+statt Pfeil; Sprachknopf und Umgebungsmenü behalten beim Wechsel auf
+Französisch die Breite (63 und 148 px).
+
+Die Breite: `components/stable-label.tsx` legt alle Varianten einer
+Beschriftung in dieselbe Grid-Zelle, nur die aktive ist sichtbar, die
+anderen nehmen unsichtbar Platz. Die Breite ist damit immer die der
+längsten Variante, über Zustände und Sprachen hinweg; `tAll()` liefert
+einen Text in allen vier Sprachen. Angewandt auf den Sprachknopf, auf
+Anmelden und Projekt erstellen in der Kopfzeile, auf das Umgebungsmenü
+und auf jeden Zustandswechsel in der Console.
+
+Dabei fanden sich fünf Zustandswechsel mit nackten deutschen Literalen,
+die der Scanner von 2.3 übersprungen hatte, weil sie ein Wort ohne Umlaut
+waren („Pausieren", „Aktivieren", „Deaktivieren", „Zustellstatus"). Jetzt
+übersetzt, zehn neue Schlüssel, der Vertrag ist grün.
+
+Checkpoint `2.4.0` am 25. September 2026: Lokal 1108 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Navigations-Buttons bleiben volle Breite; Beschriftungen
+in Tabellen (Statuswerte) sind Daten und nicht reserviert.

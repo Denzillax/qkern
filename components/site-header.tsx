@@ -4,7 +4,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SiteMenu } from "@/components/site-menu";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { currentLocale } from "@/lib/i18n/server";
-import { getLandingDictionary } from "@/lib/i18n/landing";
+import { LANDING, getLandingDictionary } from "@/lib/i18n/landing";
+import { StableLabel } from "@/components/stable-label";
 
 // "Lösungen" zeigte auf #solutions, einen Anker, den es auf der Seite nicht
 // gibt. Ein Navigationspunkt, der nirgends hinfuehrt, ist kein Label, sondern
@@ -22,10 +23,10 @@ export async function SiteHeader() {
         <div className="header-actions">
           <LanguageSwitcher locale={locale} label={t.language} />
           <ThemeToggle />
-          <Link className="text-link desktop-only" href="/login">{t.login}</Link>
+          <Link className="text-link desktop-only" href="/login"><StableLabel current={t.login} variants={Object.values(LANDING).map((entry) => entry.header.login)}/></Link>
           {/* Gleiche Beschriftung wie auf der Seite. Zwei Woerter fuer dieselbe
               Handlung zwingen den Leser, sie fuer zwei zu halten. */}
-          <Link className="button small desktop-only" href="/register">{t.createProject}</Link>
+          <Link className="button small desktop-only" href="/register"><StableLabel current={t.createProject} variants={Object.values(LANDING).map((entry) => entry.header.createProject)}/></Link>
           <SiteMenu links={t.nav} labels={{ open: t.menuOpen, close: t.menuClose, login: t.login, createProject: t.createProject }} />
         </div>
       </div>
