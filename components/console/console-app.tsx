@@ -1,15 +1,16 @@
 "use client";
 
 import {
-  Activity, ArchiveRestore, Bell, Blocks, Bot, Braces, ChevronDown, ChevronLeft, ChevronRight,
+  Activity, ArchiveRestore, Bell, Blocks, Bot, Braces, Check, ChevronDown, ChevronLeft, ChevronRight,
   CircleGauge, Cloud, Code2, Command, Database, FileClock, Fingerprint, HardDrive, KeyRound,
   Copy, LayoutDashboard, ListFilter, LogOut, Menu, Network, Pencil, Play, Plus, RefreshCw, Search,
   Settings, ShieldCheck, Table2, Terminal, Trash2, Users, Webhook, X, Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QKERNLogo, QKERNSymbol } from "@/components/brand";
+import { displayWorkspaceName } from "@/lib/console/workspace-name";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
 import { loadConsoleAuthProviders, type ConsoleAuthProviderResult } from "@/components/console/auth-providers";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -93,7 +94,9 @@ const demoTables = [
 export function ConsoleApp() {
   const router = useRouter();
   const [view, setView] = useState<ViewId>("overview");
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsedState] = useState(false);
+  useEffect(() => { try { if (window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "collapsed") setCollapsedState(true); } catch {} }, []);
+  const setCollapsed = useCallback((next: boolean) => { setCollapsedState(next); try { window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "collapsed" : "expanded"); } catch {} }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [environment, setEnvironment] = useState<Environment>("development");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -143,22 +146,16 @@ export function ConsoleApp() {
         <nav className="console-nav" aria-label="QKERN Console Navigation">
           {nav.map((item) => { const Icon = item.icon; return <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => changeView(item.id)} title={item.label}><Icon size={17}/><span>{item.label}</span>{item.badge && <small>{item.badge}</small>}</button>; })}
         </nav>
-        <div className="sidebar-bottom"><Link href="/#developers"><Code2 size={16}/><span>QKERN Docs</span></Link><button disabled className="is-placeholder" title="Teamverwaltung ist noch nicht verbunden"><Users size={16}/><span>Team</span></button><div className="user-chip"><span>{snapshot?.user.email.slice(0, 2).toUpperCase() ?? "QK"}</span><div><strong>{snapshot?.user.email.split("@")[0] ?? "Account"}</strong><small>Owner</small></div><button onClick={logout} title="Abmelden" aria-label="Abmelden"><LogOut size={14}/></button></div></div>
+        <div className="sidebar-bottom"><Link href="/#developers"><Code2 size={16}/><span>QKERN Docs</span></Link><button disabled className="is-placeholder" title="Teamverwaltung ist noch nicht verbunden"><Users size={16}/><span>Team</span></button><AccountMenu email={snapshot?.user.email ?? null} workspace={snapshot?.organization.name ?? null} collapsed={collapsed} onLogout={logout}/></div>
       </aside>
       {mobileOpen && <button className="sidebar-scrim" aria-label="Navigation schließen" onClick={() => setMobileOpen(false)} />}
 
       <div className="console-workspace">
         <header className="console-topbar">
           <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Navigation öffnen"><Menu size={19}/></button>
-          <div className="console-crumb"><span>{snapshot?.organization.name ?? "QKERN"}</span><b>/</b><strong>{project?.name ?? "Project"}</strong></div>
+          <div className="console-crumb"><span className="crumb-workspace" title={snapshot?.organization.name ?? undefined}><Blocks size={14} aria-hidden="true"/>{displayWorkspaceName(snapshot?.organization.name)}<small>Workspace</small></span><b>/</b><strong>{project?.name ?? "Project"}</strong></div>
           <div className="console-tools">
-            <label className={`environment-field ${environment}`}>
-              <i aria-hidden="true"/>
-              <select className={`environment-select ${environment}`} value={environment} onChange={(event) => setEnvironment(event.target.value as Environment)} aria-label="Umgebung auswählen">
-                <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
-              </select>
-              <ChevronDown size={14} aria-hidden="true"/>
-            </label>
+            <EnvironmentMenu value={environment} onChange={setEnvironment}/>
             <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>Search</span><kbd>⌘ K</kbd></button>
             <span className="system-online"><i/> Healthy</span>
             <ThemeToggle/><button className="icon-button is-placeholder" aria-label="Benachrichtigungen" disabled title="Benachrichtigungen sind noch nicht verbunden"><Bell size={16}/></button>
@@ -224,6 +221,63 @@ function Overview({ snapshot, project, navigate }: { snapshot: Snapshot; project
 
 function DatabaseView() {
   return <div className="module-grid"><article className="console-card database-hero"><div className="db-icon"><Database size={26}/></div><div><span>POSTGRESQL 17</span><h2>nova-market-dev</h2><p>Healthy · ch-zrh-1 · Connection pooling active</p></div><button className="secondary-button"><KeyRound size={15}/> Connection details</button></article><article className="console-card"><div className="card-head"><div><span>DATABASE CORE</span><h3>Connection load</h3></div><strong>12 / 100</strong></div><div className="progress"><i style={{width:"12%"}}/></div><div className="detail-list"><div><span>Pool mode</span><strong>Transaction</strong></div><div><span>Average query</span><strong>18 ms</strong></div><div><span>Slow queries</span><strong>2</strong></div></div></article><article className="console-card span-2"><div className="card-head"><div><span>SCHEMA</span><h3>Public schema</h3></div><button className="button small"><Plus size={14}/> New table</button></div><TableList/></article></div>;
+}
+
+const SIDEBAR_STORAGE_KEY = "qkern.console.sidebar";
+const ENVIRONMENTS: Array<{ id: Environment; label: string; hint: string }> = [
+  { id: "development", label: "Development", hint: "Frei bearbeiten" },
+  { id: "staging", label: "Staging", hint: "Vor dem Release prüfen" },
+  { id: "production", label: "Production", hint: "Schreibzugriffe brauchen Freigabe" },
+];
+
+function AccountMenu({ email, workspace, collapsed, onLogout }: { email: string | null; workspace: string | null; collapsed: boolean; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: PointerEvent) { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); }
+    function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
+    document.addEventListener("pointerdown", onPointer); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const initials = email ? email.slice(0, 2).toUpperCase() : "QK";
+  const handle = email ? email.split("@")[0] : "Account";
+  return <div className="account-menu" ref={root}>
+    <button type="button" className="user-chip" aria-haspopup="menu" aria-expanded={open} aria-label="Kontomenü" title={collapsed ? handle : undefined} onClick={() => setOpen(!open)}>
+      <span>{initials}</span><div><strong>{handle}</strong><small>Owner</small></div><ChevronDown size={14} aria-hidden="true"/>
+    </button>
+    {open && <div className="account-sheet" role="menu">
+      <div className="account-identity"><strong>{email ?? "Nicht angemeldet"}</strong><small>{displayWorkspaceName(workspace)} · Owner</small></div>
+      <button type="button" role="menuitem" disabled className="is-placeholder" title="Kontoeinstellungen sind noch nicht verbunden"><Settings size={15}/><span>Kontoeinstellungen</span><em>Bald</em></button>
+      <button type="button" role="menuitem" disabled className="is-placeholder" title="Workspace-Einstellungen sind noch nicht verbunden"><Blocks size={15}/><span>Workspace-Einstellungen</span><em>Bald</em></button>
+      <button type="button" role="menuitem" onClick={onLogout}><LogOut size={15}/><span>Abmelden</span></button>
+    </div>}
+  </div>;
+}
+
+function EnvironmentMenu({ value, onChange }: { value: Environment; onChange: (next: Environment) => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: PointerEvent) { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); }
+    function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
+    document.addEventListener("pointerdown", onPointer); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const current = ENVIRONMENTS.find((entry) => entry.id === value) ?? ENVIRONMENTS[0];
+  return <div className={`environment-menu ${value}`} ref={root}>
+    <button type="button" className={`environment-field ${value}`} aria-haspopup="listbox" aria-expanded={open} aria-label={`Umgebung: ${current.label}`} onClick={() => setOpen(!open)}>
+      <i aria-hidden="true"/><span>{current.label}</span><ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
+    </button>
+    {open && <ul className="environment-list" role="listbox" aria-label="Umgebung auswählen">
+      {ENVIRONMENTS.map((entry) => <li key={entry.id} role="option" aria-selected={entry.id === value} className={entry.id}>
+        <button type="button" onClick={() => { onChange(entry.id); setOpen(false); }}>
+          <i aria-hidden="true"/><span><strong>{entry.label}</strong><small>{entry.hint}</small></span>{entry.id === value && <Check size={14} aria-hidden="true"/>}
+        </button>
+      </li>)}
+    </ul>}
+  </div>;
 }
 
 function TableList() { return <div className="data-table"><div className="data-row header"><span>Name</span><span>Rows</span><span>Size</span><span>Security</span></div>{demoTables.map((table) => <div className="data-row" key={table.name}><span><Table2 size={14}/><strong>{table.name}</strong></span><span>{table.rows}</span><span>{table.size}</span><span className="secure"><ShieldCheck size={13}/> RLS on</span></div>)}</div>; }

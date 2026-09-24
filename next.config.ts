@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Die Dev-Anzeige lag unten links ueber dem Kontomenue der Console (1.95).
+  devIndicators: { position: "bottom-right" },
   async headers() {
     return [
       {

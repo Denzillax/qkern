@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "account-menu-local-run2.log",
+  "commit": "a885fce31d61c33e8ec22506d7c043b9190c9ec1",
+  "commitSubject": "release: 1.94.0 Der Weg zurueck",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1096 passed | 241 skipped (1337)",
+  "passed": 1096,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

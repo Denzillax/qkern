@@ -1060,3 +1060,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-24/sidebar-return-local-run1.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0 |
 | `2026-09-24/sidebar-return-local-run2.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 1.95 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/account-menu-local-run1.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0 |
+| `2026-09-24/account-menu-local-run2.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0, Wiederholung |

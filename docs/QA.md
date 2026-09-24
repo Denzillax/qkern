@@ -3418,3 +3418,39 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Der Zustand der Sidebar wird nicht gespeichert — nach
 einem Reload ist sie wieder ausgeklappt.
+
+## Menüs statt Attrappen — Release 1.95
+
+Drei Nutzerbefunde in Folge: Das native Dropdown der Umgebungswahl sah
+schlecht aus, der Aufklapp-Pfeil gehörte neben das Symbol, die Sidebar
+sollte ihren Zustand merken. Dazu die Frage, wo man Kontoeinstellungen
+findet, und dass „Denis.mihaljevic Workspace / First Project" in der
+Kopfzeile komisch aussieht. Und der untere Bereich der eingeklappten
+Sidebar war unschön.
+
+Das Umgebungsmenü ist jetzt eine eigene Listbox: Status-Punkt, Name,
+Hinweistext je Umgebung, Häkchen auf der aktiven, Escape und Klick
+ausserhalb schliessen. Der Pfeil steht in der 70-px-Leiste rechts neben dem
+Symbol. Der Sidebar-Zustand liegt in `localStorage` und wird erst im Effekt
+gelesen, damit Server und Client gleich rendern. Unten in der Sidebar ist
+das Konto jetzt ein Menü: E-Mail, Workspace, Konto- und
+Workspace-Einstellungen sichtbar abgeschaltet („Bald", noch nicht
+verbunden) und Abmelden — die ehrliche Antwort auf die Frage nach den
+Kontoeinstellungen ist: es gibt sie noch nicht. Die Krume zeigt den
+automatisch aus der E-Mail gebildeten Workspace-Namen lesbar („Denis
+Mihaljevic" mit Etikett „Workspace"), drei Fälle in
+`tests/workspace-name.test.ts`. Der untere Bereich der eingeklappten
+Leiste hat einheitliche 46-px-Kacheln, keine Scrollleistenpfeile, und die
+Next-Dev-Anzeige liegt nicht mehr über dem Kontomenü.
+
+Ehrlich: Die Änderung an `next.config.ts` hat den Dev-Server neu gestartet,
+und der Memory-Auth-Adapter (Default ohne `.env.local`) hat dabei alle
+Konten und Sessions verloren. Die Sichtprüfung des unteren Bereichs und
+des Kontomenüs im Browser steht deshalb aus; die Masse sind aus dem CSS
+abgeleitet, nicht gemessen.
+
+Checkpoint `1.95.0` am 24. September 2026: Lokal 1096 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Konto- und Workspace-Einstellungen bleiben zu bauen; der
+Memory-Adapter vergisst Konten bei jedem Serverneustart.

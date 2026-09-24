@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.94.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.95.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,20 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.94.0`
-- Aktueller Slice: 1.94 Der Weg zurück — Nutzerbefund: die eingeklappte
+- Paketversion: `1.95.0`
+- Aktueller Slice: 1.95 Menüs statt Attrappen — eigenes Umgebungsmenü
+  (`EnvironmentMenu`, Listbox mit Status-Punkt, Hinweistext, Escape und
+  Klick-ausserhalb) statt nativem `select`; Aufklapp-Pfeil neben dem Symbol
+  in der 70-px-Leiste; Sidebar-Zustand in `localStorage`
+  (`qkern.console.sidebar`, im Effekt gelesen, damit SSR und Client gleich
+  rendern); Kontomenü (`AccountMenu`) mit E-Mail, Workspace, ehrlich
+  abgeschalteten Konto-/Workspace-Einstellungen und Abmelden; Krume zeigt
+  `displayWorkspaceName()` („Denis Mihaljevic" + Etikett) aus
+  `lib/console/workspace-name.ts`; Next-Dev-Anzeige nach unten rechts.
+  Achtung: Eine `next.config.ts`-Änderung startet den Dev-Server neu, und
+  der Memory-Auth-Adapter (Default ohne `.env.local`) verliert dabei alle
+  Konten und Sessions
+- Vorheriger Slice: 1.94 Der Weg zurück — Nutzerbefund: die eingeklappte
   Sidebar liess sich nicht wieder öffnen (`.is-collapsed .console-brand
   button { display: none }`), das Logo führte auf `/` statt `/console`, die
   Umgebungswahl war 9-px-Monospace. Jetzt: Aufklapp-Button bleibt in der

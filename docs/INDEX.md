@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.94.md](RELEASE_1.94.md) | Aktueller Release: Der Weg zurück |
+| [RELEASE_1.95.md](RELEASE_1.95.md) | Aktueller Release: Menüs statt Attrappen |
+| [RELEASE_1.94.md](RELEASE_1.94.md) | Der Weg zurück |
 | [RELEASE_1.93.md](RELEASE_1.93.md) | Die Console sagt, was sie nicht kann |
 | [RELEASE_1.92.md](RELEASE_1.92.md) | Schwebende Flächen |
 | [RELEASE_1.91.md](RELEASE_1.91.md) | Die Seite liest, statt abzuschreiben |

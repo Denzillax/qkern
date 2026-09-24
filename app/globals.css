@@ -885,3 +885,60 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--qkern-te
 .environment-field.production { border-color: color-mix(in srgb, var(--qkern-danger) 40%, var(--qkern-border)); background: color-mix(in srgb, var(--qkern-danger) 6%, var(--qkern-surface)); }
 .environment-field.production > i { background: var(--qkern-danger); }
 .console-root .environment-field .environment-select { appearance: none; -webkit-appearance: none; height: 38px; min-height: 0; border: 0; background: transparent; padding: 0; border-radius: 0; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); text-transform: none; cursor: pointer; outline: none; }
+
+/* 1.95: Umgebungsmenue statt nativem select; Pfeil neben dem Symbol in der
+   eingeklappten Leiste; Sidebar-Zustand bleibt gemerkt (localStorage). */
+.is-collapsed .console-brand { flex-direction: row; justify-content: space-between; align-items: center; gap: 0; height: 64px; padding: 0 8px 0 10px; }
+.is-collapsed .console-brand button { width: 26px; height: 26px; border-radius: 8px; }
+
+.environment-menu { position: relative; }
+.console-root .environment-field { cursor: pointer; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); }
+.console-root .environment-field > svg { transition: transform .15s; }
+.console-root .environment-field > svg.is-open { transform: rotate(180deg); }
+.environment-list { position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; min-width: 240px; margin: 0; padding: 6px; list-style: none; background: var(--qkern-surface); border: 1px solid var(--qkern-border); border-radius: 16px; box-shadow: var(--shadow-float); animation: environment-in .12s ease-out; }
+@keyframes environment-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.environment-list li button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--qkern-text); text-align: left; cursor: pointer; font: 500 13px/1.2 var(--qkern-font-sans); }
+.environment-list li button:hover, .environment-list li button:focus-visible { background: var(--qkern-surface-2); outline: none; }
+.environment-list li[aria-selected="true"] button { background: var(--qkern-primary-muted); }
+.environment-list li button > i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--qkern-text-muted); }
+.environment-list li.development button > i { background: var(--qkern-success); }
+.environment-list li.staging button > i { background: var(--qkern-warning); }
+.environment-list li.production button > i { background: var(--qkern-danger); }
+.environment-list li button > span { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.environment-list li button strong { font-weight: 600; }
+.environment-list li button small { font-size: 11px; color: var(--qkern-text-muted); }
+.environment-list li button > svg { color: var(--qkern-primary); flex: none; }
+@media (prefers-reduced-motion: reduce) { .environment-list { animation: none; } .console-root .environment-field > svg { transition: none; } }
+
+/* 1.95: Kontomenue in der Sidebar, Workspace-Krume lesbar */
+.crumb-workspace { display: inline-flex; align-items: center; gap: 6px; color: var(--qkern-text); font-weight: 600; }
+.crumb-workspace > svg { color: var(--qkern-text-muted); }
+.crumb-workspace small { font-size: 10px; font-weight: 600; color: var(--qkern-text-muted); border: 1px solid var(--qkern-border); border-radius: var(--radius-pill); padding: 2px 7px; text-transform: uppercase; letter-spacing: .04em; }
+.account-menu { position: relative; margin-top: 6px; }
+.sidebar-bottom .user-chip { margin-top: 0; width: 100%; border: 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.sidebar-bottom .user-chip:hover, .sidebar-bottom .user-chip[aria-expanded="true"] { background: #142235; }
+.sidebar-bottom .user-chip > svg { margin-left: auto; color: #7f8fa5; flex: none; }
+.is-collapsed .sidebar-bottom .user-chip { justify-content: center; padding: 6px; }
+.is-collapsed .sidebar-bottom .user-chip > svg { display: none; }
+.account-sheet { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 70; width: 260px; padding: 6px; background: var(--qkern-surface); border: 1px solid var(--qkern-border); border-radius: 16px; box-shadow: var(--shadow-float); animation: environment-in .12s ease-out; }
+.is-collapsed .account-sheet { left: calc(100% + 10px); bottom: 0; }
+.account-identity { display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 12px; border-bottom: 1px solid var(--qkern-border); margin-bottom: 6px; }
+.account-identity strong { font-size: 13px; color: var(--qkern-text); overflow: hidden; text-overflow: ellipsis; }
+.account-identity small { font-size: 11px; color: var(--qkern-text-muted); }
+.account-sheet > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--qkern-text); text-align: left; cursor: pointer; font: 500 13px/1.2 var(--qkern-font-sans); }
+.account-sheet > button > span { flex: 1; }
+.account-sheet > button > em { font-style: normal; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--qkern-text-muted); border: 1px solid var(--qkern-border); border-radius: var(--radius-pill); padding: 2px 7px; }
+.account-sheet > button:hover:not(:disabled), .account-sheet > button:focus-visible { background: var(--qkern-surface-2); outline: none; }
+.account-sheet > button.is-placeholder { cursor: not-allowed; }
+
+/* 1.95: der untere Bereich der eingeklappten Sidebar */
+*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.is-collapsed .console-nav { scrollbar-width: none; }
+.is-collapsed .console-nav::-webkit-scrollbar { display: none; }
+.is-collapsed .sidebar-bottom { padding: 10px 12px 12px; gap: 6px; justify-items: center; }
+.is-collapsed .sidebar-bottom > a, .is-collapsed .sidebar-bottom > button { width: 46px; min-height: 40px; padding: 0; border-radius: 12px; }
+.is-collapsed .sidebar-bottom > a:hover, .is-collapsed .sidebar-bottom > button:hover:not(:disabled) { background: rgba(255,255,255,.06); color: #ffffff; }
+.is-collapsed .account-menu { width: 46px; margin-top: 2px; }
+.is-collapsed .sidebar-bottom .user-chip { width: 46px; height: 46px; padding: 0; border-radius: 12px; background: transparent; }
+.is-collapsed .sidebar-bottom .user-chip:hover, .is-collapsed .sidebar-bottom .user-chip[aria-expanded="true"] { background: #142235; }
+.is-collapsed .sidebar-bottom .user-chip > span { width: 32px; height: 32px; font-size: 10px; }
