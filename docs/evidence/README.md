@@ -1023,3 +1023,15 @@ gescheiterten Eintrag fällt, ebenso sein lokaler Zwilling.
 
 Die Mutation nimmt den `max_connections`-Parameter aus dem Compose — der
 Cluster läuft wieder mit 100, und genau der Verbindungs-Fall fällt.
+
+## Läufe zu Release 1.91 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/landing-numbers-local-run1.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0 |
+| `2026-09-24/landing-numbers-local-run2.log` | Vitest lokal (Windows) | 1093 bestanden, exit 0, Wiederholung |
+| `2026-09-24/landing-numbers-local-mutation.log` | Vitest lokal (Windows) | **2 fehlgeschlagen, exit 1 — absichtlich** |
+
+Dieser Slice ändert keinen Dienst-Code. Die Mutation lässt die Seite den
+schlechtesten statt den besten grünen Lauf nehmen (85 statt 160) — genau der
+Zusammenfassungs-Fall und der Landingpage-Vertrag fallen.

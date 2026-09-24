@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.90.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.91.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,16 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.90.0`
-- Aktueller Slice: 1.90 Platz für jeden Pool — der Zertifizierungs-Postgres
+- Paketversion: `1.91.0`
+- Aktueller Slice: 1.91 Die Seite liest, statt abzuschreiben — die Landingpage
+  (`app/page.tsx`) liest ihre Prüflauf-Zahlen aus den archivierten Manifesten
+  (`lib/server/evidence/certification-summary.ts`, bester grüner Lauf je Stack,
+  Datum des jüngsten, Mutationsläufe als Gegenproben); Vertrag
+  `tests/landing-numbers-contract.test.ts` verbietet literale Zählwerte und
+  bindet die Seite an dieselben Zahlen wie STATUS.md. Fund: Die Seite trug seit
+  dem 6. August „85 von 85", während 160 galten; auch `modules`/`gaps` nannten
+  längst geschlossene Lücken (Emitter, Cluster-Grenze, DNS-Pinning)
+- Vorheriger Slice: 1.90 Platz für jeden Pool — der Zertifizierungs-Postgres
   läuft mit `max_connections=300` (Compose-Parameter), und ein Real-DB-Fall
   prüft `SHOW max_connections` im Lauf. Damit ist die lokal belegbare Liste
   der Paritätsleiter abgearbeitet; offen bleiben nur Sprosse 7 (SDK/CLI über

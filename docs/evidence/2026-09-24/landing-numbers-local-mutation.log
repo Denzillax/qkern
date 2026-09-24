@@ -1,0 +1,61 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/landing-numbers-contract.test.ts (2 tests | 1 failed) 1949ms
+     × renders the same certification numbers STATUS.md claims 1912ms
+ ❯ tests/certification-summary.test.ts (3 tests | 1 failed) 71ms
+     × takes the best green run per stack and the newest green date 56ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/certification-summary.test.ts > certification summary > takes the best green run per stack and the newest green date
+AssertionError: expected [ { …(4) }, …(1) ] to deeply equal [ { …(4) }, …(1) ]
+
+- Expected
++ Received
+
+@@ -1,10 +1,10 @@
+  [
+    {
+      "date": "2026-09-24",
+      "name": "Control Plane und Data API",
+-     "passed": 160,
++     "passed": 150,
+      "stack": "PostgreSQL 17",
+    },
+    {
+      "date": "2026-08-16",
+      "name": "Object Storage",
+
+ ❯ tests/certification-summary.test.ts:26:26
+     24|       manifest({ stack: "unknown-stack", passed: 99 }),
+     25|     ]);
+     26|     expect(summary.rows).toEqual([
+       |                          ^
+     27|       { name: "Control Plane und Data API", stack: "PostgreSQL 17", pa…
+     28|       { name: "Object Storage", stack: "MinIO und ClamAV", passed: 8, …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/landing-numbers-contract.test.ts > landing numbers contract > renders the same certification numbers STATUS.md claims
+AssertionError: expected 'Control Plane und Data API: 28' to be 'Control Plane und Data API: 160' // Object.is equality
+
+Expected: "Control Plane und Data API: 160"
+Received: "Control Plane und Data API: 28"
+
+ ❯ tests/landing-numbers-contract.test.ts:39:44
+     37|       const match = /\*\*(\d+) von (\d+) bestanden/.exec(line ?? "");
+     38|       expect(match, `STATUS.md nennt keine Zahl fuer ${claims[row.name…
+     39|       expect(`${row.name}: ${row.passed}`).toBe(`${row.name}: ${match!…
+       |                                            ^
+     40|     }
+     41|     expect(summary.mutationRuns).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 170 passed | 33 skipped (205)
+      Tests  2 failed | 1091 passed | 241 skipped (1334)
+   Start at  22:12:44
+   Duration  27.50s (transform 124.23s, setup 0ms, import 237.77s, tests 89.47s, environment 68ms)
+

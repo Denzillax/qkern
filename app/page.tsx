@@ -5,18 +5,14 @@ import {
 import { QKERNSymbol, QKERNLogo } from "@/components/brand";
 import { SiteHeader } from "@/components/site-header";
 import styles from "./page.module.css";
+import { formatEvidenceDate, loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 
 /**
  * Alle Zahlen auf dieser Seite stammen aus archivierten Läufen unter
- * `docs/evidence/`. Wer sie ändert, muss den Lauf mitliefern.
+ * `docs/evidence/` — seit 1.91 gelesen, nicht abgeschrieben: Die Seite trug
+ * bis dahin Konstanten vom 6. August 2026, während der Stand längst weiter
+ * war. Ein Vertrag verbietet hier jeden literalen Zählwert.
  */
-const runs = [
-  { name: "Control Plane und Data API", stack: "PostgreSQL 17", count: "85 von 85" },
-  { name: "Object Storage", stack: "MinIO und ClamAV", count: "2 von 2" },
-  { name: "Project Auth", stack: "Mailpit und Dex über TLS", count: "5 von 5" },
-  { name: "Functions", stack: "Docker 29.5 und PostgreSQL 17", count: "22 von 22" },
-  { name: "Webhook-Signatur", stack: "HashiCorp Vault 1.18", count: "6 von 6" },
-];
 
 const modules = [
   { name: "Datenbank und Migrationen", state: "zertifiziert", tone: "done", note: "Change Sets, Freigaben, Audit-Kette und Rollback gegen einen echten Server." },
@@ -26,19 +22,20 @@ const modules = [
   { name: "Realtime", state: "zertifiziert", tone: "done", note: "Dauerhafter Log, Fan-out über zwei Instanzen, Change Feed und Soak-Lauf." },
   { name: "Queues, Cron, Webhooks", state: "zertifiziert", tone: "done", note: "Atomare Claims, Leases, serverberechnetes Retry und Dead Letters." },
   { name: "Functions", state: "zertifiziert", tone: "done", note: "Container ohne Netz, harte Speichergrenze, vermittelte Ausgangsverbindungen." },
-  { name: "Usage und Quotas", state: "teilweise", tone: "part", note: "Ledger und Quoten laufen. Die Emitter in den Produktmodulen fehlen noch." },
+  { name: "Usage und Billing", state: "teilweise", tone: "part", note: "Alle sechs Metriken melden, Preisblatt, Rechnungslauf mit lückenlosem Nummernkreis. Keine Zahlungsanbindung." },
 ];
 
 const gaps = [
-  "Function-Images müssen ausserhalb gebaut und in eine Registry geschoben werden.",
-  "Die Nebenläufigkeitsgrenze zählt je Prozess, nicht über den ganzen Cluster.",
-  "Im Egress-Pfad fehlen DNS-Pinning und die Sperre privater Adressbereiche.",
-  "Usage misst noch keine Produktoperationen automatisch mit.",
-  "Managed Operations sind Nachweisverträge, kein betriebener Dienst.",
+  "Function-Images müssen ausserhalb gebaut und in eine Registry geschoben werden; Inhaltslogs bleiben im Container.",
+  "Die Data API kennt keine eingebetteten Joins.",
+  "Billing hat keine Zahlungsanbindung.",
+  "Managed Operations sind Nachweisverträge, kein betriebener Dienst: kein PITR, kein Restore-Drill.",
   "SDK und CLI sind nur auf Linux belegt, Windows und macOS stehen aus.",
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const certification = await loadCertificationSummary();
+  const runs = certification.rows;
   return (
     <main className={styles.page}>
       <SiteHeader />
@@ -61,7 +58,7 @@ export default function HomePage() {
             <div className={styles.record}>
               <div className={styles.recordHead}>
                 <span>Prüflauf</span>
-                <strong>6. August 2026</strong>
+                <strong>{certification.latestDate ? formatEvidenceDate(certification.latestDate) : "kein Lauf archiviert"}</strong>
               </div>
               {runs.map((run, index) => (
                 <div className={styles.row} key={run.name} style={{ "--index": index + 1 } as React.CSSProperties}>
@@ -69,7 +66,7 @@ export default function HomePage() {
                     {run.name}
                     <small>{run.stack}</small>
                   </span>
-                  <span className={styles.count}>{run.count}</span>
+                  <span className={styles.count}>{run.passed} von {run.passed}</span>
                 </div>
               ))}
               <div className={`${styles.row} ${styles.rowCounter}`} style={{ "--index": runs.length + 1 } as React.CSSProperties}>
@@ -77,7 +74,7 @@ export default function HomePage() {
                   Gegenprobe
                   <small>Garantien abgeschaltet, absichtlich fehlgeschlagen</small>
                 </span>
-                <span className={styles.count}>20 von 22</span>
+                <span className={styles.count}>{certification.mutationRuns} Läufe</span>
               </div>
             </div>
           </div>

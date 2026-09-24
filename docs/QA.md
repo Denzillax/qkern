@@ -3301,3 +3301,36 @@ Production-Start) — beide brauchen Infrastruktur ausserhalb dieser Maschine.
 
 Nicht erbracht: 300 ist eine gemessene Reserve, keine abgeleitete Grenze —
 wächst die Suite weiter, muss der Wert mitwachsen, und der Fall sagt es.
+
+## Die Seite liest, statt abzuschreiben — Release 1.91
+
+Beim ersten Start von QKERN nach dem Umzug fiel es auf: Die Landingpage
+zeigte „Prüflauf 6. August 2026 — Control Plane 85 von 85, Storage 2 von 2,
+Auth 5 von 5, Functions 22 von 22", während längst 160, 8, 7 und 27 galten.
+`STATUS.md` war seit 1.39 durch einen Vertrag an die Manifeste gebunden — die
+Seite für Kunden nicht. Auch die Listen `modules` und `gaps` nannten Lücken,
+die seit 1.27 (DNS-Pinning), 1.33 (Emitter) und 1.36 (Cluster-Grenze)
+geschlossen sind.
+
+Jetzt liest die Seite ihre Zahlen zur Laufzeit aus `docs/evidence/`:
+`summarizeCertification` nimmt je Stack den **besten grünen Lauf** (dieselbe
+Messvorschrift wie der Zahlen-Vertrag), das Datum des jüngsten grünen Laufs,
+und zählt die archivierten Mutationsläufe als Gegenproben. Ein Vertrag
+verbietet literale Zählwerte und Daten in `app/page.tsx` und prüft, dass die
+gerenderten Zahlen je Stack denen in `STATUS.md` gleichen. `modules` und
+`gaps` sind auf den Stand der Paritätsleiter gebracht.
+
+Belegt am laufenden Dev-Server: 160 / 8 / 7 / 27 / 6 / 14, „24. September
+2026", 77 Gegenproben. Der neue Vertrag bekam wie die anderen Quellscan-
+Verträge ein explizites 30-Sekunden-Budget — beim ersten vollen Lauf riss
+die Voreinstellung.
+
+Mutationsprobe: schlechtester statt bester grüner Lauf — **2 von 1093**,
+genau der Zusammenfassungs-Fall und der Landingpage-Vertrag.
+
+Checkpoint `1.91.0` am 24. September 2026: Lokal 1093 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert (PostgreSQL 160,
+MinIO/ClamAV 8, Mailpit/Dex 7, Functions 27).
+
+Nicht erbracht: `modules` und `gaps` sind weiterhin handgepflegter Text ohne
+Vertrag; die Seite liest die Manifeste bei jeder Anfrage (kein Cache).

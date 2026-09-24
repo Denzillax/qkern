@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "landing-numbers-local-run1.log",
+  "commit": "1da1cf31c33889efdc62d1e5d887c90d59179f22",
+  "commitSubject": "release: 1.90.0 Platz fuer jeden Pool",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1093 passed | 241 skipped (1334)",
+  "passed": 1093,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}
