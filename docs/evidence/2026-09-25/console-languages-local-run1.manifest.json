@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "console-languages-local-run1.log",
+  "commit": "4a6e6b3011550d60114a3add76867e95614d7952",
+  "commitSubject": "release: 2.2.0 Vier Sprachen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1108 passed | 241 skipped (1349)",
+  "passed": 1108,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

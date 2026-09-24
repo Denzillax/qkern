@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.2.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.3.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,21 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.2.0`
-- Aktueller Slice: 2.2 Vier Sprachen — Website (Landing, Login,
+- Paketversion: `2.3.0`
+- Aktueller Slice: 2.3 Die Console in vier Sprachen — jeder Text in
+  `console-app.tsx` steht als `t("deutscher Text")`; `console-i18n.ts`
+  hält die aktive Sprache in einer Modulvariablen, die `ConsoleApp` zu
+  Beginn des Renderns setzt (bewusst kein Context: rund dreissig kleine
+  Komponenten, synchroner Render von oben nach unten). `lib/i18n/console.ts`
+  hat 454 Übersetzungen je Sprache, Schlüssel ist der deutsche Text.
+  Navigation und Platzhalter übersetzen am Render (`t(group.label)`,
+  `t(entry.note)`), die Suche findet Deutsch und Übersetzung. Sprachwahl in
+  der Kopfleiste neben der Umgebung; `app/console/page.tsx` liest das
+  Cookie. Vertrag `tests/console-i18n-contract.test.ts` liest alle
+  `t("…")` und Navigationstexte und verlangt alle drei Sprachen, ohne
+  verwaiste Einträge. Der Sprachknopf der Website ist eine Pille mit Globus
+  und Kürzel nebeneinander (vorher gestapelt durch das Icon-Button-Raster)
+- Vorheriger Slice: 2.2 Vier Sprachen — Website (Landing, Login,
   Registrierung) in DE/EN/FR/IT. `lib/i18n/locales.ts` (Sprachen, Cookie
   `qkern_locale`, `negotiateLocale` aus Accept-Language, `fill`),
   `lib/i18n/server.ts` (`currentLocale`: Cookie, sonst Browser),

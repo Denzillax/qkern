@@ -1058,3 +1058,6 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .language-list li button > svg { color: var(--qkern-primary); }
 @media (max-width: 680px) { .language-button > span { display: none; } .language-button { padding: 0; width: 40px; } }
 .auth-panel-tools { display: flex; align-items: center; gap: 8px; }
+/* 2.3: der Sprachknopf ist eine Pille mit Globus und Kuerzel nebeneinander */
+.language-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: auto; height: 40px; padding: 0 12px 0 10px; }
+.language-button > svg { flex: none; }

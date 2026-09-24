@@ -3677,3 +3677,42 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 Nicht erbracht: Die Übersetzungen hat niemand gegengelesen, der Deutsch
 und die Zielsprache spricht; die Console ist nur deutsch; es gibt keine
 Sprach-URLs für Suchmaschinen.
+
+## Die Console in vier Sprachen — Release 2.3
+
+Zwei Nutzerbefunde: Der Sprachknopf der Website sah schlecht aus (Globus
+über dem Kürzel gestapelt, weil er das Raster des Icon-Buttons erbte), und
+in der Console sollte die Sprache ebenfalls wählbar sein.
+
+Der Knopf ist jetzt eine Pille mit Globus und Kürzel nebeneinander. Die
+Console spricht Deutsch, Englisch, Französisch und Italienisch: Jeder Text
+in `console-app.tsx` steht als `t("deutscher Text")`, der deutsche Text ist
+der Schlüssel und kann nie fehlen. Die Umstellung lief per Skript mit
+einem anführungszeichenbewussten Scanner statt einer Regex; ein erster
+Regex-Versuch hatte Anführungszeichen verschoben und die Datei beschädigt
+— zurück zur Sicherung, Scanner, neu. Ein zweiter Fund im eigenen Skript:
+ein Patch hatte `` als Backspace-Zeichen in die Ausschluss-Regex
+geschrieben, weshalb bereits umhüllte Texte ein zweites Mal umhüllt
+wurden; der Vertrag hätte es nicht gesehen, der Typecheck schon.
+
+Die aktive Sprache liegt in einer Modulvariablen, die `ConsoleApp` zu
+Beginn jedes Renderns setzt — bewusst kein Context, weil rund dreissig
+kleine Komponenten `t` direkt aufrufen und React einen Baum synchron von
+oben nach unten rendert. Navigation, Platzhalter und Suche übersetzen am
+Render; die Suche findet deutsche und übersetzte Namen. 454 Übersetzungen
+je Sprache in `lib/i18n/console.ts`.
+
+Der Vertrag `console-i18n-contract` liest alle `t("…")`-Aufrufe und alle
+Navigationstexte aus dem Code und verlangt für jeden alle drei Sprachen,
+ohne verwaiste Einträge und mit gleichen Auslassungspunkten und
+Leerzeichen am Rand. Er war beim ersten Lauf grün.
+
+Im Browser, in Denzils Session, geprüft: Sprachwahl in der Kopfleiste auf
+Englisch stellt Navigation, Titel und Karten um, zurück auf Deutsch ebenso.
+
+Checkpoint `2.3.0` am 25. September 2026: Lokal 1108 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Werte aus der API (`active`, `delivered`, Modusnamen im
+Audit) bleiben Daten; Datumsformate der Console bleiben `de-CH`; niemand
+hat die Übersetzungen gegengelesen.
