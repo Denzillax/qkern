@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 16. August 2026 · Release: `1.84.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 24. September 2026 · Release: `1.85.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -46,12 +46,12 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
 | **PostgreSQL-17-Zertifizierung** | **155 von 155 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
-| **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion** |
+| **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **14 von 14 bestanden, exit 0, zweimal reproduziert** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
-| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-08-16/` |
+| Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-09-24/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |

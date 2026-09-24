@@ -10,6 +10,14 @@ export type ProjectAuthOidcProvider = {
   clientId: string;
   clientSecretEnv?: string;
   scopes: string[];
+  /**
+   * "required" (Voreinstellung): Das ID-Token muss `email_verified: true`
+   * tragen. "trusted": Der Operator buergt fuer einen Provider, der den
+   * Claim nicht sendet — ein **fehlender** Claim wird akzeptiert, ein
+   * explizites `false` bleibt in jedem Modus eine Abweisung. Trusted heisst
+   * "ohne Claim", nie "gegen den Claim".
+   */
+  emailVerification?: "required" | "trusted";
 };
 
 export type ProjectAuthOidcIdentityClaims = {
@@ -131,7 +139,9 @@ export class ProjectAuthOidcClient {
         typeof claims.sub !== "string" || claims.sub.length < 1 || claims.sub.length > 512 ||
         typeof claims.exp !== "number" || claims.exp <= nowSeconds || claims.exp > nowSeconds + 24 * 60 * 60 ||
         typeof claims.iat !== "number" || claims.iat > nowSeconds + 60 || claims.nonce !== nonce ||
-        typeof claims.email !== "string" || claims.email_verified !== true) {
+        typeof claims.email !== "string" ||
+        !(claims.email_verified === true ||
+          (provider.emailVerification === "trusted" && claims.email_verified === undefined))) {
       throw new ProjectAuthOidcError();
     }
     return {
@@ -193,7 +203,9 @@ function validateProvider(provider: ProjectAuthOidcProvider): void {
       (provider.clientSecretEnv !== undefined && !/^QKERN_PROJECT_AUTH_OIDC_SECRET_[A-Z0-9_]{1,80}$/.test(provider.clientSecretEnv)) ||
       !Array.isArray(provider.scopes) || provider.scopes.length < 2 || provider.scopes.length > 10 ||
       !provider.scopes.includes("openid") || !provider.scopes.includes("email") ||
-      provider.scopes.some((scope) => !/^[A-Za-z0-9:._/-]{1,80}$/.test(scope))) {
+      provider.scopes.some((scope) => !/^[A-Za-z0-9:._/-]{1,80}$/.test(scope)) ||
+      (provider.emailVerification !== undefined &&
+        !["required", "trusted"].includes(provider.emailVerification))) {
     throw new ProjectAuthOidcError();
   }
   if (provider.issuer.endsWith("/")) throw new ProjectAuthOidcError();

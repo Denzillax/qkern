@@ -1,0 +1,88 @@
+ Network qkern-auth-v13-certification_default Creating 
+ Network qkern-auth-v13-certification_default Created 
+ Volume qkern-auth-v13-certification_auth-certification-certs Creating 
+ Volume qkern-auth-v13-certification_auth-certification-certs Created 
+ Container qkern-auth-v13-certification-mailpit-1 Creating 
+ Container qkern-auth-v13-certification-certs-1 Creating 
+ Container qkern-auth-v13-certification-mailpit-1 Created 
+ Container qkern-auth-v13-certification-certs-1 Created 
+ Container qkern-auth-v13-certification-dex-1 Creating 
+ Container qkern-auth-v13-certification-dex-partner-1 Creating 
+ Container qkern-auth-v13-certification-dex-partner-1 Created 
+ Container qkern-auth-v13-certification-dex-1 Created 
+ Container qkern-auth-v13-certification-mailpit-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Starting 
+ Container qkern-auth-v13-certification-mailpit-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Started 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-1 Starting 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-dex-partner-1 Starting 
+ Container qkern-auth-v13-certification-dex-partner-1 Started 
+ Container qkern-auth-v13-certification-dex-1 Started 
+ Container qkern-auth-v13-certification-dex-partner-1 Waiting 
+ Container qkern-auth-v13-certification-certs-1 Waiting 
+ Container qkern-auth-v13-certification-mailpit-1 Waiting 
+ Container qkern-auth-v13-certification-dex-1 Waiting 
+ Container qkern-auth-v13-certification-dex-1 Healthy 
+ Container qkern-auth-v13-certification-dex-partner-1 Healthy 
+ Container qkern-auth-v13-certification-certs-1 Exited 
+ Container qkern-auth-v13-certification-mailpit-1 Healthy 
+ Container qkern-auth-v13-certification-certification-run-74165c66da31 Creating 
+ Container qkern-auth-v13-certification-certification-run-74165c66da31 Created 
+
+added 286 packages, and audited 287 packages in 33s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+9 vulnerabilities (5 moderate, 3 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.20.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0
+npm notice To update run: npm install -g npm@11.20.0
+npm notice
+
+> qkern-platform@1.84.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+ RUN  v4.1.10 /workspace/qkern
+
+ ✓ tests/project-auth-provider.integration.test.ts (7 tests) 593ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  17:24:37
+   Duration  1.02s (transform 183ms, setup 0ms, import 236ms, tests 593ms, environment 0ms)
+
+ Container qkern-auth-v13-certification-mailpit-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopping 
+ Container qkern-auth-v13-certification-dex-partner-1 Stopping 
+ Container qkern-auth-v13-certification-dex-1 Stopped 
+ Container qkern-auth-v13-certification-dex-1 Removing 
+ Container qkern-auth-v13-certification-dex-1 Removed 
+ Container qkern-auth-v13-certification-dex-partner-1 Stopped 
+ Container qkern-auth-v13-certification-dex-partner-1 Removing 
+ Container qkern-auth-v13-certification-dex-partner-1 Removed 
+ Container qkern-auth-v13-certification-certs-1 Stopping 
+ Container qkern-auth-v13-certification-certs-1 Stopped 
+ Container qkern-auth-v13-certification-certs-1 Removing 
+ Container qkern-auth-v13-certification-certs-1 Removed 
+ Container qkern-auth-v13-certification-mailpit-1 Stopped 
+ Container qkern-auth-v13-certification-mailpit-1 Removing 
+ Container qkern-auth-v13-certification-mailpit-1 Removed 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removing 
+ Network qkern-auth-v13-certification_default Removing 
+ Volume qkern-auth-v13-certification_auth-certification-certs Removed 
+ Network qkern-auth-v13-certification_default Removed 

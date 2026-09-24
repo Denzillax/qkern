@@ -939,3 +939,18 @@ Dieser Slice ändert keinen Dienst-Code; die Projektion dahinter ist seit 1.83
 gegen zwei echte Dex-Provider zertifiziert. Die Mutation nimmt die
 Schlüsselprüfung aus der Chooser-Route — ein anonymer Aufrufer bekäme die
 Liste, und genau der Abweisungs-Fall fällt.
+
+## Läufe zu Release 1.85 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/email-verified-run1.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-24/email-verified-run2.log` | Mailpit und Dex | 7 von 7, exit 0, Wiederholung |
+| `2026-09-24/email-verified-local-run1.log` | Vitest lokal (Windows) | 1076 bestanden, exit 0 |
+| `2026-09-24/email-verified-local-run2.log` | Vitest lokal (Windows) | 1076 bestanden, exit 0, Wiederholung |
+| `2026-09-24/email-verified-mutation.log` | Vitest lokal (Windows) | **1 fehlgeschlagen, exit 1 — absichtlich** |
+
+Der Auth-Stack belegt den echten Pfad (beide Dex-Provider senden
+`email_verified: true`); die Trusted-Matrix ist nur lokal ausdrückbar. Die
+Mutation lässt trusted auch ein explizites `false` schlucken — genau der
+Matrix-Fall fällt.

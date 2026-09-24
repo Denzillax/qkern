@@ -1,0 +1,38 @@
+
+ RUN  v4.1.10 C:/Projekte/!!!/QKERN
+
+ ❯ tests/project-auth-oidc.test.ts (3 tests | 1 failed) 142ms
+     × requires email_verified by default and lets trusted accept only an absent claim 46ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/project-auth-oidc.test.ts > Project Auth OIDC > requires email_verified by default and lets trusted accept only an absent claim
+AssertionError: promise resolved "{ subject: 'provider-user-2', …(2) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "email": "matrix@example.test",
++   "emailVerified": true,
++   "subject": "provider-user-2",
+  }
+
+ ❯ tests/project-auth-oidc.test.ts:92:98
+     90|       .resolves.toMatchObject({ subject: "provider-user-2", emailVerif…
+     91|     // trusted heisst "ohne Claim", nie "gegen den Claim".
+     92|     await expect(client.verifyIdToken(trusted, token({ email_verified:…
+       |                                                                                                  ^
+     93|       .rejects.toBeInstanceOf(ProjectAuthOidcError);
+     94|     // Ein unbekannter Modus ist ein Konfigurationsfehler, kein stille…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 164 passed | 33 skipped (198)
+      Tests  1 failed | 1075 passed | 235 skipped (1311)
+   Start at  19:27:16
+   Duration  20.76s (transform 75.43s, setup 0ms, import 161.35s, tests 64.19s, environment 66ms)
+

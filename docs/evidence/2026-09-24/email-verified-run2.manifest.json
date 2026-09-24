@@ -1,0 +1,18 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "email-verified-run2.log",
+  "commit": "4c1a9815479cbcead23aa64d51ba7d3a6e3622cf",
+  "commitSubject": "release: 1.84.0 Der Login kennt seine Tueren",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "7 passed (7)",
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

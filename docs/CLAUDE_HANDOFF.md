@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.84.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.85.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,17 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.84.0`
-- Aktueller Slice: 1.84 Der Login kennt seine Türen — öffentlicher
+- Paketversion: `1.85.0`
+- Aktueller Slice: 1.85 Wer bürgt, sagt es — `emailVerification: "required" |
+  "trusted"` je OIDC-Provider; trusted akzeptiert einen **fehlenden**
+  `email_verified`-Claim (der Operator bürgt), ein explizites `false` bleibt in
+  jedem Modus eine Abweisung. Fund: `tests/auth-service.test.ts` mischte
+  fixierte Dienst-Uhr und echte Uhr — bestand im August zufällig, fiel im
+  September (Kalender-Bombe; behoben, Fixture reicht jetzt `now()` durch).
+  Achtung Ablage: Das Repo liegt seit der Neustrukturierung vom 11. September
+  unter `C:\Projekte\!!!\QKERN`; `C:\Projekte\QKERN\code` ist ein leeres
+  Git-Gerüst — wohin das Repo gehört, entscheidet der Eigentümer
+- Vorheriger Slice: 1.84 Der Login kennt seine Türen — öffentlicher
   Provider-Chooser `GET auth/oidc/providers` hinter derselben pre-auth-Grenze
   wie authorize (Projekt-Key, Origin-Gate, CORS, no-store); fremder Schlüssel
   bekommt 404, nicht 403. Drei Quellscan-Verträge (Zahlen, Routen-Grenzen,

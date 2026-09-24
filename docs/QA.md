@@ -3096,3 +3096,38 @@ Stacks unverändert: PostgreSQL 155, MinIO/ClamAV 8, Mailpit/Dex 7.
 Nicht erbracht: Das SDK kennt den Chooser noch nicht als typisierte Methode.
 Die Route ist lokal gegen die echte Grenz-Implementierung belegt, aber kein
 Stack-Fall spricht sie über das Netz.
+
+## Wer bürgt, sagt es — Release 1.85
+
+Der offene Punkt aus 1.76: ein `email_verified`-Erfordernis je Provider. Bis
+1.85 galt hart und global `email_verified === true` — Provider, die den Claim
+gar nicht senden (real häufig), waren stumm ausgeschlossen. Jetzt trägt jeder
+Katalogeintrag `emailVerification: "required" | "trusted"`. "required"
+(Voreinstellung) verlangt den Claim; "trusted" akzeptiert einen **fehlenden**
+Claim, weil der Operator bürgt — ein explizites `false` bleibt in jedem
+Modus eine Abweisung. Trusted heisst „ohne Claim", nie „gegen den Claim".
+Ein unbekannter Modus ist ein Konfigurationsfehler, kein stilles required.
+
+Zertifiziert: Der Auth-Stack (beide echten Dex-Provider senden `true`)
+belegt den unveränderten echten Pfad, 7 von 7 zweimal. Die Matrix —
+required ohne Claim abgewiesen, trusted ohne Claim akzeptiert, trusted mit
+`false` abgewiesen, unbekannter Modus abgewiesen — ist lokal gegen dieselbe
+`verifyIdToken`-Implementierung belegt, die der Stack durchläuft.
+
+Fund nebenbei, mit Ursache: `tests/auth-service.test.ts` fragte an einer
+Stelle die **echte** Uhr, während der Dienst auf den 17. Juli 2026 fixiert
+ist. Im August bestand der Fall zufällig; am 24. September war die fixierte
+Session abgelaufen und er fiel deterministisch. Behoben: Die Fixture reicht
+`now()` durch. Der Produktcode war nie betroffen — er nutzt konsequent seine
+eigene Uhr.
+
+Mutationsprobe: trusted schluckt auch `false` — **1 von 1076 fällt**, genau
+der Matrix-Fall.
+
+Checkpoint `1.85.0` am 24. September 2026: Lokal 1076 bestanden, 0
+fehlgeschlagen, zweimal reproduziert, exit 0; Mailpit/Dex 7 von 7, exit 0,
+zweimal reproduziert. Stacks sonst unverändert: PostgreSQL 155, MinIO/ClamAV 8.
+
+Nicht erbracht: Kein echter Provider im Stack sendet den Claim nicht — der
+Trusted-Positivfall ist lokal, nicht gegen eine Gegenstelle belegt. Der
+Modus steht nur im Katalog-JSON, nicht in der Console.

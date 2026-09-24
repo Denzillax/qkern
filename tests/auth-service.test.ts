@@ -35,12 +35,19 @@ function fixture(options: { sessionTtlMs?: number } = {}) {
     id: () => String(++id),
     sessionTtlMs: options.sessionTtlMs,
   });
-  return { auth, users, sessions, passwords, setTime: (value: string) => { time = new Date(value); } };
+  return {
+    auth, users, sessions, passwords,
+    // Dieselbe Uhr wie der Dienst — der Test darf nie die echte Uhr fragen:
+    // Bis 1.85 tat er es an einer Stelle, bestand im August nur zufaellig
+    // und fiel im September, als die fixierte Session abgelaufen war.
+    now: () => new Date(time),
+    setTime: (value: string) => { time = new Date(value); },
+  };
 }
 
 describe("AuthService", () => {
   it("canonicalizes email, hashes the password, and stores only a session-token hash", async () => {
-    const { auth, users, sessions } = fixture();
+    const { auth, users, sessions, now } = fixture();
     const result = await auth.register({
       email: "  Owner@QKERN.CH ",
       password: "long-secret-password",
@@ -51,7 +58,7 @@ describe("AuthService", () => {
     expect(result.token).toBe("raw-session-token-that-is-never-stored");
     const storedUser = await users.findByEmail("owner@qkern.ch");
     expect(storedUser?.passwordHash).not.toContain("long-secret-password");
-    const storedSession = await sessions.findActiveByTokenHash(hashSessionToken(result.token), new Date());
+    const storedSession = await sessions.findActiveByTokenHash(hashSessionToken(result.token), now());
     expect(storedSession?.tokenHash).toBe(hashSessionToken(result.token));
     expect(storedSession?.tokenHash).not.toBe(result.token);
   });
