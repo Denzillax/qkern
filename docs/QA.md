@@ -3545,3 +3545,40 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Login, Registrierung und Console-Texte sind noch nicht
 durch den Skill gelaufen.
+
+## Die Console spricht Deutsch — Release 1.99
+
+Denzils Auftrag: die Console auch durch den Skill `humanizer`. Beim Lesen
+zeigte sich zuerst etwas anderes: Die Console mischte Englisch (Kern seit
+dem MVP) mit Deutsch (Freigabemodus, Rechnungen, die Platzhalter aus 1.93
+bis 1.95). Entscheidung: durchgehend Deutsch, Produktbegriffe bleiben
+englisch — Table Editor, SQL Editor, Change Set, RLS, Storage, Functions.
+Rund 200 Zeichenketten in `console-app.tsx`, jede Ersetzung per Assertion
+eindeutig verankert.
+
+Der zweite Fund wog schwerer als die Sprache. Die Console zeigte Werte,
+die kein Dienst liefert: „+18.2 %" und „3.4 % used" an den Kacheln, 24
+Balken Verlauf, „p95 184 ms", Latenzen von fünf Diensten, eine Datenbank
+„nova-market-dev" in „ch-zrh-1" mit Pool 12/100, sechs Demo-Tabellen mit
+Zeilenzahlen, zwei „verbundene" Agenten mit „letztem Aufruf vor 4 min",
+Badges 2 und 1 in der Navigation. Der Skill sagt: nichts erfinden. Dieselbe
+Regel wie in 1.93: Was nicht verbunden ist, sagt das jetzt selbst. Die
+Kacheln zeigen die Werte aus dem Projektdatensatz ohne erfundene Deltas;
+Verlauf, Dienststatus, Datenbank-Provisionierung und Agentenverbindung sind
+Platzhalterkarten; die Datenbank-Ansicht verweist auf den Table Editor, der
+wirklich live liest. Das Freigabe-Badge zählt die echten offenen Freigaben,
+der Projekt-Umschalter zeigt den echten Workspace, die Statuspille
+„Verbunden" erscheint nur, wenn der Snapshot geladen ist. `demoTables`,
+`TableList` und die unbenutzte `ApiView` sind weg.
+
+Im Browser geprüft, in Denzils angemeldeter Session: Navigation,
+Übersicht, Datenbank, AI Bridge, Freigabezentrale und Einstellungen zeigen
+die neuen Texte; das Schliessen-Kreuz der Sidebar aus 1.97 ist auf dem
+Telefon sichtbar (Pfeil ausgeblendet, Kreuz `display: flex` bei 500 px).
+
+Checkpoint `1.99.0` am 24. September 2026: Lokal 1096 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Login und Registrierung sind noch nicht durch den Skill
+gelaufen; Rollen wie „Owner" und Statuswerte aus der API (active, pending,
+delivered) bleiben englisch, weil sie Werte sind, keine Texte.

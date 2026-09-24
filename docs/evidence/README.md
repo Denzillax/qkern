@@ -1088,3 +1088,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-24/landing-copy-local-run1.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0 |
 | `2026-09-24/landing-copy-local-run2.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 1.99 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/console-german-local-run1.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0 |
+| `2026-09-24/console-german-local-run2.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0, Wiederholung |

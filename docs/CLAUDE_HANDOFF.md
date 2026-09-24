@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.98.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.99.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,17 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.98.0`
-- Aktueller Slice: 1.98 Texte ohne Tells — die Prosa der Landingpage
+- Paketversion: `1.99.0`
+- Aktueller Slice: 1.99 Die Console spricht Deutsch — `console-app.tsx`
+  durchgehend deutsch, Produktbegriffe bleiben englisch (Table Editor, SQL
+  Editor, Change Set, RLS, Storage, Functions). Erfundene Live-Werte sind
+  weg: Deltas der Kacheln, 24-h-Balken, Latenzen, „nova-market-dev", Pool
+  12/100, Demo-Tabellen, verbundene Agenten, Nav-Badges; stattdessen
+  Platzhalterkarten „Noch nicht verbunden". Freigabe-Badge zählt echte
+  offene Freigaben; Projekt-Umschalter zeigt echten Workspace; Statuspille
+  „Verbunden" nur bei geladenem Snapshot. `demoTables`, `TableList`,
+  `ApiView` entfernt
+- Vorheriger Slice: 1.98 Texte ohne Tells — die Prosa der Landingpage
   (`app/page.tsx`) nach dem Skill `humanizer` (Abschnitt F, Deutsch)
   überarbeitet: zwölf Passagen, kein Code, keine Zahlenquelle. Denzil will
   den Skill auf jeden Text angewandt, den ich für ihn schreibe (Memory

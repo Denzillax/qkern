@@ -1006,3 +1006,6 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 @media (max-width: 760px) {
   .site-menu.is-open { top: 84px; }
 }
+
+/* 1.99: Platzhalterkarten mit h3 (Verlauf, Dienststatus, Agenten) */
+.placeholder-state h3 { margin: 4px 0 6px; font-size: 18px; }

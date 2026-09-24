@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.98.md](RELEASE_1.98.md) | Aktueller Release: Texte ohne Tells |
+| [RELEASE_1.99.md](RELEASE_1.99.md) | Aktueller Release: Die Console spricht Deutsch |
+| [RELEASE_1.98.md](RELEASE_1.98.md) | Texte ohne Tells |
 | [RELEASE_1.97.md](RELEASE_1.97.md) | Grosse Zahlen, kleines Menü |
 | [RELEASE_1.96.md](RELEASE_1.96.md) | Bewegung beim Scrollen |
 | [RELEASE_1.95.md](RELEASE_1.95.md) | Menüs statt Attrappen |

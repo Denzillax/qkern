@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "console-german-local-run1.log",
+  "commit": "799ed3fc137910ea621a6ae1b2922ab00fd9a48f",
+  "commitSubject": "release: 1.98.0 Texte ohne Tells",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1096 passed | 241 skipped (1337)",
+  "passed": 1096,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}
