@@ -960,3 +960,49 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 @media (prefers-reduced-motion: reduce) {
   html[data-reveal="on"] .reveal, html[data-reveal="on"] .reveal-stagger > * { opacity: 1; transform: none; transition: none; }
 }
+
+/* 1.97: Hamburger-Menue der Website unter 1000 px — dort verschwindet die Desktop-Navigation */
+.site-menu-button { display: none; width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--qkern-text); cursor: pointer; }
+.site-menu-button:hover { background: var(--qkern-surface-2); }
+.site-menu { display: none; }
+.site-menu-backdrop { display: none; }
+@media (max-width: 1000px) {
+  .site-menu-button { display: inline-flex; }
+  .site-header .header-actions .button.small.desktop-only { display: none; }
+  /* Die Abdunkelung liegt im Stapel der Kapsel: unter Logo und Knoepfen,
+     ohne Blur — sonst verschwimmt die Kopfzeile selbst. */
+  .site-menu-backdrop { display: block; position: fixed; inset: 0; z-index: 48; background: color-mix(in srgb, var(--qkern-dark) 40%, transparent); }
+  .site-menu.is-open { display: grid; position: fixed; top: 102px; left: 14px; right: 14px; z-index: 49; gap: 2px; padding: 12px; border-radius: var(--radius-card); background: var(--qkern-surface); border: 1px solid var(--qkern-border); box-shadow: var(--shadow-float); animation: environment-in .14s ease-out; }
+  .site-menu > a { display: flex; align-items: center; min-height: 54px; padding: 0 16px; border-radius: 14px; font-size: 19px; font-weight: 600; letter-spacing: -0.015em; color: var(--qkern-text); }
+  .site-menu > a:hover { background: var(--qkern-surface-2); }
+  .site-menu-actions { display: grid; gap: 10px; margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--qkern-border); }
+  .site-menu-actions a { justify-content: center; min-height: 52px; font-size: 16px; font-weight: 600; }
+  .site-menu-actions .button { color: #ffffff; }
+}
+@media (max-width: 680px) {
+  .site-header .header-actions .text-link.desktop-only { display: none; }
+}
+
+/* 1.97: Auf dem Telefon ist die Sidebar eine Schublade — ein Ein-/Ausklapp-
+   Pfeil ergibt dort keinen Sinn, ein Schliessen-Kreuz schon. */
+.sidebar-close { display: none; }
+@media (max-width: 760px) {
+  .console-brand .sidebar-collapse { display: none; }
+  .console-brand .sidebar-close { display: flex; }
+  .is-collapsed .console-brand { flex-direction: row; height: 64px; padding: 0 16px 0 18px; }
+  .is-collapsed .console-brand > a { min-width: 120px; }
+  .is-collapsed .project-switch { padding: 10px; grid-template-columns: 30px 1fr auto; }
+  .is-collapsed .project-switch div, .is-collapsed .project-switch svg { display: block; }
+  .is-collapsed .console-nav button { justify-content: flex-start; padding: 0 12px; }
+  .is-collapsed .console-nav span, .is-collapsed .console-nav small { display: inline; }
+  .is-collapsed .sidebar-bottom > * { justify-content: flex-start; }
+  .is-collapsed .sidebar-bottom span:not(.user-chip > span), .is-collapsed .user-chip div { display: block; }
+  .is-collapsed .sidebar-bottom > a, .is-collapsed .sidebar-bottom > button { width: auto; padding: 0 9px; }
+  .is-collapsed .account-menu { width: auto; }
+  .is-collapsed .sidebar-bottom .user-chip { width: 100%; height: auto; padding: 8px; justify-content: flex-start; }
+  .is-collapsed .sidebar-bottom .user-chip > svg { display: block; }
+  .is-collapsed .console-nav { scrollbar-width: thin; }
+}
+@media (max-width: 760px) {
+  .site-menu.is-open { top: 84px; }
+}

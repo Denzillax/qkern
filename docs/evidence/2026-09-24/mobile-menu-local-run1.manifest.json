@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "mobile-menu-local-run1.log",
+  "commit": "743d8cae2a3fd6f66370e602d3d042447baf936d",
+  "commitSubject": "release: 1.96.0 Bewegung beim Scrollen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1096 passed | 241 skipped (1337)",
+  "passed": 1096,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

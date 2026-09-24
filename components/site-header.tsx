@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { QKERNLogo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SiteMenu } from "@/components/site-menu";
 
 // "Lösungen" zeigte auf #solutions, einen Anker, den es auf der Seite nicht
 // gibt. Ein Navigationspunkt, der nirgends hinfuehrt, ist kein Label, sondern
@@ -12,7 +13,7 @@ const links = [
   ["KI", "#ai"],
   ["Offene Punkte", "#security"],
   ["Preise", "#pricing"],
-];
+] as const;
 
 export function SiteHeader() {
   return (
@@ -27,7 +28,8 @@ export function SiteHeader() {
           <Link className="text-link desktop-only" href="/login">Anmelden</Link>
           {/* Gleiche Beschriftung wie auf der Seite. Zwei Woerter fuer dieselbe
               Handlung zwingen den Leser, sie fuer zwei zu halten. */}
-          <Link className="button small" href="/register">Projekt erstellen</Link>
+          <Link className="button small desktop-only" href="/register">Projekt erstellen</Link>
+          <SiteMenu links={links} />
         </div>
       </div>
     </header>

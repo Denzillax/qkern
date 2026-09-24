@@ -1074,3 +1074,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-24/scroll-reveal-local-run1.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0 |
 | `2026-09-24/scroll-reveal-local-run2.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 1.97 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/mobile-menu-local-run1.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0 |
+| `2026-09-24/mobile-menu-local-run2.log` | Vitest lokal (Windows) | 1096 bestanden, exit 0, Wiederholung |

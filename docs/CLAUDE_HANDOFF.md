@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.96.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.97.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,16 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.96.0`
-- Aktueller Slice: 1.96 Bewegung beim Scrollen — `components/reveal.tsx`
+- Paketversion: `1.97.0`
+- Aktueller Slice: 1.97 Grosse Zahlen, kleines Menü — drei Nutzerbefunde:
+  Kennzahlen winzig mit Plus in eigener Zeile (`.stat span` traf den
+  `CountUp`-Span; jetzt `.stat > span` fürs Label, Zahl 44–64 px); Website
+  ohne Hamburger-Menü unter 1000 px (`components/site-menu.tsx`, Blatt unter
+  der Kapsel, Escape/Klick/Breitenwechsel schliessen, Body-Scroll gesperrt);
+  Console-Sidebar auf dem Telefon mit sinnlosem Ein-/Ausklapp-Pfeil (jetzt
+  Schliessen-Kreuz `.sidebar-close`, `is-collapsed` wird unter 760 px
+  neutralisiert)
+- Vorheriger Slice: 1.96 Bewegung beim Scrollen — `components/reveal.tsx`
   (`Reveal`: IntersectionObserver, setzt `data-in`; `CountUp`: Kennzahlen
   zählen ab 0.5 Sichtbarkeit hoch, Endwert per Timeout gesichert, weil
   requestAnimationFrame in Hintergrund-Tabs pausiert). Ausblendung nur unter

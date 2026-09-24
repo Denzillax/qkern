@@ -3486,3 +3486,37 @@ unverändert.
 
 Nicht erbracht: Die Referenz animiert zusätzlich Wort für Wort im Hero;
 QKERN behält dort die Ladeanimation aus 1.92.
+
+## Grosse Zahlen, kleines Menü — Release 1.97
+
+Drei Nutzerbefunde mit Screenshot: Die Kennzahlen unter dem Hero waren
+winzig, das Plus stand in einer eigenen Zeile, und „der Effekt ist nicht
+da"; auf dem Telefon fehlte der Website das Hamburger-Menü; und in der
+Console ergab der Ein-/Ausklapp-Pfeil der Sidebar auf dem Telefon keinen
+Sinn.
+
+Die winzige Zahl war ein Selektor: `.stat span` — gedacht fürs Label —
+traf seit 1.96 auch den Zähler-Span in `strong`, machte ihn 13,5 px und
+`display: block`. Jetzt gilt `.stat > span` fürs Label, der Zähler erbt die
+Schrift, die Zahl ist 44 bis 64 px. Im Vordergrund-Tab gemessen: 62 → 106
+→ 136 → 160 in 1,4 s. Das Hamburger-Menü (`components/site-menu.tsx`)
+erscheint unter 1000 px, dort, wo die Desktop-Navigation verschwindet: ein
+Blatt unter der Kapsel mit allen Ankern, Anmelden und Projekt erstellen;
+Escape, Klick auf einen Eintrag, Klick daneben und Wechsel auf
+Desktop-Breite schliessen es, der Body scrollt derweil nicht. Nach dem
+ersten Screenshot des Nutzers noch nachgezogen: Die Abdunkelung lag mit
+Blur über der Kapsel selbst (Logo verschwommen) — Blatt und Abdunkelung liegen
+jetzt per Portal ausserhalb der Kopfzeile, unter deren Stapel (z 48/49
+gegen 50), die Kapsel bleibt scharf und ungedimmt; der Button-Text im Menü
+erbte die Menüfarbe statt Weiss; die Einträge sind 19 px halbfett. Im Browser
+bei 375 px geprüft: Knopf 44 × 44 px, Menü öffnet, Klick auf „Produkt"
+schliesst und springt zu `#product`. In der Console zeigt die Sidebar auf
+dem Telefon ein Schliessen-Kreuz statt des Pfeils, und ein zuvor auf
+Desktop gemerkter eingeklappter Zustand wird unter 760 px neutralisiert —
+die Schublade ist immer voll breit.
+
+Checkpoint `1.97.0` am 24. September 2026: Lokal 1096 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Das Schliessen-Kreuz der Console ist nicht im Browser
+geprüft — ohne Konto (siehe 1.95) bleibt die Console zu.

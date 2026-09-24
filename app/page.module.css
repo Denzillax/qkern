@@ -233,11 +233,18 @@
   color: var(--qkern-primary);
 }
 
-.stat span {
+/* Nur das Label — der Zaehler (1.96) ist ebenfalls ein span, im strong */
+.stat > span {
   display: block;
   margin-top: 10px;
   font-size: 13.5px;
   color: var(--qkern-text-muted);
+}
+
+.stat strong span { display: inline; font: inherit; color: inherit; }
+
+.stat strong {
+  font-size: clamp(44px, 5vw, 64px);
 }
 
 /* Abschnitte */
