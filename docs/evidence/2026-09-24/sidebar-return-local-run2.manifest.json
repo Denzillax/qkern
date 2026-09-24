@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "sidebar-return-local-run2.log",
+  "commit": "89f2707f394cc47718d1c85bb6b1655b548be600",
+  "commitSubject": "release: 1.93.0 Die Console sagt, was sie nicht kann",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1093 passed | 241 skipped (1334)",
+  "passed": 1093,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

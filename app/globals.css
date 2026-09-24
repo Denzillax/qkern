@@ -864,3 +864,24 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--qkern-te
    und jede Ansicht mit anderer Inhaltsbreite verschob die Kopfleiste. */
 .console-root { display: block; }
 .console-workspace { width: auto; }
+
+/* 1.94: Sidebar wieder aufklappbar, Logo fuehrt in die Console, Umgebungs-
+   wahl in Sans. Der Aufklapp-Button war im eingeklappten Zustand per
+   `display: none` versteckt — man kam nur per Reload wieder heraus. */
+.is-collapsed .console-brand { padding: 0; flex-direction: column; justify-content: center; gap: 6px; height: 88px; }
+.is-collapsed .console-brand > a { min-width: 0; }
+.is-collapsed .console-brand button { display: flex; }
+.console-brand button { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; }
+.console-brand button:hover { background: rgba(255,255,255,.08); color: #ffffff; }
+
+.environment-field { position: relative; display: inline-flex; align-items: center; height: 40px; border-radius: var(--radius-pill); border: 1px solid var(--qkern-border); background: var(--qkern-surface); color: var(--qkern-text); padding: 0 12px 0 14px; gap: 8px; transition: border-color .15s, box-shadow .15s; }
+.environment-field:focus-within { box-shadow: 0 0 0 3px var(--qkern-primary-muted); }
+.environment-field > i { width: 8px; height: 8px; border-radius: 50%; background: var(--qkern-text-muted); flex: none; }
+.environment-field > svg { flex: none; color: var(--qkern-text-muted); pointer-events: none; }
+.environment-field.development { border-color: color-mix(in srgb, var(--qkern-success) 35%, var(--qkern-border)); }
+.environment-field.development > i { background: var(--qkern-success); }
+.environment-field.staging { border-color: color-mix(in srgb, var(--qkern-warning) 40%, var(--qkern-border)); }
+.environment-field.staging > i { background: var(--qkern-warning); }
+.environment-field.production { border-color: color-mix(in srgb, var(--qkern-danger) 40%, var(--qkern-border)); background: color-mix(in srgb, var(--qkern-danger) 6%, var(--qkern-surface)); }
+.environment-field.production > i { background: var(--qkern-danger); }
+.console-root .environment-field .environment-select { appearance: none; -webkit-appearance: none; height: 38px; min-height: 0; border: 0; background: transparent; padding: 0; border-radius: 0; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); text-transform: none; cursor: pointer; outline: none; }

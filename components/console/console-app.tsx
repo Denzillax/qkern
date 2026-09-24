@@ -138,7 +138,7 @@ export function ConsoleApp() {
   return (
     <div className="console-root">
       <aside className={`console-sidebar ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
-        <div className="console-brand"><Link href="/">{collapsed ? <QKERNSymbol variant="white" size="sm" /> : <QKERNLogo variant="white" size="sm" />}</Link><button onClick={() => setCollapsed(!collapsed)} aria-label="Sidebar ein- oder ausklappen">{collapsed ? <ChevronRight size={15}/> : <ChevronLeft size={15}/>}</button></div>
+        <div className="console-brand"><Link href="/console" aria-label="Zur Console-Übersicht">{collapsed ? <QKERNSymbol variant="white" size="sm" /> : <QKERNLogo variant="white" size="sm" />}</Link><button onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"} title={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}>{collapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}</button></div>
         <div className="project-switch"><span className="project-glyph">QP</span><div><strong>{project?.name ?? "Loading project"}</strong><small>MVP workspace</small></div><ChevronDown size={14}/></div>
         <nav className="console-nav" aria-label="QKERN Console Navigation">
           {nav.map((item) => { const Icon = item.icon; return <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => changeView(item.id)} title={item.label}><Icon size={17}/><span>{item.label}</span>{item.badge && <small>{item.badge}</small>}</button>; })}
@@ -152,9 +152,13 @@ export function ConsoleApp() {
           <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Navigation öffnen"><Menu size={19}/></button>
           <div className="console-crumb"><span>{snapshot?.organization.name ?? "QKERN"}</span><b>/</b><strong>{project?.name ?? "Project"}</strong></div>
           <div className="console-tools">
-            <select className={`environment-select ${environment}`} value={environment} onChange={(event) => setEnvironment(event.target.value as Environment)} aria-label="Umgebung auswählen">
-              <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
-            </select>
+            <label className={`environment-field ${environment}`}>
+              <i aria-hidden="true"/>
+              <select className={`environment-select ${environment}`} value={environment} onChange={(event) => setEnvironment(event.target.value as Environment)} aria-label="Umgebung auswählen">
+                <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
+              </select>
+              <ChevronDown size={14} aria-hidden="true"/>
+            </label>
             <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>Search</span><kbd>⌘ K</kbd></button>
             <span className="system-online"><i/> Healthy</span>
             <ThemeToggle/><button className="icon-button is-placeholder" aria-label="Benachrichtigungen" disabled title="Benachrichtigungen sind noch nicht verbunden"><Bell size={16}/></button>

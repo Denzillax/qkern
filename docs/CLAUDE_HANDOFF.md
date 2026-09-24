@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.93.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.94.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,14 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.93.0`
-- Aktueller Slice: 1.93 Die Console sagt, was sie nicht kann — Nutzerbefund
+- Paketversion: `1.94.0`
+- Aktueller Slice: 1.94 Der Weg zurück — Nutzerbefund: die eingeklappte
+  Sidebar liess sich nicht wieder öffnen (`.is-collapsed .console-brand
+  button { display: none }`), das Logo führte auf `/` statt `/console`, die
+  Umgebungswahl war 9-px-Monospace. Jetzt: Aufklapp-Button bleibt in der
+  70-px-Leiste sichtbar, Logo verlinkt `/console`, Select in Sans mit
+  Status-Punkt und Chevron (`.environment-field`)
+- Vorheriger Slice: 1.93 Die Console sagt, was sie nicht kann — Nutzerbefund
   nach dem Redesign: Kopfleiste wieder als volle geblurrte Leiste (die
   transparente Kapsel liess Inhalt darunter durchscrollen), Kicker in Sans und
   Satzschreibung, dünne Scrollleisten, eine Buttonhöhe (40 px), und alle

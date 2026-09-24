@@ -3398,3 +3398,23 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Die abgeschalteten Flächen sind ehrlich, aber leer — Team,
 Benachrichtigungen, Filter und Projekt-Einstellungen bleiben zu bauen.
+
+## Der Weg zurück — Release 1.94
+
+Nutzerbefund mit Screenshot: Wer die Sidebar einklappt, kommt nicht mehr
+heraus; das Logo führt auf die Startseite statt in die Console; der
+Umgebungs-Button oben ist „schlecht design".
+
+Die Sidebar war eine Einbahnstrasse: `.is-collapsed .console-brand button {
+display: none }` versteckte genau den Button, der sie wieder öffnet. Jetzt
+steht er in der 70-px-Leiste unter dem Symbol, 32 × 32 px, mit Tooltip
+„Sidebar ausklappen"; im Browser gemessen: 232 → 70 → 232 px. Das Logo
+verlinkt `/console`. Die Umgebungswahl ist ein natives `select` in Sans
+(600, 13 px) mit farbigem Status-Punkt und Chevron in einer Pille — die
+Rahmenfarbe trägt weiter die Umgebung (grün, gelb, rot).
+
+Checkpoint `1.94.0` am 24. September 2026: Lokal 1093 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Der Zustand der Sidebar wird nicht gespeichert — nach
+einem Reload ist sie wieder ausgeklappt.
