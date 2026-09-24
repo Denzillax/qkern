@@ -954,3 +954,15 @@ Der Auth-Stack belegt den echten Pfad (beide Dex-Provider senden
 `email_verified: true`); die Trusted-Matrix ist nur lokal ausdrückbar. Die
 Mutation lässt trusted auch ein explizites `false` schlucken — genau der
 Matrix-Fall fällt.
+
+## Läufe zu Release 1.86 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/aggregates-run1.log` | PostgreSQL 17 | 156 von 156, exit 0 |
+| `2026-09-24/aggregates-run2.log` | PostgreSQL 17 | 156 von 156, exit 0, Wiederholung |
+| `2026-09-24/aggregates-mutation.log` | PostgreSQL 17 | **155 von 156, exit 1 — absichtlich** |
+| `2026-09-24/aggregates-local-run1.log` | Vitest lokal (Windows) | 1078 bestanden, exit 0 |
+
+Die Mutation nimmt die Sensibel-Prüfung aus der Spaltenwahl der Aggregate —
+`min(api_token)` läse dann ein Geheimnis. Genau der Aggregat-Fall fällt.

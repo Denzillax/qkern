@@ -96,7 +96,31 @@ export type GeneratedMutationResult = {
   rowCount: number;
 };
 
+export type GeneratedAggregateFunction = "count" | "sum" | "avg" | "min" | "max";
+export type GeneratedAggregate = { fn: GeneratedAggregateFunction; column?: string };
+export type GeneratedAggregateInput = {
+  schema: string;
+  table: string;
+  filters?: GeneratedDataFilter[];
+  aggregates: GeneratedAggregate[];
+  groupBy?: string;
+};
+export type GeneratedAggregateResult = {
+  source: "postgres";
+  table: GeneratedTable;
+  /** Zaehler und Summen kommen als Dezimalstrings — bigint/numeric verlieren in JSON sonst Praezision. */
+  groups: Array<Record<string, unknown>>;
+  groupCount: number;
+  /** Mehr Gruppen als MAX_ROWS wurden beschnitten — genannt, nicht verschwiegen. */
+  truncated: boolean;
+};
+
 export interface GeneratedDataApiPort {
+  aggregateRows(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedAggregateInput,
+  ): Promise<GeneratedAggregateResult>;
   callFunction(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
@@ -581,6 +605,91 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     });
   }
 
+  /**
+   * Aggregate unter der RLS des Aufrufers — die Luecke "Aggregate" der
+   * Paritaetsleiter (Data API).
+   *
+   * Dieselben Grenzen wie beim Listen: nur waehlbare, nicht-sensible Spalten,
+   * dieselben Filter, Views nur mit security_invoker. sum/avg verlangen einen
+   * numerischen Typ, min/max einen sortierbaren; count(*) braucht keine
+   * Spalte. Eine Gruppierungsspalte ist optional; mehr als MAX_ROWS Gruppen
+   * werden beschnitten und als `truncated` genannt. Die Mutationsprobe dieses
+   * Releases nimmt die Sensibel-Pruefung aus der Aggregatspalte — dann liesse
+   * sich ein Geheimnis per min() lesen.
+   */
+  async aggregateRows(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedAggregateInput,
+  ): Promise<GeneratedAggregateResult> {
+    assertRequest(context, scope, input.schema, input.table);
+    if (!Array.isArray(input.aggregates) || input.aggregates.length < 1 || input.aggregates.length > 10 ||
+        (input.filters?.length ?? 0) > MAX_FILTERS) {
+      throw invalidInput();
+    }
+    return this.run(context, scope, false, async (client) => {
+      const table = await this.loadTable(client, input.schema, input.table);
+      assertTableBoundary(table, "select");
+      const byName = new Map(table.columns.map((column) => [column.name, column]));
+      const usable = (name: string) => {
+        const column = byName.get(name);
+        return column && column.selectable && !column.sensitive ? column : null;
+      };
+      const filters = input.filters ?? [];
+      for (const filter of filters) {
+        if (!usable(filter.column) || !isFilter(filter)) throw invalidInput();
+      }
+      const selects: string[] = [];
+      const keys = new Set<string>();
+      if (input.groupBy !== undefined) {
+        const column = usable(input.groupBy);
+        if (!column || !isSortableDataType(column.dataType)) throw invalidInput();
+        selects.push(quoted(input.groupBy));
+        keys.add(input.groupBy);
+      }
+      for (const aggregate of input.aggregates) {
+        if (!["count", "sum", "avg", "min", "max"].includes(aggregate.fn)) throw invalidInput();
+        if (aggregate.column === undefined) {
+          if (aggregate.fn !== "count" || keys.has("count")) throw invalidInput();
+          keys.add("count");
+          selects.push(`count(*) AS ${quoted("count")}`);
+          continue;
+        }
+        const column = usable(aggregate.column);
+        if (!column) throw invalidInput();
+        if ((aggregate.fn === "sum" || aggregate.fn === "avg") && !isNumericDataType(column.dataType)) throw invalidInput();
+        if ((aggregate.fn === "min" || aggregate.fn === "max") && !isSortableDataType(column.dataType)) throw invalidInput();
+        const key = `${aggregate.fn}_${aggregate.column}`;
+        if (keys.has(key) || !IDENTIFIER.test(key)) throw invalidInput();
+        keys.add(key);
+        selects.push(`${aggregate.fn}(${quoted(aggregate.column)}) AS ${quoted(key)}`);
+      }
+      const values: SqlValue[] = [];
+      const where = filters.map((filter) => filterSql(filter, values));
+      const sql = `SELECT ${selects.join(", ")}
+        FROM ${qualified(input.schema, input.table)}
+        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+        ${input.groupBy !== undefined ? `GROUP BY ${quoted(input.groupBy)} ORDER BY ${quoted(input.groupBy)} ASC` : ""}
+        LIMIT ${MAX_ROWS + 1}`;
+      const result = await client.query<Record<string, unknown>>(sql, values);
+      const selected = result.rows.slice(0, MAX_ROWS);
+      const groups = boundedRows(selected.map((row) => Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [key, normalizeDataValue(value)]),
+      )), MAX_RESPONSE_BYTES);
+      if (selected.length > 0 && groups.length === 0) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+      }
+      await this.meterRowReads(context, scope, groups.length);
+      return {
+        source: "postgres",
+        table: publicTable(table),
+        groups,
+        groupCount: groups.length,
+        truncated: result.rows.length > MAX_ROWS || groups.length < selected.length,
+      };
+    });
+  }
+
   async insertRows(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
@@ -977,6 +1086,9 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
 
 export class DisabledGeneratedDataApi implements GeneratedDataApiPort {
   private disabled(): never { throw new GeneratedDataApiError("GENERATED_DATA_API_DISABLED"); }
+  async aggregateRows(
+    _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedAggregateInput,
+  ): Promise<GeneratedAggregateResult> { return this.disabled(); }
   async callFunction(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedCallInput,
   ): Promise<GeneratedCallResult> { return this.disabled(); }
@@ -1252,6 +1364,10 @@ function decodeCursor(
       parsed.order.join("\0") !== order.join("\0") || parsed.values.length !== order.length ||
       !parsed.values.every(isScalarDataValue)) throw invalidInput();
   return parsed.values as Array<string | number | boolean | null>;
+}
+
+function isNumericDataType(type: string): boolean {
+  return /^(?:smallint|integer|bigint|numeric|decimal|real|double precision)/.test(type);
 }
 
 function isSortableDataType(type: string): boolean {

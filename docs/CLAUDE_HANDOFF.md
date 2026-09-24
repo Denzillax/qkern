@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.85.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.86.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,12 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.85.0`
-- Aktueller Slice: 1.85 Wer bürgt, sagt es — `emailVerification: "required" |
+- Paketversion: `1.86.0`
+- Aktueller Slice: 1.86 Zählen unter der eigenen Grenze — `aggregateRows`
+  (count/sum/avg/min/max, optionale Gruppierungsspalte) unter der RLS des
+  Aufrufers; Route `tables/[table]/aggregate` importiert die Fehlergrenze der
+  Zeilenliste statt sie zu duplizieren; Zähler/Summen als Dezimalstrings
+- Vorheriger Slice: 1.85 Wer bürgt, sagt es — `emailVerification: "required" |
   "trusted"` je OIDC-Provider; trusted akzeptiert einen **fehlenden**
   `email_verified`-Claim (der Operator bürgt), ein explizites `false` bleibt in
   jedem Modus eine Abweisung. Fund: `tests/auth-service.test.ts` mischte

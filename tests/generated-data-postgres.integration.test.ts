@@ -80,6 +80,41 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
     expect(visibleB.rows[0]).toMatchObject({ id: rowB, name: "B" });
   });
 
+  /**
+   * Aggregate unter der RLS des Aufrufers — die Luecke "Aggregate" der
+   * Paritaetsleiter. Die Zeilen von A und B liegen aus dem ersten Fall vor;
+   * A zaehlt nur seine eigene, auch gruppiert und gefiltert. Ein Geheimnis
+   * laesst sich auch per min() nicht lesen — genau diese Pruefung nimmt die
+   * Mutationsprobe dieses Releases heraus.
+   */
+  it("aggregates only the caller's rows and refuses sensitive columns", async () => {
+    const counted = await service.aggregateRows(context(ownerA), scope, {
+      schema, table: "items", aggregates: [{ fn: "count" }, { fn: "min", column: "name" }],
+    });
+    expect(counted.groups).toEqual([{ count: "1", min_name: "A" }]);
+    expect(counted.truncated).toBe(false);
+
+    const grouped = await service.aggregateRows(context(ownerB), scope, {
+      schema, table: "items", aggregates: [{ fn: "count" }], groupBy: "owner_id",
+    });
+    expect(grouped.groups).toEqual([{ owner_id: ownerB, count: "1" }]);
+
+    const filtered = await service.aggregateRows(context(ownerA), scope, {
+      schema, table: "items", aggregates: [{ fn: "count" }],
+      filters: [{ column: "name", operator: "eq", value: "B" }],
+    });
+    expect(filtered.groups).toEqual([{ count: "0" }]);
+
+    // api_token ist text und damit sortierbar — nur die Sensibel-Pruefung
+    // steht zwischen min() und dem Geheimnis.
+    await expect(service.aggregateRows(context(ownerA), scope, {
+      schema, table: "items", aggregates: [{ fn: "min", column: "api_token" }],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    await expect(service.aggregateRows(context(ownerA), scope, {
+      schema, table: "items", aggregates: [{ fn: "sum", column: "name" }],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+  });
+
   it("rejects identifier and column injection before PostgreSQL execution", async () => {
     await expect(service.listRows(context(ownerA), scope, {
       schema, table: "items; DROP SCHEMA public", select: ["id"],

@@ -3131,3 +3131,34 @@ zweimal reproduziert. Stacks sonst unverändert: PostgreSQL 155, MinIO/ClamAV 8.
 Nicht erbracht: Kein echter Provider im Stack sendet den Claim nicht — der
 Trusted-Positivfall ist lokal, nicht gegen eine Gegenstelle belegt. Der
 Modus steht nur im Katalog-JSON, nicht in der Console.
+
+## Zählen unter der eigenen Grenze — Release 1.86
+
+Die Lücke „Aggregate" der Paritätsleiter (Data API). `aggregateRows` bietet
+count/sum/avg/min/max mit optionaler Gruppierungsspalte — unter **denselben**
+Grenzen wie das Listen: nur wählbare, nicht-sensible Spalten, dieselben
+Filter, Views nur mit `security_invoker`, und vor allem die RLS des
+Aufrufers. sum/avg verlangen einen numerischen Typ, min/max einen
+sortierbaren; `count(*)` braucht keine Spalte. Zähler und Summen kommen als
+Dezimalstrings — bigint/numeric verlören in JSON sonst Präzision. Mehr als
+100 Gruppen werden beschnitten und als `truncated` genannt.
+
+Die Route `GET tables/<table>/aggregate?fn=count&fn=sum:amount&group=…`
+importiert die Fehlergrenze der Zeilenliste statt sie zu duplizieren — der
+Routen-Grenzen-Vertrag zählt weiterhin genau die deklarierten Grenzen.
+
+Zertifiziert gegen echtes PostgreSQL: A zählt nur seine eigene Zeile, auch
+gruppiert nach `owner_id` (nur die eigene Gruppe erscheint) und gefiltert;
+`min(api_token)` — text, also sortierbar — scheitert allein an der
+Sensibel-Prüfung; `sum(name)` am Typ.
+
+Mutationsprobe: Die Sensibel-Prüfung aus der Aggregatspaltenwahl entfernt —
+**155 von 156**, genau der Aggregat-Fall.
+
+Checkpoint `1.86.0` am 24. September 2026: Lokal 1078 bestanden, 0
+fehlgeschlagen; PostgreSQL 156 von 156, exit 0, zweimal reproduziert, 44
+Migrationen.
+
+Nicht erbracht: nur eine Gruppierungsspalte, kein HAVING, keine Aggregate im
+OpenAPI-Dokument und nicht im SDK; eingebettete Joins bleiben die letzte
+Data-API-Lücke der Leiter.

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 24. September 2026 · Release: `1.85.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 24. September 2026 · Release: `1.86.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -21,7 +21,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
 | Control Plane, Approval/Audit, Migration Runtime | ja | ja — 12 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
-| Generated Data API | ja | ja — 5 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`) und ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`) |
+| Generated Data API | ja | ja — 6 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), und Aggregate unter der RLS des Aufrufers (`1.86.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 7 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 8 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last |
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **155 von 155 bestanden, exit 0, zweimal reproduziert** |
+| **PostgreSQL-17-Zertifizierung** | **156 von 156 bestanden, exit 0, zweimal reproduziert** |
 | **MinIO-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
 | **Functions gegen Docker plus PostgreSQL** | **26 von 26 bestanden, exit 0, zweimal reproduziert** |

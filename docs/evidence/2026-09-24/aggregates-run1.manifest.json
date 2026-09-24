@@ -1,0 +1,17 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "aggregates-run1.log",
+  "commit": "9d1c24e15201e9ab3564d3bc07d3afc57c8898de",
+  "commitSubject": "docs: Entfernung des leeren Git-Geruests in code/ vermerken",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "156 passed (156)",
+  "passed": 156,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "node:24-alpine",
+    "postgres:17-alpine"
+  ],
+  "migrationsApplied": 44
+}
