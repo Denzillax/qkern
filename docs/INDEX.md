@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.1.md](RELEASE_2.1.md) | Aktueller Release: Gruppen, die zugehen |
+| [RELEASE_2.2.md](RELEASE_2.2.md) | Aktueller Release: Vier Sprachen |
+| [RELEASE_2.1.md](RELEASE_2.1.md) | Gruppen, die zugehen |
 | [RELEASE_2.0.md](RELEASE_2.0.md) | Das Menü von Supabase |
 | [RELEASE_1.99.md](RELEASE_1.99.md) | Die Console spricht Deutsch |
 | [RELEASE_1.98.md](RELEASE_1.98.md) | Texte ohne Tells |

@@ -1109,3 +1109,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-24/sidebar-groups-local-run1.log` | Vitest lokal (Windows) | 1100 bestanden, exit 0 |
 | `2026-09-24/sidebar-groups-local-run2.log` | Vitest lokal (Windows) | 1100 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.2 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/four-languages-local-run1.log` | Vitest lokal (Windows) | 1105 bestanden, exit 0 |
+| `2026-09-25/four-languages-local-run2.log` | Vitest lokal (Windows) | 1105 bestanden, exit 0, Wiederholung |

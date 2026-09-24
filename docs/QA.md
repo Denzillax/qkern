@@ -3640,3 +3640,40 @@ schliessen je zweimal.
 
 Checkpoint `2.1.0` am 24. September 2026: Lokal 1100 bestanden, 0
 fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+## Vier Sprachen — Release 2.2
+
+Denzils Auftrag: die Website mehrsprachig, DE, EN, FR, IT. Der Weg: ein
+Cookie statt Pfaden wie `/en`, damit Anker, Links und die bestehenden
+Routen unverändert bleiben. Beim ersten Besuch entscheidet der
+Accept-Language-Header des Browsers, danach die Wahl in der Kopfzeile; die
+Sprachwahl schreibt das Cookie und lässt den Server die Seite neu rendern,
+ohne Reload. Die Console bleibt deutsch.
+
+Die Texte liegen in typisierten Wörterbüchern (`lib/i18n/landing.ts`,
+`lib/i18n/auth.ts`); Deutsch ist die Vorlage, die drei anderen sind
+Übersetzungen davon. Zahlen und Daten kommen weiter aus den Manifesten;
+deren deutsche Namen („Control Plane und Data API", „MinIO und ClamAV")
+übersetzt eine kleine Abbildung je Sprache, fehlt ein Eintrag, bleibt das
+Original. Das Datum des Prüflaufs folgt der Sprache: „24. September 2026",
+„September 24, 2026", „24 septembre 2026", „24 settembre 2026".
+
+Der Vertrag `i18n-contract` prüft fünf Dinge: jede Sprache hat dieselbe
+Struktur wie Deutsch, kein Text ist leer, kein Text ist nur die deutsche
+Vorlage (Eigennamen und Produktbegriffe ausgenommen), die
+`{n}`-Platzhalter stimmen überein, und die Browser-Erkennung fällt bei
+Spanisch oder Portugiesisch auf Deutsch zurück. Ein erster Entwurf des
+Vertrags verglich auch die Namensabbildung und scheiterte, weil sie im
+Deutschen absichtlich leer ist; sie ist jetzt ausgenommen.
+
+Im Browser geprüft: Der Testbrowser bekam ohne Cookie Englisch (seine
+Sprache), Cookie `fr` lieferte die französische Anmeldeseite, Cookie `it`
+die italienische Startseite, und der Klick auf „Deutsch" im Menü schaltete
+ohne Reload zurück. `next build` exit 0.
+
+Checkpoint `2.2.0` am 25. September 2026: Lokal 1105 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Die Übersetzungen hat niemand gegengelesen, der Deutsch
+und die Zielsprache spricht; die Console ist nur deutsch; es gibt keine
+Sprach-URLs für Suchmaschinen.

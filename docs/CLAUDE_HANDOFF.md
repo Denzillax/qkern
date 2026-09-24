@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.1.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.2.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,19 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.1.0`
-- Aktueller Slice: 2.1 Gruppen, die zugehen — Nutzerbefund: Sidebar-Gruppen
+- Paketversion: `2.2.0`
+- Aktueller Slice: 2.2 Vier Sprachen — Website (Landing, Login,
+  Registrierung) in DE/EN/FR/IT. `lib/i18n/locales.ts` (Sprachen, Cookie
+  `qkern_locale`, `negotiateLocale` aus Accept-Language, `fill`),
+  `lib/i18n/server.ts` (`currentLocale`: Cookie, sonst Browser),
+  `lib/i18n/landing.ts` und `lib/i18n/auth.ts` (typisierte Wörterbücher,
+  Deutsch ist die Vorlage; `names` übersetzt Manifest-Namen und Stacks;
+  `formatDate` je Sprache), `components/language-switcher.tsx` (Cookie +
+  `router.refresh()`), `<html lang>` im Layout, `generateMetadata` je
+  Seite. Console bleibt deutsch. Vertrag `tests/i18n-contract.test.ts`:
+  gleiche Struktur, nichts leer, nichts kopiert, gleiche Platzhalter,
+  Browser-Erkennung fällt auf Deutsch zurück
+- Vorheriger Slice: 2.1 Gruppen, die zugehen — Nutzerbefund: Sidebar-Gruppen
   liessen sich nicht schliessen, Pfeile verschwanden bei langen Namen.
   Ursache eins: der Zustand „geschlossen" war ein leerer String, und der
   fiel in der Bedingung auf „aktive Gruppe ist offen" zurück. Jetzt eine

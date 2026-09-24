@@ -1046,3 +1046,15 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .console-nav .nav-children button > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .console-nav .nav-children { margin-left: 18px; padding-left: 12px; }
 .console-nav .nav-group.is-open > button.has-children:not(.active) { color: #dce6f6; }
+
+/* 2.2: Sprachwahl in der Kopfzeile */
+.language-switcher { position: relative; }
+.language-button { width: auto; min-width: 40px; padding: 0 10px; gap: 6px; font: 600 12px var(--qkern-font-sans); letter-spacing: .04em; }
+.language-button > span { line-height: 1; }
+.language-list { position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; min-width: 180px; margin: 0; padding: 6px; list-style: none; background: var(--qkern-surface); border: 1px solid var(--qkern-border); border-radius: 16px; box-shadow: var(--shadow-float); animation: environment-in .12s ease-out; }
+.language-list li button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--qkern-text); text-align: left; cursor: pointer; font: 500 14px var(--qkern-font-sans); }
+.language-list li button:hover, .language-list li button:focus-visible { background: var(--qkern-surface-2); outline: none; }
+.language-list li[aria-selected="true"] button { background: var(--qkern-primary-muted); }
+.language-list li button > svg { color: var(--qkern-primary); }
+@media (max-width: 680px) { .language-button > span { display: none; } .language-button { padding: 0; width: 40px; } }
+.auth-panel-tools { display: flex; align-items: center; gap: 8px; }
