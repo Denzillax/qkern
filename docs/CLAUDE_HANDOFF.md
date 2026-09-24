@@ -46,9 +46,10 @@ Release Notes bleiben unverändert.
   jedem Modus eine Abweisung. Fund: `tests/auth-service.test.ts` mischte
   fixierte Dienst-Uhr und echte Uhr — bestand im August zufällig, fiel im
   September (Kalender-Bombe; behoben, Fixture reicht jetzt `now()` durch).
-  Achtung Ablage: Das Repo liegt seit der Neustrukturierung vom 11. September
-  unter `C:\Projekte\!!!\QKERN`; `C:\Projekte\QKERN\code` ist ein leeres
-  Git-Gerüst — wohin das Repo gehört, entscheidet der Eigentümer
+  Ablage: Das Repo liegt seit dem 24. September unter
+  `C:\Projekte\QKERN\code\qkern` (Ordnerregel aus `C:\Projekte\QKERN\README.md`:
+  `code/` hält nur Git-Repos). Der Ordner `code/` selbst trägt noch ein leeres
+  Git-Gerüst ohne Commits aus der Neustrukturierung — nicht angefasst
 - Vorheriger Slice: 1.84 Der Login kennt seine Türen — öffentlicher
   Provider-Chooser `GET auth/oidc/providers` hinter derselben pre-auth-Grenze
   wie authorize (Projekt-Key, Origin-Gate, CORS, no-store); fremder Schlüssel
