@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "console-fixes-local-run1.log",
+  "commit": "19e2c8fc4dac586119f6dc8b5a40516430f60dcc",
+  "commitSubject": "release: 1.92.0 Schwebende Flaechen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1093 passed | 241 skipped (1334)",
+  "passed": 1093,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

@@ -3362,3 +3362,39 @@ halten über den Umbau hinweg.
 Nicht erbracht: Console nur umgestylt, nicht bebildert; keine Testimonials
 oder FAQ wie in der Referenz (QKERN hat keine Kunden, die zitierbar wären —
 erfundene Stimmen wären die erste unbelegte Zusage der Seite).
+
+## Die Console sagt, was sie nicht kann — Release 1.93
+
+Nutzerbefund nach dem Redesign, in der Console auf Desktop: unschöne
+Scrollleiste, uneinheitliche Buttons, der Kicker „FIRST PROJECT ·
+DEVELOPMENT" in Monospace-Versalien, eine Kopfleiste, die beim Scrollen
+„hin und her springt", und Buttons und Tabs, die sich nicht klicken lassen.
+
+Vier Ursachen, vier Korrekturen. Die Kopfleiste war seit 1.92 eine
+transparente Kapsel, unter der der Inhalt durchscrollte — jetzt wieder eine
+volle, geblurrte Leiste. Der Kicker ist Sans in Satzschreibung („First
+Project · Development"). Scrollleisten sind schmal und rund, aus den Tokens.
+Alle Console-Buttons haben eine Höhe (40 px, vollrund). Und die
+nicht klickbaren Elemente waren Attrappen: Backups zeigte erfundene
+Wiederherstellungspunkte vom Juli, Settings ein erfundenes Projekt „Nova
+Market", dazu Team, Glocke, Filter und Beispiel-Endpunkte ohne Funktion.
+Statt sie klickbar zu machen, ohne dass dahinter etwas wäre, sind sie
+sichtbar abgeschaltet und sagen im Tooltip, dass sie noch nicht verbunden
+sind; Settings liest jetzt den echten Projektnamen und die echte ID, Backups
+erklärt, dass es ein WAL-Archiv braucht (Sprosse 10).
+
+Der fünfte Fund ist das „Springen": `.console-root` war ein Grid mit
+`auto 1fr`, die Sidebar aber `position: fixed` und damit kein Grid-Item.
+Der Arbeitsbereich landete im `auto`-Track, der sich nach dem Inhalt
+bemisst, während `1fr` den Rest schluckte — gemessen bei 1440 px: 837 von
+1208 px. Jede Ansicht mit anderer Inhaltsbreite verschob so die Kopfleiste.
+Das Grid ist weg, der Arbeitsbereich füllt die Breite neben der Sidebar.
+Ehrlich: Der Fund wurde zwischendurch für falsch gehalten und der Block
+entfernt; erst die Messung im Browser hat ihn bestätigt — ein Screenshot
+bei 1000 px Breite hatte die Lücke kaschiert.
+
+Checkpoint `1.93.0` am 24. September 2026: Lokal 1093 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: Die abgeschalteten Flächen sind ehrlich, aber leer — Team,
+Benachrichtigungen, Filter und Projekt-Einstellungen bleiben zu bauen.

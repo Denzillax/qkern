@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.92.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.93.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,18 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.92.0`
-- Aktueller Slice: 1.92 Schwebende Flächen — Redesign von Landingpage und
+- Paketversion: `1.93.0`
+- Aktueller Slice: 1.93 Die Console sagt, was sie nicht kann — Nutzerbefund
+  nach dem Redesign: Kopfleiste wieder als volle geblurrte Leiste (die
+  transparente Kapsel liess Inhalt darunter durchscrollen), Kicker in Sans und
+  Satzschreibung, dünne Scrollleisten, eine Buttonhöhe (40 px), und alle
+  Attrappen ehrlich abgeschaltet mit Tooltip; das „Springen" war ein
+  `auto 1fr`-Grid ohne Grid-Item-Sidebar (fixed) — Arbeitsbereich im
+  `auto`-Track, gemessen 837 von 1208 px bei 1440 px, jetzt `display: block`: Backups und Settings zeigen
+  keine erfundenen Daten mehr (Settings liest den echten Projektnamen und die
+  echte ID), Team, Glocke, Filter und Beispiel-Endpunkte sind sichtbar
+  „noch nicht verbunden"
+- Vorheriger Slice: 1.92 Schwebende Flächen — Redesign von Landingpage und
   Console nach der Formensprache einer Framer-SaaS-Referenz (schwebende
   Kapsel-Navigation, vollrunde Bedienelemente, Radien 24px, weiche Schatten,
   pastellene Halos aus dem Markenblau); Farben und beide Modi bleiben die

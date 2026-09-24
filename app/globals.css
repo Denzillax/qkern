@@ -815,3 +815,52 @@ body { font-size: 15.5px; }
   .site-header .header-inner { height: 56px; padding: 0 6px 0 16px; }
   .console-topbar::before { inset: 8px 10px auto; height: 52px; }
 }
+
+/* Console-Korrekturen 1.93: ruhige Kopfleiste, lesbarer Kicker, dünne
+ * Scrollleisten, eine Buttonhöhe, ehrliche Platzhalter. */
+.console-topbar { height: 72px; padding: 0 28px; background: color-mix(in srgb, var(--qkern-background) 88%, transparent); backdrop-filter: blur(18px); border-bottom: 1px solid var(--qkern-border); }
+.console-topbar::before { content: none; }
+.console-workspace { overflow-x: clip; }
+.console-kicker { font: 600 12px/1.3 var(--qkern-font-sans); letter-spacing: 0.02em; text-transform: none; color: var(--qkern-text-muted); }
+.console-titlebar h1 { margin-top: 6px; }
+
+/* Scrollleisten: schmal, rund, aus den Tokens */
+html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--qkern-text-muted) 45%, transparent) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--qkern-text-muted) 40%, transparent); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--qkern-text-muted) 65%, transparent); border: 3px solid transparent; background-clip: padding-box; }
+.console-nav, .command-results, .records-grid, .activity-log, .code-sample pre, .mcp-config pre { scrollbar-width: thin; }
+
+/* Eine Buttonhöhe in der Console: 40px, vollrund */
+.console-root .button, .console-root .secondary-button, .console-root .ghost-button,
+.console-root .button.small, .console-root .table-toolbar .secondary-button, .console-root .log-toolbar .secondary-button,
+.console-root .backup-row .secondary-button, .console-root .approval-preview .ghost-button { min-height: 40px; padding: 0 16px; font-size: 13px; }
+.console-root .icon-button, .console-root .environment-select, .console-root .command-button, .console-root .toolbar-search { height: 40px; min-height: 40px; }
+.console-root .plain-button { min-height: 32px; padding: 0 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; }
+.console-root .plain-button:hover { background: var(--qkern-primary-muted); }
+.row-actions button, .api-key-list button, .one-time-secret button { border-radius: 10px; min-width: 32px; min-height: 32px; }
+.console-brand button, .project-switch { border-radius: 12px; }
+.project-glyph { font: 700 10px var(--qkern-font-sans); }
+.project-switch strong { font-size: 12px; }
+.project-switch small { font-size: 10px; }
+.settings-nav button { min-height: 40px; }
+.endpoint-list button { min-height: 46px; font-size: 12px; }
+
+/* Platzhalter: sichtbar abgeschaltet, mit Erklärung im Tooltip */
+.is-placeholder, button.is-placeholder:disabled { opacity: .55; cursor: not-allowed; }
+.is-placeholder:hover { transform: none; }
+.placeholder-state { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center; border-style: dashed; box-shadow: none; }
+.placeholder-state > svg { color: var(--qkern-text-muted); }
+.placeholder-state h2 { margin: 4px 0 6px; font-size: 22px; }
+.placeholder-state p { margin: 0; color: var(--qkern-text-muted); font-size: 13px; line-height: 1.55; max-width: 60ch; }
+@media (max-width: 760px) { .placeholder-state { grid-template-columns: 1fr; } }
+
+
+/* 1.93, der eigentliche Fund: .console-root war ein Grid mit `auto 1fr`,
+   die Sidebar aber `position: fixed` und damit kein Grid-Item. Der
+   Arbeitsbereich landete im `auto`-Track, der sich nach dem Inhalt bemisst,
+   waehrend `1fr` den Rest schluckte — bei 1440 px blieben 837 von 1208 px,
+   und jede Ansicht mit anderer Inhaltsbreite verschob die Kopfleiste. */
+.console-root { display: block; }
+.console-workspace { width: auto; }
