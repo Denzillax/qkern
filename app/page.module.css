@@ -551,65 +551,48 @@
 
 .gap svg { margin-top: 2px; color: var(--qkern-text-muted); flex: none; }
 
-/* Preise: gerundete Karten, Pro hervorgehoben */
+/* Preise (1.96): drei gleiche Karten wie in der Referenz — Name, Preis mit
+   Einheit, Beschreibung, voller Button, gepunktete Linie, Haekchenliste */
 
 .plans {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
   align-items: stretch;
 }
 
-.planMain {
-  padding: 36px 32px 32px;
-  border-radius: var(--radius-card);
-  background:
-    radial-gradient(90% 70% at 100% 0%, var(--halo), transparent 60%),
-    var(--qkern-surface);
-  border: 1px solid color-mix(in srgb, var(--qkern-primary) 45%, var(--rule));
-  box-shadow: var(--shadow-float);
-}
-
-.planSide { display: grid; gap: 16px; }
-
-.planSide article {
-  padding: 26px 26px 24px;
+.plan {
+  display: flex;
+  flex-direction: column;
+  padding: 34px 30px 30px;
   border-radius: var(--radius-card);
   background: var(--qkern-surface);
   border: 1px solid var(--rule);
+  box-shadow: var(--shadow-soft);
 }
 
-.planName {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
-  border-radius: var(--radius-pill);
-  background: var(--qkern-primary-muted);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--qkern-primary);
-}
+.plan h3 { margin: 0; font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
 
 .price {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  margin: 16px 0 14px;
+  gap: 10px;
+  margin: 22px 0 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.price strong { font-size: 48px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; }
-.planSide .price strong { font-size: 30px; }
-.price span { font-size: 13px; color: var(--qkern-text-muted); }
+.price strong { font-size: 36px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+.price span { font-size: 17px; color: var(--qkern-text-muted); }
 
-.planMain ul { list-style: none; margin: 0 0 28px; padding: 0; display: grid; gap: 10px; font-size: 14.5px; }
-.planMain li { display: flex; align-items: center; gap: 9px; }
-.planMain li svg { color: var(--qkern-primary); flex: none; }
-.planSide p { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--qkern-text-muted); }
+.plan > p { margin: 0 0 26px; font-size: 15.5px; line-height: 1.55; color: var(--qkern-text-muted); }
+
+.planButton { width: 100%; justify-content: center; }
+
+.plan hr { width: 100%; margin: 28px 0 24px; border: 0; border-top: 2px dotted color-mix(in srgb, var(--qkern-text-muted) 35%, transparent); }
+
+.plan ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; font-size: 15.5px; color: var(--qkern-text-muted); }
+.plan li { display: flex; align-items: center; gap: 12px; }
+.plan li svg { color: var(--qkern-success); flex: none; }
 
 .draftNote {
   max-width: 70ch;
@@ -663,4 +646,8 @@
   .recordHead { padding: 14px 18px; }
   .close .shell { border-radius: 24px; }
   .bridgeGrid { border-radius: 24px; }
+}
+
+@media (max-width: 960px) {
+  .plans { grid-template-columns: 1fr; }
 }

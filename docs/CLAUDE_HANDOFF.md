@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.95.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.96.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,16 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.95.0`
-- Aktueller Slice: 1.95 Menüs statt Attrappen — eigenes Umgebungsmenü
+- Paketversion: `1.96.0`
+- Aktueller Slice: 1.96 Bewegung beim Scrollen — `components/reveal.tsx`
+  (`Reveal`: IntersectionObserver, setzt `data-in`; `CountUp`: Kennzahlen
+  zählen ab 0.5 Sichtbarkeit hoch, Endwert per Timeout gesichert, weil
+  requestAnimationFrame in Hintergrund-Tabs pausiert). Ausblendung nur unter
+  `html[data-reveal="on"]`, also erst mit JavaScript; `prefers-reduced-motion`
+  schaltet alles ab. Preise wie die Referenz: drei gleiche Karten, „CHF 0 /
+  pro Monat", Beschreibung, voller Button, gepunktete Linie, Häkchenliste;
+  `plans`-Daten in `app/page.tsx`, kein `SwissFranc`-Icon mehr
+- Vorheriger Slice: 1.95 Menüs statt Attrappen — eigenes Umgebungsmenü
   (`EnvironmentMenu`, Listbox mit Status-Punkt, Hinweistext, Escape und
   Klick-ausserhalb) statt nativem `select`; Aufklapp-Pfeil neben dem Symbol
   in der 70-px-Leiste; Sidebar-Zustand in `localStorage`

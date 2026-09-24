@@ -1,9 +1,10 @@
 import Link from "next/link";
 import {
-  ArrowRight, Check, CircleDashed, Code2, Network, ShieldCheck, Sparkles, SwissFranc,
+  ArrowRight, Check, CircleDashed, Code2, Network, ShieldCheck, Sparkles,
 } from "lucide-react";
 import { QKERNSymbol, QKERNLogo } from "@/components/brand";
 import { SiteHeader } from "@/components/site-header";
+import { CountUp, Reveal } from "@/components/reveal";
 import styles from "./page.module.css";
 import { formatEvidenceDate, loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 
@@ -23,6 +24,24 @@ const modules = [
   { name: "Queues, Cron, Webhooks", state: "zertifiziert", tone: "done", note: "Atomare Claims, Leases, serverberechnetes Retry und Dead Letters." },
   { name: "Functions", state: "zertifiziert", tone: "done", note: "Container ohne Netz, harte Speichergrenze, vermittelte Ausgangsverbindungen." },
   { name: "Usage und Billing", state: "teilweise", tone: "part", note: "Alle sechs Metriken melden, Preisblatt, Rechnungslauf mit lückenlosem Nummernkreis. Keine Zahlungsanbindung." },
+];
+
+const plans = [
+  {
+    name: "Free", price: 0,
+    summary: "Zum Ausprobieren der geprüften Bausteine in einem Development-Projekt.",
+    features: ["Ein Projekt, eine Umgebung", "Data API, Auth und Storage", "Lesender Agentenzugriff", "Basisprotokoll", "Community-Support"],
+  },
+  {
+    name: "Pro", price: 29,
+    summary: "Für Teams, die Development, Staging und Production sauber trennen.",
+    features: ["Mehrere Projekte und Umgebungen", "Claude Code und Codex über die AI Bridge", "Automatische Backups", "Freigabezentrale mit Rollback-Plan", "E-Mail-Support"],
+  },
+  {
+    name: "Business", price: 99,
+    summary: "Für Organisationen mit Rollen, Protokollpflicht und Production-Freigaben.",
+    features: ["Teamrollen und Workspace-Verwaltung", "Erweiterte Protokolle und Audit-Export", "Production-Umgebungen mit Schutz", "Eigene Nutzungsgrenzen", "Priorisierter Support"],
+  },
 ];
 
 const gaps = [
@@ -86,7 +105,7 @@ export default async function HomePage() {
           <div className={styles.stats}>
             {runs.slice(0, 4).map((run) => (
               <div className={styles.stat} key={run.name}>
-                <strong>{run.passed}<em>+</em></strong>
+                <strong><CountUp value={run.passed} /><em>+</em></strong>
                 <span>{run.name} gegen {run.stack}</span>
               </div>
             ))}
@@ -96,14 +115,14 @@ export default async function HomePage() {
 
       <section className={styles.section} id="product">
         <div className={styles.shell}>
-          <div className={styles.sectionHead}>
+          <Reveal className={styles.sectionHead}>
             <h2>Was heute läuft, und wie weit es belegt ist.</h2>
             <p>
               Gemessen wird zweiachsig: ausführbar vorhanden, und gegen echte Dienste
               ausgeführt mit archiviertem Lauf. Nur die zweite Achse zählt als zertifiziert.
             </p>
-          </div>
-          <div className={styles.ledger}>
+          </Reveal>
+          <Reveal className={styles.ledger} stagger>
             {modules.map((module) => (
               <article className={styles.entry} key={module.name}>
                 <h3>{module.name}</h3>
@@ -118,17 +137,17 @@ export default async function HomePage() {
               <span className={`${styles.state} ${styles.stateOpen}`}>offen</span>
               <p>Provider-Onboarding, Hochverfügbarkeit und Restore sind beschrieben, aber nicht betrieben.</p>
             </article>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section className={styles.section} id="verification">
         <div className={styles.shell}>
-          <div className={styles.sectionHead}>
+          <Reveal className={styles.sectionHead}>
             <span className={styles.eyebrow}>So prüfen wir</span>
             <h2>Ein grüner Testlauf ist keine Zertifizierung.</h2>
-          </div>
-          <div className={styles.method}>
+          </Reveal>
+          <Reveal className={styles.method} stagger>
             <div className={styles.step}>
               <h3>Ausführen</h3>
               <p className={styles.stepLead}>
@@ -152,13 +171,13 @@ export default async function HomePage() {
                 kein Fall um, prüft der Test nichts.
               </p>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section className={styles.bridge} id="ai">
         <div className={styles.shell}>
-          <div className={styles.bridgeGrid}>
+          <Reveal className={styles.bridgeGrid}>
             <div>
               <span className={`${styles.eyebrow} ${styles.bridgeEyebrow}`}>QKERN AI Bridge</span>
               <h2>Dein Agent baut. QKERN hält die Grenze.</h2>
@@ -208,20 +227,20 @@ export default async function HomePage() {
                 <ShieldCheck size={16} />
               </div>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section className={styles.section} id="developers">
         <div className={styles.shell}>
-          <div className={styles.sectionHead}>
+          <Reveal className={styles.sectionHead}>
             <h2>Drei Zugänge, die sich nicht gegenseitig übernehmen können.</h2>
             <p>
               Anwendungszugriff, Agentenwerkzeuge und Modellprovider sind getrennte Wege mit
               eigenen Schlüsseln. Ein Schlüssel kann die Rolle eines anderen nicht annehmen.
             </p>
-          </div>
-          <div className={styles.interfaces}>
+          </Reveal>
+          <Reveal className={styles.interfaces} stagger>
             <article className={styles.interfaceRow}>
               <h3>Application API</h3>
               <p>REST und SDK für deine Anwendung, gebunden an Public oder Service Key.</p>
@@ -237,74 +256,55 @@ export default async function HomePage() {
               <p>Optional und mit eigenem Schlüssel. Der Kontext bleibt unter deiner Kontrolle.</p>
               <code><Sparkles size={13} /> bring your own key</code>
             </article>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section className={styles.section} id="security">
         <div className={styles.shell}>
-          <div className={styles.sectionHead}>
+          <Reveal className={styles.sectionHead}>
             <span className={styles.eyebrow}>Was noch fehlt</span>
             <h2>Diese Punkte sind offen, und sie stehen hier.</h2>
             <p>
               Jede Release-Notiz endet mit derselben Liste. Sie hier wegzulassen wäre die
               erste unbelegte Zusage der Seite.
             </p>
-          </div>
-          <div className={styles.gaps}>
+          </Reveal>
+          <Reveal className={styles.gaps} stagger>
             {gaps.map((gap) => (
               <p className={styles.gap} key={gap}>
                 <CircleDashed size={15} />
                 <span>{gap}</span>
               </p>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
       <section className={styles.section} id="pricing">
         <div className={styles.shell}>
-          <div className={styles.sectionHead}>
-            <h2>Preise in Franken, klein beginnend.</h2>
-          </div>
-          <div className={styles.plans}>
-            <article className={styles.planMain}>
-              <span className={styles.planName}>Pro</span>
-              <div className={styles.price}>
-                <SwissFranc size={22} />
-                <strong>29</strong>
-                <span>pro Monat</span>
-              </div>
-              <ul>
-                <li><Check size={15} /> Mehrere Projekte und Umgebungen</li>
-                <li><Check size={15} /> Claude Code und Codex über die AI Bridge</li>
-                <li><Check size={15} /> Automatische Backups</li>
-                <li><Check size={15} /> Freigabezentrale mit Rollback-Plan</li>
-              </ul>
-              <Link className="button" href="/register">Projekt erstellen <ArrowRight size={16} /></Link>
-            </article>
-
-            <div className={styles.planSide}>
-              <article>
-                <span className={styles.planName}>Free</span>
+          <Reveal className={styles.sectionHead}>
+            <span className={styles.eyebrow}>Preise</span>
+            <h2>Preise, die mit dir wachsen.</h2>
+            <p>In Schweizer Franken, klein beginnend. Jeder Plan enthält dieselben geprüften Bausteine.</p>
+          </Reveal>
+          <Reveal className={styles.plans} stagger>
+            {plans.map((plan) => (
+              <article className={styles.plan} key={plan.name}>
+                <h3>{plan.name}</h3>
                 <div className={styles.price}>
-                  <SwissFranc size={16} />
-                  <strong>0</strong>
-                  <span>pro Monat</span>
+                  <strong>CHF {plan.price}</strong>
+                  <span>/pro Monat</span>
                 </div>
-                <p>Ein Development-Projekt, lesender Agentenzugriff, Basisprotokoll.</p>
+                <p>{plan.summary}</p>
+                <Link className={`button ${styles.planButton}`} href="/register">Loslegen</Link>
+                <hr />
+                <ul>
+                  {plan.features.map((feature) => <li key={feature}><Check size={16} /> {feature}</li>)}
+                </ul>
               </article>
-              <article>
-                <span className={styles.planName}>Business</span>
-                <div className={styles.price}>
-                  <SwissFranc size={16} />
-                  <strong>99</strong>
-                  <span>pro Monat</span>
-                </div>
-                <p>Teamrollen, erweiterte Protokolle, Production-Umgebungen.</p>
-              </article>
-            </div>
-          </div>
+            ))}
+          </Reveal>
           <p className={styles.draftNote}>
             Diese Preise sind Entwürfe und vor dem Marktstart zu validieren. Aussagen zu
             Infrastruktur, Datenresidenz und Compliance werden vor Veröffentlichung technisch

@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "scroll-reveal-local-run2.log",
+  "commit": "9627904a6a152bd9d5fb755e1340e56d143118a4",
+  "commitSubject": "release: 1.95.0 Menues statt Attrappen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1096 passed | 241 skipped (1337)",
+  "passed": 1096,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

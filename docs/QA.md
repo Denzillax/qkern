@@ -3454,3 +3454,35 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Konto- und Workspace-Einstellungen bleiben zu bauen; der
 Memory-Adapter vergisst Konten bei jedem Serverneustart.
+
+## Bewegung beim Scrollen — Release 1.96
+
+Nutzerwunsch: Scroll-Effekte auf der Frontpage wie in der Referenz, und bei
+den Preisen „CHF" statt des komischen Zeichens, aufgebaut genau wie dort.
+
+Die Referenz blendet Abschnitte beim ersten Sichtkontakt ein und zählt
+Kennzahlen hoch. Beides ist jetzt in `components/reveal.tsx`: `Reveal`
+beobachtet mit `IntersectionObserver` und setzt `data-in`; Kinder eines
+gestaffelten Containers folgen mit 70 ms Abstand. `CountUp` zählt ab halber
+Sichtbarkeit in 1,4 s mit kubischem Auslauf hoch. Ohne JavaScript bleibt
+alles sichtbar, weil die Ausblendung nur unter `html[data-reveal="on"]`
+greift; `prefers-reduced-motion` schaltet beides ab. Die Preise stehen in
+drei gleichen Karten wie in der Referenz: Name, „CHF 0" mit „/pro Monat",
+Beschreibung, voller Button, gepunktete Linie, Häkchenliste — das
+Franken-Icon ist weg.
+
+Ehrlich: Beim ersten Browsertest blieben die Zähler bei 3, 0 und 0 stehen.
+Ursache war nicht der Code allein, sondern der Hintergrund-Tab:
+`requestAnimationFrame` pausiert dort, und der Zähler wartete auf einen
+Takt, der nicht kam. Der Endwert wird jetzt zusätzlich per Timeout gesetzt
+— eine Kennzahl darf nie unter ihrem Beleg stehen bleiben. Im
+Vordergrund-Tab gemessen: 7 → 145 → 160. Ein erster Umbau-Skript brach vor
+dem CSS ab (Assertion nach dem Schreiben statt davor); der Browser zeigte
+das sofort, weil die Regel `data-reveal` im Stylesheet fehlte.
+
+Checkpoint `1.96.0` am 24. September 2026: Lokal 1096 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` exit 0; Stacks
+unverändert.
+
+Nicht erbracht: Die Referenz animiert zusätzlich Wort für Wort im Hero;
+QKERN behält dort die Ladeanimation aus 1.92.
