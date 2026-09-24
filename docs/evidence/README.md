@@ -995,3 +995,19 @@ der ihn repariert hat; die drei Läufe oben sind auf dem Endstand.
 Die Mutation lässt leere Queues aus dem Export fallen — genau der Export-Fall
 fällt. Lokal bleibt die Suite unter dieser Mutation grün: Die Zusage lebt im
 Dienst, und nur der Real-DB-Fall prüft sie.
+
+## Läufe zu Release 1.89 (24. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-24/invocation-log-run1.log` | PostgreSQL 17 | 159 von 159, exit 0 |
+| `2026-09-24/invocation-log-run2.log` | PostgreSQL 17 | 159 von 159, exit 0, Wiederholung |
+| `2026-09-24/invocation-log-mutation.log` | PostgreSQL 17 | **158 von 159, exit 1 — absichtlich** |
+| `2026-09-24/invocation-log-connections-red.log` | PostgreSQL 17 | **158 von 159, exit 1 — verworfen**: `remaining connection slots are reserved` in einem fremden Fall; Ressourcengrenze des Stacks, nicht der Slice |
+| `2026-09-24/invocation-log-functions-run1.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 27 von 27, exit 0 |
+| `2026-09-24/invocation-log-functions-run2.log` | Docker 29.5, registry:2 und PostgreSQL 17 | 27 von 27, exit 0, Wiederholung |
+| `2026-09-24/invocation-log-local-run1.log` | Vitest lokal (Windows) | 1088 bestanden, exit 0 |
+| `2026-09-24/invocation-log-local-mutation.log` | Vitest lokal (Windows) | **1 fehlgeschlagen, exit 1 — absichtlich** |
+
+Die Mutation protokolliert nur noch Erfolge — der Real-DB-Fall mit dem
+gescheiterten Eintrag fällt, ebenso sein lokaler Zwilling.

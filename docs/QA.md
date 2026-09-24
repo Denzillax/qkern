@@ -3232,3 +3232,44 @@ Migrationen.
 Nicht erbracht: kein Tracing; keine Prozesszähler des Wirts im Export (nur
 Queue-Zustände); eine Queue namens `metrics` verliert den Pfad
 `/queues/metrics` an den Export, ihre Unterrouten bleiben.
+
+## Was gelaufen ist, steht — Release 1.89
+
+„Function-Logs als Produktfläche" aus der Paritätsleiter, in der Form, die
+QKERN vertreten kann: ein **Aufrufprotokoll** je Function (Migration 0045,
+append-only, RLS). Protokolliert wird der Aufruf — Beginn, Dauer, Ausgang,
+Statuscode oder ein fester Fehlercode. Bewusst nicht protokolliert werden
+stdout und stderr: Sie stammen aus fremdem Code und könnten alles enthalten,
+was die Function gesehen hat (die Haltung aus 1.22). Ein Protokollfehler
+stürzt den Aufruf nicht — der Container ist gelaufen, seine Wirkung ist da;
+der Fehler geht an `onLogFailure`. Route
+`GET compute/functions/<id>/invocations`, Admin-Session, `limit` bis 200.
+
+Zertifiziert: gegen echtes PostgreSQL ein gelungener und ein gescheiterter
+Aufruf, neueste zuerst, der gescheiterte nur mit festem Code, nur die
+Record-Schlüssel; im Functions-Stack der Eintrag eines **echten
+Container-Laufs** mit Statuscode 200 und gemessener Dauer — und nichts vom
+Inhalt des Containers. Lokal: Erfolg, Scheitern, Protokollfehler ohne
+Wirkung auf den Aufruf.
+
+Zwei eigene Testfehler auf dem Weg, beide ehrlich: eine fixierte Uhr für den
+scheiternden Dienst machte „neueste zuerst" unprüfbar (dieselbe Lektion wie
+1.85), und eine Leck-Prüfung per Regex fand „timeout" im festen Code
+`FUNCTION_TIMEOUT` selbst — ersetzt durch Schlüssel- und Alphabetprüfung.
+
+Befund, als Nächstes zu beheben: Ein Lauf 2 fiel mit `remaining connection
+slots are reserved for roles with the SUPERUSER attribute` in einem fremden,
+bisher stets grünen Fall. Der Zertifizierungs-Postgres läuft mit Standard-
+`max_connections=100`, die Suite deklariert 76 Pools mit 233 Verbindungen
+und vitest fährt Dateien parallel. Verworfen, archiviert; der Parameter kommt
+mit 1.90.
+
+Mutationsprobe: nur noch Erfolge protokolliert — Stack **158 von 159**,
+lokal **1 von 1088**, jeweils genau der Scheiter-Fall.
+
+Checkpoint `1.89.0` am 24. September 2026: Lokal 1088 bestanden, 0
+fehlgeschlagen; PostgreSQL 159 von 159, exit 0, zweimal reproduziert, 45
+Migrationen; Functions-Stack 27 von 27, exit 0, zweimal reproduziert.
+
+Nicht erbracht: keine Inhaltslogs (stdout/stderr), keine Aufbewahrungsregel
+für das Protokoll (es wächst), keine Console-Fläche.

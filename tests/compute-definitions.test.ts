@@ -70,6 +70,8 @@ function harness(options: {
       return 1;
     },
     async listFunctionDeployments() { return []; },
+    async recordFunctionInvocation() {},
+    async listFunctionInvocations() { return []; },
     async listCron() { return cron; },
     async createCron(_principal, _scope, input) {
       calls.push({ method: "createCron", payload: input });

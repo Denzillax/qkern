@@ -27,6 +27,13 @@ export type FunctionInvocationServiceOptions = {
    * diesen Host, nicht den Tenant.
    */
   concurrency?: FunctionConcurrencyPort;
+  /**
+   * Das Aufrufprotokoll (1.89). Ohne Port wird nichts protokolliert — und
+   * nichts aendert sich am Verhalten des Aufrufs.
+   */
+  invocationLog?: Pick<ComputeDefinitionRepository, "recordFunctionInvocation">;
+  /** Ein Protokollfehler stuerzt den Aufruf nicht; er wird hierher gemeldet. */
+  onLogFailure?: (error: unknown) => void;
   now?: () => Date;
   id?: () => string;
   /** Wird beim Abweisen wegen Überlast gerufen. Erhält nur den Namen. */
@@ -139,14 +146,38 @@ export class FunctionInvocationService {
       }
     }
 
+    const startedAt = this.now();
+    let outcome: { statusCode: number } | { errorCode: string } | null = null;
     try {
-      return await this.options.invoker.invoke(toDefinition(record), Object.freeze({
+      const result = await this.options.invoker.invoke(toDefinition(record), Object.freeze({
         id: invocationId,
         functionId: record.id,
         payload,
-        requestedAt: this.now().toISOString(),
+        requestedAt: startedAt.toISOString(),
       }));
+      outcome = { statusCode: result.statusCode };
+      return result;
+    } catch (error) {
+      // Nur der feste Code wandert ins Protokoll — nie die Meldung. Eine
+      // Sandbox- oder Datenbankmeldung an dieser Stelle waere ein Leck.
+      outcome = { errorCode: error instanceof FunctionInvocationError ? error.code : "FUNCTION_SANDBOX_FAILED" };
+      throw error;
     } finally {
+      // Das Aufrufprotokoll (1.89): auch ein gescheiterter Aufruf hat
+      // stattgefunden und gehoert ins Protokoll — die Mutationsprobe dieses
+      // Releases protokolliert nur noch Erfolge. Ein Protokollfehler stuerzt
+      // den Aufruf nicht: Der Container ist gelaufen, seine Wirkung ist da.
+      if (outcome && this.options.invocationLog) {
+        await this.options.invocationLog.recordFunctionInvocation(principal, scope, record.id, Object.freeze({
+          invocationId,
+          invokedBy: principal.actorRef,
+          startedAt: startedAt.toISOString(),
+          durationMs: Math.max(0, this.now().getTime() - startedAt.getTime()),
+          outcome: "statusCode" in outcome ? "completed" as const : "failed" as const,
+          statusCode: "statusCode" in outcome ? outcome.statusCode : null,
+          errorCode: "errorCode" in outcome ? outcome.errorCode : null,
+        })).catch((error: unknown) => this.options.onLogFailure?.(error));
+      }
       // Beide Zaehlungen muessen auch nach einem Timeout oder einem Absturz der
       // Sandbox fallen. Sonst waere die Function nach ein paar Fehlschlaegen
       // dauerhaft "voll" — und genau das faellt erst im Betrieb auf.

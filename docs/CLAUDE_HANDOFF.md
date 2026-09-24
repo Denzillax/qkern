@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.88.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `1.89.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,15 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.88.0`
-- Aktueller Slice: 1.88 Zeitreihen, bevor sie sich bewegen — `exportMetrics`
+- Paketversion: `1.89.0`
+- Aktueller Slice: 1.89 Was gelaufen ist, steht — Aufrufprotokoll je Function
+  (Migration 0045, append-only): Beginn, Dauer, Ausgang, Statuscode oder fester
+  Fehlercode; bewusst kein stdout/stderr (Haltung aus 1.22). Ein Protokollfehler
+  stürzt den Aufruf nicht (`onLogFailure`). Route
+  `compute/functions/[functionId]/invocations`. Befund: Der Zertifizierungs-
+  Postgres läuft mit Standard-`max_connections=100` gegen 76 Test-Pools mit
+  233 deklarierten Verbindungen — einmal gerissen, als Nächstes zu beheben
+- Vorheriger Slice: 1.88 Zeitreihen, bevor sie sich bewegen — `exportMetrics`
   (alle Queues des Scopes, auch leere, aus derselben Wahrheit wie `status`),
   reine Formatierfunktion `renderQueueMetrics` (Prometheus-Text 0.0.4), Route
   `queues/metrics` mit Admin-Session; eine Queue namens `metrics` verliert nur
@@ -171,7 +178,7 @@ Release Notes bleiben unverändert.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0044_billing_invoice_numbers.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0045_project_function_invocations.sql`
   — die eine Tuer fuer Image-Deployments: Wechsel nur zusammen mit der
   append-only Historienzeile. Davor: `db/migrations/0041_project_storage_multipart.sql`
   — `kind` und `provider_upload_id` an der Upload-Reservierung fuer

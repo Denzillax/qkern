@@ -5,6 +5,7 @@ import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
+import { FunctionInvocationError } from "@/lib/server/compute/functions";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool } from "@/lib/server/db/sql";
@@ -76,6 +77,7 @@ describe.runIf(enabled)("Function definitions PostgreSQL certification", () => {
     service = new ComputeDefinitionService({ repository });
     invocation = new FunctionInvocationService({
       repository,
+      invocationLog: repository,
       // Die Sandbox selbst ist in `test:functions:docker` zertifiziert. Hier
       // zaehlt der Weg dorthin: Wird die richtige, aktive Definition aufgeloest?
       invoker: {
@@ -153,6 +155,42 @@ describe.runIf(enabled)("Function definitions PostgreSQL certification", () => {
     await service.setFunctionEnabled(admin, scope, created.id, false);
     await expect(invocation.invoke(serviceRole, scope, created.name, {}))
       .rejects.toMatchObject({ code: "COMPUTE_NOT_FOUND" });
+  });
+
+  /**
+   * Das Aufrufprotokoll (1.89) mit der Laufzeitrolle: ein gelungener und ein
+   * gescheiterter Aufruf, neueste zuerst, der gescheiterte nur mit festem
+   * Code — nie mit einer Meldung. Die Mutationsprobe dieses Releases
+   * protokolliert nur noch Erfolge; dann fehlt der gescheiterte Eintrag, und
+   * dieser Fall faellt.
+   */
+  it("records completed and failed invocations and lists them newest first", async () => {
+    const created = await define();
+    await invocation.invoke(serviceRole, scope, created.name, { step: 1 });
+    const failing = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      // Dieselbe echte Uhr wie der erste Aufruf: "neueste zuerst" ist nur mit
+      // einer gemeinsamen Uhr eine pruefbare Aussage (Lektion aus 1.85).
+      invoker: { async invoke() { throw new FunctionInvocationError("FUNCTION_TIMEOUT"); } },
+    });
+    await expect(failing.invoke(serviceRole, scope, created.name, { step: 2 }))
+      .rejects.toMatchObject({ code: "FUNCTION_TIMEOUT" });
+
+    const entries = await service.listFunctionInvocations(admin, scope, created.id);
+    expect(entries.map((entry) => [entry.outcome, entry.statusCode, entry.errorCode])).toEqual([
+      ["failed", null, "FUNCTION_TIMEOUT"],
+      ["completed", 200, null],
+    ]);
+    expect(entries.every((entry) => entry.invokedBy === serviceRole.actorRef)).toBe(true);
+    // Nur feste Codes im festen Alphabet und nur die Record-Schluessel — keine
+    // Meldung, kein Stack, kein Feld, das eine Sandbox-Zeile tragen koennte.
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort()).toEqual(
+        ["durationMs", "errorCode", "invocationId", "invokedBy", "outcome", "startedAt", "statusCode"]);
+      if (entry.errorCode !== null) expect(entry.errorCode).toMatch(/^[A-Z_]{3,64}$/);
+    }
+    await expect(service.listFunctionInvocations(admin, scope, created.id, 0))
+      .rejects.toMatchObject({ code: "COMPUTE_INVALID_INPUT" });
   });
 
   it("hides functions of a different organization", async () => {

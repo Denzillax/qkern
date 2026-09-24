@@ -7,6 +7,7 @@ import {
   type ComputeDefinitionScope,
   type CronDefinitionRecord,
   type FunctionDefinitionRecord,
+  type FunctionInvocationRecord,
   type WebhookDefinitionRecord,
   type WebhookDeliveryRecord,
 } from "@/lib/server/compute/definitions";
@@ -242,6 +243,40 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
         metadata: { image, revision },
       });
       return revision as number;
+    });
+  }
+
+  async recordFunctionInvocation(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    functionId: string, entry: FunctionInvocationRecord): Promise<void> {
+    await this.write(principal, async (database) => {
+      await database.query(
+        `INSERT INTO project_function_invocations
+           (organization_id, project_id, environment, function_id, invocation_id, invoked_by,
+            started_at, duration_ms, outcome, status_code, error_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [...scopeValues(scope), functionId, entry.invocationId, entry.invokedBy, entry.startedAt,
+          entry.durationMs, entry.outcome, entry.statusCode, entry.errorCode]);
+    });
+  }
+
+  async listFunctionInvocations(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    functionId: string, limit: number): Promise<FunctionInvocationRecord[]> {
+    return await this.read(principal, async (database) => {
+      const result = await database.query<{
+        invocation_id: string; invoked_by: string; started_at: string; duration_ms: number;
+        outcome: "completed" | "failed"; status_code: number | null; error_code: string | null;
+      }>(
+        `SELECT invocation_id, invoked_by, started_at::text AS started_at, duration_ms, outcome,
+                status_code, error_code
+         FROM project_function_invocations
+         WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND function_id = $4
+         ORDER BY started_at DESC, invocation_id DESC
+         LIMIT $5`,
+        [...scopeValues(scope), functionId, limit]);
+      return result.rows.map((row) => ({
+        invocationId: row.invocation_id, invokedBy: row.invoked_by, startedAt: row.started_at,
+        durationMs: row.duration_ms, outcome: row.outcome, statusCode: row.status_code, errorCode: row.error_code,
+      }));
     });
   }
 

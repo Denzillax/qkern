@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_1.88.md](RELEASE_1.88.md) | Aktueller Release: Zeitreihen, bevor sie sich bewegen |
+| [RELEASE_1.89.md](RELEASE_1.89.md) | Aktueller Release: Was gelaufen ist, steht |
+| [RELEASE_1.88.md](RELEASE_1.88.md) | Zeitreihen, bevor sie sich bewegen |
 | [RELEASE_1.87.md](RELEASE_1.87.md) | Die ganze Uhr |
 | [RELEASE_1.86.md](RELEASE_1.86.md) | Zählen unter der eigenen Grenze |
 | [RELEASE_1.85.md](RELEASE_1.85.md) | Wer bürgt, sagt es |

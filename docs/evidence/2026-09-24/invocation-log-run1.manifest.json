@@ -1,0 +1,17 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "invocation-log-run1.log",
+  "commit": "f21c9cf8c2dd6d3fa01525bea6b5d622f50d1fc4",
+  "commitSubject": "release: 1.88.0 Zeitreihen, bevor sie sich bewegen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "159 passed (159)",
+  "passed": 159,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "node:24-alpine",
+    "postgres:17-alpine"
+  ],
+  "migrationsApplied": 45
+}

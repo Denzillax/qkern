@@ -88,6 +88,7 @@ describe.runIf(enabled)("Function chain certification", () => {
     const sandbox = new DockerFunctionSandbox();
     invocation = new FunctionInvocationService({
       repository,
+      invocationLog: repository,
       invoker: {
         async invoke(definition, request) {
           return await sandbox.invoke(definition, request, {
@@ -128,6 +129,22 @@ describe.runIf(enabled)("Function chain certification", () => {
     // Die Referenzen kommen aus der Datenbank und erreichen den Container als
     // Referenzen — nie als Werte.
     expect(result.body).toMatchObject({ secretRefs: ["vault:functions/chain"] });
+  });
+
+  /**
+   * Das Aufrufprotokoll (1.89) am echten Container: Nach einem Lauf steht
+   * genau ein abgeschlossener Eintrag mit Statuscode und gemessener Dauer —
+   * und nichts vom Inhalt des Containers.
+   */
+  it("records the real container run in the invocation log without its output", async () => {
+    const created = await define();
+    const result = await invocation.invoke(serviceRole, scope, created.name, { mode: "echo", value: "logged" });
+    expect(result.statusCode).toBe(200);
+    const entries = await definitions.listFunctionInvocations(admin, scope, created.id);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ outcome: "completed", statusCode: 200, errorCode: null, invokedBy: serviceRole.actorRef });
+    expect(entries[0]!.durationMs).toBeGreaterThan(0);
+    expect(JSON.stringify(entries)).not.toContain("logged");
   });
 
   it("still denies egress when the definition came from the database", async () => {

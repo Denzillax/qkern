@@ -1,0 +1,33 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/compute-function-invocation-log.test.ts (3 tests | 1 failed) 20ms
+     × records a failed call with the fixed code only 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/compute-function-invocation-log.test.ts > function invocation log > records a failed call with the fixed code only
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/compute-function-invocation-log.test.ts:64:21
+     62|     const { service, entries } = harness({ fail: true });
+     63|     await expect(service.invoke(serviceRole, scope, record.name, {})).…
+     64|     expect(entries).toHaveLength(1);
+       |                     ^
+     65|     expect(entries[0]!.entry).toMatchObject({ outcome: "failed", statu…
+     66|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 169 passed | 33 skipped (203)
+      Tests  1 failed | 1087 passed | 240 skipped (1328)
+   Start at  20:42:43
+   Duration  23.67s (transform 80.75s, setup 0ms, import 183.38s, tests 72.86s, environment 77ms)
+

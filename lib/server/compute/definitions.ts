@@ -114,6 +114,17 @@ export type FunctionDeploymentRecord = {
   deployedAt: string;
 };
 
+/** Ein protokollierter Aufruf — Zeit, Dauer, Ausgang; nie stdout oder stderr. */
+export type FunctionInvocationRecord = Readonly<{
+  invocationId: string;
+  invokedBy: string;
+  startedAt: string;
+  durationMs: number;
+  outcome: "completed" | "failed";
+  statusCode: number | null;
+  errorCode: string | null;
+}>;
+
 export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -148,6 +159,10 @@ export interface ComputeDefinitionRepository {
     id: string, image: string): Promise<number>;
   listFunctionDeployments(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
     id: string): Promise<FunctionDeploymentRecord[]>;
+  recordFunctionInvocation(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    functionId: string, entry: FunctionInvocationRecord): Promise<void>;
+  listFunctionInvocations(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    functionId: string, limit: number): Promise<FunctionInvocationRecord[]>;
   listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
     Promise<FunctionDefinitionRecord[]>;
   createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -434,6 +449,20 @@ export class ComputeDefinitionService {
     const existing = await this.options.repository.getFunction(principal, scope, id);
     if (!existing) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
     return await this.options.repository.listFunctionDeployments(principal, scope, id);
+  }
+
+  /**
+   * Das Aufrufprotokoll — die Produktflaeche der Function-Logs (1.89). Nur
+   * Admins; neueste zuerst; hoechstens 200 auf einmal.
+   */
+  async listFunctionInvocations(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string, limit = 50): Promise<FunctionInvocationRecord[]> {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    const existing = await this.options.repository.getFunction(principal, scope, id);
+    if (!existing) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return await this.options.repository.listFunctionInvocations(principal, scope, id, limit);
   }
 
   async getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {

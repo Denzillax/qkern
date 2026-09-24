@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.88.0`, 24. September 2026. Diese Datei wird bei jedem Release
+> Stand: `1.89.0`, 24. September 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
@@ -25,7 +25,7 @@ zählt.
 | Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views, seit `1.72.0` RPC ueber SECURITY-INVOKER-Funktionen, seit `1.80.0` beschreibt das OpenAPI-Dokument beide nach denselben Grenzen; seit `1.86.0` Aggregate (count/sum/avg/min/max, gruppiert) unter der RLS des Aufrufers | eingebettete Joins |
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert; seit `1.78.0` räumt der Lifecycle verfallene Reservierungen und Provider-Waisen ab | Bildtransformation, CDN |
 | Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | seit `1.73.0` ersetzt ein Tor mit benannten Bedingungen das Production-Verbot; offen: belegter Production-Start gegen SSL-PostgreSQL, persistente Presence/History, Lastprofil jenseits Soak |
-| Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; offen: Function-Logs als Produktfläche, Scope-Entdeckung statt `SCOPES_JSON` |
+| Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; seit `1.89.0` ein Aufrufprotokoll je Function (Beginn, Dauer, Ausgang, Code — kein stdout/stderr); offen: Inhaltslogs, Scope-Entdeckung statt `SCOPES_JSON` |
 | Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`); seit `1.88.0` Metrics-Export im Prometheus-Textformat | **vor** Supabase-Stand; offen nur Tracing |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`); seit `1.87.0` die ganze Fünf-Feld-Grammatik | Namen (JAN, MON), `@daily`, `L`/`W`/`#`; Zeitzonen jenseits UTC |
 | Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent — seit `1.77.0` mit REST-Lesefläche und belegtem Wettlauf; seit `1.81.0` lückenloser Nummernkreis je Organisation mit Fälligkeit; seit `1.82.0` liest die Console die Rechnungen | Zahlungsanbindung |
