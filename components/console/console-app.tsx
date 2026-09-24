@@ -105,9 +105,12 @@ export function ConsoleApp() {
   }, []);
 
   const project = snapshot?.projects[0];
-  // null: die aktive Gruppe ist offen; "": keine; sonst die angeklickte.
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  // Offene Gruppen als Menge; die aktive Gruppe öffnet sich beim Wechsel,
+  // jede Gruppe lässt sich per Klick auf den Kopf schliessen und öffnen.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  const toggleGroup = useCallback((id: string, force?: boolean) => setOpenGroups((current) => { const next = new Set(current); const open = force ?? !next.has(id); if (open) next.add(id); else next.delete(id); return next; }), []);
   const activeGroup = groupOf(view);
+  useEffect(() => { if (activeGroup.children) toggleGroup(activeGroup.id, true); }, [activeGroup, toggleGroup]);
 
   function changeView(next: ViewId) { setView(next); setMobileOpen(false); }
   async function logout() {
@@ -125,10 +128,10 @@ export function ConsoleApp() {
           {NAV.map((group) => {
             const Icon = group.icon;
             const isActive = activeGroup.id === group.id;
-            const isOpen = group.children ? (openGroup ? openGroup === group.id : isActive) : false;
+            const isOpen = group.children ? openGroups.has(group.id) : false;
             const badge = group.id === "approvals" ? pendingApprovals : 0;
             return <div className={`nav-group${isOpen ? " is-open" : ""}`} key={group.id}>
-              <button className={`${isActive ? "active" : ""}${group.children ? " has-children" : ""}`} onClick={() => { if (!group.children) { changeView(group.id); return; } if (isActive) setOpenGroup(isOpen ? "" : group.id); else { setOpenGroup(null); changeView(group.children[0].id); } }} title={group.label} aria-expanded={group.children ? isOpen : undefined}>
+              <button className={`${isActive ? "active" : ""}${group.children ? " has-children" : ""}`} onClick={() => { if (!group.children) { changeView(group.id); return; } if (isActive) toggleGroup(group.id); else { toggleGroup(group.id, true); changeView(group.children[0].id); } }} title={group.label} aria-expanded={group.children ? isOpen : undefined}>
                 <Icon size={17}/><span>{group.label}</span>{badge > 0 && <small>{badge}</small>}{group.children && <ChevronDown size={14} className="nav-caret" aria-hidden="true"/>}
               </button>
               {group.children && <div className="nav-children" role="group" aria-label={group.label}>

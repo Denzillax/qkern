@@ -3617,3 +3617,26 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: 83 Platzhalter sind 83 offene Ansichten. Die Reihenfolge
 ist Denzils Entscheidung; das Backend-Urteil sagt, wo es schnell geht.
+
+## Gruppen, die zugehen — Release 2.1
+
+Nutzerbefund direkt nach 2.0: Die Sidebar-Gruppen liessen sich nicht
+schliessen, und bei längeren Namen verschwanden die Pfeile.
+
+Zwei Ursachen. Der Zustand „geschlossen" war ein leerer String, und ein
+leerer String ist in JavaScript falsch — die Bedingung fiel deshalb auf
+„die aktive Gruppe ist offen" zurück, und genau die aktive Gruppe liess
+sich nie schliessen. Jetzt hält eine Menge die offenen Gruppen; jede lässt
+sich per Klick auf den Kopf öffnen und schliessen, und die aktive Gruppe
+öffnet sich per Effekt, wenn die Ansicht wechselt (Suche, Nachbarn,
+Gruppenwechsel). Die Pfeile verschwanden, weil die Beschriftung nicht
+umbrach und nicht kürzte und den Pfeil bei 232 px aus der Leiste schob;
+jetzt nimmt der Text den Rest, kürzt mit Ellipse, und der Pfeil hat feste
+Breite.
+
+Im Browser, in Denzils Session, gemessen: alle zwölf Pfeile liegen
+innerhalb der Leiste; Datenbank und Functions & Jobs öffnen und
+schliessen je zweimal.
+
+Checkpoint `2.1.0` am 24. September 2026: Lokal 1100 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.

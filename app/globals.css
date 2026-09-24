@@ -1035,3 +1035,14 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .placeholder-view .placeholder-siblings button:hover { background: var(--qkern-surface-2); }
 .placeholder-view .placeholder-siblings button.active { border-color: var(--qkern-primary); }
 .placeholder-view .placeholder-siblings i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* 2.1: Sidebar-Gruppen — Pfeil bleibt sichtbar, lange Namen werden gekürzt */
+.console-nav .nav-group > button { width: 100%; min-width: 0; }
+.console-nav .nav-group > button > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-nav .nav-group > button > svg:first-child { flex: none; }
+.console-nav .nav-group > button > small { flex: none; margin-left: 0; }
+.console-nav .nav-group > button > .nav-caret { flex: none; margin-left: 4px; }
+.console-nav .nav-children button { width: 100%; min-width: 0; }
+.console-nav .nav-children button > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-nav .nav-children { margin-left: 18px; padding-left: 12px; }
+.console-nav .nav-group.is-open > button.has-children:not(.active) { color: #dce6f6; }

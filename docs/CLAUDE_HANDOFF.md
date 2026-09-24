@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.0.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.1.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,16 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.0.0`
-- Aktueller Slice: 2.0 Das Menü von Supabase — `components/console/navigation.ts`
+- Paketversion: `2.1.0`
+- Aktueller Slice: 2.1 Gruppen, die zugehen — Nutzerbefund: Sidebar-Gruppen
+  liessen sich nicht schliessen, Pfeile verschwanden bei langen Namen.
+  Ursache eins: der Zustand „geschlossen" war ein leerer String, und der
+  fiel in der Bedingung auf „aktive Gruppe ist offen" zurück. Jetzt eine
+  `Set<string>` offener Gruppen (`toggleGroup`), die aktive Gruppe öffnet
+  sich per Effekt beim Ansichtswechsel. Ursache zwei: `white-space: nowrap`
+  ohne Kürzung schob den Pfeil aus der 232-px-Leiste; jetzt `flex: 1`,
+  `min-width: 0`, Ellipse, Pfeil `flex: none`
+- Vorheriger Slice: 2.0 Das Menü von Supabase — `components/console/navigation.ts`
   bildet das Routen-Verzeichnis von Supabase Studio ab
   (`apps/studio/pages/project/[ref]`, per GitHub-Tree gelesen): 19 Gruppen
   mit Untermenüs, 15 echte Ansichten, 83 Platzhalter je mit

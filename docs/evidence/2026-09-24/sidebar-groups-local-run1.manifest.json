@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "sidebar-groups-local-run1.log",
+  "commit": "92c4dc435dff9ba3fa0090825817b7e75a8d43a6",
+  "commitSubject": "release: 2.0.0 Das Menue von Supabase",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1100 passed | 241 skipped (1341)",
+  "passed": 1100,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}
