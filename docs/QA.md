@@ -3582,3 +3582,38 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 Nicht erbracht: Login und Registrierung sind noch nicht durch den Skill
 gelaufen; Rollen wie „Owner" und Statuswerte aus der API (active, pending,
 delivered) bleiben englisch, weil sie Werte sind, keine Texte.
+
+## Das Menü von Supabase — Release 2.0
+
+Denzils Auftrag: Supabase durchsuchen und alles, was QKERN fehlt, als
+Platzhalter einfügen, damit es danach Stück für Stück gebaut werden kann.
+Statt durch das eingeloggte Dashboard zu klicken, habe ich das
+Routen-Verzeichnis von Supabase Studio gelesen: `apps/studio/pages/project/
+[ref]` im Repo supabase/supabase, über den GitHub-Tree, am 24. September
+2026. 18 Verzeichnisse, rund 90 Seiten.
+
+`components/console/navigation.ts` bildet das ab: 19 Gruppen, davon 12 mit
+Untermenü; 15 echte Ansichten bleiben, 83 Platzhalter kommen dazu. Jeder
+Platzhalter sagt, wie die Seite bei Supabase heisst, ob QKERN das Backend
+dazu hat (vorhanden, teilweise, fehlt) und was genau fehlt — etwa dass
+Queues, Migrationen, Realtime-Inspector und Function-Aufrufe im Backend
+zertifiziert sind und nur die Ansicht fehlt, während Trigger, Enum-Typen,
+Passkeys oder Wrappers gar kein Backend haben. Die Platzhalterseite zeigt
+das und die Nachbarn der Gruppe; die Suche findet alle Einträge
+(„Datenbank · Trigger").
+
+Der Vertrag `console-navigation-contract` hält es zusammen: jedes
+Studio-Verzeichnis hat eine QKERN-Gruppe, jede Ansicht steht genau einmal,
+jede Erklärung hat mindestens 40 Zeichen. Er fand beim ersten Lauf zwei
+Fehler: Backups stand doppelt (Gruppe und Unterpunkt von Datenbank, wie bei
+Supabase), und zehn Erklärungen waren Einzeiler ohne Inhalt.
+
+Im Browser, in Denzils Session, geprüft: Gruppe Datenbank klappt 18
+Unterpunkte auf, Trigger öffnet die Platzhalterseite mit „Backend fehlt",
+die Suche findet den Eintrag.
+
+Checkpoint `2.0.0` am 24. September 2026: Lokal 1100 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: 83 Platzhalter sind 83 offene Ansichten. Die Reihenfolge
+ist Denzils Entscheidung; das Backend-Urteil sagt, wo es schnell geht.

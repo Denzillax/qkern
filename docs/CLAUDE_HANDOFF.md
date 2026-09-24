@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `1.99.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.0.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,18 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `1.99.0`
-- Aktueller Slice: 1.99 Die Console spricht Deutsch — `console-app.tsx`
+- Paketversion: `2.0.0`
+- Aktueller Slice: 2.0 Das Menü von Supabase — `components/console/navigation.ts`
+  bildet das Routen-Verzeichnis von Supabase Studio ab
+  (`apps/studio/pages/project/[ref]`, per GitHub-Tree gelesen): 19 Gruppen
+  mit Untermenüs, 15 echte Ansichten, 83 Platzhalter je mit
+  Supabase-Name, Backend-Urteil (vorhanden/teilweise/fehlt) und
+  Erklärung. `PlaceholderView` zeigt das und die Nachbarn der Gruppe;
+  Suche findet alle Einträge. Vertrag
+  `tests/console-navigation-contract.test.ts`: jedes Studio-Verzeichnis hat
+  eine Gruppe, jede Ansicht steht genau einmal, jede Erklärung ≥ 40 Zeichen.
+  Nächster Schritt laut Denzil: die Platzhalter nacheinander bauen
+- Vorheriger Slice: 1.99 Die Console spricht Deutsch — `console-app.tsx`
   durchgehend deutsch, Produktbegriffe bleiben englisch (Table Editor, SQL
   Editor, Change Set, RLS, Storage, Functions). Erfundene Live-Werte sind
   weg: Deltas der Kacheln, 24-h-Balken, Latenzen, „nova-market-dev", Pool

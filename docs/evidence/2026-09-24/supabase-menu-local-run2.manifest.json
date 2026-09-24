@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "supabase-menu-local-run2.log",
+  "commit": "3ab63af66b5aabc4caaf6bfbf616d8a4245e16dd",
+  "commitSubject": "release: 1.99.0 Die Console spricht Deutsch",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1100 passed | 241 skipped (1341)",
+  "passed": 1100,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

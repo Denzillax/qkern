@@ -1,16 +1,17 @@
 "use client";
 
 import {
-  Activity, ArchiveRestore, Bell, Blocks, Bot, Braces, Check, ChevronDown, ChevronLeft, ChevronRight,
-  CircleGauge, Cloud, Code2, Command, Database, FileClock, Fingerprint, HardDrive, KeyRound,
-  Copy, LayoutDashboard, ListFilter, LogOut, Menu, Network, Pencil, Play, Plus, RefreshCw, Search,
-  Settings, ShieldCheck, Table2, Terminal, Trash2, Users, Webhook, X, Zap,
+  Activity, ArchiveRestore, Bell, Blocks, Bot, Braces, Check, ChevronDown, ChevronLeft,
+  ChevronRight, CircleGauge, Cloud, Code2, Command, Database, Fingerprint, HardDrive, Copy,
+  ListFilter, LogOut, Menu, Pencil, Play, Plus, RefreshCw, Search, Settings, ShieldCheck, Table2,
+  Terminal, Trash2, Users, Webhook, X, Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QKERNLogo, QKERNSymbol } from "@/components/brand";
 import { displayWorkspaceName } from "@/lib/console/workspace-name";
+import { NAV, NAV_ENTRIES, PLACEHOLDERS, groupOf, isPlaceholder, labelOf, type ViewId } from "@/components/console/navigation";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
 import { loadConsoleAuthProviders, type ConsoleAuthProviderResult } from "@/components/console/auth-providers";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -27,7 +28,6 @@ import type {
 import { classifySqlRisk, isReadOnlySql } from "@/lib/security";
 
 type Snapshot = { user: { id: string; email: string }; organization: { id: string; name: string; slug: string }; projects: Project[]; changeSets: ChangeSet[]; approvals: Approval[]; audit: AuditEvent[] };
-type ViewId = "overview" | "database" | "table" | "sql" | "auth" | "storage" | "compute" | "api" | "ai" | "activity" | "approvals" | "logs" | "monitoring" | "backups" | "settings";
 
 type LiveTableColumn = {
   name: string; dataType: string; nullable: boolean; sensitive: boolean;
@@ -64,23 +64,6 @@ type UsageProjection = {
   }>;
 };
 
-const nav: { id: ViewId; label: string; icon: typeof Database; badge?: string }[] = [
-  { id: "overview", label: "Übersicht", icon: LayoutDashboard },
-  { id: "database", label: "Datenbank", icon: Database },
-  { id: "table", label: "Table Editor", icon: Table2 },
-  { id: "sql", label: "SQL Editor", icon: Terminal },
-  { id: "auth", label: "Auth", icon: Fingerprint },
-  { id: "storage", label: "Storage", icon: Cloud },
-  { id: "compute", label: "Functions & Jobs", icon: Webhook },
-  { id: "api", label: "API", icon: Braces },
-  { id: "ai", label: "AI Bridge", icon: Bot },
-  { id: "activity", label: "KI-Aktivität", icon: Activity },
-  { id: "approvals", label: "Freigabezentrale", icon: ShieldCheck },
-  { id: "logs", label: "Logs", icon: FileClock },
-  { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
-  { id: "backups", label: "Backups", icon: ArchiveRestore },
-  { id: "settings", label: "Einstellungen", icon: Settings },
-];
 
 
 export function ConsoleApp() {
@@ -122,7 +105,9 @@ export function ConsoleApp() {
   }, []);
 
   const project = snapshot?.projects[0];
-  const selected = nav.find((item) => item.id === view)!;
+  // null: die aktive Gruppe ist offen; "": keine; sonst die angeklickte.
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const activeGroup = groupOf(view);
 
   function changeView(next: ViewId) { setView(next); setMobileOpen(false); }
   async function logout() {
@@ -137,7 +122,20 @@ export function ConsoleApp() {
         <div className="console-brand"><Link href="/console" aria-label="Zur Console-Übersicht">{collapsed ? <QKERNSymbol variant="white" size="sm" /> : <QKERNLogo variant="white" size="sm" />}</Link><button className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"} title={collapsed ? "Sidebar ausklappen" : "Sidebar einklappen"}>{collapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}</button><button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Navigation schließen" title="Navigation schließen"><X size={18}/></button></div>
         <div className="project-switch"><span className="project-glyph">{(project?.name ?? "QK").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "QK"}</span><div><strong>{project?.name ?? "Projekt wird geladen"}</strong><small>{displayWorkspaceName(snapshot?.organization.name)}</small></div><ChevronDown size={14}/></div>
         <nav className="console-nav" aria-label="Console-Navigation">
-          {nav.map((item) => { const Icon = item.icon; const badge = item.id === "approvals" ? pendingApprovals : 0; return <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => changeView(item.id)} title={item.label}><Icon size={17}/><span>{item.label}</span>{badge > 0 && <small>{badge}</small>}</button>; })}
+          {NAV.map((group) => {
+            const Icon = group.icon;
+            const isActive = activeGroup.id === group.id;
+            const isOpen = group.children ? (openGroup ? openGroup === group.id : isActive) : false;
+            const badge = group.id === "approvals" ? pendingApprovals : 0;
+            return <div className={`nav-group${isOpen ? " is-open" : ""}`} key={group.id}>
+              <button className={`${isActive ? "active" : ""}${group.children ? " has-children" : ""}`} onClick={() => { if (!group.children) { changeView(group.id); return; } if (isActive) setOpenGroup(isOpen ? "" : group.id); else { setOpenGroup(null); changeView(group.children[0].id); } }} title={group.label} aria-expanded={group.children ? isOpen : undefined}>
+                <Icon size={17}/><span>{group.label}</span>{badge > 0 && <small>{badge}</small>}{group.children && <ChevronDown size={14} className="nav-caret" aria-hidden="true"/>}
+              </button>
+              {group.children && <div className="nav-children" role="group" aria-label={group.label}>
+                {group.children.map((child) => <button key={child.id} className={`${view === child.id ? "active" : ""} ${isPlaceholder(child.id) ? "is-placeholder-entry" : "is-real-entry"}`} onClick={() => changeView(child.id)} title={isPlaceholder(child.id) ? `${child.label} · noch nicht verbunden` : child.label}><i className="nav-dot" aria-hidden="true"/><span>{child.label}</span></button>)}
+              </div>}
+            </div>;
+          })}
         </nav>
         <div className="sidebar-bottom"><Link href="/#developers"><Code2 size={16}/><span>Dokumentation</span></Link><button disabled className="is-placeholder" title="Teamverwaltung ist noch nicht verbunden"><Users size={16}/><span>Team</span></button><AccountMenu email={snapshot?.user.email ?? null} workspace={snapshot?.organization.name ?? null} collapsed={collapsed} onLogout={logout}/></div>
       </aside>
@@ -156,7 +154,7 @@ export function ConsoleApp() {
         </header>
 
         <main className="console-page">
-          <div className="console-titlebar"><div><span className="console-kicker">{project?.name ?? "Projekt"} · {environment.charAt(0).toUpperCase() + environment.slice(1)}</span><h1>{selected.label}</h1></div>{environment === "production" && <span className="production-guard"><ShieldCheck size={15}/> Production-Schutz aktiv</span>}</div>
+          <div className="console-titlebar"><div><span className="console-kicker">{project?.name ?? "Projekt"} · {environment.charAt(0).toUpperCase() + environment.slice(1)}</span><h1>{labelOf(view)}</h1></div>{environment === "production" && <span className="production-guard"><ShieldCheck size={15}/> Production-Schutz aktiv</span>}</div>
           {loading && <LoadingState/>}
           {error && <ErrorState message={error} retry={load}/>} 
           {!loading && !error && snapshot && project && (
@@ -185,7 +183,23 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "monitoring": return <UsageView projectId={props.project.id} environment={props.environment}/>;
     case "backups": return <BackupsView/>;
     case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }}/>;
+    default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
+}
+
+/**
+ * Ein Menüpunkt, den Supabase Studio hat und QKERN noch nicht: sagt, wie er
+ * dort heisst, was das Backend schon kann, und zeigt die Nachbarn der Gruppe.
+ */
+function PlaceholderView({ view, navigate }: { view: ViewId; navigate: (view: ViewId) => void }) {
+  if (!isPlaceholder(view)) return null;
+  const entry = PLACEHOLDERS[view];
+  const group = groupOf(view);
+  const backendLabel = { vorhanden: "Backend vorhanden", teilweise: "Backend teilweise", fehlt: "Backend fehlt" }[entry.backend];
+  return <div className="placeholder-view">
+    <article className="console-card placeholder-state"><Blocks size={26}/><div><span className="console-kicker">{group.label} · Platzhalter</span><h2>{entry.label}: noch nicht verbunden</h2><p>{entry.note}</p><div className="placeholder-meta"><span>Bei Supabase: {entry.supabase}</span><span className={`backend-${entry.backend}`}>{backendLabel}</span></div></div></article>
+    {group.children && group.children.length > 1 && <article className="console-card"><div className="card-head"><div><span>{group.label.toUpperCase()}</span><h3>Weitere Seiten dieser Gruppe</h3></div></div><div className="placeholder-siblings">{group.children.map((child) => <button key={child.id} type="button" className={child.id === view ? "active" : ""} onClick={() => navigate(child.id)}><i style={{ background: isPlaceholder(child.id) ? "var(--qkern-text-muted)" : "var(--qkern-success)" }}/>{child.label}</button>)}</div></article>}
+  </div>;
 }
 
 function ProductPreview({ service, children }: { service: string; children: React.ReactNode }) {
@@ -637,7 +651,7 @@ function BackupsView(){return <div className="module-grid"><article className="c
 
 function SettingsView({ project }: { project: { name: string; id: string } }){return <div className="settings-layout"><aside className="console-card settings-nav"><button className="active" type="button">Allgemein</button>{["Umgebungen","API-Keys","KI-Verbindungen","Team","Gefahrenzone"].map(tab=><button key={tab} type="button" disabled className="is-placeholder" title={`${tab} ist noch nicht verbunden`}>{tab}</button>)}</aside><article className="console-card settings-form"><span className="console-kicker">Projekteinstellungen</span><h2>Allgemein</h2><label>Projektname<input value={project.name} readOnly/></label><label>Projekt-ID<input value={project.id} readOnly/></label><div className="form-note"><ShieldCheck size={16}/><p><strong>Nur lesend</strong><br/>Umbenennen, Regionen und Gefahrenzone sind noch nicht verbunden; diese Ansicht zeigt den echten Namen und die echte ID des Projekts.</p></div><button className="button is-placeholder" disabled title="Speichern ist noch nicht verbunden">Änderungen speichern</button></article></div>}
 
-function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: ViewId) => void }){const [query,setQuery]=useState("");const matches=nav.filter(item=>item.label.toLowerCase().includes(query.toLowerCase()));return <div className="command-overlay" onMouseDown={onClose}><div className="command-palette" onMouseDown={e=>e.stopPropagation()}><div className="command-input"><Search size={18}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Console durchsuchen…"/><button onClick={onClose}>ESC</button></div><div className="command-results"><span>NAVIGATION</span>{matches.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>{onNavigate(item.id);onClose();}}><Icon size={16}/>{item.label}<Command size={13}/></button>})}</div></div></div>}
+function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: ViewId) => void }){const [query,setQuery]=useState("");const matches=NAV_ENTRIES.filter(item=>`${item.group} ${item.label}`.toLowerCase().includes(query.toLowerCase())).slice(0,12);return <div className="command-overlay" onMouseDown={onClose}><div className="command-palette" onMouseDown={e=>e.stopPropagation()}><div className="command-input"><Search size={18}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Console durchsuchen…"/><button onClick={onClose}>ESC</button></div><div className="command-results"><span>NAVIGATION</span>{matches.map(item=>{const Icon=groupOf(item.id).icon;return <button key={`${item.group}-${item.id}`} onClick={()=>{onNavigate(item.id);onClose();}}><Icon size={16}/>{item.group===item.label?item.label:`${item.group} · ${item.label}`}<Command size={13}/></button>})}</div></div></div>}
 function LoadingState(){return <div className="loading-grid">{Array.from({length:8}).map((_,i)=><i key={i}/>)}</div>}
 function ErrorState({message,retry}:{message:string;retry:()=>void}){return <div className="error-state"><X size={30}/><h3>Console-Daten konnten nicht geladen werden</h3><p>{message}</p><button className="button small" onClick={retry}>Noch einmal</button></div>}
 function EmptyState({icon:Icon,title,text}:{icon:typeof Database;title:string;text:string}){return <div className="empty-state"><Icon size={28}/><h3>{title}</h3><p>{text}</p></div>}
