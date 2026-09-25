@@ -349,7 +349,10 @@ describe("provider E2E evidence runtime and CLI", () => {
       ["--import", "tsx", "scripts/verify-provider-e2e-evidence.ts"],
       { cwd: process.cwd(), env, encoding: "utf8" },
     );
-    expect(success.status).toBe(0);
+    // Auf dem Ubuntu-Runner einmal exit 1 ohne sichtbare Ursache (2.23, Wiederholung gruen);
+    // die Meldung traegt seither stderr und stdout, damit der naechste Fall lesbar ist.
+    expect(success.status, `stderr: ${success.stderr}
+stdout: ${success.stdout}`).toBe(0);
     expect(JSON.parse(success.stdout).data.providerE2EEvidenceReadiness)
       .toMatchObject({ status: "ready", scenarioCount: 15 });
     expect(success.stdout).not.toContain(evidencePath);

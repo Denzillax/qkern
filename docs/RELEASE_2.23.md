@@ -34,3 +34,8 @@ Steuerzeichen geprueft, nicht auf Bezeichner-Grammatik.
   ein Vertrag aus 1.x mit Folgen fuer die Data API, eigener Slice.
 - **Erweiterungen sind serverweit**, nicht je Datenbank; die Ansicht sagt
   es nicht.
+- **Nachtrag GitHub:** Zertifizierung gruen (36173571554). Developer
+  Experience: Ubuntu einmal rot in `provider-e2e-evidence` (die CLI
+  antwortete exit 1, absichtlich ohne Ursache), Wiederholung gruen, macOS
+  und Windows gruen. Der Test zeigt seither stderr und stdout in der
+  Meldung; die Ursache ist nicht bekannt.

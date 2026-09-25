@@ -4399,6 +4399,14 @@ bestanden, exit 0, zweimal reproduziert; Mutation 168 von 169, exit 1;
 Lokal 1147 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
 gruen.
 
+GitHub auf diesem Stand: Zertifizierung gruen; Developer Experience auf
+Ubuntu einmal rot, weil `scripts/verify-provider-e2e-evidence.ts` im
+Test `provider-e2e-evidence` mit exit 1 antwortete, absichtlich ohne
+Ursache im Ausgang. Die Wiederholung war gruen, macOS und Windows auch.
+Der Test traegt seither stderr und stdout in der Meldung, damit der
+naechste Fall lesbar ist; die Ursache bleibt unbekannt, die Zusicherung
+unveraendert.
+
 Nicht erbracht: `inspectSchema` aus 1.x prueft Tabellen- und Spaltennamen
 weiter mit `IDENTIFIER`; das betrifft Table Editor und Data API und ist
 ein eigener Slice, weil dort Namen in SQL eingesetzt werden. Extensions
