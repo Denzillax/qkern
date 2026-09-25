@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 /**
@@ -52,7 +53,13 @@ const key = /QKERN_BACKUP_VERIFIER_KEY_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 if (status === 0 && evidence && key) {
   mkdirSync("docs/evidence/backup-restore", { recursive: true });
   writeFileSync("docs/evidence/backup-restore/drill.evidence.json", Buffer.from(evidence[1], "base64"));
-  writeFileSync("docs/evidence/backup-restore/drill.verifier-key.json", Buffer.from(key[1], "base64"));
+  const keyBytes = Buffer.from(key[1], "base64");
+  writeFileSync("docs/evidence/backup-restore/drill.verifier-key.json", keyBytes);
+  // Der Verifier pinnt den SHA-256 des rohen 32-Byte-Schluessels, nicht der
+  // Datei. Der Pin liegt daneben, damit `npm run verify:backup-restore` ihn
+  // ohne Nachrechnen bekommt.
+  const publicKey = Buffer.from(JSON.parse(keyBytes.toString("utf8")).publicKey, "base64url");
+  writeFileSync("docs/evidence/backup-restore/drill.verifier-key.sha256", createHash("sha256").update(publicKey).digest("hex") + "\n");
   console.log("Evidenz abgelegt: docs/evidence/backup-restore/drill.evidence.json");
 } else if (status === 0) {
   console.error("Drill gruen, aber keine Evidenzzeilen im Log gefunden.");

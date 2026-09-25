@@ -92,7 +92,7 @@ jobs:
           npm ci --ignore-scripts
           export QKERN_BACKUP_RESTORE_EVIDENCE_FILE="$GITHUB_WORKSPACE/docs/evidence/backup-restore/drill.evidence.json"
           export QKERN_BACKUP_RESTORE_VERIFIER_KEY_FILE="$GITHUB_WORKSPACE/docs/evidence/backup-restore/drill.verifier-key.json"
-          export QKERN_BACKUP_RESTORE_VERIFIER_KEY_SHA256="$(sha256sum "$QKERN_BACKUP_RESTORE_VERIFIER_KEY_FILE" | cut -d' ' -f1)"
+          export QKERN_BACKUP_RESTORE_VERIFIER_KEY_SHA256="$(head -c 64 "$GITHUB_WORKSPACE/docs/evidence/backup-restore/drill.verifier-key.sha256")"
           set -o pipefail; npm run -s verify:backup-restore | tee backup-verify.log
           grep -q '"status":"ready"' backup-verify.log
       - name: Upload run log

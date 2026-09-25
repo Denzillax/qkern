@@ -37,3 +37,12 @@ Produkt-Verifier annimmt.
 - **Die Konsole zeigt unter Backups weiter den Platzhalter.**
 - **Das Bindungsskript macht nur das eine UPDATE**, keinen Auftrag, keine
   Bindungszeile, keinen Projektstatus.
+
+## Nachtrag
+
+Der erste CI-Lauf des Jobs "Backup und Restore" fiel im Verifier-Schritt:
+der Pin `QKERN_BACKUP_RESTORE_VERIFIER_KEY_SHA256` ist der SHA-256 des rohen
+32-Byte-Schluessels, nicht der Schluesseldatei. Das Drill-Skript schreibt den
+Pin jetzt als `drill.verifier-key.sha256` neben den Schluessel, der Job liest
+ihn von dort; mit der Evidenz des lokalen Laufs in einem Linux-Container
+belegt (`status: ready`). Der Drill selbst war im CI gruen.
