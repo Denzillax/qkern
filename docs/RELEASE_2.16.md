@@ -20,5 +20,8 @@ Die Namen sind auf npm frei, die Organisation `qkern` gehoert Denzil.
 
 ## Ehrlich offen
 
-- **Noch nichts veroeffentlicht.** Zuerst der Probelauf des Workflows,
-  dann Denzils Okay fuer 1.7.0-alpha.3 unter dem Tag `alpha`.
+- **Noch nichts veroeffentlicht.** Der Probelauf des Workflows ist gruen
+  (`docs/evidence/2026-09-25/github-publish-dryrun-36165337979.json`):
+  `@qkern/sdk` 11,1 kB in 7 Dateien, `@qkern/cli` 11,7 kB in 12 Dateien,
+  beide mit `LICENSE`, Ziel registry.npmjs.org, Tag `alpha`, oeffentlich.
+  Die echte Veroeffentlichung wartet auf Denzils Okay.

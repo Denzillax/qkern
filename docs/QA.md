@@ -4158,5 +4158,7 @@ Checkpoint `2.16.0` am 25. September 2026: Lokal 1119 bestanden, 0
 fehlgeschlagen, zweimal reproduziert; `next build` gruen; Tarballs
 geprueft.
 
-Nicht erbracht: noch nichts veroeffentlicht. Zuerst der Probelauf des
-Workflows, dann Denzils Okay.
+Der Probelauf des Workflows auf GitHub ist gruen: beide Tarballs gebaut und
+geprueft, `LICENSE` drin, Ziel registry.npmjs.org mit Tag `alpha` und
+oeffentlichem Zugang, nichts hochgeladen. Nicht erbracht: die echte
+Veroeffentlichung, sie wartet auf Denzils Okay.

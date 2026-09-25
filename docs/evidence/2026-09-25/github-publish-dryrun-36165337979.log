@@ -1,0 +1,97 @@
+2026-09-25T17:10:03.5656307Z npm notice
+2026-09-25T17:10:03.5657758Z npm notice 📦  @qkern/sdk@1.7.0-alpha.3
+2026-09-25T17:10:03.5658303Z npm notice Tarball Contents
+2026-09-25T17:10:03.5658766Z npm notice 11.4kB LICENSE
+2026-09-25T17:10:03.5659217Z npm notice 807B README.md
+2026-09-25T17:10:03.5659706Z npm notice 4.8kB dist/index.d.ts
+2026-09-25T17:10:03.5660247Z npm notice 4.6kB dist/index.d.ts.map
+2026-09-25T17:10:03.5660675Z npm notice 8.4kB dist/index.js
+2026-09-25T17:10:03.5661265Z npm notice 9.4kB dist/index.js.map
+2026-09-25T17:10:03.5661781Z npm notice 532B package.json
+2026-09-25T17:10:03.5662269Z npm notice Tarball Details
+2026-09-25T17:10:03.5662764Z npm notice name: @qkern/sdk
+2026-09-25T17:10:03.5663348Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:10:03.5663967Z npm notice filename: qkern-sdk-1.7.0-alpha.3.tgz
+2026-09-25T17:10:03.5664670Z npm notice package size: 11.1 kB
+2026-09-25T17:10:03.5665513Z npm notice unpacked size: 39.9 kB
+2026-09-25T17:10:03.5666275Z npm notice shasum: 4b383fe93d0fb2da049fd581c48bdded3a7909f1
+2026-09-25T17:10:03.5667271Z npm notice integrity: sha512-ysr6CW24aF+a+[...]+J01vAN4qxxPA==
+2026-09-25T17:10:03.5667973Z npm notice total files: 7
+2026-09-25T17:10:03.5668434Z npm notice
+2026-09-25T17:10:03.9496652Z npm notice
+2026-09-25T17:10:03.9498141Z npm notice 📦  @qkern/cli@1.7.0-alpha.3
+2026-09-25T17:10:03.9501945Z npm notice Tarball Contents
+2026-09-25T17:10:03.9503841Z npm notice 11.4kB LICENSE
+2026-09-25T17:10:03.9504714Z npm notice 473B README.md
+2026-09-25T17:10:03.9505783Z npm notice 1.7kB dist/core.d.ts
+2026-09-25T17:10:03.9506446Z npm notice 7.7kB dist/core.js
+2026-09-25T17:10:03.9507168Z npm notice 8.4kB dist/core.js.map
+2026-09-25T17:10:03.9507898Z npm notice 31B dist/main.d.ts
+2026-09-25T17:10:03.9508556Z npm notice 3.1kB dist/main.js
+2026-09-25T17:10:03.9509237Z npm notice 3.6kB dist/main.js.map
+2026-09-25T17:10:03.9509932Z npm notice 356B dist/security.d.ts
+2026-09-25T17:10:03.9510756Z npm notice 2.5kB dist/security.js
+2026-09-25T17:10:03.9511620Z npm notice 1.7kB dist/security.js.map
+2026-09-25T17:10:03.9512463Z npm notice 459B package.json
+2026-09-25T17:10:03.9513234Z npm notice Tarball Details
+2026-09-25T17:10:03.9514003Z npm notice name: @qkern/cli
+2026-09-25T17:10:03.9514892Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:10:03.9516127Z npm notice filename: qkern-cli-1.7.0-alpha.3.tgz
+2026-09-25T17:10:03.9517101Z npm notice package size: 11.7 kB
+2026-09-25T17:10:03.9517940Z npm notice unpacked size: 41.4 kB
+2026-09-25T17:10:03.9520551Z npm notice shasum: d3820b8eadf4d2255a6ffb7377039186699f7ccf
+2026-09-25T17:10:03.9521900Z npm notice integrity: sha512-LhdZC572xkPFU[...]IIrtI3nlbahRg==
+2026-09-25T17:10:03.9523231Z npm notice total files: 12
+2026-09-25T17:10:03.9523808Z npm notice
+2026-09-25T17:10:03.9597800Z QKERN SDK and CLI package tarballs verified.
+2026-09-25T17:10:04.7931725Z npm notice
+2026-09-25T17:10:04.7933137Z npm notice 📦  @qkern/sdk@1.7.0-alpha.3
+2026-09-25T17:10:04.7934401Z npm notice Tarball Contents
+2026-09-25T17:10:04.7935560Z npm notice 11.4kB LICENSE
+2026-09-25T17:10:04.7936412Z npm notice 807B README.md
+2026-09-25T17:10:04.7937268Z npm notice 4.8kB dist/index.d.ts
+2026-09-25T17:10:04.7940731Z npm notice 4.6kB dist/index.d.ts.map
+2026-09-25T17:10:04.7941715Z npm notice 8.4kB dist/index.js
+2026-09-25T17:10:04.7942618Z npm notice 9.4kB dist/index.js.map
+2026-09-25T17:10:04.7943473Z npm notice 532B package.json
+2026-09-25T17:10:04.7944302Z npm notice Tarball Details
+2026-09-25T17:10:04.7945304Z npm notice name: @qkern/sdk
+2026-09-25T17:10:04.7946134Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:10:04.7947057Z npm notice filename: qkern-sdk-1.7.0-alpha.3.tgz
+2026-09-25T17:10:04.7948008Z npm notice package size: 11.1 kB
+2026-09-25T17:10:04.7948864Z npm notice unpacked size: 39.9 kB
+2026-09-25T17:10:04.7949927Z npm notice shasum: 4b383fe93d0fb2da049fd581c48bdded3a7909f1
+2026-09-25T17:10:04.7951120Z npm notice integrity: sha512-ysr6CW24aF+a+[...]+J01vAN4qxxPA==
+2026-09-25T17:10:04.7952063Z npm notice total files: 7
+2026-09-25T17:10:04.7952697Z npm notice
+2026-09-25T17:10:05.4887231Z npm notice npm tokens that bypass 2FA are being restricted for account changes and direct publishing. Learn how to prepare: https://gh.io/npm-gat-bypass2fa-deprecation
+2026-09-25T17:10:05.7529366Z npm notice Publishing to https://registry.npmjs.org/ with tag alpha and public access (dry-run)
+2026-09-25T17:10:05.7530678Z + @qkern/sdk@1.7.0-alpha.3
+2026-09-25T17:10:06.1376708Z npm notice
+2026-09-25T17:10:06.1378172Z npm notice 📦  @qkern/cli@1.7.0-alpha.3
+2026-09-25T17:10:06.1379242Z npm notice Tarball Contents
+2026-09-25T17:10:06.1380071Z npm notice 11.4kB LICENSE
+2026-09-25T17:10:06.1381227Z npm notice 473B README.md
+2026-09-25T17:10:06.1384352Z npm notice 1.7kB dist/core.d.ts
+2026-09-25T17:10:06.1386215Z npm notice 7.7kB dist/core.js
+2026-09-25T17:10:06.1387030Z npm notice 8.4kB dist/core.js.map
+2026-09-25T17:10:06.1387936Z npm notice 31B dist/main.d.ts
+2026-09-25T17:10:06.1388715Z npm notice 3.1kB dist/main.js
+2026-09-25T17:10:06.1389530Z npm notice 3.6kB dist/main.js.map
+2026-09-25T17:10:06.1390346Z npm notice 356B dist/security.d.ts
+2026-09-25T17:10:06.1391127Z npm notice 2.5kB dist/security.js
+2026-09-25T17:10:06.1391874Z npm notice 1.7kB dist/security.js.map
+2026-09-25T17:10:06.1392581Z npm notice 465B package.json
+2026-09-25T17:10:06.1393322Z npm notice Tarball Details
+2026-09-25T17:10:06.1394023Z npm notice name: @qkern/cli
+2026-09-25T17:10:06.1394780Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:10:06.1396026Z npm notice filename: qkern-cli-1.7.0-alpha.3.tgz
+2026-09-25T17:10:06.1396943Z npm notice package size: 11.7 kB
+2026-09-25T17:10:06.1397811Z npm notice unpacked size: 41.4 kB
+2026-09-25T17:10:06.1398857Z npm notice shasum: f9a3504dc420d95d931eab3b881dd3eb304dff0f
+2026-09-25T17:10:06.1400064Z npm notice integrity: sha512-HWn5lxM0+TUq8[...]VFYu0Dy/g1V7w==
+2026-09-25T17:10:06.1400999Z npm notice total files: 12
+2026-09-25T17:10:06.1401626Z npm notice
+2026-09-25T17:10:06.8214544Z npm notice npm tokens that bypass 2FA are being restricted for account changes and direct publishing. Learn how to prepare: https://gh.io/npm-gat-bypass2fa-deprecation
+2026-09-25T17:10:07.0338227Z npm notice Publishing to https://registry.npmjs.org/ with tag alpha and public access (dry-run)
+2026-09-25T17:10:07.0339431Z + @qkern/cli@1.7.0-alpha.3

@@ -1225,3 +1225,4 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-25/apache-local-run1.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0 |
 | `2026-09-25/apache-local-run2.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0, Wiederholung |
+| `2026-09-25/github-publish-dryrun-36165337979.json` | GitHub Actions, npm publish --dry-run | gruen, nichts hochgeladen |
