@@ -1,0 +1,34 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/cli-usage.test.ts (3 tests | 1 failed) 22ms
+     × prints usage on stdout with exit 0 for help, --help, -h and no arguments 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/cli-usage.test.ts > qkern CLI usage > prints usage on stdout with exit 0 for help, --help, -h and no arguments
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/cli-usage.test.ts:25:27
+     23|     for (const args of [[], ["help"], ["--help"], ["-h"]]) {
+     24|       const result = await invoke(args);
+     25|       expect(result.code).toBe(0);
+       |                           ^
+     26|       expect(result.stdout).toBe(USAGE);
+     27|       expect(result.stderr).toBe("");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  19:21:26
+   Duration  393ms (transform 71ms, setup 0ms, import 134ms, tests 22ms, environment 0ms)
+
+EXIT=1

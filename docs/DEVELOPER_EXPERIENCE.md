@@ -1,6 +1,6 @@
 # QKERN Developer Experience
 
-Gültig für `1.7.0-alpha.3`. Dieser Vertrag hält lokale Entwicklung reproduzierbar,
+Gültig für `@qkern/sdk` `1.7.0-alpha.3` und `@qkern/cli` `1.7.0-alpha.4` (beide auf npm, Tag `alpha`). Dieser Vertrag hält lokale Entwicklung reproduzierbar,
 secretfrei und zwischen Shells übertragbar.
 
 ## Paketgrenzen

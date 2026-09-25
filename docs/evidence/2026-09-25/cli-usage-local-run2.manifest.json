@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "cli-usage-local-run2.log",
+  "commit": "3526fe009d8ab98f86aba9ae2b3020b9f3a8f1b8",
+  "commitSubject": "ci: Provenance nur auf Wunsch, npm nimmt sie nur aus oeffentlichen Repos",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1122 passed | 242 skipped (1364)",
+  "passed": 1122,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.16.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.17.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,23 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.16.0`
-- Aktueller Slice: 2.16 Apache 2.0 – Denzils Entscheidung: `@qkern/sdk` und
+- Paketversion: `2.17.0`
+- Aktueller Slice: 2.17 Hilfe, die antwortet – nach Denzils Okay sind
+  `@qkern/sdk@1.7.0-alpha.3` und `@qkern/cli@1.7.0-alpha.3` auf npm (Tag
+  `alpha`; der erste Versuch fiel mit E422, npm nimmt Provenance nur aus
+  oeffentlichen Repositories, deshalb ist `provenance` im Workflow jetzt ein
+  Eingabefeld, Voreinstellung false). Die Installation in ein leeres
+  Projekt fand den ersten Fehler: `npx qkern --help` antwortete nur "QKERN
+  CLI command failed." und verschluckte die Nutzung. `cli/src/main.ts` ist
+  jetzt ein duenner Einstieg, die Befehle liegen in `cli/src/commands.ts`
+  (`run(args, io)` liefert den Exit-Code): `help`/`--help`/`-h`/leer zeigen
+  die Nutzung auf stdout (0), ein unbekannter oder halber Befehl auf stderr
+  (1), jeder andere Fehler nennt seinen Grund. Vertrag
+  `tests/cli-usage.test.ts`, Mutation (Help-Zweig entfernt, 1 von 3 faellt).
+  CLI auf `1.7.0-alpha.4`; der Workflow ueberspringt Versionen, die npm
+  schon hat. Denzil ist einkaufen und hat "autonom weiter testen und fertig
+  bauen" gesagt
+- Vorheriger Slice: 2.16 Apache 2.0 – Denzils Entscheidung: `@qkern/sdk` und
   `@qkern/cli` unter Apache License 2.0 (`LICENSE` in beiden Paketen, im
   `files`-Feld, `license: "Apache-2.0"`, `private` entfernt, README-Abschnitt).
   Die Plattform selbst (Server, Console, Worker) bleibt unlizenziert. Vertrag
@@ -49,7 +64,7 @@ Release Notes bleiben unverändert.
   `qkern` gehoert Denzil. Naechster Schritt: Probelauf des Publish-Workflows,
   dann erst die echte Veroeffentlichung als 1.7.0-alpha.3 unter Tag `alpha`,
   nach Denzils Okay
-- Vorheriger Slice: 2.15 Was der Runner fand – zweiter GitHub-Lauf (Stand
+- Davor: 2.15 Was der Runner fand – zweiter GitHub-Lauf (Stand
   2.14.0): Developer Experience auf Ubuntu, Windows und macOS gruen
   (`docs/evidence/2026-09-25/github-dx-run-36163798505.json`), damit ist die
   Windows-/macOS-Haelfte von Sprosse 7 erstmals belegt. Zertifizierung:

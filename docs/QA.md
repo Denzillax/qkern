@@ -4162,3 +4162,40 @@ Der Probelauf des Workflows auf GitHub ist gruen: beide Tarballs gebaut und
 geprueft, `LICENSE` drin, Ziel registry.npmjs.org mit Tag `alpha` und
 oeffentlichem Zugang, nichts hochgeladen. Nicht erbracht: die echte
 Veroeffentlichung, sie wartet auf Denzils Okay.
+
+## Hilfe, die antwortet – Release 2.17
+
+Denzil hat die Veroeffentlichung freigegeben und ist einkaufen gegangen:
+autonom weiter testen und fertig bauen. Der erste echte Lauf des
+Publish-Workflows fiel mit E422: npm nimmt einen Herkunftsnachweis
+(Provenance) nur aus oeffentlichen Repositories an, das Repo ist privat.
+`provenance` ist im Workflow jetzt ein Eingabefeld mit Voreinstellung
+false; der zweite Lauf hat `@qkern/sdk@1.7.0-alpha.3` und
+`@qkern/cli@1.7.0-alpha.3` hochgeladen, Tag `alpha`, Apache 2.0, beide
+mit `LICENSE` im Tarball.
+
+Dann die Probe, die zaehlt: Installation in ein leeres Projekt. Beide
+Pakete kamen an, `npx qkern --help` antwortete aber nur "QKERN CLI command
+failed." Der Einstieg fing jeden Fehler und warf die Meldung weg, auch die
+Nutzung, die als Fehler geworfen wurde. Wer die CLI zum ersten Mal
+startet, sieht nichts als einen Fehlschlag.
+
+Umbau: `main.ts` ist ein duenner Einstieg, die Befehle liegen in
+`commands.ts` mit `run(args, io)`, das den Exit-Code liefert und ohne
+Kindprozess testbar ist. `help`, `--help`, `-h` und der leere Aufruf
+zeigen die Nutzung auf stdout mit Exit 0. Ein unbekannter oder halber
+Befehl zeigt sie auf stderr mit Exit 1, und zwar bevor die Konfiguration
+gelesen wird, damit `qkern schema` nicht "qkern.config.json fehlt" meldet.
+Jeder andere Fehler nennt seinen Grund. Vertrag: `tests/cli-usage.test.ts`.
+Mutation: Help-Zweig entfernt, 1 von 3 faellt.
+
+Die CLI steht auf `1.7.0-alpha.4`; das SDK bleibt bei alpha.3, es hat sich
+nicht geaendert. Der Workflow fragt npm vor jedem Paket, ob die Version
+schon da ist, und ueberspringt sie dann, statt am SDK zu scheitern.
+
+Checkpoint `2.17.0` am 25. September 2026: Lokal 1122 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen; Tarballs
+geprueft.
+
+Nicht erbracht: die Veroeffentlichung von alpha.4 folgt nach dem Commit;
+`latest` zeigt auf npm auf die Alpha, weil es die erste Version ist.

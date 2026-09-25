@@ -1,0 +1,32 @@
+2026-09-25T17:15:05.7688795Z npm notice name: @qkern/sdk
+2026-09-25T17:15:05.7697162Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:15:05.7698115Z npm notice filename: qkern-sdk-1.7.0-alpha.3.tgz
+2026-09-25T17:15:05.7698914Z npm notice package size: 11.1 kB
+2026-09-25T17:15:05.7700130Z npm notice shasum: 4b383fe93d0fb2da049fd581c48bdded3a7909f1
+2026-09-25T17:15:05.7700860Z npm notice integrity: sha512-ysr6CW24aF+a+[...]+J01vAN4qxxPA==
+2026-09-25T17:15:05.7701522Z npm notice total files: 7
+2026-09-25T17:15:06.1030570Z npm notice name: @qkern/cli
+2026-09-25T17:15:06.1031432Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:15:06.1032158Z npm notice filename: qkern-cli-1.7.0-alpha.3.tgz
+2026-09-25T17:15:06.1032926Z npm notice package size: 11.7 kB
+2026-09-25T17:15:06.1034271Z npm notice shasum: d3820b8eadf4d2255a6ffb7377039186699f7ccf
+2026-09-25T17:15:06.1035058Z npm notice integrity: sha512-LhdZC572xkPFU[...]IIrtI3nlbahRg==
+2026-09-25T17:15:06.1036043Z npm notice total files: 12
+2026-09-25T17:15:06.9472770Z npm notice name: @qkern/sdk
+2026-09-25T17:15:06.9473317Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:15:06.9473884Z npm notice filename: qkern-sdk-1.7.0-alpha.3.tgz
+2026-09-25T17:15:06.9474467Z npm notice package size: 11.1 kB
+2026-09-25T17:15:06.9475663Z npm notice shasum: 4b383fe93d0fb2da049fd581c48bdded3a7909f1
+2026-09-25T17:15:06.9476497Z npm notice integrity: sha512-ysr6CW24aF+a+[...]+J01vAN4qxxPA==
+2026-09-25T17:15:06.9477118Z npm notice total files: 7
+2026-09-25T17:15:07.9730481Z npm notice Publishing to https://registry.npmjs.org/ with tag alpha and public access
+2026-09-25T17:15:09.1101332Z + @qkern/sdk@1.7.0-alpha.3
+2026-09-25T17:15:09.3763729Z npm notice name: @qkern/cli
+2026-09-25T17:15:09.3764265Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:15:09.3764877Z npm notice filename: qkern-cli-1.7.0-alpha.3.tgz
+2026-09-25T17:15:09.3765509Z npm notice package size: 11.7 kB
+2026-09-25T17:15:09.3766615Z npm notice shasum: d3820b8eadf4d2255a6ffb7377039186699f7ccf
+2026-09-25T17:15:09.3767428Z npm notice integrity: sha512-LhdZC572xkPFU[...]IIrtI3nlbahRg==
+2026-09-25T17:15:09.3767979Z npm notice total files: 12
+2026-09-25T17:15:10.2513488Z npm notice Publishing to https://registry.npmjs.org/ with tag alpha and public access
+2026-09-25T17:15:11.6296258Z + @qkern/cli@1.7.0-alpha.3

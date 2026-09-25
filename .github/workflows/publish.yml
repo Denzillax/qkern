@@ -72,11 +72,25 @@ jobs:
         run: |
           npm pkg delete private --prefix sdk/typescript
           npm pkg delete private --prefix cli
+      - name: Skip versions npm already has
+        id: existing
+        run: |
+          for pkg in sdk:sdk/typescript cli:cli; do
+            name="${pkg%%:*}"; dir="${pkg#*:}"
+            spec="$(node -p "require('./$dir/package.json').name + '@' + require('./$dir/package.json').version")"
+            if npm view "$spec" version >/dev/null 2>&1; then
+              echo "$spec ist schon auf npm, wird uebersprungen"; echo "$name=skip" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=publish" >> "$GITHUB_OUTPUT"
+            fi
+          done
       - name: Publish @qkern/sdk
+        if: ${{ steps.existing.outputs.sdk == 'publish' }}
         run: npm publish ./sdk/typescript --access public --tag "${{ inputs.tag }}" ${{ inputs.provenance == 'true' && '--provenance' || '' }} ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish @qkern/cli
+        if: ${{ steps.existing.outputs.cli == 'publish' }}
         run: npm publish ./cli --access public --tag "${{ inputs.tag }}" ${{ inputs.provenance == 'true' && '--provenance' || '' }} ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
