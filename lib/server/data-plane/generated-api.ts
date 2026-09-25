@@ -1,4 +1,4 @@
-import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
+import { DATA_IDENTIFIER, DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
 import type { Environment } from "@/lib/types";
@@ -453,7 +453,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     }
     const provided = Object.keys(args);
     if (provided.some((name) => !argNames.includes(name)) ||
-        requiredNames.some((name) => !(name in args))) {
+        requiredNames.some((name) => !Object.hasOwn(args, name))) {
       throw invalidInput();
     }
 
@@ -853,7 +853,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
             parameters: [{
               name: "order", in: "query", required: true,
               description: "Explicit order as column.asc or column.desc — a view has no primary key to imply one.",
-              schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}\\.(asc|desc)$" },
+              schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}\\.(asc|desc)$` },
             }],
           },
         };
@@ -868,6 +868,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       }
       for (const [name, overloads] of [...overloadsByName.entries()].sort(([a], [b]) => a.localeCompare(b))) {
         if (overloads.length > 1) continue;
+        // Ein Funktionsname ausserhalb der Grammatik ergaebe einen Pfad, den niemand erreicht (Review 2.28).
+        if (!IDENTIFIER.test(name)) continue;
         const fn = overloads[0];
         const argNames = fn.arg_names.slice(0, fn.arg_count);
         const argTypes = fn.arg_types.slice(0, fn.arg_count);

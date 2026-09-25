@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
 const projectAuthScopeParameters = [
   { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
@@ -764,11 +765,11 @@ export const qkernOpenAPI = {
         parameters: [
           { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
           { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
-          { name: "table", in: "path", required: true, schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}$" } },
+          { name: "table", in: "path", required: true, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$` } },
           { name: "schema", in: "query", required: false, schema: { type: "string", default: "public" } },
           { name: "select", in: "query", required: false, schema: { type: "string" } },
           { name: "filter", in: "query", required: false, schema: { type: "array", maxItems: 10, items: { type: "string" } } },
-          { name: "order", in: "query", required: false, schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}\\.(asc|desc)$" } },
+          { name: "order", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}\\.(asc|desc)$` } },
           { name: "cursor", in: "query", required: false, schema: { type: "string", maxLength: 4000 } },
           { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
         ],

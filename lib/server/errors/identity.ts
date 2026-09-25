@@ -13,19 +13,38 @@
  * Der Name ist ein Literal, nie `constructor.name`: ein minifiziertes Bundle
  * darf Klassennamen kuerzen, den Namen im Fehler nicht. Er liegt auf dem
  * Prototyp, damit auch Klassen ohne eigenes `this.name = ...` ihn tragen.
- * Fuer Basisklassen zaehlen zusaetzlich die Namen ihrer Unterklassen, damit
- * `instanceof RepositoryError` eine fremde `ConflictError` erkennt.
+ *
+ * Seit 2.28 (Review-Befund) meldet sich jede registrierte Klasse bei ihren
+ * registrierten Vorfahren an, damit `instanceof RepositoryError` eine fremde
+ * `ConflictError` erkennt, ohne dass die Basisklasse ihre Unterklassen
+ * aufzaehlen muss. Und weil `Symbol.hasInstance` statisch vererbt wird,
+ * faellt eine *nicht* registrierte Unterklasse auf die Prototypkette zurueck,
+ * statt die Namen ihres Vorfahren als die eigenen zu nehmen.
  */
 type ErrorConstructor = abstract new (...args: never[]) => Error;
 
+const registry = new WeakMap<ErrorConstructor, Set<string>>();
+
 export function recognisedByName(constructor: ErrorConstructor, name: string, subclassNames: readonly string[] = []): void {
   const names = new Set([name, ...subclassNames]);
+  registry.set(constructor, names);
+  // Bei allen registrierten Vorfahren anmelden: eine fremde Kopie dieser
+  // Klasse ist auch eine Instanz der Basisklasse.
+  let ancestor = Object.getPrototypeOf(constructor) as ErrorConstructor | null;
+  while (ancestor && ancestor !== Function.prototype) {
+    registry.get(ancestor)?.add(name);
+    ancestor = Object.getPrototypeOf(ancestor) as ErrorConstructor | null;
+  }
   Object.defineProperty(constructor.prototype, "name", { value: name, configurable: true, writable: true });
   Object.defineProperty(constructor, Symbol.hasInstance, {
     configurable: true,
     value(this: ErrorConstructor, value: unknown): boolean {
-      if (typeof value === "object" && value !== null && Object.prototype.isPrototypeOf.call(this.prototype, value)) return true;
-      return value instanceof Error && names.has(value.name);
+      const byPrototype = typeof value === "object" && value !== null && Object.prototype.isPrototypeOf.call(this.prototype, value);
+      if (byPrototype) return true;
+      // Geerbt von einer registrierten Basisklasse, selbst nicht registriert: nur die Prototypkette zaehlt.
+      const known = registry.get(this);
+      if (!known) return false;
+      return value instanceof Error && known.has(value.name);
     },
   });
 }

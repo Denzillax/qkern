@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "review2-run1.log",
+  "commit": "2a12c492b71890556a2ad12d56b3499fc0a6838c",
+  "commitSubject": "release: 2.27.0 Regeln und Grenzen je Bucket",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "31 passed (31)",
+  "tests": "171 passed (171)",
+  "passed": 171,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

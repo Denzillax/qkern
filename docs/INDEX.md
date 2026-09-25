@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.27.md](RELEASE_2.27.md) | Aktueller Release: Regeln und Grenzen je Bucket |
+| [RELEASE_2.28.md](RELEASE_2.28.md) | Aktueller Release: Was das zweite Review fand |
+| [RELEASE_2.27.md](RELEASE_2.27.md) | Regeln und Grenzen je Bucket |
 | [RELEASE_2.26.md](RELEASE_2.26.md) | Namen mit Grossbuchstaben |
 | [RELEASE_2.25.md](RELEASE_2.25.md) | Alle Fälle dieser Klasse |
 | [RELEASE_2.24.md](RELEASE_2.24.md) | Derselbe Fehler, zweiter Fall |

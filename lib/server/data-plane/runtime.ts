@@ -56,20 +56,30 @@ type GlobalDataPlane = typeof globalThis & {
 export async function getProjectDataPlane(): Promise<ProjectDataPlanePort> {
   const globalDataPlane = globalThis as GlobalDataPlane;
   if (globalDataPlane.__qkernProjectDataPlanePromise) {
-    const remembered = await globalDataPlane.__qkernProjectDataPlanePromise;
-    // Eine gemerkte abgeschaltete Instanz aus einem frueheren Modulgraphen wird
-    // verworfen, am Namen erkannt, weil `instanceof` sie nicht mehr kennt.
-    if (remembered.constructor.name !== "DisabledProjectDataPlane") return remembered;
+    try {
+      const remembered = await globalDataPlane.__qkernProjectDataPlanePromise;
+      // Eine gemerkte abgeschaltete Instanz aus einem frueheren Modulgraphen
+      // wird verworfen, am Literal `kind` erkannt (2.24, seit 2.28 nicht mehr
+      // am Klassennamen, den ein Bundle kuerzen darf).
+      if ((remembered as { kind?: string }).kind !== "disabled") return remembered;
+    } catch {
+      // Ein gemerktes, abgelehntes Versprechen darf nicht jede Anfrage bis
+      // zum Neustart scheitern lassen (Review 2.28).
+    }
     delete globalDataPlane.__qkernProjectDataPlanePromise;
   }
+  // Sofort merken, nicht erst nach dem await: sonst bauen N gleichzeitige
+  // erste Anfragen N Dienste mit eigenen Pools, und N-1 werden nie
+  // geschlossen (Review 2.28). Ein abgeschalteter Plane haelt keinen Zustand
+  // und wird wieder vergessen, damit ein Neuladen die aktuelle Klasse liefert.
   const created = createProjectDataPlaneFromEnv();
-  const plane = await created;
-  // Der abgeschaltete Plane haelt keinen Zustand und wird nicht gemerkt (2.24):
-  // im Dev-Modus ueberlebt `globalThis` das Neuladen der Module, und eine
-  // gemerkte Instanz kennt die Methoden nicht, die seither dazukamen
-  // ("service.inspectRoles is not a function", 500 statt 503). Nur der echte
-  // Dienst mit seinen Pools wird gemerkt.
-  if (plane instanceof DisabledProjectDataPlane) return plane;
   globalDataPlane.__qkernProjectDataPlanePromise = created;
-  return plane;
+  try {
+    const plane = await created;
+    if ((plane as { kind?: string }).kind === "disabled") delete globalDataPlane.__qkernProjectDataPlanePromise;
+    return plane;
+  } catch (error) {
+    delete globalDataPlane.__qkernProjectDataPlanePromise;
+    throw error;
+  }
 }

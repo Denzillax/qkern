@@ -40,6 +40,8 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
     await owner.query(`CREATE POLICY order_owner_isolation ON "${schema}"."Order"
       USING (owner_id = current_setting('request.jwt.claim.sub', true))
       WITH CHECK (owner_id = current_setting('request.jwt.claim.sub', true))`);
+    // Ein Pflichtargument, das wie ein Schluessel von Object.prototype heisst (Review 2.28).
+    await owner.query(`CREATE FUNCTION "${schema}".echo_value("valueOf" jsonb) RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT "valueOf" $$`);
     await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
     await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}".items TO qkern_project_api_app`);
     await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}"."Order" TO qkern_project_api_app`);
@@ -282,6 +284,13 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
    * aus dem Views-Filter — dann bewirbt das Dokument einen View, den die
    * Flaeche abweist, und genau dieser Fall faellt.
    */
+  it("does not treat an inherited Object.prototype key as a supplied argument", async () => {
+    const missing = service.callFunction(context(ownerA), scope, { schema, function: "echo_value", args: {} });
+    await expect(missing).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    const result = await service.callFunction(context(ownerA), scope, { schema, function: "echo_value", args: { valueOf: { ok: true } } });
+    expect(result.rows[0]?.result).toEqual({ ok: true });
+  });
+
   it("documents views read-only and only callable functions as RPC", async () => {
     await owner.query(`CREATE VIEW "${schema}".doc_view WITH (security_invoker = true)
       AS SELECT id, name FROM "${schema}".items`);

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.27.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.28.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,25 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.27.0`
-- Aktueller Slice: 2.27 Regeln und Grenzen je Bucket – zwei Storage-
+- Paketversion: `2.28.0`
+- Aktueller Slice: 2.28 Was das zweite Review fand – ein zweiter Review-Agent
+  hat 2.24 bis 2.26 gelesen; sechs Befunde, alle behoben: (1)
+  `Symbol.hasInstance` ist statisch vererbt, eine nicht registrierte
+  Unterklasse nahm die Namen ihres Vorfahren als eigene; jetzt Registrierung
+  je Klasse in einer WeakMap, Unterklassen melden sich bei registrierten
+  Vorfahren an (die Namenslisten in den Basisklassen bleiben, sind aber
+  nicht mehr noetig), Unregistrierte fallen auf die Prototypkette zurueck.
+  (2) Data API: `name in args` zaehlte `valueOf` als geliefert; jetzt
+  `Object.hasOwn`, belegt mit einer Funktion `echo_value("valueOf" jsonb)`
+  gegen PostgreSQL (Mutation: `in` zurueck, 1 von 171 faellt). (3)
+  `getProjectDataPlane` merkte erst nach dem await und baute bei N
+  gleichzeitigen ersten Anfragen N Dienste; jetzt sofort gemerkt. (4) Ein
+  gemerktes abgelehntes Versprechen wird vergessen. (5) Der abgeschaltete
+  Plane wird am Literal `kind = "disabled"` erkannt, nicht am Klassennamen.
+  (6) Die veroeffentlichte OpenAPI (`lib/openapi.ts`) und die generierte
+  nennen fuer `table` und `order` jetzt `DATA_IDENTIFIER_PATTERN`;
+  Funktionsnamen ausserhalb der Grammatik kommen nicht in die OpenAPI
+- Vorheriger Slice: 2.27 Regeln und Grenzen je Bucket – zwei Storage-
   Platzhalter sind Ansichten ueber die vorhandene Route
   `PATCH /storage/buckets/{id}`: `storage-policies-view.tsx`
   (Lese- und Schreibregel je Bucket als Auswahl, die fuenf Regeln des
@@ -57,7 +74,7 @@ Release Notes bleiben unverändert.
   (`tests/project-storage-disabled-runtime.test.ts`). Damit sind alle vier
   Laufzeiten mit Schalter gleich: Queues, Storage, Usage, Billing; Auth und
   Compute pruefen im Handler. 62 Platzhalter uebrig
-- Vorheriger Slice: 2.26 Namen mit Grossbuchstaben – Denzils Auftrag "mach den
+- Davor: 2.26 Namen mit Grossbuchstaben – Denzils Auftrag "mach den
   Table Editor": Tabellen, Spalten, Funktionen und Argumente duerfen jetzt
   Grossbuchstaben tragen (`lib/server/data-plane/identifiers.ts`,
   `DATA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/`), damit `"Order"` und

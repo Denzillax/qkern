@@ -14,7 +14,8 @@
  * Grammatik; `public` ist die Regel, und ein Schema mit Grossbuchstaben ist
  * ein eigener Schritt.
  */
-export const DATA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
+export const DATA_IDENTIFIER_PATTERN = "[A-Za-z_][A-Za-z0-9_]{0,62}";
+export const DATA_IDENTIFIER = new RegExp(`^${DATA_IDENTIFIER_PATTERN}$`);
 
 export function isDataIdentifier(value: unknown): value is string {
   return typeof value === "string" && DATA_IDENTIFIER.test(value);

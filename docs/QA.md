@@ -4577,3 +4577,47 @@ fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 
 Nicht erbracht: mit einem echten Bucket im Browser nicht gesehen; Regeln
 je Pfad gibt es weiter nicht.
+
+## Was das zweite Review fand – Release 2.28
+
+Ein zweiter Review-Agent hat 2.24 bis 2.26 gelesen. Sechs Befunde, keiner
+davon ein Loch in der Mandantengrenze, alle behoben.
+
+`recognisedByName` setzte `Symbol.hasInstance` auf die Klasse, und das ist
+statisch vererbt: eine nicht registrierte Unterklasse von
+`RepositoryError` haette die 17 Namen ihres Vorfahren als eigene
+genommen, `new ConflictError() instanceof Unregistriert` waere wahr
+gewesen. Jetzt fuehrt eine WeakMap die Namen je Klasse, Unterklassen
+melden sich bei ihren registrierten Vorfahren an, und wer nicht
+registriert ist, faellt auf die Prototypkette zurueck. Die aufgezaehlten
+Unterklassen in den Basisklassen bleiben stehen und sind nicht mehr
+noetig.
+
+Die Data API prueft Pflichtargumente eines RPC-Aufrufs mit `name in
+args`; mit der neuen Grammatik ist `valueOf` ein gueltiger Argumentname,
+und `"valueOf" in {}` ist wahr. Ein Pflichtargument, das der Aufrufer nie
+schickte, waere als NULL an die Funktion gegangen. Jetzt `Object.hasOwn`,
+gegen PostgreSQL belegt mit `echo_value("valueOf" jsonb)`: ohne Argument
+400, mit Argument kommt der Wert zurueck. Mutation: `in` zurueck, 1 von
+171 faellt.
+
+`getProjectDataPlane` merkte den Dienst erst nach dem `await`; N
+gleichzeitige erste Anfragen bauten N Dienste mit eigenen Pools, N-1
+davon nie geschlossen. Jetzt wird das Versprechen sofort gemerkt, ein
+abgelehntes wieder vergessen, und der abgeschaltete Plane am Literal
+`kind` erkannt statt am Klassennamen, den ein Bundle kuerzen darf.
+
+Die veroeffentlichte OpenAPI nannte fuer `table` und `order` noch die
+alte Grammatik; ein Client, der dagegen prueft, haette `Order` abgelehnt,
+was der Server annimmt. Jetzt kommt das Muster aus `identifiers.ts`, und
+ein Funktionsname ausserhalb der Grammatik kommt nicht mehr als
+unerreichbarer Pfad in die OpenAPI.
+
+Checkpoint `2.28.0` am 25. September 2026: PostgreSQL 17 171 von 171
+bestanden, exit 0, zweimal reproduziert; Mutation 170 von 171, exit 1;
+Lokal 1161 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: das gleichzeitige erste Anfragen selbst ist nicht
+nachgestellt, nur die Reihenfolge von Merken und await; die Namenslisten
+in den Basisklassen sind Altlast.

@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "review2-local-run1.log",
+  "commit": "2a12c492b71890556a2ad12d56b3499fc0a6838c",
+  "commitSubject": "release: 2.27.0 Regeln und Grenzen je Bucket",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1161 passed | 252 skipped (1413)",
+  "passed": 1161,
+  "failed": 0,
+  "skipped": 252,
+  "images": []
+}

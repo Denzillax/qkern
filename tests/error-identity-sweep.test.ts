@@ -57,6 +57,21 @@ describe("error identity sweep", () => {
     expect(foreign("ReadableError") instanceof Mangled).toBe(true);
   });
 
+  it("lets an unregistered subclass fall back to the prototype chain and registers subclasses with their ancestors", () => {
+    // Nicht registriert: erbt das statische hasInstance, darf aber nicht die Namen des Vorfahren als eigene nehmen (Review 2.28).
+    class Unregistered extends RepositoryError { constructor() { super("CONFLICT", "x"); } }
+    expect(new ConflictError() instanceof Unregistered).toBe(false);
+    expect(foreign("ConflictError") instanceof Unregistered).toBe(false);
+    expect(new Unregistered() instanceof Unregistered).toBe(true);
+    expect(new Unregistered() instanceof RepositoryError).toBe(true);
+    // Registriert: eine fremde Kopie der Unterklasse ist auch eine Instanz der Basisklasse, ohne Liste in der Basis.
+    class Registered extends RepositoryError { constructor() { super("CONFLICT", "x"); } }
+    recognisedByName(Registered, "RegisteredRepositoryError");
+    expect(foreign("RegisteredRepositoryError") instanceof RepositoryError).toBe(true);
+    expect(foreign("RegisteredRepositoryError") instanceof Registered).toBe(true);
+    expect(foreign("RegisteredRepositoryError") instanceof ConflictError).toBe(false);
+  });
+
   it("registers every exported error class in lib/server", async () => {
     const missing: string[] = [];
     for (const file of await serverFiles(path.resolve(process.cwd(), "lib/server"))) {

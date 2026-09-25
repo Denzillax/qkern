@@ -47,12 +47,19 @@ describe("data plane error identity", () => {
       expect(plane).toBeInstanceOf(DisabledProjectDataPlane);
       expect(runtime.__qkernProjectDataPlanePromise).toBeUndefined();
       expect(typeof plane.inspectRoles).toBe("function");
-      // Eine schon gemerkte abgeschaltete Instanz aus einem alten Modulgraphen wird verworfen.
-      class StaleDisabledProjectDataPlane { inspectSchema() { throw new Error("stale"); } }
+      // Eine schon gemerkte abgeschaltete Instanz aus einem alten Modulgraphen wird verworfen,
+      // am Literal `kind` erkannt, nicht am Klassennamen (Review 2.28).
+      expect((plane as { kind?: string }).kind).toBe("disabled");
+      class StaleDisabledProjectDataPlane { readonly kind = "disabled"; inspectSchema() { throw new Error("stale"); } }
       runtime.__qkernProjectDataPlanePromise = Promise.resolve(new StaleDisabledProjectDataPlane());
-      Object.defineProperty(StaleDisabledProjectDataPlane, "name", { value: "DisabledProjectDataPlane" });
       const fresh = await getProjectDataPlane();
       expect(fresh).toBeInstanceOf(DisabledProjectDataPlane);
+      expect(runtime.__qkernProjectDataPlanePromise).toBeUndefined();
+      // Ein gemerktes, abgelehntes Versprechen darf nicht bis zum Neustart jede Anfrage scheitern lassen.
+      const rejected = Promise.reject(new Error("stale rejection")); rejected.catch(() => undefined);
+      runtime.__qkernProjectDataPlanePromise = rejected;
+      const afterRejection = await getProjectDataPlane();
+      expect(afterRejection).toBeInstanceOf(DisabledProjectDataPlane);
       expect(runtime.__qkernProjectDataPlanePromise).toBeUndefined();
     } finally {
       if (previous === undefined) delete process.env.QKERN_DATA_PLANE_ENABLED; else process.env.QKERN_DATA_PLANE_ENABLED = previous;

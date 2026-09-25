@@ -1160,6 +1160,9 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
 }
 
 export class DisabledProjectDataPlane implements ProjectDataPlanePort {
+  /** Literal statt Klassenname: ein Bundle darf den Klassennamen kuerzen (Review 2.28). */
+  readonly kind = "disabled" as const;
+
   async inspectSchema(
     _context: ProjectDataPlaneContext,
     _scope: ProjectDataPlaneScope,
