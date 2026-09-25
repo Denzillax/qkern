@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 25. September 2026 · Release: `2.20.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 25. September 2026 · Release: `2.21.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.

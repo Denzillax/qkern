@@ -2,8 +2,9 @@
  RUN  v4.1.10 C:/Projekte/qkern/code/qkern
 
 
- Test Files  177 passed | 33 skipped (210)
-      Tests  1110 passed | 241 skipped (1351)
-   Start at  06:31:31
-   Duration  10.76s (transform 29.22s, setup 0ms, import 69.94s, tests 37.83s, environment 45ms)
+ Test Files  193 passed | 37 skipped (230)
+      Tests  1147 passed | 250 skipped (1397)
+   Start at  20:02:32
+   Duration  21.30s (transform 67.94s, setup 0ms, import 167.33s, tests 60.79s, environment 72ms)
 
+EXIT2=0

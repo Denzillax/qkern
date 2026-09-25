@@ -1272,3 +1272,10 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/catalog-wide-mutation-privileges.log` | PostgreSQL 17, Mutation | **168 von 169, exit 1 – absichtlich** |
 | `2026-09-25/catalog-wide-local-run1.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0 |
 | `2026-09-25/catalog-wide-local-run2.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.21 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/three-views-local-run1.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0 |
+| `2026-09-25/three-views-local-run2.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0, Wiederholung |

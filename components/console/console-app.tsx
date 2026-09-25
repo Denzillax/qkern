@@ -28,6 +28,9 @@ import { ExtensionsView } from "@/components/console/extensions-view";
 import { RolesView } from "@/components/console/roles-view";
 import { PublicationsView } from "@/components/console/publications-view";
 import { ColumnPrivilegesView } from "@/components/console/column-privileges-view";
+import { CronView } from "@/components/console/cron-view";
+import { ApiKeysView } from "@/components/console/api-keys-view";
+import { AuthProvidersView } from "@/components/console/auth-providers-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -226,6 +229,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "db-roles": return <RolesView projectId={props.project.id} environment={props.environment}/>;
     case "db-publications": return <PublicationsView projectId={props.project.id} environment={props.environment}/>;
     case "db-column-privileges": return <ColumnPrivilegesView projectId={props.project.id} environment={props.environment}/>;
+    case "int-cron": return <CronView projectId={props.project.id} environment={props.environment}/>;
+    case "set-api-keys": return <ApiKeysView projectId={props.project.id} environment={props.environment}/>;
+    case "auth-providers": return <AuthProvidersView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

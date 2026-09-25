@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -46,7 +46,6 @@ export const PLACEHOLDERS = {
   "db-settings": { label: "Datenbank-Einstellungen", supabase: "Database → Settings", backend: "fehlt", note: "Verbindungsdaten, Pooler, SSL-Zwang, Netzwerkbeschränkungen. Die Provisionierung ist noch nicht verbunden." },
   // Auth
   "auth-policies": { label: "Policies", supabase: "Authentication → Policies", backend: "teilweise", note: "RLS-Regeln aus Sicht der Anmeldung. Gleiche Lage wie unter Datenbank → Policies." },
-  "auth-providers": { label: "Anmeldeverfahren", supabase: "Authentication → Sign In / Providers", backend: "vorhanden", note: "Passwort, Magic Link, TOTP und OIDC sind zertifiziert. Ein- und ausschalten je Verfahren geht noch nicht über die Console." },
   "auth-sessions": { label: "Sitzungen", supabase: "Authentication → Sessions", backend: "teilweise", note: "Laufende Sitzungen sehen und beenden. Sitzungen gibt es; eine Liste und ein Widerruf fehlen." },
   "auth-rate-limits": { label: "Rate Limits", supabase: "Authentication → Rate Limits", backend: "fehlt", note: "Grenzen für Anmeldungen, Mails und Token je Zeitfenster." },
   "auth-templates": { label: "E-Mail-Vorlagen", supabase: "Authentication → Emails → Templates", backend: "fehlt", note: "Texte für Bestätigung, Magic Link und Zurücksetzen. Mails gehen heute mit festem Text." },
@@ -98,7 +97,6 @@ export const PLACEHOLDERS = {
   "logs-cron": { label: "Cron", supabase: "Logs → Cron", backend: "teilweise", note: "Jede Einreihung mit Dedupe-Schlüssel. Der Cron-Prozess ist zertifiziert; ein Log je Lauf fehlt in der Console." },
   "logs-explorer": { label: "Log-Explorer", supabase: "Logs → Explorer", backend: "fehlt", note: "Logs mit SQL durchsuchen, speichern, als Vorlage ablegen." },
   // Integrationen
-  "int-cron": { label: "Cron", supabase: "Integrations → Cron", backend: "vorhanden", note: "Läuft unter Functions & Jobs. Hier nur der Einstieg, wie bei Supabase." },
   "int-vault": { label: "Vault", supabase: "Integrations → Vault", backend: "teilweise", note: "Geheimnisse verwalten. Webhook-Signaturen liegen im Vault und sind zertifiziert; eine Verwaltung fehlt." },
   "int-wrappers": { label: "Wrappers", supabase: "Integrations → Wrappers", backend: "fehlt", note: "Fremde Datenquellen als Tabellen einbinden (Foreign Data Wrappers)." },
   "int-graphql": { label: "GraphQL", supabase: "Integrations → GraphiQL", backend: "fehlt", note: "GraphQL-Schnittstelle über dem Schema. Die Data API ist REST." },
@@ -112,7 +110,6 @@ export const PLACEHOLDERS = {
   "set-integrations": { label: "Integrationen", supabase: "Project Settings → Integrations", backend: "fehlt", note: "Verknüpfte Dienste wie Git-Hosting oder Deploy-Plattformen." },
   "set-addons": { label: "Add-ons", supabase: "Project Settings → Add Ons", backend: "fehlt", note: "Zusatzleistungen wie eigene Domain oder mehr Backups." },
   "set-api": { label: "Data API", supabase: "Project Settings → Data API", backend: "teilweise", note: "Freigegebene Schemata und Grenzen der Data API. Heute nur `public` mit RLS-Tabellen." },
-  "set-api-keys": { label: "API-Keys", supabase: "Project Settings → API Keys", backend: "vorhanden", note: "Public und Service Keys gibt es unter API. Hier der Einstieg, wie bei Supabase." },
   "set-jwt": { label: "JWT-Schlüssel", supabase: "Project Settings → JWT Keys", backend: "teilweise", note: "Ed25519-JWKS ist online; Rotation über die Console fehlt." },
   "set-log-drains": { label: "Log-Drains", supabase: "Project Settings → Log Drains", backend: "fehlt", note: "Logs an fremde Ziele weiterleiten, etwa an einen Log-Dienst oder ein SIEM." },
   "set-webhooks": { label: "Dashboard-Webhooks", supabase: "Project Settings → Webhooks", backend: "fehlt", note: "Benachrichtigungen bei Ereignissen des Projekts selbst." },
@@ -139,7 +136,7 @@ export const NAV: NavGroup[] = [
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
-    { id: "auth", label: "Nutzer" }, ph("auth-policies"), ph("auth-providers"), ph("auth-sessions"), ph("auth-rate-limits"),
+    { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, ph("auth-sessions"), ph("auth-rate-limits"),
     ph("auth-templates"), ph("auth-smtp"), ph("auth-mfa"), ph("auth-passkeys"), ph("auth-url"), ph("auth-protection"),
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), ph("auth-audit"), ph("auth-performance"),
   ] },
@@ -166,12 +163,12 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [
-    { id: "int-queues", label: "Queues" }, ph("int-cron"), ph("int-vault"), ph("int-wrappers"), ph("int-graphql"), ph("int-webhooks"),
+    { id: "int-queues", label: "Queues" }, { id: "int-cron", label: "Cron" }, ph("int-vault"), ph("int-wrappers"), ph("int-graphql"), ph("int-webhooks"),
   ] },
   { id: "branches", label: "Branches", icon: GitBranch, children: [ph("branches"), ph("branches-merge")] },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [
     { id: "settings", label: "Allgemein" }, ph("set-compute"), ph("set-infrastructure"), ph("set-integrations"), ph("set-addons"),
-    ph("set-api"), ph("set-api-keys"), ph("set-jwt"), ph("set-log-drains"), ph("set-webhooks"), ph("set-billing"), ph("set-dashboard"),
+    ph("set-api"), { id: "set-api-keys", label: "API-Keys" }, ph("set-jwt"), ph("set-log-drains"), ph("set-webhooks"), ph("set-billing"), ph("set-dashboard"),
   ] },
 ];
 

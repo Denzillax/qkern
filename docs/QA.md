@@ -4310,3 +4310,30 @@ Nicht erbracht: Tabellenrechte stehen nirgends, nur die je Spalte
 gesetzten; die Ansichten sind im Browser nicht gesehen (Console-Konto
 fehlt); von Punkt 2 bleiben Schema-Visualizer, Tabellen-Verwaltung und
 Replikation Platzhalter, alle brauchen Schreibpfade.
+
+## Drei, die es schon gab – Release 2.21
+
+Drei Platzhalter trugen seit 2.0 den Vermerk "vorhanden": Cron lief unter
+Functions & Jobs, die API-Keys unter API, die Anmeldeverfahren als Karte
+unter Nutzer. Supabase fuehrt sie als eigene Menuepunkte, und wer sie dort
+sucht, fand bei QKERN nur den Hinweis, wo sie stattdessen liegen. Jetzt
+sind es eigene Ansichten mit denselben Routen und denselben Aktionen.
+
+Cron: Liste, anlegen, pausieren, loeschen ueber `/compute/cron`; Ausdruck
+und Queue bleiben unveraenderlich, das steht so als Spaltenrecht in der
+Datenbank. API-Keys: Public und Service Keys anlegen und widerrufen ueber
+`/api-keys`, das Geheimnis erscheint einmal. Anmeldeverfahren: die vier
+zertifizierten Verfahren und die konfigurierten OIDC-Provider ueber die
+Admin-Route aus 1.83; ein Verfahren ein- oder auszuschalten geht weiter
+nicht ueber die Console, und der Zaehler "Schalter: 0" sagt das.
+
+Kein Server-Code, keine neue Route, deshalb keine Zertifizierung und keine
+Mutation; die Vertraege fuer Navigation und Uebersetzung pruefen die drei
+neuen Ansichten. Drei Sprachen.
+
+Checkpoint `2.21.0` am 25. September 2026: Lokal 1147 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: die Ansichten sind im Browser nicht gesehen (Console-Konto
+fehlt); die alten Stellen unter Functions & Jobs, API und Nutzer zeigen
+dasselbe weiterhin, doppelt statt verschoben.

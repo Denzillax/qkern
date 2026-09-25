@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.20.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.21.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,19 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.20.0`
-- Aktueller Slice: 2.20 Der Rest des Katalogs – Erweiterungen, Rollen,
+- Paketversion: `2.21.0`
+- Aktueller Slice: 2.21 Drei, die es schon gab – die drei Platzhalter mit
+  Backend "vorhanden" sind eigene Ansichten: `components/console/cron-view.tsx`
+  (`int-cron`, `/compute/cron`, anlegen, pausieren, loeschen, dieselben
+  Aktionen wie unter Functions & Jobs), `api-keys-view.tsx` (`set-api-keys`,
+  `/api-keys`, anlegen und widerrufen, Geheimnis nur einmal),
+  `auth-providers-view.tsx` (`auth-providers`, die vier zertifizierten
+  Verfahren plus die OIDC-Provider ueber `loadConsoleAuthProviders`; nur
+  lesend, Ein-/Ausschalten fehlt weiter). Kein Server-Code, keine neue
+  Route; drei Sprachen. Von den 79 Platzhaltern aus 2.0 sind noch 67 uebrig; 12 wurden seit 2.9 echte Ansichten.
+  Naechste Kandidaten mit "teilweise": auth-sessions, auth-audit,
+  storage-policies, compute-secrets, int-vault, set-jwt
+- Vorheriger Slice: 2.20 Der Rest des Katalogs – Erweiterungen, Rollen,
   Publikationen und Spaltenrechte; damit ist Punkt 2 (Datenbank-Katalog
   nach Supabase Studio) bis auf Replikation, Schema-Visualizer und
   Tabellen-Verwaltung abgearbeitet. `inspectExtensions`, `inspectRoles`,
@@ -59,7 +70,7 @@ Release Notes bleiben unverändert.
   mit GRANT OPTION und PUBLIC). PostgreSQL 169 von 169 zweimal; vier
   Mutationen je 1 von 169. Von Punkt 2 bleiben `db-schemas`, `db-tables`,
   `db-pipelines` Platzhalter, alle mit Schreibbedarf
-- Vorheriger Slice: 2.19 Drei aus dem Katalog – Indizes, Policies und
+- Davor: 2.19 Drei aus dem Katalog – Indizes, Policies und
   Enum-Typen in einem Zug, nach dem Muster von 2.9 und 2.18:
   `inspectIndexes`, `inspectPolicies`, `inspectEnumTypes` im Data-Plane-Port
   (SQL aus postgres-meta `indexes.sql`, `policies.sql`, `types.sql`, Apache
