@@ -31,6 +31,7 @@ import { ColumnPrivilegesView } from "@/components/console/column-privileges-vie
 import { CronView } from "@/components/console/cron-view";
 import { ApiKeysView } from "@/components/console/api-keys-view";
 import { AuthProvidersView } from "@/components/console/auth-providers-view";
+import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -232,6 +233,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "int-cron": return <CronView projectId={props.project.id} environment={props.environment}/>;
     case "set-api-keys": return <ApiKeysView projectId={props.project.id} environment={props.environment}/>;
     case "auth-providers": return <AuthProvidersView projectId={props.project.id} environment={props.environment}/>;
+    case "set-jwt": return <JwtKeysView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

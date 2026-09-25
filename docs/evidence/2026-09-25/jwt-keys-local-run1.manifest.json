@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "jwt-keys-local-run1.log",
+  "commit": "63a165defc0af811ad87be775b54173caf3d9d54",
+  "commitSubject": "release: 2.21.0 Drei, die es schon gab",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1147 passed | 250 skipped (1397)",
+  "passed": 1147,
+  "failed": 0,
+  "skipped": 250,
+  "images": []
+}

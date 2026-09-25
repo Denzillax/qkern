@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.21.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.22.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,15 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.21.0`
-- Aktueller Slice: 2.21 Drei, die es schon gab – die drei Platzhalter mit
+- Paketversion: `2.22.0`
+- Aktueller Slice: 2.22 Die Schluessel zum Token – `set-jwt` ist eine echte
+  Ansicht (`components/console/jwt-keys-view.tsx`): liest das JWKS des
+  Projekts (`auth/.well-known/jwks.json`, dieselbe Adresse, die eine App
+  zum Pruefen liest), zeigt kid, kty, crv, alg, use und den Anfang von x,
+  dazu die absolute JWKS-Adresse zum Kopieren. Nur lesend; Rotation bleibt
+  in der Konfiguration des Auth-Dienstes, und der Zaehler sagt das. Kein
+  Server-Code, keine neue Route; drei Sprachen. 66 Platzhalter uebrig
+- Vorheriger Slice: 2.21 Drei, die es schon gab – die drei Platzhalter mit
   Backend "vorhanden" sind eigene Ansichten: `components/console/cron-view.tsx`
   (`int-cron`, `/compute/cron`, anlegen, pausieren, loeschen, dieselben
   Aktionen wie unter Functions & Jobs), `api-keys-view.tsx` (`set-api-keys`,
@@ -51,7 +58,7 @@ Release Notes bleiben unverändert.
   Route; drei Sprachen. Von den 79 Platzhaltern aus 2.0 sind noch 67 uebrig; 12 wurden seit 2.9 echte Ansichten.
   Naechste Kandidaten mit "teilweise": auth-sessions, auth-audit,
   storage-policies, compute-secrets, int-vault, set-jwt
-- Vorheriger Slice: 2.20 Der Rest des Katalogs – Erweiterungen, Rollen,
+- Davor: 2.20 Der Rest des Katalogs – Erweiterungen, Rollen,
   Publikationen und Spaltenrechte; damit ist Punkt 2 (Datenbank-Katalog
   nach Supabase Studio) bis auf Replikation, Schema-Visualizer und
   Tabellen-Verwaltung abgearbeitet. `inspectExtensions`, `inspectRoles`,

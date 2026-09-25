@@ -4337,3 +4337,25 @@ fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 Nicht erbracht: die Ansichten sind im Browser nicht gesehen (Console-Konto
 fehlt); die alten Stellen unter Functions & Jobs, API und Nutzer zeigen
 dasselbe weiterhin, doppelt statt verschoben.
+
+## Die Schluessel zum Token – Release 2.22
+
+`set-jwt` trug seit 2.0 den Vermerk "Ed25519-JWKS ist online; Rotation ueber
+die Console fehlt". Die erste Haelfte ist jetzt eine Ansicht: sie liest das
+JWKS des Projekts ueber dieselbe Adresse, die eine App zum Pruefen der
+Tokens liest, und zeigt jeden Schluessel mit kid, Typ, Kurve, Verfahren und
+Verwendung, dazu die absolute Adresse zum Kopieren. Welcher Schluessel
+gerade signiert, steht nicht im JWKS, sondern im Token-Header; die Ansicht
+sagt das, statt es zu raten. Die zweite Haelfte, die Rotation, bleibt in
+der Konfiguration des Auth-Dienstes, und der Zaehler "Rotation: nicht ueber
+die Console" sagt auch das.
+
+Kein Server-Code, keine neue Route, deshalb keine Zertifizierung und keine
+Mutation; Navigation und Uebersetzung sind vertraglich geprueft. Drei
+Sprachen.
+
+Checkpoint `2.22.0` am 25. September 2026: Lokal 1147 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Rotation; die Ansicht ist im Browser nicht gesehen
+(Console-Konto fehlt).
