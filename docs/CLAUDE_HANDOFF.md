@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.23.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.24.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,29 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.23.0`
-- Aktueller Slice: 2.23 Was das Review fand – ein Review-Agent hat 2.14 bis
+- Paketversion: `2.24.0`
+- Aktueller Slice: 2.24 Derselbe Fehler, zweiter Fall – Denzil hat sich neu
+  registriert, die Console war im Browser pruefbar: jede Katalogansicht
+  sagte "nicht verfuegbar" mit 500 ohne Code, auch der alte Table Editor
+  (`/schema`), und `/queues` antwortete 500 ohne Koerper. Ursache eins wie
+  in 2.8: `instanceof ProjectDataPlaneError` in den Routen war falsch, weil
+  der Dienst auf `globalThis` das Neuladen ueberlebt und die Route eine
+  andere Klasse importiert; jetzt `isProjectDataPlaneError` (Name plus
+  Code) in `lib/server/data-plane/service.ts`, in `run()` und in beiden
+  Routen; der 500-Zweig loggt `[data-plane] unexpected error`. Ursache
+  zwei: `getProjectQueueService()` warf `PROJECT_QUEUES_DISABLED` schon
+  beim Anlegen, in elf Routen vor dem `try`; jetzt gibt die Laufzeit einen
+  Proxy zurueck, der erst beim Aufruf wirft, und `isProjectQueueError`
+  ersetzt `instanceof` in http, service und worker. Vertraege
+  `tests/data-plane-error-identity.test.ts` und
+  `tests/project-queues-disabled-runtime.test.ts`; Mutation (Route zurueck
+  auf `instanceof`) 1 von 2 faellt. Im Browser danach: die
+  Katalogansichten sagen "Datenbank nicht bereit" mit 503 und Code. Dritter
+  Fund dank dem neuen Log: die auf `globalThis` gemerkte
+  `DisabledProjectDataPlane` stammte von vor 2.18 und kannte
+  `inspectRoles` nicht (TypeError, 500); `getProjectDataPlane()` merkt den
+  abgeschalteten Plane nicht mehr, nur den echten Dienst mit Pools
+- Vorheriger Slice: 2.23 Was das Review fand – ein Review-Agent hat 2.14 bis
   2.22 gelesen. Zwei echte Befunde, beide behoben: (1) `/schema/roles` las
   `pg_roles` clusterweit und zeigte auf dem geteilten Cluster die
   Steuerungsrollen samt Superuser; jetzt nur Rollen, die diese Datenbank
@@ -58,7 +79,7 @@ Release Notes bleiben unverändert.
   Shell (env plus Pruefung). Offen: `inspectSchema` (1.x) prueft
   Tabellen- und Spaltennamen weiter mit `IDENTIFIER`, das ist ein aelterer
   Vertrag mit Folgen fuer die Data API und braucht einen eigenen Slice
-- Vorheriger Slice: 2.22 Die Schluessel zum Token – `set-jwt` ist eine echte
+- Davor: 2.22 Die Schluessel zum Token – `set-jwt` ist eine echte
   Ansicht (`components/console/jwt-keys-view.tsx`): liest das JWKS des
   Projekts (`auth/.well-known/jwks.json`, dieselbe Adresse, die eine App
   zum Pruefen liest), zeigt kid, kty, crv, alg, use und den Anfang von x,

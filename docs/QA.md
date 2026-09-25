@@ -4411,3 +4411,56 @@ Nicht erbracht: `inspectSchema` aus 1.x prueft Tabellen- und Spaltennamen
 weiter mit `IDENTIFIER`; das betrifft Table Editor und Data API und ist
 ein eigener Slice, weil dort Namen in SQL eingesetzt werden. Extensions
 sind serverweit, nicht je Datenbank; die Ansicht sagt es nicht.
+
+## Derselbe Fehler, zweiter Fall – Release 2.24
+
+Denzil hat sich neu registriert, und zum ersten Mal seit 2.6 war die
+Console im Browser zu sehen. Jede Katalogansicht sagte "nicht verfuegbar",
+dahinter ein 500 ohne Code. Der alte Table Editor auch. `/queues`
+antwortete 500 ohne Koerper. Im Dev-Server-Log stand nichts, weil der
+500-Zweig nicht loggte.
+
+Ursache eins ist die von 2.8, nur beim Data Plane: der Dienst liegt im
+Dev-Modus auf `globalThis` und ueberlebt das Neuladen der Module, die
+Route importiert danach eine andere Klasse, `instanceof
+ProjectDataPlaneError` ist falsch, und aus einem sauberen
+`DATA_PLANE_DISABLED` mit 503 wird ein stummes 500. Jetzt erkennt
+`isProjectDataPlaneError` den Fehler an Name und Code, in `run()` und in
+beiden Routen, und der 500-Zweig schreibt die Ursache ins Log. Vertrag:
+ein Fehler aus einer fremden Kopie der Klasse bekommt denselben Status wie
+die eigene; Mutation (Route zurueck auf `instanceof`) 1 von 2 faellt.
+
+Ursache zwei: `getProjectQueueService()` warf `PROJECT_QUEUES_DISABLED`
+schon beim Anlegen, und elf Routen riefen es vor dem `try`. Jetzt liefert
+die Laufzeit einen Proxy, der erst beim Aufruf wirft, ohne ihn zu merken,
+damit ein spaeter eingeschalteter Dienst gesehen wird; die
+Fehlerabbildung macht daraus 503 "Project Queues are disabled". Und
+`isProjectQueueError` ersetzt `instanceof` in http, service und worker,
+bevor derselbe Fall dort auftritt.
+
+Im Browser danach: `/schema/triggers` 503 mit Code, die Ansicht sagt
+"Datenbank nicht bereit"; `/queues` 503 mit Koerper. Die uebrigen
+Katalogrouten blieben auf 500, und diesmal stand die Ursache im Log:
+`service.inspectRoles is not a function`. Die auf `globalThis` gemerkte
+`DisabledProjectDataPlane` stammte von vor 2.18 und kannte die neuen
+Methoden nicht. `getProjectDataPlane()` merkt den abgeschalteten Plane
+nicht mehr, er haelt keinen Zustand; nur der echte Dienst mit seinen Pools
+wird gemerkt. Vertrag im selben Test.
+
+Checkpoint `2.24.0` am 25. September 2026: PostgreSQL 17 169 von 169
+bestanden, exit 0, zweimal reproduziert; Lokal 1152 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Im Browser durchgegangen, alle Ansichten seit 2.6 im Zustand ohne Dienste:
+die neun Katalogansichten sagen "Datenbank nicht bereit" (503 mit Code);
+API-Keys zeigt die echte, leere Liste; Migrationen die echten, leeren
+Change Sets; Anmeldeverfahren die vier Verfahren und "Auth nicht aktiv";
+JWT-Schluessel "Auth nicht aktiv"; Cron und Aufrufe "Compute nicht aktiv";
+Queues "nicht verbunden"; der Realtime-Inspector sein Formular. Keine
+Browser-Fehler ausser den erwarteten 503.
+
+Nicht erbracht: die Ansichten mit Daten habe ich weiter nicht gesehen,
+weil der Dev-Server keine Projektdatenbank hat (`QKERN_DATA_PLANE_ENABLED`
+ist aus); gesehen sind die Zustaende ohne Datenbank. Die Zertifizierung
+lief vor der letzten Aenderung an `runtime.ts`, die sie nicht beruehrt
+(der Dienst wird dort injiziert); die lokale Suite lief danach.

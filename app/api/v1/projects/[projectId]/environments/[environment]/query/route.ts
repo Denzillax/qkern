@@ -3,7 +3,7 @@ import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, safeJson } from "@/lib/server/auth/http";
 import { getProjectDataPlane } from "@/lib/server/data-plane/runtime";
 import {
-  ProjectDataPlaneError,
+  isProjectDataPlaneError,
   type ProjectDataPlanePort,
 } from "@/lib/server/data-plane/service";
 import {
@@ -47,7 +47,7 @@ export async function handleProjectReadQuery(
     if (error instanceof RequestAuthorizationError) {
       return NextResponse.json({ error: "Resource not found" }, { status: 404 });
     }
-    if (error instanceof ProjectDataPlaneError) {
+    if (isProjectDataPlaneError(error)) {
       if (error.code === "DATA_PLANE_INVALID_INPUT" || error.code === "READ_ONLY_QUERY_REQUIRED") {
         return NextResponse.json({ error: "Invalid data-plane request", code: error.code }, { status: 400 });
       }

@@ -307,6 +307,21 @@ export class ProjectDataPlaneError extends Error {
   }
 }
 
+/**
+ * Erkennt einen Data-Plane-Fehler an Name und Code statt an der Klasse (2.24,
+ * dasselbe Muster wie `isAuthError` aus 2.8): der Dienst lebt auf `globalThis`
+ * und ueberlebt Neuladen der Module im Dev-Server; die Route importiert dann
+ * eine andere Klasse als die, mit der der Fehler geworfen wurde, `instanceof`
+ * ist falsch, und aus einem sauberen 503 wird ein stummes 500. Genau so sah
+ * die Console am 25. September aus: jede Katalogansicht "nicht verfuegbar".
+ */
+export function isProjectDataPlaneError(error: unknown, code?: ProjectDataPlaneErrorCode): error is ProjectDataPlaneError {
+  if (!(error instanceof Error) || error.name !== "ProjectDataPlaneError") return false;
+  const candidate = error as Error & { code?: unknown };
+  if (typeof candidate.code !== "string") return false;
+  return code === undefined || candidate.code === code;
+}
+
 type SchemaRow = {
   table_name: string;
   relation_kind: "r" | "p" | "v" | "m";
@@ -1071,7 +1086,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       resolved = await this.connections.resolve(target.databaseInstanceRef);
       assertResolvedBoundary(resolved);
     } catch (error) {
-      if (error instanceof ProjectDataPlaneError) throw error;
+      if (isProjectDataPlaneError(error)) throw error;
       throw new ProjectDataPlaneError("DATA_PLANE_UNAVAILABLE");
     }
 
@@ -1132,7 +1147,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       return output;
     } catch (error) {
       if (started) await client.query("ROLLBACK").catch(() => undefined);
-      if (error instanceof ProjectDataPlaneError) throw error;
+      if (isProjectDataPlaneError(error)) throw error;
       throw new ProjectDataPlaneError("DATA_PLANE_UNAVAILABLE");
     } finally {
       client.release();

@@ -4,7 +4,7 @@ import type {
   ProjectQueuePrincipal,
   ProjectQueueScope,
 } from "@/lib/server/project-queues/model";
-import { ProjectQueueError, type ProjectQueueService } from "@/lib/server/project-queues/service";
+import { isProjectQueueError, type ProjectQueueService } from "@/lib/server/project-queues/service";
 
 type HandlerFailureCode = Exclude<ProjectQueueFailureCode, "LEASE_EXPIRED" | "HANDLER_TIMEOUT">;
 
@@ -202,7 +202,7 @@ export class ProjectQueueWorker {
       });
       return { status, messageId: claim.id };
     } catch (error) {
-      if (!(error instanceof ProjectQueueError) || error.code !== "QUEUE_LEASE_LOST") throw error;
+      if (!isProjectQueueError(error, "QUEUE_LEASE_LOST")) throw error;
       this.metrics.increment("leaseLost");
       safeLog(this.logger, {
         event: "project_queue_worker.lease_lost", queue: this.options.queue,

@@ -1298,3 +1298,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/review-local-run2.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0, Wiederholung |
 | GitHub 36173571554 | Actions, drei Docker-Stacks | gruen (Stand 2.23.0) |
 | GitHub 36173571530 | Actions, Ubuntu/Windows/macOS | Ubuntu einmal rot (provider-e2e-evidence), Wiederholung gruen |
+
+## Läufe zu Release 2.24 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/identity-run1.log` | PostgreSQL 17 | 169 von 169, exit 0 |
+| `2026-09-25/identity-run2.log` | PostgreSQL 17 | 169 von 169, exit 0, Wiederholung |
+| `2026-09-25/identity-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 2 faellt, exit 1 – absichtlich** |
+| `2026-09-25/identity-local-run1.log` | Vitest lokal (Windows) | 1152 bestanden, exit 0 |
+| `2026-09-25/identity-local-run2.log` | Vitest lokal (Windows) | 1152 bestanden, exit 0, Wiederholung |

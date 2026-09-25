@@ -58,6 +58,14 @@ export class ProjectQueueError extends Error {
   }
 }
 
+/** Erkennt einen Queue-Fehler an Name und Code statt an der Klasse (2.24, siehe `isProjectDataPlaneError`). */
+export function isProjectQueueError(error: unknown, code?: ProjectQueueErrorCode): error is ProjectQueueError {
+  if (!(error instanceof Error) || error.name !== "ProjectQueueError") return false;
+  const candidate = error as Error & { code?: unknown };
+  if (typeof candidate.code !== "string") return false;
+  return code === undefined || candidate.code === code;
+}
+
 export class ProjectQueueService {
   private readonly now: () => Date;
   private readonly id: () => string;
@@ -435,7 +443,7 @@ function integer(value: number, min: number, max: number) {
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
 
 function mapError(error: unknown): ProjectQueueError {
-  if (error instanceof ProjectQueueError) return error;
+  if (isProjectQueueError(error)) return error;
   if (error instanceof ProjectQueueConflictError) return new ProjectQueueError(error.code);
   // Ein erschoepfter Pool ist kein Konflikt. Er stand bis Release 1.64 im
   // Sammelzweig und wurde als 409 beantwortet — eine Aussage ueber die

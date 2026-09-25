@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "identity-run2.log",
+  "commit": "39c89c1af68ba4271c16215b828c9a66ab607c10",
+  "commitSubject": "test: Evidence-CLI-Test zeigt stderr und stdout, Nachtrag GitHub 2.23",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "31 passed (31)",
+  "tests": "169 passed (169)",
+  "passed": 169,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

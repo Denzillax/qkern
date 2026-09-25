@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "identity-local-run2.log",
+  "commit": "39c89c1af68ba4271c16215b828c9a66ab607c10",
+  "commitSubject": "test: Evidence-CLI-Test zeigt stderr und stdout, Nachtrag GitHub 2.23",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1152 passed | 250 skipped (1402)",
+  "passed": 1152,
+  "failed": 0,
+  "skipped": 250,
+  "images": []
+}

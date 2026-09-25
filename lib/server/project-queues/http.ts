@@ -4,7 +4,7 @@ import type { Environment } from "@/lib/types";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
 import type { ProjectQueuePrincipal, ProjectQueueScope } from "@/lib/server/project-queues/model";
-import { ProjectQueueError } from "@/lib/server/project-queues/service";
+import { ProjectQueueError, isProjectQueueError } from "@/lib/server/project-queues/service";
 import {
   asControlPlaneContext,
   authenticatedContext,
@@ -127,7 +127,7 @@ export function projectQueueRouteError(error: unknown, request?: NextRequest) {
   if (error instanceof UsageQuotaExceededError) {
     return respond(projectQueueNoStore({ error: "Usage quota exceeded" }, 429));
   }
-  if (error instanceof ProjectQueueError) {
+  if (isProjectQueueError(error)) {
     switch (error.code) {
       case "QUEUE_INVALID_INPUT": return respond(projectQueueNoStore({ error: "Invalid queue request" }, 400));
       case "QUEUE_RESOURCE_NOT_FOUND":

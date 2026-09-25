@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation",
+  "log": "identity-mutation.log",
+  "commit": "39c89c1af68ba4271c16215b828c9a66ab607c10",
+  "commitSubject": "test: Evidence-CLI-Test zeigt stderr und stdout, Nachtrag GitHub 2.23",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

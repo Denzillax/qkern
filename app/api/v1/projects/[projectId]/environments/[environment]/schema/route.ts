@@ -3,7 +3,7 @@ import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
 import { getProjectDataPlane } from "@/lib/server/data-plane/runtime";
 import {
-  ProjectDataPlaneError,
+  isProjectDataPlaneError,
   type ProjectDataPlanePort,
 } from "@/lib/server/data-plane/service";
 import {
@@ -66,7 +66,7 @@ export function dataPlaneRouteError(error: unknown) {
   if (error instanceof RequestAuthorizationError) {
     return NextResponse.json({ error: "Resource not found" }, { status: 404 });
   }
-  if (error instanceof ProjectDataPlaneError) {
+  if (isProjectDataPlaneError(error)) {
     if (error.code === "DATA_PLANE_INVALID_INPUT" || error.code === "READ_ONLY_QUERY_REQUIRED") {
       return NextResponse.json({ error: "Invalid data-plane request", code: error.code }, { status: 400 });
     }
@@ -75,5 +75,7 @@ export function dataPlaneRouteError(error: unknown) {
     }
     return NextResponse.json({ error: "Project data plane unavailable", code: error.code }, { status: 503 });
   }
+  // Ein 500 ohne Spur war am 25. September nicht zu diagnostizieren; seither steht die Ursache im Log.
+  console.error("[data-plane] unexpected error", error);
   return NextResponse.json({ error: "Project data plane unavailable" }, { status: 500 });
 }

@@ -1,0 +1,49 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+stderr | tests/data-plane-error-identity.test.ts > data plane error identity > maps a foreign copy of the error to the same status as its own class
+[data-plane] unexpected error ForeignDataPlaneError [ProjectDataPlaneError]: The project data plane is unavailable.
+    at C:/Projekte/qkern/code/qkern/tests/data-plane-error-identity.test.ts:31:43
+    at file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///C:/Projekte/qkern/code/qkern/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64 {
+  code: 'DATA_PLANE_DISABLED'
+}
+
+ ❯ tests/data-plane-error-identity.test.ts (2 tests | 1 failed) 13ms
+     × maps a foreign copy of the error to the same status as its own class 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/data-plane-error-identity.test.ts > data plane error identity > maps a foreign copy of the error to the same status as its own class
+AssertionError: DATA_PLANE_DISABLED: expected 500 to be 503 // Object.is equality
+
+- Expected
++ Received
+
+- 503
++ 500
+
+ ❯ tests/data-plane-error-identity.test.ts:33:36
+     31|       const foreign = dataPlaneRouteError(new ForeignDataPlaneError(co…
+     32|       expect(own.status, code).toBe(status);
+     33|       expect(foreign.status, code).toBe(status);
+       |                                    ^
+     34|       expect((await foreign.json()).code).toBe(code);
+     35|     }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  20:47:22
+   Duration  1.01s (transform 495ms, setup 0ms, import 798ms, tests 13ms, environment 1ms)
+
+EXIT=1
