@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.18.md](RELEASE_2.18.md) | Aktueller Release: Funktionen aus dem Katalog |
+| [RELEASE_2.19.md](RELEASE_2.19.md) | Aktueller Release: Drei aus dem Katalog |
+| [RELEASE_2.18.md](RELEASE_2.18.md) | Funktionen aus dem Katalog |
 | [RELEASE_2.17.md](RELEASE_2.17.md) | Hilfe, die antwortet |
 | [RELEASE_2.16.md](RELEASE_2.16.md) | Apache 2.0 |
 | [RELEASE_2.15.md](RELEASE_2.15.md) | Was der Runner fand |

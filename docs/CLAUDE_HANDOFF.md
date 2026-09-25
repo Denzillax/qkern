@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.18.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.19.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,25 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.18.0`
-- Aktueller Slice: 2.18 Funktionen aus dem Katalog – zweiter Schritt von
+- Paketversion: `2.19.0`
+- Aktueller Slice: 2.19 Drei aus dem Katalog – Indizes, Policies und
+  Enum-Typen in einem Zug, nach dem Muster von 2.9 und 2.18:
+  `inspectIndexes`, `inspectPolicies`, `inspectEnumTypes` im Data-Plane-Port
+  (SQL aus postgres-meta `indexes.sql`, `policies.sql`, `types.sql`, Apache
+  2.0, auf `pg_catalog` reduziert; Indizes ueber `pg_get_indexdef` statt
+  `pg_indexes`, Spalten aus `indkey`, Ausdruecke fallen dort weg; Policies
+  mit PUBLIC aus `polroles = {0}`, USING/WITH CHECK aus `pg_get_expr`;
+  Enums in `enumsortorder`), Routen `schema/indexes`, `schema/policies`,
+  `schema/enum-types` aus einer Vorlage, Console-Ansichten `indexes-view`,
+  `policies-view`, `enum-types-view` (`db-indexes`, `db-policies`,
+  `db-types` jetzt echt), Uebersetzungen in drei Sprachen. Tests:
+  `tests/project-data-plane-catalog.test.ts`, drei Routen-Tests,
+  `tests/data-plane-catalog-postgres.integration.test.ts` (drei Faelle).
+  PostgreSQL 165 von 165 zweimal; drei Mutationen (Praedikat auf NULL,
+  `permissive` auf true, Enum-Sortierung nach Label), je 1 von 165 faellt.
+  Noch offen aus Punkt 2: Erweiterungen, Rollen, Publikationen,
+  Spaltenrechte
+- Vorheriger Slice: 2.18 Funktionen aus dem Katalog – zweiter Schritt von
   Punkt 2 nach dem Trigger-Muster: `inspectFunctions` im Data-Plane-Port
   (`lib/server/data-plane/service.ts`, SQL abgeleitet aus postgres-meta
   `functions.sql`, Apache 2.0, auf `pg_proc` plus `pg_get_function_*`
@@ -57,7 +74,7 @@ Release Notes bleiben unverändert.
   (`prokind`-Filter entfernt) 1 von 162 faellt. Naechste Ansichten nach
   demselben Muster: Indizes, Enum-Typen, Erweiterungen, Rollen, Policies,
   Publikationen, Spaltenrechte (Vorlagen in scratchpad `pgmeta/`)
-- Vorheriger Slice: 2.17 Hilfe, die antwortet – nach Denzils Okay sind
+- Davor: 2.17 Hilfe, die antwortet – nach Denzils Okay sind
   `@qkern/sdk@1.7.0-alpha.3` und `@qkern/cli@1.7.0-alpha.3` auf npm (Tag
   `alpha`; der erste Versuch fiel mit E422, npm nimmt Provenance nur aus
   oeffentlichen Repositories, deshalb ist `provenance` im Workflow jetzt ein

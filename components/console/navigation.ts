@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -40,13 +40,10 @@ export const PLACEHOLDERS = {
   // Datenbank
   "db-schemas": { label: "Schema-Visualizer", supabase: "Database → Schema Visualizer", backend: "teilweise", note: "Tabellen und Beziehungen als Diagramm. Die Schema-Route liefert Tabellen und Spalten schon, die Fremdschlüssel und das Diagramm fehlen." },
   "db-tables": { label: "Tabellen", supabase: "Database → Tables", backend: "teilweise", note: "Tabellen anlegen, umbenennen, Spalten ändern. Lesen geht über den Table Editor; Schemaänderungen laufen über Change Sets und die Freigabezentrale." },
-  "db-types": { label: "Enum-Typen", supabase: "Database → Enumerated Types", backend: "fehlt", note: "Aufzählungstypen anlegen und Werte ergänzen." },
   "db-extensions": { label: "Erweiterungen", supabase: "Database → Extensions", backend: "fehlt", note: "PostgreSQL-Erweiterungen ein- und ausschalten. Welche Erweiterungen der Projektdatenbank erlaubt sind, entscheidet heute allein die Migration." },
-  "db-indexes": { label: "Indizes", supabase: "Database → Indexes", backend: "teilweise", note: "Indizes sehen und anlegen. Ein Index entsteht heute als Change Set über den SQL Editor; eine Liste der vorhandenen Indizes fehlt." },
   "db-publications": { label: "Publikationen", supabase: "Database → Publications", backend: "teilweise", note: "Welche Tabellen Änderungen nach aussen melden. Der Realtime-Change-Feed ist zertifiziert, die Auswahl je Tabelle fehlt in der Console." },
   "db-pipelines": { label: "Replikation", supabase: "Database → Replication", backend: "fehlt", note: "Daten in externe Ziele replizieren. Kein Backend, keine Ansicht." },
   "db-roles": { label: "Rollen", supabase: "Database → Roles", backend: "teilweise", note: "Datenbankrollen und ihre Rechte. QKERN trennt Runtime-, Auth-, Worker-, Provisioner- und Projekt-API-Rolle in der Migration; eine Verwaltung fehlt." },
-  "db-policies": { label: "Policies", supabase: "Database → Policies", backend: "teilweise", note: "Row-Level-Security-Regeln je Tabelle. RLS wird erzwungen und ist zertifiziert; Regeln anlegen und lesen geht noch nur per Migration." },
   "db-column-privileges": { label: "Spaltenrechte", supabase: "Database → Column Privileges", backend: "teilweise", note: "Rechte je Spalte und Rolle. Sensible Spalten werden heute ausgeblendet; die Rechte selbst zeigt noch nichts an." },
   "db-backups-pitr": { label: "Point-in-time Recovery", supabase: "Database → Backups → PITR", backend: "fehlt", note: "Wiederherstellung auf einen Zeitpunkt. Braucht ein WAL-Archiv ausserhalb des Wegwerf-Stacks." },
   "db-backups-restore": { label: "In neues Projekt wiederherstellen", supabase: "Database → Backups → Restore to new project", backend: "fehlt", note: "Ein Backup in ein frisches Projekt einspielen. Kein Backend." },
@@ -141,8 +138,8 @@ export const NAV: NavGroup[] = [
   { id: "sql", label: "SQL Editor", icon: Terminal, children: [{ id: "sql", label: "Editor" }, ph("sql-templates")] },
   { id: "database", label: "Datenbank", icon: Database, children: [
     { id: "database", label: "Übersicht" }, ph("db-schemas"), ph("db-tables"), { id: "db-functions", label: "Funktionen" }, { id: "db-triggers", label: "Trigger" },
-    ph("db-types"), ph("db-extensions"), ph("db-indexes"), ph("db-publications"), ph("db-pipelines"), ph("db-roles"),
-    ph("db-policies"), ph("db-column-privileges"), { id: "db-migrations", label: "Migrationen" }, { id: "backups", label: "Backups" },
+    { id: "db-types", label: "Enum-Typen" }, ph("db-extensions"), { id: "db-indexes", label: "Indizes" }, ph("db-publications"), ph("db-pipelines"), ph("db-roles"),
+    { id: "db-policies", label: "Policies" }, ph("db-column-privileges"), { id: "db-migrations", label: "Migrationen" }, { id: "backups", label: "Backups" },
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [

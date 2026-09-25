@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "catalog-local-run2.log",
+  "commit": "9ad95839aba3b9d1fef03a6ee8e2b93ead654887",
+  "commitSubject": "release: 2.18.0 Funktionen aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1136 passed | 246 skipped (1382)",
+  "passed": 1136,
+  "failed": 0,
+  "skipped": 246,
+  "images": []
+}

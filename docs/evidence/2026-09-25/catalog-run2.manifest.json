@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "catalog-run2.log",
+  "commit": "9ad95839aba3b9d1fef03a6ee8e2b93ead654887",
+  "commitSubject": "release: 2.18.0 Funktionen aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "30 passed (30)",
+  "tests": "165 passed (165)",
+  "passed": 165,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -21,6 +21,9 @@ import { InvocationsView } from "@/components/console/invocations-view";
 import { RealtimeInspectorView } from "@/components/console/realtime-inspector-view";
 import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
+import { IndexesView } from "@/components/console/indexes-view";
+import { PoliciesView } from "@/components/console/policies-view";
+import { EnumTypesView } from "@/components/console/enum-types-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -212,6 +215,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "realtime-inspector": return <RealtimeInspectorView projectId={props.project.id} environment={props.environment}/>;
     case "db-triggers": return <TriggersView projectId={props.project.id} environment={props.environment}/>;
     case "db-functions": return <FunctionsView projectId={props.project.id} environment={props.environment}/>;
+    case "db-indexes": return <IndexesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-policies": return <PoliciesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-types": return <EnumTypesView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

@@ -4234,3 +4234,40 @@ bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 Nicht erbracht: kein Quelltext in der Ansicht; die Ansicht ist im Browser
 nicht gesehen, weil Denzils Console-Konto seit dem Neustart des
 Dev-Servers fehlt; nur Schema `public`.
+
+## Drei aus dem Katalog – Release 2.19
+
+Indizes, Policies und Enum-Typen in einem Zug, nach dem Muster der Trigger
+und Funktionen. Die drei Abfragen sind aus postgres-meta (Apache 2.0)
+abgeleitet und auf `pg_catalog` reduziert.
+
+Indizes: postgres-meta joint `pg_indexes` ueber den Indexnamen, was bei
+gleichnamigen Indizes in zwei Schemas doppelt liefert; hier kommt die
+Definition direkt aus `pg_get_indexdef`, die Spalten aus `indkey`, und ein
+Ausdrucksindex (`lower(email)`, GIN auf `to_tsvector`) hat leere Spalten
+und seine Definition. Gegen echtes PostgreSQL belegt: Primaerschluessel,
+eindeutiger Ausdrucksindex, partieller Index mit Praedikat
+`(note IS NOT NULL)` und Spaltenreihenfolge, GIN.
+
+Policies: `polroles = {0}` heisst PUBLIC; USING und WITH CHECK kommen als
+Text aus `pg_get_expr`, der Server schreibt `CURRENT_USER` gross. Belegt:
+eine erlaubende SELECT-Regel fuer alle, eine einschraenkende INSERT-Regel
+nur fuer `qkern_project_api_app` mit WITH CHECK, eine ALL-Regel mit `true`
+auf beiden Seiten.
+
+Enum-Typen: die Werte in `enumsortorder`, belegt mit `ADD VALUE 'ok'
+BEFORE 'happy'`, was alphabetisch falsch und in der Typreihenfolge richtig
+`sad, ok, happy` ergibt.
+
+Console: drei Ansichten mit Zaehlern und Filter; ungueltige Indizes und
+einschraenkende Policies sind markiert. Drei Sprachen.
+
+Checkpoint `2.19.0` am 25. September 2026: PostgreSQL 17 165 von 165
+bestanden, exit 0, zweimal reproduziert; drei Mutationen (Praedikat auf
+NULL, `permissive` auf true, Enum-Sortierung nach Label), je 1 von 165
+faellt, exit 1; Lokal 1136 bestanden, 0 fehlgeschlagen, zweimal
+reproduziert; `next build` gruen.
+
+Nicht erbracht: nur Schema `public`; die Ansichten sind im Browser nicht
+gesehen (Console-Konto fehlt); ob RLS auf einer Tabelle eingeschaltet ist,
+steht weiter nur in `/schema`, nicht in der Policy-Liste.

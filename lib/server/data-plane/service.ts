@@ -103,6 +103,61 @@ export type ProjectFunctionResult = {
   truncated: boolean;
 };
 
+export type ProjectIndex = {
+  name: string;
+  table: string;
+  /** btree, hash, gin, gist, brin, spgist ... */
+  accessMethod: string;
+  unique: boolean;
+  primary: boolean;
+  /** false waehrend CREATE INDEX CONCURRENTLY oder nach einem Fehlschlag */
+  valid: boolean;
+  /** Spalten in Indexreihenfolge; Ausdruecke fehlen hier und stehen in `definition` */
+  columns: string[];
+  /** Wie `pg_get_indexdef` */
+  definition: string;
+  /** WHERE-Teil eines partiellen Index, sonst null */
+  predicate: string | null;
+};
+
+export type ProjectIndexResult = {
+  source: "postgres";
+  schema: string;
+  indexes: ProjectIndex[];
+  truncated: boolean;
+};
+
+export type ProjectPolicy = {
+  name: string;
+  table: string;
+  permissive: boolean;
+  command: "select" | "insert" | "update" | "delete" | "all";
+  /** `public` steht fuer alle Rollen */
+  roles: string[];
+  usingExpression: string | null;
+  checkExpression: string | null;
+};
+
+export type ProjectPolicyResult = {
+  source: "postgres";
+  schema: string;
+  policies: ProjectPolicy[];
+  truncated: boolean;
+};
+
+export type ProjectEnumType = {
+  name: string;
+  /** In Sortierreihenfolge des Typs */
+  labels: string[];
+};
+
+export type ProjectEnumTypeResult = {
+  source: "postgres";
+  schema: string;
+  types: ProjectEnumType[];
+  truncated: boolean;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -134,6 +189,21 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectFunctionResult>;
+  inspectIndexes(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectIndexResult>;
+  inspectPolicies(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectPolicyResult>;
+  inspectEnumTypes(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectEnumTypeResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -280,6 +350,124 @@ const FUNCTIONS_SQL = `
   ORDER BY function.proname ASC, function.oid ASC
   LIMIT $2`;
 
+type IndexRow = {
+  index_name: string;
+  table_name: string;
+  access_method: string;
+  is_unique: boolean;
+  is_primary: boolean;
+  is_valid: boolean;
+  columns: string[];
+  definition: string;
+  predicate: string | null;
+};
+
+type PolicyRow = {
+  policy_name: string;
+  table_name: string;
+  permissive: boolean;
+  command: "r" | "a" | "w" | "d" | "*";
+  roles: string[];
+  using_expression: string | null;
+  check_expression: string | null;
+};
+
+type EnumTypeRow = {
+  type_name: string;
+  labels: string[];
+};
+
+const MAX_INDEXES = 200;
+const MAX_POLICIES = 200;
+const MAX_ENUM_TYPES = 200;
+const MAX_ENUM_LABELS = 200;
+const MAX_EXPRESSION = 4000;
+
+/**
+ * Indizes eines Schemas, aus `pg_index` (2.19). Abgeleitet aus `indexes.sql`
+ * in supabase/postgres-meta (Apache 2.0): statt `pg_indexes` (das ueber den
+ * Namen joint und bei gleichnamigen Indizes in zwei Schemas doppelt liefert)
+ * direkt `pg_get_indexdef`; die Spaltennamen kommen aus `indkey`, Ausdruecke
+ * (attnum 0) fallen dort weg und stehen in der Definition.
+ */
+const INDEXES_SQL = `
+  SELECT index_class.relname AS index_name,
+         relation.relname AS table_name,
+         access_method.amname AS access_method,
+         idx.indisunique AS is_unique,
+         idx.indisprimary AS is_primary,
+         idx.indisvalid AS is_valid,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(idx.indkey) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = idx.indrelid AND attribute.attnum = key.attnum
+                   WHERE key.attnum > 0), ARRAY[]::text[]) AS columns,
+         pg_catalog.pg_get_indexdef(idx.indexrelid) AS definition,
+         pg_catalog.pg_get_expr(idx.indpred, idx.indrelid) AS predicate
+  FROM pg_catalog.pg_index AS idx
+  JOIN pg_catalog.pg_class AS index_class ON index_class.oid = idx.indexrelid
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = idx.indrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN pg_catalog.pg_am AS access_method ON access_method.oid = index_class.relam
+  WHERE namespace.nspname = $1
+    AND relation.relpersistence <> 't'
+  ORDER BY relation.relname ASC, index_class.relname ASC
+  LIMIT $2`;
+
+/**
+ * Row-Level-Security-Regeln eines Schemas, aus `pg_policy` (2.19). Abgeleitet
+ * aus `policies.sql` in supabase/postgres-meta (Apache 2.0). `polroles = {0}`
+ * heisst PUBLIC, also alle Rollen; USING und WITH CHECK kommen als Text aus
+ * `pg_get_expr`. Ob RLS auf der Tabelle eingeschaltet ist, sagt `/schema`.
+ */
+const POLICIES_SQL = `
+  SELECT policy.polname AS policy_name,
+         relation.relname AS table_name,
+         policy.polpermissive AS permissive,
+         policy.polcmd AS command,
+         CASE WHEN policy.polroles = '{0}'::oid[] THEN ARRAY['public']::text[]
+              ELSE ARRAY(SELECT member.rolname::text FROM pg_catalog.pg_roles AS member
+                         WHERE member.oid = ANY (policy.polroles) ORDER BY member.rolname) END AS roles,
+         pg_catalog.pg_get_expr(policy.polqual, policy.polrelid) AS using_expression,
+         pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid) AS check_expression
+  FROM pg_catalog.pg_policy AS policy
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = policy.polrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = $1
+  ORDER BY relation.relname ASC, policy.polname ASC
+  LIMIT $2`;
+
+/**
+ * Aufzaehlungstypen eines Schemas, aus `pg_type` und `pg_enum` (2.19).
+ * Abgeleitet aus `types.sql` in supabase/postgres-meta (Apache 2.0), auf
+ * `typtype = 'e'` reduziert; die Werte in der Sortierreihenfolge des Typs.
+ */
+const ENUM_TYPES_SQL = `
+  SELECT type.typname AS type_name,
+         ARRAY(SELECT enum.enumlabel::text FROM pg_catalog.pg_enum AS enum
+               WHERE enum.enumtypid = type.oid ORDER BY enum.enumsortorder) AS labels
+  FROM pg_catalog.pg_type AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  WHERE namespace.nspname = $1
+    AND type.typtype = 'e'
+  ORDER BY type.typname ASC
+  LIMIT $2`;
+
+function assertInspectableSchema(schema: string): void {
+  if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
+      schema === "information_schema" || schema === "qkern_internal") {
+    throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
+  }
+}
+
+function boundedText(value: unknown, max: number): value is string | null {
+  return value === null || (typeof value === "string" && value.length <= max);
+}
+
+function identifierList(value: unknown, max: number): value is string[] {
+  return Array.isArray(value) && value.length <= max && value.every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 63);
+}
+
 export class ProjectDataPlaneService implements ProjectDataPlanePort {
   constructor(
     private readonly targets: ProjectDataPlaneTargetResolver,
@@ -416,6 +604,79 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
         };
       });
       return { source: "postgres", schema, functions, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectIndexes(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectIndexResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<IndexRow>(INDEXES_SQL, [schema, MAX_INDEXES + 1]);
+      const rows = result.rows.slice(0, MAX_INDEXES);
+      const indexes: ProjectIndex[] = rows.map((row) => {
+        if (!IDENTIFIER.test(row.index_name) || !IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.access_method) ||
+            typeof row.is_unique !== "boolean" || typeof row.is_primary !== "boolean" || typeof row.is_valid !== "boolean" ||
+            !identifierList(row.columns, 32) || typeof row.definition !== "string" || row.definition.length > MAX_EXPRESSION ||
+            !boundedText(row.predicate, MAX_EXPRESSION)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.index_name, table: row.table_name, accessMethod: row.access_method,
+          unique: row.is_unique, primary: row.is_primary, valid: row.is_valid,
+          columns: row.columns, definition: row.definition, predicate: row.predicate,
+        };
+      });
+      return { source: "postgres", schema, indexes, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectPolicies(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectPolicyResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<PolicyRow>(POLICIES_SQL, [schema, MAX_POLICIES + 1]);
+      const rows = result.rows.slice(0, MAX_POLICIES);
+      const policies: ProjectPolicy[] = rows.map((row) => {
+        if (!IDENTIFIER.test(row.policy_name) || !IDENTIFIER.test(row.table_name) || typeof row.permissive !== "boolean" ||
+            !["r", "a", "w", "d", "*"].includes(row.command) || !identifierList(row.roles, 64) || row.roles.length === 0 ||
+            !boundedText(row.using_expression, MAX_EXPRESSION) || !boundedText(row.check_expression, MAX_EXPRESSION)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.policy_name, table: row.table_name, permissive: row.permissive,
+          command: ({ r: "select", a: "insert", w: "update", d: "delete", "*": "all" } as const)[row.command],
+          roles: row.roles, usingExpression: row.using_expression, checkExpression: row.check_expression,
+        };
+      });
+      return { source: "postgres", schema, policies, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectEnumTypes(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectEnumTypeResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<EnumTypeRow>(ENUM_TYPES_SQL, [schema, MAX_ENUM_TYPES + 1]);
+      const rows = result.rows.slice(0, MAX_ENUM_TYPES);
+      const types: ProjectEnumType[] = rows.map((row) => {
+        if (!IDENTIFIER.test(row.type_name) || !identifierList(row.labels, MAX_ENUM_LABELS)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { name: row.type_name, labels: row.labels };
+      });
+      return { source: "postgres", schema, types, truncated: result.rows.length > rows.length };
     });
   }
 
@@ -567,6 +828,30 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectFunctionResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectIndexes(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectIndexResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectPolicies(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectPolicyResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectEnumTypes(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectEnumTypeResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

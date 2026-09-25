@@ -1247,3 +1247,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/functions-mutation.log` | PostgreSQL 17, Mutation | **161 von 162, exit 1 – absichtlich** |
 | `2026-09-25/functions-local-run1.log` | Vitest lokal (Windows) | 1127 bestanden, exit 0 |
 | `2026-09-25/functions-local-run2.log` | Vitest lokal (Windows) | 1127 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.19 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/catalog-run1.log` | PostgreSQL 17 | 165 von 165, exit 0 |
+| `2026-09-25/catalog-run2.log` | PostgreSQL 17 | 165 von 165, exit 0, Wiederholung |
+| `2026-09-25/catalog-mutation-indexes.log` | PostgreSQL 17, Mutation | **164 von 165, exit 1 – absichtlich** |
+| `2026-09-25/catalog-mutation-policies.log` | PostgreSQL 17, Mutation | **164 von 165, exit 1 – absichtlich** |
+| `2026-09-25/catalog-mutation-enums.log` | PostgreSQL 17, Mutation | **164 von 165, exit 1 – absichtlich** |
+| `2026-09-25/catalog-local-run1.log` | Vitest lokal (Windows) | 1136 bestanden, exit 0 |
+| `2026-09-25/catalog-local-run2.log` | Vitest lokal (Windows) | 1136 bestanden, exit 0, Wiederholung |
