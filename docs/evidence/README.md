@@ -1144,3 +1144,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-25/queues-view-local-run1.log` | Vitest lokal (Windows) | 1110 bestanden, exit 0 |
 | `2026-09-25/queues-view-local-run2.log` | Vitest lokal (Windows) | 1110 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.7 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/three-views-local-run1.log` | Vitest lokal (Windows) | 1110 bestanden, exit 0 |
+| `2026-09-25/three-views-local-run2.log` | Vitest lokal (Windows) | 1110 bestanden, exit 0, Wiederholung |

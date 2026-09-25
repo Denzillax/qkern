@@ -21,6 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
+  "db-migrations", "compute-invocations", "realtime-inspector",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -49,7 +50,6 @@ export const PLACEHOLDERS = {
   "db-roles": { label: "Rollen", supabase: "Database → Roles", backend: "teilweise", note: "Datenbankrollen und ihre Rechte. QKERN trennt Runtime-, Auth-, Worker-, Provisioner- und Projekt-API-Rolle in der Migration; eine Verwaltung fehlt." },
   "db-policies": { label: "Policies", supabase: "Database → Policies", backend: "teilweise", note: "Row-Level-Security-Regeln je Tabelle. RLS wird erzwungen und ist zertifiziert; Regeln anlegen und lesen geht noch nur per Migration." },
   "db-column-privileges": { label: "Spaltenrechte", supabase: "Database → Column Privileges", backend: "teilweise", note: "Rechte je Spalte und Rolle. Sensible Spalten werden heute ausgeblendet; die Rechte selbst zeigt noch nichts an." },
-  "db-migrations": { label: "Migrationen", supabase: "Database → Migrations", backend: "vorhanden", note: "Die angewendeten Migrationen mit Ledger-Eintrag. Der Migrationsprozess ist zertifiziert; die Liste fehlt nur in der Console." },
   "db-backups-pitr": { label: "Point-in-time Recovery", supabase: "Database → Backups → PITR", backend: "fehlt", note: "Wiederherstellung auf einen Zeitpunkt. Braucht ein WAL-Archiv ausserhalb des Wegwerf-Stacks." },
   "db-backups-restore": { label: "In neues Projekt wiederherstellen", supabase: "Database → Backups → Restore to new project", backend: "fehlt", note: "Ein Backup in ein frisches Projekt einspielen. Kein Backend." },
   "db-settings": { label: "Datenbank-Einstellungen", supabase: "Database → Settings", backend: "fehlt", note: "Verbindungsdaten, Pooler, SSL-Zwang, Netzwerkbeschränkungen. Die Provisionierung ist noch nicht verbunden." },
@@ -77,10 +77,8 @@ export const PLACEHOLDERS = {
   "storage-vectors": { label: "Vektor-Buckets", supabase: "Storage → Vectors", backend: "fehlt", note: "Ablage für Embeddings mit Ähnlichkeitssuche." },
   // Functions
   "compute-secrets": { label: "Secrets", supabase: "Edge Functions → Secrets", backend: "teilweise", note: "Geheimnisse für Functions. Referenzen auf den Vault gibt es; anlegen und lesen über die Console fehlt." },
-  "compute-invocations": { label: "Aufrufe", supabase: "Edge Functions → Invocations", backend: "vorhanden", note: "Jeder Aufruf mit Status, Dauer und Ausgang. Die Route für Aufrufe gibt es seit 1.87; die Liste fehlt in der Console." },
   "compute-logs": { label: "Function-Logs", supabase: "Edge Functions → Logs", backend: "fehlt", note: "Ausgaben aus dem Container. Inhaltslogs bleiben heute im Container." },
   // Realtime
-  "realtime-inspector": { label: "Inspector", supabase: "Realtime → Inspector", backend: "vorhanden", note: "Kanäle abonnieren und Nachrichten live sehen. Der Transport ist zertifiziert; die Ansicht fehlt." },
   "realtime-policies": { label: "Policies", supabase: "Realtime → Policies", backend: "teilweise", note: "Wer welchen Kanal lesen und schreiben darf." },
   "realtime-settings": { label: "Einstellungen", supabase: "Realtime → Settings", backend: "fehlt", note: "Grenzen für Verbindungen und Nachrichten je Sekunde." },
   // Advisors
@@ -146,7 +144,7 @@ export const NAV: NavGroup[] = [
   { id: "database", label: "Datenbank", icon: Database, children: [
     { id: "database", label: "Übersicht" }, ph("db-schemas"), ph("db-tables"), ph("db-functions"), ph("db-triggers"),
     ph("db-types"), ph("db-extensions"), ph("db-indexes"), ph("db-publications"), ph("db-pipelines"), ph("db-roles"),
-    ph("db-policies"), ph("db-column-privileges"), ph("db-migrations"), { id: "backups", label: "Backups" },
+    ph("db-policies"), ph("db-column-privileges"), { id: "db-migrations", label: "Migrationen" }, { id: "backups", label: "Backups" },
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
@@ -159,9 +157,9 @@ export const NAV: NavGroup[] = [
     ph("storage-analytics"), ph("storage-vectors"),
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
-    { id: "compute", label: "Functions, Cron, Webhooks" }, ph("compute-secrets"), ph("compute-invocations"), ph("compute-logs"),
+    { id: "compute", label: "Functions, Cron, Webhooks" }, ph("compute-secrets"), { id: "compute-invocations", label: "Aufrufe" }, ph("compute-logs"),
   ] },
-  { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [ph("realtime-inspector"), ph("realtime-policies"), ph("realtime-settings")] },
+  { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [{ id: "realtime-inspector", label: "Inspector" }, ph("realtime-policies"), ph("realtime-settings")] },
   { id: "api", label: "API", icon: Braces },
   { id: "ai", label: "AI Bridge", icon: Bot },
   { id: "activity", label: "KI-Aktivität", icon: Activity },

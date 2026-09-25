@@ -31,8 +31,8 @@ Stacks unverändert, kein Server-Code berührt.
 
 ## Ehrlich offen
 
-- **Sichtprüfung steht aus.** Der Dev-Server der App wurde während des
-  Slices beendet; die Memory-Session starb mit ihm. Die Ansicht ist per
+- **Sichtprüfung steht aus.** Die App hat den Dev-Server während des
+  Slices neu gestartet; die Memory-Session starb mit dem alten Prozess. Die Ansicht ist per
   Typecheck und Vertrag geprüft, nicht mit echten Queues im Browser.
 - **Kein Einreihen aus der Console**; das bleibt der Anwendung mit ihrem
   Key.

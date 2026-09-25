@@ -16,6 +16,9 @@ import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { QueuesView } from "@/components/console/queues-view";
+import { MigrationsView } from "@/components/console/migrations-view";
+import { InvocationsView } from "@/components/console/invocations-view";
+import { RealtimeInspectorView } from "@/components/console/realtime-inspector-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -200,6 +203,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "backups": return <BackupsView/>;
     case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }}/>;
     case "int-queues": return <QueuesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-migrations": return <MigrationsView projectId={props.project.id} environment={props.environment} changeSets={props.snapshot.changeSets}/>;
+    case "compute-invocations": return <InvocationsView projectId={props.project.id} environment={props.environment}/>;
+    case "realtime-inspector": return <RealtimeInspectorView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

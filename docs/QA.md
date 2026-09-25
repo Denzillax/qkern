@@ -3814,14 +3814,57 @@ auf Deutsch zurückfallen. Er fand beim ersten Lauf die verwaiste Erklärung
 des Platzhalters und einen fehlenden Schlüssel („Versuch"), beides
 behoben; 37 neue Schlüssel in drei Sprachen.
 
-Ehrlich: Die Sichtprüfung im Browser steht aus. Während des Slices wurde
-der Dev-Server der App beendet; ein anderer Prozess antwortet auf Port
-3000, und die Console meldet dort „Console-Daten nicht verfügbar", weil
-die Memory-Session mit dem alten Prozess gestorben ist. Die Ansicht ist
-per Typecheck und Vertrag geprüft, nicht mit echten Queues im Browser.
+Ehrlich: Die Sichtprüfung im Browser steht aus. Während des Slices hat die
+App den Dev-Server neu gestartet; die Memory-Session ist mit dem alten
+Prozess gestorben, und die Console meldet „Console-Daten nicht verfügbar",
+bis sich Denzil neu registriert. Die Ansicht ist per Typecheck und Vertrag
+geprüft, nicht mit echten Queues im Browser.
 
 Checkpoint `2.6.0` am 25. September 2026: Lokal 1110 bestanden, 0
 fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: kein Einreihen von Nachrichten aus der Console (das ist
 Sache der Anwendung mit ihrem Key), keine Zeitreihe der Queue-Tiefe.
+
+## Drei Ansichten mehr — Release 2.7
+
+Die restlichen drei Ansichten mit zertifiziertem Backend, Punkt 1 von
+Denzils „mach 1–3".
+
+Migrationen (`migrations-view.tsx`) hat drei Quellen, alle vorhanden: die
+Change Sets des Projekts aus dem Console-Snapshot, vom Entwurf bis
+angewendet, mit Risiko, Agent, Diff-Zeilen und Rollback; die
+Migrations-Reviews, also Läufe, deren Ausgang der Worker nicht selbst
+klären konnte, mit Abgleich- und Zyklus-Zähler; und die Vorfälle mit dem
+Stand ihrer Zustellung. Alles je Umgebung gefiltert, nur lesend.
+
+Function-Aufrufe (`invocations-view.tsx`) listet die Functions der
+Umgebung und je Function das Aufrufprotokoll der Route aus 1.89: Zeit,
+Auslöser, Dauer, Ausgang, Statuscode oder Fehlercode, neueste zuerst; dazu
+Fehlerquote und mittlere Dauer der geladenen Aufrufe. Ohne stdout und
+stderr, wie die Route.
+
+Der Realtime-Inspector (`realtime-inspector-view.tsx`) ist ein reiner
+Browser-Client für das Protokoll `qkern.realtime.v1`: Server-URL, Projekt-
+Key, Kanal; verbinden, anmelden, abonnieren, Broadcast senden, alles
+Empfangene im Protokoll. Der Key bleibt in der Browser-Sitzung und geht
+nur an den Realtime-Server; die Console speichert ihn nicht. Der
+Realtime-Server ist ein eigener Prozess (`workers/realtime-runtime.mts`,
+Port 8788) und läuft im Dev-Setup nicht von allein; der Inspector sagt
+das, wenn die Verbindung scheitert.
+
+Der i18n-Vertrag fand drei verwaiste Erklärungen und 85 fehlende
+Schlüssel, alle ergänzt.
+
+Ehrlich: Die Sichtprüfung im Browser steht für alle drei aus, aus demselben
+Grund wie in 2.6: Die Memory-Session ist mit dem Neustart des Dev-Servers
+gestorben. Der Realtime-Inspector ist ausserdem gegen keinen laufenden
+Realtime-Server geprüft; das Protokoll stammt aus `protocol.ts` und
+`model.ts`, nicht aus einem Handschlag.
+
+Checkpoint `2.7.0` am 25. September 2026: Lokal 1110 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: kein Reconciliation-Antrag aus der Migrationen-Ansicht,
+keine Presence-Anzeige als Liste im Inspector, keine Zeitreihe der
+Aufrufdauer.

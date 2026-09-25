@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.6.md](RELEASE_2.6.md) | Aktueller Release: Queues in der Console |
+| [RELEASE_2.7.md](RELEASE_2.7.md) | Aktueller Release: Drei Ansichten mehr |
+| [RELEASE_2.6.md](RELEASE_2.6.md) | Queues in der Console |
 | [RELEASE_2.5.md](RELEASE_2.5.md) | Das Flyout |
 | [RELEASE_2.4.md](RELEASE_2.4.md) | Knöpfe, die stillhalten |
 | [RELEASE_2.3.md](RELEASE_2.3.md) | Die Console in vier Sprachen |

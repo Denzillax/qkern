@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "three-views-local-run1.log",
+  "commit": "66da8f0c65471ad7aa039b8ae45320f7d0f6507f",
+  "commitSubject": "release: 2.6.0 Queues in der Console",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1110 passed | 241 skipped (1351)",
+  "passed": 1110,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

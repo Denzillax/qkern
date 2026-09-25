@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.6.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.7.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,20 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.6.0`
-- Aktueller Slice: 2.6 Queues in der Console — erster der vier Platzhalter
+- Paketversion: `2.7.0`
+- Aktueller Slice: 2.7 Drei Ansichten mehr — Migrationen
+  (`migrations-view.tsx`: Change Sets aus dem Snapshot, Reviews über
+  `/api/v1/migrations/reviews`, Vorfälle über `/api/v1/migrations/incidents`,
+  je Umgebung gefiltert), Function-Aufrufe (`invocations-view.tsx`:
+  Functions der Umgebung, Aufrufprotokoll je Function über
+  `/compute/functions/{id}/invocations`), Realtime-Inspector
+  (`realtime-inspector-view.tsx`: reiner Browser-Client für
+  `qkern.realtime.v1`, Anmeldung mit Projekt-Key, Abonnieren, Broadcast,
+  Protokoll; Server-URL aus `NEXT_PUBLIC_QKERN_REALTIME_URL`, sonst
+  `ws://localhost:8788`). Drei Platzhalter weniger (`db-migrations`,
+  `compute-invocations`, `realtime-inspector` sind REAL_VIEWS); 85 neue
+  Schlüssel je Sprache. Punkt 1 von Denzils „mach 1–3" ist damit erledigt
+- Vorheriger Slice: 2.6 Queues in der Console — erster der vier Platzhalter
   mit zertifiziertem Backend. `components/console/queues-view.tsx` liest
   die Admin-Routen unter `/queues`: Liste, Status je Queue (wartend, in
   Bearbeitung, erledigt, Dead Letters, älteste wartet seit), Dead Letters
@@ -48,8 +60,8 @@ Release Notes bleiben unverändert.
   Metrics-Export. `int-queues` ist jetzt eine echte Ansicht (REAL_VIEWS),
   der Platzhalter ist weg. Der i18n-Vertrag liest seit 2.6 alle `.tsx` in
   `components/console`, nicht nur `console-app.tsx`; 37 neue Schlüssel.
-  Sichtprüfung im Browser steht aus: Der Dev-Server der App wurde
-  während des Slices beendet, die Memory-Session ist damit weg
+  Sichtprüfung im Browser steht aus: Die App hat den Dev-Server während
+  des Slices neu gestartet, die Memory-Session ist damit weg
 - Vorheriger Slice: 2.5 Das Flyout — Untermenüs in der eingeklappten
   Sidebar, im Brainstorming gewählt (Variante A gegen zweite Spalte und
   kurz aufklappen; Entwurf in
