@@ -81,5 +81,8 @@ describe("error identity sweep", () => {
       }
     }
     expect(missing, "Fehlerklassen ohne recognisedByName").toEqual([]);
-  });
+    // Ein Lesedurchgang ueber ganz lib/server; auf einer beschaeftigten
+    // Windows-Platte reichte die Vorgabe von 5 s einmal nicht (2.29). Das
+    // Budget ist ausdruecklich, die Pruefung bleibt dieselbe.
+  }, 60_000);
 });

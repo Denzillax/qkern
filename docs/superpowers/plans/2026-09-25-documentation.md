@@ -1179,9 +1179,12 @@ Name `demo`. Die Projekt-ID steht unter Einstellungen.)
 
 ## 5. Umgebung an die Datenbank binden
 ```powershell
-npm run dev:bind-project-database -- <projekt-id> development
+npm run dev:bind-project-database -- <projekt-id> development <organisations-id>
 ```
 Erwartet: `Gebunden: development von <projekt-id> an managed:database-1`.
+(Projekt-ID und Organisations-ID stehen in der Konsole unter Einstellungen,
+Allgemein. Die Organisations-ID braucht das Skript, weil Row Level Security
+dem Provisionierer-Login sonst keine Zeile zeigt, genau wie in Produktion.)
 
 ## 6. Eine Tabelle anlegen
 ```powershell

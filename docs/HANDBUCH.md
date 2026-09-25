@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.28.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.29.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 
@@ -572,6 +572,19 @@ Optionale echte PostgreSQL-Zertifizierung:
 
 ```powershell
 npm run test:postgres:docker
+```
+
+Backup- und Restore-Drill (seit `2.29.0`, Sprosse 10 lokal in Docker): ein
+PostgreSQL 17 mit TLS-Pflicht und WAL-Archiv, ein verschlüsseltes Basisbackup
+über `sslmode=verify-full`, ein zweiter Server, der aus Backup und Archiv bis
+zu einem Zeitpunkt wiederhergestellt wird, und der Beleg über Schema, Zeilen,
+Audit-Kette und Manifest. Die signierte Evidenz landet unter
+`docs/evidence/backup-restore/` und wird vom Produkt-Verifier gelesen
+(`npm run verify:backup-restore`, Pfade absolut, auf Linux; Windows-Pfade
+lehnt der Verifier ab):
+
+```powershell
+npm run test:backup:docker
 ```
 
 Dieser Lauf umfasst inzwischen 28 optionale Real-PostgreSQL-Tests, darunter sechs

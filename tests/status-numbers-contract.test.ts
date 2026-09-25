@@ -38,6 +38,7 @@ const CLAIMS: ReadonlyArray<{ label: string; stacks: readonly string[] }> = [
     label: "Ausgehender Weg gegen echten HTTPS-Empfänger",
     stacks: ["Node 24 HTTPS-Empfaenger und PostgreSQL 17"],
   },
+  { label: "Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv", stacks: ["Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)"] },
 ];
 
 async function manifests(): Promise<Manifest[]> {

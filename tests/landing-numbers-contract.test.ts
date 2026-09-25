@@ -30,6 +30,7 @@ describe("landing numbers contract", () => {
       "Functions": "Functions gegen Docker plus PostgreSQL",
       "Webhook-Signatur": "Webhook-Signatur gegen echten Vault",
       "Ausgehender Weg": "Ausgehender Weg gegen echten HTTPS-Empfänger",
+      "Backup und Restore": "Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv",
     };
     expect(summary.rows.map((row) => row.name)).toEqual(Object.keys(claims));
     for (const row of summary.rows) {

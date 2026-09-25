@@ -4621,3 +4621,45 @@ gruen.
 Nicht erbracht: das gleichzeitige erste Anfragen selbst ist nicht
 nachgestellt, nur die Reihenfolge von Merken und await; die Namenslisten
 in den Basisklassen sind Altlast.
+
+## Backup und Restore, lokal bewiesen – Release 2.29
+
+Sprosse 10 brauchte bisher einen Hoster. Denzil fragte, ob das auch lokal
+geht; die Antwort ist ein Wegwerfstack, der dieselbe Technik faehrt wie
+spaeter der Hoster, nur mit anderen Adressen.
+
+Der Quellserver ist ein PostgreSQL 17 mit TLS-Pflicht: `pg_hba` kennt nur
+`hostssl`, eine unverschluesselte Verbindung wird abgewiesen, und der Test
+belegt beides. Jedes WAL-Segment landet per `archive_command` in einem
+geteilten Archiv. Der Drill schreibt Phase A, zieht ein Basisbackup ueber
+`sslmode=verify-full` gegen das im Stack erzeugte Zertifikat, verschluesselt
+es mit AES-256, schreibt Phase B, merkt sich Manifest und Zielzeit, schreibt
+Phase C, erzwingt einen Segmentwechsel und wartet, bis `pg_stat_archiver`
+das Segment bestaetigt. Dann startet er einen zweiten Server aus dem
+entschluesselten Backup mit `restore_command` und `recovery_target_time`.
+Belegt: Zeilen 1 bis 6, keine aus Phase C; Schema gleich (pg_dump ohne
+Kommentare und ohne die zufaelligen `\restrict`-Schluessel, die pg_dump seit
+17.6 einstreut); Audit-Kette nachgerechnet; Manifeste gleich. Die Evidenz
+wird mit Ed25519 signiert und vom Produkt-Verifier
+(`BackupRestoreEvidenceVerifier`) angenommen; das Skript legt sie unter
+`docs/evidence/backup-restore/` ab.
+
+Mutation: `archive_mode=off`. Der Drill faellt an der Stelle, an der er das
+archivierte Segment lesen will, 0 von 1, exit 1.
+
+Sechs Anlaeufe bis gruen, alle im Stack, keiner im Produkt: das WAL-Volume
+gehoerte root; die archivierten Segmente sind 0600 und gehoeren uid 70,
+also laeuft der Restore-Server als derselbe Benutzer; der Alpine-Socketpfad
+`/run/postgresql` gehoert ihm nicht, der Socket liegt im Drill-Ordner; uid
+70 war vom apk-Paket schon belegt; pgcrypto fehlte im Restore-Server;
+`--abort-on-container-exit` nahm den Zertifikat-Container als Abbruch,
+deshalb `up --wait` fuer den Quellserver und `run` fuer den Drill.
+
+Checkpoint `2.29.0` am 25. September 2026: Backup und Restore 1 von 1
+bestanden, exit 0, zweimal reproduziert; Mutation 0 von 1, exit 1; Lokal
+1171 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: der Verifier-Lauf auf dem Host scheitert an Windows-Pfaden
+(er verlangt absolute POSIX-Pfade), er laeuft im CI-Job auf Ubuntu; ein
+echter Hoster, ein externes Archiv und ein fremd verwahrter Schluessel
+fehlen weiterhin; die Konsole zeigt unter Backups noch den Platzhalter.

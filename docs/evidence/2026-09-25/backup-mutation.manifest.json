@@ -1,0 +1,19 @@
+{
+  "stack": "Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)",
+  "log": "backup-mutation.log",
+  "commit": "5501c3816379c92561e3a58f174d894c90b657cf",
+  "commitSubject": "dev: Umgebung lokal an die Projektdatenbank binden",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 45,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed (1)",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

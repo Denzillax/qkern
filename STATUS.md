@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 25. September 2026 · Release: `2.28.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 25. September 2026 · Release: `2.29.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -50,6 +50,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Functions gegen Docker plus PostgreSQL** | **27 von 27 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll am echten Container** |
 | **Webhook-Signatur gegen echten Vault** | **6 von 6 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **14 von 14 bestanden, exit 0, zweimal reproduziert** |
+| **Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv** | **1 von 1 bestanden, exit 0, zweimal reproduziert — seit `2.29.0`: verschlüsseltes Basisbackup über `sslmode=verify-full`, Wiederherstellung bis zu einem Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest belegt, Evidenz vom Produkt-Verifier geprüft; Mutation (Archiv aus) fällt** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-09-24/` |
 | Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |

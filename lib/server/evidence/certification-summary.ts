@@ -47,6 +47,7 @@ export const CERTIFICATION_CLAIMS: ReadonlyArray<{ name: string; stacks: readonl
     stacks: ["Docker 29.5, registry:2 und PostgreSQL 17", "docker-function-egress-guard"] },
   { name: "Webhook-Signatur", label: "HashiCorp Vault 1.18", stacks: ["HashiCorp Vault 1.18", "vault-1.18-webhook-signing"] },
   { name: "Ausgehender Weg", label: "Echter HTTPS-Empfänger", stacks: ["Node 24 HTTPS-Empfaenger und PostgreSQL 17"] },
+  { name: "Backup und Restore", label: "TLS-PostgreSQL 17 mit WAL-Archiv", stacks: ["Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)"] },
 ];
 
 export function summarizeCertification(manifests: readonly ArchivedManifest[]): CertificationSummary {

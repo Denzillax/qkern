@@ -1,0 +1,134 @@
+name: qkern-backup-v229-certification
+
+# Portloser Wegwerfstack fuer den Backup-/Restore-Drill (Sprosse 10, 2.29).
+#
+# Dieselben Regeln wie in den anderen Stacks: kein Mount in einem anderen
+# Mount, keine Produktgrenze wird fuer den Test aufgeweicht. Der Quell-
+# PostgreSQL laeuft mit TLS-Pflicht (im Stack erzeugtes Zertifikat, hostssl
+# ohne Ausnahme) und archiviert jedes WAL-Segment in ein geteiltes Archiv.
+# Der Drill-Container zieht ein verschluesseltes Basisbackup, stellt es als
+# zweiten Server aus dem WAL-Archiv bis zu einem Zeitpunkt wieder her
+# (Point-in-time Recovery) und belegt Schema, Zeilen, Audit-Kette und
+# Manifest. Lokal in Docker, wie Denzil es wollte: dieselbe Technik, die spaeter
+# beim Hoster laeuft, nur mit anderen Adressen.
+
+services:
+  certs:
+    image: alpine/openssl:3.3.2
+    entrypoint: ["sh", "-ec"]
+    # Der Schluessel gehoert dem postgres-Benutzer des Alpine-Images (uid 70)
+    # mit 0600, sonst weigert sich der Server. Zwei Tage gueltig, verlaesst den
+    # Stack nicht. Das WAL-Archiv gehoert demselben Benutzer, sonst scheitert
+    # archive_command an einem Volume, das Docker root ueberlaesst.
+    command:
+      - |
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=postgres.qkern.test \
+          -addext subjectAltName=DNS:postgres.qkern.test \
+          -keyout /certs/server.key -out /certs/server.crt
+        chown 70:70 /certs/server.key /certs/server.crt
+        chmod 0600 /certs/server.key
+        chmod 0644 /certs/server.crt
+        chown 70:70 /wal-archive
+        chmod 0755 /wal-archive
+    volumes:
+      - backup-certification-certs:/certs
+      - backup-certification-wal:/wal-archive
+
+  postgres:
+    image: postgres:17-alpine
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - postgres.qkern.test
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - hba_file=/qkern/backup/pg_hba.conf
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=cp %p /wal-archive/%f
+      - -c
+      - max_wal_senders=3
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./db:/qkern/db:ro
+      - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+      - ./db/docker/backup-pg_hba.conf:/qkern/backup/pg_hba.conf:ro
+      - backup-certification-certs:/certs:ro
+      - backup-certification-wal:/wal-archive
+    healthcheck:
+      # Ueber TLS, weil pg_hba alles andere abweist.
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_local_only psql 'host=127.0.0.1 sslmode=require user=qkern dbname=qkern_control' -tAc 'SELECT 1' | grep -qx 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  drill:
+    image: node:24-alpine
+    working_dir: /workspace/qkern
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/qkern-src:ro
+      - backup-certification-certs:/certs:ro
+      - backup-certification-wal:/wal-archive:ro
+    environment:
+      NODE_ENV: test
+      QKERN_TEST_BACKUP_DRILL: "true"
+      QKERN_TEST_BACKUP_SOURCE_HOST: postgres.qkern.test
+      QKERN_TEST_BACKUP_SOURCE_USER: qkern
+      QKERN_TEST_BACKUP_SOURCE_PASSWORD: qkern_local_only
+      QKERN_TEST_BACKUP_SOURCE_DB: qkern_control
+      QKERN_TEST_BACKUP_CA_FILE: /certs/server.crt
+      QKERN_TEST_BACKUP_WAL_ARCHIVE: /wal-archive
+      QKERN_TEST_BACKUP_WORKDIR: /drill
+      QKERN_TEST_BACKUP_RESTORE_USER: postgres
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        apk add --no-cache postgresql17 postgresql17-client postgresql17-contrib openssl su-exec >/dev/null
+        # Die archivierten Segmente gehoeren dem Quellserver (uid 70) mit
+        # 0600. Das Alpine-Paket legt denselben Benutzer `postgres` (uid 70)
+        # an; der Restore-Server laeuft als dieser, damit er das Archiv lesen
+        # darf, ohne dass es fuer alle lesbar werden muss.
+        mkdir -p /drill && chown postgres /drill
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./.claude \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npx vitest run tests/backup-restore-drill.integration.test.ts
+
+volumes:
+  backup-certification-certs:
+  backup-certification-wal:

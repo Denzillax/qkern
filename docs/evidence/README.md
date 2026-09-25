@@ -1348,3 +1348,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/review2-mutation.log` | PostgreSQL 17, Mutation | **170 von 171, exit 1 – absichtlich** |
 | `2026-09-25/review2-local-run1.log` | Vitest lokal (Windows) | 1161 bestanden, exit 0 |
 | `2026-09-25/review2-local-run2.log` | Vitest lokal (Windows) | 1161 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.29 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/backup-run1.log` | Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv) | 1 von 1, exit 0 |
+| `2026-09-25/backup-run2.log` | Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv) | 1 von 1, exit 0, Wiederholung |
+| `2026-09-25/backup-mutation.log` | Backup und Restore, Mutation (Archiv aus) | **0 von 1, exit 1 – absichtlich** |
+| `2026-09-25/backup-local-run1.log` | Vitest lokal (Windows) | 1171 bestanden, exit 0 |
+| `2026-09-25/backup-local-run2.log` | Vitest lokal (Windows) | 1171 bestanden, exit 0, Wiederholung |
+| `backup-restore/drill.evidence.json` | signierte Evidenz des letzten gruenen Drills | vom Produkt-Verifier angenommen |

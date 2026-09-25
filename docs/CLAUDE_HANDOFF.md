@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.28.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.29.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,33 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.28.0`
-- Aktueller Slice: 2.28 Was das zweite Review fand – ein zweiter Review-Agent
+- Paketversion: `2.29.0`
+- Aktueller Slice: 2.29 Backup und Restore, lokal bewiesen – Denzils
+  Frage "geht das auch ohne Hosting?" beantwortet: Sprosse 10 laeuft als
+  Wegwerfstack (`docker-compose.backup-certification.yml`,
+  `npm run test:backup:docker`). Quell-PostgreSQL 17 mit TLS-Pflicht
+  (`hostssl` ohne Ausnahme, im Stack erzeugtes Zertifikat) und WAL-Archiv;
+  der Drill zieht ein Basisbackup ueber `sslmode=verify-full`, verschluesselt
+  es (AES-256), stellt einen zweiten Server aus Backup und Archiv bis zu einem
+  Zeitpunkt wieder her (Phase C fehlt, Zeilen 1 bis 6 da), vergleicht Schema
+  per `pg_dump -s` (ohne die zufaelligen `\restrict`-Zeilen ab pg_dump 17.6),
+  rechnet die Audit-Kette nach, vergleicht Manifeste und signiert die Evidenz
+  (Ed25519), die der Produkt-Verifier annimmt. Sechs Anlaeufe bis gruen, alle
+  Rechtefragen des Stacks, keine des Produkts: WAL-Volume gehoerte root,
+  Archivsegmente 0600 (Restore-Server laeuft als uid 70), Socket unter
+  /run/postgresql, uid 70 schon vom apk-Paket belegt, pgcrypto fehlte im
+  Restore-Server, `--abort-on-container-exit` nahm den Zertifikat-Container
+  als Abbruch (jetzt `up --wait` plus `run`). Neuer CI-Job "Backup und
+  Restore" mit Verifier-Lauf. Neuer Claim in `CERTIFICATION_CLAIMS`, STATUS,
+  Landing-Namen. Dazu als Vorarbeit der Doku (Plan
+  `docs/superpowers/plans/2026-09-25-documentation.md`, Aufgaben 1 und 2):
+  Dev-Compose legt `project_database` an (Ledger-Owner NOLOGIN, Reader,
+  Rechte fuer `qkern_project_api_app`; Init ueber `000-certification-init.sh`,
+  weil Docker Desktop keinen Mount in den read-only initdb-Mount legt) und
+  `npm run dev:bind-project-database` bindet eine wartende Umgebung an
+  `managed:database-1` als Provisionierer-Login im Mandantenkontext, nur
+  lokal, nie production
+- Vorheriger Slice: 2.28 Was das zweite Review fand – ein zweiter Review-Agent
   hat 2.24 bis 2.26 gelesen; sechs Befunde, alle behoben: (1)
   `Symbol.hasInstance` ist statisch vererbt, eine nicht registrierte
   Unterklasse nahm die Namen ihres Vorfahren als eigene; jetzt Registrierung
@@ -57,7 +82,7 @@ Release Notes bleiben unverändert.
   (6) Die veroeffentlichte OpenAPI (`lib/openapi.ts`) und die generierte
   nennen fuer `table` und `order` jetzt `DATA_IDENTIFIER_PATTERN`;
   Funktionsnamen ausserhalb der Grammatik kommen nicht in die OpenAPI
-- Vorheriger Slice: 2.27 Regeln und Grenzen je Bucket – zwei Storage-
+- Davor: 2.27 Regeln und Grenzen je Bucket – zwei Storage-
   Platzhalter sind Ansichten ueber die vorhandene Route
   `PATCH /storage/buckets/{id}`: `storage-policies-view.tsx`
   (Lese- und Schreibregel je Bucket als Auswahl, die fuenf Regeln des

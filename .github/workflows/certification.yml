@@ -75,3 +75,34 @@ jobs:
           path: docs/evidence/**/auth-certification*.log
           if-no-files-found: ignore
           retention-days: 90
+
+  backup:
+    name: Backup und Restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+      - name: Run backup and restore drill stack
+        run: set -o pipefail; npm run test:backup:docker | tee backup-certification.log
+      - name: Verify the drill evidence with the product verifier
+        run: |
+          npm ci --ignore-scripts
+          export QKERN_BACKUP_RESTORE_EVIDENCE_FILE="$GITHUB_WORKSPACE/docs/evidence/backup-restore/drill.evidence.json"
+          export QKERN_BACKUP_RESTORE_VERIFIER_KEY_FILE="$GITHUB_WORKSPACE/docs/evidence/backup-restore/drill.verifier-key.json"
+          export QKERN_BACKUP_RESTORE_VERIFIER_KEY_SHA256="$(sha256sum "$QKERN_BACKUP_RESTORE_VERIFIER_KEY_FILE" | cut -d' ' -f1)"
+          set -o pipefail; npm run -s verify:backup-restore | tee backup-verify.log
+          grep -q '"status":"ready"' backup-verify.log
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-certification-log
+          path: |
+            backup-certification.log
+            backup-verify.log
+            docs/evidence/backup-restore/drill.evidence.json
+          if-no-files-found: ignore
+          retention-days: 90

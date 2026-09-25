@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "backup-local-run2.log",
+  "commit": "6ee06e968b7ab8c4b43f2ce903045f042c35b5cb",
+  "commitSubject": "dev: Host-Schutz des Bindungsskripts prueft auch ?host=",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1171 passed | 253 skipped (1424)",
+  "passed": 1171,
+  "failed": 0,
+  "skipped": 253,
+  "images": []
+}
