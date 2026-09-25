@@ -92,3 +92,5 @@ ALTER ROLE qkern_project_api_app SET statement_timeout = '10s';
 ALTER ROLE qkern_project_api_app SET lock_timeout = '1s';
 ALTER ROLE qkern_project_api_app SET idle_in_transaction_session_timeout = '15s';
 SQL
+
+bash /qkern/db/docker/998-project-database.sh
