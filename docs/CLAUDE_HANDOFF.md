@@ -39,6 +39,29 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
+### Laufende Arbeit: Einstiegsdoku (Stand 26. September 2026, frueh)
+
+Spec `docs/superpowers/specs/2026-09-25-documentation-design.md`, Plan
+`docs/superpowers/plans/2026-09-25-documentation.md` (13 Aufgaben, Weg 1:
+Markdown im Repo, eigener Renderer, Route `/docs`). Umsetzung mit
+Unteragenten, je Aufgabe Spec-Pruefung und Code-Review.
+
+- Aufgabe 1 (Dev-Compose mit `project_database`) und 2 (Bindungsskript
+  `npm run dev:bind-project-database`): abgenommen, im Release 2.29 enthalten.
+- Aufgabe 3 (`lib/docs/pages.ts`, Platzhalterseiten): abgenommen, `b6b5bb1`.
+- Aufgabe 4 (`lib/docs/markdown.ts`, Parser): committet `a2adffc` und
+  Nacharbeit `7aecd7d`; Spec-Nachpruefung und Code-Review stehen noch aus.
+  Bekannte Abweichung vom Plan: `parseGuide` wirft nicht bei fehlendem
+  `#`-Titel (die Plan-Tests brauchen das); der Vertragstest in Aufgabe 10
+  muss `doc.title !== ""` verlangen. Fett/kursiv gelten nur innerhalb einer
+  Quellzeile.
+- Naechster Schritt: Aufgabe 4 nachpruefen, dann Aufgabe 5 (Platzhalter
+  `lib/docs/placeholders.ts`, Laden `lib/docs/load.ts`) und weiter nach Plan.
+  Die Texte (Aufgaben 8 und 9) schreibt der Hauptagent selbst, wegen der
+  Sprachregeln (kein Gedankenstrich, Sperrliste, Humanizer).
+- Offene Entscheidung fuer Denzil: Repository privat lassen (Schnellstart
+  sagt "Quellordner als Zip") oder oeffentlich (dann `git clone`).
+
 - Paketversion: `2.29.0`
 - Aktueller Slice: 2.29 Backup und Restore, lokal bewiesen – Denzils
   Frage "geht das auch ohne Hosting?" beantwortet: Sprosse 10 laeuft als
