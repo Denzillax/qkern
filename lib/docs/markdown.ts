@@ -78,6 +78,26 @@ export function parseInline(text: string, line: number): Inline[] {
   return out;
 }
 
+/**
+ * Mehrzeilige Absaetze und Zitate: jede Quellzeile wird einzeln geparst, damit
+ * ein Fehler die richtige Zeile nennt. Die Zeilen werden mit einem Leerzeichen
+ * verbunden und benachbarte Textknoten verschmolzen. Auszeichnungen koennen
+ * darum nicht ueber einen Zeilenumbruch reichen.
+ */
+function parseLines(parts: Array<{ text: string; line: number }>): Inline[] {
+  const out: Inline[] = [];
+  const push = (inline: Inline) => {
+    const prev = out[out.length - 1];
+    if (inline.kind === "text" && prev?.kind === "text") prev.text += inline.text;
+    else out.push(inline.kind === "text" ? { ...inline } : inline);
+  };
+  parts.forEach((part, index) => {
+    if (index > 0) push({ kind: "text", text: " " });
+    for (const inline of parseInline(part.text, part.line)) push(inline);
+  });
+  return out;
+}
+
 function tableCells(row: string, line: number): string[] {
   const trimmed = row.trim();
   if (trimmed.length < 2 || !trimmed.startsWith("|") || !trimmed.endsWith("|")) {
@@ -87,7 +107,8 @@ function tableCells(row: string, line: number): string[] {
 }
 
 const INDENTED = /^\s+\S/;
-const HEADING = /^(#{1,6})\s+(.+?)\s*$/;
+const HEADING = /^(#+)\s+(.+?)\s*$/;
+const EMPTY_HEADING = /^#+\s*$/;
 const BULLET = /^-\s+(.*)$/;
 const NUMBER = /^\d+\.\s+(.*)$/;
 const DIVIDER = /^\|(\s*:?-{3,}:?\s*\|)+$/;
@@ -98,15 +119,17 @@ export function parseGuide(markdown: string): GuideDocument {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: Block[] = [];
   const headings: GuideDocument["headings"] = [];
-  const seen = new Map<string, number>();
+  const used = new Set<string>();
   let title = "";
   let i = 0;
 
+  // Eindeutig auch dann, wenn ein Text selbst wie "a 2" aussieht.
   const anchor = (text: string) => {
     const base = slugify(text);
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    return count === 1 ? base : `${base}-${count}`;
+    let id = base;
+    for (let n = 2; used.has(id); n += 1) id = `${base}-${n}`;
+    used.add(id);
+    return id;
   };
 
   while (i < lines.length) {
@@ -120,6 +143,7 @@ export function parseGuide(markdown: string): GuideDocument {
       throw new GuideSyntaxError(line, "eingerueckte Zeilen (verschachtelte Listen, Codeblock ohne Zaun) sind nicht vorgesehen");
     }
 
+    if (EMPTY_HEADING.test(raw)) throw new GuideSyntaxError(line, "Ueberschrift ohne Text");
     const heading = HEADING.exec(raw);
     if (heading) {
       const level = heading[1].length;
@@ -174,13 +198,13 @@ export function parseGuide(markdown: string): GuideDocument {
     }
 
     if (raw.startsWith("> ")) {
-      const parts: string[] = [];
+      const parts: Array<{ text: string; line: number }> = [];
       let j = i;
       while (j < lines.length && lines[j].startsWith("> ")) {
-        parts.push(lines[j].slice(2).trim());
+        parts.push({ text: lines[j].slice(2).trim(), line: j + 1 });
         j += 1;
       }
-      blocks.push({ kind: "quote", text: parseInline(parts.join(" "), line) });
+      blocks.push({ kind: "quote", text: parseLines(parts) });
       i = j;
       continue;
     }
@@ -206,13 +230,13 @@ export function parseGuide(markdown: string): GuideDocument {
 
     // Absatz: die erste Zeile gehoert immer dazu (auch "#ohne-Leerzeichen"),
     // damit die Schleife nie haengen bleibt.
-    const parts: string[] = [raw.trim()];
+    const parts: Array<{ text: string; line: number }> = [{ text: raw.trim(), line }];
     let j = i + 1;
     while (j < lines.length && lines[j].trim() !== "" && !BLOCK_START.test(lines[j])) {
-      parts.push(lines[j].trim());
+      parts.push({ text: lines[j].trim(), line: j + 1 });
       j += 1;
     }
-    blocks.push({ kind: "paragraph", text: parseInline(parts.join(" "), line) });
+    blocks.push({ kind: "paragraph", text: parseLines(parts) });
     i = j;
   }
 

@@ -79,6 +79,38 @@ describe("guide markdown parser", () => {
     expect(() => parseGuide("# Eins\n\n# Zwei\n")).toThrow(/Zeile 3/);
   });
 
+  it("reports the offending line inside multi-line paragraphs and quotes", () => {
+    expect(() => parseGuide("a\n![x](y)\n")).toThrow(/Zeile 2/);
+    expect(() => parseGuide("> a\n> <b>\n")).toThrow(/Zeile 2/);
+  });
+
+  it("joins multi-line paragraphs and quotes into the same inlines as one line", () => {
+    const doc = parseGuide("# T\n\nEin **fetter**\nSatz mit `code`\n\n> Hinweis:\n> *nur* lokal.\n");
+    expect(doc.blocks[1]).toEqual({ kind: "paragraph", text: [
+      { kind: "text", text: "Ein " }, { kind: "strong", text: "fetter" }, { kind: "text", text: " Satz mit " }, { kind: "code", text: "code" },
+    ] });
+    expect(doc.blocks[2]).toEqual({ kind: "quote", text: [
+      { kind: "text", text: "Hinweis: " }, { kind: "em", text: "nur" }, { kind: "text", text: " lokal." },
+    ] });
+  });
+
+  it("rejects headings deeper than level 3, also with seven or more #", () => {
+    expect(() => parseGuide("# T\n\n####### x\n")).toThrow(/Zeile 3: Ueberschriften nur bis Ebene 3/);
+  });
+
+  it("rejects a heading marker without text", () => {
+    expect(() => parseGuide("# T\n\n## \n")).toThrow(/Zeile 3: Ueberschrift ohne Text/);
+    expect(() => parseGuide("# T\n\n##\n")).toThrow(/Zeile 3: Ueberschrift ohne Text/);
+  });
+
+  it("keeps anchors unique when a heading text looks like a numbered duplicate", () => {
+    const ids = (md: string) => parseGuide(md).headings.map((h) => h.id);
+    expect(ids("## a\n\n## a 2\n\n## a\n")).toEqual(["a", "a-2", "a-3"]);
+    const other = ids("## a\n\n## a\n\n## a 2\n");
+    expect(new Set(other).size).toBe(3);
+    expect(other.slice(0, 2)).toEqual(["a", "a-2"]);
+  });
+
   it("leaves a lone asterisk as plain text, also in a code span", () => {
     const doc = parseGuide("# T\n\nSELECT * FROM t\n\nSo: `SELECT * FROM t`\n");
     expect(doc.blocks[1]).toEqual({ kind: "paragraph", text: [{ kind: "text", text: "SELECT * FROM t" }] });
