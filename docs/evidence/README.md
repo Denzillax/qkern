@@ -1237,3 +1237,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/cli-usage-local-run1.log` | Vitest lokal (Windows) | 1122 bestanden, exit 0 |
 | `2026-09-25/cli-usage-local-run2.log` | Vitest lokal (Windows) | 1122 bestanden, exit 0, Wiederholung |
 | `2026-09-25/github-publish-36166821746.json` | GitHub Actions, npm publish | `@qkern/cli@1.7.0-alpha.4` hochgeladen, SDK uebersprungen |
+
+## Läufe zu Release 2.18 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/functions-run1.log` | PostgreSQL 17 | 162 von 162, exit 0 |
+| `2026-09-25/functions-run2.log` | PostgreSQL 17 | 162 von 162, exit 0, Wiederholung |
+| `2026-09-25/functions-mutation.log` | PostgreSQL 17, Mutation | **161 von 162, exit 1 – absichtlich** |
+| `2026-09-25/functions-local-run1.log` | Vitest lokal (Windows) | 1127 bestanden, exit 0 |
+| `2026-09-25/functions-local-run2.log` | Vitest lokal (Windows) | 1127 bestanden, exit 0, Wiederholung |

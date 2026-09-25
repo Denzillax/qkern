@@ -4202,3 +4202,35 @@ Workflow uebersprungen; die frische Installation zeigt bei `--help` die
 Nutzung und bei `status` ohne Konfiguration den Grund. GitHub-Laeufe auf
 2.17.0 gruen. Nicht erbracht: `latest` zeigt auf npm auf die Alpha, weil es
 die erste Version ist.
+
+## Funktionen aus dem Katalog – Release 2.18
+
+Zweiter Schritt von Punkt 2, nach dem Muster der Trigger aus 2.9. Die
+Abfrage ist aus `functions.sql` in supabase/postgres-meta (Apache 2.0)
+abgeleitet und auf das reduziert, was die Liste braucht: `pg_proc` und die
+Katalogfunktionen `pg_get_function_arguments`,
+`pg_get_function_identity_arguments` und `pg_get_function_result`, statt
+die Argument-Arrays selbst zu entfalten. `prokind` in f und p: Funktionen
+und Prozeduren, keine Aggregate, keine Fensterfunktionen. Der Quelltext
+bleibt draussen; er kann Geheimnisse tragen und gehoert in eine eigene,
+bewusst geoeffnete Ansicht.
+
+Gegen echtes PostgreSQL belegt: Vorgaben (`since date DEFAULT`) und
+OUT-Parameter stehen in der Signatur, aber nicht in der
+Identitaets-Signatur; `SETOF integer` und `TABLE(n integer, twice
+integer)` als Rueckgabe mit `returnsSet`; SECURITY DEFINER; eine Prozedur
+mit `IN before date` und ohne Rueckgabe; die Trigger-Funktion mit leerer
+Signatur. Ein Aggregat und eine Funktion im Nachbarschema erscheinen nicht.
+
+Console: `db-functions` ist jetzt eine echte Ansicht, Zaehler fuer
+Funktionen, Prozeduren und SECURITY DEFINER, Filter nach Name, Sprache
+oder Rueckgabetyp, SECURITY DEFINER rot markiert; drei Sprachen.
+
+Checkpoint `2.18.0` am 25. September 2026: PostgreSQL 17 162 von 162
+bestanden, exit 0, zweimal reproduziert; Mutation (`prokind`-Filter
+entfernt, das Aggregat erscheint) 1 von 162 faellt, exit 1; Lokal 1127
+bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: kein Quelltext in der Ansicht; die Ansicht ist im Browser
+nicht gesehen, weil Denzils Console-Konto seit dem Neustart des
+Dev-Servers fehlt; nur Schema `public`.

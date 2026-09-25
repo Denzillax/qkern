@@ -80,6 +80,29 @@ export type ProjectTriggerResult = {
   truncated: boolean;
 };
 
+export type ProjectFunction = {
+  name: string;
+  /** f = Funktion, p = Prozedur; Aggregate und Fensterfunktionen bleiben draussen */
+  kind: "function" | "procedure";
+  language: string;
+  /** Wie `pg_get_function_arguments`: Namen, Typen, Modi, Vorgaben */
+  arguments: string;
+  /** Wie `pg_get_function_identity_arguments`: ohne Vorgaben, mit OUT-Parametern */
+  identityArguments: string;
+  /** Wie `pg_get_function_result`; Prozeduren haben keinen */
+  returnType: string | null;
+  returnsSet: boolean;
+  volatility: "immutable" | "stable" | "volatile";
+  securityDefiner: boolean;
+};
+
+export type ProjectFunctionResult = {
+  source: "postgres";
+  schema: string;
+  functions: ProjectFunction[];
+  truncated: boolean;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -106,6 +129,11 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectTriggerResult>;
+  inspectFunctions(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectFunctionResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -209,6 +237,49 @@ const TRIGGERS_SQL = `
   ORDER BY relation.relname ASC, trigger.tgname ASC
   LIMIT $2`;
 
+type FunctionRow = {
+  function_name: string;
+  kind: "f" | "p";
+  language: string;
+  arguments: string;
+  identity_arguments: string;
+  return_type: string | null;
+  returns_set: boolean;
+  volatility: "i" | "s" | "v";
+  security_definer: boolean;
+};
+
+const MAX_FUNCTIONS = 200;
+const LANGUAGE = /^[a-z_][a-z0-9_]{0,62}$/;
+
+/**
+ * Funktionen und Prozeduren eines Schemas, aus `pg_proc` (2.18).
+ *
+ * Abgeleitet aus `functions.sql` in supabase/postgres-meta (Apache 2.0), auf
+ * das reduziert, was die Liste braucht: Signatur und Rueckgabe liefern die
+ * Katalogfunktionen `pg_get_function_*`, statt die Argument-Arrays selbst zu
+ * entfalten. Aggregate und Fensterfunktionen bleiben draussen (`prokind`),
+ * der Quelltext ebenfalls: er kann Geheimnisse tragen und gehoert in eine
+ * eigene, bewusst geoeffnete Ansicht.
+ */
+const FUNCTIONS_SQL = `
+  SELECT function.proname AS function_name,
+         function.prokind AS kind,
+         language.lanname AS language,
+         pg_catalog.pg_get_function_arguments(function.oid) AS arguments,
+         pg_catalog.pg_get_function_identity_arguments(function.oid) AS identity_arguments,
+         pg_catalog.pg_get_function_result(function.oid) AS return_type,
+         function.proretset AS returns_set,
+         function.provolatile AS volatility,
+         function.prosecdef AS security_definer
+  FROM pg_catalog.pg_proc AS function
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
+  JOIN pg_catalog.pg_language AS language ON language.oid = function.prolang
+  WHERE namespace.nspname = $1
+    AND function.prokind IN ('f', 'p')
+  ORDER BY function.proname ASC, function.oid ASC
+  LIMIT $2`;
+
 export class ProjectDataPlaneService implements ProjectDataPlanePort {
   constructor(
     private readonly targets: ProjectDataPlaneTargetResolver,
@@ -307,6 +378,44 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
         };
       });
       return { source: "postgres", schema, triggers, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectFunctions(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectFunctionResult> {
+    assertContextAndScope(context, scope);
+    if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
+        schema === "information_schema" || schema === "qkern_internal") {
+      throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
+    }
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<FunctionRow>(FUNCTIONS_SQL, [schema, MAX_FUNCTIONS + 1]);
+      const rows = result.rows.slice(0, MAX_FUNCTIONS);
+      const functions: ProjectFunction[] = rows.map((row) => {
+        if (!IDENTIFIER.test(row.function_name) || !LANGUAGE.test(row.language) ||
+            !["f", "p"].includes(row.kind) || !["i", "s", "v"].includes(row.volatility) ||
+            typeof row.arguments !== "string" || row.arguments.length > 2000 ||
+            typeof row.identity_arguments !== "string" || row.identity_arguments.length > 2000 ||
+            (row.return_type !== null && (typeof row.return_type !== "string" || row.return_type.length > 2000)) ||
+            typeof row.returns_set !== "boolean" || typeof row.security_definer !== "boolean") {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.function_name,
+          kind: row.kind === "p" ? "procedure" : "function",
+          language: row.language,
+          arguments: row.arguments,
+          identityArguments: row.identity_arguments,
+          returnType: row.return_type,
+          returnsSet: row.returns_set,
+          volatility: ({ i: "immutable", s: "stable", v: "volatile" } as const)[row.volatility],
+          securityDefiner: row.security_definer,
+        };
+      });
+      return { source: "postgres", schema, functions, truncated: result.rows.length > rows.length };
     });
   }
 
@@ -450,6 +559,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectTriggerResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectFunctions(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectFunctionResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

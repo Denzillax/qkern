@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.17.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.18.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,25 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.17.0`
-- Aktueller Slice: 2.17 Hilfe, die antwortet – nach Denzils Okay sind
+- Paketversion: `2.18.0`
+- Aktueller Slice: 2.18 Funktionen aus dem Katalog – zweiter Schritt von
+  Punkt 2 nach dem Trigger-Muster: `inspectFunctions` im Data-Plane-Port
+  (`lib/server/data-plane/service.ts`, SQL abgeleitet aus postgres-meta
+  `functions.sql`, Apache 2.0, auf `pg_proc` plus `pg_get_function_*`
+  reduziert; `prokind` in f/p, Aggregate und Fensterfunktionen draussen; kein
+  Quelltext, er kann Geheimnisse tragen; LIMIT 201/200), Route
+  `schema/functions` (`handleProjectFunctions`, dieselbe Tuer), Console
+  `components/console/functions-view.tsx` (`db-functions` jetzt echt, in
+  REAL_VIEWS, Platzhalter entfernt), Uebersetzungen in drei Sprachen.
+  Tests: `tests/project-data-plane-functions.test.ts` (Fake-Client),
+  `tests/data-plane-functions-route.test.ts`,
+  `tests/data-plane-functions-postgres.integration.test.ts` (Vorgaben, OUT,
+  SETOF, TABLE, SECURITY DEFINER, Prozedur, Trigger-Funktion; Aggregat und
+  Nachbarschema bleiben draussen). PostgreSQL 162 von 162 zweimal, Mutation
+  (`prokind`-Filter entfernt) 1 von 162 faellt. Naechste Ansichten nach
+  demselben Muster: Indizes, Enum-Typen, Erweiterungen, Rollen, Policies,
+  Publikationen, Spaltenrechte (Vorlagen in scratchpad `pgmeta/`)
+- Vorheriger Slice: 2.17 Hilfe, die antwortet – nach Denzils Okay sind
   `@qkern/sdk@1.7.0-alpha.3` und `@qkern/cli@1.7.0-alpha.3` auf npm (Tag
   `alpha`; der erste Versuch fiel mit E422, npm nimmt Provenance nur aus
   oeffentlichen Repositories, deshalb ist `provenance` im Workflow jetzt ein
@@ -55,7 +72,7 @@ Release Notes bleiben unverändert.
   CLI auf `1.7.0-alpha.4`; der Workflow ueberspringt Versionen, die npm
   schon hat. Denzil ist einkaufen und hat "autonom weiter testen und fertig
   bauen" gesagt
-- Vorheriger Slice: 2.16 Apache 2.0 – Denzils Entscheidung: `@qkern/sdk` und
+- Davor: 2.16 Apache 2.0 – Denzils Entscheidung: `@qkern/sdk` und
   `@qkern/cli` unter Apache License 2.0 (`LICENSE` in beiden Paketen, im
   `files`-Feld, `license: "Apache-2.0"`, `private` entfernt, README-Abschnitt).
   Die Plattform selbst (Server, Console, Worker) bleibt unlizenziert. Vertrag

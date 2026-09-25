@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "functions-run2.log",
+  "commit": "c0b49e29f0ae1c441214f061e6c178849f89c676",
+  "commitSubject": "docs: alpha.4 auf npm, GitHub-Laeufe auf 2.17.0 gruen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "29 passed (29)",
+  "tests": "162 passed (162)",
+  "passed": 162,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
