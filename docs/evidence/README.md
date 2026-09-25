@@ -1211,6 +1211,8 @@ STATUS.md) halten über den Umbau hinweg.
 | Log | Stack | Ergebnis |
 | --- | --- | --- |
 | `2026-09-25/github-dx-run-36163798505.json` | GitHub Actions, Ubuntu/Windows/macOS | alle drei Jobs gruen (Stand 2.14.0) |
+| `2026-09-25/github-dx-run-36164575183.json` | GitHub Actions, Ubuntu/Windows/macOS | alle drei Jobs gruen (Stand 2.15.0) |
+| `2026-09-25/github-certification-run-36164575195.json` | GitHub Actions, drei Docker-Stacks | 161/161, 8/8, 7/7, alle gruen (Stand 2.15.0) |
 | `2026-09-25/postgres-pool-listener-run1.log` | PostgreSQL 17 | 161 von 161, exit 0 |
 | `2026-09-25/postgres-pool-listener-run2.log` | PostgreSQL 17 | 161 von 161, exit 0, Wiederholung |
 | `2026-09-25/pool-listener-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 1 faellt, exit 1 – absichtlich** |

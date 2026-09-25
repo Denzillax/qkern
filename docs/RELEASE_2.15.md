@@ -28,7 +28,9 @@ Voreinstellung und laedt nichts hoch. Der echte Lauf verweigert Pakete mit
 
 | Lauf | Manifest |
 | --- | --- |
-| GitHub Actions, drei Betriebssysteme gruen | `docs/evidence/2026-09-25/github-dx-run-36163798505.json` |
+| GitHub Actions, drei Betriebssysteme gruen (Stand 2.14.0) | `docs/evidence/2026-09-25/github-dx-run-36163798505.json` |
+| GitHub Actions, drei Betriebssysteme gruen (Stand 2.15.0) | `docs/evidence/2026-09-25/github-dx-run-36164575183.json` |
+| GitHub Actions, Zertifizierung 161/161, 8/8, 7/7 (Stand 2.15.0) | `docs/evidence/2026-09-25/github-certification-run-36164575195.json` |
 | PostgreSQL 17 161/161, exit 0 | `docs/evidence/2026-09-25/postgres-pool-listener-run1.manifest.json` |
 | PostgreSQL 17 161/161, exit 0 | `docs/evidence/2026-09-25/postgres-pool-listener-run2.manifest.json` |
 | Mutation 1/1 faellt, exit 1 | `docs/evidence/2026-09-25/pool-listener-mutation.manifest.json` |
@@ -39,7 +41,10 @@ Voreinstellung und laedt nichts hoch. Der echte Lauf verweigert Pakete mit
 
 ## Ehrlich offen
 
-- **Der GitHub-Lauf auf diesem Stand steht noch aus.**
+- **Nachtrag:** Der GitHub-Lauf auf diesem Stand ist gruen, alle sechs Jobs
+  (`docs/evidence/2026-09-25/github-certification-run-36164575195.json`,
+  `github-dx-run-36164575183.json`). Sprosse 7 ist damit fuer die
+  Zertifizierung und die drei Betriebssysteme belegt.
 - **Lizenz und `private` sind Denzils Entscheidung.** Ohne sie laedt der
   Workflow nichts hoch.
 - **Der Teardown beendet weiterhin fremde Verbindungen mit FORCE.** Der

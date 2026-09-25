@@ -1,0 +1,15 @@
+versitygw and ClamAV	Set up job	2026-09-25T17:02:22.6107415Z Complete job name: versitygw and ClamAV
+versitygw and ClamAV	Run Object Storage certification stack	2026-09-25T17:03:12.0343312Z certification-1  |  Test Files  1 passed (1)
+versitygw and ClamAV	Run Object Storage certification stack	2026-09-25T17:03:12.0345228Z certification-1  |       Tests  8 passed (8)
+versitygw and ClamAV	Complete job	﻿2026-09-25T17:03:17.6141371Z Cleaning up orphan processes
+versitygw and ClamAV	Complete job	2026-09-25T17:03:17.6455921Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@
+PostgreSQL 17	Set up job	2026-09-25T17:02:23.9079646Z Complete job name: PostgreSQL 17
+PostgreSQL 17	Run PostgreSQL certification stack	2026-09-25T17:03:33.1507799Z certification-1  |  Test Files  28 passed (28)
+PostgreSQL 17	Run PostgreSQL certification stack	2026-09-25T17:03:33.1515377Z certification-1  |       Tests  161 passed (161)
+PostgreSQL 17	Complete job	﻿2026-09-25T17:03:41.0970617Z Cleaning up orphan processes
+PostgreSQL 17	Complete job	2026-09-25T17:03:41.1160959Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, act
+Mailpit and Dex	Set up job	2026-09-25T17:02:23.0070990Z Complete job name: Mailpit and Dex
+Mailpit and Dex	Run Project Auth provider certification stack	2026-09-25T17:02:58.3884257Z  Test Files  1 passed (1)
+Mailpit and Dex	Run Project Auth provider certification stack	2026-09-25T17:02:58.3885444Z       Tests  7 passed (7)
+Mailpit and Dex	Complete job	﻿2026-09-25T17:03:04.7363349Z Cleaning up orphan processes
+Mailpit and Dex	Complete job	2026-09-25T17:03:04.9756564Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, a

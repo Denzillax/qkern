@@ -4133,6 +4133,8 @@ Checkpoint `2.15.0` am 25. September 2026: PostgreSQL 17 zweimal 161 von
 161, exit 0, ohne unbehandelten Fehler; Lokal 1119 bestanden, 0
 fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 
-Nicht erbracht: der GitHub-Lauf auf diesem Stand steht noch aus; der
+Nachtrag: der GitHub-Lauf auf diesem Stand ist gruen, alle sechs Jobs
+(Zertifizierung 161/161, 8/8, 7/7; Developer Experience auf drei
+Betriebssystemen). Nicht erbracht: der
 Teardown des Migrationstests beendet weiterhin fremde Verbindungen mit
 FORCE, statt den Prozess-Pool sauber zu schliessen.
