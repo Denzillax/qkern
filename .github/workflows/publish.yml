@@ -10,7 +10,9 @@ name: Publish packages
 #
 # NPM_TOKEN liegt als Repository-Secret (von Denzil selbst gesetzt, nie im
 # Chat). `id-token: write` erlaubt npm-Provenance: der Tarball traegt dann den
-# Nachweis, aus welchem Commit und Workflow er stammt.
+# Nachweis, aus welchem Commit und Workflow er stammt. npm nimmt Provenance
+# aber nur aus oeffentlichen Repositories an (E422 beim ersten echten Lauf,
+# 2.16); solange das Repo privat ist, bleibt `provenance` auf false.
 
 on:
   workflow_dispatch:
@@ -25,6 +27,12 @@ on:
         description: "npm dist-tag (alpha fuer Vorabversionen, latest fuer Releases)"
         required: true
         default: "alpha"
+      provenance:
+        description: "Herkunftsnachweis signieren (nur aus einem oeffentlichen Repository moeglich)"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 permissions:
   contents: read
@@ -65,10 +73,10 @@ jobs:
           npm pkg delete private --prefix sdk/typescript
           npm pkg delete private --prefix cli
       - name: Publish @qkern/sdk
-        run: npm publish ./sdk/typescript --access public --tag "${{ inputs.tag }}" --provenance ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        run: npm publish ./sdk/typescript --access public --tag "${{ inputs.tag }}" ${{ inputs.provenance == 'true' && '--provenance' || '' }} ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish @qkern/cli
-        run: npm publish ./cli --access public --tag "${{ inputs.tag }}" --provenance ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        run: npm publish ./cli --access public --tag "${{ inputs.tag }}" ${{ inputs.provenance == 'true' && '--provenance' || '' }} ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
