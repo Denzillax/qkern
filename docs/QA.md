@@ -3914,3 +3914,44 @@ Real-DB-Pfad berührt; die Änderung liegt in der Fehlerabbildung).
 Nicht erbracht: Dieselbe Falle droht bei jedem anderen Fehlertyp, der aus
 einer auf `globalThis` gehaltenen Laufzeit geworfen wird; geprüft ist nur
 Auth.
+
+## Trigger aus dem Katalog – Release 2.9
+
+Punkt 2 von Denzils „mach 1–3“: die Funktionen von Supabase Studio
+übertragen. Nicht deren Code, der an pg-meta hängt, sondern das Verhalten:
+pg-meta ist ein Satz Katalogabfragen, und QKERN hat mit `/schema` schon
+eine. Die erste neue Objektart sind die Trigger.
+
+`inspectTriggers` im Data-Plane-Port läuft durch denselben Weg wie die
+Schemaabfrage: `BEGIN READ ONLY`, Rollen- und Datenbankgrenze geprüft,
+Timeouts gesetzt. Die Abfrage ist aus `triggers.sql` von
+supabase/postgres-meta (Apache 2.0) abgeleitet und auf `pg_catalog`
+reduziert, weil `information_schema.triggers` nur Trigger auf Tabellen
+zeigt, an denen die Rolle Rechte hat, und je Ereignis eine Zeile liefert.
+Stattdessen entscheiden die Bits in `tgtype` über BEFORE, AFTER oder
+INSTEAD OF, ROW oder STATEMENT und die vier Ereignisse; die
+WHEN-Bedingung kommt aus `pg_get_triggerdef`, interne Trigger der
+Fremdschlüssel bleiben draussen, die Liste endet bei 200 mit ehrlichem
+`truncated`. Die Route `GET /schema/triggers` geht durch dieselbe Tür wie
+`/schema`: Session mit Leserecht oder scope-gebundener Projekt-Key. Die
+Console zeigt die Trigger des Schemas `public` mit Filter; anlegen läuft
+weiter über ein Change Set.
+
+Der Real-DB-Fall legt fünf Trigger an: einen mit drei Ereignissen, einen
+auf Anweisungsebene bei TRUNCATE, einen abgeschalteten mit WHEN, einen
+INSTEAD OF auf einem View, und einen Fremdschlüssel, dessen interner
+Trigger nicht erscheinen darf. Fake-Client-Fälle prüfen Decodierung,
+Abschneiden bei 201 Zeilen, Abweisung fremder Werte und den
+abgeschalteten Zustand; Routen-Fälle die Tür.
+
+Gegenprobe: Der Filter `NOT tgisinternal` fällt aus der Abfrage. 160 von
+161, genau der Trigger-Fall, weil der Fremdschlüssel-Trigger erscheint.
+
+Checkpoint `2.9.0` am 25. September 2026: PostgreSQL-17-Stack 161
+bestanden, 0 fehlgeschlagen, zweimal; Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert.
+
+Nicht erbracht: Nur Trigger; Funktionen, Indizes, Enum-Typen,
+Erweiterungen, Rollen, Policies, Publikationen und Spaltenrechte folgen
+nach demselben Muster. Nur das Schema `public` in der Console. Die
+Sichtprüfung im Browser steht aus, bis sich Denzil neu registriert.

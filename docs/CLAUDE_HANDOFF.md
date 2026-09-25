@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.8.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.9.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,23 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.8.0`
-- Aktueller Slice: 2.8 Derselbe Fehler, andere Klasse — Befund: die
+- Paketversion: `2.9.0`
+- Aktueller Slice: 2.9 Trigger aus dem Katalog – erster Schritt von Punkt 2
+  (Supabase-Funktionen übertragen): `inspectTriggers` im Data-Plane-Port
+  (`lib/server/data-plane/service.ts`, SQL abgeleitet aus
+  supabase/postgres-meta `triggers.sql`, Apache 2.0, auf `pg_catalog`
+  reduziert: tgtype-Bits, `pg_get_triggerdef` für WHEN, interne Trigger
+  draussen, Limit 200), Route `GET /schema/triggers?schema=` durch
+  dieselbe Tür wie `/schema`, Console-Ansicht `triggers-view.tsx`
+  (`db-triggers` ist REAL_VIEW). Real-DB-Fall
+  `tests/data-plane-triggers-postgres.integration.test.ts` (im
+  `test:postgres`-Skript und im Modulzähler „Generated Data API“),
+  Fake-Client-Fälle, Routen-Fälle. Mutation: Filter `NOT tgisinternal`
+  entfernt, 160 von 161, genau der Trigger-Fall. Nächste Objektarten nach
+  demselben Muster: Funktionen, Indizes, Enum-Typen, Erweiterungen, Rollen,
+  Policies, Publikationen, Spaltenrechte (postgres-meta-Abfragen liegen als
+  Vorlage im Scratchpad `pgmeta/`, nicht im Repo)
+- Vorheriger Slice: 2.8 Derselbe Fehler, andere Klasse — Befund: die
   Console zeigte „Console-Daten nicht verfügbar" (500) statt zum Login zu
   leiten. Ursache: Die Auth-Laufzeit liegt im Dev-Modus auf `globalThis`
   und überlebt Hot-Reloads, die Klasse `AuthError` nicht; `instanceof` in

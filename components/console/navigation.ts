@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -41,7 +41,6 @@ export const PLACEHOLDERS = {
   "db-schemas": { label: "Schema-Visualizer", supabase: "Database → Schema Visualizer", backend: "teilweise", note: "Tabellen und Beziehungen als Diagramm. Die Schema-Route liefert Tabellen und Spalten schon, die Fremdschlüssel und das Diagramm fehlen." },
   "db-tables": { label: "Tabellen", supabase: "Database → Tables", backend: "teilweise", note: "Tabellen anlegen, umbenennen, Spalten ändern. Lesen geht über den Table Editor; Schemaänderungen laufen über Change Sets und die Freigabezentrale." },
   "db-functions": { label: "Funktionen", supabase: "Database → Functions", backend: "teilweise", note: "Datenbankfunktionen anlegen und bearbeiten. Aufrufe über die Data API (RPC mit SECURITY INVOKER) sind zertifiziert; die Verwaltung fehlt." },
-  "db-triggers": { label: "Trigger", supabase: "Database → Triggers", backend: "fehlt", note: "Daten- und Ereignis-Trigger auf Tabellen. Es gibt weder eine Route noch eine Ansicht dafür." },
   "db-types": { label: "Enum-Typen", supabase: "Database → Enumerated Types", backend: "fehlt", note: "Aufzählungstypen anlegen und Werte ergänzen." },
   "db-extensions": { label: "Erweiterungen", supabase: "Database → Extensions", backend: "fehlt", note: "PostgreSQL-Erweiterungen ein- und ausschalten. Welche Erweiterungen der Projektdatenbank erlaubt sind, entscheidet heute allein die Migration." },
   "db-indexes": { label: "Indizes", supabase: "Database → Indexes", backend: "teilweise", note: "Indizes sehen und anlegen. Ein Index entsteht heute als Change Set über den SQL Editor; eine Liste der vorhandenen Indizes fehlt." },
@@ -142,7 +141,7 @@ export const NAV: NavGroup[] = [
   { id: "table", label: "Table Editor", icon: Table2 },
   { id: "sql", label: "SQL Editor", icon: Terminal, children: [{ id: "sql", label: "Editor" }, ph("sql-templates")] },
   { id: "database", label: "Datenbank", icon: Database, children: [
-    { id: "database", label: "Übersicht" }, ph("db-schemas"), ph("db-tables"), ph("db-functions"), ph("db-triggers"),
+    { id: "database", label: "Übersicht" }, ph("db-schemas"), ph("db-tables"), ph("db-functions"), { id: "db-triggers", label: "Trigger" },
     ph("db-types"), ph("db-extensions"), ph("db-indexes"), ph("db-publications"), ph("db-pipelines"), ph("db-roles"),
     ph("db-policies"), ph("db-column-privileges"), { id: "db-migrations", label: "Migrationen" }, { id: "backups", label: "Backups" },
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),

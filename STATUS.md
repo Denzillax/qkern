@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 25. September 2026 · Release: `2.8.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 25. September 2026 · Release: `2.9.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -21,7 +21,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
 | Control Plane, Approval/Audit, Migration Runtime | ja | ja — 13 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
-| Generated Data API | ja | ja — 6 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), und Aggregate unter der RLS des Aufrufers (`1.86.0`) |
+| Generated Data API | ja | ja — 7 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) und die Trigger-Liste aus dem Katalog (`2.9.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 7 Real-DB-Fälle plus MinIO/ClamAV |
 | Project Queues | ja | ja — 9 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last; seit `1.88.0` mit Metrics-Export im Prometheus-Textformat |
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung bricht auf Windows mit Node 24 ab (`spawnSync npm.cmd EINVAL`) und ist dort **nicht** belegt |
 | Fresh-Project-Smoke | Linux x64/Node 24 grün; Windows/macOS über CI vorbereitet, nicht ausgeführt |
-| **PostgreSQL-17-Zertifizierung** | **160 von 160 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
+| **PostgreSQL-17-Zertifizierung** | **161 von 161 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
 | **MinIO-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
 | **Functions gegen Docker plus PostgreSQL** | **27 von 27 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll am echten Container** |

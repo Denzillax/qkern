@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "triggers-run2.log",
+  "commit": "273945396769d557df838ec035b9dd0732bd3596",
+  "commitSubject": "release: 2.8.0 Derselbe Fehler, andere Klasse",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "28 passed (28)",
+  "tests": "161 passed (161)",
+  "passed": 161,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

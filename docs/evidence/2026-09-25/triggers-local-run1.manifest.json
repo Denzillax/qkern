@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "triggers-local-run1.log",
+  "commit": "273945396769d557df838ec035b9dd0732bd3596",
+  "commitSubject": "release: 2.8.0 Derselbe Fehler, andere Klasse",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

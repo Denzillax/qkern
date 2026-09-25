@@ -59,6 +59,27 @@ export type ProjectSchemaResult = {
   truncated: boolean;
 };
 
+export type ProjectTrigger = {
+  name: string;
+  table: string;
+  /** BEFORE, AFTER oder INSTEAD OF */
+  timing: "before" | "after" | "instead_of";
+  events: Array<"insert" | "update" | "delete" | "truncate">;
+  /** FOR EACH ROW oder FOR EACH STATEMENT */
+  orientation: "row" | "statement";
+  enabled: "origin" | "always" | "replica" | "disabled";
+  functionSchema: string;
+  functionName: string;
+  condition: string | null;
+};
+
+export type ProjectTriggerResult = {
+  source: "postgres";
+  schema: string;
+  triggers: ProjectTrigger[];
+  truncated: boolean;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -80,6 +101,11 @@ export interface ProjectDataPlanePort {
     statement: string,
     limit: number,
   ): Promise<ProjectReadQueryResult>;
+  inspectTriggers(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectTriggerResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -129,6 +155,58 @@ const SCHEMA_SQL = `
     AND attribute.attnum > 0
     AND NOT attribute.attisdropped
   ORDER BY relation.relname ASC, attribute.attnum ASC
+  LIMIT $2`;
+
+type TriggerRow = {
+  trigger_name: string;
+  table_name: string;
+  enabled_mode: "O" | "A" | "R" | "D";
+  is_row: boolean;
+  is_before: boolean;
+  is_instead: boolean;
+  on_insert: boolean;
+  on_update: boolean;
+  on_delete: boolean;
+  on_truncate: boolean;
+  function_schema: string;
+  function_name: string;
+  condition: string | null;
+};
+
+const MAX_TRIGGERS = 200;
+
+/**
+ * Trigger eines Schemas, aus `pg_trigger` (2.9).
+ *
+ * Abgeleitet aus `triggers.sql` in supabase/postgres-meta (Apache 2.0), auf
+ * `pg_catalog` reduziert: `information_schema.triggers` zeigt nur Trigger auf
+ * Tabellen, an denen die Rolle Rechte hat, und listet je Ereignis eine Zeile;
+ * hier entscheiden die Bits in `tgtype`. Interne Trigger (Fremdschluessel,
+ * Constraints) bleiben draussen, wie bei postgres-meta.
+ */
+const TRIGGERS_SQL = `
+  SELECT trigger.tgname AS trigger_name,
+         relation.relname AS table_name,
+         trigger.tgenabled AS enabled_mode,
+         (trigger.tgtype & 1) <> 0 AS is_row,
+         (trigger.tgtype & 2) <> 0 AS is_before,
+         (trigger.tgtype & 64) <> 0 AS is_instead,
+         (trigger.tgtype & 4) <> 0 AS on_insert,
+         (trigger.tgtype & 16) <> 0 AS on_update,
+         (trigger.tgtype & 8) <> 0 AS on_delete,
+         (trigger.tgtype & 32) <> 0 AS on_truncate,
+         function_namespace.nspname AS function_schema,
+         function.proname AS function_name,
+         substring(pg_catalog.pg_get_triggerdef(trigger.oid) FROM ' WHEN \((.*)\) EXECUTE ') AS condition
+  FROM pg_catalog.pg_trigger AS trigger
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN pg_catalog.pg_proc AS function ON function.oid = trigger.tgfoid
+  JOIN pg_catalog.pg_namespace AS function_namespace ON function_namespace.oid = function.pronamespace
+  WHERE namespace.nspname = $1
+    AND NOT trigger.tgisinternal
+    AND relation.relpersistence <> 't'
+  ORDER BY relation.relname ASC, trigger.tgname ASC
   LIMIT $2`;
 
 export class ProjectDataPlaneService implements ProjectDataPlanePort {
@@ -188,6 +266,47 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
         });
       }
       return { source: "postgres", schema, tables: [...tables.values()], truncated };
+    });
+  }
+
+  async inspectTriggers(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectTriggerResult> {
+    assertContextAndScope(context, scope);
+    if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
+        schema === "information_schema" || schema === "qkern_internal") {
+      throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
+    }
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<TriggerRow>(TRIGGERS_SQL, [schema, MAX_TRIGGERS + 1]);
+      const rows = result.rows.slice(0, MAX_TRIGGERS);
+      const triggers: ProjectTrigger[] = rows.map((row) => {
+        if (!IDENTIFIER.test(row.trigger_name) || !IDENTIFIER.test(row.table_name) ||
+            !IDENTIFIER.test(row.function_name) || !IDENTIFIER.test(row.function_schema) ||
+            !["O", "A", "R", "D"].includes(row.enabled_mode) ||
+            (row.condition !== null && (typeof row.condition !== "string" || row.condition.length > 2000))) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        const events: ProjectTrigger["events"] = [];
+        if (row.on_insert) events.push("insert");
+        if (row.on_update) events.push("update");
+        if (row.on_delete) events.push("delete");
+        if (row.on_truncate) events.push("truncate");
+        return {
+          name: row.trigger_name,
+          table: row.table_name,
+          timing: row.is_instead ? "instead_of" : row.is_before ? "before" : "after",
+          events,
+          orientation: row.is_row ? "row" : "statement",
+          enabled: ({ O: "origin", A: "always", R: "replica", D: "disabled" } as const)[row.enabled_mode],
+          functionSchema: row.function_schema,
+          functionName: row.function_name,
+          condition: row.condition,
+        };
+      });
+      return { source: "postgres", schema, triggers, truncated: result.rows.length > rows.length };
     });
   }
 
@@ -323,6 +442,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectSchemaResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectTriggers(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectTriggerResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

@@ -21,7 +21,7 @@ const MODULES: ReadonlyArray<{ label: string; files: readonly string[] }> = [
     label: "Control Plane, Approval/Audit, Migration Runtime",
     files: ["postgres", "postgres-incident-recovery", "migration-process-postgres"],
   },
-  { label: "Generated Data API", files: ["generated-data-postgres"] },
+  { label: "Generated Data API", files: ["generated-data-postgres", "data-plane-triggers-postgres"] },
   { label: "Object Storage", files: ["project-storage-postgres"] },
   { label: "Project Queues", files: ["project-queues-postgres"] },
   {
