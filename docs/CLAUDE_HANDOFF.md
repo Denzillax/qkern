@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.15.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.16.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,17 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.15.0`
-- Aktueller Slice: 2.15 Was der Runner fand – zweiter GitHub-Lauf (Stand
+- Paketversion: `2.16.0`
+- Aktueller Slice: 2.16 Apache 2.0 – Denzils Entscheidung: `@qkern/sdk` und
+  `@qkern/cli` unter Apache License 2.0 (`LICENSE` in beiden Paketen, im
+  `files`-Feld, `license: "Apache-2.0"`, `private` entfernt, README-Abschnitt).
+  Die Plattform selbst (Server, Console, Worker) bleibt unlizenziert. Vertrag
+  `tests/developer-experience.test.ts` prueft Lizenz, `LICENSE` und das
+  fehlende `private`. Beide Namen sind auf npm frei (404), die Organisation
+  `qkern` gehoert Denzil. Naechster Schritt: Probelauf des Publish-Workflows,
+  dann erst die echte Veroeffentlichung als 1.7.0-alpha.3 unter Tag `alpha`,
+  nach Denzils Okay
+- Vorheriger Slice: 2.15 Was der Runner fand – zweiter GitHub-Lauf (Stand
   2.14.0): Developer Experience auf Ubuntu, Windows und macOS gruen
   (`docs/evidence/2026-09-25/github-dx-run-36163798505.json`), damit ist die
   Windows-/macOS-Haelfte von Sprosse 7 erstmals belegt. Zertifizierung:
@@ -56,7 +65,7 @@ Release Notes bleiben unverändert.
   `bin` der CLI ohne `./` (npm 11 verwirft den Pfad sonst). NPM_TOKEN liegt
   als Secret, von Denzil gesetzt. Offen: Lizenz und `private` fuer die
   Veroeffentlichung, Denzils Entscheidung
-- Vorheriger Slice: 2.14 Ein Server, der noch da ist – erster Lauf auf GitHub
+- Davor: 2.14 Ein Server, der noch da ist – erster Lauf auf GitHub
   (Repo `Denzillax/qkern`, privat, angelegt mit der GitHub CLI; Denzil hat sich
   selbst angemeldet). Zwei rote Jobs: (1) Windows-Runner: `spawnSync npm.cmd
   EINVAL` unter Node 24 in `scripts/verify-package-tarballs.mjs`, jetzt ruft es

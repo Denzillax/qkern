@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "apache-local-run2.log",
+  "commit": "5f132ca64cbcd59fb0a6a83ff12e361977fead70",
+  "commitSubject": "docs: GitHub-Laeufe auf 2.15.0 gruen, Evidenz archiviert",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1119 passed | 242 skipped (1361)",
+  "passed": 1119,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

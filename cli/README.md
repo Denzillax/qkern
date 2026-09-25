@@ -7,3 +7,7 @@ not published to a registry. Build it with `npm run build:cli`, then run
 Project keys are read only from `QKERN_PROJECT_KEY`. Configuration never contains
 credentials, migration planning never executes SQL, and seed checking accepts
 only bounded INSERT statements.
+
+## License
+
+Apache License 2.0. See `LICENSE` in this package.

@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 25. September 2026 · Release: `2.15.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 25. September 2026 · Release: `2.16.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -122,7 +122,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`** | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence/History |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
-| SDK/CLI | Alpha-3-Checkpoint | Registry-Publishing, Upgrade-E2E und archivierte Windows/macOS/Linux-CI-Evidenz |
+| SDK/CLI | Alpha-3-Checkpoint, seit `2.16.0` unter Apache 2.0 veroeffentlichbar; CI-Evidenz auf drei Betriebssystemen seit `2.15.0` | Registry-Publishing (Workflow bereit, Probelauf zuerst) und Upgrade-E2E |
 | Billing/Usage | Alpha 1 Metering-/Quota-Grundlage | transaktionale Produkt-Emitter, Reconciliation, Tarife und Rechnungsintegration |
 | Managed Swiss Operations | Nachweisverträge | Provider-Onboarding, HA, PITR, Restore, Datenflussnachweis |
 

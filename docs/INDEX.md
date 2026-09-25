@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.15.md](RELEASE_2.15.md) | Aktueller Release: Was der Runner fand |
+| [RELEASE_2.16.md](RELEASE_2.16.md) | Aktueller Release: Apache 2.0 |
+| [RELEASE_2.15.md](RELEASE_2.15.md) | Was der Runner fand |
 | [RELEASE_2.14.md](RELEASE_2.14.md) | Ein Server, der noch da ist |
 | [RELEASE_2.13.md](RELEASE_2.13.md) | Eine Schrift |
 | [RELEASE_2.12.md](RELEASE_2.12.md) | Wie Menschen reden |

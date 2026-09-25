@@ -1218,3 +1218,10 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/pool-listener-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 1 faellt, exit 1 – absichtlich** |
 | `2026-09-25/pool-listener-local-run1.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0 |
 | `2026-09-25/pool-listener-local-run2.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.16 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/apache-local-run1.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0 |
+| `2026-09-25/apache-local-run2.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0, Wiederholung |

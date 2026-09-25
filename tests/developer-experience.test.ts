@@ -10,12 +10,17 @@ describe("developer package contracts", () => {
     const sdk = JSON.parse(await readFile(path.join(repository, "sdk/typescript/package.json"), "utf8"));
     const cli = JSON.parse(await readFile(path.join(repository, "cli/package.json"), "utf8"));
     expect(sdk.exports["."]).toEqual({ types: "./dist/index.d.ts", import: "./dist/index.js" });
-    expect(sdk.files).toEqual(["dist", "README.md"]);
+    expect(sdk.files).toEqual(["dist", "README.md", "LICENSE"]);
     // Ohne "./": npm 11 verwirft den Pfad sonst beim Veroeffentlichen als ungueltig (2.15).
     expect(cli.bin.qkern).toBe("dist/main.js");
-    expect(cli.files).toEqual(["dist", "README.md"]);
-    expect(sdk.private).toBe(true);
-    expect(cli.private).toBe(true);
+    expect(cli.files).toEqual(["dist", "README.md", "LICENSE"]);
+    // Seit 2.16 veroeffentlichbar: Apache 2.0 (Denzils Entscheidung), nicht mehr private.
+    expect(sdk.private).toBeUndefined();
+    expect(cli.private).toBeUndefined();
+    expect(sdk.license).toBe("Apache-2.0");
+    expect(cli.license).toBe("Apache-2.0");
+    expect(sdk.files).toContain("LICENSE");
+    expect(cli.files).toContain("LICENSE");
   });
 
   it("keeps the standalone CLI migration policy aligned with the server policy", () => {

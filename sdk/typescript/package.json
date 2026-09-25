@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
@@ -22,6 +23,5 @@
     "node": ">=24.7.0"
   },
   "sideEffects": false,
-  "license": "UNLICENSED",
-  "private": true
+  "license": "Apache-2.0"
 }

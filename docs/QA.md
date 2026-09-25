@@ -4138,3 +4138,25 @@ Nachtrag: der GitHub-Lauf auf diesem Stand ist gruen, alle sechs Jobs
 Betriebssystemen). Nicht erbracht: der
 Teardown des Migrationstests beendet weiterhin fremde Verbindungen mit
 FORCE, statt den Prozess-Pool sauber zu schliessen.
+
+## Apache 2.0 – Release 2.16
+
+Denzils Entscheidung nach meiner Empfehlung: `@qkern/sdk` und `@qkern/cli`
+unter Apache License 2.0. Gruende: Firmen koennen es ohne Rueckfrage
+einsetzen, die Patentklausel fehlt MIT, und Supabase, postgres-meta und
+versitygw stehen unter derselben Lizenz. Die Plattform selbst bleibt
+unlizenziert, also proprietaer; das ist eine andere Entscheidung an einem
+anderen Tag.
+
+Umgesetzt: der Lizenztext als `LICENSE` in beiden Paketen und im
+`files`-Feld, `license: "Apache-2.0"`, `private` entfernt, ein
+README-Abschnitt. `tests/developer-experience.test.ts` prueft alle drei.
+Die Namen sind auf npm frei, die Organisation `qkern` gehoert Denzil, der
+Token liegt als Secret, von ihm gesetzt.
+
+Checkpoint `2.16.0` am 25. September 2026: Lokal 1119 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen; Tarballs
+geprueft.
+
+Nicht erbracht: noch nichts veroeffentlicht. Zuerst der Probelauf des
+Workflows, dann Denzils Okay.

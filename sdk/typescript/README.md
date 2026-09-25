@@ -21,3 +21,7 @@ const result = await qkern.from("orders").select({ limit: 20 });
 
 Keys and tokens remain caller-owned and are sent only as headers. Writes are not
 retried automatically.
+
+## License
+
+Apache License 2.0. See `LICENSE` in this package.
