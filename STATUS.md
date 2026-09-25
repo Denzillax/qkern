@@ -122,7 +122,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`** | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence/History |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
-| SDK/CLI | **auf npm seit `2.16.0`**: `@qkern/sdk@1.7.0-alpha.3`, `@qkern/cli@1.7.0-alpha.4` (`2.17.0`), Apache 2.0, Tag `alpha`; CI-Evidenz auf drei Betriebssystemen seit `2.15.0` | Upgrade-E2E und ein `latest`-Release |
+| SDK/CLI | **auf npm seit `2.16.0`**: `@qkern/sdk@1.7.0-alpha.5`, `@qkern/cli@1.7.0-alpha.5` (`2.26.0`), Apache 2.0, Tag `alpha`; CI-Evidenz auf drei Betriebssystemen seit `2.15.0` | Upgrade-E2E und ein `latest`-Release |
 | Billing/Usage | Alpha 1 Metering-/Quota-Grundlage | transaktionale Produkt-Emitter, Reconciliation, Tarife und Rechnungsintegration |
 | Managed Swiss Operations | Nachweisverträge | Provider-Onboarding, HA, PITR, Restore, Datenflussnachweis |
 

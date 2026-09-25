@@ -4539,6 +4539,7 @@ bestanden, exit 0, zweimal reproduziert; Mutation 168 von 170, exit 1;
 Lokal 1158 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
 gruen; Tarballs geprueft.
 
-Nicht erbracht: Schemanamen mit Grossbuchstaben; alpha.5 ist noch nicht
-auf npm; der Table Editor ist mit einer solchen Tabelle im Browser nicht
+Nachtrag: alpha.5 von SDK und CLI ist auf npm, frische Installation
+geprueft; GitHub-Laeufe auf 2.26.0 gruen. Nicht erbracht: Schemanamen mit
+Grossbuchstaben; der Table Editor ist mit einer solchen Tabelle im Browser nicht
 gesehen, weil der Dev-Server keine Projektdatenbank hat.

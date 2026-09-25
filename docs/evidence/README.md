@@ -1328,3 +1328,4 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/names-mutation.log` | PostgreSQL 17, Mutation | **168 von 170, exit 1 – absichtlich** |
 | `2026-09-25/names-local-run1.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0 |
 | `2026-09-25/names-local-run2.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0, Wiederholung |
+| `2026-09-25/github-publish-alpha5-36182682935.json` | GitHub Actions, npm publish | SDK und CLI 1.7.0-alpha.5 hochgeladen |

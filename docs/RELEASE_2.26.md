@@ -26,5 +26,8 @@ Kein Leerzeichen, kein Anfuehrungszeichen. Jeder Name landet nur ueber
 ## Ehrlich offen
 
 - **Schemanamen bleiben klein.** `public` ist die Regel.
-- **alpha.5 von SDK und CLI ist noch nicht auf npm.**
+- **Nachtrag:** `@qkern/sdk@1.7.0-alpha.5` und `@qkern/cli@1.7.0-alpha.5`
+  sind auf npm (`docs/evidence/2026-09-25/github-publish-alpha5-36182682935.json`),
+  frische Installation geprueft. GitHub-Laeufe auf 2.26.0 gruen
+  (36182329349, 36182329347).
 - **Im Browser nicht gesehen.** Der Dev-Server hat keine Projektdatenbank.
