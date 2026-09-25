@@ -1236,3 +1236,4 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/cli-usage-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 3 faellt, exit 1 – absichtlich** |
 | `2026-09-25/cli-usage-local-run1.log` | Vitest lokal (Windows) | 1122 bestanden, exit 0 |
 | `2026-09-25/cli-usage-local-run2.log` | Vitest lokal (Windows) | 1122 bestanden, exit 0, Wiederholung |
+| `2026-09-25/github-publish-36166821746.json` | GitHub Actions, npm publish | `@qkern/cli@1.7.0-alpha.4` hochgeladen, SDK uebersprungen |

@@ -4197,5 +4197,8 @@ Checkpoint `2.17.0` am 25. September 2026: Lokal 1122 bestanden, 0
 fehlgeschlagen, zweimal reproduziert; `next build` gruen; Tarballs
 geprueft.
 
-Nicht erbracht: die Veroeffentlichung von alpha.4 folgt nach dem Commit;
-`latest` zeigt auf npm auf die Alpha, weil es die erste Version ist.
+Nachtrag: `@qkern/cli@1.7.0-alpha.4` ist auf npm, das SDK wurde vom
+Workflow uebersprungen; die frische Installation zeigt bei `--help` die
+Nutzung und bei `status` ohne Konfiguration den Grund. GitHub-Laeufe auf
+2.17.0 gruen. Nicht erbracht: `latest` zeigt auf npm auf die Alpha, weil es
+die erste Version ist.

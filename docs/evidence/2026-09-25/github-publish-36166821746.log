@@ -1,0 +1,16 @@
+2026-09-25T17:24:03.1338802Z npm notice name: @qkern/sdk
+2026-09-25T17:24:03.1339673Z npm notice version: 1.7.0-alpha.3
+2026-09-25T17:24:03.1343419Z npm notice shasum: 4b383fe93d0fb2da049fd581c48bdded3a7909f1
+2026-09-25T17:24:03.1345544Z npm notice total files: 7
+2026-09-25T17:24:03.4540713Z npm notice name: @qkern/cli
+2026-09-25T17:24:03.4541019Z npm notice version: 1.7.0-alpha.4
+2026-09-25T17:24:03.4542478Z npm notice shasum: eb6ac984a76ee3c21779aacd5f7931f6a3e111d0
+2026-09-25T17:24:03.4543621Z npm notice total files: 15
+2026-09-25T17:24:03.5864600Z     echo "$spec ist schon auf npm, wird uebersprungen"; echo "$name=skip" >> "$GITHUB_OUTPUT"
+2026-09-25T17:24:04.2539258Z @qkern/sdk@1.7.0-alpha.3 ist schon auf npm, wird uebersprungen
+2026-09-25T17:24:05.2353964Z npm notice name: @qkern/cli
+2026-09-25T17:24:05.2354811Z npm notice version: 1.7.0-alpha.4
+2026-09-25T17:24:05.2358859Z npm notice shasum: eb6ac984a76ee3c21779aacd5f7931f6a3e111d0
+2026-09-25T17:24:05.2360991Z npm notice total files: 15
+2026-09-25T17:24:06.0783833Z npm notice Publishing to https://registry.npmjs.org/ with tag alpha and public access
+2026-09-25T17:24:07.4658490Z + @qkern/cli@1.7.0-alpha.4

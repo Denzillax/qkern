@@ -29,7 +29,11 @@ Grund. Die CLI steht auf 1.7.0-alpha.4, das SDK bleibt bei alpha.3.
 
 ## Ehrlich offen
 
-- **alpha.4 wird nach diesem Commit veroeffentlicht.** Der Nachtrag folgt.
+- **Nachtrag:** `@qkern/cli@1.7.0-alpha.4` ist auf npm
+  (`docs/evidence/2026-09-25/github-publish-36166821746.json`), das SDK
+  wurde uebersprungen. Frische Installation: `npx qkern --help` zeigt die
+  Nutzung, `qkern status` ohne Konfiguration nennt die fehlende Datei. Die
+  GitHub-Laeufe auf 2.17.0 sind gruen (36166814389, 36166814406).
 - **`latest` zeigt auf die Alpha.** npm setzt es bei der ersten Version
   automatisch; ein `npm install @qkern/sdk` ohne Tag holt die Alpha.
 - **Kein Herkunftsnachweis**, solange das Repository privat ist.
