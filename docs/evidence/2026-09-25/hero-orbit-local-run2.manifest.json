@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "hero-orbit-local-run2.log",
+  "commit": "8a30a9ebb8fba4a9cb6bde69cee80e64e137cfbd",
+  "commitSubject": "release: 2.10.0 Das Q-Feld",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

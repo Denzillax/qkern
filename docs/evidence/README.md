@@ -1175,3 +1175,10 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-25/hero-field-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
 | `2026-09-25/hero-field-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.11 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/hero-orbit-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
+| `2026-09-25/hero-orbit-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |

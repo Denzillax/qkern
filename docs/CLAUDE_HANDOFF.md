@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.10.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.11.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,19 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.10.0`
-- Aktueller Slice: 2.10 Das Q-Feld – Denzils Wunsch nach einer
+- Paketversion: `2.11.0`
+- Aktueller Slice: 2.11 Der Q-Orbit – Denzils Referenz nexalead.framer.ai:
+  ein Partikelring um das Q, der mit der Maus interagiert.
+  `components/hero-orbit.tsx`: Canvas mit rund 1400 Partikeln auf drei
+  gleich geneigten Bahnen (innen schneller als aussen, eine Richtung), das
+  Q steht still in der Mitte; die Maus kippt den Ring, Partikel in
+  Zeigernaehe weichen aus. Ab 961 px steht der Text links und der Orbit
+  rechts, der Pruefbericht darunter; auf dem Handy liegt der Orbit hinter
+  der Ueberschrift. Das Q-Feld aus 2.10 (`hero-field.tsx`) ist entfernt.
+  Zweimal "bewegt sich komisch": erst drei Drehrichtungen und ein
+  mitdrehendes Q, dann eine Eigendrehung der Blickachse, die den Ring
+  taumeln liess; beides weg
+- Vorheriger Slice: 2.10 Das Q-Feld – Denzils Wunsch nach einer
   Hintergrund-Animation mit dem Q, die mit der Maus interagiert.
   `components/hero-field.tsx`: sieben blasse Q-Symbole (Pfad aus dem
   Marken-SVG, inline) an festen Positionen im Hero, treiben per CSS-Keyframe
@@ -49,7 +60,7 @@ Release Notes bleiben unverändert.
   dem Zeiger. Nur mit `hover: hover`-Zeiger; `prefers-reduced-motion`
   schaltet Drift und Parallaxe ab; auf dem Telefon vier Symbole, kleiner.
   Inhalt über dem Feld (`.hero > .shell` z-index 1)
-- Vorheriger Slice: 2.9 Trigger aus dem Katalog – erster Schritt von Punkt 2
+- Davor: 2.9 Trigger aus dem Katalog – erster Schritt von Punkt 2
   (Supabase-Funktionen übertragen): `inspectTriggers` im Data-Plane-Port
   (`lib/server/data-plane/service.ts`, SQL abgeleitet aus
   supabase/postgres-meta `triggers.sql`, Apache 2.0, auf `pg_catalog`

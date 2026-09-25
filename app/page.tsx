@@ -4,7 +4,7 @@ import { ArrowRight, Check, CircleDashed, Code2, Network, ShieldCheck, Sparkles 
 import { QKERNSymbol, QKERNLogo } from "@/components/brand";
 import { SiteHeader } from "@/components/site-header";
 import { CountUp, Reveal } from "@/components/reveal";
-import { HeroField } from "@/components/hero-field";
+import { HeroOrbit } from "@/components/hero-orbit";
 import styles from "./page.module.css";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 import { currentLocale } from "@/lib/i18n/server";
@@ -37,7 +37,6 @@ export default async function HomePage() {
       <SiteHeader />
 
       <section className={styles.hero}>
-        <HeroField />
         <div className={styles.shell}>
           <div className={styles.heroGrid}>
             <div className={styles.heroCopy}>
@@ -52,6 +51,8 @@ export default async function HomePage() {
                 <Link className="secondary-button" href="/console">{t.hero.secondary}</Link>
               </div>
             </div>
+
+            <HeroOrbit />
 
             <div className={styles.record}>
               <div className={styles.recordHead}>

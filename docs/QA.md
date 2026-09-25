@@ -3984,3 +3984,37 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: kein Bezug auf die Scrollposition; die Positionen sind
 handgesetzt, nicht nach Textbreite berechnet.
+
+## Der Q-Orbit – Release 2.11
+
+Denzils Referenz: der Hero auf nexalead.framer.ai, ein Partikelring, der
+mit der Maus interagiert, bei QKERN mit dem Q in der Mitte. Ein Canvas
+zeichnet rund 1400 Partikel auf drei gleich geneigten Bahnen, alle in
+einer Richtung, innen schneller als aussen; hinten sind sie kleiner und
+blasser, das Q steht still mit weichem Halo. Die Maus kippt den ganzen
+Ring sanft, Partikel in Zeigernaehe weichen aus und kehren zurueck.
+
+Zweimal kam "es bewegt sich komisch". Beim ersten Mal drehten die drei
+Bahnen in verschiedene Richtungen, wackelten und das Q drehte mit. Beim
+zweiten Mal blieb eine Eigendrehung der Blickachse, die den geneigten Ring
+taumeln liess wie einen Kreisel. Jetzt steht die Bahn fest, nur die
+Partikel laufen darauf, und nur die Maus kippt sie.
+
+Layout nach Denzils Wunsch: ab 961 px steht der Text links und der Orbit
+gross rechts (bis 720 px), der Pruefbericht darunter ueber beide Spalten;
+auf dem Handy bleibt es wie zuvor, zentriert mit dem Orbit hinter der
+Ueberschrift. Das Q-Feld aus 2.10 ist entfernt, samt CSS.
+
+Stillhalten: `prefers-reduced-motion` zeichnet ein Bild; ausserhalb des
+Sichtfelds pausiert die Schleife; nur Zeiger mit Hover bekommen die
+Interaktion. Rein dekorativ, `aria-hidden`, keine Klicks.
+
+Im Browser bei 1280 px gemessen: Ueberschrift linksbuendig ab x 45, Canvas
+rechts ab x 687 mit 578 px Kante, Canvas bemalt.
+
+Checkpoint `2.11.0` am 25. September 2026: Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen; Stacks
+unveraendert.
+
+Nicht erbracht: kein Test fuer die Canvas-Bewegung selbst (Vitest hat kein
+Canvas); der Ring ist Denzils Auge noch nicht vorgefuehrt worden.

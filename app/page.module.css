@@ -659,69 +659,19 @@
   .plans { grid-template-columns: 1fr; }
 }
 
-/* Q-Feld im Hero (2.10): blasse Q-Symbole treiben und weichen der Maus aus */
-.field {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-  --mx: 0;
-  --my: 0;
-  --px: 50%;
-  --py: 35%;
-}
-
-.fieldGlow {
-  position: absolute;
-  left: var(--px);
-  top: var(--py);
-  width: 520px;
-  height: 520px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--qkern-primary) 18%, transparent), transparent 62%);
-  opacity: 0;
-  transition: opacity 0.6s ease;
-  filter: blur(12px);
-}
-
-.fieldLit .fieldGlow { opacity: 1; }
-
-.fieldMark {
-  position: absolute;
-  height: auto;
-  color: var(--qkern-primary);
-  fill: currentColor;
-  opacity: var(--opacity);
-  transform:
-    translate(calc(var(--mx) * var(--depth) * -1px), calc(var(--my) * var(--depth) * -1px))
-    rotate(var(--rotate));
-  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
-  animation-name: qdrift;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-  animation-direction: alternate;
-}
-
-.fieldLit .fieldMark { opacity: calc(var(--opacity) * 1.6); }
-
-@keyframes qdrift {
-  from { translate: 0 0; }
-  to { translate: 14px -22px; }
-}
-
-.heroGrid { z-index: 1; }
-
-@media (prefers-reduced-motion: reduce) {
-  .fieldMark { animation: none; transition: none; }
-  .fieldGlow { display: none; }
-}
-
-@media (max-width: 680px) {
-  .fieldMark { width: 60% !important; }
-  .fieldMark:nth-child(n + 5) { display: none; }
-}
-
-/* Der Inhalt liegt ueber dem Q-Feld */
+/* Q-Orbit (2.11): Partikelring mit dem Q, nach dem Vorbild von nexalead.framer.ai.
+   Auf dem Handy liegt er hinter der Ueberschrift; ab 961 px steht der Text links
+   und der Orbit gross rechts (Denzils Wunsch), der Pruefbericht darunter. */
 .hero > .shell { position: relative; z-index: 1; }
+.orbit { position: absolute; left: 50%; top: -60px; width: min(640px, 90vw); height: min(640px, 90vw); transform: translateX(-50%); color: var(--qkern-primary); pointer-events: none; z-index: 0; }
+.heroCopy { position: relative; z-index: 1; }
+
+@media (min-width: 961px) {
+  .hero { text-align: left; }
+  .heroGrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; justify-items: stretch; column-gap: 24px; row-gap: 56px; }
+  .heroCopy { max-width: none; }
+  .heroCopy p { margin-left: 0; }
+  .heroActions { justify-content: flex-start; }
+  .orbit { position: relative; left: auto; top: auto; transform: none; width: min(100%, 720px); height: auto; aspect-ratio: 1; justify-self: end; margin: -40px -40px -40px 0; }
+  .record { grid-column: 1 / -1; justify-self: center; }
+}
