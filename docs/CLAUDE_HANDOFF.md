@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.12.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.13.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,14 +39,21 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.12.0`
-- Aktueller Slice: 2.12 Wie Menschen reden – Denzil zur Hero-Zeile
+- Paketversion: `2.13.0`
+- Aktueller Slice: 2.13 Eine Schrift – Denzil zur Badge "282 archivierte
+  Pruefläufe": die Schriftart ist schrecklich, ueberall aendern. Das war
+  JetBrains Mono als Label-Schrift. Jetzt laufen alle Labels, Kicker, Zaehler
+  und Kleintexte auf Landing (`app/page.module.css`) und in der Console
+  (`app/globals.css`, 41 Regeln) in Manrope 600; Mono nur noch fuer echten
+  Code: `<code>` in den Schnittstellen, Editor, Zeilennummern, `pre`, Diff
+  (`--qkern-font-mono`)
+- Vorheriger Slice: 2.12 Wie Menschen reden – Denzil zur Hero-Zeile
   "Backend-Bausteine, die ihre Zusagen belegen": so reden keine Menschen.
   Neu in `lib/i18n/landing.ts` (hero, meta, footer.tagline, vier Sprachen)
   und `app/layout.tsx`: "Dein Backend. Getestet, bevor du es anfasst." mit
   einem Lead in Alltagswoertern (Login statt Auth, Dateien statt Storage).
   Massstab fuer kuenftige Texte: der humanizer-Skill, Abschnitt F
-- Vorheriger Slice: 2.11 Der Q-Orbit – Denzils Referenz nexalead.framer.ai:
+- Davor: 2.11 Der Q-Orbit – Denzils Referenz nexalead.framer.ai:
   ein Partikelring um das Q, der mit der Maus interagiert.
   `components/hero-orbit.tsx`: Canvas mit rund 1400 Partikeln auf drei
   gleich geneigten Bahnen (innen schneller als aussen, eine Richtung), das

@@ -4034,3 +4034,23 @@ fehlgeschlagen, zweimal reproduziert; Stacks unveraendert.
 
 Nicht erbracht: die uebrigen Ueberschriften der Seite sind nicht neu
 geprueft, nur der Hero.
+
+## Eine Schrift – Release 2.13
+
+Denzil zur Badge "282 archivierte Pruefläufe": die Schriftart ist
+schrecklich, ueberall aendern. Es war JetBrains Mono, als Schrift fuer
+Labels, Kicker, Zaehler und Kleintexte auf der ganzen Seite und in der
+Console. Jetzt laufen alle diese Stellen in Manrope mit Gewicht 600, der
+Schrift, die auch der Fliesstext hat. Mono bleibt nur, wo wirklich Code
+steht: die `<code>`-Zeilen bei den Schnittstellen, Editor, Zeilennummern,
+`pre`-Bloecke und der Diff, ueber `--qkern-font-mono`.
+
+Gemessen bei 1280 px: die Badge rendert in Manrope 600; JetBrains Mono
+sitzt nur noch auf `code`-Elementen.
+
+Checkpoint `2.13.0` am 25. September 2026: Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen; Stacks
+unveraendert.
+
+Nicht erbracht: Buchstabenabstaende der alten Mono-Labels (bis 0,16 em)
+sind geblieben und koennten in der Sans enger sein.

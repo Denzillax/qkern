@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "font-local-run1.log",
+  "commit": "3152ed3d1d4ef7ec3e9904bf475c6c4fe740f1b6",
+  "commitSubject": "release: 2.12.0 Wie Menschen reden",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

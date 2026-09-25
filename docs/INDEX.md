@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.12.md](RELEASE_2.12.md) | Aktueller Release: Wie Menschen reden |
+| [RELEASE_2.13.md](RELEASE_2.13.md) | Aktueller Release: Eine Schrift |
+| [RELEASE_2.12.md](RELEASE_2.12.md) | Wie Menschen reden |
 | [RELEASE_2.11.md](RELEASE_2.11.md) | Der Q-Orbit |
 | [RELEASE_2.10.md](RELEASE_2.10.md) | Das Q-Feld |
 | [RELEASE_2.9.md](RELEASE_2.9.md) | Trigger aus dem Katalog |
