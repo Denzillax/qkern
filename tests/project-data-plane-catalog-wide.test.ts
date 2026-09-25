@@ -49,7 +49,7 @@ describe("project data plane database-wide catalog views", () => {
   it("maps extensions, roles and publications and groups column privileges per column and grantee", async () => {
     const built = fixture((text) => text.includes("pg_available_extensions()") ? [extensionRow({}), extensionRow({ name: "pg_trgm", default_version: "1.6", installed_version: null, schema: null })]
       : text.includes("pg_catalog.starts_with(account.rolname, 'pg_')") ? [roleRow({}), roleRow({ role_name: "admin", superuser: true, connection_limit: 5, valid_until: "2027-01-01T00:00:00Z" })]
-      : text.includes("pg_catalog.pg_publication AS publication") ? [publicationRow({}), publicationRow({ publication_name: "everything", all_tables: true, tables: [], publish_truncate: true })]
+      : text.includes("pg_catalog.pg_publication AS publication") ? [publicationRow({}), publicationRow({ publication_name: "everything", all_tables: true, tables: [], publish_truncate: true }), publicationRow({ publication_name: "by_schema", tables: ["audit.*", "public.accounts"] })]
       : text.includes("pg_catalog.aclexplode(attribute.attacl)") ? [
         privilegeRow({}), privilegeRow({ privilege_type: "UPDATE", is_grantable: true }),
         privilegeRow({ column_name: "id", grantee: "public" }), privilegeRow({ table_name: "orders", column_name: "total", grantee: "app_user", privilege_type: "REFERENCES" }),
@@ -65,7 +65,7 @@ describe("project data plane database-wide catalog views", () => {
       ["app_user", false, true, null, null], ["admin", true, true, 5, "2027-01-01T00:00:00Z"],
     ]);
     const publications = await built.service.inspectPublications(context, scope);
-    expect(publications.publications.map((p) => [p.name, p.allTables, p.tables, p.publishTruncate])).toEqual([["changes", false, ["public.accounts"], false], ["everything", true, [], true]]);
+    expect(publications.publications.map((p) => [p.name, p.allTables, p.tables, p.publishTruncate])).toEqual([["changes", false, ["public.accounts"], false], ["everything", true, [], true], ["by_schema", false, ["audit.*", "public.accounts"], false]]);
     const privileges = await built.service.inspectColumnPrivileges(context, scope, "public");
     expect(privileges.privileges).toEqual([
       { table: "accounts", column: "email", grantee: "app_user", privileges: [{ type: "select", grantable: false }, { type: "update", grantable: true }] },
@@ -73,7 +73,7 @@ describe("project data plane database-wide catalog views", () => {
       { table: "orders", column: "total", grantee: "app_user", privileges: [{ type: "references", grantable: false }] },
     ]);
     expect(built.client.calls.find((call) => call.text.includes("pg_available_extensions()"))?.values).toEqual([401]);
-    expect(built.client.calls.find((call) => call.text.includes("aclexplode"))?.values).toEqual(["public", 2001]);
+    expect(built.client.calls.find((call) => call.text.includes("attribute.attacl IS NOT NULL"))?.values).toEqual(["public", 2001]);
     expect(built.client.release).toHaveBeenCalledTimes(4);
   });
 
@@ -95,6 +95,8 @@ describe("project data plane database-wide catalog views", () => {
     const badPublication = fixture((text) => text.includes("pg_catalog.pg_publication AS publication") ? [publicationRow({ tables: "public.accounts" })] : []);
     await expect(badPublication.service.inspectPublications(context, scope)).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
     const badPrivilege = fixture((text) => text.includes("aclexplode") ? [privilegeRow({ privilege_type: "TRUNCATE" })] : []);
+    const nullGrantee = fixture((text) => text.includes("aclexplode") ? [privilegeRow({ grantee: null })] : []);
+    await expect(nullGrantee.service.inspectColumnPrivileges(context, scope, "public")).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
     await expect(badPrivilege.service.inspectColumnPrivileges(context, scope, "public")).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
   });
 

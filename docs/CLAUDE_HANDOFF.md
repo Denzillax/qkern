@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.22.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.23.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,15 +39,33 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.22.0`
-- Aktueller Slice: 2.22 Die Schluessel zum Token – `set-jwt` ist eine echte
+- Paketversion: `2.23.0`
+- Aktueller Slice: 2.23 Was das Review fand – ein Review-Agent hat 2.14 bis
+  2.22 gelesen. Zwei echte Befunde, beide behoben: (1) `/schema/roles` las
+  `pg_roles` clusterweit und zeigte auf dem geteilten Cluster die
+  Steuerungsrollen samt Superuser; jetzt nur Rollen, die diese Datenbank
+  betreffen (eigene, Eigentuemer in Anwendungsschemata, Empfaenger von
+  Tabellen- oder Spaltenrechten, in Policies genannt) und keine Superuser.
+  Integration: eine fremde Rolle ohne Bezug erscheint nicht, kein
+  Superuser; Mutation (Superuser-Filter weg) 1 von 169 faellt. (2) Die
+  Bezeichner-Grammatik `IDENTIFIER` galt auch fuer Katalog-Rueckgaben; ein
+  Policy-Name wie `Enable read access for all users` (Supabase-Vorlage)
+  oder `Order_pkey` leerte die ganze Ansicht mit 503. Jetzt `catalogName`
+  (Typ, 1 bis 63 Zeichen, keine Steuerzeichen) fuer alle Katalognamen seit
+  2.9; `IDENTIFIER` bleibt fuer Eingaben (Schema-Parameter) und die
+  Grenzpruefung. Dazu: Publikationen mit FOR TABLES IN SCHEMA als
+  `schema.*`; `publish.yml` interpoliert den dist-tag nicht mehr in die
+  Shell (env plus Pruefung). Offen: `inspectSchema` (1.x) prueft
+  Tabellen- und Spaltennamen weiter mit `IDENTIFIER`, das ist ein aelterer
+  Vertrag mit Folgen fuer die Data API und braucht einen eigenen Slice
+- Vorheriger Slice: 2.22 Die Schluessel zum Token – `set-jwt` ist eine echte
   Ansicht (`components/console/jwt-keys-view.tsx`): liest das JWKS des
   Projekts (`auth/.well-known/jwks.json`, dieselbe Adresse, die eine App
   zum Pruefen liest), zeigt kid, kty, crv, alg, use und den Anfang von x,
   dazu die absolute JWKS-Adresse zum Kopieren. Nur lesend; Rotation bleibt
   in der Konfiguration des Auth-Dienstes, und der Zaehler sagt das. Kein
   Server-Code, keine neue Route; drei Sprachen. 66 Platzhalter uebrig
-- Vorheriger Slice: 2.21 Drei, die es schon gab – die drei Platzhalter mit
+- Davor: 2.21 Drei, die es schon gab – die drei Platzhalter mit
   Backend "vorhanden" sind eigene Ansichten: `components/console/cron-view.tsx`
   (`int-cron`, `/compute/cron`, anlegen, pausieren, loeschen, dieselben
   Aktionen wie unter Functions & Jobs), `api-keys-view.tsx` (`set-api-keys`,

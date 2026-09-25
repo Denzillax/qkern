@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "review-local-run1.log",
+  "commit": "d0b695b63c81fe7da0e0fd4cb4ba2c9a71f8fba8",
+  "commitSubject": "release: 2.22.0 Die Schluessel zum Token",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1147 passed | 250 skipped (1397)",
+  "passed": 1147,
+  "failed": 0,
+  "skipped": 250,
+  "images": []
+}

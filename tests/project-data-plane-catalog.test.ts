@@ -53,6 +53,8 @@ describe("project data plane catalog views", () => {
       policyRow({}),
       policyRow({ policy_name: "insert_own", command: "a", permissive: false, roles: ["app_user", "app_admin"], using_expression: null, check_expression: "(owner = current_user)" }),
       policyRow({ policy_name: "everything", command: "*" }),
+      // Supabase Studios Vorlage heisst genau so (2.23).
+      policyRow({ policy_name: "Enable read access for all users", table_name: "Order" }),
     ] : text.includes("pg_catalog.pg_enum ") ? [enumRow({}), enumRow({ type_name: "empty", labels: [] })] : []);
 
     const indexes = await built.service.inspectIndexes(context, scope, "public");
@@ -66,6 +68,7 @@ describe("project data plane catalog views", () => {
       ["own_rows", "select", true, ["public"], "(owner = current_user)", null],
       ["insert_own", "insert", false, ["app_user", "app_admin"], null, "(owner = current_user)"],
       ["everything", "all", true, ["public"], "(owner = current_user)", null],
+      ["Enable read access for all users", "select", true, ["public"], "(owner = current_user)", null],
     ]);
     const enums = await built.service.inspectEnumTypes(context, scope, "public");
     expect(enums.types).toEqual([{ name: "mood", labels: ["sad", "ok", "happy"] }, { name: "empty", labels: [] }]);
@@ -82,6 +85,8 @@ describe("project data plane catalog views", () => {
     expect(result.truncated).toBe(true);
 
     const badIndex = fixture((text) => text.includes("pg_catalog.pg_index ") ? [indexRow({ columns: "id" })] : []);
+    const longIndex = fixture((text) => text.includes("pg_catalog.pg_index ") ? [indexRow({ index_name: "i".repeat(64) })] : []);
+    await expect(longIndex.service.inspectIndexes(context, scope, "public")).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
     await expect(badIndex.service.inspectIndexes(context, scope, "public")).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
     const badPolicy = fixture((text) => text.includes("pg_catalog.pg_policy ") ? [policyRow({ command: "x" })] : []);
     await expect(badPolicy.service.inspectPolicies(context, scope, "public")).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });

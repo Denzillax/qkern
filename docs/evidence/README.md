@@ -1286,3 +1286,13 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-25/jwt-keys-local-run1.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0 |
 | `2026-09-25/jwt-keys-local-run2.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.23 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/review-run1.log` | PostgreSQL 17 | 169 von 169, exit 0 |
+| `2026-09-25/review-run2.log` | PostgreSQL 17 | 169 von 169, exit 0, Wiederholung |
+| `2026-09-25/review-mutation.log` | PostgreSQL 17, Mutation | **168 von 169, exit 1 – absichtlich** |
+| `2026-09-25/review-local-run1.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0 |
+| `2026-09-25/review-local-run2.log` | Vitest lokal (Windows) | 1147 bestanden, exit 0, Wiederholung |

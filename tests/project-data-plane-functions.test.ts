@@ -51,6 +51,8 @@ describe("project data plane functions", () => {
       row({ function_name: "total_for", language: "sql", arguments: "account integer, since date DEFAULT now()", identity_arguments: "account integer, since date", return_type: "SETOF integer", returns_set: true, volatility: "s" }),
       row({ function_name: "archive", kind: "p", return_type: null, security_definer: true }),
       row({ function_name: "square", language: "sql", arguments: "x integer", identity_arguments: "x integer", return_type: "integer", volatility: "i" }),
+      // Katalognamen mit Grossbuchstaben sind legitim (2.23).
+      row({ function_name: "camelCaseHelper", language: "plv8" }),
     ] : []);
     const result = await built.service.inspectFunctions(context, scope, "public");
     expect(result).toMatchObject({ source: "postgres", schema: "public", truncated: false });
@@ -59,6 +61,7 @@ describe("project data plane functions", () => {
       ["total_for", "function", "stable", "SETOF integer", true, false],
       ["archive", "procedure", "volatile", null, false, true],
       ["square", "function", "immutable", "integer", false, false],
+      ["camelCaseHelper", "function", "volatile", "trigger", false, false],
     ]);
     expect(result.functions[1]).toMatchObject({ arguments: "account integer, since date DEFAULT now()", identityArguments: "account integer, since date", language: "sql" });
     expect(built.client.calls.map((call) => call.text)).toEqual(expect.arrayContaining(["BEGIN READ ONLY", "COMMIT"]));
@@ -72,7 +75,7 @@ describe("project data plane functions", () => {
     expect(result.functions).toHaveLength(200);
     expect(result.truncated).toBe(true);
 
-    for (const bad of [{ kind: "a" }, { volatility: "x" }, { language: "PL/pgSQL" }, { arguments: "x".repeat(2001) }, { returns_set: "yes" }]) {
+    for (const bad of [{ kind: "a" }, { volatility: "x" }, { language: "pl\u0000pgsql" }, { function_name: "f".repeat(64) }, { arguments: "x".repeat(2001) }, { returns_set: "yes" }]) {
       const drifted = fixture((text) => text.includes("pg_catalog.pg_proc") ? [row(bad)] : []);
       await expect(drifted.service.inspectFunctions(context, scope, "public"), JSON.stringify(bad)).rejects.toMatchObject({ code: "DATA_PLANE_BOUNDARY_REJECTED" });
     }

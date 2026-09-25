@@ -18,6 +18,7 @@ const enabled = Boolean(ownerUrl && projectApiUrl);
 describe.runIf(enabled)("Data-plane database-wide catalog views PostgreSQL certification", () => {
   const schema = `wide_${randomUUID().replaceAll("-", "_")}`;
   const publication = `pub_${randomUUID().replaceAll("-", "_").slice(0, 12)}`;
+  const stranger = `stranger_${randomUUID().replaceAll("-", "_").slice(0, 12)}`;
   const scope = { projectId: "certification-project", environment: "development" as const };
   const context = { organizationId: randomUUID(), actorRef: "console@qkern.test" };
 
@@ -36,6 +37,8 @@ describe.runIf(enabled)("Data-plane database-wide catalog views PostgreSQL certi
     await owner.query(`GRANT UPDATE (note) ON "${schema}".accounts TO qkern_project_api_app WITH GRANT OPTION`);
     await owner.query(`GRANT SELECT (id) ON "${schema}".orders TO PUBLIC`);
     await owner.query(`CREATE PUBLICATION "${publication}" FOR TABLE "${schema}".accounts, "${schema}".orders WITH (publish = 'insert, update')`);
+    // Eine Rolle ohne jeden Bezug zu dieser Datenbank darf nicht erscheinen (2.23).
+    await owner.query(`CREATE ROLE "${stranger}" NOLOGIN`);
     service = new ProjectDataPlaneService(
       { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
       { resolve: async () => ({
@@ -50,6 +53,7 @@ describe.runIf(enabled)("Data-plane database-wide catalog views PostgreSQL certi
   afterAll(async () => {
     if (owner) {
       await owner.query(`DROP PUBLICATION IF EXISTS "${publication}"`);
+      await owner.query(`DROP ROLE IF EXISTS "${stranger}"`);
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     }
     await Promise.all([owner?.end(), projectApi?.end()]);
@@ -69,9 +73,11 @@ describe.runIf(enabled)("Data-plane database-wide catalog views PostgreSQL certi
     expect(result.extensions.slice(firstUninstalled).every((extension) => extension.installedVersion === null)).toBe(true);
   });
 
-  it("lists roles without the predefined pg_ roles and with the project API role as it is", async () => {
+  it("lists only roles that touch this database: no pg_ roles, no superusers, no strangers, the project API role as it is", async () => {
     const result = await service.inspectRoles(context, scope);
     expect(result.roles.some((role) => role.name.startsWith("pg_"))).toBe(false);
+    expect(result.roles.some((role) => role.superuser)).toBe(false);
+    expect(result.roles.some((role) => role.name === stranger)).toBe(false);
     const api = result.roles.find((role) => role.name === "qkern_project_api_app");
     expect(api).toMatchObject({ login: true, superuser: false, bypassRowSecurity: false, createDatabase: false, createRole: false, replication: false, connectionLimit: null, validUntil: null });
   });

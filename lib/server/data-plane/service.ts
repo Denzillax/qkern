@@ -201,7 +201,7 @@ export type ProjectPublication = {
   publishDelete: boolean;
   publishTruncate: boolean;
   allTables: boolean;
-  /** `schema.table`, leer bei FOR ALL TABLES */
+  /** `schema.table`, oder `schema.*` bei FOR TABLES IN SCHEMA; leer bei FOR ALL TABLES */
   tables: string[];
 };
 
@@ -405,7 +405,6 @@ type FunctionRow = {
 };
 
 const MAX_FUNCTIONS = 200;
-const LANGUAGE = /^[a-z_][a-z0-9_]{0,62}$/;
 
 /**
  * Funktionen und Prozeduren eines Schemas, aus `pg_proc` (2.18).
@@ -582,6 +581,13 @@ const EXTENSIONS_SQL = `
  * Abgeleitet aus `roles.sql` in postgres-meta (Apache 2.0), ohne Passwort
  * (in `pg_roles` ohnehin maskiert) und ohne Verbindungszaehler
  * (`pg_stat_activity` zeigt fremde Sitzungen nur mit Sonderrecht).
+ *
+ * `pg_roles` ist clusterweit. Seit 2.23 (Review-Befund) bleiben nur Rollen,
+ * die diese Datenbank betreffen: die eigene, Eigentuemer von Objekten in
+ * Anwendungsschemata, Empfaenger von Tabellen- oder Spaltenrechten dort,
+ * oder in einer Policy genannt. Superuser bleiben draussen; auf einem
+ * geteilten Cluster gehoeren Steuerungs- und Nachbarrollen nicht in die
+ * Ansicht eines Projekts.
  */
 const ROLES_SQL = `
   SELECT account.rolname AS role_name,
@@ -596,6 +602,24 @@ const ROLES_SQL = `
          to_char(account.rolvaliduntil AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS valid_until
   FROM pg_catalog.pg_roles AS account
   WHERE NOT pg_catalog.starts_with(account.rolname, 'pg_')
+    AND NOT account.rolsuper
+    AND (account.rolname = current_user
+      OR EXISTS (SELECT 1 FROM pg_catalog.pg_class AS relation
+                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                 WHERE relation.relowner = account.oid
+                   AND namespace.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(namespace.nspname, 'pg_'))
+      OR EXISTS (SELECT 1 FROM pg_catalog.pg_class AS relation
+                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                 CROSS JOIN LATERAL pg_catalog.aclexplode(relation.relacl) AS acl
+                 WHERE acl.grantee = account.oid
+                   AND namespace.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(namespace.nspname, 'pg_'))
+      OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute AS attribute
+                 JOIN pg_catalog.pg_class AS relation ON relation.oid = attribute.attrelid
+                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                 CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+                 WHERE acl.grantee = account.oid AND attribute.attnum > 0
+                   AND namespace.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(namespace.nspname, 'pg_'))
+      OR EXISTS (SELECT 1 FROM pg_catalog.pg_policy AS policy WHERE account.oid = ANY (policy.polroles)))
   ORDER BY account.rolname ASC
   LIMIT $1`;
 
@@ -612,11 +636,17 @@ const PUBLICATIONS_SQL = `
          publication.pubdelete AS publish_delete,
          publication.pubtruncate AS publish_truncate,
          publication.puballtables AS all_tables,
-         COALESCE((SELECT array_agg(namespace.nspname || '.' || relation.relname ORDER BY namespace.nspname, relation.relname)
-                   FROM pg_catalog.pg_publication_rel AS member
-                   JOIN pg_catalog.pg_class AS relation ON relation.oid = member.prrelid
-                   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-                   WHERE member.prpubid = publication.oid), ARRAY[]::text[]) AS tables
+         COALESCE((SELECT array_agg(entry ORDER BY entry) FROM (
+                     SELECT namespace.nspname || '.' || relation.relname AS entry
+                     FROM pg_catalog.pg_publication_rel AS member
+                     JOIN pg_catalog.pg_class AS relation ON relation.oid = member.prrelid
+                     JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                     WHERE member.prpubid = publication.oid
+                     UNION ALL
+                     SELECT namespace.nspname || '.*'
+                     FROM pg_catalog.pg_publication_namespace AS member
+                     JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = member.pnnspid
+                     WHERE member.pnpubid = publication.oid) AS entries), ARRAY[]::text[]) AS tables
   FROM pg_catalog.pg_publication AS publication
   ORDER BY publication.pubname ASC
   LIMIT $1`;
@@ -652,6 +682,17 @@ function assertInspectableSchema(schema: string): void {
       schema === "information_schema" || schema === "qkern_internal") {
     throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
   }
+}
+
+/**
+ * Ein Name, den der Katalog zurueckgibt (2.23): nicht die Bezeichner-Grammatik
+ * fuer Eingaben, denn `"Order_pkey"`, `Enable read access for all users` oder
+ * `uuid-ossp` sind legitime Katalogwerte. Sie kommen parametrisiert aus dem
+ * Katalog und gehen nur als JSON hinaus; geprueft wird Typ, Laenge (PostgreSQL
+ * kappt bei 63 Bytes) und dass keine Steuerzeichen drinstecken.
+ */
+function catalogName(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 63 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 function boundedText(value: unknown, max: number): value is string | null {
@@ -736,8 +777,8 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const result = await client.query<TriggerRow>(TRIGGERS_SQL, [schema, MAX_TRIGGERS + 1]);
       const rows = result.rows.slice(0, MAX_TRIGGERS);
       const triggers: ProjectTrigger[] = rows.map((row) => {
-        if (!IDENTIFIER.test(row.trigger_name) || !IDENTIFIER.test(row.table_name) ||
-            !IDENTIFIER.test(row.function_name) || !IDENTIFIER.test(row.function_schema) ||
+        if (!catalogName(row.trigger_name) || !catalogName(row.table_name) ||
+            !catalogName(row.function_name) || !catalogName(row.function_schema) ||
             !["O", "A", "R", "D"].includes(row.enabled_mode) ||
             (row.condition !== null && (typeof row.condition !== "string" || row.condition.length > 2000))) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
@@ -777,7 +818,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const result = await client.query<FunctionRow>(FUNCTIONS_SQL, [schema, MAX_FUNCTIONS + 1]);
       const rows = result.rows.slice(0, MAX_FUNCTIONS);
       const functions: ProjectFunction[] = rows.map((row) => {
-        if (!IDENTIFIER.test(row.function_name) || !LANGUAGE.test(row.language) ||
+        if (!catalogName(row.function_name) || !catalogName(row.language) ||
             !["f", "p"].includes(row.kind) || !["i", "s", "v"].includes(row.volatility) ||
             typeof row.arguments !== "string" || row.arguments.length > 2000 ||
             typeof row.identity_arguments !== "string" || row.identity_arguments.length > 2000 ||
@@ -812,7 +853,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const result = await client.query<IndexRow>(INDEXES_SQL, [schema, MAX_INDEXES + 1]);
       const rows = result.rows.slice(0, MAX_INDEXES);
       const indexes: ProjectIndex[] = rows.map((row) => {
-        if (!IDENTIFIER.test(row.index_name) || !IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.access_method) ||
+        if (!catalogName(row.index_name) || !catalogName(row.table_name) || !catalogName(row.access_method) ||
             typeof row.is_unique !== "boolean" || typeof row.is_primary !== "boolean" || typeof row.is_valid !== "boolean" ||
             !identifierList(row.columns, 32) || typeof row.definition !== "string" || row.definition.length > MAX_EXPRESSION ||
             !boundedText(row.predicate, MAX_EXPRESSION)) {
@@ -839,7 +880,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const result = await client.query<PolicyRow>(POLICIES_SQL, [schema, MAX_POLICIES + 1]);
       const rows = result.rows.slice(0, MAX_POLICIES);
       const policies: ProjectPolicy[] = rows.map((row) => {
-        if (!IDENTIFIER.test(row.policy_name) || !IDENTIFIER.test(row.table_name) || typeof row.permissive !== "boolean" ||
+        if (!catalogName(row.policy_name) || !catalogName(row.table_name) || typeof row.permissive !== "boolean" ||
             !["r", "a", "w", "d", "*"].includes(row.command) || !identifierList(row.roles, 64) || row.roles.length === 0 ||
             !boundedText(row.using_expression, MAX_EXPRESSION) || !boundedText(row.check_expression, MAX_EXPRESSION)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
@@ -865,7 +906,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const result = await client.query<EnumTypeRow>(ENUM_TYPES_SQL, [schema, MAX_ENUM_TYPES + 1]);
       const rows = result.rows.slice(0, MAX_ENUM_TYPES);
       const types: ProjectEnumType[] = rows.map((row) => {
-        if (!IDENTIFIER.test(row.type_name) || !identifierList(row.labels, MAX_ENUM_LABELS)) {
+        if (!catalogName(row.type_name) || !identifierList(row.labels, MAX_ENUM_LABELS)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }
         return { name: row.type_name, labels: row.labels };
@@ -885,7 +926,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const extensions: ProjectExtension[] = rows.map((row) => {
         if (!EXTENSION_NAME.test(row.name) || !VERSION.test(row.default_version) ||
             (row.installed_version !== null && !VERSION.test(row.installed_version)) ||
-            (row.schema !== null && !IDENTIFIER.test(row.schema)) || !boundedText(row.comment, 400)) {
+            (row.schema !== null && !catalogName(row.schema)) || !boundedText(row.comment, 400)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }
         return { name: row.name, defaultVersion: row.default_version, installedVersion: row.installed_version, schema: row.schema, comment: row.comment };
@@ -904,7 +945,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const rows = result.rows.slice(0, MAX_ROLES);
       const roles: ProjectRole[] = rows.map((row) => {
         const flags = [row.superuser, row.create_database, row.create_role, row.inherit, row.login, row.replication, row.bypass_rls];
-        if (!IDENTIFIER.test(row.role_name) || flags.some((flag) => typeof flag !== "boolean") ||
+        if (!catalogName(row.role_name) || flags.some((flag) => typeof flag !== "boolean") ||
             !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 || !boundedText(row.valid_until, 40)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }
@@ -928,7 +969,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const rows = result.rows.slice(0, MAX_PUBLICATIONS);
       const publications: ProjectPublication[] = rows.map((row) => {
         const flags = [row.publish_insert, row.publish_update, row.publish_delete, row.publish_truncate, row.all_tables];
-        if (!IDENTIFIER.test(row.publication_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
+        if (!catalogName(row.publication_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
             flags.some((flag) => typeof flag !== "boolean") || !Array.isArray(row.tables) || row.tables.length > MAX_PUBLICATION_TABLES ||
             row.tables.some((table) => typeof table !== "string" || table.length === 0 || table.length > 130)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
@@ -956,7 +997,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       let truncated = result.rows.length > rows.length;
       for (const row of rows) {
         const type = String(row.privilege_type).toLowerCase();
-        if (!IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.column_name) || !IDENTIFIER.test(row.grantee) ||
+        if (!catalogName(row.table_name) || !catalogName(row.column_name) || !catalogName(row.grantee) ||
             !["select", "insert", "update", "references"].includes(type) || typeof row.is_grantable !== "boolean") {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }

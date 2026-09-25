@@ -4359,3 +4359,47 @@ fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 
 Nicht erbracht: Rotation; die Ansicht ist im Browser nicht gesehen
 (Console-Konto fehlt).
+
+## Was das Review fand – Release 2.23
+
+Nach zehn Releases an einem Tag hat ein Review-Agent 2.14 bis 2.22 gelesen,
+nur auf Korrektheit und Sicherheit. Zwei Befunde waren echt.
+
+Erstens: `/schema/roles` las `pg_roles`, und das ist clusterweit. Im
+gelieferten Stack liegt die Projektdatenbank auf demselben Cluster wie
+die Steuerung, also sah ein Projektleser mit Schluessel die Rollen
+`qkern` (Superuser), `qkern_app`, `qkern_auth_app`, `qkern_worker_app`,
+`qkern_provisioner_app` mitsamt Anmeldung, BYPASSRLS und Limits; auf
+einem geteilten Cluster auch die Rollen der Nachbarn. Die Release-Notiz
+2.20 nannte das "datenbankweit", was die Abfrage nicht war. Jetzt bleiben
+nur Rollen, die diese Datenbank betreffen: die eigene, Eigentuemer von
+Objekten in Anwendungsschemata, Empfaenger von Tabellen- oder
+Spaltenrechten dort, in einer Policy genannte; Superuser nie. Belegt:
+eine frisch angelegte Rolle ohne jeden Bezug erscheint nicht, kein
+Superuser in der Liste, die Projekt-API-Rolle wie zuvor. Mutation:
+Superuser-Filter entfernt, 1 von 169 faellt.
+
+Zweitens: die Bezeichner-Grammatik `IDENTIFIER` (Kleinbuchstaben, Ziffern,
+Unterstrich) galt auch fuer Namen, die der Katalog zurueckgibt. Ein
+einziger Policy-Name mit Leerzeichen, und Supabase Studios Vorlage heisst
+`Enable read access for all users`, oder ein Index `Order_pkey` aus Prisma
+warf `DATA_PLANE_BOUNDARY_REJECTED`, die Route antwortete 503, die Ansicht
+war leer. Dieselbe Klasse wie `uuid-ossp` in 2.20, nur breiter. Jetzt
+prueft `catalogName` Typ, Laenge (1 bis 63) und Steuerzeichen; die Werte
+sind parametrisiert gelesen und gehen nur als JSON hinaus. Gilt fuer alle
+Katalogansichten seit 2.9. `IDENTIFIER` bleibt fuer Eingaben und die
+Grenzpruefung.
+
+Kleiner: Publikationen mit FOR TABLES IN SCHEMA zeigen `schema.*`;
+`publish.yml` gibt den dist-tag als Umgebungsvariable weiter und prueft
+ihn, statt ihn in die Shell zu interpolieren.
+
+Checkpoint `2.23.0` am 25. September 2026: PostgreSQL 17 169 von 169
+bestanden, exit 0, zweimal reproduziert; Mutation 168 von 169, exit 1;
+Lokal 1147 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: `inspectSchema` aus 1.x prueft Tabellen- und Spaltennamen
+weiter mit `IDENTIFIER`; das betrifft Table Editor und Data API und ist
+ein eigener Slice, weil dort Namen in SQL eingesetzt werden. Extensions
+sind serverweit, nicht je Datenbank; die Ansicht sagt es nicht.
