@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ConnectionUnavailableError } from "@/lib/server/db/errors";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
@@ -57,6 +58,7 @@ export class ProjectQueueError extends Error {
     this.name = "ProjectQueueError";
   }
 }
+recognisedByName(ProjectQueueError, "ProjectQueueError");
 
 /** Erkennt einen Queue-Fehler an Name und Code statt an der Klasse (2.24, siehe `isProjectDataPlaneError`). */
 export function isProjectQueueError(error: unknown, code?: ProjectQueueErrorCode): error is ProjectQueueError {

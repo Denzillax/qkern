@@ -4464,3 +4464,36 @@ weil der Dev-Server keine Projektdatenbank hat (`QKERN_DATA_PLANE_ENABLED`
 ist aus); gesehen sind die Zustaende ohne Datenbank. Die Zertifizierung
 lief vor der letzten Aenderung an `runtime.ts`, die sie nicht beruehrt
 (der Dienst wird dort injiziert); die lokale Suite lief danach.
+
+## Alle Faelle dieser Klasse – Release 2.25
+
+Dreimal an einem Tag derselbe Fehler: Auth in 2.8, Data Plane und Queues
+in 2.24. Ein Dienst auf `globalThis` ueberlebt das Neuladen der Module,
+die Route importiert eine andere Kopie der Fehlerklasse, `instanceof` ist
+falsch, und aus 503 wird 500. Im Server gibt es 76 exportierte
+Fehlerklassen und rund hundert `instanceof`-Stellen; eine `isXError`-
+Funktion je Klasse waere der vierte Flicken gewesen.
+
+Stattdessen macht `recognisedByName` die Klasse selbst robust: ein
+`Symbol.hasInstance` auf der Klasse akzeptiert neben der Prototypkette
+jeden Error mit demselben Namen. Der Name ist ein Literal, nie
+`constructor.name`, weil ein minifiziertes Bundle Klassennamen kuerzen
+darf, und liegt auf dem Prototyp, damit ihn auch Klassen ohne eigenes
+`this.name` tragen. Basisklassen kennen die Namen ihrer Unterklassen,
+damit `instanceof RepositoryError` eine fremde `ConflictError` erkennt.
+`RepositoryError` nahm den Namen aus `new.target`, das ist ersetzt.
+
+Alle 76 Klassen sind registriert, per Skript, eine davon von Hand, weil
+ihr Name eine Ziffer traegt. Der Vertrag prueft das Verhalten (fremde
+Kopie erkannt, echte Unterklasse wie bisher, Fremde und Nicht-Fehler
+draussen, Name als Literal) und scannt `lib/server` nach exportierten
+Fehlerklassen ohne Registrierung. Mutation: Registrierung von
+`ProjectAuthError` entfernt, 2 von 3 faellt.
+
+Checkpoint `2.25.0` am 25. September 2026: PostgreSQL 17 169 von 169
+bestanden, exit 0, zweimal reproduziert; Lokal 1155 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: die `isXError`-Helfer aus 2.8 und 2.24 bleiben, sie
+schaden nicht; das Neuladen selbst ist nicht nachgestellt, nur die fremde
+Kopie der Klasse.

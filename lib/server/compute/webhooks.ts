@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { WebhookDefinition, WebhookDelivery } from "@/lib/server/compute/model";
 import { unsafeHostname, validateJson } from "@/lib/server/compute/functions";
 
@@ -20,6 +21,7 @@ export class WebhookDeliveryError extends Error {
     super(code); this.name = "WebhookDeliveryError";
   }
 }
+recognisedByName(WebhookDeliveryError, "WebhookDeliveryError");
 
 export class WebhookDeliverer {
   constructor(private readonly signer: WebhookSignerPort, private readonly transport: WebhookTransportPort) {}

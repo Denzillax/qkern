@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -56,6 +57,7 @@ export class RuntimeDeploymentNotReadyError extends Error {
     this.name = "RuntimeDeploymentNotReadyError";
   }
 }
+recognisedByName(RuntimeDeploymentNotReadyError, "RuntimeDeploymentNotReadyError");
 
 export class RuntimeDeploymentFileReader implements RuntimeDeploymentBundleProvider {
   constructor(

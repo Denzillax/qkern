@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { RepositoryError, type RepositoryErrorCode } from "@/lib/server/db/errors";
 import {
   safeRuntimeProbe,
@@ -253,6 +254,7 @@ export class BillingInvoicePeriodError extends Error {
     this.name = "BillingInvoicePeriodError";
   }
 }
+recognisedByName(BillingInvoicePeriodError, "BillingInvoicePeriodError");
 
 export type InvoiceLine = {
   metric: UsageMetric;

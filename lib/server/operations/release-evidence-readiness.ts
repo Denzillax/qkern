@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -41,6 +42,7 @@ export class ReleaseEvidenceNotReadyError extends Error {
     this.name = "ReleaseEvidenceNotReadyError";
   }
 }
+recognisedByName(ReleaseEvidenceNotReadyError, "ReleaseEvidenceNotReadyError");
 
 /** Hashes one immutable release input from an already no-follow-opened file. */
 export class ReleaseEvidenceFileDigester

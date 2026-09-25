@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type {
   ProjectDatabaseConnectionResolver,
@@ -34,6 +35,7 @@ export class ProjectDatabaseCatalogError extends Error {
     this.code = code;
   }
 }
+recognisedByName(ProjectDatabaseCatalogError, "ProjectDatabaseCatalogError");
 
 /**
  * Server-owned, exact-match allowlist for project database connections.

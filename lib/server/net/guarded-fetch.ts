@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { lookup as dnsLookup } from "node:dns";
 import { request as httpsRequest } from "node:https";
 import { isPubliclyRoutable } from "@/lib/server/net/address-policy";
@@ -14,6 +15,7 @@ export class EgressBlockedError extends Error {
     this.name = "EgressBlockedError";
   }
 }
+recognisedByName(EgressBlockedError, "EgressBlockedError");
 
 export type ResolvedAddress = Readonly<{ address: string; family: 4 | 6 }>;
 

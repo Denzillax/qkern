@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { isReadOnlySql, redactSensitive } from "@/lib/security";
 import type { Environment } from "@/lib/types";
 import type { SqlPoolClient } from "@/lib/server/db/sql";
@@ -306,6 +307,7 @@ export class ProjectDataPlaneError extends Error {
     this.name = "ProjectDataPlaneError";
   }
 }
+recognisedByName(ProjectDataPlaneError, "ProjectDataPlaneError");
 
 /**
  * Erkennt einen Data-Plane-Fehler an Name und Code statt an der Klasse (2.24,

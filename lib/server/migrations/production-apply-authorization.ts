@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -52,6 +53,7 @@ export class ProductionApplyBlockedError extends Error {
     this.name = "ProductionApplyBlockedError";
   }
 }
+recognisedByName(ProductionApplyBlockedError, "ProductionApplyBlockedError");
 
 /**
  * Secure default for every runtime. Development and staging keep their normal

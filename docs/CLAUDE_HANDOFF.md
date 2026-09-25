@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.24.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.25.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,22 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.24.0`
-- Aktueller Slice: 2.24 Derselbe Fehler, zweiter Fall – Denzil hat sich neu
+- Paketversion: `2.25.0`
+- Aktueller Slice: 2.25 Alle Faelle dieser Klasse – statt einer vierten
+  `isXError`-Funktion macht `recognisedByName` in `lib/server/errors/identity.ts`
+  die Fehlerklassen selbst robust: `Symbol.hasInstance` auf der Klasse
+  akzeptiert neben der Prototypkette jeden Error mit demselben Namen
+  (Literal, nicht `constructor.name`, weil ein Bundle Klassennamen kuerzen
+  darf); der Name liegt auf dem Prototyp. Alle 76 exportierten
+  Fehlerklassen in `lib/server` sind registriert, Basisklassen mit den
+  Namen ihrer Unterklassen (`RepositoryError` mit 17, die beiden
+  Outbox-Sink-Basen mit je einer); `RepositoryError` nimmt den Namen nicht
+  mehr aus `new.target`. `tests/error-identity-sweep.test.ts` prueft das
+  Verhalten und scannt `lib/server` auf unregistrierte Klassen; Mutation
+  (Registrierung von `ProjectAuthError` entfernt) 2 von 3 faellt. Die
+  rund hundert `instanceof`-Stellen bleiben unveraendert und sind jetzt
+  richtig
+- Vorheriger Slice: 2.24 Derselbe Fehler, zweiter Fall – Denzil hat sich neu
   registriert, die Console war im Browser pruefbar: jede Katalogansicht
   sagte "nicht verfuegbar" mit 500 ohne Code, auch der alte Table Editor
   (`/schema`), und `/queues` antwortete 500 ohne Koerper. Ursache eins wie
@@ -61,7 +75,7 @@ Release Notes bleiben unverändert.
   `DisabledProjectDataPlane` stammte von vor 2.18 und kannte
   `inspectRoles` nicht (TypeError, 500); `getProjectDataPlane()` merkt den
   abgeschalteten Plane nicht mehr, nur den echten Dienst mit Pools
-- Vorheriger Slice: 2.23 Was das Review fand – ein Review-Agent hat 2.14 bis
+- Davor: 2.23 Was das Review fand – ein Review-Agent hat 2.14 bis
   2.22 gelesen. Zwei echte Befunde, beide behoben: (1) `/schema/roles` las
   `pg_roles` clusterweit und zeigte auf dem geteilten Cluster die
   Steuerungsrollen samt Superuser; jetzt nur Rollen, die diese Datenbank

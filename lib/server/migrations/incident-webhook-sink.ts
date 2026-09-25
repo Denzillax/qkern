@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { ConfigurationError } from "@/lib/server/db/errors";
@@ -38,6 +39,7 @@ export class IncidentWebhookDeliveryError extends MigrationIncidentOutboxSinkErr
     this.code = code;
   }
 }
+recognisedByName(IncidentWebhookDeliveryError, "IncidentWebhookDeliveryError");
 
 function persistedFailureCode(code: IncidentWebhookDeliveryErrorCode): MigrationIncidentDeliveryFailureCode {
   switch (code) {

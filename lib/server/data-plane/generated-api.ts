@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
 import type { Environment } from "@/lib/types";
 import type { SqlPoolClient, SqlValue } from "@/lib/server/db/sql";
@@ -192,6 +193,7 @@ export class GeneratedDataApiError extends Error {
     this.name = "GeneratedDataApiError";
   }
 }
+recognisedByName(GeneratedDataApiError, "GeneratedDataApiError");
 
 /**
  * Returns the name of the violated boundary predicate, or null when the

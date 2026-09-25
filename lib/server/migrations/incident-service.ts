@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { ControlPlaneContext } from "@/lib/server/control-plane/model";
 import type {
   MigrationIncidentAcknowledgementCode,
@@ -102,6 +103,7 @@ export class MigrationIncidentDeliveryNotRetryableError extends Error {
     this.name = "MigrationIncidentDeliveryNotRetryableError";
   }
 }
+recognisedByName(MigrationIncidentDeliveryNotRetryableError, "MigrationIncidentDeliveryNotRetryableError");
 
 export class MigrationIncidentResolutionNotVerifiableError extends Error {
   readonly code = "MIGRATION_INCIDENT_RESOLUTION_NOT_VERIFIABLE";
@@ -110,6 +112,7 @@ export class MigrationIncidentResolutionNotVerifiableError extends Error {
     this.name = "MigrationIncidentResolutionNotVerifiableError";
   }
 }
+recognisedByName(MigrationIncidentResolutionNotVerifiableError, "MigrationIncidentResolutionNotVerifiableError");
 
 export interface MigrationIncidentService {
   listIncidents(

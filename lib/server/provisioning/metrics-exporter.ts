@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -36,6 +37,7 @@ export class ProjectProvisioningMetricsTokenUnavailableError extends Error {
     this.name = "ProjectProvisioningMetricsTokenUnavailableError";
   }
 }
+recognisedByName(ProjectProvisioningMetricsTokenUnavailableError, "ProjectProvisioningMetricsTokenUnavailableError");
 
 export class ProjectProvisioningMetricsDataError extends Error {
   readonly code = "METRICS_DATA_INVALID";
@@ -44,6 +46,7 @@ export class ProjectProvisioningMetricsDataError extends Error {
     this.name = "ProjectProvisioningMetricsDataError";
   }
 }
+recognisedByName(ProjectProvisioningMetricsDataError, "ProjectProvisioningMetricsDataError");
 
 export interface ProjectProvisioningMetricsTokenProvider {
   getToken(options: { signal?: AbortSignal }): Uint8Array | Promise<Uint8Array>;

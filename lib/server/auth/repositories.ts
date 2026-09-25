@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { AuthSession, AuthUser } from "@/lib/server/auth/model";
 
 export class DuplicateEmailError extends Error {
@@ -6,6 +7,7 @@ export class DuplicateEmailError extends Error {
     this.name = "DuplicateEmailError";
   }
 }
+recognisedByName(DuplicateEmailError, "DuplicateEmailError");
 
 export interface UserRepository {
   findByEmail(email: string): Promise<AuthUser | null>;

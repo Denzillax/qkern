@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { MigrationLeaseLostError } from "@/lib/server/db/errors";
 import {
   isMigrationIncidentDeliveryFailureCode,
@@ -75,6 +76,7 @@ export class MigrationIncidentOutboxSinkError extends Error {
       : "PUBLISH_FAILED";
   }
 }
+recognisedByName(MigrationIncidentOutboxSinkError, "MigrationIncidentOutboxSinkError", ["IncidentWebhookDeliveryError"]);
 
 export type MigrationIncidentOutboxPublisherLogEvent = Readonly<{
   event: "migration_incident_outbox.claimed" | "migration_incident_outbox.published" |

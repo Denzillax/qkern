@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 import type {
   UsageDecisionRecord,
@@ -15,6 +16,7 @@ export class UsageRepositoryConflictError extends Error {
     super(code); this.name = "UsageRepositoryConflictError";
   }
 }
+recognisedByName(UsageRepositoryConflictError, "UsageRepositoryConflictError");
 
 /**
  * Ein Ereignis samt seiner Cursor-Marke.

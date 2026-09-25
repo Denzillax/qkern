@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -109,6 +110,7 @@ export class ProviderE2EEvidenceUnavailableError extends Error {
     this.name = "ProviderE2EEvidenceUnavailableError";
   }
 }
+recognisedByName(ProviderE2EEvidenceUnavailableError, "ProviderE2EEvidenceUnavailableError");
 
 export interface ProviderE2EEvidenceFileProvider {
   read(options?: { signal?: AbortSignal }): Uint8Array | Promise<Uint8Array>;

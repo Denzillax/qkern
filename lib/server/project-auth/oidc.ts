@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, createPublicKey, randomBytes, verify as verifySignature, type JsonWebKey } from "node:crypto";
 import { isIP } from "node:net";
 
@@ -33,6 +34,7 @@ export class ProjectAuthOidcError extends Error {
     this.name = "ProjectAuthOidcError";
   }
 }
+recognisedByName(ProjectAuthOidcError, "ProjectAuthOidcError");
 
 export class ProjectAuthOidcCatalog {
   private readonly providers = new Map<string, ProjectAuthOidcProvider>();

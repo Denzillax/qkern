@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { hashesMatch, sha256 } from "@/lib/server/control-plane/crypto";
 import { validateSingleSqlStatement } from "@/lib/security";
 
@@ -73,6 +74,7 @@ export class ProjectDatabaseExecutionError extends Error {
     this.failedChecks = input.failedChecks ?? [];
   }
 }
+recognisedByName(ProjectDatabaseExecutionError, "ProjectDatabaseExecutionError");
 
 /** Default executor: no customer database operation is possible until wired. */
 export class DisabledProjectDatabaseExecutor implements ProjectDatabaseExecutor {

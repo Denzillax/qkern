@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation",
+  "log": "sweep-mutation.log",
+  "commit": "8390fce35025d64a9959c543423ae29ea32ea53d",
+  "commitSubject": "release: 2.24.0 Derselbe Fehler, zweiter Fall",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "2 failed | 1 passed (3)",
+  "passed": 1,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

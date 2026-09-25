@@ -1308,3 +1308,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/identity-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 2 faellt, exit 1 – absichtlich** |
 | `2026-09-25/identity-local-run1.log` | Vitest lokal (Windows) | 1152 bestanden, exit 0 |
 | `2026-09-25/identity-local-run2.log` | Vitest lokal (Windows) | 1152 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.25 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/sweep-run1.log` | PostgreSQL 17 | 169 von 169, exit 0 |
+| `2026-09-25/sweep-run2.log` | PostgreSQL 17 | 169 von 169, exit 0, Wiederholung |
+| `2026-09-25/sweep-mutation.log` | Vitest lokal (Windows), Mutation | **2 von 3 faellt, exit 1 – absichtlich** |
+| `2026-09-25/sweep-local-run1.log` | Vitest lokal (Windows) | 1155 bestanden, exit 0 |
+| `2026-09-25/sweep-local-run2.log` | Vitest lokal (Windows) | 1155 bestanden, exit 0, Wiederholung |

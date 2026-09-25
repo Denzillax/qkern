@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   FunctionDefinition,
   FunctionInvocation,
@@ -33,6 +34,7 @@ export class FunctionInvocationError extends Error {
     super(code); this.name = "FunctionInvocationError";
   }
 }
+recognisedByName(FunctionInvocationError, "FunctionInvocationError");
 
 export function validateFunctionDefinition(input: FunctionDefinition): FunctionDefinition {
   if (!NAME.test(input.name) || input.runtime !== "nodejs24" || !IMAGE.test(input.image) ||

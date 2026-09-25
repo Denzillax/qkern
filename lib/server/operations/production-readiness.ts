@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { isDeepStrictEqual } from "node:util";
 import { ConfigurationError } from "@/lib/server/db/errors";
 import type { ReleaseEvidenceReadiness } from
@@ -72,6 +73,7 @@ export class ProductionReadinessNotReadyError extends Error {
     this.name = "ProductionReadinessNotReadyError";
   }
 }
+recognisedByName(ProductionReadinessNotReadyError, "ProductionReadinessNotReadyError");
 
 export interface ProductionReadinessGate<T> {
   verify(signal?: AbortSignal): Promise<T>;

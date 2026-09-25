@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "sweep-local-run2.log",
+  "commit": "8390fce35025d64a9959c543423ae29ea32ea53d",
+  "commitSubject": "release: 2.24.0 Derselbe Fehler, zweiter Fall",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1155 passed | 250 skipped (1405)",
+  "passed": 1155,
+  "failed": 0,
+  "skipped": 250,
+  "images": []
+}

@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
 import type {
@@ -51,6 +52,7 @@ export class ProjectStorageError extends Error {
     this.name = "ProjectStorageError";
   }
 }
+recognisedByName(ProjectStorageError, "ProjectStorageError");
 
 export type ProjectStorageServiceDependencies = {
   repository: ProjectStorageRepository;

@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   ProjectStorageBucket,
   ProjectStorageObject,
@@ -11,11 +12,13 @@ export class ProjectStorageConflictError extends Error {
   readonly code = "STORAGE_CONFLICT";
   constructor() { super("STORAGE_CONFLICT"); this.name = "ProjectStorageConflictError"; }
 }
+recognisedByName(ProjectStorageConflictError, "ProjectStorageConflictError");
 
 export class ProjectStorageQuotaError extends Error {
   readonly code = "STORAGE_QUOTA_EXCEEDED";
   constructor() { super("STORAGE_QUOTA_EXCEEDED"); this.name = "ProjectStorageQuotaError"; }
 }
+recognisedByName(ProjectStorageQuotaError, "ProjectStorageQuotaError");
 
 export type ProjectStorageBucketPatch = Pick<ProjectStorageBucket,
   "readPolicy" | "writePolicy" | "allowedMimeTypes" | "maxObjectBytes" |

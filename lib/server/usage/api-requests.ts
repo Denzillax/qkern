@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
 import type { UsageScope, UsageSource } from "@/lib/server/usage/model";
 import type { UsageEmitterPort } from "@/lib/server/usage/emitter";
@@ -16,6 +17,7 @@ export class UsageQuotaExceededError extends Error {
     this.name = "UsageQuotaExceededError";
   }
 }
+recognisedByName(UsageQuotaExceededError, "UsageQuotaExceededError");
 
 type GlobalUsageEmitters = typeof globalThis & {
   __qkernUsageApiEmitters?: Map<UsageSource, UsageEmitterPort>;

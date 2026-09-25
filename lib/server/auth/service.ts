@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { AuthSession, AuthUser, PublicAuthUser } from "@/lib/server/auth/model";
 import { toPublicAuthUser } from "@/lib/server/auth/model";
@@ -35,6 +36,7 @@ export class AuthError extends Error {
     this.name = "AuthError";
   }
 }
+recognisedByName(AuthError, "AuthError");
 
 /**
  * Erkennt einen AuthError an Name und Code, nicht an der Klassenidentitaet.

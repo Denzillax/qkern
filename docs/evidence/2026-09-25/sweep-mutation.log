@@ -1,0 +1,56 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/error-identity-sweep.test.ts (3 tests | 2 failed) 52ms
+     × recognises a foreign copy of the same error, keeps real subclasses, and rejects strangers 7ms
+     × registers every exported error class in lib/server 43ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/error-identity-sweep.test.ts > error identity sweep > recognises a foreign copy of the same error, keeps real subclasses, and rejects strangers
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/error-identity-sweep.test.ts:34:86
+     32| describe("error identity sweep", () => {
+     33|   it("recognises a foreign copy of the same error, keeps real subclass…
+     34|     expect(foreign("ProjectAuthError", "INVALID_INPUT") instanceof Pro…
+       |                                                                                      ^
+     35|     expect(foreign("ProjectStorageConflictError") instanceof ProjectSt…
+     36|     expect(foreign("ProjectDataPlaneError", "DATA_PLANE_DISABLED") ins…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/error-identity-sweep.test.ts > error identity sweep > registers every exported error class in lib/server
+AssertionError: Fehlerklassen ohne recognisedByName: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "lib\\server\\project-auth\\service.ts: ProjectAuthError",
++ ]
+
+ ❯ tests/error-identity-sweep.test.ts:68:60
+     66|       }
+     67|     }
+     68|     expect(missing, "Fehlerklassen ohne recognisedByName").toEqual([]);
+       |                                                            ^
+     69|   });
+     70| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  21:00:04
+   Duration  432ms (transform 142ms, setup 0ms, import 216ms, tests 52ms, environment 0ms)
+
+EXIT=1

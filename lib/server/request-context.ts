@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { NextRequest } from "next/server";
 import { authRuntime } from "@/lib/server/auth/runtime";
 import { sessionToken } from "@/lib/server/auth/http";
@@ -12,10 +13,12 @@ export type AuthenticatedRequestContext = { user: PublicAuthUser; membership: Me
 export class RequestAuthenticationError extends Error {
   constructor() { super("AUTHENTICATION_REQUIRED"); this.name = "RequestAuthenticationError"; }
 }
+recognisedByName(RequestAuthenticationError, "RequestAuthenticationError");
 
 export class RequestAuthorizationError extends Error {
   constructor() { super("RESOURCE_NOT_FOUND"); this.name = "RequestAuthorizationError"; }
 }
+recognisedByName(RequestAuthorizationError, "RequestAuthorizationError");
 
 export async function authenticatedContext(request: NextRequest): Promise<AuthenticatedRequestContext> {
   const token = sessionToken(request);

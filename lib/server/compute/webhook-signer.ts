@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { WebhookSignerPort } from "@/lib/server/compute/webhooks";
 
@@ -24,6 +25,7 @@ export class WebhookSigningError extends Error {
     this.name = "WebhookSigningError";
   }
 }
+recognisedByName(WebhookSigningError, "WebhookSigningError");
 
 /**
  * Signiert mit HMAC-SHA256 über `<zeitstempel>.<körper>`.

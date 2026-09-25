@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHmac } from "node:crypto";
 import { open } from "node:fs/promises";
 import { isIP } from "node:net";
@@ -37,6 +38,7 @@ export class ApplyBrokerDeliveryError extends MigrationOutboxSinkError {
     this.code = code;
   }
 }
+recognisedByName(ApplyBrokerDeliveryError, "ApplyBrokerDeliveryError");
 
 function persistedFailureCode(code: ApplyBrokerDeliveryErrorCode) {
   switch (code) {

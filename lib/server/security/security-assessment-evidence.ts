@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -113,6 +114,7 @@ export class SecurityAssessmentEvidenceUnavailableError extends Error {
     this.name = "SecurityAssessmentEvidenceUnavailableError";
   }
 }
+recognisedByName(SecurityAssessmentEvidenceUnavailableError, "SecurityAssessmentEvidenceUnavailableError");
 
 export interface SecurityAssessmentEvidenceFileProvider {
   read(options?: { signal?: AbortSignal }): Uint8Array | Promise<Uint8Array>;

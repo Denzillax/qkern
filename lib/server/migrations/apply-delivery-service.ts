@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { ControlPlaneContext } from "@/lib/server/control-plane/model";
 import type {
   MigrationOutboxDeliveryFailureCode,
@@ -67,6 +68,7 @@ export class MigrationApplyDeliveryNotRetryableError extends Error {
     this.name = "MigrationApplyDeliveryNotRetryableError";
   }
 }
+recognisedByName(MigrationApplyDeliveryNotRetryableError, "MigrationApplyDeliveryNotRetryableError");
 
 export interface MigrationApplyDeliveryService {
   getStatus(context: ControlPlaneContext, migrationJobId: string): Promise<MigrationApplyDeliveryStatus>;

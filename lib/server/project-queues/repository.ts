@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   ProjectQueue,
   ProjectQueueClaim,
@@ -28,6 +29,7 @@ export class ProjectQueueConflictError extends Error {
     super(code); this.name = "ProjectQueueConflictError";
   }
 }
+recognisedByName(ProjectQueueConflictError, "ProjectQueueConflictError");
 
 export interface ProjectQueueRepository {
   readonly durability: "ephemeral" | "durable";

@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -79,6 +80,7 @@ export class BackupRestoreEvidenceUnavailableError extends Error {
     this.name = "BackupRestoreEvidenceUnavailableError";
   }
 }
+recognisedByName(BackupRestoreEvidenceUnavailableError, "BackupRestoreEvidenceUnavailableError");
 
 export interface BackupRestoreEvidenceFileProvider {
   read(options?: { signal?: AbortSignal }): Uint8Array | Promise<Uint8Array>;

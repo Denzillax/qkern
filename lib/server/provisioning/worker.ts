@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import {
   isProjectDatabaseProvisioningErrorCode,
   type ProjectDatabaseBindingRecord,
@@ -53,6 +54,7 @@ export class ProjectDatabaseProvisioningAdapterError extends Error {
       : "PROVIDER_UNAVAILABLE";
   }
 }
+recognisedByName(ProjectDatabaseProvisioningAdapterError, "ProjectDatabaseProvisioningAdapterError");
 
 export type ProjectDatabaseProvisioningClaim = Readonly<{
   job: ProjectDatabaseProvisioningJobRecord;

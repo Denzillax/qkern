@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { ControlPlaneContext } from "@/lib/server/control-plane/model";
 import type { MigrationReviewReasonCode } from "@/lib/server/db/models";
 import type { Environment } from "@/lib/types";
@@ -39,6 +40,7 @@ export class MigrationReviewNotReadyError extends Error {
     this.name = "MigrationReviewNotReadyError";
   }
 }
+recognisedByName(MigrationReviewNotReadyError, "MigrationReviewNotReadyError");
 
 export class MigrationReviewCyclesExhaustedError extends Error {
   readonly code = "MIGRATION_REVIEW_CYCLES_EXHAUSTED";
@@ -47,3 +49,4 @@ export class MigrationReviewCyclesExhaustedError extends Error {
     this.name = "MigrationReviewCyclesExhaustedError";
   }
 }
+recognisedByName(MigrationReviewCyclesExhaustedError, "MigrationReviewCyclesExhaustedError");

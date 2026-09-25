@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   ProjectAuthMfaFactor,
   ProjectAuthOidcIdentity,
@@ -65,6 +66,7 @@ export class DuplicateProjectAuthIdentityError extends Error {
     this.name = "DuplicateProjectAuthIdentityError";
   }
 }
+recognisedByName(DuplicateProjectAuthIdentityError, "DuplicateProjectAuthIdentityError");
 
 export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly users = new Map<string, ProjectAuthUser>();

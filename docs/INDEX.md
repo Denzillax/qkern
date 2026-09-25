@@ -19,7 +19,8 @@
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.24.md](RELEASE_2.24.md) | Aktueller Release: Derselbe Fehler, zweiter Fall |
+| [RELEASE_2.25.md](RELEASE_2.25.md) | Aktueller Release: Alle Fälle dieser Klasse |
+| [RELEASE_2.24.md](RELEASE_2.24.md) | Derselbe Fehler, zweiter Fall |
 | [RELEASE_2.23.md](RELEASE_2.23.md) | Was das Review fand |
 | [RELEASE_2.22.md](RELEASE_2.22.md) | Die Schlüssel zum Token |
 | [RELEASE_2.21.md](RELEASE_2.21.md) | Drei, die es schon gab |

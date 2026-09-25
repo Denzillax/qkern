@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { nextCronOccurrence } from "@/lib/server/compute/cron";
 import { validateFunctionDefinition } from "@/lib/server/compute/functions";
 import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
@@ -76,6 +77,7 @@ export class ComputeDefinitionError extends Error {
     this.name = "ComputeDefinitionError";
   }
 }
+recognisedByName(ComputeDefinitionError, "ComputeDefinitionError");
 
 export type CronDefinitionInput = {
   name: string;

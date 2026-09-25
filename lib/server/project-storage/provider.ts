@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import {
   createHash,
   createHmac,
@@ -116,6 +117,7 @@ export class ProjectStorageProviderError extends Error {
   readonly code = "STORAGE_PROVIDER_UNAVAILABLE";
   constructor() { super("STORAGE_PROVIDER_UNAVAILABLE"); this.name = "ProjectStorageProviderError"; }
 }
+recognisedByName(ProjectStorageProviderError, "ProjectStorageProviderError");
 
 export type S3ProjectStorageCredentials = {
   accessKeyId: string;

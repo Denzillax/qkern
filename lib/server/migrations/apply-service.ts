@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { ControlPlaneContext } from "@/lib/server/control-plane/model";
 
 export type QueueApprovedChangeSetInput = {
@@ -28,6 +29,7 @@ export class ChangeSetNotApprovedError extends Error {
     this.name = "ChangeSetNotApprovedError";
   }
 }
+recognisedByName(ChangeSetNotApprovedError, "ChangeSetNotApprovedError");
 
 export class ApplyServiceUnavailableError extends Error {
   readonly code = "DEPENDENCY_UNAVAILABLE";
@@ -37,3 +39,4 @@ export class ApplyServiceUnavailableError extends Error {
     this.name = "ApplyServiceUnavailableError";
   }
 }
+recognisedByName(ApplyServiceUnavailableError, "ApplyServiceUnavailableError");

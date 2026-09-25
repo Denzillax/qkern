@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomBytes } from "node:crypto";
 import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
 
@@ -28,6 +29,7 @@ export class WebhookOutboxError extends Error {
     this.name = "WebhookOutboxError";
   }
 }
+recognisedByName(WebhookOutboxError, "WebhookOutboxError");
 
 export interface WebhookOutboxRepository {
   enqueue(scope: WebhookOutboxScope, input: {

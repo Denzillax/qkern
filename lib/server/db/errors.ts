@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 export type RepositoryErrorCode =
   | "CONFIGURATION_ERROR"
   | "DEPENDENCY_UNAVAILABLE"
@@ -23,89 +24,103 @@ export class RepositoryError extends Error {
 
   constructor(code: RepositoryErrorCode, message: string, options?: { cause?: unknown; retryable?: boolean }) {
     super(message, { cause: options?.cause });
-    this.name = new.target.name;
+    // Der Name kommt seit 2.25 vom Prototyp (`recognisedByName`), als Literal statt aus new.target.
     this.code = code;
     this.retryable = options?.retryable ?? false;
   }
 }
+recognisedByName(RepositoryError, "RepositoryError", ["ConfigurationError", "DependencyUnavailableError", "InvalidTenantContextError", "ResourceNotFoundError", "ConflictError", "InvalidReferenceError", "InvalidRecordError", "ApprovalAlreadyDecidedError", "ApprovalExpiredError", "MigrationNotReadyError", "MigrationLeaseLostError", "ProjectProvisioningNotReadyError", "ProjectProvisioningLeaseLostError", "TransactionConflictError", "QueryTimeoutError", "ConnectionUnavailableError", "PersistenceError"]);
 
 export class ConfigurationError extends RepositoryError {
   constructor(message: string, cause?: unknown) {
     super("CONFIGURATION_ERROR", message, { cause });
   }
 }
+recognisedByName(ConfigurationError, "ConfigurationError");
 
 export class DependencyUnavailableError extends RepositoryError {
   constructor(message: string, cause?: unknown) {
     super("DEPENDENCY_UNAVAILABLE", message, { cause });
   }
 }
+recognisedByName(DependencyUnavailableError, "DependencyUnavailableError");
 
 export class InvalidTenantContextError extends RepositoryError {
   constructor(message = "A valid organization UUID is required.") {
     super("INVALID_TENANT_CONTEXT", message);
   }
 }
+recognisedByName(InvalidTenantContextError, "InvalidTenantContextError");
 
 export class ResourceNotFoundError extends RepositoryError {
   constructor(resource = "Resource") {
     super("RESOURCE_NOT_FOUND", `${resource} was not found.`);
   }
 }
+recognisedByName(ResourceNotFoundError, "ResourceNotFoundError");
 
 export class ConflictError extends RepositoryError {
   constructor(message = "The record conflicts with existing data.", cause?: unknown) {
     super("CONFLICT", message, { cause });
   }
 }
+recognisedByName(ConflictError, "ConflictError");
 
 export class InvalidReferenceError extends RepositoryError {
   constructor(message = "A referenced resource does not exist.", cause?: unknown) {
     super("INVALID_REFERENCE", message, { cause });
   }
 }
+recognisedByName(InvalidReferenceError, "InvalidReferenceError");
 
 export class InvalidRecordError extends RepositoryError {
   constructor(message = "The record violates a persistence constraint.", cause?: unknown) {
     super("INVALID_RECORD", message, { cause });
   }
 }
+recognisedByName(InvalidRecordError, "InvalidRecordError");
 
 export class ApprovalAlreadyDecidedError extends RepositoryError {
   constructor() {
     super("APPROVAL_ALREADY_DECIDED", "The approval request has already been decided.");
   }
 }
+recognisedByName(ApprovalAlreadyDecidedError, "ApprovalAlreadyDecidedError");
 
 export class ApprovalExpiredError extends RepositoryError {
   constructor() {
     super("APPROVAL_EXPIRED", "The approval request has expired.");
   }
 }
+recognisedByName(ApprovalExpiredError, "ApprovalExpiredError");
 
 export class MigrationNotReadyError extends RepositoryError {
   constructor() {
     super("MIGRATION_NOT_READY", "The change set is not approved for migration apply.");
   }
 }
+recognisedByName(MigrationNotReadyError, "MigrationNotReadyError");
 
 export class MigrationLeaseLostError extends RepositoryError {
   constructor() {
     super("MIGRATION_LEASE_LOST", "The migration worker no longer owns an active lease.");
   }
 }
+recognisedByName(MigrationLeaseLostError, "MigrationLeaseLostError");
 
 export class ProjectProvisioningNotReadyError extends RepositoryError {
   constructor() {
     super("PROJECT_PROVISIONING_NOT_READY", "The project database environment cannot be provisioned in its current state.");
   }
 }
+recognisedByName(ProjectProvisioningNotReadyError, "ProjectProvisioningNotReadyError");
 
 export class ProjectProvisioningLeaseLostError extends RepositoryError {
   constructor() {
     super("PROJECT_PROVISIONING_LEASE_LOST", "The project database provisioner no longer owns an active lease.");
   }
 }
+recognisedByName(ProjectProvisioningLeaseLostError, "ProjectProvisioningLeaseLostError");
 
 export class TransactionConflictError extends RepositoryError {
   constructor(cause?: unknown) {
@@ -115,12 +130,14 @@ export class TransactionConflictError extends RepositoryError {
     });
   }
 }
+recognisedByName(TransactionConflictError, "TransactionConflictError");
 
 export class QueryTimeoutError extends RepositoryError {
   constructor(cause?: unknown) {
     super("QUERY_TIMEOUT", "The database operation timed out and can be retried.", { cause, retryable: true });
   }
 }
+recognisedByName(QueryTimeoutError, "QueryTimeoutError");
 
 /**
  * Der Pool hat keine Verbindung mehr hergegeben.
@@ -145,12 +162,14 @@ export class ConnectionUnavailableError extends RepositoryError {
       { cause, retryable: true });
   }
 }
+recognisedByName(ConnectionUnavailableError, "ConnectionUnavailableError");
 
 export class PersistenceError extends RepositoryError {
   constructor(cause?: unknown) {
     super("PERSISTENCE_ERROR", "The database operation failed.", { cause });
   }
 }
+recognisedByName(PersistenceError, "PersistenceError");
 
 type PostgresError = Error & { code?: string };
 

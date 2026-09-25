@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { MigrationLeaseLostError } from "@/lib/server/db/errors";
 import {
   isMigrationOutboxDeliveryFailureCode,
@@ -70,6 +71,7 @@ export class MigrationOutboxSinkError extends Error {
       : "PUBLISH_FAILED";
   }
 }
+recognisedByName(MigrationOutboxSinkError, "MigrationOutboxSinkError", ["ApplyBrokerDeliveryError"]);
 
 export type MigrationOutboxPublisherLogEvent = Readonly<{
   event: "migration_outbox.claimed" | "migration_outbox.published" | "migration_outbox.retry_scheduled" |

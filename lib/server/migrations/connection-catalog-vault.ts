@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { timingSafeEqual } from "node:crypto";
 import { open } from "node:fs/promises";
 import { isIP } from "node:net";
@@ -44,6 +45,7 @@ export class VaultProjectDatabaseCatalogError extends Error {
     this.code = code;
   }
 }
+recognisedByName(VaultProjectDatabaseCatalogError, "VaultProjectDatabaseCatalogError");
 
 export interface VaultTokenProvider {
   getToken(options: { signal: AbortSignal }): string | Promise<string>;

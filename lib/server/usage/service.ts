@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomUUID } from "node:crypto";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
 import type { SqlQueryable } from "@/lib/server/db/sql";
@@ -53,6 +54,7 @@ export type UsageErrorCode =
 export class UsageError extends Error {
   constructor(readonly code: UsageErrorCode) { super(code); this.name = "UsageError"; }
 }
+recognisedByName(UsageError, "UsageError");
 
 export class UsageService {
   private readonly now: () => Date;

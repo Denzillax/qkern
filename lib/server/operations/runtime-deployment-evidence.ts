@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -138,6 +139,7 @@ export class RuntimeDeploymentEvidenceUnavailableError extends Error {
     this.name = "RuntimeDeploymentEvidenceUnavailableError";
   }
 }
+recognisedByName(RuntimeDeploymentEvidenceUnavailableError, "RuntimeDeploymentEvidenceUnavailableError");
 
 export interface RuntimeDeploymentEvidenceFileProvider {
   read(options?: { signal?: AbortSignal }): Uint8Array | Promise<Uint8Array>;

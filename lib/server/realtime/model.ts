@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { Environment } from "@/lib/types";
 
 export type RealtimeScope = {
@@ -72,6 +73,7 @@ export class RealtimeError extends Error {
     this.name = "RealtimeError";
   }
 }
+recognisedByName(RealtimeError, "RealtimeError");
 
 export interface RealtimeSink {
   send(message: RealtimeServerMessage): boolean;

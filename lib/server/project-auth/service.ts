@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PasswordHasher } from "@/lib/server/auth/password";
 import type { RateLimiter } from "@/lib/server/auth/rate-limit";
@@ -116,6 +117,7 @@ export class ProjectAuthError extends Error {
     this.name = "ProjectAuthError";
   }
 }
+recognisedByName(ProjectAuthError, "ProjectAuthError");
 
 export type ProjectAuthServiceDependencies = {
   repository: ProjectAuthRepository;

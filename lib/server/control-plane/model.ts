@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   Approval,
   AuditEvent,
@@ -80,6 +81,7 @@ export class InvalidApprovalArtifactError extends Error {
     this.name = "InvalidApprovalArtifactError";
   }
 }
+recognisedByName(InvalidApprovalArtifactError, "InvalidApprovalArtifactError");
 
 export class MissingDecisionActorError extends Error {
   readonly code = "INVALID_DECISION_ACTOR";
@@ -89,6 +91,7 @@ export class MissingDecisionActorError extends Error {
     this.name = "MissingDecisionActorError";
   }
 }
+recognisedByName(MissingDecisionActorError, "MissingDecisionActorError");
 
 export class MissingPolicyActorError extends Error {
   readonly code = "INVALID_POLICY_ACTOR";
@@ -98,3 +101,4 @@ export class MissingPolicyActorError extends Error {
     this.name = "MissingPolicyActorError";
   }
 }
+recognisedByName(MissingPolicyActorError, "MissingPolicyActorError");

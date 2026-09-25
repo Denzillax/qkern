@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { ApprovalRequestRecord, ChangeSetRecord } from "@/lib/server/db/models";
 import type { Environment } from "@/lib/types";
 
@@ -98,3 +99,4 @@ export class MigrationArtifactError extends Error {
     this.code = code;
   }
 }
+recognisedByName(MigrationArtifactError, "MigrationArtifactError");

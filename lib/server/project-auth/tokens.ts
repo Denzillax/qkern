@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import {
   createHash,
   createPrivateKey,
@@ -46,6 +47,7 @@ export class ProjectAuthTokenError extends Error {
     this.name = "ProjectAuthTokenError";
   }
 }
+recognisedByName(ProjectAuthTokenError, "ProjectAuthTokenError");
 
 export class ProjectAuthTokenService {
   private readonly publicKeys = new Map<string, KeyObject>();

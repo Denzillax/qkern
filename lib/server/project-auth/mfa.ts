@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import {
   createCipheriv,
   createDecipheriv,
@@ -12,6 +13,7 @@ export class ProjectAuthMfaError extends Error {
     this.name = "ProjectAuthMfaError";
   }
 }
+recognisedByName(ProjectAuthMfaError, "ProjectAuthMfaError");
 
 export class ProjectAuthSecretProtector {
   constructor(private readonly key: Buffer) {

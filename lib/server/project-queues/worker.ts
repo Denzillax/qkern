@@ -1,3 +1,4 @@
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   ProjectQueueFailureCode,
   ProjectQueueJson,
@@ -14,6 +15,7 @@ export class ProjectQueueHandlerError extends Error {
     this.name = "ProjectQueueHandlerError";
   }
 }
+recognisedByName(ProjectQueueHandlerError, "ProjectQueueHandlerError");
 
 export type ProjectQueueHandlerMessage = Readonly<{
   id: string;
