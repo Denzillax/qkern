@@ -83,6 +83,12 @@ export function assertLocalUrl(url, { allowRemote }) {
   } catch {
     throw new ExpectedError("QKERN_PROVISIONER_DATABASE_URL ist keine gueltige URL.");
   }
+  // pg-connection-string laesst `?host=` den Host der URL ueberschreiben
+  // (auch als Socket-Pfad). Das umginge die Pruefung unten.
+  const overridesHost = [...parsed.searchParams.keys()].some((key) => key.toLowerCase() === "host");
+  if (overridesHost && !allowRemote) {
+    throw new ExpectedError(`Die URL setzt den Host per ?host= um; dieses Skript ist nur fuer den lokalen Dev-Compose gedacht; ${ALLOW_REMOTE} erzwingt es.`);
+  }
   const host = parsed.hostname;
   if (!LOCAL_HOSTS.has(host) && !allowRemote) {
     throw new ExpectedError(`Der Host ${host} ist nicht lokal. Dieses Skript ist nur fuer den lokalen Dev-Compose gedacht; ${ALLOW_REMOTE} erzwingt es.`);

@@ -60,4 +60,13 @@ describe("dev-bind-project-database", () => {
     expect(assertLocalUrl("postgresql://u:p@db.example.com:5432/qkern_control", { allowRemote: true }).host)
       .toBe("db.example.com");
   });
+
+  it("refuses a host override through ?host= unless forced", () => {
+    expect(() => assertLocalUrl("postgresql://u:p@localhost:5432/db?host=prod.example.com", { allowRemote: false }))
+      .toThrow(/\?host=/);
+    expect(() => assertLocalUrl("postgresql://u:p@localhost:5432/db?HOST=/cloudsql/project:region:instance", { allowRemote: false }))
+      .toThrow(/\?host=/);
+    expect(assertLocalUrl("postgresql://u:p@localhost:5432/db?host=prod.example.com", { allowRemote: true }))
+      .toEqual({ host: "localhost", port: "5432", database: "db" });
+  });
 });
