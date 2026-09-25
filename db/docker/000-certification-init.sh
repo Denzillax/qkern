@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Einziger Init-Einstiegspunkt des Zertifizierungs-Stacks.
+# Einziger Init-Einstiegspunkt fuer den Dev-Compose (`docker-compose.yml`) und
+# alle Zertifizierungs-Stacks. Der Dateiname bleibt aus historischen Gruenden,
+# die Compose-Dateien verweisen darauf.
 #
-# Der Stack darf `db/migrations` nicht direkt nach `/docker-entrypoint-initdb.d`
+# Kein Stack darf `db/migrations` direkt nach `/docker-entrypoint-initdb.d`
 # mounten: Ein zweites Mount in dieses read-only Verzeichnis hinein (fuer das
 # Rollen-Script) scheitert auf Docker-Desktop-/WSL2-Hosts mit
 # "make mountpoint: read-only file system". Stattdessen wird `db` an einen
