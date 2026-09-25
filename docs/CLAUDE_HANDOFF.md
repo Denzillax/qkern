@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.13.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.14.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,15 +39,29 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.13.0`
-- Aktueller Slice: 2.13 Eine Schrift – Denzil zur Badge "282 archivierte
+- Paketversion: `2.14.0`
+- Aktueller Slice: 2.14 Ein Server, der noch da ist – erster Lauf auf GitHub
+  (Repo `Denzillax/qkern`, privat, angelegt mit der GitHub CLI; Denzil hat sich
+  selbst angemeldet). Zwei rote Jobs: (1) Windows-Runner: `spawnSync npm.cmd
+  EINVAL` unter Node 24 in `scripts/verify-package-tarballs.mjs`, jetzt ruft es
+  `npm-cli.js` direkt mit `process.execPath`, ohne Shell; (2) der Storage-Stack
+  bekam `minio/minio` nicht mehr: das Repository ist von Docker Hub verschwunden,
+  quay.io traegt es nicht. Drei Ersatzserver geprueft; nur versitygw v1.8.0
+  (Apache 2.0) verhaelt sich wie S3 auf dem Weg des Dienstes (POST-Policy mit
+  `x-amz-checksum-sha256`, Summe im HEAD zurueck, falsche Summe 400). RustFS
+  1.0.0 gibt im HEAD keine Summe, zwei Faelle fielen. Stack, Dev-Compose
+  (Port 9000 auf 7070, ohne UI, `npm run storage:bucket`), Label
+  `versitygw und ClamAV` (alte Manifeste bleiben lesbar), Texte in vier
+  Sprachen. Lokale Zertifizierung 8/8 zweimal. Sprosse 7 ist damit begonnen,
+  nicht belegt: der GitHub-Lauf auf dem neuen Stand steht noch aus
+- Vorheriger Slice: 2.13 Eine Schrift – Denzil zur Badge "282 archivierte
   Pruefläufe": die Schriftart ist schrecklich, ueberall aendern. Das war
   JetBrains Mono als Label-Schrift. Jetzt laufen alle Labels, Kicker, Zaehler
   und Kleintexte auf Landing (`app/page.module.css`) und in der Console
   (`app/globals.css`, 41 Regeln) in Manrope 600; Mono nur noch fuer echten
   Code: `<code>` in den Schnittstellen, Editor, Zeilennummern, `pre`, Diff
   (`--qkern-font-mono`)
-- Vorheriger Slice: 2.12 Wie Menschen reden – Denzil zur Hero-Zeile
+- Davor: 2.12 Wie Menschen reden – Denzil zur Hero-Zeile
   "Backend-Bausteine, die ihre Zusagen belegen": so reden keine Menschen.
   Neu in `lib/i18n/landing.ts` (hero, meta, footer.tagline, vier Sprachen)
   und `app/layout.tsx`: "Dein Backend. Getestet, bevor du es anfasst." mit

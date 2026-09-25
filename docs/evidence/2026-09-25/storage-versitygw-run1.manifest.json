@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "storage-versitygw-run1.log",
+  "commit": "234a61e21e0c7453b032dc8d2d80da2346e981d1",
+  "commitSubject": "release: 2.13.0 Eine Schrift",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

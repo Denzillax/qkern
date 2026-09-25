@@ -71,7 +71,7 @@ export const PLACEHOLDERS = {
   // Storage
   "storage-policies": { label: "Policies", supabase: "Storage → Policies", backend: "teilweise", note: "Lese- und Schreibregeln je Bucket. Die fünf Richtlinien gibt es; feinere Regeln je Pfad fehlen." },
   "storage-settings": { label: "Einstellungen", supabase: "Storage → Settings", backend: "teilweise", note: "Grössengrenzen, MIME-Liste, Aufbewahrung. Die Werte stehen am Bucket; eine Ansicht zum Ändern fehlt." },
-  "storage-s3": { label: "S3-Zugang", supabase: "Storage → S3", backend: "fehlt", note: "S3-kompatible Schlüssel für fremde Werkzeuge. Intern spricht QKERN S3 mit MinIO; ein Zugang nach aussen fehlt." },
+  "storage-s3": { label: "S3-Zugang", supabase: "Storage → S3", backend: "fehlt", note: "S3-kompatible Schlüssel für fremde Werkzeuge. Intern spricht QKERN S3; ein Zugang nach aussen fehlt." },
   "storage-analytics": { label: "Analytics-Buckets", supabase: "Storage → Analytics", backend: "fehlt", note: "Spaltenorientierte Ablage für grosse Auswertungen (Iceberg)." },
   "storage-vectors": { label: "Vektor-Buckets", supabase: "Storage → Vectors", backend: "fehlt", note: "Ablage für Embeddings mit Ähnlichkeitssuche." },
   // Functions

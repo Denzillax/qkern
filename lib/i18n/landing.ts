@@ -51,7 +51,7 @@ const de: LandingDictionary = {
   verification: {
     eyebrow: "So prüfen wir", title: "Ein grüner Testlauf ist keine Zertifizierung.",
     steps: [
-      { title: "Ausführen", text: "Jeder Adapter läuft gegen die echten Dienste: PostgreSQL, MinIO, ClamAV, SMTP, einen OIDC-Provider und Vault. Ein Speicher-Adapter kennt kein Rechtemodell und keine Transaktionsgrenze, also findet er die Fehler nicht, die Kunden treffen. Neun Produktfehler kamen so ans Licht." },
+      { title: "Ausführen", text: "Jeder Adapter läuft gegen die echten Dienste: PostgreSQL, versitygw, ClamAV, SMTP, einen OIDC-Provider und Vault. Ein Speicher-Adapter kennt kein Rechtemodell und keine Transaktionsgrenze, also findet er die Fehler nicht, die Kunden treffen. Neun Produktfehler kamen so ans Licht." },
       { title: "Wiederholen", text: "Jeder Lauf zweimal, bevor ein Release entsteht. Rohlog und Manifest liegen im Repository, mit Commit, Exit-Code und Testzahlen." },
       { title: "Brechen", text: "Danach schalten wir die geprüfte Garantie ab und lassen die Suite noch einmal laufen. Fällt dabei kein Fall um, hat der Test nichts geprüft." },
     ],
@@ -104,7 +104,7 @@ const en: LandingDictionary = {
   header: { nav: [["Product", "#product"], ["How we test", "#verification"], ["Developers", "#developers"], ["AI", "#ai"], ["Open items", "#security"], ["Pricing", "#pricing"]], login: "Sign in", createProject: "Create a project", home: "QKERN home", menuOpen: "Open menu", menuClose: "Close menu", language: "Choose language" },
   hero: { badge: "{n} archived test runs", title: "Your backend. Tested before you touch it.", lead: "Database, login, files, realtime and functions. Everything runs against real services, and you can read the logs in the repository.", primary: "Create a project", secondary: "See the console" },
   record: { kicker: "Test run", none: "no run archived", count: "{n} of {n}", counterTitle: "Counter-check", counterSmall: "Guarantees switched off, failed on purpose", runs: "{n} runs", stat: "{name} against {stack}" },
-  names: { "Control Plane und Data API": "Control plane and Data API", "Object Storage": "Object storage", "Project Auth": "Project auth", "Functions": "Functions", "Webhook-Signatur": "Webhook signature", "Ausgehender Weg": "Outbound path", "MinIO und ClamAV": "MinIO and ClamAV", "Mailpit und Dex über TLS": "Mailpit and Dex over TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry and PostgreSQL 17", "Echter HTTPS-Empfänger": "Real HTTPS receiver" },
+  names: { "Control Plane und Data API": "Control plane and Data API", "Object Storage": "Object storage", "Project Auth": "Project auth", "Functions": "Functions", "Webhook-Signatur": "Webhook signature", "Ausgehender Weg": "Outbound path", "MinIO und ClamAV": "MinIO and ClamAV", "versitygw und ClamAV": "versitygw and ClamAV", "Mailpit und Dex über TLS": "Mailpit and Dex over TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry and PostgreSQL 17", "Echter HTTPS-Empfänger": "Real HTTPS receiver" },
   product: {
     title: "What runs today, and how far it is proven.",
     lead: "Two questions per module: does it run? And did it run against real services, with an archived log? Only the second one counts as certified.",
@@ -124,7 +124,7 @@ const en: LandingDictionary = {
   verification: {
     eyebrow: "How we test", title: "A green test run is not a certification.",
     steps: [
-      { title: "Run", text: "Every adapter runs against the real services: PostgreSQL, MinIO, ClamAV, SMTP, an OIDC provider and Vault. An in-memory adapter knows no permission model and no transaction boundary, so it misses the bugs that hit customers. Nine product defects surfaced this way." },
+      { title: "Run", text: "Every adapter runs against the real services: PostgreSQL, versitygw, ClamAV, SMTP, an OIDC provider and Vault. An in-memory adapter knows no permission model and no transaction boundary, so it misses the bugs that hit customers. Nine product defects surfaced this way." },
       { title: "Repeat", text: "Every run twice before a release exists. Raw log and manifest live in the repository, with commit, exit code and test counts." },
       { title: "Break", text: "Then we switch off the guarantee under test and run the suite again. If no case falls, the test proved nothing." },
     ],
@@ -177,7 +177,7 @@ const fr: LandingDictionary = {
   header: { nav: [["Produit", "#product"], ["Nos tests", "#verification"], ["Développeurs", "#developers"], ["IA", "#ai"], ["Points ouverts", "#security"], ["Tarifs", "#pricing"]], login: "Se connecter", createProject: "Créer un projet", home: "Accueil QKERN", menuOpen: "Ouvrir le menu", menuClose: "Fermer le menu", language: "Choisir la langue" },
   hero: { badge: "{n} tests archivés", title: "Votre backend. Testé avant que vous y touchiez.", lead: "Base de données, connexion, fichiers, temps réel et fonctions. Tout tourne contre de vrais services, et vous pouvez lire les journaux dans le dépôt.", primary: "Créer un projet", secondary: "Voir la console" },
   record: { kicker: "Test", none: "aucun test archivé", count: "{n} sur {n}", counterTitle: "Contre-épreuve", counterSmall: "Garanties désactivées, échec volontaire", runs: "{n} passages", stat: "{name} contre {stack}" },
-  names: { "Control Plane und Data API": "Plan de contrôle et Data API", "Object Storage": "Stockage d'objets", "Project Auth": "Auth de projet", "Functions": "Fonctions", "Webhook-Signatur": "Signature des webhooks", "Ausgehender Weg": "Chemin sortant", "MinIO und ClamAV": "MinIO et ClamAV", "Mailpit und Dex über TLS": "Mailpit et Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registre et PostgreSQL 17", "Echter HTTPS-Empfänger": "Vrai récepteur HTTPS" },
+  names: { "Control Plane und Data API": "Plan de contrôle et Data API", "Object Storage": "Stockage d'objets", "Project Auth": "Auth de projet", "Functions": "Fonctions", "Webhook-Signatur": "Signature des webhooks", "Ausgehender Weg": "Chemin sortant", "MinIO und ClamAV": "MinIO et ClamAV", "versitygw und ClamAV": "versitygw et ClamAV", "Mailpit und Dex über TLS": "Mailpit et Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registre et PostgreSQL 17", "Echter HTTPS-Empfänger": "Vrai récepteur HTTPS" },
   product: {
     title: "Ce qui tourne aujourd'hui, et jusqu'où c'est prouvé.",
     lead: "Deux questions par module : est-ce que ça tourne ? Et est-ce que ça a tourné contre de vrais services, avec un journal archivé ? Seule la seconde vaut certification.",
@@ -197,7 +197,7 @@ const fr: LandingDictionary = {
   verification: {
     eyebrow: "Nos tests", title: "Un test vert n'est pas une certification.",
     steps: [
-      { title: "Exécuter", text: "Chaque adaptateur tourne contre les vrais services : PostgreSQL, MinIO, ClamAV, SMTP, un fournisseur OIDC et Vault. Un adaptateur en mémoire ne connaît ni modèle de droits ni frontière de transaction, il rate donc les erreurs qui touchent les clients. Neuf défauts produit sont apparus ainsi." },
+      { title: "Exécuter", text: "Chaque adaptateur tourne contre les vrais services : PostgreSQL, versitygw, ClamAV, SMTP, un fournisseur OIDC et Vault. Un adaptateur en mémoire ne connaît ni modèle de droits ni frontière de transaction, il rate donc les erreurs qui touchent les clients. Neuf défauts produit sont apparus ainsi." },
       { title: "Répéter", text: "Chaque test deux fois avant qu'une version existe. Journal brut et manifeste sont dans le dépôt, avec commit, code de sortie et nombre de cas." },
       { title: "Casser", text: "Ensuite nous désactivons la garantie testée et relançons la suite. Si aucun cas ne tombe, le test n'a rien prouvé." },
     ],
@@ -250,7 +250,7 @@ const it: LandingDictionary = {
   header: { nav: [["Prodotto", "#product"], ["Come testiamo", "#verification"], ["Sviluppatori", "#developers"], ["IA", "#ai"], ["Punti aperti", "#security"], ["Prezzi", "#pricing"]], login: "Accedi", createProject: "Crea un progetto", home: "Pagina iniziale QKERN", menuOpen: "Apri il menu", menuClose: "Chiudi il menu", language: "Scegli la lingua" },
   hero: { badge: "{n} test archiviati", title: "Il tuo backend. Testato prima che lo tocchi.", lead: "Database, login, file, realtime e funzioni. Tutto gira contro servizi reali, e i log li puoi leggere nel repository.", primary: "Crea un progetto", secondary: "Guarda la console" },
   record: { kicker: "Test", none: "nessun test archiviato", count: "{n} su {n}", counterTitle: "Controprova", counterSmall: "Garanzie disattivate, fallimento voluto", runs: "{n} esecuzioni", stat: "{name} contro {stack}" },
-  names: { "Control Plane und Data API": "Piano di controllo e Data API", "Object Storage": "Storage a oggetti", "Project Auth": "Auth di progetto", "Functions": "Funzioni", "Webhook-Signatur": "Firma dei webhook", "Ausgehender Weg": "Percorso in uscita", "MinIO und ClamAV": "MinIO e ClamAV", "Mailpit und Dex über TLS": "Mailpit e Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry e PostgreSQL 17", "Echter HTTPS-Empfänger": "Vero ricevitore HTTPS" },
+  names: { "Control Plane und Data API": "Piano di controllo e Data API", "Object Storage": "Storage a oggetti", "Project Auth": "Auth di progetto", "Functions": "Funzioni", "Webhook-Signatur": "Firma dei webhook", "Ausgehender Weg": "Percorso in uscita", "MinIO und ClamAV": "MinIO e ClamAV", "versitygw und ClamAV": "versitygw e ClamAV", "Mailpit und Dex über TLS": "Mailpit e Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry e PostgreSQL 17", "Echter HTTPS-Empfänger": "Vero ricevitore HTTPS" },
   product: {
     title: "Cosa funziona oggi, e fin dove è dimostrato.",
     lead: "Due domande per modulo: funziona? Ed è stato eseguito contro servizi reali, con un log archiviato? Solo la seconda conta come certificazione.",
@@ -270,7 +270,7 @@ const it: LandingDictionary = {
   verification: {
     eyebrow: "Come testiamo", title: "Un test verde non è una certificazione.",
     steps: [
-      { title: "Eseguire", text: "Ogni adattatore gira contro i servizi reali: PostgreSQL, MinIO, ClamAV, SMTP, un provider OIDC e Vault. Un adattatore in memoria non conosce né modello dei permessi né confine di transazione, quindi non trova gli errori che colpiscono i clienti. Nove difetti di prodotto sono emersi così." },
+      { title: "Eseguire", text: "Ogni adattatore gira contro i servizi reali: PostgreSQL, versitygw, ClamAV, SMTP, un provider OIDC e Vault. Un adattatore in memoria non conosce né modello dei permessi né confine di transazione, quindi non trova gli errori che colpiscono i clienti. Nove difetti di prodotto sono emersi così." },
       { title: "Ripetere", text: "Ogni test due volte prima che esista una release. Log grezzo e manifest sono nel repository, con commit, codice di uscita e conteggio dei casi." },
       { title: "Rompere", text: "Poi disattiviamo la garanzia testata e rilanciamo la suite. Se nessun caso cade, il test non ha dimostrato nulla." },
     ],

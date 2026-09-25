@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.13.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.14.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 
@@ -195,15 +195,23 @@ werden nur als HMAC-Verifier gespeichert und sind einmalig.
 ## 7. Project Storage
 
 Project Storage ist unabhängig opt-in. Für einen vollständigen lokalen Upload-
-und Scan-Durchstich zuerst PostgreSQL, MinIO und ClamAV starten:
+und Scan-Durchstich zuerst PostgreSQL, versitygw (S3) und ClamAV starten:
 
 ```powershell
 docker compose up -d postgres minio clamav
 ```
 
-Im MinIO-UI unter `http://127.0.0.1:9001` mit den lokalen Compose-Werten anmelden
-und einmal den Provider-Bucket `qkern-project-storage` anlegen. Danach in derselben
-PowerShell-Sitzung setzen:
+Wer den Stack schon vor `2.14.0` mit MinIO betrieben hat, entfernt zuerst das alte
+Volume, dessen Ablage versitygw nicht lesen kann: `docker compose down` und
+`docker volume rm qkern_qkern-minio`. Dann den Provider-Bucket
+`qkern-project-storage` einmal anlegen (versitygw hat keine Web-UI; das Skript
+signiert ein `PUT /bucket` mit den lokalen Compose-Werten):
+
+```powershell
+npm run storage:bucket
+```
+
+Danach in derselben PowerShell-Sitzung setzen:
 
 ```powershell
 $env:QKERN_PROJECT_STORAGE_ENABLED="true"
@@ -255,7 +263,7 @@ Timeout, Scannerfehler, Drift und Größenüberschreitung bleiben fail-closed;
 funktionieren ausschließlich für `clean` Objects und laufen nach 30 bis höchstens
 900 Sekunden ab.
 
-Der echte Wegwerf-Zertifizierungslauf startet portlos MinIO und ClamAV, prüft einen
+Der echte Wegwerf-Zertifizierungslauf startet portlos versitygw und ClamAV, prüft einen
 sauberen Upload/Download sowie die EICAR-Testsignatur und entfernt anschließend
 Container und Volumes:
 
@@ -264,7 +272,7 @@ npm run test:storage:docker
 ```
 
 Der Lauf benötigt Docker und darf nur dann als bestanden dokumentiert werden, wenn
-der Befehl tatsächlich grün beendet wurde. Das im Compose-File gepinnte MinIO-Image
+der Befehl tatsächlich grün beendet wurde. Das im Compose-File gepinnte versitygw-Image
 ist ein reproduzierbarer Kompatibilitätstest, keine Production-Hosting-Empfehlung.
 
 Storage-Quota und -Metadaten sind gegen parallele Übergänge gehärtet. Zwei

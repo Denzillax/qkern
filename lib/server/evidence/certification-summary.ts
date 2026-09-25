@@ -41,7 +41,7 @@ export type CertificationSummary = {
 /** Dieselbe Zuordnung wie `tests/status-numbers-contract.test.ts`. */
 export const CERTIFICATION_CLAIMS: ReadonlyArray<{ name: string; stacks: readonly string[]; label: string }> = [
   { name: "Control Plane und Data API", label: "PostgreSQL 17", stacks: ["PostgreSQL 17", "postgres-17"] },
-  { name: "Object Storage", label: "MinIO und ClamAV", stacks: ["MinIO und ClamAV", "minio-clamav"] },
+  { name: "Object Storage", label: "versitygw und ClamAV", stacks: ["versitygw und ClamAV", "MinIO und ClamAV", "minio-clamav"] },
   { name: "Project Auth", label: "Mailpit und Dex über TLS", stacks: ["Mailpit und Dex", "project-auth-provider"] },
   { name: "Functions", label: "Docker, Registry und PostgreSQL 17",
     stacks: ["Docker 29.5, registry:2 und PostgreSQL 17", "docker-function-egress-guard"] },

@@ -21,9 +21,11 @@ const packageJson = JSON.parse(
 ) as { scripts: Record<string, string> };
 
 describe("Project Storage provider certification harness", () => {
-  it("uses isolated, portless MinIO and ClamAV services with fixed release tags", () => {
+  it("uses isolated, portless versitygw and ClamAV services with fixed release tags", () => {
     expect(compose).toContain("name: qkern-storage-v140a2-certification");
-    expect(compose).toContain("minio/minio:RELEASE.2025-09-07T16-13-09Z");
+    // Seit 2.14 versitygw statt MinIO: minio/minio ist von Docker Hub verschwunden.
+    expect(compose).toContain("versity/versitygw:v1.8.0");
+    expect(compose).not.toMatch(/image:\s*minio\/minio/);
     expect(compose).toContain("clamav/clamav:1.4.5");
     expect(compose).not.toMatch(/^\s*ports:/m);
     expect(compose).toContain(".:/qkern-src:ro");
@@ -57,7 +59,7 @@ describe("Project Storage provider certification harness", () => {
 
   it("requires an explicit provider E2E opt-in and private service names", () => {
     expect(compose).toContain('QKERN_TEST_STORAGE_PROVIDER_E2E: "true"');
-    expect(compose).toContain("QKERN_TEST_STORAGE_S3_ENDPOINT: http://127.0.0.1:9000");
+    expect(compose).toContain("QKERN_TEST_STORAGE_S3_ENDPOINT: http://127.0.0.1:7070");
     expect(compose).toContain('network_mode: "service:minio"');
     expect(compose).toContain("QKERN_TEST_STORAGE_CLAMAV_HOST: clamav");
     expect(integration).toContain('QKERN_TEST_STORAGE_PROVIDER_E2E === "true"');

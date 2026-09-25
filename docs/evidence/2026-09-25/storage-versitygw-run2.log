@@ -1,0 +1,207 @@
+ Network qkern-storage-v140a2-certification_default Creating 
+ Network qkern-storage-v140a2-certification_default Created 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Creating 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Created 
+ Container qkern-storage-v140a2-certification-clamav-1 Creating 
+ Container qkern-storage-v140a2-certification-minio-1 Creating 
+ Container qkern-storage-v140a2-certification-minio-1 Created 
+ Container qkern-storage-v140a2-certification-clamav-1 Created 
+ Container qkern-storage-v140a2-certification-certification-1 Creating 
+ Container qkern-storage-v140a2-certification-certification-1 Created 
+Attaching to certification-1, clamav-1, minio-1
+ Container qkern-storage-v140a2-certification-minio-1 Starting 
+ Container qkern-storage-v140a2-certification-clamav-1 Starting 
+minio-1  | No IAM service configured, enabling single account mode
+minio-1  | ┌────────────────────────────────────────────────────────────────────┐
+minio-1  | │                             VersityGW                              │
+minio-1  | │Version v1.8.0, Build fd04bc1df2656298577b82667a4195c77f8c7563, BuildTime 2026-09-04T23:11:49Z│
+minio-1  | │               (bound on host 0.0.0.0 and port 7070)                │
+minio-1  | │                                                                    │
+minio-1  | │Admin/S3 service listening on:                                      │
+minio-1  | │  http://127.0.0.1:7070                                             │
+minio-1  | │  http://[::1]:7070                                                 │
+minio-1  | │  http://172.24.0.2:7070                                            │
+minio-1  | └────────────────────────────────────────────────────────────────────┘
+ Container qkern-storage-v140a2-certification-minio-1 Started 
+clamav-1  | Starting Freshclamd
+clamav-1  | Starting ClamAV
+ Container qkern-storage-v140a2-certification-clamav-1 Started 
+ Container qkern-storage-v140a2-certification-clamav-1 Waiting 
+clamav-1  | LibClamAV Warning: **************************************************
+clamav-1  | LibClamAV Warning: ***  The virus database is older than 7 days!  ***
+clamav-1  | LibClamAV Warning: ***   Please update it as soon as possible.    ***
+clamav-1  | LibClamAV Warning: **************************************************
+clamav-1  | Socket for clamd not found yet, retrying (0/1800) ...ClamAV update process started at Fri Sep 25 16:46:34 2026
+clamav-1  | WARNING: Your ClamAV installation is OUTDATED!
+clamav-1  | WARNING: Local version: 1.4.5 Recommended version: 1.4.6
+clamav-1  | DON'T PANIC! Read https://docs.clamav.net/manual/Installing.html
+clamav-1  | daily database available for update (local version: 28080, remote version: 28134)
+clamav-1  | Socket for clamd not found yet, retrying (1/1800) ...Socket for clamd not found yet, retrying (2/1800) ...Socket for clamd not found yet, retrying (3/1800) ...Socket for clamd not found yet, retrying (4/1800) ...Socket for clamd not found yet, retrying (5/1800) ...Socket for clamd not found yet, retrying (6/1800) ...Socket for clamd not found yet, retrying (7/1800) ...Testing database: '/var/lib/clamav/tmp.418c33488b/clamav-751eb1afec167ab38b82cfd48ab07420.tmp-daily.cld' ...
+clamav-1  | Socket for clamd not found yet, retrying (8/1800) ...Fri Sep 25 16:46:43 2026 -> Limits: Global time limit set to 120000 milliseconds.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: Global size limit set to 419430400 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: File size limit set to 104857600 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: Recursion level limit set to 17.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: Files limit set to 10000.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxEmbeddedPE limit set to 41943040 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxHTMLNormalize limit set to 41943040 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxHTMLNoTags limit set to 8388608 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxScriptNormalize limit set to 20971520 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxZipTypeRcg limit set to 1048576 bytes.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxPartitions limit set to 50.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxIconsPE limit set to 100.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: MaxRecHWP3 limit set to 16.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: PCREMatchLimit limit set to 100000.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: PCRERecMatchLimit limit set to 2000.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Limits: PCREMaxFileSize limit set to 104857600.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Archive support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Image (graphics) scanning support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Detection using image fuzzy hash enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> AlertExceedsMax heuristic detection disabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Heuristic alerts enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Portable Executable support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> ELF support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Mail files support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> OLE2 support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> PDF support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> SWF support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> HTML support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> XMLDOCS support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> HWP3 support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> OneNote support enabled.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Self checking every 600 seconds.
+clamav-1  | Fri Sep 25 16:46:43 2026 -> Set stacksize to 1048576
+clamav-1  | socket found, clamd started.
+ Container qkern-storage-v140a2-certification-clamav-1 Healthy 
+ Container qkern-storage-v140a2-certification-certification-1 Starting 
+clamav-1  | Database test passed.
+clamav-1  | daily.cld updated (version: 28134, sigs: 355678, f-level: 90, builder: svc.clamav-publisher)
+clamav-1  | main.cvd database is up-to-date (version: 63, sigs: 3287027, f-level: 90, builder: tomjudge)
+clamav-1  | bytecode.cvd database is up-to-date (version: 339, sigs: 80, f-level: 90, builder: nrandolp)
+clamav-1  | Clamd successfully notified about the update.
+clamav-1  | Fri Sep 25 16:46:44 2026 -> Reading databases from /var/lib/clamav
+ Container qkern-storage-v140a2-certification-certification-1 Started 
+clamav-1  | Fri Sep 25 16:46:54 2026 -> Database correctly reloaded (3628083 signatures)
+clamav-1  | Fri Sep 25 16:46:54 2026 -> Activating the newly loaded database...
+certification-1  | 
+certification-1  | added 286 packages, and audited 287 packages in 11s
+certification-1  | 
+certification-1  | 90 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 9 vulnerabilities (5 moderate, 3 high, 1 critical)
+certification-1  | 
+certification-1  | To address issues that do not require attention, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix --force
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New minor version of npm available! 11.5.1 -> 11.20.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0
+certification-1  | npm notice To update run: npm install -g npm@11.20.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@2.13.0 test:storage:provider
+certification-1  | > vitest run tests/project-storage-provider.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  |  RUN  v4.1.10 /workspace/qkern
+certification-1  | 
+minio-1          | 16:46:57 | vgw | 200 |     665.606µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 204 |     1.57317ms | 127.0.0.1 | POST | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 200 |     216.493µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/14ecebab-7df7-4a7d-a97d-2ce7ca90c482/53160b59-2897-49aa-b3b8-d15cd49c601e/clean.txt | - | 
+minio-1          | 16:46:57 | vgw | 200 |     166.476µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/14ecebab-7df7-4a7d-a97d-2ce7ca90c482/53160b59-2897-49aa-b3b8-d15cd49c601e/clean.txt | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:57 | vgw | 200 |     189.167µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/14ecebab-7df7-4a7d-a97d-2ce7ca90c482/53160b59-2897-49aa-b3b8-d15cd49c601e/clean.txt | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:57 | vgw | 200 |     174.237µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/14ecebab-7df7-4a7d-a97d-2ce7ca90c482/53160b59-2897-49aa-b3b8-d15cd49c601e/clean.txt | - | 
+minio-1          | 16:46:57 | vgw | 409 |     144.899µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 204 |     370.899µs | 127.0.0.1 | POST | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 200 |     255.819µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/43277ebc-a141-4ef2-836d-3bb695265205/efb8b0ca-dcf2-49e6-a7f7-a3bea8ca1752/eicar.txt | - | 
+minio-1          | 16:46:57 | vgw | 200 |     278.377µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/43277ebc-a141-4ef2-836d-3bb695265205/efb8b0ca-dcf2-49e6-a7f7-a3bea8ca1752/eicar.txt | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+clamav-1         | Fri Sep 25 16:46:57 2026 -> instream(172.24.0.2@56706): Eicar-Test-Signature FOUND
+minio-1          | 16:46:57 | vgw | 204 |     185.304µs | 127.0.0.1 | DELETE | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/43277ebc-a141-4ef2-836d-3bb695265205/efb8b0ca-dcf2-49e6-a7f7-a3bea8ca1752/eicar.txt | - | 
+minio-1          | 16:46:57 | vgw | 404 |     118.575µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/43277ebc-a141-4ef2-836d-3bb695265205/efb8b0ca-dcf2-49e6-a7f7-a3bea8ca1752/eicar.txt | - | 
+minio-1          | 16:46:57 | vgw | 409 |     108.987µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 200 |     241.068µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | uploads=
+minio-1          | 16:46:57 | vgw | 200 |   15.032575ms | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=1&uploadId=7a8e36a7-ab99-4e9b-b329-c98226c463f4
+minio-1          | 16:46:57 | vgw | 400 |     850.611µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=2&uploadId=7a8e36a7-ab99-4e9b-b329-c98226c463f4
+minio-1          | 16:46:57 | vgw | 403 |     160.583µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=2&uploadId=7a8e36a7-ab99-4e9b-b329-c98226c463f4
+minio-1          | 16:46:57 | vgw | 200 |     343.764µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=2&uploadId=7a8e36a7-ab99-4e9b-b329-c98226c463f4
+minio-1          | 16:46:57 | vgw | 200 |    6.731952ms | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | uploadId=7a8e36a7-ab99-4e9b-b329-c98226c463f4
+minio-1          | 16:46:57 | vgw | 200 |     153.459µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:57 | vgw | 204 |     456.426µs | 127.0.0.1 | DELETE | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/resumable-1790354817903.bin | - | 
+minio-1          | 16:46:57 | vgw | 409 |     158.384µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 200 |     161.458µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/aborted-1790354817997.bin | - | uploads=
+minio-1          | 16:46:57 | vgw | 200 |     341.687µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/aborted-1790354817997.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164657Z&X-Amz-Expires=59&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=1&uploadId=0e13031a-e994-4385-ba59-cb3a94c29e93
+minio-1          | 16:46:57 | vgw | 204 |     166.519µs | 127.0.0.1 | DELETE | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/aborted-1790354817997.bin | - | uploadId=0e13031a-e994-4385-ba59-cb3a94c29e93
+minio-1          | 16:46:57 | vgw | 404 |     159.788µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/aborted-1790354817997.bin | - | 
+minio-1          | 16:46:57 | vgw | 404 |     159.131µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/aborted-1790354817997.bin | - | uploadId=0e13031a-e994-4385-ba59-cb3a94c29e93
+minio-1          | 16:46:57 | vgw | 409 |     114.573µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:57 | vgw | 200 |      169.82µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | uploads=
+minio-1          | 16:46:58 | vgw | 200 |   12.936821ms | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=1&uploadId=12f4dd41-0ca5-482d-b7bf-ff864e6b590d
+minio-1          | 16:46:58 | vgw | 200 |     590.697µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=2&uploadId=12f4dd41-0ca5-482d-b7bf-ff864e6b590d
+minio-1          | 16:46:58 | vgw | 200 |     2.94812ms | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | uploadId=12f4dd41-0ca5-482d-b7bf-ff864e6b590d
+minio-1          | 16:46:58 | vgw | 200 |     159.606µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | 
+minio-1          | 16:46:58 | vgw | 200 |     144.386µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:58 | vgw | 200 |     331.571µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/d797f4e9-b392-4bca-b4ce-f57cbc42b450/4f723bed-a417-408f-a7ca-999a51fe7f09/resumable.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:58 | vgw | 409 |     175.476µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:58 | vgw | 200 |      168.22µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/5ca797b4-04de-4a96-979e-6323f8496d00/c917ec39-d597-47ca-910a-129c58df510e/liar.bin | - | uploads=
+minio-1          | 16:46:58 | vgw | 200 |     962.464µs | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/5ca797b4-04de-4a96-979e-6323f8496d00/c917ec39-d597-47ca-910a-129c58df510e/liar.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=1&uploadId=1feba04d-1424-4d96-9b0b-24e78ad5a7ef
+minio-1          | 16:46:58 | vgw | 200 |    1.778883ms | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/5ca797b4-04de-4a96-979e-6323f8496d00/c917ec39-d597-47ca-910a-129c58df510e/liar.bin | - | uploadId=1feba04d-1424-4d96-9b0b-24e78ad5a7ef
+minio-1          | 16:46:58 | vgw | 200 |     205.368µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/5ca797b4-04de-4a96-979e-6323f8496d00/c917ec39-d597-47ca-910a-129c58df510e/liar.bin | - | 
+minio-1          | 16:46:58 | vgw | 200 |     137.487µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/5ca797b4-04de-4a96-979e-6323f8496d00/c917ec39-d597-47ca-910a-129c58df510e/liar.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+minio-1          | 16:46:58 | vgw | 409 |     149.532µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:58 | vgw | 200 |      144.71µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/04b805c4-fc7e-463c-97e8-2d6c6e12fa27/6d54fead-5d2f-40da-8aed-f439c8799020/stale.bin | - | uploads=
+minio-1          | 16:46:58 | vgw | 200 |     159.897µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 204 |     103.664µs | 127.0.0.1 | DELETE | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/04b805c4-fc7e-463c-97e8-2d6c6e12fa27/6d54fead-5d2f-40da-8aed-f439c8799020/stale.bin | - | uploadId=a891e719-eeee-4d3c-88e9-d170451b02fb
+minio-1          | 16:46:58 | vgw | 200 |      94.977µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 200 |      87.588µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 409 |      85.598µs | 127.0.0.1 | PUT | /qkern-storage-certification | - | 
+minio-1          | 16:46:58 | vgw | 200 |     140.168µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/crashed-1790354818475/orphan.bin | - | uploads=
+minio-1          | 16:46:58 | vgw | 200 |     121.719µs | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/1f16da3f-341f-40d1-af63-27b857597bc5/survivor.bin | - | uploads=
+minio-1          | 16:46:58 | vgw | 200 |     136.535µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 204 |      88.705µs | 127.0.0.1 | DELETE | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/crashed-1790354818475/orphan.bin | - | uploadId=889d54c1-6249-4d94-9437-180a97109723
+minio-1          | 16:46:58 | vgw | 200 |         120µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 200 |      92.218µs | 127.0.0.1 | GET | /qkern-storage-certification | - | max-uploads=1000&uploads=
+minio-1          | 16:46:58 | vgw | 200 |    1.235746ms | 127.0.0.1 | PUT | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/1f16da3f-341f-40d1-af63-27b857597bc5/survivor.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host%3Bx-amz-checksum-sha256&partNumber=1&uploadId=f2b0346a-b861-4dfd-8e5a-e75c77654a9d
+minio-1          | 16:46:58 | vgw | 200 |    1.126841ms | 127.0.0.1 | POST | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/1f16da3f-341f-40d1-af63-27b857597bc5/survivor.bin | - | uploadId=f2b0346a-b861-4dfd-8e5a-e75c77654a9d
+minio-1          | 16:46:58 | vgw | 200 |     161.776µs | 127.0.0.1 | HEAD | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/1f16da3f-341f-40d1-af63-27b857597bc5/survivor.bin | - | 
+minio-1          | 16:46:58 | vgw | 200 |      99.826µs | 127.0.0.1 | GET | /qkern-storage-certification/00000000-0000-4000-8000-000000000201/00000000-0000-4000-8000-000000000202/development/2702d4b7-82fe-4304-9e0b-42533e98ec5d/1f16da3f-341f-40d1-af63-27b857597bc5/survivor.bin | - | X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%2A%2A%2A%2A&X-Amz-Date=20260925T164658Z&X-Amz-Expires=60&X-Amz-Signature=%2A%2A%2A%2A&X-Amz-SignedHeaders=host
+certification-1  |  ✓ tests/project-storage-provider.integration.test.ts (8 tests) 761ms
+certification-1  |      ✓ serves a resumable upload through the full service path  408ms
+certification-1  | 
+certification-1  |  Test Files  1 passed (1)
+certification-1  |       Tests  8 passed (8)
+certification-1  |    Start at  16:46:57
+certification-1  |    Duration  1.13s (transform 175ms, setup 0ms, import 217ms, tests 761ms, environment 0ms)
+certification-1  | 
+[Kcertification-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container qkern-storage-v140a2-certification-certification-1 Stopping 
+ Container qkern-storage-v140a2-certification-certification-1 Stopped 
+ Container qkern-storage-v140a2-certification-minio-1 Stopping 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopping 
+minio-1          | caught signal terminated
+minio-1          | terminating signal caught, shutting down
+ Container qkern-storage-v140a2-certification-minio-1 Stopped 
+[Kminio-1 exited with code 0
+ Container qkern-storage-v140a2-certification-clamav-1 Stopped 
+[Kclamav-1 exited with code 143
+ Container qkern-storage-v140a2-certification-certification-1 Stopping 
+ Container qkern-storage-v140a2-certification-certification-1 Stopped 
+ Container qkern-storage-v140a2-certification-certification-1 Removing 
+ Container qkern-storage-v140a2-certification-certification-1 Removed 
+ Container qkern-storage-v140a2-certification-minio-1 Stopping 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopping 
+ Container qkern-storage-v140a2-certification-minio-1 Stopped 
+ Container qkern-storage-v140a2-certification-minio-1 Removing 
+ Container qkern-storage-v140a2-certification-clamav-1 Stopped 
+ Container qkern-storage-v140a2-certification-clamav-1 Removing 
+ Container qkern-storage-v140a2-certification-clamav-1 Removed 
+ Container qkern-storage-v140a2-certification-minio-1 Removed 
+ Network qkern-storage-v140a2-certification_default Removing 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Removing 
+ Volume qkern-storage-v140a2-certification_storage-certification-clamav-db Removed 
+ Network qkern-storage-v140a2-certification_default Removed 
+EXIT=0

@@ -24,7 +24,7 @@ type Manifest = { stack: string; passed: number; failed: number; exitCode: numbe
 /** Die frühen Manifeste tragen Slugs, die späteren freien Text. Beides zählt. */
 const CLAIMS: ReadonlyArray<{ label: string; stacks: readonly string[] }> = [
   { label: "PostgreSQL-17-Zertifizierung", stacks: ["PostgreSQL 17", "postgres-17"] },
-  { label: "MinIO-/ClamAV-Zertifizierung", stacks: ["MinIO und ClamAV", "minio-clamav"] },
+  { label: "versitygw-/ClamAV-Zertifizierung", stacks: ["versitygw und ClamAV", "MinIO und ClamAV", "minio-clamav"] },
   { label: "Project-Auth-Provider-Zertifizierung", stacks: ["Mailpit und Dex", "project-auth-provider"] },
   {
     label: "Functions gegen Docker plus PostgreSQL",

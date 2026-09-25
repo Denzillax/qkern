@@ -37,7 +37,7 @@ jobs:
           retention-days: 90
 
   storage:
-    name: MinIO and ClamAV
+    name: versitygw and ClamAV
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

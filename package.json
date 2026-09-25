@@ -1,6 +1,6 @@
 {
   "name": "qkern-platform",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "private": true,
   "engines": {
     "node": ">=24.7.0"
@@ -19,6 +19,7 @@
     "test:postgres:docker": "node scripts/postgres-certification.mjs",
     "test:storage:provider": "vitest run tests/project-storage-provider.integration.test.ts",
     "test:storage:docker": "node scripts/storage-certification.mjs",
+    "storage:bucket": "node scripts/storage-create-bucket.mjs",
     "verify:backup-restore": "node --import tsx scripts/verify-backup-restore-evidence.ts",
     "render:runtime-deployments": "node --import tsx scripts/render-background-runtime-deployments.ts",
     "verify:runtime-deployments": "node --import tsx scripts/verify-background-runtime-deployments.ts",

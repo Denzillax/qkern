@@ -1196,3 +1196,12 @@ STATUS.md) halten über den Umbau hinweg.
 | --- | --- | --- |
 | `2026-09-25/font-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
 | `2026-09-25/font-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.14 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/storage-versitygw-run1.log` | versitygw und ClamAV | 8 von 8, exit 0 |
+| `2026-09-25/storage-versitygw-run2.log` | versitygw und ClamAV | 8 von 8, exit 0, Wiederholung |
+| `2026-09-25/storage-swap-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
+| `2026-09-25/storage-swap-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |

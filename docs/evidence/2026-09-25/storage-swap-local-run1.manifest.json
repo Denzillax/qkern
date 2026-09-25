@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "storage-swap-local-run1.log",
+  "commit": "234a61e21e0c7453b032dc8d2d80da2346e981d1",
+  "commitSubject": "release: 2.13.0 Eine Schrift",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

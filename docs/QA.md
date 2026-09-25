@@ -4054,3 +4054,44 @@ unveraendert.
 
 Nicht erbracht: Buchstabenabstaende der alten Mono-Labels (bis 0,16 em)
 sind geblieben und koennten in der Sans enger sein.
+
+## Ein Server, der noch da ist – Release 2.14
+
+Denzil fragte, ob ich das Repository nicht selbst auf GitHub anlegen kann.
+Kann ich, bis auf die Anmeldung: die GitHub CLI installiert, Denzil hat sich
+im Browser angemeldet, dann `Denzillax/qkern` privat angelegt und den Stand
+2.13.0 gepusht. Die beiden Workflows liefen zum ersten Mal ausserhalb dieser
+Maschine, und zwei Jobs waren rot.
+
+Windows-Runner: `spawnSync npm.cmd EINVAL`. Node 24 verweigert den Start von
+`.cmd`-Dateien ohne Shell (Folge von CVE-2024-27980). Der Tarball-Pruefer ruft
+jetzt `npm-cli.js` direkt mit dem laufenden Node auf; die Datei liegt neben
+der Node-Binary (Windows) oder unter `../lib` (Unix). Keine Shell, keine
+Warnung, lokal geprueft.
+
+Storage-Stack: `pull access denied for minio/minio`. Das Repository ist von
+Docker Hub verschwunden, quay.io traegt die Tags ebenfalls nicht. Lokal lief
+der Stack nur noch aus dem Image-Cache. Drei Ersatzserver geprueft, mit
+einer Wegwerf-Sonde gegen den echten Provider-Code: RustFS 1.0.0 nimmt den
+POST-Policy-Upload an, gibt aber im HEAD keine `x-amz-checksum-sha256`
+zurueck, und der Dienst vergleicht genau diese Summe, zwei Faelle fielen mit
+`STORAGE_INVALID_INPUT`. versitygw v1.8.0 (Apache 2.0) verhaelt sich wie S3:
+Summe im HEAD zurueck, falsche Summe mit 400 abgewiesen, Objekt nicht da.
+Garage und SeaweedFS blieben ungeprueft, weil versitygw schon passte.
+
+Der Zertifizierungsstack laeuft jetzt gegen versitygw (Port 7070 im
+geteilten Netz-Namespace), der Dev-Compose ebenfalls, hinter dem gewohnten
+Port 9000 und ohne Web-UI; `npm run storage:bucket` legt den Bucket per
+signiertem PUT an, 200 oder 409. Das Label heisst `versitygw und ClamAV`,
+die alten Manifeste mit `MinIO und ClamAV` bleiben in der Zusammenfassung
+lesbar. Handbuch, Landing (vier Sprachen), Console-Notiz, STATUS und der
+Jobname im Workflow sind nachgezogen.
+
+Checkpoint `2.14.0` am 25. September 2026: Storage gegen versitygw und
+ClamAV 8 von 8, exit 0, zweimal reproduziert; Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: keine Mutationsprobe, weil kein Produktcode geaendert wurde;
+der GitHub-Lauf auf diesem Stand steht noch aus, Sprosse 7 ist begonnen,
+nicht belegt. Die Fassung `RELEASE.2025-09-07` von MinIO ist damit nur
+noch im lokalen Image-Cache reproduzierbar.

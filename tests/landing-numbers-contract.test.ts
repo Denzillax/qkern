@@ -25,7 +25,7 @@ describe("landing numbers contract", () => {
     const status = await readFile(path.resolve(process.cwd(), "STATUS.md"), "utf8");
     const claims: Record<string, string> = {
       "Control Plane und Data API": "PostgreSQL-17-Zertifizierung",
-      "Object Storage": "MinIO-/ClamAV-Zertifizierung",
+      "Object Storage": "versitygw-/ClamAV-Zertifizierung",
       "Project Auth": "Project-Auth-Provider-Zertifizierung",
       "Functions": "Functions gegen Docker plus PostgreSQL",
       "Webhook-Signatur": "Webhook-Signatur gegen echten Vault",

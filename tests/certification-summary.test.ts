@@ -25,7 +25,7 @@ describe("certification summary", () => {
     ]);
     expect(summary.rows).toEqual([
       { name: "Control Plane und Data API", stack: "PostgreSQL 17", passed: 160, date: "2026-09-24" },
-      { name: "Object Storage", stack: "MinIO und ClamAV", passed: 8, date: "2026-08-16" },
+      { name: "Object Storage", stack: "versitygw und ClamAV", passed: 8, date: "2026-08-16" },
     ]);
     expect(summary.mutationRuns).toBe(1);
     expect(summary.archivedRuns).toBe(5);
