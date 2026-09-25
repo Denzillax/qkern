@@ -8,7 +8,14 @@ import pg from "pg";
  * gibt es keinen; das Skript macht dieselbe eine UPDATE-Anweisung wie
  * `bindProvisioned` in lib/server/db/repositories.ts, als Provisionierer-Login,
  * nur aus `pending:` heraus (der Trigger in Migration 0005 verbietet alles
- * andere) und nie fuer production.
+ * andere) und nie fuer production. Danach ist die Bindung unveraenderlich,
+ * darum laeuft das Skript nur gegen einen lokalen Host, ausser
+ * --allow-remote-host erzwingt es.
+ *
+ * Es macht nur dieses UPDATE: kein Provisionierungsauftrag, keine Zeile in
+ * `project_database_bindings`, keine Aenderung an `projects.status`. Es liest
+ * keine `.env.local`; QKERN_PROVISIONER_ORGANIZATION_ID muss in der Shell
+ * exportiert sein oder als drittes Argument kommen.
  *
  * `project_environments` steht unter FORCE ROW LEVEL SECURITY (Migration
  * 0002). Der Provisionierer sieht nur Zeilen der Organisation, die in
@@ -24,20 +31,29 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const REF = "managed:database-1";
 const ACTOR = "dev-bind-project-database";
 const STATEMENT_TIMEOUT_MS = "20000";
-const USAGE = "Usage: npm run dev:bind-project-database -- <project-uuid> <development|staging> [organization-uuid]";
+const ALLOW_REMOTE = "--allow-remote-host";
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const DEFAULT_URL = "postgresql://qkern_provisioner_app:qkern_provisioner_local_only@localhost:5432/qkern_control";
+const USAGE = `Aufruf: npm run dev:bind-project-database -- <project-uuid> <development|staging> [organization-uuid] [${ALLOW_REMOTE}]`;
+
+/** Erwarteter Fehler: nur die Meldung ausgeben, keinen Stacktrace. */
+class ExpectedError extends Error {}
 
 export function parseArgs(argv) {
-  const [projectId, environment, organizationId] = argv;
-  if (!projectId) throw new Error(USAGE);
-  if (!UUID.test(projectId)) throw new Error(`project id is not a uuid: ${projectId}`);
-  if (environment === "production") throw new Error("production is never bound locally");
+  const allowRemote = argv.includes(ALLOW_REMOTE);
+  const positional = argv.filter((arg) => arg !== ALLOW_REMOTE).map((arg) => arg.trim());
+  if (positional.length > 3) throw new ExpectedError(USAGE);
+  const [projectId, environment, organizationId] = positional;
+  if (!projectId || !environment) throw new ExpectedError(USAGE);
+  if (!UUID.test(projectId)) throw new ExpectedError(`Die Projekt-ID ist keine gueltige uuid: ${projectId}`);
+  if (environment === "production") throw new ExpectedError("production wird lokal nie gebunden");
   if (environment !== "development" && environment !== "staging") {
-    throw new Error(`environment must be development or staging, got ${environment}`);
+    throw new ExpectedError(`Die Umgebung muss development oder staging sein, nicht ${environment}`);
   }
   if (organizationId !== undefined && !UUID.test(organizationId)) {
-    throw new Error(`organization id is not a uuid: ${organizationId}`);
+    throw new ExpectedError(`Die Organisations-ID ist keine gueltige uuid: ${organizationId}`);
   }
-  return { projectId, environment, organizationId };
+  return { projectId, environment, organizationId, allowRemote };
 }
 
 export function bindStatement({ projectId, environment }) {
@@ -52,21 +68,47 @@ export function bindStatement({ projectId, environment }) {
   };
 }
 
-function resolveOrganizationId(args) {
-  const organizationId = args.organizationId ?? process.env.QKERN_PROVISIONER_ORGANIZATION_ID?.trim();
+export function resolveOrganizationId(args, env) {
+  const organizationId = args.organizationId ?? env.QKERN_PROVISIONER_ORGANIZATION_ID?.trim();
   if (!organizationId || !UUID.test(organizationId)) {
-    throw new Error(`Die Organisation fehlt oder ist keine UUID. Setze QKERN_PROVISIONER_ORGANIZATION_ID oder gib sie als drittes Argument an.\n${USAGE}`);
+    throw new ExpectedError(`Die Organisation fehlt oder ist keine gueltige uuid. Setze QKERN_PROVISIONER_ORGANIZATION_ID oder gib sie als drittes Argument an.\n${USAGE}`);
   }
   return organizationId;
 }
 
+export function assertLocalUrl(url, { allowRemote }) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ExpectedError("QKERN_PROVISIONER_DATABASE_URL ist keine gueltige URL.");
+  }
+  const host = parsed.hostname;
+  if (!LOCAL_HOSTS.has(host) && !allowRemote) {
+    throw new ExpectedError(`Der Host ${host} ist nicht lokal. Dieses Skript ist nur fuer den lokalen Dev-Compose gedacht; ${ALLOW_REMOTE} erzwingt es.`);
+  }
+  return { host, port: parsed.port || "5432", database: parsed.pathname.replace(/^\//, "") };
+}
+
+function errorCode(error) {
+  return error?.code ?? error?.errors?.find((inner) => inner?.code)?.code;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const organizationId = resolveOrganizationId(args);
-  const url = process.env.QKERN_PROVISIONER_DATABASE_URL
-    ?? "postgresql://qkern_provisioner_app:qkern_provisioner_local_only@localhost:5432/qkern_control";
+  const organizationId = resolveOrganizationId(args, process.env);
+  const url = process.env.QKERN_PROVISIONER_DATABASE_URL ?? DEFAULT_URL;
+  const target = assertLocalUrl(url, { allowRemote: args.allowRemote });
+  const where = `${target.host}:${target.port}/${target.database}`;
+  console.log(`Ziel: ${where}`);
+
   const client = new pg.Client({ connectionString: url });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (error) {
+    throw new ExpectedError(`Keine Verbindung zu ${where} (${errorCode(error) ?? "unbekannt"}). Laeuft Postgres?`);
+  }
+
   let open = false;
   try {
     await client.query("BEGIN");
@@ -88,13 +130,16 @@ async function main() {
     console.log(`Gebunden: ${args.environment} von ${args.projectId} an ${result.rows[0].database_instance_ref}`);
   } finally {
     if (open) await client.query("ROLLBACK").catch(() => {});
-    await client.end();
+    await client.end().catch(() => {});
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
+    const code = errorCode(error);
+    if (error instanceof ExpectedError) console.error(error.message);
+    else if (code) console.error(`${error.message} (${code})`);
+    else console.error(error);
     process.exitCode = 1;
   });
 }
