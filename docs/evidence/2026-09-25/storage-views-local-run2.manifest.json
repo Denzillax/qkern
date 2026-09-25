@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "storage-views-local-run2.log",
+  "commit": "f1a16ed89598192a6ec33d490e429cccc275d63b",
+  "commitSubject": "docs: alpha.5 auf npm, GitHub-Laeufe auf 2.26.0 gruen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1160 passed | 251 skipped (1411)",
+  "passed": 1160,
+  "failed": 0,
+  "skipped": 251,
+  "images": []
+}

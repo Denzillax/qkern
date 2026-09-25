@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "set-jwt",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "set-jwt", "storage-policies", "storage-settings",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -60,8 +60,6 @@ export const PLACEHOLDERS = {
   "auth-audit": { label: "Audit-Log", supabase: "Authentication → Audit Logs", backend: "teilweise", note: "Anmeldungen, Fehlversuche, Widerrufe. Die Audit-Kette der Plattform gibt es; ein Auth-Auszug je Projekt fehlt." },
   "auth-performance": { label: "Auth-Leistung", supabase: "Authentication → Performance", backend: "fehlt", note: "Antwortzeiten und Fehlerraten der Anmeldung." },
   // Storage
-  "storage-policies": { label: "Policies", supabase: "Storage → Policies", backend: "teilweise", note: "Lese- und Schreibregeln je Bucket. Die fünf Richtlinien gibt es; feinere Regeln je Pfad fehlen." },
-  "storage-settings": { label: "Einstellungen", supabase: "Storage → Settings", backend: "teilweise", note: "Grössengrenzen, MIME-Liste, Aufbewahrung. Die Werte stehen am Bucket; eine Ansicht zum Ändern fehlt." },
   "storage-s3": { label: "S3-Zugang", supabase: "Storage → S3", backend: "fehlt", note: "S3-kompatible Schlüssel für fremde Werkzeuge. Intern spricht QKERN S3; ein Zugang nach aussen fehlt." },
   "storage-analytics": { label: "Analytics-Buckets", supabase: "Storage → Analytics", backend: "fehlt", note: "Spaltenorientierte Ablage für grosse Auswertungen (Iceberg)." },
   "storage-vectors": { label: "Vektor-Buckets", supabase: "Storage → Vectors", backend: "fehlt", note: "Ablage für Embeddings mit Ähnlichkeitssuche." },
@@ -140,7 +138,7 @@ export const NAV: NavGroup[] = [
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), ph("auth-audit"), ph("auth-performance"),
   ] },
   { id: "storage", label: "Storage", icon: Cloud, children: [
-    { id: "storage", label: "Buckets" }, ph("storage-policies"), ph("storage-settings"), ph("storage-s3"),
+    { id: "storage", label: "Buckets" }, { id: "storage-policies", label: "Policies" }, { id: "storage-settings", label: "Einstellungen" }, ph("storage-s3"),
     ph("storage-analytics"), ph("storage-vectors"),
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [

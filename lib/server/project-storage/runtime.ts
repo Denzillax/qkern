@@ -165,8 +165,29 @@ function validateStorageOrigins(env: Readonly<Record<string, string | undefined>
 
 type GlobalProjectStorage = typeof globalThis & { __qkernProjectStorageService?: ProjectStorageService };
 
+/**
+ * Ein abgeschalteter Dienst, der bei jedem Aufruf `PROJECT_STORAGE_DISABLED`
+ * wirft (2.27, derselbe Fall wie bei den Queues in 2.24). Bis dahin warf
+ * schon `getProjectStorageService()` beim Anlegen, in jeder Route vor dem
+ * `try`; Next antwortete 500 ohne Koerper statt 503 "Project Storage is
+ * disabled". Jetzt fliegt der Fehler erst im Handler.
+ */
+function disabledProjectStorageService(): ProjectStorageService {
+  return new Proxy({} as ProjectStorageService, {
+    get: (_target, property) => property === "then" ? undefined : () => { throw new ProjectStorageError("PROJECT_STORAGE_DISABLED"); },
+  });
+}
+
 export function getProjectStorageService(): ProjectStorageService {
   const runtime = globalThis as GlobalProjectStorage;
-  runtime.__qkernProjectStorageService ??= createProjectStorageServiceFromEnv();
+  if (!runtime.__qkernProjectStorageService) {
+    try {
+      runtime.__qkernProjectStorageService = createProjectStorageServiceFromEnv();
+    } catch (error) {
+      if (!(error instanceof ProjectStorageError) || error.code !== "PROJECT_STORAGE_DISABLED") throw error;
+      // Nicht merken: schaltet die Umgebung Storage spaeter ein, soll der naechste Aufruf es sehen.
+      return disabledProjectStorageService();
+    }
+  }
   return runtime.__qkernProjectStorageService;
 }

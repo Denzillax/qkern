@@ -4543,3 +4543,37 @@ Nachtrag: alpha.5 von SDK und CLI ist auf npm, frische Installation
 geprueft; GitHub-Laeufe auf 2.26.0 gruen. Nicht erbracht: Schemanamen mit
 Grossbuchstaben; der Table Editor ist mit einer solchen Tabelle im Browser nicht
 gesehen, weil der Dev-Server keine Projektdatenbank hat.
+
+## Regeln und Grenzen je Bucket – Release 2.27
+
+Zwei Storage-Platzhalter trugen seit 2.0 "die Werte stehen am Bucket, eine
+Ansicht zum Aendern fehlt". Die Route dafuer gab es seit 1.4:
+`PATCH /storage/buckets/{id}` nimmt Lese- und Schreibregel, MIME-Liste,
+Objektgroesse, Speicherplatz und Aufbewahrung in einem Stueck. Jetzt sind
+es zwei Ansichten. Policies: je Bucket eine Auswahl fuer Lesen (private,
+authenticated, owner, public, service) und Schreiben (ohne public), mit
+Klartext, was die Regel bedeutet, und Speichern nur, wenn sich etwas
+geaendert hat. Einstellungen: Objektgroesse und Speicherplatz in MiB,
+Aufbewahrung in Tagen oder leer, MIME-Typen als Liste; die Ansicht prueft
+Ganzzahlen und Mindestwerte, alles Weitere prueft der Dienst und die
+Ansicht zeigt seine Antwort.
+
+Im Browser zeigten beide Ansichten zuerst "Storage nicht verfuegbar" mit
+einem 500 ohne Koerper. Das Log sagte, was: `getProjectStorageService()`
+warf `PROJECT_STORAGE_DISABLED` schon beim Anlegen, und die Routen rufen
+es vor dem `try`. Derselbe Fall wie die Queues in 2.24. `/usage`,
+`/usage/billing` und `/usage/invoices` antworteten aus demselben Grund 500.
+Jetzt liefern die drei Laufzeiten einen Proxy, der erst beim Aufruf wirft,
+und die Routen antworten 503 mit Begruendung; ein Vertrag prueft alle drei.
+Damit verhalten sich alle vier Laufzeiten mit Schalter gleich. Im Browser
+danach: beide Ansichten sagen "Storage nicht aktiv".
+
+Server-Code nur in den drei Laufzeit-Zugriffen; PostgreSQL 17 dazu 170 von
+170, zweimal. Navigation und Uebersetzung sind vertraglich geprueft.
+
+Checkpoint `2.27.0` am 25. September 2026: PostgreSQL 17 170 von 170
+bestanden, exit 0, zweimal reproduziert; Lokal 1160 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: mit einem echten Bucket im Browser nicht gesehen; Regeln
+je Pfad gibt es weiter nicht.

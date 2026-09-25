@@ -64,9 +64,28 @@ export function createUsageEmitterFromEnv(
 
 type GlobalUsage = typeof globalThis & { __qkernUsageService?: UsageService };
 
+/**
+ * Ein abgeschalteter Dienst, der bei jedem Aufruf `USAGE_METERING_DISABLED`
+ * wirft (2.27, derselbe Fall wie Queues in 2.24 und Storage): bis dahin warf
+ * schon das Anlegen, in den Routen vor dem `try`, und Next antwortete 500 ohne
+ * Koerper statt 503 "Usage Metering is disabled".
+ */
+function disabledService<T extends object>(): T {
+  return new Proxy({} as T, {
+    get: (_target, property) => property === "then" ? undefined : () => { throw new UsageError("USAGE_METERING_DISABLED"); },
+  });
+}
+
+function isMeteringDisabled(error: unknown): boolean {
+  return error instanceof UsageError && error.code === "USAGE_METERING_DISABLED";
+}
+
 export function getUsageService() {
   const runtime = globalThis as GlobalUsage;
-  runtime.__qkernUsageService ??= createUsageServiceFromEnv();
+  if (!runtime.__qkernUsageService) {
+    try { runtime.__qkernUsageService = createUsageServiceFromEnv(); }
+    catch (error) { if (!isMeteringDisabled(error)) throw error; return disabledService<UsageService>(); }
+  }
   return runtime.__qkernUsageService;
 }
 
@@ -104,6 +123,9 @@ type GlobalBilling = typeof globalThis & { __qkernBillingService?: BillingServic
 
 export function getBillingService() {
   const runtime = globalThis as GlobalBilling;
-  runtime.__qkernBillingService ??= createBillingServiceFromEnv();
+  if (!runtime.__qkernBillingService) {
+    try { runtime.__qkernBillingService = createBillingServiceFromEnv(); }
+    catch (error) { if (!isMeteringDisabled(error)) throw error; return disabledService<BillingService>(); }
+  }
   return runtime.__qkernBillingService;
 }

@@ -1329,3 +1329,12 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/names-local-run1.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0 |
 | `2026-09-25/names-local-run2.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0, Wiederholung |
 | `2026-09-25/github-publish-alpha5-36182682935.json` | GitHub Actions, npm publish | SDK und CLI 1.7.0-alpha.5 hochgeladen |
+
+## Läufe zu Release 2.27 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/storage-views-run1.log` | PostgreSQL 17 | 170 von 170, exit 0 |
+| `2026-09-25/storage-views-run2.log` | PostgreSQL 17 | 170 von 170, exit 0, Wiederholung |
+| `2026-09-25/storage-views-local-run1.log` | Vitest lokal (Windows) | 1160 bestanden, exit 0 |
+| `2026-09-25/storage-views-local-run2.log` | Vitest lokal (Windows) | 1160 bestanden, exit 0, Wiederholung |

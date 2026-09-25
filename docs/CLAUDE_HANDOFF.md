@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.26.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.27.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,25 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.26.0`
-- Aktueller Slice: 2.26 Namen mit Grossbuchstaben – Denzils Auftrag "mach den
+- Paketversion: `2.27.0`
+- Aktueller Slice: 2.27 Regeln und Grenzen je Bucket – zwei Storage-
+  Platzhalter sind Ansichten ueber die vorhandene Route
+  `PATCH /storage/buckets/{id}`: `storage-policies-view.tsx`
+  (Lese- und Schreibregel je Bucket als Auswahl, die fuenf Regeln des
+  Dienstes mit Klartext) und `storage-settings-view.tsx` (Objektgroesse,
+  Speicherplatz, Aufbewahrung, MIME-Typen als Formular je Bucket; die
+  Ansicht prueft nur Ganzzahlen, der Dienst prueft die Grenzen). Kein
+  Server-Code fuer die Ansichten; drei Sprachen. Im Browser zeigten beide
+  zuerst "nicht verfuegbar" mit 500: `getProjectStorageService()` warf
+  `PROJECT_STORAGE_DISABLED` beim Anlegen, vor dem `try` der Route,
+  derselbe Fall wie die Queues in 2.24; `/usage`, `/usage/billing` und
+  `/usage/invoices` ebenso. Jetzt liefern `getProjectStorageService`,
+  `getUsageService` und `getBillingService` einen Proxy, der erst beim
+  Aufruf wirft, und die Routen antworten 503 mit Begruendung
+  (`tests/project-storage-disabled-runtime.test.ts`). Damit sind alle vier
+  Laufzeiten mit Schalter gleich: Queues, Storage, Usage, Billing; Auth und
+  Compute pruefen im Handler. 62 Platzhalter uebrig
+- Vorheriger Slice: 2.26 Namen mit Grossbuchstaben – Denzils Auftrag "mach den
   Table Editor": Tabellen, Spalten, Funktionen und Argumente duerfen jetzt
   Grossbuchstaben tragen (`lib/server/data-plane/identifiers.ts`,
   `DATA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/`), damit `"Order"` und
@@ -60,7 +77,7 @@ Release Notes bleiben unverändert.
   `tests/data-identifiers.test.ts`, CLI-Typgenerator mit `Order`, SDK
   `from("Order")`. Offen: Veroeffentlichung von alpha.5, Schemanamen mit
   Grossbuchstaben
-- Vorheriger Slice: 2.25 Alle Faelle dieser Klasse – statt einer vierten
+- Davor: 2.25 Alle Faelle dieser Klasse – statt einer vierten
   `isXError`-Funktion macht `recognisedByName` in `lib/server/errors/identity.ts`
   die Fehlerklassen selbst robust: `Symbol.hasInstance` auf der Klasse
   akzeptiert neben der Prototypkette jeden Error mit demselben Namen
