@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.19.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.20.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,27 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.19.0`
-- Aktueller Slice: 2.19 Drei aus dem Katalog – Indizes, Policies und
+- Paketversion: `2.20.0`
+- Aktueller Slice: 2.20 Der Rest des Katalogs – Erweiterungen, Rollen,
+  Publikationen und Spaltenrechte; damit ist Punkt 2 (Datenbank-Katalog
+  nach Supabase Studio) bis auf Replikation, Schema-Visualizer und
+  Tabellen-Verwaltung abgearbeitet. `inspectExtensions`, `inspectRoles`,
+  `inspectPublications` (datenbankweit, ohne Schema-Parameter, Routen aus
+  einer eigenen Vorlage, jeder Query-Parameter ist 400) und
+  `inspectColumnPrivileges` (je Schema, `aclexplode` auf `pg_attribute.attacl`,
+  gruppiert je Spalte und Rolle, PUBLIC aus grantee 0). Rollen ohne
+  Passwort und ohne Verbindungszaehler, Rollen-Query mit Alias `account`,
+  damit der Fake-Client sie nicht mit der Grenzpruefung verwechselt.
+  Console: vier Ansichten (`db-extensions`, `db-roles`, `db-publications`,
+  `db-column-privileges` jetzt echt), drei Sprachen. Tests:
+  `tests/project-data-plane-catalog-wide.test.ts`, vier Routen-Tests,
+  `tests/data-plane-catalog-wide-postgres.integration.test.ts` (vier
+  Faelle: plpgsql installiert, pg_trgm verfuegbar, keine pg_-Rollen,
+  Publikation mit zwei Tabellen und publish = insert, update, Spaltenrechte
+  mit GRANT OPTION und PUBLIC). PostgreSQL 169 von 169 zweimal; vier
+  Mutationen je 1 von 169. Von Punkt 2 bleiben `db-schemas`, `db-tables`,
+  `db-pipelines` Platzhalter, alle mit Schreibbedarf
+- Vorheriger Slice: 2.19 Drei aus dem Katalog – Indizes, Policies und
   Enum-Typen in einem Zug, nach dem Muster von 2.9 und 2.18:
   `inspectIndexes`, `inspectPolicies`, `inspectEnumTypes` im Data-Plane-Port
   (SQL aus postgres-meta `indexes.sql`, `policies.sql`, `types.sql`, Apache
@@ -57,7 +76,7 @@ Release Notes bleiben unverändert.
   `permissive` auf true, Enum-Sortierung nach Label), je 1 von 165 faellt.
   Noch offen aus Punkt 2: Erweiterungen, Rollen, Publikationen,
   Spaltenrechte
-- Vorheriger Slice: 2.18 Funktionen aus dem Katalog – zweiter Schritt von
+- Davor: 2.18 Funktionen aus dem Katalog – zweiter Schritt von
   Punkt 2 nach dem Trigger-Muster: `inspectFunctions` im Data-Plane-Port
   (`lib/server/data-plane/service.ts`, SQL abgeleitet aus postgres-meta
   `functions.sql`, Apache 2.0, auf `pg_proc` plus `pg_get_function_*`

@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "catalog-wide-local-run1.log",
+  "commit": "dd7ec7aad6980514890dd52aab50421df3bd95e5",
+  "commitSubject": "release: 2.19.0 Drei aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1147 passed | 250 skipped (1397)",
+  "passed": 1147,
+  "failed": 0,
+  "skipped": 250,
+  "images": []
+}

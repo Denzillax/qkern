@@ -24,6 +24,10 @@ import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
 import { PoliciesView } from "@/components/console/policies-view";
 import { EnumTypesView } from "@/components/console/enum-types-view";
+import { ExtensionsView } from "@/components/console/extensions-view";
+import { RolesView } from "@/components/console/roles-view";
+import { PublicationsView } from "@/components/console/publications-view";
+import { ColumnPrivilegesView } from "@/components/console/column-privileges-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -218,6 +222,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "db-indexes": return <IndexesView projectId={props.project.id} environment={props.environment}/>;
     case "db-policies": return <PoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "db-types": return <EnumTypesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-extensions": return <ExtensionsView projectId={props.project.id} environment={props.environment}/>;
+    case "db-roles": return <RolesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-publications": return <PublicationsView projectId={props.project.id} environment={props.environment}/>;
+    case "db-column-privileges": return <ColumnPrivilegesView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

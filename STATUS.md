@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 25. September 2026 · Release: `2.19.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 25. September 2026 · Release: `2.20.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -21,7 +21,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
 | Control Plane, Approval/Audit, Migration Runtime | ja | ja — 13 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
-| Generated Data API | ja | ja — 11 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) , die Trigger-Liste aus dem Katalog (`2.9.0`), die Funktionsliste (`2.18.0`) sowie Indizes, Policies und Enum-Typen (`2.19.0`) |
+| Generated Data API | ja | ja — 15 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) , die Trigger-Liste aus dem Katalog (`2.9.0`), die Funktionsliste (`2.18.0`) sowie Indizes, Policies und Enum-Typen (`2.19.0`) und Erweiterungen, Rollen, Publikationen und Spaltenrechte (`2.20.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 7 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist) |
 | Project Queues | ja | ja — 9 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last; seit `1.88.0` mit Metrics-Export im Prometheus-Textformat |
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung läuft seit `2.14.0` auch auf Windows (npm-cli.js direkt mit Node) und ist auf allen drei Runnern belegt (`2.15.0`) |
 | Fresh-Project-Smoke | **Linux, Windows und macOS auf GitHub-Runnern grün (`2.15.0`, Lauf 36163798505, archiviert unter `docs/evidence/2026-09-25/`)** |
-| **PostgreSQL-17-Zertifizierung** | **165 von 165 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
+| **PostgreSQL-17-Zertifizierung** | **169 von 169 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
 | **versitygw-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
 | **Functions gegen Docker plus PostgreSQL** | **27 von 27 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll am echten Container** |

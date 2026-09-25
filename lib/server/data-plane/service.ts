@@ -158,6 +158,74 @@ export type ProjectEnumTypeResult = {
   truncated: boolean;
 };
 
+export type ProjectExtension = {
+  name: string;
+  defaultVersion: string;
+  /** null, wenn die Erweiterung verfuegbar, aber nicht installiert ist */
+  installedVersion: string | null;
+  schema: string | null;
+  comment: string | null;
+};
+
+export type ProjectExtensionResult = {
+  source: "postgres";
+  extensions: ProjectExtension[];
+  truncated: boolean;
+};
+
+export type ProjectRole = {
+  name: string;
+  superuser: boolean;
+  createDatabase: boolean;
+  createRole: boolean;
+  inherit: boolean;
+  login: boolean;
+  replication: boolean;
+  bypassRowSecurity: boolean;
+  /** null heisst unbegrenzt */
+  connectionLimit: number | null;
+  validUntil: string | null;
+};
+
+export type ProjectRoleResult = {
+  source: "postgres";
+  roles: ProjectRole[];
+  truncated: boolean;
+};
+
+export type ProjectPublication = {
+  name: string;
+  owner: string;
+  publishInsert: boolean;
+  publishUpdate: boolean;
+  publishDelete: boolean;
+  publishTruncate: boolean;
+  allTables: boolean;
+  /** `schema.table`, leer bei FOR ALL TABLES */
+  tables: string[];
+};
+
+export type ProjectPublicationResult = {
+  source: "postgres";
+  publications: ProjectPublication[];
+  truncated: boolean;
+};
+
+export type ProjectColumnPrivilege = {
+  table: string;
+  column: string;
+  /** `public` steht fuer alle Rollen */
+  grantee: string;
+  privileges: Array<{ type: "select" | "insert" | "update" | "references"; grantable: boolean }>;
+};
+
+export type ProjectColumnPrivilegeResult = {
+  source: "postgres";
+  schema: string;
+  privileges: ProjectColumnPrivilege[];
+  truncated: boolean;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -204,6 +272,23 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectEnumTypeResult>;
+  inspectExtensions(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectExtensionResult>;
+  inspectRoles(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectRoleResult>;
+  inspectPublications(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectPublicationResult>;
+  inspectColumnPrivileges(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectColumnPrivilegeResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -453,6 +538,115 @@ const ENUM_TYPES_SQL = `
   ORDER BY type.typname ASC
   LIMIT $2`;
 
+type ExtensionRow = { name: string; default_version: string; installed_version: string | null; schema: string | null; comment: string | null };
+type RoleRow = {
+  role_name: string; superuser: boolean; create_database: boolean; create_role: boolean; inherit: boolean;
+  login: boolean; replication: boolean; bypass_rls: boolean; connection_limit: number; valid_until: string | null;
+};
+type PublicationRow = {
+  publication_name: string; owner: string; publish_insert: boolean; publish_update: boolean; publish_delete: boolean;
+  publish_truncate: boolean; all_tables: boolean; tables: string[];
+};
+type ColumnPrivilegeRow = { table_name: string; column_name: string; grantee: string; privilege_type: string; is_grantable: boolean };
+
+const MAX_EXTENSIONS = 400;
+const MAX_ROLES = 200;
+const MAX_PUBLICATIONS = 100;
+const MAX_PUBLICATION_TABLES = 500;
+const MAX_COLUMN_PRIVILEGE_ROWS = 2000;
+const MAX_COLUMN_PRIVILEGES = 500;
+const VERSION = /^[A-Za-z0-9._+-]{1,64}$/;
+// Erweiterungsnamen duerfen Bindestriche tragen (`uuid-ossp`), anders als Bezeichner.
+const EXTENSION_NAME = /^[a-z_][a-z0-9_-]{0,62}$/;
+
+/**
+ * Erweiterungen (2.20): alle verfuegbaren, mit installierter Version, wo sie
+ * installiert sind. Abgeleitet aus `extensions.sql` in postgres-meta (Apache
+ * 2.0). Ob eine Erweiterung installiert werden darf, entscheidet weiter die
+ * Migration; hier wird nur gelesen.
+ */
+const EXTENSIONS_SQL = `
+  SELECT available.name AS name,
+         available.default_version AS default_version,
+         installed.extversion AS installed_version,
+         namespace.nspname AS schema,
+         available.comment AS comment
+  FROM pg_catalog.pg_available_extensions() AS available(name, default_version, comment)
+  LEFT JOIN pg_catalog.pg_extension AS installed ON installed.extname = available.name
+  LEFT JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = installed.extnamespace
+  ORDER BY (installed.extversion IS NULL) ASC, available.name ASC
+  LIMIT $1`;
+
+/**
+ * Rollen (2.20), aus `pg_roles`, ohne die vordefinierten `pg_*`-Rollen.
+ * Abgeleitet aus `roles.sql` in postgres-meta (Apache 2.0), ohne Passwort
+ * (in `pg_roles` ohnehin maskiert) und ohne Verbindungszaehler
+ * (`pg_stat_activity` zeigt fremde Sitzungen nur mit Sonderrecht).
+ */
+const ROLES_SQL = `
+  SELECT account.rolname AS role_name,
+         account.rolsuper AS superuser,
+         account.rolcreatedb AS create_database,
+         account.rolcreaterole AS create_role,
+         account.rolinherit AS inherit,
+         account.rolcanlogin AS login,
+         account.rolreplication AS replication,
+         account.rolbypassrls AS bypass_rls,
+         account.rolconnlimit AS connection_limit,
+         to_char(account.rolvaliduntil AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS valid_until
+  FROM pg_catalog.pg_roles AS account
+  WHERE NOT pg_catalog.starts_with(account.rolname, 'pg_')
+  ORDER BY account.rolname ASC
+  LIMIT $1`;
+
+/**
+ * Publikationen (2.20), aus `pg_publication` und `pg_publication_rel`.
+ * Abgeleitet aus `publications.sql` in postgres-meta (Apache 2.0); die
+ * Tabellen als `schema.name`, leer bei FOR ALL TABLES.
+ */
+const PUBLICATIONS_SQL = `
+  SELECT publication.pubname AS publication_name,
+         publication.pubowner::regrole::text AS owner,
+         publication.pubinsert AS publish_insert,
+         publication.pubupdate AS publish_update,
+         publication.pubdelete AS publish_delete,
+         publication.pubtruncate AS publish_truncate,
+         publication.puballtables AS all_tables,
+         COALESCE((SELECT array_agg(namespace.nspname || '.' || relation.relname ORDER BY namespace.nspname, relation.relname)
+                   FROM pg_catalog.pg_publication_rel AS member
+                   JOIN pg_catalog.pg_class AS relation ON relation.oid = member.prrelid
+                   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                   WHERE member.prpubid = publication.oid), ARRAY[]::text[]) AS tables
+  FROM pg_catalog.pg_publication AS publication
+  ORDER BY publication.pubname ASC
+  LIMIT $1`;
+
+/**
+ * Spaltenrechte eines Schemas (2.20), aus `pg_attribute.attacl` ueber
+ * `aclexplode`. Abgeleitet aus `column_privileges.sql` in postgres-meta
+ * (Apache 2.0), das `information_schema.column_privileges` nachbaut, weil
+ * die Sicht nur zeigt, was die eigene Rolle betrifft. Tabellenrechte
+ * ueberlagern Spaltenrechte; hier stehen nur die je Spalte gesetzten.
+ */
+const COLUMN_PRIVILEGES_SQL = `
+  SELECT relation.relname AS table_name,
+         attribute.attname AS column_name,
+         CASE WHEN acl.grantee = 0 THEN 'public' ELSE grantee_role.rolname END AS grantee,
+         acl.privilege_type AS privilege_type,
+         acl.is_grantable AS is_grantable
+  FROM pg_catalog.pg_attribute AS attribute
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = attribute.attrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+  LEFT JOIN pg_catalog.pg_roles AS grantee_role ON grantee_role.oid = acl.grantee
+  WHERE namespace.nspname = $1
+    AND attribute.attnum > 0
+    AND NOT attribute.attisdropped
+    AND attribute.attacl IS NOT NULL
+    AND relation.relkind IN ('r', 'v', 'm', 'p', 'f')
+  ORDER BY relation.relname ASC, attribute.attnum ASC, grantee ASC, acl.privilege_type ASC
+  LIMIT $2`;
+
 function assertInspectableSchema(schema: string): void {
   if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
       schema === "information_schema" || schema === "qkern_internal") {
@@ -680,6 +874,105 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  async inspectExtensions(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectExtensionResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<ExtensionRow>(EXTENSIONS_SQL, [MAX_EXTENSIONS + 1]);
+      const rows = result.rows.slice(0, MAX_EXTENSIONS);
+      const extensions: ProjectExtension[] = rows.map((row) => {
+        if (!EXTENSION_NAME.test(row.name) || !VERSION.test(row.default_version) ||
+            (row.installed_version !== null && !VERSION.test(row.installed_version)) ||
+            (row.schema !== null && !IDENTIFIER.test(row.schema)) || !boundedText(row.comment, 400)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { name: row.name, defaultVersion: row.default_version, installedVersion: row.installed_version, schema: row.schema, comment: row.comment };
+      });
+      return { source: "postgres", extensions, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectRoles(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectRoleResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<RoleRow>(ROLES_SQL, [MAX_ROLES + 1]);
+      const rows = result.rows.slice(0, MAX_ROLES);
+      const roles: ProjectRole[] = rows.map((row) => {
+        const flags = [row.superuser, row.create_database, row.create_role, row.inherit, row.login, row.replication, row.bypass_rls];
+        if (!IDENTIFIER.test(row.role_name) || flags.some((flag) => typeof flag !== "boolean") ||
+            !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 || !boundedText(row.valid_until, 40)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.role_name, superuser: row.superuser, createDatabase: row.create_database, createRole: row.create_role,
+          inherit: row.inherit, login: row.login, replication: row.replication, bypassRowSecurity: row.bypass_rls,
+          connectionLimit: row.connection_limit === -1 ? null : row.connection_limit, validUntil: row.valid_until,
+        };
+      });
+      return { source: "postgres", roles, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectPublications(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectPublicationResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<PublicationRow>(PUBLICATIONS_SQL, [MAX_PUBLICATIONS + 1]);
+      const rows = result.rows.slice(0, MAX_PUBLICATIONS);
+      const publications: ProjectPublication[] = rows.map((row) => {
+        const flags = [row.publish_insert, row.publish_update, row.publish_delete, row.publish_truncate, row.all_tables];
+        if (!IDENTIFIER.test(row.publication_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
+            flags.some((flag) => typeof flag !== "boolean") || !Array.isArray(row.tables) || row.tables.length > MAX_PUBLICATION_TABLES ||
+            row.tables.some((table) => typeof table !== "string" || table.length === 0 || table.length > 130)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.publication_name, owner: row.owner, publishInsert: row.publish_insert, publishUpdate: row.publish_update,
+          publishDelete: row.publish_delete, publishTruncate: row.publish_truncate, allTables: row.all_tables, tables: row.tables,
+        };
+      });
+      return { source: "postgres", publications, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectColumnPrivileges(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectColumnPrivilegeResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<ColumnPrivilegeRow>(COLUMN_PRIVILEGES_SQL, [schema, MAX_COLUMN_PRIVILEGE_ROWS + 1]);
+      const rows = result.rows.slice(0, MAX_COLUMN_PRIVILEGE_ROWS);
+      const grouped = new Map<string, ProjectColumnPrivilege>();
+      let truncated = result.rows.length > rows.length;
+      for (const row of rows) {
+        const type = String(row.privilege_type).toLowerCase();
+        if (!IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.column_name) || !IDENTIFIER.test(row.grantee) ||
+            !["select", "insert", "update", "references"].includes(type) || typeof row.is_grantable !== "boolean") {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        const key = `${row.table_name}\u0000${row.column_name}\u0000${row.grantee}`;
+        let entry = grouped.get(key);
+        if (!entry) {
+          if (grouped.size >= MAX_COLUMN_PRIVILEGES) { truncated = true; continue; }
+          entry = { table: row.table_name, column: row.column_name, grantee: row.grantee, privileges: [] };
+          grouped.set(key, entry);
+        }
+        entry.privileges.push({ type: type as ProjectColumnPrivilege["privileges"][number]["type"], grantable: row.is_grantable });
+      }
+      return { source: "postgres", schema, privileges: [...grouped.values()], truncated };
+    });
+  }
+
   async queryReadOnly(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -852,6 +1145,26 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectEnumTypeResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectExtensions(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectExtensionResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectRoles(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectRoleResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectPublications(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectPublicationResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectColumnPrivileges(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectColumnPrivilegeResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

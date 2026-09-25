@@ -4271,3 +4271,42 @@ reproduziert; `next build` gruen.
 Nicht erbracht: nur Schema `public`; die Ansichten sind im Browser nicht
 gesehen (Console-Konto fehlt); ob RLS auf einer Tabelle eingeschaltet ist,
 steht weiter nur in `/schema`, nicht in der Policy-Liste.
+
+## Der Rest des Katalogs – Release 2.20
+
+Erweiterungen, Rollen, Publikationen und Spaltenrechte. Drei davon sind
+datenbankweit und kennen kein Schema; ihre Routen kommen aus einer eigenen
+Vorlage, die jeden Query-Parameter mit 400 abweist. Spaltenrechte gelten
+je Schema und laufen ueber dieselbe Tuer wie die uebrigen Katalogansichten.
+
+Erweiterungen: `pg_available_extensions()` mit LEFT JOIN auf
+`pg_extension`, installierte zuerst. Belegt: plpgsql installiert in
+`pg_catalog` mit derselben Version wie die Vorgabe, pg_trgm verfuegbar,
+nicht installiert, mit Kommentar.
+
+Rollen: `pg_roles` ohne die vordefinierten `pg_*`, ohne Passwort (dort
+ohnehin maskiert) und ohne Verbindungszaehler (`pg_stat_activity` zeigt
+fremde Sitzungen nur mit Sonderrecht). Belegt: keine `pg_`-Rolle, die
+Projekt-API-Rolle mit Anmeldung, ohne Superuser, ohne BYPASSRLS, ohne
+Limit. Der Alias heisst `account`, damit der Fake-Client die Abfrage nicht
+mit der Grenzpruefung verwechselt, die `pg_roles AS role` liest.
+
+Publikationen: `pg_publication` mit Eigentuemer, den vier Operationen,
+FOR ALL TABLES und den Tabellen als `schema.name`. Belegt: eine Publikation
+fuer zwei Tabellen mit `publish = 'insert, update'`, Eigentuemer `qkern`.
+
+Spaltenrechte: `aclexplode` auf `pg_attribute.attacl`, gruppiert je
+Spalte und Rolle, `grantee 0` heisst PUBLIC. Belegt: SELECT auf zwei
+Spalten, UPDATE mit GRANT OPTION auf einer, SELECT fuer PUBLIC auf einer
+anderen Tabelle, in Spaltenreihenfolge.
+
+Checkpoint `2.20.0` am 25. September 2026: PostgreSQL 17 169 von 169
+bestanden, exit 0, zweimal reproduziert; vier Mutationen (Join auf false,
+`pg_`-Filter weg, `publish_update` auf false, PUBLIC-Abbildung weg), je 1
+von 169 faellt, exit 1; Lokal 1147 bestanden, 0 fehlgeschlagen, zweimal
+reproduziert; `next build` gruen.
+
+Nicht erbracht: Tabellenrechte stehen nirgends, nur die je Spalte
+gesetzten; die Ansichten sind im Browser nicht gesehen (Console-Konto
+fehlt); von Punkt 2 bleiben Schema-Visualizer, Tabellen-Verwaltung und
+Replikation Platzhalter, alle brauchen Schreibpfade.
