@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool } from "@/lib/server/db/pool";
 import type { SqlPool } from "@/lib/server/db/sql";
+import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -33,8 +34,15 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
     await owner.query(`CREATE POLICY generated_owner_isolation ON "${schema}".items
       USING (owner_id = current_setting('request.jwt.claim.sub', true))
       WITH CHECK (owner_id = current_setting('request.jwt.claim.sub', true))`);
+    // Eine Tabelle, wie Prisma sie anlegt: Grossbuchstaben in Tabellen- und Spaltenname (2.26).
+    await owner.query(`CREATE TABLE "${schema}"."Order" (id uuid PRIMARY KEY, owner_id text NOT NULL, "createdAt" timestamptz NOT NULL DEFAULT now(), "totalCents" integer NOT NULL)`);
+    await owner.query(`ALTER TABLE "${schema}"."Order" ENABLE ROW LEVEL SECURITY`);
+    await owner.query(`CREATE POLICY order_owner_isolation ON "${schema}"."Order"
+      USING (owner_id = current_setting('request.jwt.claim.sub', true))
+      WITH CHECK (owner_id = current_setting('request.jwt.claim.sub', true))`);
     await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
     await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}".items TO qkern_project_api_app`);
+    await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}"."Order" TO qkern_project_api_app`);
     service = new GeneratedDataApiService(
       { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
       { resolve: async () => ({
@@ -113,6 +121,33 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
     await expect(service.aggregateRows(context(ownerA), scope, {
       schema, table: "items", aggregates: [{ fn: "sum", column: "name" }],
     })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+  });
+
+  it("serves a quoted, camel-cased table under RLS and lists it in the schema", async () => {
+    const orderA = randomUUID();
+    await service.insertRows(context(ownerA), scope, {
+      schema, table: "Order", rows: [{ id: orderA, owner_id: ownerA, totalCents: 1250 }],
+    });
+    await service.insertRows(context(ownerB), scope, {
+      schema, table: "Order", rows: [{ id: randomUUID(), owner_id: ownerB, totalCents: 9 }],
+    });
+    const mine = await service.listRows(context(ownerA), scope, {
+      schema, table: "Order", select: ["id", "totalCents", "createdAt"],
+      filters: [{ column: "totalCents", operator: "gte", value: 1000 }], order: { column: "createdAt", direction: "desc" },
+    });
+    expect(mine.rows).toHaveLength(1);
+    expect(mine.rows[0]).toMatchObject({ id: orderA, totalCents: 1250 });
+    expect(typeof mine.rows[0].createdAt).toBe("string");
+    const updated = await service.updateRow(context(ownerA), scope, { schema, table: "Order", match: { id: orderA }, values: { totalCents: 1300 } });
+    expect(updated.rowCount).toBe(1);
+
+    const dataPlane = new ProjectDataPlaneService(
+      { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+      { resolve: async () => ({ pool: projectApi, expectedRole: "qkern_project_api_app", expectedDatabase: new URL(projectApiUrl!).pathname.slice(1), expectedLedgerOwner: "qkern" }) },
+    );
+    const inspected = await dataPlane.inspectSchema({ organizationId: randomUUID(), actorRef: "console@qkern.test" }, scope, schema);
+    const order = inspected.tables.find((table) => table.name === "Order");
+    expect(order?.columns.map((column) => column.name)).toEqual(["id", "owner_id", "createdAt", "totalCents"]);
   });
 
   it("rejects identifier and column injection before PostgreSQL execution", async () => {

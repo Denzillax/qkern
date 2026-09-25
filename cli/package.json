@@ -1,6 +1,6 @@
 {
   "name": "@qkern/cli",
-  "version": "1.7.0-alpha.4",
+  "version": "1.7.0-alpha.5",
   "description": "Secret-free local workflow CLI for QKERN",
   "type": "module",
   "bin": { "qkern": "dist/main.js" },

@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
@@ -24,7 +25,7 @@ import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
 const paramsSchema = z.object({
   projectId: z.string().min(3).max(128),
   environment: z.enum(["development", "staging", "production"]),
-  table: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/),
+  table: z.string().regex(DATA_IDENTIFIER),
 });
 const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
 const ALLOWED_QUERY = new Set(["schema", "select", "filter", "order", "cursor", "limit"]);
@@ -97,7 +98,7 @@ function parseListQuery(request: NextRequest) {
     filters.push({ column, operator, value: queryValue(rawValue) });
   }
   const orderRaw = request.nextUrl.searchParams.get("order");
-  const orderMatch = orderRaw?.match(/^([a-z_][a-z0-9_]{0,62})\.(asc|desc)$/);
+  const orderMatch = orderRaw?.match(/^([A-Za-z_][A-Za-z0-9_]{0,62})\.(asc|desc)$/);
   if (orderRaw && !orderMatch) return null;
   const limitRaw = request.nextUrl.searchParams.get("limit");
   const limit = limitRaw === null ? undefined : Number(limitRaw);

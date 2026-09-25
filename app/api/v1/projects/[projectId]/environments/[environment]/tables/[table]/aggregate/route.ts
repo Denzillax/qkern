@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type {
@@ -23,10 +24,10 @@ import { routeError } from "../rows/route";
 const paramsSchema = z.object({
   projectId: z.string().min(3).max(128),
   environment: z.enum(["development", "staging", "production"]),
-  table: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/),
+  table: z.string().regex(DATA_IDENTIFIER),
 });
 const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
-const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
+const IDENTIFIER = DATA_IDENTIFIER;
 const ALLOWED_QUERY = new Set(["schema", "filter", "fn", "group"]);
 
 type RouteContext = { params: Promise<{ projectId: string; environment: string; table: string }> };
@@ -43,7 +44,7 @@ function parseAggregateQuery(request: NextRequest) {
   if (!schema.success) return null;
   const aggregates: GeneratedAggregate[] = [];
   for (const raw of params.getAll("fn")) {
-    const match = /^(count|sum|avg|min|max)(?::([a-z_][a-z0-9_]{0,62}))?$/.exec(raw);
+    const match = /^(count|sum|avg|min|max)(?::([A-Za-z_][A-Za-z0-9_]{0,62}))?$/.exec(raw);
     if (!match) return null;
     if (match[1] !== "count" && match[2] === undefined) return null;
     aggregates.push({ fn: match[1] as GeneratedAggregate["fn"], ...(match[2] ? { column: match[2] } : {}) });

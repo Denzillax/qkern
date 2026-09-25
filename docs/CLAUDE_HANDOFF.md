@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.25.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.26.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,28 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.25.0`
-- Aktueller Slice: 2.25 Alle Faelle dieser Klasse – statt einer vierten
+- Paketversion: `2.26.0`
+- Aktueller Slice: 2.26 Namen mit Grossbuchstaben – Denzils Auftrag "mach den
+  Table Editor": Tabellen, Spalten, Funktionen und Argumente duerfen jetzt
+  Grossbuchstaben tragen (`lib/server/data-plane/identifiers.ts`,
+  `DATA_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/`), damit `"Order"` und
+  `"createdAt"` aus Prisma, TypeORM und Drizzle im Table Editor und in der
+  generierten REST-API erscheinen. Geaendert: `generated-api.ts`,
+  `inspectSchema` in `service.ts`, die Routen `tables/[table]/rows`,
+  `tables/[table]/aggregate` (auch Sortier- und Aggregatspalten) und
+  `rpc/[function]`, SDK `identifier()` und CLI `identifier()`
+  (beide Pakete auf `1.7.0-alpha.5`). Schemanamen bleiben klein. Belegt
+  gegen PostgreSQL: eine Tabelle `"Order"` mit `"createdAt"` und
+  `"totalCents"` unter RLS, Einfuegen, Filtern, Sortieren, Aendern, und die
+  Schema-Inspektion listet sie in Spaltenreihenfolge; Mutation (Grammatik
+  zurueck auf Kleinbuchstaben) 2 von 170 fallen: der Order-Fall und die
+  OpenAPI, weil die alte Grammatik beim ersten Grossbuchstaben das ganze
+  Schema verwarf. Injektionen bleiben
+  abgewiesen (bestehender Fall). Vertraege:
+  `tests/data-identifiers.test.ts`, CLI-Typgenerator mit `Order`, SDK
+  `from("Order")`. Offen: Veroeffentlichung von alpha.5, Schemanamen mit
+  Grossbuchstaben
+- Vorheriger Slice: 2.25 Alle Faelle dieser Klasse – statt einer vierten
   `isXError`-Funktion macht `recognisedByName` in `lib/server/errors/identity.ts`
   die Fehlerklassen selbst robust: `Symbol.hasInstance` auf der Klasse
   akzeptiert neben der Prototypkette jeden Error mit demselben Namen
@@ -54,7 +74,7 @@ Release Notes bleiben unverändert.
   (Registrierung von `ProjectAuthError` entfernt) 2 von 3 faellt. Die
   rund hundert `instanceof`-Stellen bleiben unveraendert und sind jetzt
   richtig
-- Vorheriger Slice: 2.24 Derselbe Fehler, zweiter Fall – Denzil hat sich neu
+- Davor: 2.24 Derselbe Fehler, zweiter Fall – Denzil hat sich neu
   registriert, die Console war im Browser pruefbar: jede Katalogansicht
   sagte "nicht verfuegbar" mit 500 ohne Code, auch der alte Table Editor
   (`/schema`), und `/queues` antwortete 500 ohne Koerper. Ursache eins wie

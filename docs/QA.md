@@ -4497,3 +4497,48 @@ fehlgeschlagen, zweimal reproduziert; `next build` gruen.
 Nicht erbracht: die `isXError`-Helfer aus 2.8 und 2.24 bleiben, sie
 schaden nicht; das Neuladen selbst ist nicht nachgestellt, nur die fremde
 Kopie der Klasse.
+
+## Namen mit Grossbuchstaben – Release 2.26
+
+Denzils Auftrag: mach den Table Editor. Der Befund aus 2.23 war, dass die
+Namensgrammatik `[a-z_][a-z0-9_]*` nur Kleinbuchstaben kannte. Wer seine
+Tabellen mit Prisma, TypeORM oder Drizzle anlegt, bekommt `"Order"`,
+`"UserProfile"` und Spalten wie `"createdAt"`, und die fehlten im Table
+Editor, in der generierten REST-API, in den erzeugten Typen der CLI und
+im SDK.
+
+Die Grammatik liegt jetzt an einer Stelle, `DATA_IDENTIFIER` in
+`lib/server/data-plane/identifiers.ts`, und erlaubt Gross- und
+Kleinbuchstaben, Ziffern, Unterstrich, hoechstens 63 Zeichen. Sonst
+nichts Neues: kein Leerzeichen, kein Anfuehrungszeichen, kein Punkt. Die
+Grenze bleibt eine Sicherheitsgrenze, weil jeder Name nur ueber `"..."` in
+SQL landet und ein Name dieser Grammatik das Anfuehrungszeichen nicht
+verlassen kann. Sie gilt fuer Tabellen, Spalten, Funktionen und Argumente
+in der Data API, in der Schema-Inspektion, in den drei Routen (auch fuer
+Sortier- und Aggregatspalten aus der URL), im SDK und in der CLI.
+Schemanamen bleiben klein.
+
+Gegen echtes PostgreSQL belegt: eine Tabelle `"Order"` mit `"createdAt"`
+und `"totalCents"` unter RLS; Einfuegen fuer zwei Eigentuemer, Lesen mit
+Filter auf `totalCents` und Sortierung nach `createdAt` liefert genau die
+eigene Zeile, Aendern trifft eine Zeile, und die Schema-Inspektion listet
+die Tabelle mit ihren Spalten in Reihenfolge. Die Injektionsfaelle
+(`items; DROP SCHEMA public`, `name) OR true --`) bleiben abgewiesen.
+Mutation: Grammatik in der Data API zurueck auf Kleinbuchstaben, 2 von
+170 fallen: der Order-Fall und die OpenAPI-Dokumentation, weil die alte
+Grammatik beim ersten Grossbuchstaben das ganze Schema verwarf. Genau das
+war der Befund aus 2.23.
+
+CLI und SDK: der Typgenerator schreibt `Order` und `createdAt` als nackte
+Schluessel, `from("Order")` mit Filter auf `createdAt` baut die Anfrage,
+`from("Order; DROP")` wirft vor jeder Anfrage. Beide Pakete stehen auf
+`1.7.0-alpha.5`.
+
+Checkpoint `2.26.0` am 25. September 2026: PostgreSQL 17 170 von 170
+bestanden, exit 0, zweimal reproduziert; Mutation 168 von 170, exit 1;
+Lokal 1158 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen; Tarballs geprueft.
+
+Nicht erbracht: Schemanamen mit Grossbuchstaben; alpha.5 ist noch nicht
+auf npm; der Table Editor ist mit einer solchen Tabelle im Browser nicht
+gesehen, weil der Dev-Server keine Projektdatenbank hat.

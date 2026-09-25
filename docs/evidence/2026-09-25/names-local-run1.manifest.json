@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "names-local-run1.log",
+  "commit": "771fb197113f3056502305020be7cfd661839cf7",
+  "commitSubject": "release: 2.25.0 Alle Faelle dieser Klasse",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1158 passed | 251 skipped (1409)",
+  "passed": 1158,
+  "failed": 0,
+  "skipped": 251,
+  "images": []
+}

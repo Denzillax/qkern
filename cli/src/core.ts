@@ -152,7 +152,8 @@ function postgresType(type: string) {
 }
 
 function property(value: string) { return identifier(value) ? value : JSON.stringify(value); }
-function identifier(value: unknown): value is string { return typeof value === "string" && /^[a-z_][a-z0-9_]{0,62}$/.test(value); }
+// Seit 1.7.0-alpha.5 mit Grossbuchstaben, wie der Server seit 2.26; ein solcher Name ist auch ein gueltiger TypeScript-Schluessel.
+function identifier(value: unknown): value is string { return typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(value); }
 function relativeFile(value: string) {
   return value.length <= 256 && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..") && !/[\0\r\n]/.test(value);
 }

@@ -180,7 +180,8 @@ function segment(value) {
     return encodeURIComponent(value);
 }
 function identifier(value) {
-    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(value))
+    // Seit 1.7.0-alpha.5 mit Grossbuchstaben, wie der Server seit 2.26 (`"Order"`, `"createdAt"`).
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(value))
         throw new QkernError("SDK_INVALID_INPUT", 0);
     return value;
 }

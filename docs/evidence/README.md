@@ -1318,3 +1318,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/sweep-mutation.log` | Vitest lokal (Windows), Mutation | **2 von 3 faellt, exit 1 – absichtlich** |
 | `2026-09-25/sweep-local-run1.log` | Vitest lokal (Windows) | 1155 bestanden, exit 0 |
 | `2026-09-25/sweep-local-run2.log` | Vitest lokal (Windows) | 1155 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.26 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/names-run1.log` | PostgreSQL 17 | 170 von 170, exit 0 |
+| `2026-09-25/names-run2.log` | PostgreSQL 17 | 170 von 170, exit 0, Wiederholung |
+| `2026-09-25/names-mutation.log` | PostgreSQL 17, Mutation | **168 von 170, exit 1 – absichtlich** |
+| `2026-09-25/names-local-run1.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0 |
+| `2026-09-25/names-local-run2.log` | Vitest lokal (Windows) | 1158 bestanden, exit 0, Wiederholung |

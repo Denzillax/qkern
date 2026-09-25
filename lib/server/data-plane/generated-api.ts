@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
 import type { Environment } from "@/lib/types";
@@ -13,7 +14,8 @@ import type {
   ProjectDataPlaneTargetResolver,
 } from "@/lib/server/data-plane/service";
 
-const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
+// Seit 2.26 mit Grossbuchstaben (`"Order"`, `"createdAt"`); siehe identifiers.ts.
+const IDENTIFIER = DATA_IDENTIFIER;
 const SENSITIVE_COLUMN = /(?:password|secret|token|cookie|private.?key|authorization|api.?key)/i;
 const MAX_ROWS = 100;
 const MAX_INSERT_ROWS = 25;

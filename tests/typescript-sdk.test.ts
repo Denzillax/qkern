@@ -90,4 +90,19 @@ describe("QKERN TypeScript SDK", () => {
     });
     await expect(client.schema()).rejects.toMatchObject({ code: "SDK_TIMEOUT", status: 0 });
   });
+
+  it("accepts table and column names with capitals and still refuses injection", async () => {
+    type Camel = { public: { Tables: { Order: { Row: { id: string; createdAt: string }; Insert: { createdAt: string }; Update: { createdAt?: string } } } } };
+    const fetcher = vi.fn<QkernFetch>(async () => response({ data: { rows: [], nextCursor: null } }));
+    const client = createQkernClient<Camel>({
+      baseUrl: "https://api.example.com", projectId: "project-1", environment: "development",
+      projectKey: "qk_public_secret", fetch: fetcher,
+    });
+    await client.from("Order").select({ filters: [{ column: "createdAt", operator: "gte", value: "2026-01-01" }] });
+    const [url] = fetcher.mock.calls[0];
+    expect(String(url)).toContain("/tables/Order/rows");
+    expect(String(url)).toContain("createdAt");
+    // Die Pruefung des Namens wirft, bevor eine Anfrage entsteht.
+    expect(() => (client.from as (table: string) => { select: (input: object) => unknown })("Order; DROP").select({})).toThrow("SDK_INVALID_INPUT");
+  });
 });

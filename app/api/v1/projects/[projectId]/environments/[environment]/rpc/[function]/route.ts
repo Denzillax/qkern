@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, safeJson } from "@/lib/server/auth/http";
@@ -25,7 +26,7 @@ import { routeError } from
 const paramsSchema = z.object({
   projectId: z.string().min(3).max(128),
   environment: z.enum(["development", "staging", "production"]),
-  function: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/),
+  function: z.string().regex(DATA_IDENTIFIER),
 });
 const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
 

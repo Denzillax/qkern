@@ -1,6 +1,6 @@
 {
   "name": "@qkern/sdk",
-  "version": "1.7.0-alpha.3",
+  "version": "1.7.0-alpha.5",
   "description": "Typed, framework-free TypeScript client for QKERN",
   "type": "module",
   "main": "./dist/index.js",

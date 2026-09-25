@@ -47,6 +47,16 @@ describe("QKERN CLI core", () => {
       }],
     });
     expect(generated).toContain("export type Database");
+    // Seit 1.7.0-alpha.5: Namen mit Grossbuchstaben, wie Prisma sie anlegt, werden bare Schluessel.
+    const camel = generateDatabaseTypes({
+      source: "postgres", schema: "public", tables: [{
+        name: "Order", kind: "table", rowSecurityEnabled: true, columns: [
+          { name: "createdAt", dataType: "timestamp with time zone", nullable: false, identity: false, generated: false, sensitive: false },
+        ],
+      }],
+    });
+    expect(camel).toContain("    Order: {");
+    expect(camel).toContain("        createdAt: string;");
     expect(generated).toContain("total: number");
     expect(generated).not.toContain("secret_token");
     expect(generated.indexOf("id: string")).toBeLessThan(generated.indexOf("total: number"));

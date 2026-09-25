@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { isReadOnlySql, redactSensitive } from "@/lib/security";
 import type { Environment } from "@/lib/types";
@@ -745,7 +746,8 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const tables = new Map<string, ProjectSchemaTable>();
       let truncated = result.rows.length > rows.length;
       for (const row of rows) {
-        if (!IDENTIFIER.test(row.table_name) || !IDENTIFIER.test(row.column_name) ||
+        // Seit 2.26 mit Grossbuchstaben: `"Order"` aus Prisma fehlte sonst im Table Editor.
+        if (!DATA_IDENTIFIER.test(row.table_name) || !DATA_IDENTIFIER.test(row.column_name) ||
             typeof row.data_type !== "string" || row.data_type.length > 160 ||
             !Number.isSafeInteger(row.ordinal_position) || row.ordinal_position < 1) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
