@@ -1091,3 +1091,6 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .sidebar-flyout-list button.is-real-entry .nav-dot { background: var(--qkern-success); }
 .console-nav button.has-flyout[aria-expanded="true"] { color: #dce6f6; background: #0e1a2a; }
 @media (prefers-reduced-motion: reduce) { .sidebar-flyout { animation: none; } }
+
+/* 2.6: Queues-Ansicht */
+.endpoint-code { display: block; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--qkern-surface-2); font: 12px ui-monospace, monospace; word-break: break-all; }

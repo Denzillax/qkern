@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "queues-view-local-run1.log",
+  "commit": "c5a2557af4293a32851495eeb84e9920dbad58e7",
+  "commitSubject": "release: 2.5.0 Das Flyout",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1110 passed | 241 skipped (1351)",
+  "passed": 1110,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

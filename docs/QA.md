@@ -3791,3 +3791,37 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 
 Nicht erbracht: Das Flyout merkt sich nichts; bei sehr kleiner Fensterhöhe
 scrollt es, statt sich zu teilen.
+
+## Queues in der Console — Release 2.6
+
+Denzils Auftrag „mach 1–3": zuerst die vier Ansichten, die nur eine
+Oberfläche brauchen. Queues zuerst, weil Backend und Metrics-Export dort am
+vollständigsten sind (1.88).
+
+`components/console/queues-view.tsx` liest live die Admin-Routen unter
+`/queues`: die Liste der Queues mit ihren Regeln (Einreihrecht, Versuche,
+Lease, Retry-Fenster, Dedupe), je Queue den Status (wartend, in
+Bearbeitung, erledigt, Dead Letters, älteste wartet seit), die Dead Letters
+mit Versuch, Fehlercode und Zeitpunkt sowie dem Wiedereinreihen, das die
+Replay-Route ruft. Eine Queue anlegen geht per Prompt mit der Regel der
+Route. Der Metrics-Export ist als Endpunkt genannt, weil ein Scraper Text
+will, nicht die Console. Payloads erscheinen nie. Der Platzhalter
+`int-queues` ist damit eine echte Ansicht.
+
+Der i18n-Vertrag las bisher nur `console-app.tsx`; seit 2.6 liest er jede
+`.tsx` in `components/console`, damit ausgelagerte Ansichten nicht stumm
+auf Deutsch zurückfallen. Er fand beim ersten Lauf die verwaiste Erklärung
+des Platzhalters und einen fehlenden Schlüssel („Versuch"), beides
+behoben; 37 neue Schlüssel in drei Sprachen.
+
+Ehrlich: Die Sichtprüfung im Browser steht aus. Während des Slices wurde
+der Dev-Server der App beendet; ein anderer Prozess antwortet auf Port
+3000, und die Console meldet dort „Console-Daten nicht verfügbar", weil
+die Memory-Session mit dem alten Prozess gestorben ist. Die Ansicht ist
+per Typecheck und Vertrag geprüft, nicht mit echten Queues im Browser.
+
+Checkpoint `2.6.0` am 25. September 2026: Lokal 1110 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: kein Einreihen von Nachrichten aus der Console (das ist
+Sache der Anwendung mit ihrem Key), keine Zeitreihe der Queue-Tiefe.

@@ -20,7 +20,7 @@ import {
 
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
-  "approvals", "logs", "monitoring", "backups", "settings",
+  "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -109,7 +109,6 @@ export const PLACEHOLDERS = {
   "logs-cron": { label: "Cron", supabase: "Logs → Cron", backend: "teilweise", note: "Jede Einreihung mit Dedupe-Schlüssel. Der Cron-Prozess ist zertifiziert; ein Log je Lauf fehlt in der Console." },
   "logs-explorer": { label: "Log-Explorer", supabase: "Logs → Explorer", backend: "fehlt", note: "Logs mit SQL durchsuchen, speichern, als Vorlage ablegen." },
   // Integrationen
-  "int-queues": { label: "Queues", supabase: "Integrations → Queues", backend: "vorhanden", note: "Queues mit Claims, Leases, Retry und Dead Letters sind zertifiziert, samt Metrics-Export. Die Ansicht fehlt." },
   "int-cron": { label: "Cron", supabase: "Integrations → Cron", backend: "vorhanden", note: "Läuft unter Functions & Jobs. Hier nur der Einstieg, wie bei Supabase." },
   "int-vault": { label: "Vault", supabase: "Integrations → Vault", backend: "teilweise", note: "Geheimnisse verwalten. Webhook-Signaturen liegen im Vault und sind zertifiziert; eine Verwaltung fehlt." },
   "int-wrappers": { label: "Wrappers", supabase: "Integrations → Wrappers", backend: "fehlt", note: "Fremde Datenquellen als Tabellen einbinden (Foreign Data Wrappers)." },
@@ -178,7 +177,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [
-    ph("int-queues"), ph("int-cron"), ph("int-vault"), ph("int-wrappers"), ph("int-graphql"), ph("int-webhooks"),
+    { id: "int-queues", label: "Queues" }, ph("int-cron"), ph("int-vault"), ph("int-wrappers"), ph("int-graphql"), ph("int-webhooks"),
   ] },
   { id: "branches", label: "Branches", icon: GitBranch, children: [ph("branches"), ph("branches-merge")] },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [

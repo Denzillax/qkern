@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.5.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.6.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,18 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.5.0`
-- Aktueller Slice: 2.5 Das Flyout — Untermenüs in der eingeklappten
+- Paketversion: `2.6.0`
+- Aktueller Slice: 2.6 Queues in der Console — erster der vier Platzhalter
+  mit zertifiziertem Backend. `components/console/queues-view.tsx` liest
+  die Admin-Routen unter `/queues`: Liste, Status je Queue (wartend, in
+  Bearbeitung, erledigt, Dead Letters, älteste wartet seit), Dead Letters
+  mit Wiedereinreihen, Queue anlegen per Prompt, Hinweis auf den
+  Metrics-Export. `int-queues` ist jetzt eine echte Ansicht (REAL_VIEWS),
+  der Platzhalter ist weg. Der i18n-Vertrag liest seit 2.6 alle `.tsx` in
+  `components/console`, nicht nur `console-app.tsx`; 37 neue Schlüssel.
+  Sichtprüfung im Browser steht aus: Der Dev-Server der App wurde
+  während des Slices beendet, die Memory-Session ist damit weg
+- Vorheriger Slice: 2.5 Das Flyout — Untermenüs in der eingeklappten
   Sidebar, im Brainstorming gewählt (Variante A gegen zweite Spalte und
   kurz aufklappen; Entwurf in
   `docs/superpowers/specs/2026-09-25-collapsed-sidebar-flyout-design.md`).

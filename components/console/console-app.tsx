@@ -15,6 +15,7 @@ import { NAV, NAV_ENTRIES, PLACEHOLDERS, groupOf, isPlaceholder, type ViewId } f
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
+import { QueuesView } from "@/components/console/queues-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -198,6 +199,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "monitoring": return <UsageView projectId={props.project.id} environment={props.environment}/>;
     case "backups": return <BackupsView/>;
     case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }}/>;
+    case "int-queues": return <QueuesView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
