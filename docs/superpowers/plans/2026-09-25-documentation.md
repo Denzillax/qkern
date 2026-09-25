@@ -48,6 +48,15 @@
 
 ### Task 1: Lokale Projektdatenbank im Dev-Compose
 
+> Nachtrag nach Review: Der Ledger-Owner ist `NOLOGIN` (der Ledger-Vertrag in
+> `db/project/0001_qkern_migration_ledger.sql` verlangt das), es gibt kein
+> `QKERN_PROJECT_LEDGER_DB_PASSWORD`. Der Schnellstart legt Tabellen als `qkern`
+> mit `SET ROLE qkern_ledger_owner` an. `REVOKE ALL ON DATABASE ... FROM PUBLIC`
+> plus `GRANT CONNECT` nur fuer Reader und API-Login. Dev-Compose nutzt den
+> Init-Einstiegspunkt `000-certification-init.sh` (Docker Desktop kann keinen
+> Mount in den read-only initdb-Mount legen). Vertragstest
+> `tests/dev-compose-layout-contract.test.ts`.
+
 Ohne sie kann der Schnellstart keine Tabelle lesen. Heute legt der Dev-Compose nur die Control Plane an; die Data API braucht eine zweite Datenbank mit Ledger-Owner, Reader und dem bestehenden Login `qkern_project_api_app`.
 
 **Files:**
@@ -1176,16 +1185,19 @@ Erwartet: `Gebunden: development von <projekt-id> an managed:database-1`.
 
 ## 6. Eine Tabelle anlegen
 ```powershell
-docker compose exec postgres psql -U qkern_ledger_owner -d project_database
+docker compose exec postgres psql -U qkern -d project_database
 ```
 ```sql
+SET ROLE qkern_ledger_owner;
 CREATE TABLE public.notes (id serial PRIMARY KEY, title text NOT NULL, done boolean NOT NULL DEFAULT false);
 ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY notes_read_all ON public.notes FOR SELECT USING (true);
 CREATE POLICY notes_write_anon ON public.notes FOR INSERT WITH CHECK (true);
 INSERT INTO public.notes (title) VALUES ('Erste Notiz');
 ```
-(Passwort `qkern_ledger_local_only`, steht in `docker-compose.yml`.)
+(Der Ledger-Owner kann sich nicht anmelden, wie in Produktion; deshalb
+`SET ROLE`. Die Tabelle gehört danach ihm, und die Data API arbeitet mit den
+Rechten des Aufrufers.)
 
 ## 7. Einen Projekt-Key holen
 (Klickweg: Konsole, API, "Key erzeugen", Art `public`. Einmal kopieren.)
