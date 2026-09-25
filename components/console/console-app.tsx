@@ -121,8 +121,10 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   const project = snapshot?.projects[0];
   // Offene Gruppen als Menge; die aktive Gruppe öffnet sich beim Wechsel,
   // jede Gruppe lässt sich per Klick auf den Kopf schliessen und öffnen.
+  // Seit 2.8 gemerkt (localStorage, im Effekt gelesen wie die Sidebar-Breite).
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
-  const toggleGroup = useCallback((id: string, force?: boolean) => setOpenGroups((current) => { const next = new Set(current); const open = force ?? !next.has(id); if (open) next.add(id); else next.delete(id); return next; }), []);
+  useEffect(() => { try { const raw = window.localStorage.getItem(GROUPS_STORAGE_KEY); if (raw) setOpenGroups(new Set(JSON.parse(raw) as string[])); } catch {} }, []);
+  const toggleGroup = useCallback((id: string, force?: boolean) => setOpenGroups((current) => { const next = new Set(current); const open = force ?? !next.has(id); if (open) next.add(id); else next.delete(id); try { window.localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify([...next])); } catch {} return next; }), []);
   const activeGroup = groupOf(view);
   useEffect(() => { if (activeGroup.children) toggleGroup(activeGroup.id, true); }, [activeGroup, toggleGroup]);
 
@@ -260,6 +262,7 @@ function DatabaseView({ project, navigate }: { project: Project; navigate: (view
 }
 
 const SIDEBAR_STORAGE_KEY = "qkern.console.sidebar";
+const GROUPS_STORAGE_KEY = "qkern.console.groups";
 const ENVIRONMENTS: Array<{ id: Environment; label: string; hint: string }> = [
   { id: "development", label: "Development", hint: t("Frei bearbeiten") },
   { id: "staging", label: "Staging", hint: t("Vor dem Release prüfen") },

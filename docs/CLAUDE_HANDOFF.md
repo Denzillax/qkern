@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.7.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.8.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,20 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.7.0`
-- Aktueller Slice: 2.7 Drei Ansichten mehr — Migrationen
+- Paketversion: `2.8.0`
+- Aktueller Slice: 2.8 Derselbe Fehler, andere Klasse — Befund: die
+  Console zeigte „Console-Daten nicht verfügbar" (500) statt zum Login zu
+  leiten. Ursache: Die Auth-Laufzeit liegt im Dev-Modus auf `globalThis`
+  und überlebt Hot-Reloads, die Klasse `AuthError` nicht; `instanceof` in
+  `request-context.ts` und den Auth-Routen fiel durch. Jetzt
+  `isAuthError(error, code)` (Name und Code statt Klassenidentität) an
+  allen sechs Stellen, Test `tests/auth-error-identity.test.ts` mit einer
+  fremden Kopie der Klasse; `/api/v1/console` loggt unerwartete Fehler.
+  Dazu Punkt 3 von „mach 1–3": Sidebar-Gruppen in `localStorage`
+  (`qkern.console.groups`), Register-Parole ohne Fragmentpaar. Die Notiz
+  zu 2.6/2.7 „Memory-Session weg" war nur halb richtig: dazwischen war es
+  dieser Fehler
+- Vorheriger Slice: 2.7 Drei Ansichten mehr — Migrationen
   (`migrations-view.tsx`: Change Sets aus dem Snapshot, Reviews über
   `/api/v1/migrations/reviews`, Vorfälle über `/api/v1/migrations/incidents`,
   je Umgebung gefiltert), Function-Aufrufe (`invocations-view.tsx`:

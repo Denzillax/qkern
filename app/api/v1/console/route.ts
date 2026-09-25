@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     if (error instanceof RequestAuthenticationError) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     if (error instanceof RequestAuthorizationError) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    // Ein 500 ohne Logzeile ist nicht diagnostizierbar (2.8): Die Console
+    // zeigte "Console-Daten nicht verfuegbar", und das Serverlog schwieg.
+    console.error("[console] snapshot failed", error);
     return NextResponse.json({ error: "Console data unavailable" }, { status: 500 });
   }
 }

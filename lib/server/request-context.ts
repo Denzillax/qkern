@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { authRuntime } from "@/lib/server/auth/runtime";
 import { sessionToken } from "@/lib/server/auth/http";
-import { AuthError } from "@/lib/server/auth/service";
+import { isAuthError } from "@/lib/server/auth/service";
 import { type Membership, type OrganizationRole } from "@/lib/server/tenancy";
 import { tenancyService } from "@/lib/server/tenancy-service";
 import type { PublicAuthUser } from "@/lib/server/auth/model";
@@ -25,7 +25,7 @@ export async function authenticatedContext(request: NextRequest): Promise<Authen
     const requestedOrganization = request.headers.get("x-qkern-organization");
     return { user, membership: await tenancyService.resolve(user, requestedOrganization) };
   } catch (error) {
-    if (error instanceof AuthError && error.code === "INVALID_SESSION") throw new RequestAuthenticationError();
+    if (isAuthError(error, "INVALID_SESSION")) throw new RequestAuthenticationError();
     if (error instanceof Error && error.message === "RESOURCE_NOT_FOUND") throw new RequestAuthorizationError();
     throw error;
   }

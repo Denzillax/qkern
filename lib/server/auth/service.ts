@@ -24,14 +24,33 @@ export type AuthResult = {
   token: string;
 };
 
+export type AuthErrorCode = "ACCOUNT_EXISTS" | "INVALID_CREDENTIALS" | "INVALID_SESSION" | "RATE_LIMITED";
+
 export class AuthError extends Error {
   constructor(
-    readonly code: "ACCOUNT_EXISTS" | "INVALID_CREDENTIALS" | "INVALID_SESSION" | "RATE_LIMITED",
+    readonly code: AuthErrorCode,
     readonly retryAfterSeconds?: number,
   ) {
     super(code);
     this.name = "AuthError";
   }
+}
+
+/**
+ * Erkennt einen AuthError an Name und Code, nicht an der Klassenidentitaet.
+ *
+ * Die Auth-Laufzeit liegt im Dev-Modus auf `globalThis` und ueberlebt jeden
+ * Hot-Reload; die Klasse `AuthError` wird dabei neu geladen. Ein Fehler aus
+ * der alten Laufzeit fiel beim `instanceof` der neuen Routen durch, und aus
+ * einem 401 mit Weiterleitung zum Login wurde ein 500 "Console-Daten nicht
+ * verfuegbar" (2.8). Dieselbe Falle droht ueberall, wo zwei Modulgraphen
+ * denselben Fehler werfen und fangen.
+ */
+export function isAuthError(error: unknown, code?: AuthErrorCode): error is AuthError {
+  if (!(error instanceof Error) || error.name !== "AuthError") return false;
+  const candidate = error as Error & { code?: unknown };
+  if (typeof candidate.code !== "string") return false;
+  return code === undefined || candidate.code === code;
 }
 
 const REGISTER_RATE = { limit: 5, windowMs: 60 * 60 * 1_000 };

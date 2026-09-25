@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "auth-error-identity-local-run1.log",
+  "commit": "aebcc0c407fa0b4e6a4fa6225895be927e392598",
+  "commitSubject": "release: 2.7.0 Drei Ansichten mehr",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1113 passed | 241 skipped (1354)",
+  "passed": 1113,
+  "failed": 0,
+  "skipped": 241,
+  "images": []
+}

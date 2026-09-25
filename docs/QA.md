@@ -3868,3 +3868,49 @@ fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
 Nicht erbracht: kein Reconciliation-Antrag aus der Migrationen-Ansicht,
 keine Presence-Anzeige als Liste im Inspector, keine Zeitreihe der
 Aufrufdauer.
+
+## Derselbe Fehler, andere Klasse — Release 2.8
+
+Die Console zeigte in Denzils Session „Console-Daten konnten nicht geladen
+werden", und `/api/v1/console` antwortete 500, im Serverlog abwechselnd
+mit 200. Die Route schwieg dazu, sie fing alles und gab 500 zurück. Erste
+Massnahme: eine Logzeile vor dem 500. Sie zeigte `AuthError:
+INVALID_SESSION` aus `getSession`, also genau den Fall, den
+`authenticatedContext` in einen 401 übersetzen soll, und zwar mit
+`instanceof AuthError`.
+
+Der Grund, warum das fehlschlug: Die Auth-Laufzeit liegt im Dev-Modus auf
+`globalThis`, damit die Memory-Konten Hot-Reloads überleben. Die Klasse
+`AuthError` wird bei jedem Reload neu geladen. Ein Fehler, den die alte
+Laufzeit wirft, ist für das `instanceof` der neuen Route ein Fremder, und
+aus 401 wurde 500. Das erklärt die Abwechslung im Log: nach jedem Edit an
+Serverdateien bis zum nächsten vollen Neustart. Der Stack zeigte die
+Datei einmal als `C:\Projekte\qkern\…` und einmal ohne Präfix, zwei
+Modulgraphen.
+
+Jetzt prüft `isAuthError(error, code)` Name und Code statt der
+Klassenidentität, an allen sechs Stellen. Der Test
+`auth-error-identity` wirft eine fremde Kopie der Klasse und verlangt,
+dass sie erkannt wird, und dass ein blosser `Error` mit gleichem Text
+nicht erkannt wird. Im Browser danach: `/api/v1/console` und
+`/api/v1/auth/session` antworten 401, `/console` leitet zum Login.
+
+Dazu Punkt 3 aus „mach 1–3": Die offenen Sidebar-Gruppen werden in
+`localStorage` gemerkt wie die Sidebar-Breite; die Register-Parole „Bau
+den Kern. Behalte die Kontrolle." ist ein Satz geworden. Die
+Übersetzungen hat weiterhin niemand gegengelesen, der die Sprache spricht;
+das kann ich nicht ersetzen.
+
+Ehrlich: Die Notizen zu 2.6 und 2.7 nannten „die Memory-Session ist weg"
+als Grund für die ausstehende Sichtprüfung. Das war nur die halbe
+Wahrheit; dazwischen lag dieser Fehler. Nach dem vollen Neustart ist die
+Session tatsächlich weg, deshalb steht die Sichtprüfung der vier
+Ansichten weiter aus, bis Denzil sich neu registriert.
+
+Checkpoint `2.8.0` am 25. September 2026: Lokal 1113 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert (kein
+Real-DB-Pfad berührt; die Änderung liegt in der Fehlerabbildung).
+
+Nicht erbracht: Dieselbe Falle droht bei jedem anderen Fehlertyp, der aus
+einer auf `globalThis` gehaltenen Laufzeit geworfen wird; geprüft ist nur
+Auth.

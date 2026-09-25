@@ -15,7 +15,7 @@ export type AuthDictionary = {
 
 const de: AuthDictionary = {
   loginTitle: "Anmelden · QKERN", registerTitle: "Account erstellen · QKERN",
-  asideKicker: "Kontrolliert, von Anfang an", asideLogin: "Willkommen zurück.", asideRegister: "Bau den Kern. Behalte die Kontrolle.",
+  asideKicker: "Kontrolliert, von Anfang an", asideLogin: "Willkommen zurück.", asideRegister: "Bau den Kern und behalte die Kontrolle.",
   asideLead: "Datenbank, Auth, Storage, APIs und abgesicherte Agentenwerkzeuge in einer Plattform.",
   boundaries: ["Daten je Projekt getrennt", "MCP-Werkzeuge mit engem Scope", "Freigaben vor jeder Änderung"],
   eyebrow: "QKERN-Konto", cardLogin: "Melde dich an.", cardRegister: "Starte dein erstes Projekt.",
@@ -30,7 +30,7 @@ const de: AuthDictionary = {
 
 const en: AuthDictionary = {
   loginTitle: "Sign in · QKERN", registerTitle: "Create account · QKERN",
-  asideKicker: "Controlled from the start", asideLogin: "Welcome back.", asideRegister: "Build the core. Keep control.",
+  asideKicker: "Controlled from the start", asideLogin: "Welcome back.", asideRegister: "Build the core and keep control.",
   asideLead: "Database, auth, storage, APIs and guarded agent tools in one platform.",
   boundaries: ["Data isolated per project", "Narrowly scoped MCP tools", "Approvals before every change"],
   eyebrow: "QKERN account", cardLogin: "Sign in.", cardRegister: "Start your first project.",
@@ -45,7 +45,7 @@ const en: AuthDictionary = {
 
 const fr: AuthDictionary = {
   loginTitle: "Connexion · QKERN", registerTitle: "Créer un compte · QKERN",
-  asideKicker: "Sous contrôle dès le départ", asideLogin: "Bon retour.", asideRegister: "Construisez le noyau. Gardez le contrôle.",
+  asideKicker: "Sous contrôle dès le départ", asideLogin: "Bon retour.", asideRegister: "Construisez le noyau et gardez le contrôle.",
   asideLead: "Base de données, auth, stockage, API et outils d'agent encadrés dans une seule plateforme.",
   boundaries: ["Données isolées par projet", "Outils MCP étroitement délimités", "Validations avant chaque changement"],
   eyebrow: "Compte QKERN", cardLogin: "Connectez-vous.", cardRegister: "Lancez votre premier projet.",
@@ -60,7 +60,7 @@ const fr: AuthDictionary = {
 
 const it: AuthDictionary = {
   loginTitle: "Accedi · QKERN", registerTitle: "Crea account · QKERN",
-  asideKicker: "Sotto controllo fin dall'inizio", asideLogin: "Bentornato.", asideRegister: "Costruisci il nucleo. Mantieni il controllo.",
+  asideKicker: "Sotto controllo fin dall'inizio", asideLogin: "Bentornato.", asideRegister: "Costruisci il nucleo e mantieni il controllo.",
   asideLead: "Database, auth, storage, API e strumenti per agenti protetti in un'unica piattaforma.",
   boundaries: ["Dati isolati per progetto", "Strumenti MCP ben delimitati", "Approvazioni prima di ogni modifica"],
   eyebrow: "Account QKERN", cardLogin: "Accedi.", cardRegister: "Avvia il tuo primo progetto.",

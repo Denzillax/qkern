@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, rateLimitKey, safeJson, setSessionCookie } from "@/lib/server/auth/http";
 import { authRuntime } from "@/lib/server/auth/runtime";
-import { AuthError, type AuthService } from "@/lib/server/auth/service";
+import { isAuthError, type AuthService } from "@/lib/server/auth/service";
 import { tenancyService } from "@/lib/server/tenancy-service";
 
 const registerSchema = z.object({
@@ -25,10 +25,10 @@ export async function handleRegister(request: NextRequest, auth: AuthService): P
     setSessionCookie(response, result.token, result.session.expiresAt);
     return response;
   } catch (error) {
-    if (error instanceof AuthError && error.code === "ACCOUNT_EXISTS") {
+    if (isAuthError(error, "ACCOUNT_EXISTS")) {
       return NextResponse.json({ error: "Account could not be created" }, { status: 409 });
     }
-    if (error instanceof AuthError && error.code === "RATE_LIMITED") {
+    if (isAuthError(error, "RATE_LIMITED")) {
       return NextResponse.json({ error: "Too many attempts" }, {
         status: 429,
         headers: { "Retry-After": String(error.retryAfterSeconds ?? 60) },

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, rateLimitKey, safeJson, setSessionCookie } from "@/lib/server/auth/http";
 import { authRuntime } from "@/lib/server/auth/runtime";
-import { AuthError, type AuthService } from "@/lib/server/auth/service";
+import { isAuthError, type AuthService } from "@/lib/server/auth/service";
 
 const loginSchema = z.object({
   email: z.email().max(254),
@@ -22,13 +22,13 @@ export async function handleLogin(request: NextRequest, auth: AuthService): Prom
     setSessionCookie(response, result.token, result.session.expiresAt);
     return response;
   } catch (error) {
-    if (error instanceof AuthError && error.code === "RATE_LIMITED") {
+    if (isAuthError(error, "RATE_LIMITED")) {
       return NextResponse.json({ error: "Too many attempts" }, {
         status: 429,
         headers: { "Retry-After": String(error.retryAfterSeconds ?? 60) },
       });
     }
-    if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
+    if (isAuthError(error, "INVALID_CREDENTIALS")) {
       return NextResponse.json({ error: "Authentication failed" }, { status: 401 });
     }
     return NextResponse.json({ error: "Authentication failed" }, { status: 401 });
