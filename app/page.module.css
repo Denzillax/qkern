@@ -658,3 +658,70 @@
 @media (max-width: 960px) {
   .plans { grid-template-columns: 1fr; }
 }
+
+/* Q-Feld im Hero (2.10): blasse Q-Symbole treiben und weichen der Maus aus */
+.field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  --mx: 0;
+  --my: 0;
+  --px: 50%;
+  --py: 35%;
+}
+
+.fieldGlow {
+  position: absolute;
+  left: var(--px);
+  top: var(--py);
+  width: 520px;
+  height: 520px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--qkern-primary) 18%, transparent), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  filter: blur(12px);
+}
+
+.fieldLit .fieldGlow { opacity: 1; }
+
+.fieldMark {
+  position: absolute;
+  height: auto;
+  color: var(--qkern-primary);
+  fill: currentColor;
+  opacity: var(--opacity);
+  transform:
+    translate(calc(var(--mx) * var(--depth) * -1px), calc(var(--my) * var(--depth) * -1px))
+    rotate(var(--rotate));
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation-name: qdrift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.fieldLit .fieldMark { opacity: calc(var(--opacity) * 1.6); }
+
+@keyframes qdrift {
+  from { translate: 0 0; }
+  to { translate: 14px -22px; }
+}
+
+.heroGrid { z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fieldMark { animation: none; transition: none; }
+  .fieldGlow { display: none; }
+}
+
+@media (max-width: 680px) {
+  .fieldMark { width: 60% !important; }
+  .fieldMark:nth-child(n + 5) { display: none; }
+}
+
+/* Der Inhalt liegt ueber dem Q-Feld */
+.hero > .shell { position: relative; z-index: 1; }

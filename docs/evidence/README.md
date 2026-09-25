@@ -1168,3 +1168,10 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/triggers-mutation.log` | PostgreSQL 17 | 160 von 161, Gegenprobe (Filter für interne Trigger entfernt) |
 | `2026-09-25/triggers-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
 | `2026-09-25/triggers-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.10 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/hero-field-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
+| `2026-09-25/hero-field-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |

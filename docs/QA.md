@@ -3955,3 +3955,32 @@ Nicht erbracht: Nur Trigger; Funktionen, Indizes, Enum-Typen,
 Erweiterungen, Rollen, Policies, Publikationen und Spaltenrechte folgen
 nach demselben Muster. Nur das Schema `public` in der Console. Die
 Sichtprüfung im Browser steht aus, bis sich Denzil neu registriert.
+
+## Das Q-Feld – Release 2.10
+
+Denzils Wunsch: eine Animation im Hintergrund mit dem Q-Logo, wie bei der
+Referenz, oder eine, die mit der Maus interagiert. Die Referenz hat im Hero
+keinen bewegten Hintergrund, nur den Glanz; das Q-Feld ist deshalb eine
+eigene Antwort: sieben blasse Q-Symbole, der Pfad aus dem Marken-SVG
+inline gezeichnet, an festen Positionen, damit Server und Client dasselbe
+rendern. Sie treiben per CSS-Keyframe langsam (17 bis 34 Sekunden, jede
+anders), weichen der Maus je Tiefe aus, und ein weicher Lichtfleck folgt
+dem Zeiger und hellt die Symbole auf.
+
+Die Maus geht über zwei CSS-Variablen an die Symbole; ein einziger
+rAF-Loop dämpft die Bewegung und hält an, sobald nichts mehr zu
+glätten ist. Nur Zeiger mit `hover: hover` bekommen die Parallaxe,
+`prefers-reduced-motion` schaltet Drift und Parallaxe ab, auf dem Telefon
+bleiben vier Symbole in kleinerer Grösse. Der Inhalt liegt über dem Feld
+(`z-index` 1 auf der Hülle), das Feld nimmt keine Klicks an.
+
+Im Browser bei 1280 px gemessen: sieben Symbole mit laufender Animation,
+Transformationen ändern sich nach einer Mausbewegung, der Lichtfleck geht
+von Deckkraft 0 auf 0,89 und wandert mit dem Zeiger, die Hülle liegt
+über dem Feld.
+
+Checkpoint `2.10.0` am 25. September 2026: Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unverändert.
+
+Nicht erbracht: kein Bezug auf die Scrollposition; die Positionen sind
+handgesetzt, nicht nach Textbreite berechnet.

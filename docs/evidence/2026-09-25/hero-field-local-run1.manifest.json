@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "hero-field-local-run1.log",
+  "commit": "54e36889be0a1b8e2535b256a36935bfd4e7ea46",
+  "commitSubject": "release: 2.9.0 Trigger aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}
