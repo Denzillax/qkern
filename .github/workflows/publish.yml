@@ -1,0 +1,74 @@
+name: Publish packages
+
+# Veroeffentlicht @qkern/sdk und @qkern/cli in die npm-Registry (2.15).
+#
+# Nur von Hand startbar. Der Probelauf (dry_run = true, Voreinstellung) baut
+# beide Pakete, prueft die Tarballs und zeigt, was npm hochladen wuerde, ohne
+# etwas hochzuladen; dafuer wird `private` nur im Runner entfernt. Der echte
+# Lauf verlangt, dass `private` im Repository selbst entfernt ist und eine
+# Lizenz eingetragen: ein Paket mit `UNLICENSED` geht nicht nach npm.
+#
+# NPM_TOKEN liegt als Repository-Secret (von Denzil selbst gesetzt, nie im
+# Chat). `id-token: write` erlaubt npm-Provenance: der Tarball traegt dann den
+# Nachweis, aus welchem Commit und Workflow er stammt.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Nur zeigen, was hochgeladen wuerde (true), oder wirklich veroeffentlichen (false)"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      tag:
+        description: "npm dist-tag (alpha fuer Vorabversionen, latest fuer Releases)"
+        required: true
+        default: "alpha"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.7.0
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Build SDK and CLI
+        run: |
+          npm run build --prefix sdk/typescript
+          npm run build --prefix cli
+      - name: Verify tarballs
+        run: node scripts/verify-package-tarballs.mjs
+      - name: Refuse a real publish of a private or unlicensed package
+        if: ${{ inputs.dry_run == 'false' }}
+        run: |
+          for dir in sdk/typescript cli; do
+            if [ "$(node -p "require('./$dir/package.json').private === true")" = "true" ]; then
+              echo "::error::$dir/package.json ist noch private: true"; exit 1
+            fi
+            if [ "$(node -p "require('./$dir/package.json').license")" = "UNLICENSED" ]; then
+              echo "::error::$dir/package.json traegt UNLICENSED; vor dem Veroeffentlichen eine Lizenz eintragen"; exit 1
+            fi
+          done
+      - name: Strip private flag for the dry run only
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          npm pkg delete private --prefix sdk/typescript
+          npm pkg delete private --prefix cli
+      - name: Publish @qkern/sdk
+        run: npm publish ./sdk/typescript --access public --tag "${{ inputs.tag }}" --provenance ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @qkern/cli
+        run: npm publish ./cli --access public --tag "${{ inputs.tag }}" --provenance ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

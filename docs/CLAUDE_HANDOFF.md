@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.14.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.15.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,24 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.14.0`
-- Aktueller Slice: 2.14 Ein Server, der noch da ist – erster Lauf auf GitHub
+- Paketversion: `2.15.0`
+- Aktueller Slice: 2.15 Was der Runner fand – zweiter GitHub-Lauf (Stand
+  2.14.0): Developer Experience auf Ubuntu, Windows und macOS gruen
+  (`docs/evidence/2026-09-25/github-dx-run-36163798505.json`), damit ist die
+  Windows-/macOS-Haelfte von Sprosse 7 erstmals belegt. Zertifizierung:
+  Storage (versitygw) und Auth gruen, PostgreSQL 161 von 161 gruen und
+  trotzdem exit 1: ein unbehandelter `error` eines Pools, dessen unbenutzte
+  Verbindung `DROP DATABASE ... WITH (FORCE)` im Teardown beendete
+  (57P01). Produktfehler: `createPostgresPool` in `lib/server/db/pool.ts`
+  hatte keinen `error`-Zuhoerer; jetzt protokolliert er `[db] idle
+  connection lost` (Vertrag `tests/postgres-pool-idle-error.test.ts`,
+  Mutation: Zuhoerer entfernt, 1 von 1 faellt). Dazu
+  `.github/workflows/publish.yml` (nur von Hand, Probelauf als
+  Voreinstellung, echter Lauf verweigert `private` und `UNLICENSED`) und
+  `bin` der CLI ohne `./` (npm 11 verwirft den Pfad sonst). NPM_TOKEN liegt
+  als Secret, von Denzil gesetzt. Offen: Lizenz und `private` fuer die
+  Veroeffentlichung, Denzils Entscheidung
+- Vorheriger Slice: 2.14 Ein Server, der noch da ist – erster Lauf auf GitHub
   (Repo `Denzillax/qkern`, privat, angelegt mit der GitHub CLI; Denzil hat sich
   selbst angemeldet). Zwei rote Jobs: (1) Windows-Runner: `spawnSync npm.cmd
   EINVAL` unter Node 24 in `scripts/verify-package-tarballs.mjs`, jetzt ruft es
@@ -54,7 +70,7 @@ Release Notes bleiben unverändert.
   `versitygw und ClamAV` (alte Manifeste bleiben lesbar), Texte in vier
   Sprachen. Lokale Zertifizierung 8/8 zweimal. Sprosse 7 ist damit begonnen,
   nicht belegt: der GitHub-Lauf auf dem neuen Stand steht noch aus
-- Vorheriger Slice: 2.13 Eine Schrift – Denzil zur Badge "282 archivierte
+- Davor: 2.13 Eine Schrift – Denzil zur Badge "282 archivierte
   Pruefläufe": die Schriftart ist schrecklich, ueberall aendern. Das war
   JetBrains Mono als Label-Schrift. Jetzt laufen alle Labels, Kicker, Zaehler
   und Kleintexte auf Landing (`app/page.module.css`) und in der Console

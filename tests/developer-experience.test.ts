@@ -11,7 +11,8 @@ describe("developer package contracts", () => {
     const cli = JSON.parse(await readFile(path.join(repository, "cli/package.json"), "utf8"));
     expect(sdk.exports["."]).toEqual({ types: "./dist/index.d.ts", import: "./dist/index.js" });
     expect(sdk.files).toEqual(["dist", "README.md"]);
-    expect(cli.bin.qkern).toBe("./dist/main.js");
+    // Ohne "./": npm 11 verwirft den Pfad sonst beim Veroeffentlichen als ungueltig (2.15).
+    expect(cli.bin.qkern).toBe("dist/main.js");
     expect(cli.files).toEqual(["dist", "README.md"]);
     expect(sdk.private).toBe(true);
     expect(cli.private).toBe(true);

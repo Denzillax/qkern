@@ -1205,3 +1205,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-25/storage-versitygw-run2.log` | versitygw und ClamAV | 8 von 8, exit 0, Wiederholung |
 | `2026-09-25/storage-swap-local-run1.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0 |
 | `2026-09-25/storage-swap-local-run2.log` | Vitest lokal (Windows) | 1118 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.15 (25. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-25/github-dx-run-36163798505.json` | GitHub Actions, Ubuntu/Windows/macOS | alle drei Jobs gruen (Stand 2.14.0) |
+| `2026-09-25/postgres-pool-listener-run1.log` | PostgreSQL 17 | 161 von 161, exit 0 |
+| `2026-09-25/postgres-pool-listener-run2.log` | PostgreSQL 17 | 161 von 161, exit 0, Wiederholung |
+| `2026-09-25/pool-listener-mutation.log` | Vitest lokal (Windows), Mutation | **1 von 1 faellt, exit 1 – absichtlich** |
+| `2026-09-25/pool-listener-local-run1.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0 |
+| `2026-09-25/pool-listener-local-run2.log` | Vitest lokal (Windows) | 1119 bestanden, exit 0, Wiederholung |

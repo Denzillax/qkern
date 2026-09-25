@@ -1,0 +1,141 @@
+packages (ubuntu-latest)	Set up job	﻿2026-09-25T16:55:00.7571697Z Current runner version: '2.337.0'
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7674676Z ##[group]Runner Image Provisioner
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7676453Z Hosted Compute Agent
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7677859Z Version: 20260828.587
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7679223Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7680522Z Build Date: 2026-08-28T16:44:25Z
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7681858Z Worker ID: {ae09751c-80f8-4a5d-8445-52292a084096}
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7683166Z Azure Region: eastus
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7684212Z ##[endgroup]
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7687223Z ##[group]Operating System
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7688353Z Ubuntu
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7689402Z 24.04.5
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7690351Z LTS
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7691316Z ##[endgroup]
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7692502Z ##[group]Runner Image
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7693555Z Image: ubuntu-24.04
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7695144Z Version: 20260920.314.1
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7717762Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260920.314/images/ubuntu/Ubuntu2404-Readme.md
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7721209Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260920.314
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7722998Z ##[endgroup]
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7725084Z ##[group]GITHUB_TOKEN Permissions
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7728759Z Contents: read
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7729871Z Metadata: read
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7730819Z ##[endgroup]
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7734598Z Secret source: Actions
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7736084Z Cache mode: write
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.7738069Z Prepare workflow directory
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.8239133Z Prepare all required actions
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:00.8313788Z Getting action download info
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:01.0451328Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:01.1964889Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+packages (ubuntu-latest)	Set up job	2026-09-25T16:55:01.4119856Z Complete job name: packages (ubuntu-latest)
+packages (ubuntu-latest)	Run npm run verify:dx:full	2026-09-25T16:55:27.1515328Z   "status": "verified",
+packages (ubuntu-latest)	Run npm run verify:dx:full	2026-09-25T16:55:27.9548525Z QKERN SDK and CLI package tarballs verified.
+packages (ubuntu-latest)	Run npm run typecheck	﻿2026-09-25T16:55:27.9752963Z ##[group]Run npm run typecheck
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:27.9753305Z ^[[36;1mnpm run typecheck^[[0m
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:27.9818779Z shell: /usr/bin/bash -e {0}
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:27.9819123Z ##[endgroup]
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:28.1043892Z 
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:28.1045177Z > qkern-platform@2.14.0 typecheck
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:28.1046252Z > tsc --noEmit
+packages (ubuntu-latest)	Run npm run typecheck	2026-09-25T16:55:28.1046861Z 
+packages (ubuntu-latest)	Run npm test	2026-09-25T16:56:34.4181300Z  ^[[32m✓^[[39m tests/db-migration-incident-verified-resolution.test.ts ^[[2m(^[[22m^[[2m5 tests^[[22m^[[2m)^[[22m^[[32m 6^[[2mms^[[
+packages (ubuntu-latest)	Run npm test	2026-09-25T16:56:55.5042009Z ^[[2m Test Files ^[[22m ^[[1m^[[32m180 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m34 skipped^[[39m^[[90m (214)^[[39m
+packages (ubuntu-latest)	Run npm test	2026-09-25T16:56:55.5054334Z ^[[2m      Tests ^[[22m ^[[1m^[[32m1135 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m225 skipped^[[39m^[[90m (1360)^[[39m
+packages (ubuntu-latest)	Complete job	﻿2026-09-25T16:56:56.0636917Z Cleaning up orphan processes
+packages (ubuntu-latest)	Complete job	2026-09-25T16:56:56.1067748Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/check
+packages (macos-latest)	Set up job	﻿2026-09-25T16:55:07.5752050Z Current runner version: '2.337.0'
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5769300Z ##[group]Runner Image Provisioner
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5769870Z Hosted Compute Agent
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5770240Z Version: 20260828.587
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5770650Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5771130Z Build Date: 2026-08-28T16:44:25Z
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5771560Z Worker ID: {66e54476-1f7e-490b-866b-8ebc7ca7c2d3}
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5772010Z Azure Region: westus
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5772380Z ##[endgroup]
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5773400Z ##[group]Operating System
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5773820Z macOS
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5774170Z 26.6.2
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5774510Z 25G83
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5774860Z ##[endgroup]
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5775210Z ##[group]Runner Image
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5775590Z Image: macos-26-arm64
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5775960Z Version: 20260907.0351.1
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5776740Z Included Software: https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/macos-26-arm64-Readme.md
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5778020Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-26-arm64%2F20260907.0351
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5778910Z ##[endgroup]
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5779720Z ##[group]GITHUB_TOKEN Permissions
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5780920Z Contents: read
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5781290Z Metadata: read
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5781650Z ##[endgroup]
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5783340Z Secret source: Actions
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5783940Z Cache mode: write
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.5784400Z Prepare workflow directory
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.6009730Z Prepare all required actions
+packages (macos-latest)	Set up job	2026-09-25T16:55:07.6044330Z Getting action download info
+packages (macos-latest)	Set up job	2026-09-25T16:55:08.0016540Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+packages (macos-latest)	Set up job	2026-09-25T16:55:08.3208620Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+packages (macos-latest)	Set up job	2026-09-25T16:55:08.5671960Z Complete job name: packages (macos-latest)
+packages (macos-latest)	Run npm run verify:dx:full	2026-09-25T16:55:41.3040760Z   "status": "verified",
+packages (macos-latest)	Run npm run verify:dx:full	2026-09-25T16:55:42.5654340Z QKERN SDK and CLI package tarballs verified.
+packages (macos-latest)	Run npm run typecheck	﻿2026-09-25T16:55:42.6069490Z ##[group]Run npm run typecheck
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.6069850Z ^[[36;1mnpm run typecheck^[[0m
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.6114770Z shell: /bin/bash -e {0}
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.6114960Z ##[endgroup]
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.8749930Z 
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.8851430Z > qkern-platform@2.14.0 typecheck
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.8953680Z > tsc --noEmit
+packages (macos-latest)	Run npm run typecheck	2026-09-25T16:55:42.9048060Z 
+packages (macos-latest)	Run npm test	2026-09-25T16:56:24.9707170Z  ^[[32m✓^[[39m tests/db-migration-incident-verified-resolution.test.ts ^[[2m(^[[22m^[[2m5 tests^[[22m^[[2m)^[[22m^[[32m 3^[[2mms^[[2
+packages (macos-latest)	Run npm test	2026-09-25T16:56:35.5389100Z ^[[2m Test Files ^[[22m ^[[1m^[[32m180 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m34 skipped^[[39m^[[90m (214)^[[39m
+packages (macos-latest)	Run npm test	2026-09-25T16:56:35.5395430Z ^[[2m      Tests ^[[22m ^[[1m^[[32m1135 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m225 skipped^[[39m^[[90m (1360)^[[39m
+packages (macos-latest)	Complete job	﻿2026-09-25T16:56:37.0709160Z Cleaning up orphan processes
+packages (macos-latest)	Complete job	2026-09-25T16:56:38.5973680Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checko
+packages (windows-latest)	Set up job	﻿2026-09-25T16:55:01.1654509Z Current runner version: '2.337.0'
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1692066Z ##[group]Runner Image Provisioner
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1693089Z Hosted Compute Agent
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1693638Z Version: 20260828.587
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1694133Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1694732Z Build Date: 2026-08-28T16:44:25Z
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1695252Z Worker ID: {579c81fd-f96f-4900-9386-65e1d3493347}
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1695799Z Azure Region: westcentralus
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1696264Z ##[endgroup]
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1697351Z ##[group]Operating System
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1697847Z Microsoft Windows Server 2025
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1698304Z 10.0.26100
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1698682Z Datacenter
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1699096Z ##[endgroup]
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1699546Z ##[group]Runner Image
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1699995Z Image: windows-2025-vs2026
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1700442Z Version: 20260922.246.2
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1701314Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20260922.246/images/windows/Windows2025-VS2026-Readme.md
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1702908Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20260922.246
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1703679Z ##[endgroup]
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1704487Z ##[group]GITHUB_TOKEN Permissions
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1705956Z Contents: read
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1706397Z Metadata: read
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1706795Z ##[endgroup]
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1708395Z Secret source: Actions
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1709104Z Cache mode: write
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.1709636Z Prepare workflow directory
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.2090725Z Prepare all required actions
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.2146617Z Getting action download info
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.5368260Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.6407676Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+packages (windows-latest)	Set up job	2026-09-25T16:55:01.9426587Z Complete job name: packages (windows-latest)
+packages (windows-latest)	Run npm run verify:dx:full	2026-09-25T16:55:46.1865240Z   "status": "verified",
+packages (windows-latest)	Run npm run verify:dx:full	2026-09-25T16:55:47.3552342Z QKERN SDK and CLI package tarballs verified.
+packages (windows-latest)	Run npm run typecheck	﻿2026-09-25T16:55:47.4439902Z ##[group]Run npm run typecheck
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:47.4440218Z ^[[36;1mnpm run typecheck^[[0m
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:47.4496145Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:47.4496437Z ##[endgroup]
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:48.0708553Z 
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:48.0709356Z > qkern-platform@2.14.0 typecheck
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:48.0709959Z > tsc --noEmit
+packages (windows-latest)	Run npm run typecheck	2026-09-25T16:55:48.0710249Z 
+packages (windows-latest)	Run npm test	2026-09-25T16:56:50.2433588Z  ^[[32m✓^[[39m tests/db-migration-incident-verified-resolution.test.ts ^[[2m(^[[22m^[[2m5 tests^[[22m^[[2m)^[[22m^[[32m 5^[[2mms^[
+packages (windows-latest)	Run npm test	2026-09-25T16:57:12.1430657Z ^[[2m Test Files ^[[22m ^[[1m^[[32m180 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m34 skipped^[[39m^[[90m (214)^[[39m
+packages (windows-latest)	Run npm test	2026-09-25T16:57:12.1431908Z ^[[2m      Tests ^[[22m ^[[1m^[[32m1118 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m242 skipped^[[39m^[[90m (1360)^[[39m
+packages (windows-latest)	Complete job	﻿2026-09-25T16:57:18.1476100Z Cleaning up orphan processes
+packages (windows-latest)	Complete job	2026-09-25T16:57:18.1531274Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/chec

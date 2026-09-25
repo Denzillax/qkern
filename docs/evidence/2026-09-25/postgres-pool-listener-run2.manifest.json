@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "postgres-pool-listener-run2.log",
+  "commit": "78b04c2f593608cdd5eeb6e47344ab6416b476a8",
+  "commitSubject": "release: 2.14.0 Ein Server, der noch da ist",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 45,
+  "testFiles": "28 passed (28)",
+  "tests": "161 passed (161)",
+  "passed": 161,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

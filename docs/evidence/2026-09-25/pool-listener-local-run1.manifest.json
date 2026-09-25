@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "pool-listener-local-run1.log",
+  "commit": "78b04c2f593608cdd5eeb6e47344ab6416b476a8",
+  "commitSubject": "release: 2.14.0 Ein Server, der noch da ist",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1119 passed | 242 skipped (1361)",
+  "passed": 1119,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

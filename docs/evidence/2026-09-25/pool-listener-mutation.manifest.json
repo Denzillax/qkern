@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation",
+  "log": "pool-listener-mutation.log",
+  "commit": "78b04c2f593608cdd5eeb6e47344ab6416b476a8",
+  "commitSubject": "release: 2.14.0 Ein Server, der noch da ist",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed (1)",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

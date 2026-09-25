@@ -4095,3 +4095,44 @@ Nicht erbracht: keine Mutationsprobe, weil kein Produktcode geaendert wurde;
 der GitHub-Lauf auf diesem Stand steht noch aus, Sprosse 7 ist begonnen,
 nicht belegt. Die Fassung `RELEASE.2025-09-07` von MinIO ist damit nur
 noch im lokalen Image-Cache reproduzierbar.
+
+## Was der Runner fand – Release 2.15
+
+Der zweite GitHub-Lauf, auf dem Stand 2.14.0. Developer Experience war auf
+Ubuntu, Windows und macOS gruen; das ist die erste Evidenz fuer Windows und
+macOS ausserhalb dieser Maschine, archiviert als JSON und gekuerztes Log.
+Die Zertifizierung: Storage gegen versitygw gruen, Auth gruen, PostgreSQL
+161 von 161 gruen und trotzdem exit 1.
+
+Der Grund: Vitest meldete einen unbehandelten Fehler, `terminating
+connection due to administrator command` (57P01), ausgeloest waehrend
+`tests/migration-process-postgres.integration.test.ts`. Das Teardown
+raeumt die Projektdatenbank mit `DROP DATABASE ... WITH (FORCE)` ab, und
+das beendet jede noch offene Verbindung, auch die unbenutzte eines Pools,
+den der Migrationsprozess selbst geoeffnet hatte. node-postgres meldet so
+etwas als `error`-Ereignis des Pools. Ohne Zuhoerer ist das ein
+unbehandelter Fehler des Prozesses. Auf dieser Maschine hat das Timing das
+Loch nie getroffen; der schnellere Runner schon.
+
+Das ist ein Produktfehler, kein Testfehler: ein Dienst, dessen unbenutzte
+Verbindung der Server beendet (Failover, Admin-Kill), darf davon nicht
+sterben. `createPostgresPool` haengt jetzt einen Zuhoerer an, der `[db]
+idle connection lost` protokolliert; die naechste Anfrage bekommt ohnehin
+eine frische Verbindung. Vertrag: `tests/postgres-pool-idle-error.test.ts`
+prueft, dass genau ein Zuhoerer haengt und ein `emit("error")` nicht
+wirft. Mutation: Zuhoerer entfernt, 1 von 1 faellt.
+
+Dazu ein Workflow zum Veroeffentlichen der Pakete, nur von Hand startbar,
+mit Probelauf als Voreinstellung. Der echte Lauf verweigert Pakete mit
+`private: true` oder `UNLICENSED`; beides steht heute noch in beiden
+Manifesten, und beides ist Denzils Entscheidung. Der `bin`-Pfad der CLI
+verliert sein `./`, weil npm 11 ihn sonst beim Veroeffentlichen als
+ungueltig verwirft.
+
+Checkpoint `2.15.0` am 25. September 2026: PostgreSQL 17 zweimal 161 von
+161, exit 0, ohne unbehandelten Fehler; Lokal 1119 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: der GitHub-Lauf auf diesem Stand steht noch aus; der
+Teardown des Migrationstests beendet weiterhin fremde Verbindungen mit
+FORCE, statt den Prozess-Pool sauber zu schliessen.

@@ -17,7 +17,7 @@ export type PostgresPoolConfig = {
   };
 };
 
-type PgPoolConstructor = new (config: Record<string, unknown>) => SqlPool;
+type PgPoolConstructor = new (config: Record<string, unknown>) => SqlPool & { on(event: "error", listener: (error: Error) => void): unknown };
 type PgModule = { Pool: PgPoolConstructor };
 
 function loadPg(): PgModule {
@@ -100,7 +100,7 @@ export function provisionerPostgresPoolConfigFromEnv(
 export function createPostgresPool(config: PostgresPoolConfig): SqlPool {
   if (!config.connectionString?.trim()) throw new ConfigurationError("A PostgreSQL connection string is required.");
   const { Pool } = loadPg();
-  return new Pool({
+  const pool = new Pool({
     connectionString: config.connectionString,
     max: config.max ?? 10,
     idleTimeoutMillis: config.idleTimeoutMillis ?? 30_000,
@@ -109,6 +109,16 @@ export function createPostgresPool(config: PostgresPoolConfig): SqlPool {
     application_name: config.applicationName ?? "qkern-control-plane",
     ssl: config.ssl ?? false,
   });
+  // Ein Fehler auf einer *unbenutzten* Verbindung (Server beendet sie: Failover,
+  // Admin-Kill, `DROP DATABASE ... WITH (FORCE)`) kommt bei node-postgres als
+  // `error`-Ereignis des Pools. Ohne Zuhoerer ist das ein unbehandelter Fehler,
+  // der den ganzen Prozess reisst. Die naechste Anfrage bekommt ohnehin eine
+  // frische Verbindung; hier wird nur protokolliert (2.15, gefunden auf dem
+  // GitHub-Runner: 161 von 161 gruen und trotzdem exit 1).
+  pool.on("error", (error: Error) => {
+    console.error("[db] idle connection lost", { pool: config.applicationName ?? "qkern-control-plane", message: error.message });
+  });
+  return pool;
 }
 
 export type DatabaseBoundary = "runtime" | "auth" | "worker" | "provisioner";

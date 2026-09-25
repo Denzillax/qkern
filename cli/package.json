@@ -3,7 +3,7 @@
   "version": "1.7.0-alpha.3",
   "description": "Secret-free local workflow CLI for QKERN",
   "type": "module",
-  "bin": { "qkern": "./dist/main.js" },
+  "bin": { "qkern": "dist/main.js" },
   "exports": "./dist/main.js",
   "files": [
     "dist",
