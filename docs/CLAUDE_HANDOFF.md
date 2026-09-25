@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.11.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.12.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,8 +39,14 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-- Paketversion: `2.11.0`
-- Aktueller Slice: 2.11 Der Q-Orbit – Denzils Referenz nexalead.framer.ai:
+- Paketversion: `2.12.0`
+- Aktueller Slice: 2.12 Wie Menschen reden – Denzil zur Hero-Zeile
+  "Backend-Bausteine, die ihre Zusagen belegen": so reden keine Menschen.
+  Neu in `lib/i18n/landing.ts` (hero, meta, footer.tagline, vier Sprachen)
+  und `app/layout.tsx`: "Dein Backend. Getestet, bevor du es anfasst." mit
+  einem Lead in Alltagswoertern (Login statt Auth, Dateien statt Storage).
+  Massstab fuer kuenftige Texte: der humanizer-Skill, Abschnitt F
+- Vorheriger Slice: 2.11 Der Q-Orbit – Denzils Referenz nexalead.framer.ai:
   ein Partikelring um das Q, der mit der Maus interagiert.
   `components/hero-orbit.tsx`: Canvas mit rund 1400 Partikeln auf drei
   gleich geneigten Bahnen (innen schneller als aussen, eine Richtung), das
@@ -51,7 +57,7 @@ Release Notes bleiben unverändert.
   Zweimal "bewegt sich komisch": erst drei Drehrichtungen und ein
   mitdrehendes Q, dann eine Eigendrehung der Blickachse, die den Ring
   taumeln liess; beides weg
-- Vorheriger Slice: 2.10 Das Q-Feld – Denzils Wunsch nach einer
+- Davor: 2.10 Das Q-Feld – Denzils Wunsch nach einer
   Hintergrund-Animation mit dem Q, die mit der Maus interagiert.
   `components/hero-field.tsx`: sieben blasse Q-Symbole (Pfad aus dem
   Marken-SVG, inline) an festen Positionen im Hero, treiben per CSS-Keyframe

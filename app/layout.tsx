@@ -5,8 +5,8 @@ import "./globals.css";
 import { currentLocale } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
-  title: "QKERN, Backend-Bausteine, die ihre Zusagen belegen",
-  description: "Datenbank, Auth, Storage, Realtime und Functions. Zu jeder Zusage gehoert ein archivierter Prueflauf gegen echte Dienste.",
+  title: "QKERN, dein Backend, getestet bevor du es anfasst",
+  description: "Datenbank, Login, Dateien, Realtime und Functions. Alles laeuft gegen echte Dienste, und die Logs liegen im Repository.",
   icons: { icon: "/brand/qkern-favicon.svg" },
 };
 

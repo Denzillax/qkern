@@ -27,9 +27,9 @@ export type LandingDictionary = {
 };
 
 const de: LandingDictionary = {
-  meta: { title: "QKERN, Backend-Bausteine, die ihre Zusagen belegen", description: "Datenbank, Auth, Storage, Realtime und Functions. Zu jeder Zusage gehört ein archivierter Prüflauf gegen echte Dienste." },
+  meta: { title: "QKERN, dein Backend, getestet bevor du es anfasst", description: "Datenbank, Login, Dateien, Realtime und Functions. Alles läuft gegen echte Dienste, und die Logs liegen im Repository." },
   header: { nav: [["Produkt", "#product"], ["Prüfverfahren", "#verification"], ["Entwickler", "#developers"], ["KI", "#ai"], ["Offene Punkte", "#security"], ["Preise", "#pricing"]], login: "Anmelden", createProject: "Projekt erstellen", home: "QKERN Startseite", menuOpen: "Menü öffnen", menuClose: "Menü schliessen", language: "Sprache wählen" },
-  hero: { badge: "{n} archivierte Prüfläufe", title: "Backend-Bausteine, die ihre Zusagen belegen.", lead: "Datenbank, Auth, Storage, Realtime und Functions, jedes gegen echte Dienste geprüft. Die Logs dazu liegen im Repository.", primary: "Projekt erstellen", secondary: "Console ansehen" },
+  hero: { badge: "{n} archivierte Prüfläufe", title: "Dein Backend. Getestet, bevor du es anfasst.", lead: "Datenbank, Login, Dateien, Realtime und Functions. Alles läuft gegen echte Dienste, und die Logs dazu kannst du im Repository nachlesen.", primary: "Projekt erstellen", secondary: "Console ansehen" },
   record: { kicker: "Prüflauf", none: "kein Lauf archiviert", count: "{n} von {n}", counterTitle: "Gegenprobe", counterSmall: "Garantien abgeschaltet, absichtlich fehlgeschlagen", runs: "{n} Läufe", stat: "{name} gegen {stack}" },
   names: {},
   product: {
@@ -95,14 +95,14 @@ const de: LandingDictionary = {
     ],
   },
   close: { title: "Fang mit dem Kern an.", lead: "Ein Development-Projekt kostet nichts. Die Belege für diese Seite liegen im Repository unter docs/evidence.", cta: "Projekt erstellen" },
-  footer: { tagline: "Backend-Bausteine, die ihre Zusagen belegen.", product: "Produkt", developers: "Entwickler", company: "Unternehmen", modules: "Module", verification: "Prüfverfahren", bridge: "AI Bridge", console: "Console", interfaces: "Schnittstellen", gaps: "Offene Punkte", imprint: "Impressum, Vorlage", privacy: "Datenschutz, Vorlage", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Entwickelt in der Schweiz. Hosting-Aussage noch nicht verifiziert." },
+  footer: { tagline: "Dein Backend. Getestet, bevor du es anfasst.", product: "Produkt", developers: "Entwickler", company: "Unternehmen", modules: "Module", verification: "Prüfverfahren", bridge: "AI Bridge", console: "Console", interfaces: "Schnittstellen", gaps: "Offene Punkte", imprint: "Impressum, Vorlage", privacy: "Datenschutz, Vorlage", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Entwickelt in der Schweiz. Hosting-Aussage noch nicht verifiziert." },
   months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
 };
 
 const en: LandingDictionary = {
-  meta: { title: "QKERN, backend building blocks that prove their promises", description: "Database, auth, storage, realtime and functions. Every promise comes with an archived test run against real services." },
+  meta: { title: "QKERN, your backend, tested before you touch it", description: "Database, login, files, realtime and functions. Everything runs against real services, and the logs are in the repository." },
   header: { nav: [["Product", "#product"], ["How we test", "#verification"], ["Developers", "#developers"], ["AI", "#ai"], ["Open items", "#security"], ["Pricing", "#pricing"]], login: "Sign in", createProject: "Create a project", home: "QKERN home", menuOpen: "Open menu", menuClose: "Close menu", language: "Choose language" },
-  hero: { badge: "{n} archived test runs", title: "Backend building blocks that prove their promises.", lead: "Database, auth, storage, realtime and functions, each tested against real services. The logs are in the repository.", primary: "Create a project", secondary: "See the console" },
+  hero: { badge: "{n} archived test runs", title: "Your backend. Tested before you touch it.", lead: "Database, login, files, realtime and functions. Everything runs against real services, and you can read the logs in the repository.", primary: "Create a project", secondary: "See the console" },
   record: { kicker: "Test run", none: "no run archived", count: "{n} of {n}", counterTitle: "Counter-check", counterSmall: "Guarantees switched off, failed on purpose", runs: "{n} runs", stat: "{name} against {stack}" },
   names: { "Control Plane und Data API": "Control plane and Data API", "Object Storage": "Object storage", "Project Auth": "Project auth", "Functions": "Functions", "Webhook-Signatur": "Webhook signature", "Ausgehender Weg": "Outbound path", "MinIO und ClamAV": "MinIO and ClamAV", "Mailpit und Dex über TLS": "Mailpit and Dex over TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry and PostgreSQL 17", "Echter HTTPS-Empfänger": "Real HTTPS receiver" },
   product: {
@@ -168,14 +168,14 @@ const en: LandingDictionary = {
     ],
   },
   close: { title: "Start with the core.", lead: "A development project costs nothing. The evidence for this page lives in the repository under docs/evidence.", cta: "Create a project" },
-  footer: { tagline: "Backend building blocks that prove their promises.", product: "Product", developers: "Developers", company: "Company", modules: "Modules", verification: "How we test", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Open items", imprint: "Imprint, template", privacy: "Privacy, template", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Built in Switzerland. Hosting claim not yet verified." },
+  footer: { tagline: "Your backend. Tested before you touch it.", product: "Product", developers: "Developers", company: "Company", modules: "Modules", verification: "How we test", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Open items", imprint: "Imprint, template", privacy: "Privacy, template", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Built in Switzerland. Hosting claim not yet verified." },
   months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
 };
 
 const fr: LandingDictionary = {
-  meta: { title: "QKERN, des briques backend qui prouvent leurs promesses", description: "Base de données, auth, stockage, temps réel et fonctions. Chaque promesse s'accompagne d'un test archivé contre de vrais services." },
+  meta: { title: "QKERN, votre backend, testé avant que vous y touchiez", description: "Base de données, connexion, fichiers, temps réel et fonctions. Tout tourne contre de vrais services, et les journaux sont dans le dépôt." },
   header: { nav: [["Produit", "#product"], ["Nos tests", "#verification"], ["Développeurs", "#developers"], ["IA", "#ai"], ["Points ouverts", "#security"], ["Tarifs", "#pricing"]], login: "Se connecter", createProject: "Créer un projet", home: "Accueil QKERN", menuOpen: "Ouvrir le menu", menuClose: "Fermer le menu", language: "Choisir la langue" },
-  hero: { badge: "{n} tests archivés", title: "Des briques backend qui prouvent leurs promesses.", lead: "Base de données, auth, stockage, temps réel et fonctions, chacun testé contre de vrais services. Les journaux sont dans le dépôt.", primary: "Créer un projet", secondary: "Voir la console" },
+  hero: { badge: "{n} tests archivés", title: "Votre backend. Testé avant que vous y touchiez.", lead: "Base de données, connexion, fichiers, temps réel et fonctions. Tout tourne contre de vrais services, et vous pouvez lire les journaux dans le dépôt.", primary: "Créer un projet", secondary: "Voir la console" },
   record: { kicker: "Test", none: "aucun test archivé", count: "{n} sur {n}", counterTitle: "Contre-épreuve", counterSmall: "Garanties désactivées, échec volontaire", runs: "{n} passages", stat: "{name} contre {stack}" },
   names: { "Control Plane und Data API": "Plan de contrôle et Data API", "Object Storage": "Stockage d'objets", "Project Auth": "Auth de projet", "Functions": "Fonctions", "Webhook-Signatur": "Signature des webhooks", "Ausgehender Weg": "Chemin sortant", "MinIO und ClamAV": "MinIO et ClamAV", "Mailpit und Dex über TLS": "Mailpit et Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registre et PostgreSQL 17", "Echter HTTPS-Empfänger": "Vrai récepteur HTTPS" },
   product: {
@@ -241,14 +241,14 @@ const fr: LandingDictionary = {
     ],
   },
   close: { title: "Commencez par le noyau.", lead: "Un projet de développement ne coûte rien. Les preuves de cette page sont dans le dépôt, sous docs/evidence.", cta: "Créer un projet" },
-  footer: { tagline: "Des briques backend qui prouvent leurs promesses.", product: "Produit", developers: "Développeurs", company: "Entreprise", modules: "Modules", verification: "Nos tests", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Points ouverts", imprint: "Mentions légales, modèle", privacy: "Confidentialité, modèle", status: "Statut", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Développé en Suisse. Affirmation sur l'hébergement pas encore vérifiée." },
+  footer: { tagline: "Votre backend. Testé avant que vous y touchiez.", product: "Produit", developers: "Développeurs", company: "Entreprise", modules: "Modules", verification: "Nos tests", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Points ouverts", imprint: "Mentions légales, modèle", privacy: "Confidentialité, modèle", status: "Statut", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Développé en Suisse. Affirmation sur l'hébergement pas encore vérifiée." },
   months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
 };
 
 const it: LandingDictionary = {
-  meta: { title: "QKERN, componenti backend che dimostrano le loro promesse", description: "Database, auth, storage, realtime e funzioni. Ogni promessa ha un test archiviato contro servizi reali." },
+  meta: { title: "QKERN, il tuo backend, testato prima che lo tocchi", description: "Database, login, file, realtime e funzioni. Tutto gira contro servizi reali, e i log sono nel repository." },
   header: { nav: [["Prodotto", "#product"], ["Come testiamo", "#verification"], ["Sviluppatori", "#developers"], ["IA", "#ai"], ["Punti aperti", "#security"], ["Prezzi", "#pricing"]], login: "Accedi", createProject: "Crea un progetto", home: "Pagina iniziale QKERN", menuOpen: "Apri il menu", menuClose: "Chiudi il menu", language: "Scegli la lingua" },
-  hero: { badge: "{n} test archiviati", title: "Componenti backend che dimostrano le loro promesse.", lead: "Database, auth, storage, realtime e funzioni, ognuno testato contro servizi reali. I log sono nel repository.", primary: "Crea un progetto", secondary: "Guarda la console" },
+  hero: { badge: "{n} test archiviati", title: "Il tuo backend. Testato prima che lo tocchi.", lead: "Database, login, file, realtime e funzioni. Tutto gira contro servizi reali, e i log li puoi leggere nel repository.", primary: "Crea un progetto", secondary: "Guarda la console" },
   record: { kicker: "Test", none: "nessun test archiviato", count: "{n} su {n}", counterTitle: "Controprova", counterSmall: "Garanzie disattivate, fallimento voluto", runs: "{n} esecuzioni", stat: "{name} contro {stack}" },
   names: { "Control Plane und Data API": "Piano di controllo e Data API", "Object Storage": "Storage a oggetti", "Project Auth": "Auth di progetto", "Functions": "Funzioni", "Webhook-Signatur": "Firma dei webhook", "Ausgehender Weg": "Percorso in uscita", "MinIO und ClamAV": "MinIO e ClamAV", "Mailpit und Dex über TLS": "Mailpit e Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry e PostgreSQL 17", "Echter HTTPS-Empfänger": "Vero ricevitore HTTPS" },
   product: {
@@ -314,7 +314,7 @@ const it: LandingDictionary = {
     ],
   },
   close: { title: "Comincia dal nucleo.", lead: "Un progetto di sviluppo non costa nulla. Le prove di questa pagina sono nel repository, sotto docs/evidence.", cta: "Crea un progetto" },
-  footer: { tagline: "Componenti backend che dimostrano le loro promesse.", product: "Prodotto", developers: "Sviluppatori", company: "Azienda", modules: "Moduli", verification: "Come testiamo", bridge: "AI Bridge", console: "Console", interfaces: "Interfacce", gaps: "Punti aperti", imprint: "Note legali, modello", privacy: "Privacy, modello", status: "Stato", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Sviluppato in Svizzera. Affermazione sull'hosting non ancora verificata." },
+  footer: { tagline: "Il tuo backend. Testato prima che lo tocchi.", product: "Prodotto", developers: "Sviluppatori", company: "Azienda", modules: "Moduli", verification: "Come testiamo", bridge: "AI Bridge", console: "Console", interfaces: "Interfacce", gaps: "Punti aperti", imprint: "Note legali, modello", privacy: "Privacy, modello", status: "Stato", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Sviluppato in Svizzera. Affermazione sull'hosting non ancora verificata." },
   months: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
 };
 

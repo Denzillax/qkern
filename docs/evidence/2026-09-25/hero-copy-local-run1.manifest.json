@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "hero-copy-local-run1.log",
+  "commit": "613fdbc27cd24d502136ae75d5b7c51317f275f5",
+  "commitSubject": "release: 2.11.0 Der Q-Orbit",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1118 passed | 242 skipped (1360)",
+  "passed": 1118,
+  "failed": 0,
+  "skipped": 242,
+  "images": []
+}

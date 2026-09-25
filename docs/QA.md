@@ -4018,3 +4018,19 @@ unveraendert.
 
 Nicht erbracht: kein Test fuer die Canvas-Bewegung selbst (Vitest hat kein
 Canvas); der Ring ist Denzils Auge noch nicht vorgefuehrt worden.
+
+## Wie Menschen reden – Release 2.12
+
+Denzil zur Hero-Zeile "Backend-Bausteine, die ihre Zusagen belegen": so
+reden keine Menschen. Stimmt. Die Zeile personifiziert Software und traegt
+zwei Substantive, die niemand im Gespraech benutzt. Neu: "Dein Backend.
+Getestet, bevor du es anfasst." Der Lead nennt die Teile mit
+Alltagswoertern, Login statt Auth, Dateien statt Storage, und sagt, wo die
+Logs liegen. Gleiche Zeile in Englisch, Franzoesisch und Italienisch, im
+Seitentitel, in der Beschreibung und in der Fusszeile.
+
+Checkpoint `2.12.0` am 25. September 2026: Lokal 1118 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Stacks unveraendert.
+
+Nicht erbracht: die uebrigen Ueberschriften der Seite sind nicht neu
+geprueft, nur der Hero.
