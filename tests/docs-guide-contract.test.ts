@@ -1,7 +1,13 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Diese Datei liest zwanzig Markdown-Seiten in vier Sprachen und parst sie
+// mehrfach; in der vollen Suite auf einer beschaeftigten Platte reichte die
+// Vorgabe von 5 s je Fall nicht (2.35). Das Budget ist ausdruecklich, die
+// Pruefungen bleiben dieselben.
+vi.setConfig({ testTimeout: 60_000 });
 import { GUIDE_PAGES, availableGuideLocales, guidePath, guideTitle, pageBySlug } from "@/lib/docs/pages";
 import { GUIDE_LOCALE_TEXT } from "@/lib/docs/locales";
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
