@@ -1,6 +1,10 @@
 import { AuditRepository } from "@/lib/server/db/repositories";
 import type { SqlPool } from "@/lib/server/db/sql";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
+import type {
+  ProjectAuthAuditSeriesQuery,
+  ProjectAuthAuditSeriesRecord,
+} from "@/lib/server/project-auth/audit-series";
 import {
   sanitizeProjectAuthAuditEvent,
   type ProjectAuthAuditEntry,
@@ -72,6 +76,67 @@ export class PostgresProjectAuthAuditSink implements ProjectAuthAuditSink {
       return { events, nextCursor: result.rows.length > input.limit ? events[events.length - 1].id : null };
     });
   }
+
+  /**
+   * Die Zeitreihe (2.47) entsteht in der Datenbank: `date_trunc`, `GROUP BY`,
+   * `ORDER BY`, ein `LIMIT`. Die Zeilen selbst bleiben unten: eine
+   * Anmeldereihe ueber 90 Tage kann Hunderttausende Eintraege umfassen, und
+   * keiner davon muesste je durch Node laufen, um vier Zahlen zu ergeben.
+   *
+   * `date_trunc` rechnet ausdruecklich in UTC. Ohne die Umrechnung schnitte
+   * es in der Zeitzone der Sitzung, und die Eimergrenzen haengen dann an der
+   * Konfiguration der Verbindung statt am Kalender. Die Eimergroesse ist ein
+   * Parameter, kein eingesetzter Text; erlaubt sind nur `hour` und `day`,
+   * geprueft vom Dienst gegen `PROJECT_AUTH_SERIES_BUCKETS`.
+   *
+   * Nichts hiervon traegt eine Adresse: gezaehlt werden `action` und
+   * `status`, und beide sind vom Sanitizer auf harmlose Werte begrenzt.
+   */
+  async series(
+    scope: ProjectAuthScope,
+    input: ProjectAuthAuditSeriesQuery,
+  ): Promise<ProjectAuthAuditSeriesRecord[]> {
+    return withTenantTransaction(this.pool, {
+      organizationId: scope.organizationId,
+      readOnly: true,
+      statementTimeoutMs: 5_000,
+    }, async (transaction) => {
+      const result = await transaction.query(
+        `SELECT (date_trunc($4, created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS bucket_start,
+                action,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'failed') AS failed
+         FROM audit_logs
+         WHERE organization_id = $1
+           AND project_id = $2::uuid
+           AND environment = $3::qkern_environment
+           AND starts_with(action, 'project_auth.')
+           AND created_at >= $5
+           AND created_at < $6
+         GROUP BY 1, 2
+         ORDER BY 1, 2
+         LIMIT $7`,
+        [transaction.organizationId, scope.projectId, scope.environment, input.bucket, input.from, input.to, input.limit],
+      );
+      return result.rows.map(seriesFromRow);
+    });
+  }
+}
+
+function seriesFromRow(row: Record<string, unknown>): ProjectAuthAuditSeriesRecord {
+  const bucketStart = row.bucket_start instanceof Date ? row.bucket_start : new Date(String(row.bucket_start));
+  return {
+    bucketStart,
+    action: String(row.action),
+    total: count(row.total),
+    failed: count(row.failed),
+  };
+}
+
+/** `COUNT(*)` kommt als int8 und damit als Text aus dem Treiber. */
+function count(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(String(value ?? 0));
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function entryFromRow(row: Record<string, unknown>): ProjectAuthAuditEntry {

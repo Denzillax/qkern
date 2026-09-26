@@ -20,6 +20,13 @@ import {
   type ProjectAuthAuditPage,
   type ProjectAuthAuditSink,
 } from "@/lib/server/project-auth/audit";
+import {
+  buildProjectAuthAuditSeries,
+  isProjectAuthSeriesBucket,
+  projectAuthSeriesRowLimit,
+  projectAuthSeriesWindow,
+  type PublicProjectAuthAuditSeries,
+} from "@/lib/server/project-auth/audit-series";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import {
   ProjectAuthOidcCatalog,
@@ -114,7 +121,8 @@ export type ProjectAuthErrorCode =
   | "INVALID_MFA"
   | "RATE_LIMITED"
   | "DELIVERY_UNAVAILABLE"
-  | "RESOURCE_NOT_FOUND";
+  | "RESOURCE_NOT_FOUND"
+  | "AUDIT_UNAVAILABLE";
 
 export class ProjectAuthError extends Error {
   /**
@@ -697,6 +705,38 @@ export class ProjectAuthService {
     return this.dependencies.audit.list(scope, { limit, ...(cursor ? { cursor } : {}) });
   }
 
+  /**
+   * Die Zeitreihe des Auth-Audits (2.47): wie viele Handlungen je Abschnitt,
+   * je Art, und wie viele davon gescheitert sind.
+   *
+   * Aggregiert wird in der Datenbank; die leeren Eimer entstehen im reinen
+   * Teil (`audit-series`). Das Fenster kommt aus der Eimergroesse und nicht
+   * aus dem Aufruf: 48 Stunden oder 90 Tage, endend mit dem laufenden und
+   * darum noch unvollstaendigen Eimer.
+   *
+   * Ohne Audit-Sink, oder mit einem Sink, der nicht aggregieren kann, gibt
+   * es keine Reihe, und der Aufrufer erfaehrt das. Eine leere Reihe hiesse
+   * "es hat sich niemand angemeldet", und das waere gelogen.
+   */
+  async readAuditSeries(scope: ProjectAuthScope, input: { bucket?: string } = {}): Promise<PublicProjectAuthAuditSeries> {
+    assertScope(scope);
+    const bucket = input.bucket ?? "hour";
+    if (!isProjectAuthSeriesBucket(bucket)) throw new ProjectAuthError("INVALID_INPUT");
+    const read = this.dependencies.audit?.series?.bind(this.dependencies.audit);
+    if (!read) throw new ProjectAuthError("AUDIT_UNAVAILABLE");
+    // Einmal abgelesen und danach festgehalten: Faellt die Uhr zwischen
+    // Abfrage und Aufbau ueber eine Eimergrenze, passten Fenster und Eimer
+    // nicht mehr zusammen.
+    const now = this.now();
+    const window = projectAuthSeriesWindow(bucket, now);
+    // Eine Zeile mehr, als das Fenster tragen kann: So faellt auf, wenn die
+    // Aggregation je mehr Gruppen liefert, als hier gerechnet wurden.
+    const records = await read(scope, {
+      bucket, from: window.start, to: window.end, limit: projectAuthSeriesRowLimit(bucket) + 1,
+    });
+    return buildProjectAuthAuditSeries({ bucket, now, records });
+  }
+
   private async requireUser(scope: ProjectAuthScope, userId: string): Promise<void> {
     const user = await this.dependencies.repository.findUserById(scope, userId);
     if (!user) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
@@ -925,6 +965,7 @@ export class DisabledProjectAuthService {
   revokeSession(): never { return this.disabled(); }
   revokeAllSessions(): never { return this.disabled(); }
   listAuditEvents(): never { return this.disabled(); }
+  readAuditSeries(): never { return this.disabled(); }
 }
 
 function canonicalEmail(email: string): string { return email.trim().toLowerCase(); }

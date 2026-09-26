@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "obs-auth", "logs-auth",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -66,7 +66,6 @@ export const PLACEHOLDERS = {
   "realtime-policies": { label: "Policies", supabase: "Realtime → Policies", backend: "teilweise", note: "Wer welchen Kanal lesen und schreiben darf." },
   "realtime-settings": { label: "Einstellungen", supabase: "Realtime → Settings", backend: "fehlt", note: "Grenzen für Verbindungen und Nachrichten je Sekunde." },
   // Berichte
-  "obs-auth": { label: "Auth", supabase: "Observability → Auth", backend: "fehlt", note: "Anmeldungen, Fehlversuche und ausgegebene Token über die Zeit. Kein Zähler dafür." },
   "obs-realtime": { label: "Realtime", supabase: "Observability → Realtime", backend: "fehlt", note: "Verbindungen und Nachrichten über die Zeit." },
   "obs-query-performance": { label: "Abfrage-Leistung", supabase: "Observability → Query Performance", backend: "fehlt", note: "Die teuersten Abfragen nach Zeit und Häufigkeit (pg_stat_statements)." },
   "obs-query-insights": { label: "Abfrage-Einblicke", supabase: "Observability → Query Insights", backend: "fehlt", note: "Erklärungen zu einzelnen Abfrageplänen: welcher Index greift, wo der Plan teuer wird." },
@@ -74,7 +73,6 @@ export const PLACEHOLDERS = {
   "logs-api": { label: "API-Gateway", supabase: "Logs → API Gateway", backend: "fehlt", note: "Jede Anfrage am Rand mit Status und Dauer." },
   "logs-postgres": { label: "Postgres", supabase: "Logs → Postgres", backend: "fehlt", note: "Das Serverlog der Projektdatenbank: Verbindungen, Fehler, langsame Statements." },
   "logs-postgrest": { label: "Data API", supabase: "Logs → PostgREST", backend: "fehlt", note: "Log der generierten Data API: jede Anfrage mit Rolle, Tabelle und Antwortzeit." },
-  "logs-auth": { label: "Auth", supabase: "Logs → Auth", backend: "fehlt", note: "Log des Anmeldedienstes: Anmeldungen, Magic Links, TOTP-Prüfungen, Fehlversuche." },
   "logs-storage": { label: "Storage", supabase: "Logs → Storage", backend: "fehlt", note: "Uploads, Downloads und Scanner-Urteile je Objekt, mit Bucket und Richtlinie." },
   "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
   "logs-functions": { label: "Functions", supabase: "Logs → Edge Functions", backend: "fehlt", note: "Start, Ende und Fehler je Function-Aufruf, mit Dauer und Ausgangsverbindungen." },
@@ -135,11 +133,11 @@ export const NAV: NavGroup[] = [
   { id: "approvals", label: "Freigabezentrale", icon: ShieldCheck },
   { id: "advisors-security", label: "Advisors", icon: Stethoscope, children: [{ id: "advisors-security", label: "Sicherheit" }, { id: "advisors-performance", label: "Leistung" }, { id: "advisors-health", label: "Gesundheit" }] },
   { id: "obs-api", label: "Berichte", icon: BarChart3, children: [
-    { id: "obs-api", label: "API" }, ph("obs-auth"), { id: "obs-storage", label: "Storage" }, { id: "obs-database", label: "Datenbank" }, ph("obs-realtime"), { id: "obs-functions", label: "Functions" },
+    { id: "obs-api", label: "API" }, { id: "obs-auth", label: "Auth" }, { id: "obs-storage", label: "Storage" }, { id: "obs-database", label: "Datenbank" }, ph("obs-realtime"), { id: "obs-functions", label: "Functions" },
     ph("obs-query-performance"), ph("obs-query-insights"), { id: "obs-connections", label: "Verbindungen" },
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
-    { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), ph("logs-postgrest"), ph("logs-auth"), ph("logs-storage"),
+    { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), ph("logs-postgrest"), { id: "logs-auth", label: "Auth" }, ph("logs-storage"),
     ph("logs-realtime"), ph("logs-functions"), ph("logs-pooler"), { id: "logs-cron", label: "Cron" }, ph("logs-explorer"),
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },

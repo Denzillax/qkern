@@ -1,4 +1,9 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
+import {
+  PROJECT_AUTH_SERIES_BUCKETS,
+  type ProjectAuthAuditSeriesQuery,
+  type ProjectAuthAuditSeriesRecord,
+} from "@/lib/server/project-auth/audit-series";
 import type { ProjectAuthScope } from "@/lib/server/project-auth/model";
 
 /**
@@ -43,6 +48,16 @@ export interface ProjectAuthAuditSink {
   record(event: ProjectAuthAuditEvent): Promise<void>;
   /** Neueste zuerst, nur `project_auth.*` im exakten Scope. `cursor` ist die ID des letzten Eintrags. */
   list(scope: ProjectAuthScope, input: { limit: number; cursor?: string }): Promise<ProjectAuthAuditPage>;
+  /**
+   * Die Gruppen einer Zeitreihe (2.47): je Eimer und Handlung eine Zeile mit
+   * Anzahl und Fehlversuchen. Optional, weil ein Sink ohne Aggregation
+   * moeglich ist; der Dienst sagt dann ausdruecklich, dass es keine Reihe
+   * gibt, statt eine leere zu liefern; leer hiesse "nichts passiert".
+   */
+  series?(
+    scope: ProjectAuthScope,
+    input: ProjectAuthAuditSeriesQuery,
+  ): Promise<ProjectAuthAuditSeriesRecord[]>;
 }
 
 export class InvalidProjectAuthAuditEventError extends Error {
@@ -135,5 +150,34 @@ export class MemoryProjectAuthAuditSink implements ProjectAuthAuditSink {
     const page = matching.slice(start, start + input.limit + 1);
     const events = page.slice(0, input.limit).map(({ scope: _scope, ...entry }) => ({ ...entry, metadata: { ...entry.metadata } }));
     return { events, nextCursor: page.length > input.limit ? events[events.length - 1].id : null };
+  }
+
+  /**
+   * Dieselben Gruppen wie PostgreSQL, nur in JavaScript gerechnet: Eimer,
+   * Handlung, Anzahl, Fehlversuche, sortiert nach Eimer und Handlung. Nur
+   * fuer Entwicklung und Tests; in Betrieb aggregiert die Datenbank.
+   */
+  async series(
+    scope: ProjectAuthScope,
+    input: ProjectAuthAuditSeriesQuery,
+  ): Promise<ProjectAuthAuditSeriesRecord[]> {
+    const step = PROJECT_AUTH_SERIES_BUCKETS[input.bucket].seconds * 1000;
+    const groups = new Map<string, ProjectAuthAuditSeriesRecord>();
+    for (const entry of this.entries) {
+      if (entry.scope.organizationId !== scope.organizationId || entry.scope.projectId !== scope.projectId ||
+          entry.scope.environment !== scope.environment || !entry.action.startsWith("project_auth.")) continue;
+      const at = new Date(entry.createdAt).getTime();
+      if (!Number.isFinite(at) || at < input.from.getTime() || at >= input.to.getTime()) continue;
+      const bucketStart = new Date(Math.floor(at / step) * step);
+      const key = `${bucketStart.toISOString()}\n${entry.action}`;
+      const group = groups.get(key) ?? { bucketStart, action: entry.action, total: 0, failed: 0 };
+      group.total += 1;
+      if (entry.status === "failed") group.failed += 1;
+      groups.set(key, group);
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, group]) => group)
+      .slice(0, input.limit);
   }
 }

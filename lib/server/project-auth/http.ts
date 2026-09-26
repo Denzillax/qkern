@@ -144,6 +144,10 @@ export function projectAuthRouteError(error: unknown, request?: NextRequest): Ne
       }));
       case "RESOURCE_NOT_FOUND": return respond(projectAuthNoStore({ error: "Resource not found" }, 404));
       case "PROJECT_AUTH_DISABLED": return respond(projectAuthNoStore({ error: "Project Auth is disabled" }, 503));
+      // Der Dienst laeuft, nur das Audit fehlt. 503 und ein eigener Text:
+      // Die Console soll sagen koennen, dass es kein Protokoll gibt, statt
+      // eine leere Reihe als "nichts passiert" zu zeigen.
+      case "AUDIT_UNAVAILABLE": return respond(projectAuthNoStore({ error: "Project Auth audit is not configured" }, 503));
       case "DELIVERY_UNAVAILABLE": return respond(projectAuthNoStore({ error: "Project Auth delivery unavailable" }, 503));
       case "TOKEN_REPLAYED": return respond(projectAuthNoStore({ error: "Authentication failed" }, 401));
       case "INVALID_CREDENTIALS":
