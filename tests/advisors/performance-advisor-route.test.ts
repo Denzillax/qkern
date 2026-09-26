@@ -42,7 +42,7 @@ function port(overrides: Partial<ProjectDataPlanePort> = {}): ProjectDataPlanePo
     }),
     inspectSchema: vi.fn(), inspectPolicies: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(),
     inspectIndexes: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectForeignKeys: vi.fn(),
-    inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(),
+    inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectActivity: vi.fn(),
     ...overrides,
   } as ProjectDataPlanePort;
 }

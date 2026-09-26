@@ -179,6 +179,24 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/database/activity": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectDatabaseActivity",
+        summary: "Read the operating figures and the grouped connections of the project database",
+        description: "Same access as /schema/policies: a session with read access or a scope-bound project key, private, no-store. Not under /schema, because /schema describes what is defined and this describes what the database is doing. The route takes no query parameter at all; any parameter is a 400. The database figures come from pg_stat_database for current_database() only, plus max_connections from current_setting; they are counters since statsReset, not since the start of the server. The connections come from pg_stat_activity, filtered to the current database and grouped by role name and state: one row per group with a count and the age of the oldest session, never one row per session. No query text ever leaves the server: query, backend_xmin, client_addr, client_hostname, application_name and pid are not selected at all. What the project read role may not see is simply absent from the count. Nothing is written, and neither pg_terminate_backend nor pg_cancel_backend exists anywhere behind this route.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "Operating figures and connection groups of this environment's database", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseActivityResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/schema/foreign-keys": {
       get: {
         tags: ["Project Data"], operationId: "inspectProjectForeignKeys",
@@ -1282,6 +1300,10 @@ export const qkernOpenAPI = {
       ProjectSchemaTable: { type: "object", additionalProperties: false, required: ["name", "kind", "rowSecurityEnabled", "columns", "truncated"], properties: { name: { type: "string" }, kind: { type: "string", enum: ["table", "partitioned_table", "view", "materialized_view"] }, rowSecurityEnabled: { type: "boolean" }, columns: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectSchemaColumn" } }, truncated: { type: "boolean" } } },
       ProjectSchema: { type: "object", additionalProperties: false, required: ["source", "schema", "tables", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, tables: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectSchemaTable" } }, truncated: { type: "boolean" } } },
       ProjectSchemaResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectSchema" } } },
+      ProjectDatabaseFigures: { type: "object", additionalProperties: false, required: ["commits", "rollbacks", "blocksRead", "blocksHit", "deadlocks", "tempFiles", "tempBytes", "backends", "maxConnections", "statsReset"], properties: { commits: { type: "integer", minimum: 0 }, rollbacks: { type: "integer", minimum: 0 }, blocksRead: { type: "integer", minimum: 0, description: "Blocks read from disk since statsReset." }, blocksHit: { type: "integer", minimum: 0, description: "Blocks already in the buffer cache; the cache hit ratio is computed from hit and read." }, deadlocks: { type: "integer", minimum: 0 }, tempFiles: { type: "integer", minimum: 0 }, tempBytes: { type: "integer", minimum: 0 }, backends: { type: "integer", minimum: 0, description: "Open backends of this database, as pg_stat_database counts them." }, maxConnections: { type: "integer", minimum: 1, description: "current_setting('max_connections'); a setting of the server, not of this database." }, statsReset: { type: ["string", "null"], format: "date-time", description: "Null means the statistics were never reset." } } },
+      ProjectConnectionGroup: { type: "object", additionalProperties: false, required: ["role", "state", "count", "oldestSeconds"], properties: { role: { type: "string", maxLength: 63 }, state: { type: "string", maxLength: 64, description: "active, idle, idle in transaction, idle in transaction (aborted), fastpath function call, disabled or unknown." }, count: { type: "integer", minimum: 1 }, oldestSeconds: { type: "integer", minimum: 0, description: "Age of the oldest session of this group in seconds, from backend_start." } } },
+      ProjectDatabaseActivity: { type: "object", additionalProperties: false, required: ["source", "database", "connections", "truncated"], properties: { source: { type: "string", enum: ["postgres"] }, database: { $ref: "#/components/schemas/ProjectDatabaseFigures" }, connections: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectConnectionGroup" } }, truncated: { type: "boolean", description: "More groups exist than the row limit returned." } } },
+      ProjectDatabaseActivityResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseActivity" } } },
       ProjectForeignKey: { type: "object", additionalProperties: false, required: ["name", "table", "columns", "referencedSchema", "referencedTable", "referencedColumns", "onDelete", "onUpdate"], properties: { name: { type: "string", maxLength: 63 }, table: { type: "string", maxLength: 63 }, columns: { type: "array", minItems: 1, maxItems: 32, items: { type: "string", maxLength: 63 } }, referencedSchema: { type: "string", maxLength: 63 }, referencedTable: { type: "string", maxLength: 63 }, referencedColumns: { type: "array", minItems: 1, maxItems: 32, items: { type: "string", maxLength: 63 } }, onDelete: { type: "string", enum: ["no_action", "restrict", "cascade", "set_null", "set_default"] }, onUpdate: { type: "string", enum: ["no_action", "restrict", "cascade", "set_null", "set_default"] } } },
       ProjectForeignKeys: { type: "object", additionalProperties: false, required: ["source", "schema", "foreignKeys", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, foreignKeys: { type: "array", maxItems: 400, items: { $ref: "#/components/schemas/ProjectForeignKey" } }, truncated: { type: "boolean" } } },
       ProjectForeignKeysResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectForeignKeys" } } },

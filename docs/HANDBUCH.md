@@ -275,6 +275,60 @@ Fremdschlüssel. Vererbung, Partitionen, Sichten und Regeln fehlen im Bild,
 ebenso Primärschlüssel, denn die liefert `/schema` nicht mit. Bei mehr als zwölf
 Spalten zeigt ein Kasten die ersten zwölf und darunter die Zahl der übrigen.
 
+### Datenbank und Verbindungen
+
+Seit `2.46.0` zeigen **Berichte → Datenbank** und **Berichte → Verbindungen**,
+was die Projektdatenbank gerade tut. Zwei Seiten, eine Quelle, eine Route:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/database/activity
+```
+
+Dieselbe Tür wie `/schema/policies` (Session mit Leserecht oder scope-gebundener
+Projekt-Key), `Cache-Control: private, no-store`, und **kein einziger
+Query-Parameter**: Es gibt nichts zu wählen, darum ist jeder Parameter ein 400
+statt einer stillschweigend ignorierten Angabe. Die Route liegt neben `schema/`
+und nicht darunter, weil `schema/` beschreibt, was definiert ist, und diese
+Route, was läuft.
+
+**Kein Abfragetext verlässt den Server.** Das ist die wichtigste Zusage dieser
+Seiten. `pg_stat_activity` trägt den Text laufender Statements, und ein
+Statement kann ein Literal eines anderen Mandanten enthalten; für eine Rolle
+mit genug Rechten stehen dort ausserdem die Sitzungen anderer Datenbanken
+desselben Clusters. QKERN liest darum
+
+* aus `pg_stat_database` nur Zähler, und nur die Zeile mit
+  `datname = current_database()`: `xact_commit`, `xact_rollback`, `blks_read`,
+  `blks_hit`, `deadlocks`, `temp_files`, `temp_bytes`, `numbackends` und
+  `stats_reset`, dazu `current_setting('max_connections')`;
+* aus `pg_stat_activity` nur `usename`, `state` und zwei Aggregate
+  (`count(*)` und das Alter der ältesten Sitzung aus `min(backend_start)`),
+  gefiltert auf `datname = current_database()` und gruppiert nach Rolle und
+  Zustand.
+
+Nicht gelesen werden `query`, `backend_xmin`, `client_addr`, `client_hostname`,
+`application_name`, `pid` und `query_start`. Sie stehen in keiner Abfrage, in
+keiner Antwort und in keiner Ansicht. Geschrieben wird nichts;
+`pg_terminate_backend` und `pg_cancel_backend` kommen im ganzen Pfad nicht vor,
+auch nicht hinter einem Schalter.
+
+Die Antwort trägt eine Zeile je **Gruppe**, nie eine je Sitzung: Eine einzelne
+Sitzung ist ein Mensch bei der Arbeit, eine Anzahl ist eine Betriebszahl. Mehr
+als 200 Gruppen setzen `truncated` auf `true`.
+
+Was die Projekt-Leserolle nicht sehen darf, fehlt in der Zählung: PostgreSQL
+blendet für eine unprivilegierte Rolle die Sitzungen anderer Rollen aus (Zustand
+und Zeiten fehlen dann, die Zeile selbst kann ganz wegfallen). Das ist kein
+Defekt, sondern die Grenze, und die Seite sagt es: *Gezaehlt wird, was diese
+Rolle sehen darf.* Deshalb kann die Summe der Gruppen unter `backends` aus
+`pg_stat_database` liegen; beide Zahlen stehen nebeneinander.
+
+Die Datenbankseite rechnet aus `blks_hit` und `blks_read` die
+Cache-Trefferquote und stellt `numbackends` gegen `max_connections`. Wurde noch
+kein Block gelesen, zeigt sie keine Quote statt null Prozent. Alle Zähler gelten
+seit `stats_reset`, nicht seit dem Start der Datenbank; auch dieser Satz steht
+über den Zahlen und nicht im Kleingedruckten.
+
 ## 5. Generated Data API und Projekt-Keys
 
 CRUD ist unabhängig von der freien Lese-Data-Plane standardmäßig aus. Es benötigt

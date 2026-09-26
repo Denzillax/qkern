@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -67,11 +67,9 @@ export const PLACEHOLDERS = {
   "realtime-settings": { label: "Einstellungen", supabase: "Realtime → Settings", backend: "fehlt", note: "Grenzen für Verbindungen und Nachrichten je Sekunde." },
   // Berichte
   "obs-auth": { label: "Auth", supabase: "Observability → Auth", backend: "fehlt", note: "Anmeldungen, Fehlversuche und ausgegebene Token über die Zeit. Kein Zähler dafür." },
-  "obs-database": { label: "Datenbank", supabase: "Observability → Database", backend: "fehlt", note: "Auslastung, Verbindungen, Cache-Trefferquote." },
   "obs-realtime": { label: "Realtime", supabase: "Observability → Realtime", backend: "fehlt", note: "Verbindungen und Nachrichten über die Zeit." },
   "obs-query-performance": { label: "Abfrage-Leistung", supabase: "Observability → Query Performance", backend: "fehlt", note: "Die teuersten Abfragen nach Zeit und Häufigkeit (pg_stat_statements)." },
   "obs-query-insights": { label: "Abfrage-Einblicke", supabase: "Observability → Query Insights", backend: "fehlt", note: "Erklärungen zu einzelnen Abfrageplänen: welcher Index greift, wo der Plan teuer wird." },
-  "obs-connections": { label: "Verbindungen", supabase: "Observability → Connections", backend: "fehlt", note: "Offene Verbindungen je Rolle und Quelle." },
   // Logs
   "logs-api": { label: "API-Gateway", supabase: "Logs → API Gateway", backend: "fehlt", note: "Jede Anfrage am Rand mit Status und Dauer." },
   "logs-postgres": { label: "Postgres", supabase: "Logs → Postgres", backend: "fehlt", note: "Das Serverlog der Projektdatenbank: Verbindungen, Fehler, langsame Statements." },
@@ -137,8 +135,8 @@ export const NAV: NavGroup[] = [
   { id: "approvals", label: "Freigabezentrale", icon: ShieldCheck },
   { id: "advisors-security", label: "Advisors", icon: Stethoscope, children: [{ id: "advisors-security", label: "Sicherheit" }, { id: "advisors-performance", label: "Leistung" }, { id: "advisors-health", label: "Gesundheit" }] },
   { id: "obs-api", label: "Berichte", icon: BarChart3, children: [
-    { id: "obs-api", label: "API" }, ph("obs-auth"), { id: "obs-storage", label: "Storage" }, ph("obs-database"), ph("obs-realtime"), { id: "obs-functions", label: "Functions" },
-    ph("obs-query-performance"), ph("obs-query-insights"), ph("obs-connections"),
+    { id: "obs-api", label: "API" }, ph("obs-auth"), { id: "obs-storage", label: "Storage" }, { id: "obs-database", label: "Datenbank" }, ph("obs-realtime"), { id: "obs-functions", label: "Functions" },
+    ph("obs-query-performance"), ph("obs-query-insights"), { id: "obs-connections", label: "Verbindungen" },
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
     { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), ph("logs-postgrest"), ph("logs-auth"), ph("logs-storage"),

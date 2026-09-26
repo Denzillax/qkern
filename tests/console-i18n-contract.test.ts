@@ -8,6 +8,7 @@ import { performanceAdvisorTexts } from "@/lib/console/performance-advisor-texts
 import { cronLogTexts } from "@/lib/console/cron-log-texts";
 import { healthAdvisorTexts } from "@/lib/console/health-advisor-texts";
 import { usageSeriesTexts } from "@/lib/console/usage-series-texts";
+import { databaseActivityTexts } from "@/lib/console/database-activity-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -40,6 +41,9 @@ async function consoleKeys(): Promise<string[]> {
   // Die Zeitreihen der Nutzung (2.45) zeigen Metriken, Titel und ihre
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of usageSeriesTexts()) keys.add(text);
+  // Datenbank und Verbindungen (2.46) zeigen Zustaende, Einheiten und ihre
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of databaseActivityTexts()) keys.add(text);
   return [...keys];
 }
 

@@ -162,6 +162,56 @@ export type ProjectStatisticsResult = {
   truncated: boolean;
 };
 
+/**
+ * Betriebszahlen der Projektdatenbank aus `pg_stat_database` (2.46).
+ *
+ * Alles hier sind Zaehler seit `statsReset`, nicht seit dem Start des
+ * Servers. Die Ansicht sagt das ausdruecklich, weil eine Trefferquote von
+ * 99 Prozent ueber zwei Minuten etwas anderes ist als ueber zwei Wochen.
+ */
+export type ProjectDatabaseActivity = {
+  commits: number;
+  rollbacks: number;
+  /** Bloecke, die von der Platte kamen */
+  blocksRead: number;
+  /** Bloecke, die schon im Cache lagen; daraus rechnet die Ansicht die Trefferquote */
+  blocksHit: number;
+  deadlocks: number;
+  tempFiles: number;
+  tempBytes: number;
+  /** Offene Backends dieser Datenbank, wie `pg_stat_database` sie zaehlt */
+  backends: number;
+  /** `current_setting('max_connections')` des Servers, nicht dieser Datenbank */
+  maxConnections: number;
+  /** Zeitpunkt des letzten Zuruecksetzens, UTC-Text; null heisst nie zurueckgesetzt */
+  statsReset: string | null;
+};
+
+/**
+ * Eine Gruppe offener Verbindungen (2.46): Rolle, Zustand, Anzahl, Alter der
+ * aeltesten Sitzung in Sekunden.
+ *
+ * Eine Zeile je Gruppe, nie eine je Sitzung. Eine einzelne Sitzung ist ein
+ * Mensch bei der Arbeit; eine Anzahl ist eine Betriebszahl. Der Abfragetext,
+ * `client_addr` und `backend_xmin` stehen ausdruecklich nicht hier: Ein
+ * Abfragetext kann ein Literal eines anderen Mandanten tragen.
+ */
+export type ProjectConnectionGroup = {
+  role: string;
+  /** `active`, `idle`, `idle in transaction`, ... oder `unknown` */
+  state: string;
+  count: number;
+  /** Alter der aeltesten Sitzung dieser Gruppe in Sekunden, aus `backend_start` */
+  oldestSeconds: number;
+};
+
+export type ProjectActivityResult = {
+  source: "postgres";
+  database: ProjectDatabaseActivity;
+  connections: ProjectConnectionGroup[];
+  truncated: boolean;
+};
+
 export type ProjectPolicy = {
   name: string;
   table: string;
@@ -335,6 +385,10 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectStatisticsResult>;
+  inspectActivity(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectActivityResult>;
   inspectForeignKeys(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -663,6 +717,82 @@ const INDEX_STATISTICS_SQL = `
   WHERE stat.schemaname = $1
   ORDER BY stat.relname ASC, stat.indexrelname ASC
   LIMIT $2`;
+
+type DatabaseActivityRow = {
+  commits: string | number;
+  rollbacks: string | number;
+  blocks_read: string | number;
+  blocks_hit: string | number;
+  deadlocks: string | number;
+  temp_files: string | number;
+  temp_bytes: string | number;
+  backends: string | number;
+  max_connections: string | number;
+  stats_reset: string | null;
+};
+
+type ConnectionGroupRow = {
+  role_name: string;
+  state: string;
+  connections: string | number;
+  oldest_seconds: string | number;
+};
+
+/** Mehr Gruppen als das hat kein Server: Rollen mal sechs Zustaende. */
+const MAX_CONNECTION_GROUPS = 200;
+
+/**
+ * Betriebszahlen der eigenen Datenbank, aus `pg_stat_database` (2.46).
+ *
+ * `datname = current_database()` ist keine Bequemlichkeit, sondern die
+ * Grenze: Auf einem Cluster stehen in dieser Sicht auch die Zeilen anderer
+ * Datenbanken, also anderer Mandanten. Gelesen werden nur Zaehler, kein Name
+ * und kein Wert aus einer Tabelle. `max_connections` gilt fuer den ganzen
+ * Server und ist der einzige Wert, der nicht aus dieser Zeile stammt.
+ */
+const DATABASE_ACTIVITY_SQL = `
+  SELECT stat.xact_commit AS commits,
+         stat.xact_rollback AS rollbacks,
+         stat.blks_read AS blocks_read,
+         stat.blks_hit AS blocks_hit,
+         stat.deadlocks AS deadlocks,
+         stat.temp_files AS temp_files,
+         stat.temp_bytes AS temp_bytes,
+         stat.numbackends AS backends,
+         current_setting('max_connections') AS max_connections,
+         to_char(stat.stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS stats_reset
+  FROM pg_catalog.pg_stat_database AS stat
+  WHERE stat.datname = current_database()`;
+
+/**
+ * Offene Verbindungen je Rolle und Zustand, aus `pg_stat_activity` (2.46).
+ *
+ * Diese Sicht ist die gefaehrlichste des ganzen Katalogs: Sie traegt den
+ * Abfragetext laufender Statements, und fuer eine Rolle mit genug Rechten
+ * auch die Sitzungen anderer Datenbanken desselben Clusters. Ein
+ * Abfragetext kann ein Literal eines fremden Mandanten enthalten. Darum:
+ *
+ * - `datname = current_database()` grenzt auf die eigene Datenbank ein.
+ * - Ausgewaehlt werden nur `usename`, `state` und zwei Aggregate. `query`,
+ *   `backend_xmin`, `client_addr`, `client_hostname`, `application_name`,
+ *   `pid` und `query_start` bleiben draussen; keines von ihnen wird
+ *   gelesen, keines steht in der Antwort.
+ * - `GROUP BY` statt einer Zeile je Sitzung: Eine einzelne Sitzung ist ein
+ *   Mensch bei der Arbeit, eine Anzahl ist eine Betriebszahl.
+ *
+ * Was eine unprivilegierte Rolle nicht sehen darf, fehlt hier einfach;
+ * PostgreSQL blendet fremde Sitzungen aus. Die Ansicht sagt das.
+ */
+const CONNECTION_GROUPS_SQL = `
+  SELECT COALESCE(activity.usename::text, 'unknown') AS role_name,
+         COALESCE(activity.state, 'unknown') AS state,
+         count(*) AS connections,
+         COALESCE(floor(EXTRACT(EPOCH FROM (now() - min(activity.backend_start)))), 0) AS oldest_seconds
+  FROM pg_catalog.pg_stat_activity AS activity
+  WHERE activity.datname = current_database()
+  GROUP BY 1, 2
+  ORDER BY connections DESC, role_name ASC, state ASC
+  LIMIT $1`;
 
 /**
  * Row-Level-Security-Regeln eines Schemas, aus `pg_policy` (2.19). Abgeleitet
@@ -1158,6 +1288,57 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Betriebszahlen und Verbindungsgruppen der Projektdatenbank (2.46).
+   *
+   * Zwei Abfragen in derselben lesenden Transaktion wie jede andere
+   * Inspektion. Die Antwort traegt keinen Abfragetext, keine Adresse und
+   * keine einzelne Sitzung; was die Grenze nicht als Zaehler oder Namen
+   * erkennt, faellt hier heraus statt in die Console.
+   */
+  async inspectActivity(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectActivityResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const databaseRows = await client.query<DatabaseActivityRow>(DATABASE_ACTIVITY_SQL);
+      const groupRows = await client.query<ConnectionGroupRow>(CONNECTION_GROUPS_SQL, [MAX_CONNECTION_GROUPS + 1]);
+      const row = databaseRows.rows[0];
+      // Ohne Zeile in `pg_stat_database` gibt es keine Zahlen. Eine Null
+      // waere gelogen, darum faellt der Aufruf hier fail-closed.
+      if (!row) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      const numbers = [
+        counter(row.commits), counter(row.rollbacks), counter(row.blocks_read), counter(row.blocks_hit),
+        counter(row.deadlocks), counter(row.temp_files), counter(row.temp_bytes),
+        counter(row.backends), counter(row.max_connections),
+      ];
+      if (numbers.some((value) => value === null) || !boundedText(row.stats_reset, 40)) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      const [commits, rollbacks, blocksRead, blocksHit, deadlocks, tempFiles, tempBytes, backends, maxConnections] = numbers as number[];
+      const selected = groupRows.rows.slice(0, MAX_CONNECTION_GROUPS);
+      const connections: ProjectConnectionGroup[] = selected.map((group) => {
+        const count = counter(group.connections);
+        const oldestSeconds = counter(group.oldest_seconds);
+        if (!catalogName(group.role_name) || !catalogName(group.state) || group.state.length > 64 ||
+            count === null || oldestSeconds === null) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { role: group.role_name, state: group.state, count, oldestSeconds };
+      });
+      return {
+        source: "postgres",
+        database: {
+          commits, rollbacks, blocksRead, blocksHit, deadlocks, tempFiles, tempBytes,
+          backends, maxConnections, statsReset: row.stats_reset,
+        },
+        connections,
+        truncated: groupRows.rows.length > selected.length,
+      };
+    });
+  }
+
   async inspectForeignKeys(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1495,6 +1676,10 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectStatisticsResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectActivity(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectActivityResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

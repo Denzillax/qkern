@@ -47,7 +47,7 @@ function dataPlane(overrides: Partial<ProjectDataPlanePort> = {}): ProjectDataPl
       source: "postgres", schema: "public", truncated: false,
       tables: [{ name: "orders" }, { name: "invoices" }, { name: "notes" }],
     }),
-    inspectStatistics: vi.fn(), inspectPolicies: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers: vi.fn(),
+    inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectPolicies: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers: vi.fn(),
     inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(),
     inspectRoles: vi.fn(), inspectForeignKeys: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(),
     ...overrides,

@@ -883,6 +883,89 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Wegwerf-Stack faellt nach dem Lauf weg.
     // Ohne eigenes Zeitbudget: sechs Buchungen, eine Quota und zwei Aggregationen.
   });
+
+  it("(2.46) counts the sessions of the project read role and carries no query text out of the database", async () => {
+    // Die Betriebszahlen und die Verbindungsgruppen an einem echten Server.
+    // Nur echt zu belegen ist die eine Zusage, auf die es hier ankommt: In
+    // `pg_stat_activity` steht der Abfragetext laufender Statements, und
+    // dieser Fall stellt ihn absichtlich hinein — mit einem Literal, das
+    // sonst nirgends vorkommt. Danach muss die ganze Antwort frei davon
+    // sein. Gegen einen Fake waere das keine Aussage, weil der Fake den Text
+    // gar nicht erst hat.
+    //
+    // Geschrieben wird nichts: keine Audit-Zeile, keine Organisation, kein
+    // Projekt. Darum braucht dieser Fall auch keine eigene Organisation wie
+    // 2.35, 2.36, 2.42, 2.43 und 2.45; er liest nur, unter organizationA.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const role = decodeURIComponent(new URL(projectApiUrl!).username);
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    // Die zweite Verbindung derselben Projekt-Leserolle: Sie bleibt offen und
+    // traegt als letztes Statement ein wiedererkennbares Literal.
+    const second = createPostgresPool({ connectionString: projectApiUrl!, max: 1 });
+    const marker = `aktivitaetsprobe_${randomUUID().replaceAll("-", "_")}`;
+    try {
+      const echoed = await second.query<{ probe: string }>(`SELECT '${marker}'::text AS probe`);
+      expect(echoed.rows[0]?.probe).toBe(marker);
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const activity = await service.inspectActivity(
+        { organizationId: organizationA, actorRef: "activity@qkern.test" },
+        { projectId: "certification-project", environment: "development" },
+      );
+
+      // Die Betriebszahlen sind plausibel: Der Stack hat migriert und gelesen.
+      expect(activity.source).toBe("postgres");
+      expect(activity.database.commits).toBeGreaterThan(0);
+      expect(activity.database.blocksHit + activity.database.blocksRead).toBeGreaterThan(0);
+      expect(activity.database.backends).toBeGreaterThanOrEqual(1);
+      expect(activity.database.maxConnections).toBeGreaterThanOrEqual(300);
+      expect(activity.truncated).toBe(false);
+
+      // Die zweite Sitzung steckt in der Gruppe ihrer Rolle. Gezaehlt wird sie
+      // zusammen mit der lesenden Sitzung; einzeln zeigt QKERN keine.
+      const own = activity.connections.filter((group) => group.role === role);
+      const counted = own.reduce((sum, group) => sum + group.count, 0);
+      expect(counted,
+        `Gruppen: ${JSON.stringify(activity.connections)}`).toBeGreaterThanOrEqual(2);
+      for (const group of activity.connections) {
+        expect(group.count).toBeGreaterThan(0);
+        expect(group.oldestSeconds).toBeGreaterThanOrEqual(0);
+        expect(Object.keys(group).sort()).toEqual(["count", "oldestSeconds", "role", "state"]);
+      }
+      // Was diese Rolle nicht sehen darf, fehlt in der Zaehlung; mehr als die
+      // Datenbank selbst meldet, kann sie nie sein.
+      const visible = activity.connections.reduce((sum, group) => sum + group.count, 0);
+      expect(visible).toBeLessThanOrEqual(activity.database.backends);
+
+      // Der Kern des Falls: kein Feld der ganzen Antwort traegt den Text der
+      // Abfrage, die auf der zweiten Verbindung lief.
+      const serialised = JSON.stringify(activity);
+      expect(serialised).not.toContain(marker);
+      expect(serialised).not.toContain("aktivitaetsprobe");
+      expect(serialised.toLowerCase()).not.toContain("select");
+      expect(serialised.toLowerCase()).not.toContain("probe");
+      // Und die zweite Verbindung stand zu diesem Zeitpunkt wirklich mit
+      // diesem Text in der Sicht: Sonst waere die Zusage oben geschenkt.
+      // Gefragt wird ueber den Pool der Data Plane, also aus derselben Rolle
+      // (eine Rolle sieht ihre eigenen Sitzungen immer), damit die zweite
+      // Verbindung ihren letzten Abfragetext behaelt; und mit Parameter,
+      // damit der Abfragetext dieser Pruefung selbst das Literal nicht traegt.
+      const raw = await projectApi.query<{ hits: string }>(
+        "SELECT count(*)::text AS hits FROM pg_catalog.pg_stat_activity WHERE query LIKE $1", [`%${marker}%`]);
+      expect(Number(raw.rows[0]?.hits ?? 0),
+        "Die Sicht traegt den Abfragetext nicht; dann prueft dieser Fall nichts.").toBeGreaterThan(0);
+    } finally {
+      await Promise.all([projectApi.end(), second.end()]);
+    }
+  });
 });
 
 /** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */

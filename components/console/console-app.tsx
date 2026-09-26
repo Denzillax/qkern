@@ -28,6 +28,8 @@ import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
 import { CronLogView } from "@/components/console/cron-log-view";
 import { UsageSeriesView } from "@/components/console/usage-series-view";
+import { DatabaseReportView } from "@/components/console/database-report-view";
+import { ConnectionsReportView } from "@/components/console/connections-report-view";
 import { SchemaVisualizerView } from "@/components/console/schema-visualizer-view";
 import { PoliciesView } from "@/components/console/policies-view";
 import { EnumTypesView } from "@/components/console/enum-types-view";
@@ -264,6 +266,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "obs-api": return <UsageSeriesView key="obs-api" view="api" projectId={props.project.id} environment={props.environment}/>;
     case "obs-storage": return <UsageSeriesView key="obs-storage" view="storage" projectId={props.project.id} environment={props.environment}/>;
     case "obs-functions": return <UsageSeriesView key="obs-functions" view="functions" projectId={props.project.id} environment={props.environment}/>;
+    // Zwei Seiten, eine Quelle: Berichte -> Datenbank zeigt die Betriebszahlen,
+    // Berichte -> Verbindungen die Gruppen je Rolle und Zustand (2.46).
+    case "obs-database": return <DatabaseReportView projectId={props.project.id} environment={props.environment}/>;
+    case "obs-connections": return <ConnectionsReportView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
