@@ -17,6 +17,10 @@ const createSchema = z.object({
   visibilityTimeoutSeconds: z.number().int().min(5).max(900).optional(),
   retryBaseSeconds: z.number().int().min(1).max(300).optional(),
   retryMaxSeconds: z.number().int().min(1).max(3600).optional(),
+  // Null bleibt erlaubt und heisst "keine Deduplizierung": Der CHECK aus 0026
+  // laesst den Wert zu, und bestehende Queues tragen ihn. Seit 2.43 ignoriert
+  // das Einreihen in so einer Queue den Dedupe-Key, statt an der
+  // Paarbedingung zu scheitern.
   dedupeWindowSeconds: z.number().int().min(0).max(86400).optional(),
   retentionSeconds: z.number().int().min(60).max(604800).optional(),
   maxPendingMessages: z.number().int().min(1).max(10000).optional(),

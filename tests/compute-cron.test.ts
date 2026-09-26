@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CronDefinition } from "@/lib/server/compute/model";
 import { CronDispatcher, nextCronOccurrence } from "@/lib/server/compute/cron";
+import { MemoryProjectQueueRepository } from "@/lib/server/project-queues/repository";
+import { ProjectQueueService } from "@/lib/server/project-queues/service";
 
 const definition: CronDefinition = {
   organizationId: "org-compute", projectId: "project-compute", environment: "development",
@@ -63,6 +65,48 @@ describe("Compute cron boundary", () => {
     // nachgeholtes Vorkommen ist aelter und wurde bis Release 1.18
     // ausnahmslos abgewiesen. Die Identitaet steckt im Dedupe-Key.
     expect(call[3]).not.toHaveProperty("scheduledAt");
+  });
+
+  /**
+   * Eine Queue ohne Dedupe-Fenster hat bis 2.43 jedes Vorkommen scheitern
+   * lassen: Der Dispatcher reicht immer einen Dedupe-Key, die Queue schrieb
+   * den Verifikator ohne Frist, und der CHECK aus 0026 wies die Zeile ab. Der
+   * Cron-Job sah aus, als liefe er, und reihte nie etwas ein.
+   *
+   * Jetzt laeuft er, ohne Schutz vor einer zweiten Nachricht, denn genau das
+   * heisst ein Fenster von null. Die Zusage "Crash/Retry erzeugt keine zweite
+   * Nachricht" gilt nur mit einem Fenster groesser null.
+   */
+  it("dispatches into a queue without a dedupe window and no longer promises uniqueness", async () => {
+    const queues = new ProjectQueueService({ repository: new MemoryProjectQueueRepository() });
+    const scope = {
+      organizationId: definition.organizationId, projectId: definition.projectId,
+      environment: definition.environment,
+    };
+    const admin = {
+      organizationId: definition.organizationId, actorRef: "admin:cron",
+      role: "admin" as const, subject: "admin",
+    };
+    const service = {
+      organizationId: definition.organizationId, actorRef: "service:cron",
+      role: "service_role" as const, subject: "cron",
+    };
+    await queues.createQueue(admin, scope, { name: definition.queue, dedupeWindowSeconds: 0 });
+    const dispatcher = new CronDispatcher(queues);
+    const scheduledAt = new Date("2026-08-04T12:15:00.000Z");
+
+    const first = await dispatcher.dispatch(definition, scheduledAt, service);
+    expect(first.status).toBe("dispatched");
+    const second = await dispatcher.dispatch(definition, scheduledAt, service);
+    expect(second.status).toBe("dispatched");
+    expect(second.messageId).not.toBe(first.messageId);
+
+    // Mit Fenster bleibt die Zusage: dasselbe Vorkommen, dieselbe Nachricht.
+    await queues.createQueue(admin, scope, { name: "guarded", dedupeWindowSeconds: 3_600 });
+    const guarded = { ...definition, queue: "guarded" };
+    const once = await dispatcher.dispatch(guarded, scheduledAt, service);
+    const again = await dispatcher.dispatch(guarded, scheduledAt, service);
+    expect(again).toMatchObject({ status: "already_dispatched", messageId: once.messageId });
   });
 
   it("rejects a non-occurrence and a cross-tenant scheduler", async () => {

@@ -521,7 +521,17 @@ Nur ein Service Key darf `claims`, `ack`, `fail` und `lease` aufrufen. Ein
 authentifizierter Project-Auth-User darf nur in einer Queue mit Policy
 `authenticated` enqueueen; ein anonymer Public-Key-Aufruf darf es nicht.
 
-Für retry-sichere Aufrufe `dedupeKey` stabil setzen. Den beim Claim gelieferten
+Für retry-sichere Aufrufe `dedupeKey` stabil setzen. Wirksam ist der Schlüssel
+nur, solange das `dedupeWindowSeconds` der Queue größer als null ist. **Null
+schaltet die Deduplizierung dieser Queue ab**: Ein mitgeschickter `dedupeKey`
+wird dann ignoriert, es wird kein Verifikator gespeichert, und jedes Einreihen
+erzeugt eine eigene Nachricht (`deduplicated: false`). Seit `2.43.0` ist das so;
+davor scheiterte in einer solchen Queue jedes Einreihen mit `dedupeKey` an der
+Paarbedingung aus Migration 0026 und kam als generischer Queue-Fehler zurück.
+Queue-Definitionen sind unveränderlich — wer Deduplizierung braucht, legt die
+Queue mit einem Fenster größer null an (Vorgabe 300 Sekunden).
+
+Den beim Claim gelieferten
 `leaseToken` nur im Worker-Arbeitsspeicher halten und bei Ack/Fail/Renewal zusammen
 mit demselben `workerId` senden. Der Token wird einmal ausgegeben und kann nicht
 wiederhergestellt werden. Retry-Zeitpunkte und Dead-Letter-Übergänge berechnet
@@ -772,7 +782,11 @@ Ausdruck und Queue sind unveränderlich, eine Änderung ist Löschen und
 Neuanlegen, und die alten Vorkommen gehören dann zu einer anderen Id. Und ein
 Dedupe-Fenster, das kürzer ist als der Takt des Cron-Jobs, macht das Log
 wertlos, noch bevor es alt ist; 300 Sekunden Vorgabe reichen für einen
-Minutentakt, nicht für einen stündlichen.
+Minutentakt, nicht für einen stündlichen. Eine Zielqueue mit Fenster null hat
+gar kein Log: Ohne Verifikator gibt es keine Brücke zwischen Vorkommen und
+Nachricht, jedes fällige Vorkommen steht dann als **nicht nachweisbar** da, und
+der Cron-Job verliert seine Zusage, dass ein Vorkommen höchstens eine Nachricht
+erzeugt.
 
 ## 10. MCP für KI-Agenten
 

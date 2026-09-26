@@ -149,6 +149,33 @@ export class ProjectQueueService {
       throw new ProjectQueueError("QUEUE_INVALID_INPUT");
     }
     const availableAt = scheduledAt(input.scheduledAt, now);
+    /**
+     * Ein Dedupe-Fenster von null Sekunden heisst: keine Deduplizierung.
+     *
+     * Bis 2.43 wanderte der Verifikator trotzdem in die Zeile, waehrend der
+     * Port die Frist wegliess, das Fenster war ja null. Der CHECK
+     * `project_queue_messages_dedupe_pair` aus 0026 verlangt aber beides oder
+     * keines, und so scheiterte **jedes** Einreihen mit Dedupe-Key in so einer
+     * Queue. Der Aufrufer sah `QUEUE_CONFLICT`, also eine Aussage ueber einen
+     * Wettlauf, den es nie gab; ein Cron-Job auf so einer Queue fiel bei jedem
+     * Vorkommen aus und sah dabei aus, als liefe er.
+     *
+     * Zwei Lesarten standen zur Wahl. Null beim Anlegen abweisen waere
+     * ehrlicher gegenueber dem Aufrufer, der einen Dedupe-Key schickt. Aber
+     * null ist eine zugesagte Konfiguration (CHECK 0..86400 in 0026, Minimum 0
+     * in OpenAPI und Route), Queue-Definitionen sind unveraenderlich, und
+     * bestehende Queues mit null waeren damit dauerhaft unbrauchbar statt
+     * repariert. Also die andere: Null schaltet die Deduplizierung ab, der
+     * Dedupe-Key wird ignoriert, und es wird weder Verifikator noch Frist
+     * abgelegt. Ein Verifikator ohne Frist waere ohnehin Gift: Der Sperrindex
+     * aus 0026 haelt ihn fuer immer besetzt, das Aufraeumen loescht nur
+     * abgelaufene Fristen, und der Loeschwaechter laesst die Zeile nie gehen.
+     *
+     * Der Preis steht im Handbuch und in den Compute-Vertraegen: Wer die
+     * Zusage "Crash/Retry erzeugt keine zweite Nachricht" braucht, und jeder
+     * Cron-Job braucht sie, muss ein Fenster groesser null waehlen.
+     */
+    const dedupeKeyHash = dedupeKey && queue.dedupeWindowSeconds > 0 ? hash(dedupeKey) : null;
     const message: ProjectQueueMessage = {
       ...scope,
       id: this.id(),
@@ -156,7 +183,7 @@ export class ProjectQueueService {
       payload,
       status: "available",
       ownerSubject: principal.subject,
-      dedupeKeyHash: dedupeKey ? hash(dedupeKey) : null,
+      dedupeKeyHash,
       attemptCount: 0,
       availableAt,
       leaseWorkerId: null,

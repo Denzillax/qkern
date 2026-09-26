@@ -114,6 +114,15 @@ wird mit dem deterministischen Dedupe-Key
 geschrieben. Crash/Retry nach erfolgreichem Enqueue erzeugt dadurch keine zweite
 Nachricht. Tenant, Service Role, Schedule und Queue bleiben serverseitig gebunden.
 
+Diese Zusage hängt am Dedupe-Fenster der Zielqueue. Hat die Queue
+`dedupe_window_seconds = 0`, ist ihre Deduplizierung abgeschaltet: Der
+Dispatcher reiht weiterhin bei jedem Vorkommen ein, der Schlüssel wird aber
+ignoriert, und ein Crash zwischen Enqueue und Quittung kann eine zweite
+Nachricht erzeugen. Bis `2.43.0` scheiterte in einer solchen Queue stattdessen
+jedes Vorkommen an der Paarbedingung aus Migration 0026, und zwar als
+generischer Queue-Fehler. Wer die Zusage braucht, wählt ein Fenster größer null
+und mindestens so lang wie der Takt des Cron-Jobs.
+
 Persistente Cron-Definitionen (Migration 0031), begrenztes Catch-up und die
 Webhook-Outbox (Migration 0032) sind seit `1.18.0` beziehungsweise `1.19.0`
 vorhanden und gegen echtes PostgreSQL zertifiziert.

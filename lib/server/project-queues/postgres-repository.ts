@@ -129,7 +129,14 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
       if (safeInteger(pending.rows[0]?.count) >= current.maxPendingMessages) {
         throw new ProjectQueueConflictError("QUEUE_CAPACITY_EXCEEDED");
       }
-      const dedupeExpiresAt = message.dedupeKeyHash && current.dedupeWindowSeconds > 0
+      // Verifikator und Frist entstehen zusammen oder gar nicht: Genau das
+      // verlangt `project_queue_messages_dedupe_pair` aus 0026. Der Dienst
+      // entscheidet schon oben, dass ein Fenster von null keinen Verifikator
+      // bildet; hier steht dieselbe Regel noch einmal, weil ein Port, der an
+      // seinem eigenen CHECK scheitert, dem Aufrufer nur `QUEUE_CONFLICT`
+      // sagen kann, also eine Aussage ueber einen Wettlauf, den es nie gab.
+      const dedupeKeyHash = current.dedupeWindowSeconds > 0 ? message.dedupeKeyHash : null;
+      const dedupeExpiresAt = dedupeKeyHash
         ? new Date(now.getTime() + current.dedupeWindowSeconds * 1_000)
         : null;
       try {
@@ -142,16 +149,16 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
           RETURNING ${MESSAGE_COLUMNS}`, [
           message.id, message.organizationId, message.projectId, message.environment,
           message.queueId, message.payload as Record<string, unknown>, message.ownerSubject,
-          message.dedupeKeyHash, dedupeExpiresAt, message.availableAt, message.createdAt,
+          dedupeKeyHash, dedupeExpiresAt, message.availableAt, message.createdAt,
         ]);
         return { message: messageFromRow(inserted.rows[0]), deduplicated: false };
       } catch (error) {
         if ((error as { code?: string }).code === "23505") {
-          if (message.dedupeKeyHash) {
+          if (dedupeKeyHash) {
             const duplicate = await database.query(`${MESSAGE_SELECT}
               WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
                 AND dedupe_key_hash=$5 AND dedupe_expires_at > $6 LIMIT 1`, [
-              ...scopeValues(scope), current.id, message.dedupeKeyHash, now,
+              ...scopeValues(scope), current.id, dedupeKeyHash, now,
             ]);
             if (duplicate.rows[0]) {
               return { message: messageFromRow(duplicate.rows[0]), deduplicated: true };

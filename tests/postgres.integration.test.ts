@@ -557,4 +557,129 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Einreihung und zwei Lesevorgaenge. Kein Statistik-Kollektor und kein
     // Prozessstart, auf den gewartet werden muesste.
   });
+
+  it("(2.43) enqueues a dedupe key into a queue without a dedupe window against the real pair constraint", async () => {
+    // Eine Queue darf mit `dedupeWindowSeconds: 0` entstehen (CHECK 0..86400 in
+    // 0026). Bis 2.43 schrieb das Einreihen dann trotzdem den Verifikator, aber
+    // keine Frist, und `project_queue_messages_dedupe_pair` wies die Zeile ab:
+    // Jedes Einreihen mit Dedupe-Key scheiterte mit einem generischen
+    // `QUEUE_CONFLICT`, und jeder Cron-Job auf so einer Queue fiel bei jedem
+    // Vorkommen aus. Gegen den Memory-Port war davon nichts zu sehen, denn der
+    // kennt die Frist gar nicht. Deshalb steht der Fall hier.
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.36 und 2.42: Das
+    // Anlegen von Queue und Cron-Definition schreibt Audit-Zeilen, und eine
+    // Organisation mit Audit-Zeilen laesst sich nicht mehr loeschen; das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden.
+    const zeroOwner = randomUUID();
+    const zeroOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [zeroOwner, `zero-window-owner-${zeroOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Zero Window', $2, $3)`, [zeroOrganization, `zero-window-${zeroOrganization}`, zeroOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: zeroOrganization, projectId, environment: "development" as const };
+    const admin = {
+      organizationId: zeroOrganization, actorRef: "zero-window@qkern.test",
+      role: "admin" as const, subject: zeroOwner,
+    };
+    const dispatcher = {
+      organizationId: zeroOrganization, actorRef: "service-role:cron",
+      role: "service_role" as const, subject: "cron",
+    };
+    const plane = new PostgresControlPlane(runtime);
+    const queues = new ProjectQueueService({ repository: new PostgresProjectQueueRepository(plane) });
+    const open = `zero-window-${randomUUID().slice(0, 8)}`;
+    const guarded = `one-second-${randomUUID().slice(0, 8)}`;
+    try {
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Zero Window', $3, 'test', 'ready', $4)`,
+      [projectId, zeroOrganization, `zero-window-${projectId}`, zeroOwner]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`, [zeroOrganization, projectId, `managed:${projectId}`]);
+
+      const created = await queues.createQueue(admin, scope, { name: open, dedupeWindowSeconds: 0 });
+      expect(created.dedupeWindowSeconds).toBe(0);
+
+      // Der Fall, der vorher scheiterte: Dedupe-Key in eine Queue ohne Fenster.
+      const first = await queues.enqueue(dispatcher, scope, open, {
+        payload: { task: "zero" }, dedupeKey: "cron:zero:first",
+      });
+      expect(first.deduplicated).toBe(false);
+
+      // Abgelegt wird weder Verifikator noch Frist. Ein Verifikator ohne Frist
+      // waere nicht nur ein CHECK-Bruch, sondern eine Zeile, die der
+      // Sperrindex fuer immer besetzt haelt und der Loeschwaechter nie gehen
+      // laesst: Das Aufraeumen loescht nur **abgelaufene** Fristen.
+      const stored = await owner.query<{ dedupe_key_hash: string | null; dedupe_expires_at: Date | null }>(
+        `SELECT dedupe_key_hash, dedupe_expires_at FROM project_queue_messages
+          WHERE organization_id=$1 AND project_id=$2 AND id=$3`,
+        [zeroOrganization, projectId, first.id],
+      );
+      expect(stored.rows[0]).toMatchObject({ dedupe_key_hash: null, dedupe_expires_at: null });
+
+      // Ohne Fenster dedupliziert nichts. Das ist die Zusage, nicht ein Fehler.
+      const second = await queues.enqueue(dispatcher, scope, open, {
+        payload: { task: "zero" }, dedupeKey: "cron:zero:first",
+      });
+      expect(second.deduplicated).toBe(false);
+      expect(second.id).not.toBe(first.id);
+
+      // Ein Cron-Job auf so einer Queue laeuft jetzt, statt bei jedem
+      // Vorkommen auszufallen.
+      const definitions = new ComputeDefinitionService({
+        repository: new PostgresComputeDefinitionRepository(plane),
+      });
+      const definition = await definitions.createCron(admin, scope, {
+        name: `zero-window-${randomUUID().slice(0, 8)}`, expression: "*/5 * * * *", queue: open,
+        payload: { task: "run" },
+      });
+      const occurredAt = new Date(Math.floor(Date.now() / 300_000) * 300_000 + 300_000);
+      const receipt = await new CronDispatcher(queues).dispatch(definition, occurredAt, dispatcher);
+      expect(receipt.status).toBe("dispatched");
+
+      // Gegenprobe am kleinsten echten Fenster: Dort entsteht der Verifikator
+      // mit einer Frist echt nach `created_at`, und dasselbe Vorkommen bleibt
+      // eine Nachricht.
+      await queues.createQueue(admin, scope, { name: guarded, dedupeWindowSeconds: 1 });
+      const once = await queues.enqueue(dispatcher, scope, guarded, {
+        payload: { task: "guarded" }, dedupeKey: "cron:guarded:first",
+      });
+      const again = await queues.enqueue(dispatcher, scope, guarded, {
+        payload: { task: "guarded" }, dedupeKey: "cron:guarded:first",
+      });
+      expect(again).toMatchObject({ id: once.id, deduplicated: true });
+      const guardedRow = await owner.query<{ ok: boolean }>(
+        `SELECT (dedupe_key_hash IS NOT NULL AND dedupe_expires_at > created_at) AS ok
+           FROM project_queue_messages WHERE organization_id=$1 AND project_id=$2 AND id=$3`,
+        [zeroOrganization, projectId, once.id],
+      );
+      expect(guardedRow.rows[0]?.ok).toBe(true);
+
+      // Und der CHECK, um den es geht, ist wirklich da: Ein Verifikator ohne
+      // Frist bleibt auf Datenbankebene unmoeglich. Ginge diese Zeile durch,
+      // wuerde der Fall oben nichts beweisen.
+      const queueRow = await owner.query<{ id: string }>(
+        "SELECT id FROM project_queues WHERE organization_id=$1 AND project_id=$2 AND name=$3",
+        [zeroOrganization, projectId, open],
+      );
+      await expect(owner.query(`INSERT INTO project_queue_messages
+        (organization_id,project_id,environment,queue_id,payload,owner_subject,dedupe_key_hash)
+        VALUES ($1,$2,'development',$3,'{}'::jsonb,'probe',$4)`,
+      [zeroOrganization, projectId, queueRow.rows[0]?.id, "f".repeat(64)]))
+        .rejects.toMatchObject({ constraint: "project_queue_messages_dedupe_pair" });
+    } finally {
+      // Weggeraeumt wird nur, was das Produkt wegraeumen laesst: Die
+      // Nachrichten sind nicht abgeschlossen und bleiben darum liegen (0026),
+      // die Audit-Zeilen sind unveraenderlich. Eigene Organisation, eigenes
+      // Projekt, eigene Namen. Der Wegwerf-Stack faellt nach dem Lauf weg.
+      await owner.query(
+        "DELETE FROM project_cron_definitions WHERE organization_id=$1 AND project_id=$2",
+        [zeroOrganization, projectId],
+      );
+    }
+    // Ohne eigenes Zeitbudget: ein Projekt, zwei Queues, vier Einreihungen,
+    // eine Definition und eine abgewiesene Direkteinfuegung.
+  });
 });

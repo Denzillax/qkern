@@ -1,7 +1,50 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectQueuePrincipal, ProjectQueueScope } from "@/lib/server/project-queues/model";
-import { MemoryProjectQueueRepository } from "@/lib/server/project-queues/repository";
+import type {
+  ProjectQueue,
+  ProjectQueueMessage,
+  ProjectQueuePrincipal,
+  ProjectQueueScope,
+} from "@/lib/server/project-queues/model";
+import {
+  MemoryProjectQueueRepository,
+  type ProjectQueueMeter,
+} from "@/lib/server/project-queues/repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+
+/**
+ * Memory-Port mit dem CHECK der echten Tabelle.
+ *
+ * `project_queue_messages_dedupe_pair` (Migration 0026) verlangt: entweder
+ * beide Dedupe-Spalten leer, oder Verifikator **und** Frist gesetzt, und die
+ * Frist echt nach `created_at`. Der Memory-Port kennt die Frist gar nicht, der
+ * Fehler dieser Scheibe war darum in Unit-Tests unsichtbar und fiel erst gegen
+ * echtes PostgreSQL auf. Hier steht dieselbe Bedingung einmal nach.
+ */
+class DedupePairCheckingRepository extends MemoryProjectQueueRepository {
+  lastWritten: ProjectQueueMessage | null = null;
+
+  override async enqueue(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    message: ProjectQueueMessage,
+    now: Date,
+    meter?: ProjectQueueMeter,
+  ) {
+    // Genau die Rechnung des Postgres-Ports: ohne Fenster keine Frist.
+    const dedupeExpiresAt = message.dedupeKeyHash && queue.dedupeWindowSeconds > 0
+      ? new Date(now.getTime() + queue.dedupeWindowSeconds * 1_000)
+      : null;
+    const pair = (message.dedupeKeyHash === null && dedupeExpiresAt === null) ||
+      (message.dedupeKeyHash !== null && dedupeExpiresAt !== null && dedupeExpiresAt > message.createdAt);
+    if (!pair) {
+      throw new Error('new row for relation "project_queue_messages" violates check constraint ' +
+        '"project_queue_messages_dedupe_pair"');
+    }
+    this.lastWritten = message;
+    return await super.enqueue(principal, scope, queue, message, now, meter);
+  }
+}
 
 const scope: ProjectQueueScope = {
   organizationId: "org-queues", projectId: "project-queues", environment: "development",
@@ -88,6 +131,64 @@ describe("Project Queues service", () => {
     expect(first.id).toBe(second.id);
     expect([first.deduplicated, second.deduplicated].sort()).toEqual([false, true]);
     expect(JSON.stringify([first, second])).not.toContain("secret-idempotency-key");
+  });
+
+  it("enqueues into a queue without a dedupe window instead of breaking its dedupe pair", async () => {
+    // Der Memory-Port kennt keinen CHECK; ohne diesen Spiegel faellt der Fehler
+    // erst gegen echtes PostgreSQL auf. Der Spiegel bildet genau
+    // `project_queue_messages_dedupe_pair` aus Migration 0026 nach und rechnet
+    // die Frist so aus, wie es der Postgres-Port tut.
+    const repository = new DedupePairCheckingRepository();
+    const service = new ProjectQueueService({ repository });
+    await service.createQueue(principal("admin"), scope, { name: "zero", dedupeWindowSeconds: 0 });
+    const worker = principal("service_role");
+
+    const first = await service.enqueue(worker, scope, "zero", {
+      payload: { task: "a" }, dedupeKey: "cron:zero:1",
+    });
+    expect(first).toMatchObject({ queue: "zero", deduplicated: false });
+    // Ohne Fenster wird kein Verifikator abgelegt: Ein Hash ohne Frist waere
+    // eine Zeile, die die Queue weder deduplizieren noch je wieder aufraeumen
+    // kann (der Sperrindex und der Loeschwaechter aus 0026 haengen an ihm).
+    expect(repository.lastWritten?.dedupeKeyHash).toBeNull();
+
+    // Und ohne Fenster dedupliziert nichts, auch nicht bei gleichem Schluessel.
+    const second = await service.enqueue(worker, scope, "zero", {
+      payload: { task: "b" }, dedupeKey: "cron:zero:1",
+    });
+    expect(second.deduplicated).toBe(false);
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it("deduplicates at the smallest and the largest accepted dedupe window", async () => {
+    const built = fixture();
+    const worker = principal("service_role");
+    await createQueue(built.service, { name: "narrow", dedupeWindowSeconds: 1 });
+    await createQueue(built.service, { name: "wide", dedupeWindowSeconds: 86_400 });
+
+    const narrow = await built.service.enqueue(worker, scope, "narrow", {
+      payload: { task: "a" }, dedupeKey: "boundary",
+    });
+    await expect(built.service.enqueue(worker, scope, "narrow", { payload: { task: "a" }, dedupeKey: "boundary" }))
+      .resolves.toMatchObject({ id: narrow.id, deduplicated: true });
+    // Eine Millisekunde hinter dem Fenster, nicht genau darauf: Der Memory-Port
+    // vergleicht einschliessend, der Postgres-Port ueber `dedupe_expires_at >
+    // now` ausschliessend. Genau auf der Kante urteilen sie verschieden, und
+    // diese Kante ist nicht die Frage dieses Falls.
+    built.advance(1_001);
+    await expect(built.service.enqueue(worker, scope, "narrow", { payload: { task: "a" }, dedupeKey: "boundary" }))
+      .resolves.toMatchObject({ deduplicated: false });
+
+    const wide = await built.service.enqueue(worker, scope, "wide", {
+      payload: { task: "a" }, dedupeKey: "boundary",
+    });
+    built.advance(86_399_000);
+    await expect(built.service.enqueue(worker, scope, "wide", { payload: { task: "a" }, dedupeKey: "boundary" }))
+      .resolves.toMatchObject({ id: wide.id, deduplicated: true });
+
+    // Ueber dem Maximum bleibt es eine abgewiesene Eingabe, nicht ein Fenster.
+    await expect(createQueue(built.service, { name: "too-wide", dedupeWindowSeconds: 86_401 }))
+      .rejects.toMatchObject({ code: "QUEUE_INVALID_INPUT" });
   });
 
   it("retains a completed message until both retention and its dedupe window expire", async () => {
