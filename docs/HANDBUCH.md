@@ -607,7 +607,7 @@ persistenten CDC/Event Log, horizontalen Fan-out oder Lasttests.
 
 ### Grenzen und Rechte in der Console
 
-Seit `2.48.0` zeigen **Realtime → Einstellungen** und **Realtime → Rechte**, was
+Seit `2.47.0` zeigen **Realtime → Einstellungen** und **Realtime → Rechte**, was
 für den Transport dieser Installation tatsächlich gilt. Die Einstellungsseite
 liest eine Route:
 
