@@ -64,6 +64,8 @@
 
 `lib/security.ts` parst SQL in einen AST, erzwingt genau ein Statement und blockiert mutierende CTEs, `SELECT INTO`, Inline-Credentials, Transaktions-/Rollensteuerung, das reservierte `qkern_internal`-Schema sowie ausgewählte missbrauchbare PostgreSQL-Funktionen. Der persistente Control-Plane-Pfad nutzt getrennte Auth-, Web-Runtime- und Worker-Logins, erzwungene RLS, zusammengesetzte Tenant-FKs, Statement-/Lock-Timeouts und tenantgebundene Transaktionen. Die lokale/E2E-Worker-Runtime wird nur nach explizitem Enablement und mit einem injizierten Zielverbindungskatalog aktiviert; der normale Web-/MCP-Prozess führt kein Projekt-SQL aus.
 
+Die Audit-Hash-Kette ist je Organisation über einen Advisory-Lock serialisiert. Seit 2.36 (Migration 0047) setzt der Trigger `created_at` unter diesem Lock, echte Uhrzeit und mindestens eine Mikrosekunde nach dem Vorgänger; die Reihenfolge der Kette (`previous_hash`) ist damit gleich der Ordnung nach `(created_at, id)`, auch wenn gleichzeitige Transaktionen in anderer Reihenfolge schreiben, als sie begonnen haben.
+
 Die Generated Data API ist eine getrennte, standardmäßig deaktivierte Grenze. Sie
 akzeptiert kein SQL und ermittelt Tabellen, Spalten, Rechte und Primärschlüssel aus
 dem realen PostgreSQL-Katalog. Nur normale/partitionierte Tabellen mit aktivierter

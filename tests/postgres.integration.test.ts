@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import type { SqlPool } from "@/lib/server/db/sql";
+import { AuditRepository } from "@/lib/server/db/repositories";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -83,5 +84,65 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
   it("discovers memberships only through the auth boundary", async () => {
     const result = await auth.query<{ organization_id: string }>("SELECT organization_id FROM qkern_memberships_for_user($1)", [userId]);
     expect(result.rows).toEqual([{ organization_id: organizationA }]);
+  });
+
+  it("keeps audit chain order equal to (created_at, id) order under concurrent writers (2.36)", async () => {
+    // Eigene Organisation mit eigenem Besitzer, wie Fall 2.35: audit_logs ist
+    // append-only, und eine Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey (ON DELETE RESTRICT) nicht loeschen.
+    // afterAll loescht organizationA und organizationB; die bleiben darum
+    // ohne Audit-Zeilen. Diese Organisation, ihr Besitzer und die zwei Zeilen
+    // bleiben als erwarteter Rest im Wegwerf-Stack.
+    const chainOwner = randomUUID();
+    const chainOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [chainOwner, `audit-chain-owner-${chainOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Audit Chain Order', $2, $3)`, [chainOrganization, `audit-chain-order-${chainOrganization}`, chainOwner]);
+    const entry = (action: string) => ({ actorType: "system", actorRef: "integration", action, resourceRef: "audit-chain-order", status: "success" });
+
+    // Das Rennen deterministisch: A beginnt zuerst (now() von A steht damit
+    // fest), B schreibt und committet, erst dann schreibt A. A bekommt den
+    // Lock der Kette als zweite und haengt an B an.
+    const { first, second, startedA } = await withTenantTransaction(runtime, { organizationId: chainOrganization }, async (a) => {
+      const started = await a.query<{ started: string }>("SELECT now()::text AS started");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const b = await withTenantTransaction(runtime, { organizationId: chainOrganization }, (transaction) =>
+        new AuditRepository(transaction).append(entry("integration.chain_order.b")));
+      const late = await new AuditRepository(a).append(entry("integration.chain_order.a"));
+      return { first: b, second: late, startedA: started.rows[0].started };
+    });
+
+    const rows = await owner.query<{ action: string; previous_hash: string | null; entry_hash: string }>(
+      `SELECT action, previous_hash, entry_hash FROM audit_logs
+       WHERE organization_id = $1 ORDER BY created_at, id`, [chainOrganization]);
+    expect(rows.rows.map((row) => row.action)).toEqual(["integration.chain_order.b", "integration.chain_order.a"]);
+    const [rowB, rowA] = rows.rows;
+    expect(rowB.entry_hash).toBe(first.entryHash);
+    expect(rowA.entry_hash).toBe(second.entryHash);
+    // A traegt nicht mehr die Startzeit seiner Transaktion, sondern liegt nach B.
+    const order = await owner.query<{ after_start: boolean; after_b: boolean }>(
+      `SELECT a.created_at > $3::timestamptz AS after_start, a.created_at > b.created_at AS after_b
+       FROM audit_logs AS a, audit_logs AS b
+       WHERE a.organization_id = $4 AND b.organization_id = $4 AND a.entry_hash = $1 AND b.entry_hash = $2`,
+      [rowA.entry_hash, rowB.entry_hash, startedA, chainOrganization]);
+    expect(order.rows[0]).toEqual({ after_start: true, after_b: true });
+    expect(rowB.previous_hash).toBeNull();
+    expect(rowA.previous_hash).toBe(rowB.entry_hash);
+
+    // Die Kette neu rechnen wie auditChainIntact im Backup-Drill.
+    const chain = await owner.query<{ ok: boolean; linked: boolean }>(`
+      WITH ordered AS (
+        SELECT *, lag(entry_hash) OVER (PARTITION BY organization_id ORDER BY created_at, id) AS expected_previous
+        FROM audit_logs WHERE organization_id = $1
+      )
+      SELECT bool_and(entry_hash = encode(digest(jsonb_build_object(
+               'id', id, 'organization_id', organization_id, 'project_id', project_id, 'environment', environment,
+               'actor_type', actor_type, 'actor_ref', actor_ref, 'action', action, 'resource_ref', resource_ref,
+               'status', status, 'redacted_metadata', redacted_metadata, 'previous_hash', previous_hash, 'created_at', created_at
+             )::text, 'sha256'), 'hex')) AS ok,
+             bool_and(previous_hash IS NOT DISTINCT FROM expected_previous) AS linked
+      FROM ordered`, [chainOrganization]);
+    expect(chain.rows[0]).toEqual({ ok: true, linked: true });
   });
 });
