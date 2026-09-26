@@ -4854,3 +4854,48 @@ gruen.
 Nicht erbracht: kein Audit-Ereignis fuer den Widerruf (Project Auth
 schreibt heute keine); die Ansicht ist im Browser nicht gesehen, weil die
 Konsolensitzung im Speichermodus abgelaufen war.
+
+## Was die Anmeldung tat – Release 2.35
+
+Project Auth schrieb bis 2.34 keine Audit-Ereignisse. Jetzt landen
+Registrierung, Anmeldung (mit und ohne Erfolg), Abmeldung, MFA-Anlage und
+-Pruefung sowie die Admin-Aktionen (Nutzer geaendert, Sitzung widerrufen,
+alle widerrufen) in derselben Hash-Kette wie die Plattform-Ereignisse.
+Refresh wird nicht aufgezeichnet.
+
+Der Auth-Login braucht dafuer Rechte, die er nicht hatte: Migration 0046
+gibt `qkern_auth` SELECT und INSERT auf `audit_logs`. SELECT, weil der
+Kettentrigger den letzten Hash der Organisation liest und nicht SECURITY
+DEFINER ist, und weil `append` mit RETURNING arbeitet. Kein UPDATE, kein
+DELETE; der Append-only-Trigger und RLS FORCE bleiben. Der Sink schreibt
+in einer Mandantentransaktion; ein Fehler im Sink wird ohne Geheimnisse
+geloggt und bricht die Anmeldung nicht, die Kette bleibt dann unberuehrt.
+
+Was nie ins Audit darf: E-Mails, Tokens, Passwoerter. `actor_ref` ist die
+Nutzer-ID oder `anonymous`, Admin-Routen uebergeben nur die ID des
+Konsolennutzers, und `sanitizeProjectAuthAuditEvent` verwirft jedes
+Ereignis mit `@` oder `qk_` in einem Feld (geloggt, nicht halb
+geschrieben). Tests belegen es mit Einheitsfaellen und im PostgreSQL-Fall:
+Registrierung, Anmeldung ueber die Verifikation, ein Fehlversuch, ein
+Admin-Widerruf; vier Ereignisse, neueste zuerst, Cursor funktioniert, kein
+`@` und kein `qk_` in den Zeilen, die Kette nachgerechnet, eine fremde
+Organisation sieht nichts, `console.error` nie gerufen. 174 von 174,
+zweimal. Mutation: der Sink schreibt nichts mehr; genau der neue Fall
+faellt, 173 von 174.
+
+Beim Aufraeumen zeigte sich, was die Kette wert ist: `audit_logs` ist
+append-only ohne Ausnahme, auch fuer den Superuser, und eine Organisation
+mit Audit-Zeilen laesst sich nie loeschen. Der Fall haengt deshalb an einem
+eigenen Besitzer und raeumt nur Project-Auth-Daten auf.
+
+Checkpoint `2.35.0` am 26. September 2026: PostgreSQL 17 174 von 174
+bestanden, exit 0, zweimal reproduziert; Mutation 173 von 174, exit 1;
+Lokal 1289 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: `qkern_auth` darf alle Audit-Zeilen der gesetzten
+Organisation lesen, nicht nur `project_auth.*` (die Einschraenkung steht
+in der Abfrage); jeder Fehlversuch schreibt eine Kettenzeile unter dem
+Organisationslock, begrenzt nur durch das Passwortlimit von 10 je 15
+Minuten; die Ansicht ist im Browser nur im Zustand "nicht aktiviert"
+gesehen.

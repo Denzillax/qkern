@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "auth-audit-local-run2.log",
+  "commit": "8948c19cfb5bfac8ae6b1f57eb6cef594feaed43",
+  "commitSubject": "auth: Audit-Einfuegen nur fuer project_auth-Aktionen, qk_ in Referenzen abgewiesen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1289 passed | 256 skipped (1545)",
+  "passed": 1289,
+  "failed": 0,
+  "skipped": 256,
+  "images": []
+}

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.34.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.35.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,29 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.34.0`
-- Aktueller Slice: 2.34 Sitzungen sehen und beenden – der Platzhalter
+- Paketversion: `2.35.0`
+- Aktueller Slice: 2.35 Was die Anmeldung tat – Project Auth schreibt
+  jetzt Audit-Ereignisse in die Hash-Kette der Plattform: signup, login
+  (erfolgreich und fehlgeschlagen), logout, mfa enrolled/verified, admin
+  user.updated, session.revoked, sessions.revoked_all; kein Refresh. Sink
+  `PostgresProjectAuthAuditSink` (`lib/server/project-auth/audit-postgres.ts`)
+  schreibt ueber `withTenantTransaction` und `AuditRepository.append` mit
+  dem Auth-Pool; Migration `0046_project_auth_audit.sql` gibt `qkern_auth`
+  SELECT und INSERT auf `audit_logs` (der Kettentrigger liest den letzten
+  Hash der Organisation und ist nicht SECURITY DEFINER) und EXECUTE auf die
+  drei Funktionen, nichts weiter; RLS FORCE bleibt. Ein Sink-Fehler bricht
+  die Anmeldung nicht (geloggt ohne Geheimnisse, Kette bleibt intakt).
+  `sanitizeProjectAuthAuditEvent` lehnt `@` und `qk_` ab, Admin-Routen
+  uebergeben nur `actor.id`, nie die E-Mail. Route `GET
+  .../auth/admin/audit?limit&cursor` (nur `project_auth.%`, Cursor ueber
+  `(created_at, id)`), OpenAPI, Handbuch 6; Konsole Auth, Audit-Log statt
+  Platzhalter. PostgreSQL-Fall (eigener Besitzer, eigene Organisation,
+  vier Ereignisse, Kette nachgerechnet, fremde Organisation sieht nichts):
+  174 von 174; Mutation (Schreiben im Sink ausgelassen) faellt genau dort.
+  Aufraeumen: Audit-Zeilen sind append-only (Trigger ohne Ausnahme), eine
+  Organisation mit Audit-Zeilen laesst sich nie loeschen; der Fall haengt
+  deshalb nichts an den Kontrollnutzer der Datei
+- Vorheriger Slice: 2.34 Sitzungen sehen und beenden – der Platzhalter
   "Sitzungen" unter Auth ist eine echte Ansicht: Nutzer waehlen, aktive
   Sitzungen (angelegt, laeuft ab, Sicherungsstufe, Familie) sehen, eine
   Sitzung oder alle beenden, mit Rueckfrage. Backend: Repository
@@ -68,7 +89,7 @@ Grossbuchstaben.
   kein Unterschied, bewusst so gelassen. PostgreSQL-Fall (zwei Familien,
   Refresh, Liste, Widerruf einer Familie, aller, Zuschauer unberuehrt):
   173 von 173; Mutation (Widerruf ausgelassen) faellt genau dort
-- Vorheriger Slice: 2.33 Schemanamen mit Grossbuchstaben – der in 2.26
+- Davor: 2.33 Schemanamen mit Grossbuchstaben – der in 2.26
   offen gelassene Schritt: Schemanamen der Data API folgen jetzt derselben
   Grammatik wie Tabellennamen (`isDataSchemaName` in `identifiers.ts`:
   `DATA_IDENTIFIER` minus `pg_*`, `information_schema`, `qkern_internal`).
