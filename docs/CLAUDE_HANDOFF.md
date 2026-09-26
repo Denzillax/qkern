@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.30.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.31.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,18 +39,33 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-### Einstiegsdoku (Stand 26. September 2026)
+### Einstiegsdoku (Stand 26. September 2026, abends)
 
-Spec `docs/superpowers/specs/2026-09-25-documentation-design.md`, Plan
-`docs/superpowers/plans/2026-09-25-documentation.md`. Schritt 1 (Deutsch,
-Website, Vertraege, Durchlauf) ist mit 2.30 abgeschlossen. Offen: Schritt 2
-Uebersetzungen (`docs/guide/en|fr|it/`, `GUIDE_LOCALES_AVAILABLE` in
-`lib/docs/pages.ts`), und Denzils Entscheidung, das Repository oeffentlich
-zu machen (Scan ohne Blocker; dann `git clone` statt "Zip" im Schnellstart
-und npm-Provenance einschalten).
+Spec und Plan unter `docs/superpowers/`. Schritt 1 (Deutsch, Website,
+Vertraege, Durchlauf) kam mit 2.30, Schritt 2 (Uebersetzungen) mit 2.31,
+Schritt 3 (Pflege) steht in `docs/DOCS_MAINTENANCE.md`. Das Repository ist
+oeffentlich. Offen aus dem Plan: nichts. Naechste Kandidaten: die
+verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
+Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
+Grossbuchstaben.
 
-- Paketversion: `2.30.0`
-- Aktueller Slice: 2.30 Drei Tueren – die Einstiegsdoku fuer drei
+- Paketversion: `2.31.0`
+- Aktueller Slice: 2.31 Vier Sprachen – Schritt 2 des Doku-Plans: die
+  fuenf Einstiegsseiten auf Englisch, Franzoesisch und Italienisch unter
+  `docs/guide/en|fr|it/`, uebersetzt von drei parallelen Agenten mit
+  denselben Regeln (Struktur, Codebloecke byteidentisch, Anker aus den
+  uebersetzten Ueberschriften, Glossar mit 99 Eintraegen, sortiert nach
+  der Sprache, Vorspaenne je Sprache in `lib/docs/locales.ts`). Verfuegbare
+  Sprachen werden von der Platte erkannt (`availableGuideLocales()`, alle
+  fuenf Dateien muessen da sein); Seitentitel je Sprache in `pages.ts`,
+  vom Vertrag mit der Ueberschrift der Seite abgeglichen. Die drei
+  Vertragstests laufen je Sprache und vergleichen jede Uebersetzung mit
+  dem Deutschen (gleiche Anzahl Abschnitte, gleiche Glossargroesse,
+  identische Codebloecke). Mutation: franzoesischer Glossareintrag auf zwei
+  Zeilen, genau ein Fall faellt. Dazu: Repository oeffentlich (LICENSE an
+  der Wurzel, `git clone` im Schnellstart, Provenance im Publish-Workflow
+  standardmaessig an), Autor-Adresse GitHub-noreply
+- Vorheriger Slice: 2.30 Drei Tueren – die Einstiegsdoku fuer drei
   Zielgruppen, nach Spec und Plan unter `docs/superpowers/`, umgesetzt mit
   Unteragenten (je Aufgabe Spec-Pruefung und Code-Review). Fuenf deutsche
   Seiten unter `docs/guide/de/` (Was ist QKERN, Schnellstart, Erstes
@@ -72,7 +87,7 @@ und npm-Provenance einschalten).
   ab 1260 px) und Fusszeile, Handbuch-Verweis, INDEX-Block,
   DOCS_MAINTENANCE-Abschnitt, SDK-README. Autor-Adresse des Repos jetzt
   GitHub-noreply; Historien-Scan ohne Blocker (Bericht im Chat vom 26.9.)
-- Vorheriger Slice: 2.29 Backup und Restore, lokal bewiesen – Denzils
+- Davor: 2.29 Backup und Restore, lokal bewiesen – Denzils
   Frage "geht das auch ohne Hosting?" beantwortet: Sprosse 10 laeuft als
   Wegwerfstack (`docker-compose.backup-certification.yml`,
   `npm run test:backup:docker`). Quell-PostgreSQL 17 mit TLS-Pflicht

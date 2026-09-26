@@ -10,7 +10,8 @@
 | [Für Gründer](guide/de/FUER_GRUENDER.md) | Gründer ohne Entwicklerhintergrund |
 | [Glossar](guide/de/GLOSSAR.md) | alle |
 
-Die Seiten liegen unter `docs/guide/de/` und werden auf der Website unter `/docs`
+Die Seiten liegen unter `docs/guide/<sprache>/` (de, en, fr, it; Deutsch ist das
+Original) und werden auf der Website unter `/docs` in der gewählten Sprache
 gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 
 ## Referenz
@@ -34,7 +35,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.30.md](RELEASE_2.30.md) | Aktueller Release: Drei Türen |
+| [RELEASE_2.31.md](RELEASE_2.31.md) | Aktueller Release: Vier Sprachen |
+| [RELEASE_2.30.md](RELEASE_2.30.md) | Drei Türen |
 | [RELEASE_2.29.md](RELEASE_2.29.md) | Backup und Restore, lokal bewiesen |
 | [RELEASE_2.28.md](RELEASE_2.28.md) | Was das zweite Review fand |
 | [RELEASE_2.27.md](RELEASE_2.27.md) | Regeln und Grenzen je Bucket |

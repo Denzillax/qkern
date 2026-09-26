@@ -1,0 +1,34 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/docs-guide-contract.test.ts (25 tests | 1 failed) 448ms
+     × fr: gives every glossary entry exactly three lines with the three lead-ins, alphabetically 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/docs-guide-contract.test.ts > docs guide contract (fr) > fr: gives every glossary entry exactly three lines with the three lead-ins, alphabetically
+AssertionError: fr Row Level Security: genau drei Zeilen: expected 2 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 2
+
+ ❯ tests/docs-guide-contract.test.ts:133:86
+    131|       expect(list?.kind, `${locale} ${plain(block.text)}: nach der Ueb…
+    132|       if (list?.kind !== "list") continue;
+    133|       expect(list.items.length, `${locale} ${plain(block.text)}: genau…
+       |                                                                                      ^
+    134|       expect(list.items.map((item) => (item[0]?.kind === "strong" ? it…
+    135|       const next = doc.blocks[i + 2];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 passed (25)
+   Start at  07:53:31
+   Duration  682ms (transform 68ms, setup 0ms, import 95ms, tests 448ms, environment 0ms)
+
+EXIT=1

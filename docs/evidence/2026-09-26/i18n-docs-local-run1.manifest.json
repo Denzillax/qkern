@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "i18n-docs-local-run1.log",
+  "commit": "c1d3a25978768a4720ffbd771092867bc9d768a1",
+  "commitSubject": "docs: Einstiegsdoku auf Englisch, Franzoesisch und Italienisch",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1264 passed | 253 skipped (1517)",
+  "passed": 1264,
+  "failed": 0,
+  "skipped": 253,
+  "images": []
+}

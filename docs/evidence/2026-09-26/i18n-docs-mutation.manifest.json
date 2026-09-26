@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: franzoesischer Glossareintrag auf zwei Zeilen",
+  "log": "i18n-docs-mutation.log",
+  "commit": "c1d3a25978768a4720ffbd771092867bc9d768a1",
+  "commitSubject": "docs: Einstiegsdoku auf Englisch, Franzoesisch und Italienisch",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 24 passed (25)",
+  "passed": 24,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

@@ -4707,3 +4707,37 @@ fehlgeschlagen, zweimal reproduziert; Mutation 1 von 1236 faellt, exit 1;
 Nicht erbracht: Uebersetzungen (Schritt 2 des Plans); der Weg ueber Change
 Set fuer Projektdatenbanken ist lokal nicht verdrahtet, die Tabelle
 entsteht per SQL; das Bindungsskript macht nur das eine UPDATE.
+
+## Vier Sprachen – Release 2.31
+
+Die fuenf Einstiegsseiten gibt es jetzt auf Deutsch, Englisch,
+Franzoesisch und Italienisch. Deutsch ist das Original; drei Agenten
+uebersetzten parallel nach denselben Regeln: gleiche Blockfolge, gleiche
+Ueberschriftenebenen, Codebloecke byteidentisch, Platzhalter unveraendert,
+Links auf die uebersetzten Anker, Glossar mit 99 Eintraegen und den
+Vorspaennen der Sprache, sortiert nach dem Collator der Sprache.
+
+Die Website erkennt verfuegbare Sprachen an der Platte: eine Sprache ist
+da, wenn alle fuenf Dateien da sind; sonst faellt sie auf Deutsch zurueck
+und sagt es. Die Seitentitel je Sprache stehen in `lib/docs/pages.ts` und
+muessen der Ueberschrift der Seite gleichen; der Vertrag prueft es.
+
+Die drei Vertragstests laufen je verfuegbarer Sprache: Links und Anker,
+Glossarform und Reihenfolge, Sperrliste je Sprache (Gedankenstriche
+ueberall), Abschnitt "Ehrlich offen" in der Sprache, Kommandos identisch
+zwischen Schnellstart und Erstes Backend, Zahlen der Gruenderseite nur als
+Platzhalter (auch "bancs d'essai", "banchi di prova"). Dazu der Vergleich
+mit dem Deutschen: gleiche Zahl Abschnitte je Seite, gleiche
+Glossargroesse, identische Codebloecke.
+
+Mutation: im franzoesischen Glossar der Eintrag Row Level Security auf
+zwei Zeilen gekuerzt; genau ein Fall faellt, exit 1.
+
+Checkpoint `2.31.0` am 26. September 2026: Lokal 1264 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Mutation 1 von 1264 faellt, exit 1;
+`next build` gruen.
+
+Nicht erbracht: die Uebersetzungen hat kein Mensch gegengelesen; der
+franzoesische Text nennt die Freigabezentrale im Glossar "Centre
+d'approbation" und in der Konsole "Centre de validation", das ist im Text
+erklaert, aber zwei Namen fuer eine Sache.

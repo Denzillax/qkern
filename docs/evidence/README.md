@@ -1368,3 +1368,11 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/docs-local-run1.log` | Vitest lokal (Windows) | 1236 bestanden, exit 0 |
 | `2026-09-26/docs-local-run2.log` | Vitest lokal (Windows) | 1236 bestanden, exit 0, Wiederholung |
 | `2026-09-26/docs-mutation.log` | Vitest lokal, Mutation (Glossar zwei Zeilen) | **1 von 1236 fällt, exit 1 – absichtlich** |
+
+## Läufe zu Release 2.31 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/i18n-docs-local-run1.log` | Vitest lokal (Windows) | 1264 bestanden, exit 0 |
+| `2026-09-26/i18n-docs-local-run2.log` | Vitest lokal (Windows) | 1264 bestanden, exit 0, Wiederholung |
+| `2026-09-26/i18n-docs-mutation.log` | Vitest lokal, Mutation (franz. Glossar zwei Zeilen) | **1 fällt, exit 1 – absichtlich** |
