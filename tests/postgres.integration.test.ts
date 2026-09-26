@@ -750,8 +750,16 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const serialised = JSON.stringify(report);
       expect(serialised).not.toContain("postgres");
       expect(serialised).not.toContain(nowhereUrl.pathname.slice(1));
-      expect(serialised).not.toContain("at ");
+      // Eine Stapelzeile hat die Form "at datei:zeile:spalte". Die blosse
+      // Zeichenfolge "at " taugt nicht als Probe: sie steckt in jedem
+      // deutschen "hat".
+      expect(serialised).not.toMatch(/at [^\s"]+:\d+:\d+/);
       expect(serialised).not.toContain("Error");
+      // Und der Beleg traegt nur bekannte Messgroessen mit Zahl oder null.
+      for (const entry of report.evidence) {
+        expect(typeof entry.measure, entry.measure).toBe("string");
+        expect(entry.count === null || typeof entry.count === "number", `count ${entry.count}`).toBe(true);
+      }
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await Promise.all([projectApi.end(), nowhere.end()]);
