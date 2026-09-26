@@ -12,7 +12,7 @@ name: Publish packages
 # Chat). `id-token: write` erlaubt npm-Provenance: der Tarball traegt dann den
 # Nachweis, aus welchem Commit und Workflow er stammt. npm nimmt Provenance
 # aber nur aus oeffentlichen Repositories an (E422 beim ersten echten Lauf,
-# 2.16); solange das Repo privat ist, bleibt `provenance` auf false.
+# 2.16); seit das Repo oeffentlich ist (2.31), ist `provenance` standardmaessig an.
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ on:
       provenance:
         description: "Herkunftsnachweis signieren (nur aus einem oeffentlichen Repository moeglich)"
         required: true
-        default: "false"
+        default: "true"
         type: choice
         options: ["false", "true"]
 

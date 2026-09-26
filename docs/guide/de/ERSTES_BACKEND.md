@@ -14,10 +14,15 @@ QKERN ist so ein Backend, fertig gebaut. Deine Arbeit ist: es starten, ihm sagen
 
 - [Node.js](GLOSSAR.md#node-js) {{node}} oder neuer, mit [npm](GLOSSAR.md#npm). Node führt JavaScript ausserhalb des Browsers aus; QKERN selbst ist in TypeScript geschrieben und läuft auf Node.
 - Docker Desktop. [Docker](GLOSSAR.md#docker) startet Programme in abgeschlossenen Kisten, den [Containern](GLOSSAR.md#container), ohne dass du sie installieren musst. PostgreSQL, Redis, den Objektspeicher und den Virenscanner bekommst du so mit einem Kommando.
-- Den QKERN-Quellordner, als Zip oder per `git clone`.
+- Git, um den Quellcode zu holen.
 - PowerShell oder eine Bash; die Beispiele hier sind PowerShell.
 
-Alle Kommandos laufen im Quellordner, dort wo `package.json` liegt.
+Zuerst den Quellcode holen; alle weiteren Kommandos laufen in diesem Ordner, dort wo `package.json` liegt. `git clone` lädt das Repository, also den Quellcode samt Geschichte, auf deinen Rechner:
+
+```powershell
+git clone https://github.com/Denzillax/qkern.git
+cd qkern
+```
 
 ## 1. Dienste starten
 
@@ -188,4 +193,3 @@ Das Handbuch liegt im Repository unter `docs/HANDBUCH.md`.
 - Die Bindung in Schritt 5 macht ein Skript statt ein Provisionierer. Es führt nur das eine UPDATE aus und legt keinen Auftrag an.
 - Die Tabelle entsteht per SQL, nicht über einen Assistenten. Der Weg über Change Set und Freigabezentrale braucht den Migrations-Worker mit seinem Verbindungskatalog, und der ist im lokalen Schnellstart nicht eingerichtet.
 - Die zwei Regeln in Schritt 6 erlauben jedem alles. Für eine echte App sind sie zu grosszügig; das Handbuch zeigt Regeln je Nutzer.
-- Das Repository ist heute privat; deshalb "Zip oder git clone" statt eines Links.

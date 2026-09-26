@@ -411,3 +411,7 @@ gewählten Cloud-/PostgreSQL-Provider, Live-Vault, Zertifikat-Rollover und reale
 Crash-/Timeout-Races zertifiziert. Auch HA, Restore-Drills, Schweizer Datenresidenz
 und alle Production-E2E-/Security-Gates aus `docs/QA.md` müssen vor einem Marktstart
 nachgewiesen werden.
+
+## Lizenz
+
+Apache License 2.0, siehe `LICENSE`. Die Pakete `@qkern/sdk` und `@qkern/cli` stehen unter derselben Lizenz.

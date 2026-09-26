@@ -44,3 +44,9 @@ je in drei Zeilen. Auf der Website unter `/docs`, im Repository unter
   Konto lief. Die Kommandos selbst liefen in sieben Minuten.
 - **Das Repository ist noch privat.** Der Scan der Historie fand keine
   Geheimnisse; die Entscheidung liegt bei Denzil.
+
+## Nachtrag
+
+Das Repository ist seit dem 26. September 2026 öffentlich. Der Schnellstart
+beginnt jetzt mit `git clone`, die Wurzel trägt eine `LICENSE` (Apache 2.0),
+und der Publish-Workflow signiert die Herkunft standardmässig.

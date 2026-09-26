@@ -6,10 +6,15 @@
 
 - [Node.js](GLOSSAR.md#node-js) {{node}} oder neuer, mit [npm](GLOSSAR.md#npm)
 - Docker Desktop, gestartet
-- den QKERN-Quellordner, als Zip oder per `git clone`
+- Git, um den Quellcode zu holen
 - PowerShell oder eine Bash; die Beispiele hier sind PowerShell
 
-Alle Kommandos laufen im Quellordner, dort wo `package.json` liegt.
+Zuerst den Quellcode holen; alle weiteren Kommandos laufen in diesem Ordner, dort wo `package.json` liegt:
+
+```powershell
+git clone https://github.com/Denzillax/qkern.git
+cd qkern
+```
 
 ## 1. Dienste starten
 
@@ -163,5 +168,4 @@ Der grösste Unterschied im Alltag: bei QKERN umgeht auch der Service Key die Ro
 - Letzter gemessener Durchlauf: 26. September 2026, frischer Ordner, 31 Minuten am Stück. Davon gingen rund 24 Minuten auf zwei Textfehler, die dabei gefunden und behoben wurden, und auf einen Umweg über ein zweites Konto; die Kommandos selbst liefen in rund sieben Minuten. Log und Manifest unter `docs/evidence/2026-09-26/`.
 - Die Bindung in Schritt 5 macht ein Skript statt ein Provisionierer. Es führt nur das eine UPDATE aus und legt keinen Auftrag an.
 - Die Tabelle entsteht per SQL, nicht über einen Assistenten. Der Weg über Change Set und Freigabezentrale braucht den Migrations-Worker mit seinem Verbindungskatalog, und der ist im lokalen Schnellstart nicht eingerichtet.
-- Das Repository ist heute privat; deshalb "Zip oder git clone" statt eines Links.
 - Der Service Key umgeht Row Level Security nicht, auch wenn der Name das nahelegt.
