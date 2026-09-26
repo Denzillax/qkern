@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle4-local-run2.log",
+  "commit": "1f8d186d99649c166e49a5822e7e6cffca89c79c",
+  "commitSubject": "tests: Anbietername nach Muster, Gesundheitsurteil nach dem neuen Zustand",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1774 passed | 277 skipped (2051)",
+  "passed": 1774,
+  "failed": 0,
+  "skipped": 277,
+  "images": []
+}

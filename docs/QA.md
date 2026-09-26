@@ -5619,3 +5619,60 @@ sieht die Leserolle fremde Zeilen ohne Kennung, der Berater sieht also weniger
 als im Cluster steht. Die Provider-Regel sagt etwas ueber die Konfiguration
 und nichts darueber, ob ein Anbieter mit `required` seine Adressen wirklich
 prueft. Im Browser nicht gesehen.
+
+## Grenzen, Geheimnisse, alte Versprechen – Release 2.52
+
+Dieser Release raeumt vor allem auf, und dabei kamen drei Schwaechen der
+Anmeldung ans Licht, die vorher niemand aufgeschrieben hatte. Die Bremse
+gegen zu viele Versuche zaehlte im Arbeitsspeicher eines Prozesses: bei
+mehreren Instanzen war die wirkliche Grenze ein Vielfaches der gemeinten,
+und ein Neustart setzte alles zurueck. Sie zaehlte ausserdem nach einem
+Hash der Client-Adresse, und ohne gesetzte Proxy-Einstellung landeten alle
+Aufrufer in einem einzigen Topf. Und das Auffrischen von Token hatte
+ueberhaupt keine Grenze.
+
+Jetzt zaehlt die Datenbank, nach Identitaet oder Sitzungsfamilie, nie nach
+Adresse. Der Schluessel steht nur als Pseudonym in der Zeile; das ist keine
+Anonymisierung, und genau das steht im Modul, im Handbuch und auf der Seite.
+Die Pruefung sitzt vor jedem Nachschlagen, damit eine bekannte und eine
+unbekannte Adresse dieselbe Antwort bekommen. Bei einem Fehler des Zaehlers
+geht der Versuch durch: die eigentliche Tuer ist die Passwortpruefung
+dahinter, und das Gegenteil machte aus einem Fehler in der Zaehlertabelle
+einen vollstaendigen Anmeldeausfall.
+
+Die Vault-Uebersicht zeigt jede Referenz, die QKERN kennt, mit ihrem
+Zustand und keinen einzigen Wert. Den Vault selbst listet sie nicht auf,
+obwohl das ginge: ein Verzeichnis der Pfade in einer Webkonsole gaebe die
+Struktur des Schluesselspeichers an jeden weiter, der die Konsole lesen
+darf. Nebenbei fiel auf, dass ein Datenbank-Webhook zusaetzlich eine Zeile
+des ausgehenden Webhooks besitzt; beide zu listen haette dieselbe Referenz
+wie zwei Geheimnisse aussehen lassen.
+
+Vier Punkte, die frueher Releases ehrlich als offen notiert hatten, sind
+eingeloest. Zwei Beraterregeln standen dauerhaft auf "nicht geprueft"; eine
+Regel, die nie laufen kann, gehoert nicht als Dauerzustand in eine Liste.
+Die Anbieterregel bekam ein einziges zusaetzliches Feld, einen
+Wahrheitswert, der keine Stelle hat, an der eine Kennung stehen koennte.
+Die Regel zu langsamen Anweisungen liest jetzt einen sicheren Ausschnitt
+ohne die Spalte `query`, und das Feld, das den Text haette tragen koennen,
+ist aus dem Typ verschwunden: was es nicht gibt, fuellt auch niemand
+spaeter. Die Gesundheit hat einen sechsten Zustand, weil gruen vorher nur
+"Adresse hinterlegt" hiess. Und der Datenbankbericht nennt die fuer diese
+Rolle unsichtbaren Verbindungen als Zahl statt als Einschraenkung in Prosa.
+
+Drei Mutationen, drei Treffer: der Griff zum Datenendpunkt des Vault faellt
+in zwei Faellen, der durchgereichte Anweisungstext in einem, der
+stehengebliebene Zaehler in einem.
+
+Checkpoint `2.52.0` am 26. September 2026: PostgreSQL 17 mit 193 von 193,
+exit 0, zweimal reproduziert; HashiCorp Vault 1.18 mit 8 von 8, exit 0,
+zweimal reproduziert; Lokal 1774 bestanden, 0 fehlgeschlagen, zweimal
+reproduziert; `next build` gruen.
+
+Nicht erbracht: Eine Grenze je Identitaet haelt keinen verteilten Angriff
+ueber viele Konten auf. Die Pruefung der Mehrfaktor-Antwort und der
+OIDC-Start haengen weiter an der Bremse im Prozess, weil dort keine
+Identitaet feststeht. Der Zustand `configured` laesst jedes Projekt mit
+Realtime schlechter aussehen als vorher; das ist die Korrektur, nicht eine
+Verschlechterung. Ohne erweiterte Leserechte fallen fremde Zeilen ohne
+Kennung aus der Anweisungsstatistik. Im Browser nicht gesehen.

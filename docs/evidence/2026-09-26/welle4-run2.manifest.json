@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle4-run2.log",
+  "commit": "1f8d186d99649c166e49a5822e7e6cffca89c79c",
+  "commitSubject": "tests: Anbietername nach Muster, Gesundheitsurteil nach dem neuen Zustand",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 52,
+  "testFiles": "31 passed (31)",
+  "tests": "193 passed (193)",
+  "passed": 193,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

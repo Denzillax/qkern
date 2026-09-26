@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.51.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.52.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,33 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.51.0`
-- Aktueller Slice: 2.51 Die Bruecke laeuft – drei Implementierer parallel.
+- Paketversion: `2.52.0`
+- Aktueller Slice: 2.52 Grenzen, Geheimnisse, alte Versprechen – drei
+  Implementierer parallel. **Grenzen je Zeitfenster**: `auth-rate-limits` ist
+  echt, und die Bremse zaehlt jetzt in der Datenbank
+  (`project_auth_rate_counters`, Migration `0052`) statt im Arbeitsspeicher
+  eines Prozesses. Drei Befunde: die alte Bremse zaehlte je Prozess (bei n
+  Instanzen also n-fach), sie zaehlte nach einem Hash der Client-Adresse und
+  warf ohne gesetzte Proxy-Einstellung alle in einen Topf, und das
+  Auffrischen von Token hatte gar keine Grenze. Gezaehlt wird nach Identitaet
+  oder Sitzungsfamilie, nie nach Adresse; der Schluessel steht nur als
+  Pseudonym in der Zeile. Bei einem Fehler des Zaehlers geht der Versuch
+  durch, weil die Passwortpruefung dahinter steht und ein Zaehlerfehler sonst
+  die ganze Anmeldung ausfallen liesse. **Vault-Uebersicht**: `int-vault` ist
+  echt, zeigt jede Referenz mit ihrem Zustand und keinen einzigen Wert; der
+  Vault wird bewusst nicht aufgelistet, weil ein Pfadverzeichnis in einer
+  Webkonsole die Struktur des Schluesselspeichers preisgaebe.
+  Vault-Zertifizierung 7 auf 8 Faelle. **Alte Versprechen**: vier Punkte aus
+  2.39, 2.40, 2.44 und 2.46 eingeloest. Zwei Regeln, die dauerhaft auf "nicht
+  geprueft" standen, laufen; `slow_statement` liest einen sicheren Ausschnitt
+  ohne die Spalte `query`, und das Feld, das den Text haette tragen koennen,
+  ist aus dem Typ verschwunden. Die Gesundheit hat einen sechsten Zustand
+  `configured`: `ok` heisst jetzt gefragt und geantwortet. Der
+  Datenbankbericht nennt die fuer diese Rolle unsichtbaren Verbindungen als
+  Zahl. Der Stack laedt dafuer `pg_stat_statements`.
+  PostgreSQL-Faelle "(2.56)" und "(2.57)": 193 statt 191. Drei Mutationen
+  fallen. Im Browser nicht gesehen
+- Vorheriger Slice: 2.51 Die Bruecke laeuft – drei Implementierer parallel.
   **Webhook-Prozess**: Die Bruecke aus 2.50 war gebaut, zertifiziert und
   untaetig; jetzt laeuft sie im Compute-Worker
   (`lib/server/compute/database-webhook-bridge-runtime.ts`), eine Schleife
@@ -94,7 +119,7 @@ Grossbuchstaben.
   alle Quellen, also ist er nicht einmal eine Obergrenze fuer sie allein.
   PostgreSQL-Faelle "(2.53)", "(2.54)", "(2.55)": 191 statt 188. Drei
   Mutationen fallen. Im Browser nicht gesehen
-- Vorheriger Slice: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
+- Davor: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
   Implementierer parallel, danach zusammengefuehrt. **Zweiter Faktor**:
   `auth-mfa` ist eine echte Ansicht, und der Schalter wirkt an drei Stellen
   in `lib/server/project-auth/service.ts`, nicht in der Console: beim

@@ -1581,3 +1581,17 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/welle3-mutation-logs.log` | Mutation: Ausgangsfilter wirkungslos | **187 von 189, exit 1 – absichtlich, dazu ein Queue-Fall unter Last** |
 | `2026-09-26/welle3-local-run1.log` | Vitest lokal (Windows) | 1719 bestanden, exit 0 |
 | `2026-09-26/welle3-local-run2.log` | Vitest lokal (Windows) | 1719 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.52 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/welle4-run1.log` | PostgreSQL 17 | 193 von 193, exit 0 |
+| `2026-09-26/welle4-run2.log` | PostgreSQL 17 | 193 von 193, exit 0, Wiederholung |
+| `2026-09-26/welle4-mutation-statements.log` | Mutation: Anweisungstext statt Kennung | **192 von 193, exit 1 – absichtlich** |
+| `2026-09-26/welle4-mutation-rate.log` | Mutation: Zähler bleibt stehen | **192 von 193, exit 1 – absichtlich** |
+| `2026-09-26/vault-overview-run1.log` | HashiCorp Vault 1.18 | 8 von 8, exit 0 |
+| `2026-09-26/vault-overview-run2.log` | HashiCorp Vault 1.18 | 8 von 8, exit 0, Wiederholung |
+| `2026-09-26/vault-overview-mutation.log` | Mutation: Datenendpunkt statt Metadaten | **6 von 8, exit 1 – absichtlich** |
+| `2026-09-26/welle4-local-run1.log` | Vitest lokal (Windows) | 1774 bestanden, exit 0 |
+| `2026-09-26/welle4-local-run2.log` | Vitest lokal (Windows) | 1774 bestanden, exit 0, Wiederholung |
