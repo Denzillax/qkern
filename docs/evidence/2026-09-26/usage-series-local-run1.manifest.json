@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "usage-series-local-run1.log",
+  "commit": "77227ac0cf769a30361370c64680acb64dba367e",
+  "commitSubject": "tests: Zeitreihenfall rechnet je Fenster statt abzuschreiben",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1444 passed | 265 skipped (1709)",
+  "passed": 1444,
+  "failed": 0,
+  "skipped": 265,
+  "images": []
+}

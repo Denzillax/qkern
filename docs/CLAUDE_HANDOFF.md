@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.44.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.45.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,30 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.44.0`
-- Aktueller Slice: 2.44 Was gerade laeuft – der Platzhalter "Gesundheit"
+- Paketversion: `2.45.0`
+- Aktueller Slice: 2.45 Der Verlauf – drei Platzhalter auf einmal: API,
+  Storage und Functions unter Berichte sind echte, nur lesende Ansichten
+  ueber eine geteilte Komponente (`components/console/usage-series-view.tsx`)
+  und eine Route `GET .../usage/series?metric=&bucket=`. Keine neue Tabelle:
+  `usage_events` traegt `observed_at` je Ereignis, die Reihe entsteht als
+  Aggregation in der Datenbank (`date_trunc` mit `AT TIME ZONE 'UTC'` auf
+  beiden Seiten, `SUM(quantity) FILTER (WHERE accepted)` und das Gegenstueck,
+  `GROUP BY`, `LIMIT`), nie in JavaScript. Leere Eimer fuellt die reine
+  Schicht im Dienst, nicht `generate_series`: die Datenbank liest dann nur
+  vorhandene Zeilen. Fenster folgt der Eimergroesse, nicht dem Aufrufer:
+  48 Stundeneimer oder 90 Tageseimer, mit `truncated`-Flagge. Diagramm als
+  reine Geometrie (`lib/console/usage-series-chart.ts`), daneben dieselben
+  Zahlen als Tabelle. Was die Ereignisse nicht hergeben, behauptet keine
+  Ansicht: keine Antwortzeiten, keine Belegung, kein Containerfehler; die
+  drei alten Notizen, die genau das versprachen, sind weg. "Abgelehnt" heisst
+  immer Kontingent, nie HTTP-Fehler. PostgreSQL-Fall "(2.45)": 182 statt 181
+  Faelle. Der Fall hatte zwei falsche Erwartungen, beide abgeschrieben statt
+  gerechnet; jetzt rechnet er je Fenster und belegt damit, dass das Fenster
+  entscheidet, was mitzaehlt. Mutation (Aggregation trennt angenommen und
+  abgelehnt nicht) faellt nur im Stack, weil die Regeltests mit Attrappen
+  arbeiten. Offen: bei echtem Volumen braucht es eine Rollup-Tabelle oder
+  einen BRIN-Index auf `observed_at`. Im Browser nicht gesehen
+- Vorheriger Slice: 2.44 Was gerade laeuft – der Platzhalter "Gesundheit"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/health-advisor-view.tsx`). Acht Teilsysteme werden
   nebenlaeufig geprobt, jede Probe faengt ihren eigenen Fehler: Datenbank
@@ -74,7 +96,7 @@ Grossbuchstaben.
   Beschriftung zusammen) faellt im Stack in 1 und lokal in 3 Faellen.
   Bekannte Grenze: Bei Realtime und Vault heisst gruen nur, dass eine
   Adresse hinterlegt ist. Im Browser nicht gesehen
-- Vorheriger Slice: 2.43 Ein Fenster von null – keine neue Ansicht, sondern
+- Davor: 2.43 Ein Fenster von null – keine neue Ansicht, sondern
   die Behebung eines Fehlers, den 2.42 nebenbei zutage brachte. Eine Queue
   mit `dedupeWindowSeconds = 0` liess jedes Einreihen mit Dedupe-Schluessel
   scheitern. Die Ursache lag nicht beim gleichen Zeitpunkt, sondern bei einer

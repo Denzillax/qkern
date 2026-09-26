@@ -5249,3 +5249,53 @@ Sandbox-Schalter der Functions ist prozessweit und keine Aussage je
 Projekt. Acht Proben je Aufruf ohne Zwischenspeicher: die Datenbankprobe
 liest Spalten je Tabelle, die Data-API-Probe erzeugt das ganze
 OpenAPI-Dokument. Im Browser nicht gesehen.
+
+## Der Verlauf – Release 2.45
+
+Drei Platzhalter hingen an derselben fehlenden Sache, und die Daten dafuer
+lagen bereits da: `usage_events` traegt seit 0028 einen Zeitstempel je
+Ereignis. Eine Zeitreihe ist deshalb eine Aggregation, keine neue Tabelle.
+Gerechnet wird in der Datenbank, mit `date_trunc` auf beiden Seiten in UTC,
+getrennten Summen fuer angenommen und abgelehnt und einer Obergrenze;
+geladen wird nie eine Zeile zum Zusammenzaehlen.
+
+Leere Eimer fuellt die reine Schicht im Dienst statt `generate_series` in
+SQL. Der Grund steht im Code: die Datenbank liest dann nur vorhandene
+Zeilen, und das Fuellen ist ohne Datenbank pruefbar. Das Fenster folgt der
+Eimergroesse und nicht dem Aufrufer, damit niemand eine Reihe ueber ein
+Jahr in Stundenschritten anfordern kann.
+
+Ehrlich bleibt die Ansicht dort, wo die Vorlage zu viel versprach. Die alten
+Notizen kuendigten Antwortzeiten, Belegung und Fehler an; nichts davon
+steckt in einem Nutzungsereignis. Statt das zu erfinden, sagt jede Ansicht,
+was sie nicht zeigen kann, und die Notizen sind aus der Navigation
+verschwunden. "Abgelehnt" heisst immer, dass ein Kontingent gegriffen hat,
+nie ein HTTP-Fehler.
+
+Der Zertifizierungsfall hatte zwei falsche Erwartungen, und beide entstanden
+durch Abschreiben. Erst zaehlte die Summe ein Ereignis mit, das
+ausdruecklich vor dem Fenster liegt; dann uebernahm die Tageserwartung die
+Zahlen der Stunde, obwohl das Tagesfenster neunzig Tage umfasst und das
+aeltere, von der Quota abgelehnte Ereignis darin liegt. Beide Erwartungen
+rechnen jetzt je Fenster, mit der Rechnung im Kommentar. Die zweite ist
+damit die interessantere Zusicherung geworden: sie zeigt, dass das Fenster
+entscheidet, was mitzaehlt, nicht die Eimergroesse.
+
+Mutation: die Aggregation trennt angenommen und abgelehnt nicht mehr. Im
+Stack faellt 1 von 182 Faellen, exit 1. Lokal faellt nichts, weil die
+Regeltests mit Attrappen arbeiten und das SQL gar nicht ausfuehren; genau
+dafuer gibt es den Fall gegen echtes PostgreSQL.
+
+Checkpoint `2.45.0` am 26. September 2026: PostgreSQL 17 mit 182 von 182,
+exit 0, zweimal reproduziert; Lokal 1444 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Keine Antwortzeiten, keine Belegung, keine Containerfehler.
+Der letzte Eimer ist immer angebrochen, und ein leerer Eimer heisst kein
+gemessenes Ereignis, nicht ein gesunder Dienst. Die Aggregation ist am
+Praefix indexfreundlich, aber `observed_at` steckt nicht im Index; bei
+echtem Volumen braucht es eine Rollup-Tabelle oder einen BRIN-Index.
+`usage_events` wird heute nie geraeumt, die Reihe ist also vollstaendig;
+kaeme eine Aufbewahrungsfrist, wuerde sie stillschweigend kuerzer. Auf dem
+Speicherport meldet die Route "Metering nicht aktiv", obwohl es eher "kann
+nicht aggregieren" heisst. Im Browser nicht gesehen.

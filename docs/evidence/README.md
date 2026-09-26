@@ -1508,3 +1508,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/health-local-mutation.log` | Vitest lokal, Mutation, nur Gesundheitstests | **10 von 13, exit 1 – absichtlich** |
 | `2026-09-26/health-local-run1.log` | Vitest lokal (Windows) | 1418 bestanden, exit 0 |
 | `2026-09-26/health-local-run2.log` | Vitest lokal (Windows) | 1418 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.45 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/usage-series-run1.log` | PostgreSQL 17 | 182 von 182, exit 0 |
+| `2026-09-26/usage-series-run2.log` | PostgreSQL 17 | 182 von 182, exit 0, Wiederholung |
+| `2026-09-26/usage-series-mutation.log` | PostgreSQL 17, Mutation (keine Trennung angenommen/abgelehnt) | **181 von 182, exit 1 – absichtlich** |
+| `2026-09-26/usage-series-local-run1.log` | Vitest lokal (Windows) | 1444 bestanden, exit 0 |
+| `2026-09-26/usage-series-local-run2.log` | Vitest lokal (Windows) | 1444 bestanden, exit 0, Wiederholung |
