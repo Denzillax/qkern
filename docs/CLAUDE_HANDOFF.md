@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.36.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.37.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,23 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.36.0`
-- Aktueller Slice: 2.36 Die Kette in Zeitreihenfolge – Befund aus dem
+- Paketversion: `2.37.0`
+- Aktueller Slice: 2.37 Was es kostet – der Platzhalter "Abrechnung"
+  unter Einstellungen ist eine echte, nur lesende Ansicht
+  (`components/console/billing-settings-view.tsx`): Preisblatt (aus den
+  bepreisten Zeilen der Abrechnungsprojektion `usage/billing`, Preise zum
+  Monatsende), laufender Monat (Summe, Zeitraum, je Metrik, unbepreiste
+  Metriken ausgewiesen), Rechnungen (`usage/invoices`, geteilte
+  `InvoicesCard` mit Nutzung & Limits), ehrlicher Hinweis: keine
+  Zahlungsanbindung, Rechnungen entstehen im Rechnungslauf und werden nicht
+  versandt. Zustaende je Karte, AbortController, Schalter
+  `QKERN_USAGE_METERING_ENABLED` im Aus-Zustand genannt. Geldformat aus
+  einer Quelle `lib/console/money.ts`, BigInt, rundet ab wie der
+  Rechnungslauf (die Anzeige zeigt nie mehr als der Ledger), `de-CH`.
+  Vertragstest: keine Schreibmethode, kein Betrag von Hand, jede
+  Metrikbezeichnung uebersetzt. Mutation (Anzeige rundet auf) faellt in
+  2 Faellen. Im Browser nur der Aus-Zustand gesehen (Metering lokal aus)
+- Vorheriger Slice: 2.36 Die Kette in Zeitreihenfolge – Befund aus dem
   Sicherheits-Review zu 2.35: `created_at` der Audit-Zeile ist `now()`
   der Transaktion, der Kettenlock kommt spaeter; zwei gleichzeitige
   Schreiber konnten die Kette in eine Reihenfolge bringen, die der
@@ -67,7 +82,7 @@ Grossbuchstaben.
   Trigger ueberschreibt ein explizit gesetztes created_at; Zeilen vor 0047
   koennen alte Paare tragen; REPEATABLE READ waere weiterhin ein Problem,
   wird nirgends gesetzt
-- Vorheriger Slice: 2.35 Was die Anmeldung tat – Project Auth schreibt
+- Davor: 2.35 Was die Anmeldung tat – Project Auth schreibt
   jetzt Audit-Ereignisse in die Hash-Kette der Plattform: signup, login
   (erfolgreich und fehlgeschlagen), logout, mfa enrolled/verified, admin
   user.updated, session.revoked, sessions.revoked_all; kein Refresh. Sink

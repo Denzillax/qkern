@@ -4935,3 +4935,32 @@ Zeitstempel (kein Codepfad setzt einen; eine logische Wiederherstellung
 mit aktiven Triggern wuerde Hashes brechen); Zeilen vor 0047 koennen alte
 Paare tragen; unter REPEATABLE READ saehe der Trigger frische Zeilen nicht,
 kein Code setzt diese Stufe.
+
+## Was es kostet – Release 2.37
+
+Die Ansicht Einstellungen, Abrechnung zeigt, was das Abrechnungs-Backend
+weiss, und nichts darueber hinaus. Es gibt keinen eigenen
+Preisblatt-Endpunkt; die Preise stehen in den bepreisten Zeilen der
+Monatsprojektion, und die Karte sagt, dass es die Preise zum Monatsende
+sind. Der laufende Monat nennt Summe, Zeitraum und je Metrik den Betrag
+oder "ohne Preis"; unbepreiste Metriken sind als nicht enthalten
+ausgewiesen. Die Rechnungen kommen aus derselben Karte wie unter Nutzung
+& Limits, die dafuer aus `console-app.tsx` herausgeloest wurde.
+
+Geld wird an einer Stelle formatiert (`lib/console/money.ts`), mit BigInt
+und ohne Gleitkomma, und es rundet ab wie der Rechnungslauf: die Anzeige
+zeigt nie mehr, als der Ledger bucht; der genaue Mikrobetrag steht im
+Tooltip. Der Vertragstest liest die Quelle der Ansicht: keine
+Schreibmethode, kein Betrag von Hand, jede Metrikbezeichnung in allen
+vier Sprachen.
+
+Mutation: die Anzeige rundet auf statt ab; 2 Faelle fallen, exit 1.
+
+Checkpoint `2.37.0` am 26. September 2026: Lokal 1302 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Mutation 2 von 1302 fallen, exit 1;
+`next build` gruen. Kein Serveraenderung, deshalb keine
+Docker-Zertifizierung.
+
+Nicht erbracht: keine Zahlungsanbindung, kein Versand; im Browser nur der
+Aus-Zustand gesehen, weil Metering lokal aus ist; ein "gueltig ab" je Preis
+fehlt, weil kein Endpunkt es liefert.

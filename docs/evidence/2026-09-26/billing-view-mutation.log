@@ -1,0 +1,48 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-money.test.ts (5 tests | 2 failed) 10ms
+     × rounds down to the cent like the invoice run and keeps zero unsigned 5ms
+     × truncates negative amounts toward zero, so the magnitude never grows 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-money.test.ts > console money > rounds down to the cent like the invoice run and keeps zero unsigned
+AssertionError: expected 'CHF 0.03' to be 'CHF 0.02' // Object.is equality
+
+Expected: "CHF 0.02"
+Received: "CHF 0.03"
+
+ ❯ tests/console-money.test.ts:23:47
+     21|
+     22|   it("rounds down to the cent like the invoice run and keeps zero unsi…
+     23|     expect(formatMoneyMicros("25000", "CHF")).toBe("CHF 0.02");
+       |                                               ^
+     24|     expect(formatMoneyMicros("12349999", "CHF")).toBe("CHF 12.34");
+     25|     expect(formatMoneyMicros("12999999", "CHF")).toBe("CHF 12.99");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/console-money.test.ts > console money > truncates negative amounts toward zero, so the magnitude never grows
+AssertionError: expected 'CHF -12.35' to be 'CHF -12.34' // Object.is equality
+
+Expected: "CHF -12.34"
+Received: "CHF -12.35"
+
+ ❯ tests/console-money.test.ts:34:51
+     32|
+     33|   it("truncates negative amounts toward zero, so the magnitude never g…
+     34|     expect(formatMoneyMicros("-12349999", "CHF")).toBe("CHF -12.34");
+       |                                                   ^
+     35|     expect(formatMoneyMicros("-12999999", "CHF")).toBe("CHF -12.99");
+     36|     expect(formatMoneyMicros("-9999", "CHF")).toBe("CHF 0.00");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 12 passed (14)
+   Start at  09:44:42
+   Duration  454ms (transform 193ms, setup 0ms, import 360ms, tests 50ms, environment 0ms)
+
+EXIT=1

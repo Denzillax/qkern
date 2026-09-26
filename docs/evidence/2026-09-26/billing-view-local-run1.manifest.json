@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "billing-view-local-run1.log",
+  "commit": "e9641a027a383a7cc687916f2b07afdcee848fce",
+  "commitSubject": "console: Abrechnung, Zeitraeume einheitlich, Vertrag breiter",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1302 passed | 257 skipped (1559)",
+  "passed": 1302,
+  "failed": 0,
+  "skipped": 257,
+  "images": []
+}

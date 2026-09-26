@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Geldanzeige rundet auf",
+  "log": "billing-view-mutation.log",
+  "commit": "e9641a027a383a7cc687916f2b07afdcee848fce",
+  "commitSubject": "console: Abrechnung, Zeitraeume einheitlich, Vertrag breiter",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "2 failed | 12 passed (14)",
+  "passed": 12,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}
