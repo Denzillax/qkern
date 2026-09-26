@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: entfernte Zeilen ausgeblendet",
+  "log": "storage-log-mutation.log",
+  "commit": "0e12c003ca021a67310225ea620eef0d91a59960",
+  "commitSubject": "console: Speicherobjekte mit Urteil, ohne Zugriffsprotokoll zu erfinden",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 185 passed (186)",
+  "passed": 185,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

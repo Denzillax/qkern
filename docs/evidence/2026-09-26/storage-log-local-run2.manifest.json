@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "storage-log-local-run2.log",
+  "commit": "0e12c003ca021a67310225ea620eef0d91a59960",
+  "commitSubject": "console: Speicherobjekte mit Urteil, ohne Zugriffsprotokoll zu erfinden",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1581 passed | 269 skipped (1850)",
+  "passed": 1581,
+  "failed": 0,
+  "skipped": 269,
+  "images": []
+}

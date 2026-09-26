@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.48.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.49.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,25 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.48.0`
-- Aktueller Slice: 2.48 Drei Slices nebeneinander – zwei Implementierer
+- Paketversion: `2.49.0`
+- Aktueller Slice: 2.49 Was der Scanner sah – "Storage" unter Logs ist
+  eine echte, nur lesende Ansicht (`components/console/storage-log-view.tsx`)
+  mit Filter nach Bucket und Urteil, dazu ist "Realtime" unter Berichte an
+  die geteilte Reihe aus 2.45 angeschlossen, weil die Metrik
+  `realtime_messages` wirklich existiert. Zwei Befunde: Erstens fuehrt QKERN
+  **kein** Zugriffsprotokoll je Objekt; eine Zeile traegt nur den aktuellen
+  Stand, und ein Urteil ueberschreibt das vorherige. Der Platzhalter
+  versprach Uploads, Downloads und Urteile je Objekt; die Ansicht zeigt den
+  Stand und sagt vor der ersten Zeile, was sie nicht hat. Zweitens setzt
+  `setObjectStatus` beim Urteil `infected` im selben Schritt `deleted_at`,
+  und die bestehende Auflistung filtert entfernte Zeilen weg: ein
+  infiziertes Objekt waere nie sichtbar gewesen. `listObjectLog` behaelt
+  solche Zeilen bewusst. PostgreSQL-Fall "(2.51)": 186 statt 185 Faelle, in
+  `tests/project-storage-postgres.integration.test.ts`, der vom
+  **PostgreSQL**-Stack gefahren wird und nicht vom versitygw-Stack.
+  Mutation (entfernte Zeilen wieder ausgeblendet) faellt dort in 1 Fall.
+  Im Browser nicht gesehen
+- Vorheriger Slice: 2.48 Drei Slices nebeneinander – zwei Implementierer
   arbeiteten gleichzeitig in eigenen Arbeitskopien, ihre Zweige wurden
   danach zusammengefuehrt. **Anmeldungen beobachten**: "Auth" unter Berichte
   und unter Logs sind echte Ansichten
@@ -73,7 +90,7 @@ Grossbuchstaben.
   Zertifizierungsfall. PostgreSQL-Faelle "(2.47)" und "(2.49)": 185 statt
   183 Faelle. Beim Zusammenfuehren fielen zwei Vertraege zu Recht, verwaiste
   Uebersetzungen und die Fallzahl. Im Browser nicht gesehen
-- Vorheriger Slice: 2.47 Grenzen und Rechte von Realtime – die Platzhalter
+- Davor: 2.47 Grenzen und Rechte von Realtime – die Platzhalter
   "Einstellungen" und "Policies" unter Realtime sind echte, nur lesende
   Ansichten (`components/console/realtime-settings-view.tsx` und
   `realtime-policies-view.tsx`). `lib/server/realtime/settings.ts` sammelt

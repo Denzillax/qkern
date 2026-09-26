@@ -5428,3 +5428,41 @@ Aufrufer kann weiterhin beliebiges SQL an die Change-Set-Route schicken,
 das war schon vorher so; der Designer fuegt keine Flaeche hinzu. Die
 Reihe der Anmeldungen kennt kein Auffrischen von Token, weil der Dienst es
 nicht protokolliert. Im Browser nicht gesehen.
+
+## Was der Scanner sah – Release 2.49
+
+Der Platzhalter versprach "Uploads, Downloads und Scanner-Urteile je
+Objekt". Zwei Drittel davon gibt es nicht. Der Speicher fuehrt kein
+Ereignisprotokoll: eine Zeile je Objekt traegt den aktuellen Stand, ein
+Urteil ueberschreibt das vorherige, und ein Download hinterlaesst nichts
+ausser einer kurzlebigen signierten Adresse. Statt ein Protokoll zu
+erfinden, zeigt die Ansicht den Stand der Objekte mit ihrem Urteil und sagt
+vor der ersten Zeile, was sie nicht hat.
+
+Beim Bauen kam ein Fehler ans Licht, der ohne diese Arbeit unentdeckt
+geblieben waere. Stuft der Scanner ein Objekt als befallen ein, setzt
+derselbe Schritt auch den Loeschzeitpunkt. Die bestehende Auflistung
+filtert entfernte Zeilen weg. Ein infiziertes Objekt waere damit in keiner
+Liste je aufgetaucht: genau das Urteil, das am meisten zaehlt, waere
+unsichtbar gewesen. Die neue Abfrage behaelt solche Zeilen, und der
+Kommentar im Code sagt, warum.
+
+Die Mutationsprobe belegt es. Blendet die Abfrage entfernte Zeilen wieder
+aus, faellt der Zertifizierungsfall, weil das infizierte Objekt aus der
+Liste verschwindet.
+
+Ein Wort zum Verfahren: Ich habe den Fall zuerst im falschen Stack laufen
+lassen. Die Storage-Integrationsdatei gehoert zum PostgreSQL-Lauf, nicht
+zum versitygw-Lauf, und die acht bestandenen Faelle dort kamen aus einer
+ganz anderen Datei. Ein gruener Lauf beweist nichts, wenn er die falsche
+Datei faehrt.
+
+Checkpoint `2.49.0` am 26. September 2026: PostgreSQL 17 mit 186 von 186,
+exit 0, zweimal reproduziert; Lokal 1581 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Kein Zugriffsprotokoll, keine Historie der Urteile, keine
+signierte Adresse und kein Provider-Schluessel in der Antwort. Die Zahlen je
+Urteil folgen dem gewaehlten Bucket, nicht dem gewaehlten Urteil. Die
+Reihe fuer Realtime zaehlt zugestellte Nachrichten, nicht Verbindungen. Im
+Browser nicht gesehen.
