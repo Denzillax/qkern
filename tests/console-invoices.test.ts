@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadConsoleInvoices } from "@/components/console/invoices";
+import { inclusivePeriodEnd, loadConsoleInvoices } from "@/components/console/invoices";
 
 /**
  * Der Ladeweg der Console-Rechnungsansicht — die eine Stelle, die die
@@ -40,11 +40,15 @@ describe("console invoices loader", () => {
   });
 
   it("reports disabled metering and failures as their own states", async () => {
-    const disabled = vi.fn().mockResolvedValue(new Response("{}", { status: 503 }));
+    const disabled = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Usage Metering is disabled" }), { status: 503 }));
     expect(await loadConsoleInvoices("prj-1", "development", disabled as unknown as typeof fetch))
       .toEqual({ state: "disabled" });
     const pool = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Usage unavailable" }), { status: 503 }));
     expect(await loadConsoleInvoices("prj-1", "development", pool as unknown as typeof fetch))
+      .toEqual({ state: "unavailable" });
+    // Ein 503 ohne die Aussage "abgeschaltet" ist nicht abgeschaltet.
+    const bare = vi.fn().mockResolvedValue(new Response("{}", { status: 503 }));
+    expect(await loadConsoleInvoices("prj-1", "development", bare as unknown as typeof fetch))
       .toEqual({ state: "unavailable" });
     const failing = vi.fn().mockResolvedValue(new Response("{}", { status: 500 }));
     expect(await loadConsoleInvoices("prj-1", "development", failing as unknown as typeof fetch))
@@ -55,5 +59,14 @@ describe("console invoices loader", () => {
     const throwing = vi.fn().mockRejectedValue(new Error("offline"));
     expect(await loadConsoleInvoices("prj-1", "development", throwing as unknown as typeof fetch))
       .toEqual({ state: "error" });
+  });
+
+  it("shows the exclusive period end as the last included UTC day", () => {
+    expect(inclusivePeriodEnd("2026-06-01")).toBe("2026-05-31");
+    expect(inclusivePeriodEnd("2026-03-01")).toBe("2026-02-28");
+    expect(inclusivePeriodEnd("2028-03-01")).toBe("2028-02-29");
+    expect(inclusivePeriodEnd("2027-01-01")).toBe("2026-12-31");
+    expect(inclusivePeriodEnd("")).toBe("");
+    expect(inclusivePeriodEnd("kaputt")).toBe("kaputt");
   });
 });

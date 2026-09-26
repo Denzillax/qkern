@@ -50,11 +50,13 @@ export function billingMetricLabel(metric: string): string {
   }
 }
 
-function unitLabel(unit: string): string {
+/** Einheit in Einzahl oder Mehrzahl, je nach Menge. */
+function unitLabel(unit: string, count: bigint): string {
+  const one = count === 1n || count === -1n;
   switch (unit) {
-    case "operations": return t("Vorgänge");
-    case "rows": return t("Zeilen");
-    case "bytes": return t("Bytes");
+    case "operations": return one ? t("Vorgang") : t("Vorgänge");
+    case "rows": return one ? t("Zeile") : t("Zeilen");
+    case "bytes": return one ? t("Byte") : t("Bytes");
     default: return unit;
   }
 }
@@ -62,7 +64,14 @@ function unitLabel(unit: string): string {
 const GROUPING = new Intl.NumberFormat("de-CH");
 function quantity(value: string | null, unit: string): string {
   const parsed = parseMicros(value);
-  return parsed === null ? "–" : `${GROUPING.format(parsed)} ${unitLabel(unit)}`;
+  return parsed === null ? "–" : `${GROUPING.format(parsed)} ${unitLabel(unit, parsed)}`;
+}
+
+/** "je Vorgang" bei einer Einheit, sonst "je 1'000 Vorgänge". */
+function perUnits(value: string | null, unit: string): string {
+  const parsed = parseMicros(value);
+  if (parsed === null) return "–";
+  return parsed === 1n ? `${t("je")} ${unitLabel(unit, parsed)}` : `${t("je")} ${quantity(value, unit)}`;
 }
 
 export function BillingSettingsView({ projectId, environment, navigate }: {
@@ -97,33 +106,36 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
   const priced = projection ? projection.lines.filter((line) => line.priced) : [];
   const range = projection ? periodRange(projection.period) : null;
 
-  const notReady = <>
+  // Solange keine Projektion da ist, steht der Zustand einmal auf der Seite,
+  // in einer Karte fuer Preisblatt und laufenden Monat.
+  const notReady = !projection && <article className="console-card span-2">
+    <div className="card-head"><div><span>{t("PREISBLATT")} · {t("LAUFENDER MONAT")} · {environment.toUpperCase()}</span><h3>{t("Abrechnung")}</h3></div>{reload}</div>
     {result.state === "loading" && <p className="muted">{t("Projektion wird geladen…")}</p>}
     {result.state === "disabled" && <p><strong>{t("Abgeschaltet")}</strong> · {t("Usage Metering ist für diese Installation abgeschaltet; ohne Zähler gibt es weder Projektion noch Rechnungen. Eingeschaltet wird es über QKERN_USAGE_METERING_ENABLED.")}</p>}
     {result.state === "unavailable" && <p className="muted">{t("Die Abrechnung ist gerade nicht erreichbar. Versuche es gleich noch einmal.")}</p>}
     {result.state === "error" && <p className="muted">{t("Die Projektion konnte nicht geladen werden.")}{result.message ? ` ${result.message}` : ""}</p>}
-  </>;
+  </article>;
 
   return <div className="module-grid">
     <div className="product-preview-notice span-2"><ShieldCheck size={16}/><div><strong>{t("Abrechnung, nur lesend")}</strong><span>{t("Es gibt keine Zahlungsanbindung. Rechnungen entstehen im Rechnungslauf aus dem Nutzungsledger abgeschlossener Monate und werden nicht versandt.")}</span></div></div>
 
-    <article className="console-card">
+    {notReady}
+
+    {projection && <article className="console-card">
       <div className="card-head"><div><span>{t("PREISBLATT")} · {environment.toUpperCase()}</span><h3>{t("Preise der Organisation")}</h3></div>{reload}</div>
-      {notReady}
-      {projection && priced.length === 0 && <p className="muted">{t("Für diese Organisation ist noch kein Preis gesetzt. Preise setzt ein Operator, nicht die Console.")}</p>}
-      {projection && priced.length > 0 && <div className="detail-list">
+      {priced.length === 0 && <p className="muted">{t("Für diese Organisation ist noch kein Preis gesetzt. Preise setzt ein Operator, nicht die Console.")}</p>}
+      {priced.length > 0 && <div className="detail-list">
         {priced.map((line) => <div key={line.metric}>
-          <span title={line.metric}>{billingMetricLabel(line.metric)}<small>{t("je")} {quantity(line.perUnits, line.unit)} · {projection.currency ?? "–"}</small></span>
+          <span title={line.metric}>{billingMetricLabel(line.metric)}<small>{perUnits(line.perUnits, line.unit)}</small></span>
           <strong>{line.unitPriceMicros !== null && projection.currency ? formatUnitPriceMicros(line.unitPriceMicros, projection.currency) : "–"}</strong>
         </div>)}
       </div>}
-      {projection && <p className="muted">{t("Es gilt der Preis, der am Ende des laufenden Monats wirksam ist. Ein Gültig-ab-Datum liefert die REST-Fläche noch nicht.")}</p>}
-    </article>
+      <p className="muted">{t("Es gilt der Preis, der am Ende des laufenden Monats wirksam ist. Ein Gültig-ab-Datum liefert die REST-Fläche noch nicht.")}</p>
+    </article>}
 
-    <article className="console-card">
-      <div className="card-head"><div><span>{t("LAUFENDER MONAT")}</span><h3>{projection ? `${t("Projektion")} ${projection.period}` : t("Projektion")}</h3></div><Receipt size={18}/></div>
-      {notReady}
-      {projection && <>
+    {projection && <article className="console-card">
+      <div className="card-head"><div><span>{t("LAUFENDER MONAT")}</span><h3>{`${t("Projektion")} ${projection.period}`}</h3></div><Receipt size={18}/></div>
+      <>
         <p>
           <strong>{projection.currency ? formatMoneyMicros(projection.totalMicros, projection.currency) : t("Kein Betrag, weil noch kein Preis gesetzt ist.")}</strong>
           {range && <> · {range.first} {t("bis")} {range.last} (UTC)</>}
@@ -135,9 +147,9 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
           </div>)}
         </div>
         {projection.unpricedMetrics.length > 0 && <p className="muted">{t("Ohne Preis und nicht in der Summe:")} {projection.unpricedMetrics.map(billingMetricLabel).join(", ")}</p>}
-        <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Je Metrik ist auf die Mikro-Einheit abgerundet; angezeigt wird auf zwei Nachkommastellen abgerundet.")}</p>
-      </>}
-    </article>
+        <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Jede Zeile wird einzeln auf zwei Nachkommastellen abgerundet angezeigt, die Summe als Ganzes; die Zeilen können deshalb zusammen weniger ergeben als die Summe.")}</p>
+      </>
+    </article>}
 
     <div className="span-2"><InvoicesCard projectId={projectId} environment={environment} onOpenUsage={() => navigate("monitoring")}/></div>
   </div>;

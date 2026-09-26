@@ -24,7 +24,8 @@ describe("console billing view", () => {
   it("reads only and carries no amount or currency of its own", async () => {
     for (const file of ["components/console/billing-settings-view.tsx", "components/console/invoices-card.tsx"]) {
       const code = strip(await read(file));
-      expect(code, file).not.toMatch(/method:\s*"(?:POST|PATCH|PUT|DELETE)"/);
+      // Jede Schreibweise: beliebige Anfuehrungszeichen, gross oder klein, auch als Schluessel in Anfuehrungszeichen.
+      expect(code, file).not.toMatch(/["'`]?method["'`]?\s*:\s*["'`](?:post|patch|put|delete)["'`]/i);
       expect(code, file).not.toMatch(/\b(?:CHF|EUR|USD|GBP)\b/);
       expect(code, file).not.toMatch(/\d+\.\d{2}\b/);
       expect(code, file).not.toMatch(/toFixed\(|Number\([^)]*[Mm]icros/);
@@ -35,6 +36,8 @@ describe("console billing view", () => {
     expect(view).toContain("AbortController");
     expect(view).toContain("formatMoneyMicros");
     expect(view).toContain("StableLabel");
+    // Der Zustand ohne Projektion steht einmal auf der Seite, nicht je Karte.
+    expect(view.match(/\{notReady\}/g)).toHaveLength(1);
   });
 
   it("formats invoice totals through the shared helper", async () => {

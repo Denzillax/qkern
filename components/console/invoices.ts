@@ -7,6 +7,8 @@
  * Invoices-Route wirklich aufruft; die React-Ansicht haengt sie nur ein.
  */
 
+import { USAGE_METERING_DISABLED_ERROR } from "@/lib/console/billing";
+
 export type ConsoleInvoiceLine = { metric: string; amount: string };
 
 export type ConsoleInvoice = {
@@ -36,6 +38,17 @@ type WireInvoice = {
   lines?: Array<{ metric?: unknown; amount?: unknown }>;
 };
 
+/**
+ * `periodEnd` ist exklusiv (Migration 0040: period_start + 1 Monat). Angezeigt
+ * wird der letzte eingeschlossene Tag in UTC, wie beim laufenden Monat.
+ */
+export function inclusivePeriodEnd(periodEnd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) return periodEnd;
+  const day = new Date(`${periodEnd}T00:00:00.000Z`);
+  if (Number.isNaN(day.getTime())) return periodEnd;
+  return new Date(day.getTime() - 86_400_000).toISOString().slice(0, 10);
+}
+
 export async function loadConsoleInvoices(
   projectId: string,
   environment: string,
@@ -48,9 +61,10 @@ export async function loadConsoleInvoices(
     );
     if (response.status === 503) {
       // Dieselbe 503 traegt zwei Bedeutungen (usageRouteError): abgeschaltetes
-      // Metering oder ein erschoepfter Verbindungspool. Nur der Body trennt sie.
+      // Metering oder ein erschoepfter Verbindungspool. Nur der Body trennt
+      // sie; abgeschaltet heisst es nur, wenn der Body das sagt (wie billing.ts).
       const failure = (await response.json().catch(() => ({}))) as { error?: unknown } | null;
-      return failure?.error === "Usage unavailable" ? { state: "unavailable" } : { state: "disabled" };
+      return failure?.error === USAGE_METERING_DISABLED_ERROR ? { state: "disabled" } : { state: "unavailable" };
     }
     if (!response.ok) return { state: "error" };
     const body = (await response.json()) as { data?: WireInvoice[] };
