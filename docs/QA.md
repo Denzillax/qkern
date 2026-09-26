@@ -5161,3 +5161,50 @@ Aufbewahrung loescht Nachrichten, ein Vorkommen wandert dann von gefunden
 zu erwartet. Offen und nicht repariert: eine Queue mit Dedupe-Fenster 0
 laesst zusammen mit einem Dedupe-Schluessel jeden Cron-Lauf scheitern. Im
 Browser nicht gesehen.
+
+## Ein Fenster von null – Release 2.43
+
+Dieser Release baut nichts Neues. Er behebt einen Fehler, den die Arbeit am
+Cron-Log zutage brachte: Eine Queue mit Dedupe-Fenster null liess jedes
+Einreihen mit Dedupe-Schluessel scheitern, und weil der Dispatcher immer
+einen Schluessel mitgibt, scheiterte jeder Cron-Job auf so einer Queue bei
+jedem Vorkommen.
+
+Die Ursache lag anders, als die erste Vermutung sagte. Nicht ein gleicher
+Zeitpunkt war das Problem, sondern eine fehlende Frist: Das Repository
+schrieb bei Fenster null den Verifikator ohne `dedupe_expires_at`, und die
+Bedingung verlangt beides oder keines. Nach aussen kam `QUEUE_CONFLICT`,
+also eine Aussage ueber ein Rennen, das nie stattfand. Der Fehler war
+unsichtbar, weil der Speicherport diese Bedingung nicht kennt; erst die
+Zertifizierung gegen echtes PostgreSQL bringt so etwas ans Licht.
+
+Entschieden wurde: Fenster null heisst keine Entdopplung. Der Grund steht
+am Entscheidungspunkt im Code. Null ist in Schema, OpenAPI und Route als
+gueltige Einstellung zugesagt; Queue-Definitionen sind unveraenderlich, ein
+Ablehnen wuerde bestehende Queues also dauerhaft unbrauchbar machen statt
+sie zu reparieren; jede andere Stelle liest null ohnehin als "kein
+Fenster"; und ein Verifikator ohne Frist waere nicht nur ungueltig, sondern
+schaedlich, weil der eindeutige Index ihn fuer immer hielte. Eine Migration
+braucht es nicht, weil solche Zeilen nie einfuegbar waren.
+
+Der Preis steht im Handbuch statt im Verborgenen: Wer Entdopplung braucht,
+und das tut jeder Cron-Job, muss ein Fenster groesser als null waehlen. Auf
+einer Queue ohne Fenster laeuft ein Cron-Job mindestens einmal je
+Vorkommen, nicht genau einmal.
+
+Der Zertifizierungsfall prueft nicht nur das neue Verhalten, sondern auch,
+dass die Bedingung wirklich greift: Er versucht von Hand, einen Verifikator
+ohne Frist einzufuegen, und erwartet die Ablehnung.
+
+Mutation: die Behebung wird an beiden Stellen zurueckgedreht. Im Stack
+faellt 1 von 180 Faellen, lokal 1 von 17, exit 1 beide Male.
+
+Checkpoint `2.43.0` am 26. September 2026: PostgreSQL 17 mit 180 von 180,
+exit 0, zweimal reproduziert; Lokal 1398 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Ein Aufrufer, der den Konflikt bisher als "schon
+eingereiht" gelesen hat, sieht jetzt mehrere Nachrichten. Genau auf der
+Fensterkante entdoppelt der Speicherport einschliessend und PostgreSQL
+nicht; der Test meidet die Kante und nennt den Grund, geaendert wurde
+nichts.

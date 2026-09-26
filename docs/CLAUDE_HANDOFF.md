@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.42.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.43.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,31 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.42.0`
-- Aktueller Slice: 2.42 Was der Zeitplan ausgeloest hat – der Platzhalter
+- Paketversion: `2.43.0`
+- Aktueller Slice: 2.43 Ein Fenster von null – keine neue Ansicht, sondern
+  die Behebung eines Fehlers, den 2.42 nebenbei zutage brachte. Eine Queue
+  mit `dedupeWindowSeconds = 0` liess jedes Einreihen mit Dedupe-Schluessel
+  scheitern. Die Ursache lag nicht beim gleichen Zeitpunkt, sondern bei einer
+  fehlenden Frist: `postgres-repository.ts` schrieb den Verifikator ohne
+  `dedupe_expires_at`, und `project_queue_messages_dedupe_pair` verlangt
+  beides oder keines. Der Aufrufer bekam `QUEUE_CONFLICT`, also die Aussage
+  ueber ein Rennen, das nie stattfand. Gewaehlte Lesart: Fenster null heisst
+  keine Entdopplung, also wird weder Verifikator noch Frist geschrieben.
+  Begruendung am Entscheidungspunkt in `service.ts`: null ist in Schema,
+  OpenAPI und Route als gueltig zugesagt, Queue-Definitionen sind
+  unveraenderlich (ein Ablehnen wuerde bestehende Queues dauerhaft
+  unbrauchbar machen), jede andere Stelle liest null schon so, und ein
+  Verifikator ohne Frist bliebe fuer immer im eindeutigen Index stehen, weil
+  die Bereinigung nur abgelaufene Fristen raeumt. Keine Migration: solche
+  Zeilen waren nie einfuegbar. Folge fuer Cron auf solchen Queues:
+  mindestens einmal statt genau einmal, im Handbuch und in den
+  Compute-Contracts benannt. PostgreSQL-Fall "(2.43)": 180 statt 179 Faelle,
+  er prueft auch, dass die Bedingung wirklich greift, indem er von Hand
+  einen Verifikator ohne Frist einzufuegen versucht. Mutation (Behebung
+  zurueckgedreht) faellt im Stack in 1 und lokal in 1 Fall. Nebenbefund,
+  nicht geaendert: genau auf der Fensterkante entdoppelt der Speicherport
+  einschliessend, PostgreSQL nicht
+- Vorheriger Slice: 2.42 Was der Zeitplan ausgeloest hat – der Platzhalter
   "Cron" unter Logs ist eine echte, nur lesende Ansicht
   (`components/console/cron-log-view.tsx`). Es gibt kein Laufprotokoll; das
   Log wird rekonstruiert: erwartete Vorkommen aus dem Ausdruck, dazu der
@@ -75,7 +98,7 @@ Grossbuchstaben.
   Dedupe-Fenster 0 verletzt zusammen mit einem Dedupe-Schluessel
   `project_queue_messages_dedupe_pair`, ein solcher Cron-Job scheitert bei
   jedem Vorkommen. Im Browser nicht gesehen
-- Vorheriger Slice: 2.41 Das Schema als Bild – der Platzhalter
+- Davor: 2.41 Das Schema als Bild – der Platzhalter
   "Schema-Visualizer" ist eine echte, nur lesende Ansicht
   (`components/console/schema-visualizer-view.tsx`): Tabellen mit Spalten und
   die Fremdschluessel dazwischen, als SVG. Neue Data-Plane-Methode

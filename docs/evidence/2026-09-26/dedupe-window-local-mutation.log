@@ -1,0 +1,34 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/project-queues-service.test.ts (12 tests | 1 failed) 32ms
+     × enqueues into a queue without a dedupe window instead of breaking its dedupe pair 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/project-queues-service.test.ts > Project Queues service > enqueues into a queue without a dedupe window instead of breaking its dedupe pair
+ProjectQueueError: QUEUE_CONFLICT
+ ❯ mapError lib/server/project-queues/service.ts:496:10
+    494|     return new ProjectQueueError("QUEUE_UNAVAILABLE", { cause: error }…
+    495|   }
+    496|   return new ProjectQueueError("QUEUE_CONFLICT", { cause: error });
+       |          ^
+    497| }
+    498|
+ ❯ ProjectQueueService.enqueue lib/server/project-queues/service.ts:225:29
+ ❯ tests/project-queues-service.test.ts:146:19
+
+Caused by: Error: new row for relation "project_queue_messages" violates check constraint "project_queue_messages_dedupe_pair"
+ ❯ DedupePairCheckingRepository.enqueue tests/project-queues-service.test.ts:41:13
+ ❯ ProjectQueueService.enqueue lib/server/project-queues/service.ts:215:57
+ ❯ tests/project-queues-service.test.ts:146:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 16 passed (17)
+   Start at  18:43:27
+   Duration  442ms (transform 247ms, setup 0ms, import 338ms, tests 44ms, environment 0ms)
+
+EXIT=1

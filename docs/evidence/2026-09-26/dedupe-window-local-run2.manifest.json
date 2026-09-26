@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "dedupe-window-local-run2.log",
+  "commit": "2227f8673048fbd4ca99e3faaee286434d9e09bf",
+  "commitSubject": "queues: Dedupe-Fenster null laesst kein Vorkommen mehr scheitern",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1398 passed | 263 skipped (1661)",
+  "passed": 1398,
+  "failed": 0,
+  "skipped": 263,
+  "images": []
+}

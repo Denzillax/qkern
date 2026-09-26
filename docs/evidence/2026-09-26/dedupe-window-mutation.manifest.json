@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Behebung zurueckgedreht, Verifikator ohne Frist",
+  "log": "dedupe-window-mutation.log",
+  "commit": "2227f8673048fbd4ca99e3faaee286434d9e09bf",
+  "commitSubject": "queues: Dedupe-Fenster null laesst kein Vorkommen mehr scheitern",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 179 passed (180)",
+  "passed": 179,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

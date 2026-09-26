@@ -1486,3 +1486,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/cron-log-local-mutation.log` | Vitest lokal, Mutation, nur Cron-Tests | **9 von 11, exit 1 – absichtlich** |
 | `2026-09-26/cron-log-local-run1.log` | Vitest lokal (Windows) | 1395 bestanden, exit 0 |
 | `2026-09-26/cron-log-local-run2.log` | Vitest lokal (Windows) | 1395 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.43 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/dedupe-window-run1.log` | PostgreSQL 17 | 180 von 180, exit 0 |
+| `2026-09-26/dedupe-window-run2.log` | PostgreSQL 17 | 180 von 180, exit 0, Wiederholung |
+| `2026-09-26/dedupe-window-mutation.log` | PostgreSQL 17, Mutation (Behebung zurückgedreht) | **179 von 180, exit 1 – absichtlich** |
+| `2026-09-26/dedupe-window-local-mutation.log` | Vitest lokal, Mutation, Queue- und Cron-Tests | **16 von 17, exit 1 – absichtlich** |
+| `2026-09-26/dedupe-window-local-run1.log` | Vitest lokal (Windows) | 1398 bestanden, exit 0 |
+| `2026-09-26/dedupe-window-local-run2.log` | Vitest lokal (Windows) | 1398 bestanden, exit 0, Wiederholung |

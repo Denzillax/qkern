@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Behebung zurueckgedreht, nur Queue- und Cron-Tests",
+  "log": "dedupe-window-local-mutation.log",
+  "commit": "2227f8673048fbd4ca99e3faaee286434d9e09bf",
+  "commitSubject": "queues: Dedupe-Fenster null laesst kein Vorkommen mehr scheitern",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 16 passed (17)",
+  "passed": 16,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}
