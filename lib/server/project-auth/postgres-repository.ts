@@ -282,7 +282,12 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
                     verified_at = EXCLUDED.verified_at
       RETURNING ${MFA_COLUMNS}`, [
       factor.id, factor.organizationId, factor.projectId, factor.environment, factor.userId,
-      factor.encryptedSecret, factor.recoveryCodeHashes, factor.createdAt, factor.verifiedAt,
+      // `recovery_code_hashes` ist jsonb. Ein JavaScript-Feld macht der Treiber
+      // zu einem Postgres-Feld (`{a,b}`), und das ist kein gueltiges JSON: die
+      // Einrichtung scheiterte damit an der echten Datenbank. Erst der Fall
+      // (2.52) hat das gezeigt, weil kein anderer Fall diesen Weg ging.
+      factor.encryptedSecret, JSON.stringify(factor.recoveryCodeHashes),
+      factor.createdAt, factor.verifiedAt,
     ]);
     return mfaFromRow(result.rows[0]);
   }
@@ -306,7 +311,8 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
       factor.recoveryCodeHashes.splice(index, 1);
       await client.query(`UPDATE project_auth_mfa_factors SET recovery_code_hashes = $5
         WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4`,
-      [...scopeValues(scope), userId, factor.recoveryCodeHashes]);
+      // Auch hier jsonb: dasselbe Feld, derselbe Fehler, dieselbe Behebung.
+      [...scopeValues(scope), userId, JSON.stringify(factor.recoveryCodeHashes)]);
       await client.query("COMMIT");
       started = false;
       return true;
