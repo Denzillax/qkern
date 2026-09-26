@@ -129,6 +129,11 @@ describe("guide markdown parser", () => {
     expect(() => parseGuide("# Eins\n\n# Zwei\n")).toThrow(/Zeile 3/);
   });
 
+  it("rejects links in headings, because the website links every heading to itself", () => {
+    expect(() => parseGuide("# T\n\n## Siehe [Glossar](GLOSSAR.md)\n")).toThrow(GuideSyntaxError);
+    expect(() => parseGuide("# T\n\n## Siehe [Glossar](GLOSSAR.md)\n")).toThrow(/Zeile 3: Links in Ueberschriften sind nicht vorgesehen/);
+  });
+
   it("reports the offending line inside multi-line paragraphs and quotes", () => {
     expect(() => parseGuide("a\n![x](y)\n")).toThrow(/Zeile 2/);
     expect(() => parseGuide("> a\n> <b>\n")).toThrow(/Zeile 2/);

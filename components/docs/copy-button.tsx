@@ -3,6 +3,7 @@
 import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { StableLabel } from "@/components/stable-label";
+import styles from "@/app/docs/docs.module.css";
 
 /** Kopiert einen Codeblock. Der Knopf wechselt die Beschriftung, nie die Breite. */
 export function CopyButton({ code, labels }: { code: string; labels: { copy: string; copied: string } }) {
@@ -21,9 +22,11 @@ export function CopyButton({ code, labels }: { code: string; labels: { copy: str
     }
   }
   return (
-    <button type="button" className="ghost-button docs-copy" onClick={copy} aria-live="polite">
+    <button type="button" className="ghost-button docs-copy" onClick={copy}>
       {done ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
       <StableLabel current={done ? labels.copied : labels.copy} variants={[labels.copy, labels.copied]} />
+      {/* Screenreader hoeren nur die Bestaetigung, nicht jeden Wechsel der Beschriftung. */}
+      <span role="status" className={styles.visuallyHidden}>{done ? labels.copied : ""}</span>
     </button>
   );
 }

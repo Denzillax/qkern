@@ -264,6 +264,8 @@ export function parseGuide(markdown: string): GuideDocument {
       const level = headingLevel(heading[1], line);
       if (/\s#+$/.test(heading[2])) throw new GuideSyntaxError(line, "Schliessende Rauten sind nicht vorgesehen");
       const text = parseInline(heading[2], line);
+      // Die Website macht jede Ueberschrift selbst zum Ankerlink; ein Link darin waere ein Link im Link.
+      if (text.some((inline) => inline.kind === "link")) throw new GuideSyntaxError(line, "Links in Ueberschriften sind nicht vorgesehen");
       if (level === 1 && title) throw new GuideSyntaxError(line, "Nur eine Ueberschrift der Ebene 1");
       const id = anchor(plain(text), line);
       if (level === 1) title = plain(text);

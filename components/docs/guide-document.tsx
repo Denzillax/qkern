@@ -1,24 +1,32 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import type { Block, Inlines as InlineList } from "@/lib/docs/markdown";
-import { guideHref, isExternal } from "@/lib/docs/links";
+import { assertSafeHref, guideHref, isExternal } from "@/lib/docs/links";
 import { CopyButton } from "@/components/docs/copy-button";
 import styles from "@/app/docs/docs.module.css";
+
+/** Neue Arten in markdown.ts brechen hier den Typcheck statt still zu fehlen. */
+function unreachable(value: never): never {
+  throw new Error(`Unbekannte Art: ${JSON.stringify(value)}`);
+}
 
 function Inlines({ text }: { text: InlineList }) {
   return <>{text.map((inline, index) => {
     switch (inline.kind) {
+      case "text": return <Fragment key={index}>{inline.text}</Fragment>;
       case "strong": return <strong key={index}>{inline.text}</strong>;
       case "em": return <em key={index}>{inline.text}</em>;
       case "code": return <code key={index}>{inline.text}</code>;
       case "link": {
+        assertSafeHref(inline.href);
         const href = guideHref(inline.href);
         if (isExternal(href)) return <a key={index} href={href} rel="noreferrer">{inline.text}</a>;
         // Reine Anker bleiben auf der Seite und brauchen keinen Router.
         if (href.startsWith("#")) return <a key={index} href={href}>{inline.text}</a>;
         return <Link key={index} href={href}>{inline.text}</Link>;
       }
-      default: return <span key={index}>{inline.text}</span>;
     }
+    return unreachable(inline);
   })}</>;
 }
 
@@ -27,6 +35,7 @@ export function GuideDocument({ blocks, labels }: { blocks: readonly Block[]; la
   return <article className={styles.article}>{blocks.map((block, index) => {
     switch (block.kind) {
       case "heading": {
+        // Der Parser weist Links in Ueberschriften ab, darum ist der Selbstlink hier kein Link im Link.
         const Tag = `h${block.level}` as "h1" | "h2" | "h3";
         return <Tag key={index} id={block.id}><a href={`#${block.id}`} className={styles.anchor}><Inlines text={block.text} /></a></Tag>;
       }
@@ -50,5 +59,6 @@ export function GuideDocument({ blocks, labels }: { blocks: readonly Block[]; la
       );
       case "quote": return <aside key={index} className={styles.note}><Inlines text={block.text} /></aside>;
     }
+    return unreachable(block);
   })}</article>;
 }
