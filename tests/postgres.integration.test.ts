@@ -39,6 +39,9 @@ import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/projec
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
 import { NoopDevelopmentProjectAuthDelivery, ProjectAuthService } from "@/lib/server/project-auth/service";
 import { ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
+// Grenzen je Zeitfenster (2.56): dieselbe reine Formel, die der Dienst
+// benutzt, damit der Fall den Hash nachrechnen kann statt ihn zu glauben.
+import { projectAuthRateSubjectHash } from "@/lib/server/project-auth/rate-limits";
 import {
   buildProjectAuthAuditSeries,
   projectAuthSeriesRowLimit,
@@ -1670,6 +1673,215 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await owner.query(`DELETE FROM project_auth_users
       WHERE organization_id = $1 AND project_id = $2`, [targetOrganization, targetProject]);
   });
+
+  it("(2.56) refuses the login attempt that crosses the limit and lets the next window through", async () => {
+    // Der tragende Teil dieses Slices gegen die echte Datenbank, und zwar an
+    // der Stelle, an der er vor 2.56 falsch war: **zwei Dienstinstanzen an
+    // einer Datenbank**. Ein Zaehler im Prozessspeicher haette jeder von
+    // beiden ihre eigenen Versuche gegeben, also in Wahrheit das Doppelte der
+    // eingestellten Grenze. Hier zaehlt PostgreSQL, und darum ist die Summe
+    // beider Instanzen die Grenze.
+    //
+    // Echt ist alles, worauf es ankommt: zwei PostgreSQL-Repositorien am
+    // selben Pool, der Audit-Sink in der Hash-Kette, der Argon2-Hasher und
+    // der Ed25519-Signierer. Fest sind nur die Uhr und die Zustellung; die
+    // Uhr ist hier sogar noetig, weil der Fensterwechsel die zweite Haelfte
+    // der Aussage ist und nicht 15 Minuten dauern darf.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.45, 2.52 und
+    // 2.54: Das Setzen der Grenzen und jede greifende Grenze schreiben eine
+    // Audit-Zeile, und eine Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen; das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden. Weggeraeumt
+    // wird darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const rateOwner = randomUUID();
+    const rateOrganization = randomUUID();
+    const rateProject = randomUUID();
+    const scope = {
+      organizationId: rateOrganization, projectId: rateProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [rateOwner, `auth-rate-owner-${rateOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Rate Limits', $2, $3)`,
+    [rateOrganization, `auth-rate-${rateOrganization}`, rateOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Rate Limits', $3, 'test', 'ready', $4)`,
+    [rateProject, rateOrganization, `auth-rate-${rateProject}`, rateOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [rateOrganization, rateProject, `managed:${rateProject}`]);
+
+    // Eine Uhr, die beide Instanzen teilen — im Betrieb waere das die echte
+    // Zeit, und die teilen sie auch.
+    let at = new Date("2026-09-26T12:00:00.000Z");
+    const { privateKey } = generateKeyPairSync("ed25519");
+    // Zwei Instanzen. Jede hat ihr **eigenes** Repository-Objekt, ihren
+    // eigenen Token-Dienst und ihren eigenen Zaehler im Prozessspeicher —
+    // gemeinsam ist allein die Datenbank. Genau so steht es im Betrieb
+    // hinter einem Lastverteiler.
+    const instance = (label: string) => new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: `certification-2-56-${label}`, privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 9)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+      now: () => new Date(at),
+    });
+    const first = instance("a");
+    const second = instance("b");
+
+    // Ohne Zeile in project_auth_settings gelten die Vorgaben, und das ist
+    // etwas anderes als "jemand hat sie eingetragen".
+    expect(await first.readRateLimits(scope)).toMatchObject({
+      limits: { sign_in: { max: 10, windowSeconds: 900 } }, configured: false, updatedAt: null,
+    });
+
+    const password = "a sufficiently long certification password";
+    const email = `app-${randomUUID()}@example.test`;
+    const signUp = await first.signUp(scope, {
+      email, password, redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    const verified = await second.consumeEmailToken(scope, {
+      token: signUp.debugToken!, purpose: "email_verification",
+    });
+    if ("mfaRequired" in verified) throw new Error("unexpected MFA");
+
+    // Die Grenze, ueber den echten Dienst und in die echten Spalten.
+    const stored = await second.setRateLimits(scope, {
+      sign_in: { max: 3, windowSeconds: 900 },
+      mail: { max: 5, windowSeconds: 3600 },
+      refresh: { max: 2, windowSeconds: 900 },
+    }, { id: rateOwner });
+    expect(stored).toMatchObject({ limits: { sign_in: { max: 3, windowSeconds: 900 } }, configured: true });
+    const columns = await auth.query<{ sign_in_max: number; sign_in_window_seconds: number; refresh_max: number }>(
+      `SELECT sign_in_max, sign_in_window_seconds, refresh_max FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [rateOrganization, rateProject],
+    );
+    expect(columns.rows).toEqual([{ sign_in_max: 3, sign_in_window_seconds: 900, refresh_max: 2 }]);
+
+    // Und jetzt der Satz, um den es geht. Drei Fehlversuche, abwechselnd an
+    // beiden Instanzen: einer unter der Grenze, einer darunter, einer genau
+    // darauf. Alle drei kommen bis zur Passwortpruefung.
+    for (const [attempt, service] of [[1, first], [2, second], [3, first]] as const) {
+      await expect(service.passwordSignIn(scope, { email, password: "wrong", rateLimitKey: randomUUID() }), `attempt ${attempt}`)
+        .rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    }
+    // Der vierte ueberschreitet sie — an der **anderen** Instanz, die selbst
+    // erst einen Versuch gesehen hat. Ihr eigener Prozesszaehler stuende bei
+    // eins; die Datenbank steht bei vier, und die entscheidet.
+    await expect(second.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() }))
+      .rejects.toMatchObject({ code: "RATE_LIMITED", retryAfterSeconds: 900 });
+
+    // Dieselbe Antwort fuer eine Adresse, die es gar nicht gibt: aus einer
+    // Abweisung laesst sich nicht lesen, ob das Konto existiert.
+    const ghost = `ghost-${randomUUID()}@example.test`;
+    for (const attempt of [1, 2, 3]) {
+      await expect(first.passwordSignIn(scope, { email: ghost, password, rateLimitKey: randomUUID() }), `ghost ${attempt}`)
+        .rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    }
+    await expect(second.passwordSignIn(scope, { email: ghost, password, rateLimitKey: randomUUID() }))
+      .rejects.toMatchObject({ code: "RATE_LIMITED" });
+
+    // Der Beweis steht in der Zaehltabelle: der Stand vier, und nirgends eine
+    // Adresse — nur ein SHA-256 in base64url.
+    const signInHash = projectAuthRateSubjectHash({ ...scope, kind: "sign_in", subject: email });
+    const counters = await auth.query<{ kind: string; subject_hash: string; attempts: number }>(
+      `SELECT kind, subject_hash, attempts FROM project_auth_rate_counters
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+       ORDER BY kind, attempts DESC`,
+      [rateOrganization, rateProject],
+    );
+    expect(counters.rows.find((row) => row.subject_hash === signInHash)?.attempts).toBe(4);
+    for (const row of counters.rows) {
+      expect(row.subject_hash).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    }
+    expect(JSON.stringify(counters.rows)).not.toContain("@");
+    expect(JSON.stringify(counters.rows)).not.toContain("example.test");
+
+    // Und die zweite Haelfte: Das naechste Fenster laesst wieder durch, ohne
+    // dass jemand etwas aufraeumen muesste.
+    at = new Date("2026-09-26T12:15:00.000Z");
+    const session = await second.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() });
+    if ("mfaRequired" in session) throw new Error("unexpected MFA");
+    expect(session.accessToken.length).toBeGreaterThan(20);
+    // Dieselbe Anweisung, die hochzaehlt, hat die abgelaufene Zeile
+    // desselben Schluessels weggeraeumt: hoechstens eine Zeile je Schluessel.
+    const afterRollover = await auth.query<{ attempts: number; window_start: Date }>(
+      `SELECT attempts, window_start FROM project_auth_rate_counters
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+         AND kind = 'sign_in' AND subject_hash = $3`,
+      [rateOrganization, rateProject, signInHash],
+    );
+    expect(afterRollover.rows).toHaveLength(1);
+    expect(afterRollover.rows[0].attempts).toBe(1);
+    expect(new Date(afterRollover.rows[0].window_start).toISOString()).toBe("2026-09-26T12:15:00.000Z");
+
+    // Die Erneuerung zaehlt nach der Sitzungsfamilie, und auch sie teilt sich
+    // die Zaehlung ueber beide Instanzen.
+    const refreshed = await first.refresh(scope, session.refreshToken);
+    const again = await second.refresh(scope, refreshed.refreshToken);
+    await expect(first.refresh(scope, again.refreshToken))
+      .rejects.toMatchObject({ code: "RATE_LIMITED" });
+
+    // Die Datenbank haelt die Raender selbst, nicht nur der Dienst.
+    await expect(auth.query(
+      `UPDATE project_auth_settings SET sign_in_max = 0
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [rateOrganization, rateProject],
+    )).rejects.toBeInstanceOf(Error);
+
+    // Der Schalter aus 2.52 und die Liste aus 2.54 teilen sich die Zeile mit
+    // den Grenzen, fassen einander aber nicht an.
+    await first.setMfaRequired(scope, true, { id: rateOwner });
+    await first.setReturnTargets(scope, ["https://app.test"], { id: rateOwner });
+    const shared = await auth.query<{ mfa_required: boolean; redirect_allow_list: string[]; sign_in_max: number }>(
+      `SELECT mfa_required, redirect_allow_list, sign_in_max FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [rateOrganization, rateProject],
+    );
+    expect(shared.rows).toEqual([{
+      mfa_required: true, redirect_allow_list: ["https://app.test"], sign_in_max: 3,
+    }]);
+
+    // Jede Aenderung und jede greifende Grenze stehen in der Hash-Kette, ohne
+    // Adresse, ohne Schluessel und ohne Hash.
+    const page = await first.listAuditEvents(scope, 100);
+    const changed = page.events.filter((event) => event.action === "project_auth.rate_limits.changed");
+    expect(changed).toHaveLength(1);
+    expect(changed[0]).toMatchObject({
+      actorType: "admin", actorRef: rateOwner, status: "succeeded",
+      resourceRef: "project_auth_environment:development",
+      metadata: { signInMax: 3, signInWindow: 900, refreshMax: 2, refreshWindow: 900 },
+    });
+    const blocked = page.events.filter((event) => event.action === "project_auth.rate_limit.blocked");
+    expect(blocked.length).toBeGreaterThanOrEqual(3);
+    expect(blocked.some((event) => event.metadata.kind === "sign_in" && event.metadata.max === 3)).toBe(true);
+    expect(blocked.some((event) => event.metadata.kind === "refresh" && event.metadata.max === 2)).toBe(true);
+    const serialised = JSON.stringify(blocked);
+    expect(serialised).not.toContain("@");
+    expect(serialised).not.toContain("example.test");
+    expect(serialised).not.toContain(signInHash);
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: die App-Nutzer. Ihre
+    // Token und Sitzungen haengen per ON DELETE CASCADE daran. Die Zeilen der
+    // Zaehltabelle haengen an der Umgebung und nicht am Nutzer; sie bleiben
+    // wie Organisation, Projekt und Umgebung stehen, an denen Audit-Zeilen
+    // haengen — audit_logs ist append-only.
+    await owner.query(`DELETE FROM project_auth_users
+      WHERE organization_id = $1 AND project_id = $2`, [rateOrganization, rateProject]);
+  });
+
 
 
   it("(2.50) turns a real table change into a signed webhook delivery", async () => {

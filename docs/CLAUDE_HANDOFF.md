@@ -120,6 +120,35 @@ Grossbuchstaben.
   "(2.50)" und "(2.52)": 188 statt 186. Die Mutationsprobe entlarvte den
   Webhook-Fall: ohne eine zweite, nicht gekoppelte Tabelle bewies er nichts
   ueber den Tabellenfilter; seit `510be1c` tut er es. Im Browser nicht gesehen
+- Slice 2.56 (Zweig `slice/ratelimits`): **Grenzen je Zeitfenster, in der
+  Datenbank gezaehlt.** Der Platzhalter `auth-rate-limits` ist weg;
+  `components/console/auth-rate-limits-view.tsx` ist eine echte Ansicht mit
+  genau einem Schreibweg. Drei Grenzen je Projektumgebung (`sign_in`, `mail`,
+  `refresh`), jede mit Maximum und Fenster, in `project_auth_settings`
+  (Migration `0052_project_auth_rate_limits.sql`, sechs Spalten plus die neue
+  Zaehltabelle `project_auth_rate_counters`; keine zweite Einstellungstabelle).
+  Was es vorher gab: nur `InMemoryRateLimiter` mit drei fest verdrahteten
+  Werten, je Prozess, geschluesselt nach gehashter Anfrageherkunft — bei zwei
+  Instanzen galt in Wahrheit das Doppelte, und ein Neustart setzte auf null.
+  `refresh` hatte gar keine Grenze. Seit 2.56 zaehlt PostgreSQL in einer
+  Anweisung (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`), nach
+  Identitaet (sign_in, mail) oder Sitzungsfamilie (refresh), **nie** nach
+  IP-Adresse; der Schluessel geht nur als SHA-256 base64url in die Zeile. Das
+  Fenster ist ein festes Raster (`floor(t / w) * w`), damit zwei Instanzen
+  ohne Absprache dieselbe Zeile treffen; dieselbe Anweisung raeumt
+  abgelaufene Fenster desselben Schluessels weg. **Fail closed** auf der
+  Grenze, **fail open** auf einem Fehler des Zaehlers: Der Zaehler ist eine
+  Schutzschicht, die Tuer ist die Passwortpruefung, und ein Fehler in ihm
+  darf nicht die ganze Anmeldung ausfallen lassen. Der Prozesszaehler bleibt
+  als grobe Vorschicht bestehen. PostgreSQL-Fall "(2.56) refuses the login
+  attempt that crosses the limit and lets the next window through" mit zwei
+  Dienstinstanzen an einer Datenbank: 30 statt 29 Faelle in
+  `tests/postgres.integration.test.ts`. Ehrlich offen: Eine Grenze je
+  Identitaet haelt einen **verteilten** Angriff ueber viele Konten nicht auf;
+  das steht auf der Seite selbst. `verifyMfaChallenge` und `startOidc` haengen
+  weiter nur am Prozesszaehler. `project_auth.rate_limits.changed` und
+  `project_auth.rate_limit.blocked` zaehlen in der Auth-Zeitreihe unter
+  `other`. Im Browser nicht gesehen
 - Slice 2.54 (Zweig `slice/authsettings`): **Ruecksprungziele, Mailweg
   ehrlich gezeigt.** Die drei Platzhalter `auth-url`, `auth-smtp` und
   `auth-templates` sind weg. `auth-url` ist eine echte Ansicht mit genau

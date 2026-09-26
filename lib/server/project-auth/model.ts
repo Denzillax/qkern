@@ -1,4 +1,8 @@
 import type { Environment } from "@/lib/types";
+import type {
+  ProjectAuthRateLimitKind,
+  ProjectAuthRateLimits,
+} from "@/lib/server/project-auth/rate-limits";
 
 export type ProjectAuthScope = {
   organizationId: string;
@@ -92,7 +96,26 @@ export type ProjectAuthMfaFactor = ProjectAuthScope & {
 export type ProjectAuthSettings = ProjectAuthScope & {
   mfaRequired: boolean;
   returnTargets: string[];
+  /**
+   * Die Grenzen je Zeitfenster (2.56). Eine fehlende Zeile heisst hier
+   * "Vorgabe", nicht "keine Grenze": Ohne Einstellung gelten
+   * `DEFAULT_PROJECT_AUTH_RATE_LIMITS`, und die sind genau das, was der
+   * Dienst vor 2.56 im Prozessspeicher hielt.
+   */
+  rateLimits: ProjectAuthRateLimits;
   updatedAt: Date;
+};
+
+/**
+ * Was ein Versuch beim Zaehler hinterlaesst (2.56): der Stand **nach** dem
+ * Hochzaehlen und der Anfang des Fensters, in dem gezaehlt wurde. Mehr
+ * braucht die Entscheidung nicht, und mehr gibt die Zaehltabelle auch nicht
+ * her — der Schluessel selbst steht dort nur als Hash.
+ */
+export type ProjectAuthRateCount = {
+  kind: ProjectAuthRateLimitKind;
+  attempts: number;
+  windowStart: Date;
 };
 
 /** Wie viele App-Nutzer es gibt und wie viele davon einen bestaetigten Faktor haben. */

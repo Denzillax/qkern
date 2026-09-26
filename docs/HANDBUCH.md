@@ -493,13 +493,16 @@ Wichtige öffentliche Pfade beginnen mit
   Rücksprungziele dieser Umgebung; in der Console unter Auth → URL-Konfiguration
 - `admin/mail` (nur GET) zeigt seit `2.51.0` den wirksamen Mailweg und die festen
   Texte der Aktionsmails; in der Console unter Auth → SMTP und Auth → E-Mail-Vorlagen
+- `admin/rate-limits` (GET liest, PUT ersetzt) führt seit `2.52.0` die Grenzen je
+  Zeitfenster dieser Umgebung; in der Console unter Auth → Rate Limits
 
 Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
 `project_auth.signup.succeeded`, `project_auth.login.succeeded`,
 `project_auth.login.failed`, `project_auth.logout`, `project_auth.mfa.enrolled`,
 `project_auth.mfa.verified`, `project_auth.user.updated`,
 `project_auth.session.revoked`, `project_auth.sessions.revoked_all` und seit
-`2.49.0` `project_auth.mfa.enforcement_changed`. Ein Refresh
+`2.49.0` `project_auth.mfa.enforcement_changed` sowie seit `2.52.0`
+`project_auth.rate_limits.changed` und `project_auth.rate_limit.blocked`. Ein Refresh
 wird nicht protokolliert, das wäre zu viel Rauschen. App-Nutzer erscheinen nur als
 `project_auth_user:<id>`, ein Fehlversuch mit unbekannter E-Mail als `anonymous`,
 Console-Aktionen mit der ID des Console-Nutzers. E-Mails, Passwörter, Token und
@@ -641,6 +644,87 @@ schreibt `project_auth.return_targets.changed` in die Audit-Kette, mit der
 Anzahl der Ziele danach und der ID des Console-Nutzers, nie mit seiner
 Adresse. In der Zeitreihe unter Berichte → Auth zählt diese Handlung unter
 `other`; die zehn benannten Handlungen der Reihe sind unverändert.
+
+### Grenzen je Zeitfenster
+
+Seit `2.52.0` ist **Auth → Rate Limits** eine echte Seite, und dahinter steht
+eine Durchsetzung, die wirklich greift.
+
+**Was es vorher gab.** Einen Zähler im Speicher des Prozesses
+(`lib/server/auth/rate-limit.ts`, `InMemoryRateLimiter`), mit drei fest
+verdrahteten Werten und einem Schlüssel, der aus einem gehashten
+Netzwerk-Bezeichner bestand. Bei genau einer Instanz war das richtig. Bei zwei
+Instanzen hinter einem Lastverteiler galt in Wahrheit das Doppelte der
+gemeinten Grenze, und ein Neustart setzte alles auf null. Eine Grenze, die
+man durch einen Neustart oder durch eine weitere Instanz weitet, ist keine.
+Dieser Zähler bleibt bestehen — er fängt je Anfrageherkunft die groben
+Wellen ab —, aber er ist nicht mehr die Aussage.
+
+**Was es jetzt gibt.** Drei Grenzen je Projektumgebung, gespeichert in
+`project_auth_settings`: `sign_in` für Anmeldeversuche, `mail` für
+angeforderte Aktionsmails und `refresh` für Token-Erneuerungen. Jede besteht
+aus zwei Zahlen, einem Maximum von 1 bis 10 000 und einem Fenster von 60 bis
+86 400 Sekunden; beide Grenzen prüfen Route, Dienst **und** Datenbank. Die
+Vorgaben sind genau die Werte, die vorher im Quelltext standen: zehn
+Anmeldeversuche je 15 Minuten, fünf Mails je Stunde, sechzig Erneuerungen je
+Stunde. Eine Umgebung ohne Zeile verhält sich damit wie vorher — nur wirksam
+über mehr als eine Instanz.
+
+**Wo gezählt wird.** In `project_auth_rate_counters`, in genau einer
+Anweisung: ein `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, das den Stand
+nach dem Hochzählen zurückgibt. Zwei Instanzen, die gleichzeitig denselben
+Schlüssel zählen, bekommen darum 1 und 2 und nie zweimal 1. Das Fenster ist
+ein festes Raster (`floor(t / w) * w`); deshalb rechnen beide ohne jede
+Absprache denselben Fensteranfang aus und treffen dieselbe Zeile. Dieselbe
+Anweisung räumt die abgelaufenen Fenster desselben Schlüssels weg, sodass
+höchstens eine Zeile je aktivem Schlüssel stehen bleibt und kein
+Aufräumprozess nötig ist.
+
+**Wonach gezählt wird.** Bei `sign_in` und `mail` nach der Identität, also
+nach der kanonischen Adresse; bei `refresh` nach der Sitzungsfamilie.
+**Nie nach IP-Adresse allein**, und es wird auch keine gespeichert: Eine IP
+wechselt der Angreifer, ein ganzes Büro teilt sich eine, und sie gehört als
+personenbezogenes Datum nicht in eine Zähltabelle. Der Schlüssel geht
+ausserdem nur als SHA-256 über Scope, Art und Wert (base64url) in die Zeile;
+in `project_auth_rate_counters` steht damit nie eine Adresse. Das ist ein
+Pseudonym und keine Anonymisierung — wer eine Adresse vermutet, kann sie
+nachrechnen —, und genau so viel braucht ein Zähler.
+
+**Fail closed auf der Grenze, fail open auf einem Fehler des Zählers.** Wer
+die Grenze erreicht, wird abgewiesen, ohne Ausnahme. Lässt sich der Zähler
+selbst nicht lesen oder schreiben, läuft der Versuch weiter zur eigentlichen
+Prüfung, und der Fehler landet im Betriebsprotokoll. Der Grund ist die Rolle
+dieser Schicht: Der Zähler schützt vor Raten, die Tür ist die
+Passwortprüfung, und die steht unberührt dahinter. Wäre es umgekehrt, machte
+ein Fehler in der Zähltabelle die ganze Anmeldung der Umgebung unbrauchbar.
+
+**Was die Antwort verrät.** Nichts über die Identität. Gezählt wird, bevor
+irgendetwas nachgeschlagen wird; eine bekannte und eine unbekannte Adresse
+bekommen dieselbe Abweisung, `429` mit `Retry-After` auf das Ende des
+laufenden Fensters. Der typisierte Fehler ist `RATE_LIMITED` und damit
+derselbe wie bisher.
+
+**Was eine Grenze nicht kann**, und das steht auch auf der Seite selbst: Eine
+Grenze je Identität hält einen **verteilten** Angriff über viele Konten nicht
+auf. Wer ein Passwort gegen zehntausend verschiedene Adressen probiert,
+bleibt bei jeder einzelnen unter der Grenze. Dagegen hilft nur, was QKERN
+hier nicht hat: Captcha, Prüfung gegen bekannte Lecks, Bot-Abwehr — die
+Platzhalterseite Auth → Angriffsschutz. Eine Grenze ist auch keine
+Kontosperre und keine Zustellsperre. Und die Refresh-Grenze greift erst, wenn
+ein Token zu einer echten Familie gehört; ein geratenes Token wird davor
+abgelehnt und kommt beim Zähler gar nicht an.
+
+Die Route ist
+`GET|PUT /api/v1/projects/{projectId}/environments/{environment}/auth/admin/rate-limits`
+— dieselbe Tür wie die übrigen `admin/*`-Routen: Console-Session mit
+`project_auth_admin`, `Cache-Control: private, no-store`, bei `PUT`
+zusätzlich ein geprüfter Origin. Der Körper nennt alle drei Arten auf einmal,
+weil ein Körper mit nur einer offen liesse, was mit den beiden anderen
+geschehen soll. Jede Änderung schreibt `project_auth.rate_limits.changed` mit
+den sechs Zahlen danach; greift eine Grenze, entsteht
+`project_auth.rate_limit.blocked` mit Art, Grenze und Fenster — ohne
+Schlüssel, ohne Hash und ohne Adresse. Die reine Entscheidung liegt in
+`lib/server/project-auth/rate-limits.ts`, ohne Datenbank und ohne React.
 
 ### Der Mailweg, ehrlich gezeigt
 

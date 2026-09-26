@@ -18,6 +18,7 @@ import { authSettingsTexts } from "@/lib/console/auth-settings-texts";
 import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
 import { logViewTexts } from "@/lib/console/log-view-texts";
 import { vaultOverviewTexts } from "@/lib/console/vault-overview-texts";
+import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -81,6 +82,9 @@ async function consoleKeys(): Promise<string[]> {
   // Integrationen -> Vault (2.58) zeigt Zustaende, Quellen, die Schritte im
   // Vault und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of vaultOverviewTexts()) keys.add(text);
+  // Auth -> Rate Limits (2.56) zeigt Arten, Gruende einer Ablehnung und seine
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authRateLimitTexts()) keys.add(text);
   return [...keys];
 }
 

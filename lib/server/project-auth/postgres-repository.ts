@@ -6,6 +6,7 @@ import type {
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
   ProjectAuthOneTimeToken,
+  ProjectAuthRateCount,
   ProjectAuthScope,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
@@ -18,6 +19,11 @@ import {
   type ProjectAuthRotationResult,
   type ProjectAuthUserPatch,
 } from "@/lib/server/project-auth/repository";
+import {
+  isProjectAuthRateLimitKind,
+  type ProjectAuthRateLimitKind,
+  type ProjectAuthRateLimits,
+} from "@/lib/server/project-auth/rate-limits";
 
 type Row = Record<string, unknown>;
 type PostgresError = Error & { code?: string; constraint?: string };
@@ -271,6 +277,71 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     return settingsFromRow(result.rows[0]);
   }
 
+  /**
+   * Setzt alle sechs Zahlen auf einmal (2.56), wieder als INSERT mit
+   * ON CONFLICT: Die Zeile entsteht erst, wenn jemand etwas einstellt, und
+   * der Schalter aus 2.52 und die Liste aus 2.54 bleiben unberuehrt, weil das
+   * UPDATE genau die sieben Spalten nennt, um die es geht.
+   */
+  async writeRateLimits(
+    scope: ProjectAuthScope,
+    limits: ProjectAuthRateLimits,
+    now: Date,
+  ): Promise<ProjectAuthSettings> {
+    const result = await query(this.pool, `INSERT INTO project_auth_settings
+      (organization_id, project_id, environment,
+       sign_in_max, sign_in_window_seconds, mail_max, mail_window_seconds,
+       refresh_max, refresh_window_seconds, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (organization_id, project_id, environment)
+      DO UPDATE SET
+        sign_in_max = EXCLUDED.sign_in_max,
+        sign_in_window_seconds = EXCLUDED.sign_in_window_seconds,
+        mail_max = EXCLUDED.mail_max,
+        mail_window_seconds = EXCLUDED.mail_window_seconds,
+        refresh_max = EXCLUDED.refresh_max,
+        refresh_window_seconds = EXCLUDED.refresh_window_seconds,
+        updated_at = EXCLUDED.updated_at
+      RETURNING ${SETTINGS_COLUMNS}`, [
+      ...scopeValues(scope),
+      limits.sign_in.max, limits.sign_in.windowSeconds,
+      limits.mail.max, limits.mail.windowSeconds,
+      limits.refresh.max, limits.refresh.windowSeconds,
+      now,
+    ]);
+    return settingsFromRow(result.rows[0]);
+  }
+
+  /**
+   * Der Zaehler (2.56), und er ist mit Absicht eine einzige Anweisung.
+   *
+   * Der DELETE im CTE raeumt die abgelaufenen Fenster **desselben**
+   * Schluessels weg, das INSERT ... ON CONFLICT DO UPDATE zaehlt das aktuelle
+   * hoch, und das RETURNING gibt den Stand danach zurueck. Beides in einer
+   * Anweisung heisst: eine Transaktion, eine Sperre je Schluessel, kein
+   * Aufraeumprozess und kein Zeitpunkt, an dem zwei Instanzen einen Versuch
+   * verlieren koennten. Geloescht werden nur Zeilen mit einem aelteren
+   * Fensteranfang; die eingefuegte Zeile ist nie darunter.
+   */
+  async countRateLimitAttempt(
+    scope: ProjectAuthScope,
+    input: { kind: ProjectAuthRateLimitKind; subjectHash: string; windowStart: Date },
+  ): Promise<ProjectAuthRateCount> {
+    const result = await query(this.pool, `WITH expired AS (
+        DELETE FROM project_auth_rate_counters
+         WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+           AND kind = $4 AND subject_hash = $5 AND window_start < $6
+      )
+      INSERT INTO project_auth_rate_counters
+        (organization_id, project_id, environment, kind, subject_hash, window_start, attempts)
+      VALUES ($1,$2,$3,$4,$5,$6,1)
+      ON CONFLICT (organization_id, project_id, environment, kind, subject_hash, window_start)
+      DO UPDATE SET attempts = project_auth_rate_counters.attempts + 1
+      RETURNING kind, attempts, window_start`,
+    [...scopeValues(scope), input.kind, input.subjectHash, input.windowStart]);
+    return rateCountFromRow(result.rows[0]);
+  }
+
   async countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount> {
     // Beide Zahlen in einer Abfrage und in der Datenbank gezaehlt: Die
     // Console soll keine Nutzerliste laden muessen, um eine Zahl zu zeigen.
@@ -389,7 +460,9 @@ const INSERT_SESSION = `INSERT INTO project_auth_sessions
 
 const ONE_TIME_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, purpose,
   token_hash, metadata, created_at, expires_at, consumed_at`;
-const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, redirect_allow_list, updated_at`;
+const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, redirect_allow_list,
+  sign_in_max, sign_in_window_seconds, mail_max, mail_window_seconds,
+  refresh_max, refresh_window_seconds, updated_at`;
 const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
@@ -517,7 +590,46 @@ function settingsFromRow(row: Row): ProjectAuthSettings {
     environment: row.environment as ProjectAuthScope["environment"],
     mfaRequired: row.mfa_required,
     returnTargets: stringArray(row.redirect_allow_list, "return targets"),
+    rateLimits: {
+      sign_in: {
+        max: boundedInteger(row.sign_in_max, "sign-in limit"),
+        windowSeconds: boundedInteger(row.sign_in_window_seconds, "sign-in window"),
+      },
+      mail: {
+        max: boundedInteger(row.mail_max, "mail limit"),
+        windowSeconds: boundedInteger(row.mail_window_seconds, "mail window"),
+      },
+      refresh: {
+        max: boundedInteger(row.refresh_max, "refresh limit"),
+        windowSeconds: boundedInteger(row.refresh_window_seconds, "refresh window"),
+      },
+    },
     updatedAt: timestamp(row.updated_at, "settings update"),
+  };
+}
+
+/**
+ * Eine Zahl aus der Datenbank ist erst dann eine Zahl, wenn sie eine ist. Der
+ * Treiber gibt `integer` als `number` zurueck, aber eine Zeile aus einer
+ * aelteren Migration oder aus einer Fehlerspalte koennte alles Moegliche
+ * tragen; eine unbrauchbare Zahl als Grenze waere schlimmer als ein Fehler.
+ */
+function boundedInteger(value: unknown, label: string): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new InvalidRecordError(`Invalid project auth ${label}.`);
+  }
+  return parsed;
+}
+
+function rateCountFromRow(row: Row): ProjectAuthRateCount {
+  if (!row || !isProjectAuthRateLimitKind(row.kind)) {
+    throw new InvalidRecordError("Invalid project auth rate counter.");
+  }
+  return {
+    kind: row.kind,
+    attempts: boundedInteger(row.attempts, "rate counter"),
+    windowStart: timestamp(row.window_start, "rate window"),
   };
 }
 
