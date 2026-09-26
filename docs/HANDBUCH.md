@@ -1376,7 +1376,7 @@ Letter bleiben in `0032`.
 
 ### Vault: was QKERN kennt, und was es nicht kennt
 
-Seit `2.58.0` ist **Integrationen → Vault** keine Platzhalterseite mehr. Der
+Seit `2.52.0` ist **Integrationen → Vault** keine Platzhalterseite mehr. Der
 Platzhalter versprach „Geheimnisse verwalten". Verwaltet wird dort nichts, und
 das ist die Zusage der Seite, nicht ihre Lücke: **QKERN zeigt nie einen
 Geheimniswert und nimmt nie einen über die Console entgegen.** Ein Formular, das
