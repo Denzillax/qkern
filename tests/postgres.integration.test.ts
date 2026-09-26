@@ -785,7 +785,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         detail: "Die Projektdatenbank hat einen Katalogabruf beantwortet.",
         evidence: [{ measure: "tables", label: "Tabellen im Schema public", count: 3 }],
       });
-      expect(good.overall).toBe("ok");
+      // Seit dem sechsten Zustand heisst `ok` gefragt und geantwortet. Realtime
+      // und Vault melden nur noch `configured`, und das Gesamturteil ist der
+      // schlechteste vorkommende Zustand; deshalb steht hier nicht mehr `ok`.
+      expect(good.overall).toBe("configured");
 
       // Zweite Haelfte: dieselbe Probe, aber die Bindung zeigt auf eine
       // Datenbank, die es auf dem Cluster nicht gibt. PostgreSQL antwortet,
@@ -1959,7 +1962,8 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
           tokenEndpoint: "https://trusting-2-57.idp.test/token",
           jwksUri: "https://trusting-2-57.idp.test/keys",
           clientId: "qkern-trusting-secret-client", scopes: ["openid", "email"],
-          clientSecretEnv: "QKERN_OIDC_TRUSTING_SECRET",
+          // Der Name muss dem Muster des Validators folgen, sonst lehnt er den Anbieter ab.
+          clientSecretEnv: "QKERN_PROJECT_AUTH_OIDC_SECRET_TRUSTING",
           emailVerification: "trusted",
         },
       ]),
