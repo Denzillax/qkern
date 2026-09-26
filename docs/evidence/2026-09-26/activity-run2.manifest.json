@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "activity-run2.log",
+  "commit": "0614bc35607804f6c5b829bed06060e5f726f201",
+  "commitSubject": "console: Umlaute in den beiden Hinweissaetzen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 47,
+  "testFiles": "31 passed (31)",
+  "tests": "183 passed (183)",
+  "passed": 183,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

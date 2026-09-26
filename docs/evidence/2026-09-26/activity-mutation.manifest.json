@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Abfragetext wandert in den Zustand",
+  "log": "activity-mutation.log",
+  "commit": "0614bc35607804f6c5b829bed06060e5f726f201",
+  "commitSubject": "console: Umlaute in den beiden Hinweissaetzen",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 182 passed (183)",
+  "passed": 182,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

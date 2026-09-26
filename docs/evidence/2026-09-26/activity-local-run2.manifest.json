@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "activity-local-run2.log",
+  "commit": "0614bc35607804f6c5b829bed06060e5f726f201",
+  "commitSubject": "console: Umlaute in den beiden Hinweissaetzen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1458 passed | 266 skipped (1724)",
+  "passed": 1458,
+  "failed": 0,
+  "skipped": 266,
+  "images": []
+}

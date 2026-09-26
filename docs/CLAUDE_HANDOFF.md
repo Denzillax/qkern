@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.45.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.46.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,30 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.45.0`
-- Aktueller Slice: 2.45 Der Verlauf – drei Platzhalter auf einmal: API,
+- Paketversion: `2.46.0`
+- Aktueller Slice: 2.46 Zahlen statt Abfragetexte – die Platzhalter
+  "Datenbank" und "Verbindungen" unter Berichte sind echte, nur lesende
+  Ansichten (`components/console/database-report-view.tsx` und
+  `connections-report-view.tsx`) ueber eine geteilte Quelle. Neue
+  Data-Plane-Methode `inspectActivity` liest `pg_stat_database` fuer die
+  eigene Datenbank (Commits, Rollbacks, Bloecke gelesen und getroffen,
+  Deadlocks, Temp-Dateien, Backends, `stats_reset`, dazu
+  `current_setting('max_connections')`) und `pg_stat_activity` gruppiert nach
+  Rolle und Zustand mit Anzahl und Alter der aeltesten Sitzung. Bewusst
+  ungelesen: `query`, `query_start`, `state_change`, `backend_xmin`,
+  `client_addr`, `client_hostname`, `client_port`, `pid`,
+  `application_name`, `wait_event`, `backend_type`. Kein
+  `pg_terminate_backend`, kein `pg_cancel_backend`, auch nicht als toter
+  Code; der Vertragstest verbietet die Woerter. Die Leserolle sieht fremde
+  Sitzungen nur teilweise, darum steht `numbackends` neben den gezaehlten
+  Gruppen und der Fall sichert die Richtung: Summe der Gruppen kleiner
+  gleich Backends. PostgreSQL-Fall "(2.46)": 183 statt 182 Faelle; er prueft
+  zusaetzlich, dass der Markertext im selben Moment wirklich in
+  `pg_stat_activity.query` stand, sonst waere die Zusicherung leer.
+  Mutation (Abfragetext wandert in den Zustand) faellt im Stack in 1 Fall.
+  Offen: `usename` ist der einzige freie Text, der die Datenbank verlaesst.
+  Im Browser nicht gesehen
+- Vorheriger Slice: 2.45 Der Verlauf – drei Platzhalter auf einmal: API,
   Storage und Functions unter Berichte sind echte, nur lesende Ansichten
   ueber eine geteilte Komponente (`components/console/usage-series-view.tsx`)
   und eine Route `GET .../usage/series?metric=&bucket=`. Keine neue Tabelle:
@@ -72,7 +94,7 @@ Grossbuchstaben.
   abgelehnt nicht) faellt nur im Stack, weil die Regeltests mit Attrappen
   arbeiten. Offen: bei echtem Volumen braucht es eine Rollup-Tabelle oder
   einen BRIN-Index auf `observed_at`. Im Browser nicht gesehen
-- Vorheriger Slice: 2.44 Was gerade laeuft – der Platzhalter "Gesundheit"
+- Davor: 2.44 Was gerade laeuft – der Platzhalter "Gesundheit"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/health-advisor-view.tsx`). Acht Teilsysteme werden
   nebenlaeufig geprobt, jede Probe faengt ihren eigenen Fehler: Datenbank

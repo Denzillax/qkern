@@ -1518,3 +1518,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/usage-series-mutation.log` | PostgreSQL 17, Mutation (keine Trennung angenommen/abgelehnt) | **181 von 182, exit 1 – absichtlich** |
 | `2026-09-26/usage-series-local-run1.log` | Vitest lokal (Windows) | 1444 bestanden, exit 0 |
 | `2026-09-26/usage-series-local-run2.log` | Vitest lokal (Windows) | 1444 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.46 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/activity-run1.log` | PostgreSQL 17 | 183 von 183, exit 0 |
+| `2026-09-26/activity-run2.log` | PostgreSQL 17 | 183 von 183, exit 0, Wiederholung |
+| `2026-09-26/activity-mutation.log` | PostgreSQL 17, Mutation (Abfragetext im Zustand) | **182 von 183, exit 1 – absichtlich** |
+| `2026-09-26/activity-local-run1.log` | Vitest lokal (Windows) | 1458 bestanden, exit 0 |
+| `2026-09-26/activity-local-run2.log` | Vitest lokal (Windows) | 1458 bestanden, exit 0, Wiederholung |

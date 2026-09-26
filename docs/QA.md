@@ -5299,3 +5299,46 @@ echtem Volumen braucht es eine Rollup-Tabelle oder einen BRIN-Index.
 kaeme eine Aufbewahrungsfrist, wuerde sie stillschweigend kuerzer. Auf dem
 Speicherport meldet die Route "Metering nicht aktiv", obwohl es eher "kann
 nicht aggregieren" heisst. Im Browser nicht gesehen.
+
+## Zahlen statt Abfragetexte – Release 2.46
+
+Die Ansichten Berichte, Datenbank und Berichte, Verbindungen lesen die
+Statistiksichten der Projektdatenbank. Die heikle Stelle ist
+`pg_stat_activity`: dort steht der Abfragetext, und ein Abfragetext kann
+Werte eines fremden Mandanten tragen. Gelesen werden deshalb nur Rolle,
+Zustand, Anzahl und das Alter der aeltesten Sitzung, gefiltert auf die
+eigene Datenbank und gruppiert. Eine einzelne Sitzung ist ein Mensch bei
+der Arbeit, eine Zahl ist eine Betriebsgroesse.
+
+Nicht gelesen werden `query`, `query_start`, `state_change`,
+`backend_xmin`, `client_addr`, `client_hostname`, `client_port`, `pid`,
+`application_name`, `wait_event` und `backend_type`. Die letzten beiden
+waeren harmlos; sie fehlen trotzdem, weil sie nicht gebraucht werden. Es
+gibt kein `pg_terminate_backend` und kein `pg_cancel_backend`, auch nicht
+als toter Code, und der Vertragstest verbietet die beiden Woerter im Dienst,
+in der Route und in beiden Ansichten.
+
+Die Leserolle ist kein Superuser und gehoert nicht zu `pg_monitor`. Sie
+sieht fremde Sitzungen nur teilweise. Statt das zu verschweigen, steht
+`numbackends` aus `pg_stat_database` neben den gezaehlten Gruppen, die
+Ansicht sagt, dass die Zahl niedriger sein kann, und der
+Zertifizierungsfall sichert genau diese Richtung ab.
+
+Der Fall prueft ausserdem, dass er nicht leer laeuft: Er stellt fest, dass
+sein Markertext im selben Moment wirklich in `pg_stat_activity.query`
+stand, und fragt das mit einem gebundenen Parameter ab, damit die Pruefung
+den Marker nicht selbst in ihren eigenen Abfragetext schreibt.
+
+Mutation: der Abfragetext wandert in das Zustandsfeld. Im Stack faellt 1 von
+183 Faellen, exit 1.
+
+Checkpoint `2.46.0` am 26. September 2026: PostgreSQL 17 mit 183 von 183,
+exit 0, zweimal reproduziert; Lokal 1458 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: `usename` ist der einzige freie Text, der die Datenbank
+verlaesst; in QKERN sind das Dienstrollen, eine Installation mit einer
+Login-Rolle je Person wuerde hier Namen zeigen. Eine hohe Trefferquote
+ueber eine frisch zurueckgesetzte Statistik sagt wenig, darum steht der
+Zeitpunkt des Zuruecksetzens daneben. Rollbacks zaehlen auch gewollte
+Ruecknahmen. Im Browser nicht gesehen.
