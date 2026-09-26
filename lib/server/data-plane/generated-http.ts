@@ -12,13 +12,15 @@ import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
 import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
 import type { ProjectAuthService } from "@/lib/server/project-auth/service";
 import { admitApiRequest } from "@/lib/server/usage/api-requests";
+// Welche Rolle ein Public oder Service Key setzt, steht in lib/data-api-limits.ts; die Console zeigt denselben Wert.
+import { DATA_API_LIMITS, type DataApiKeyClaim } from "@/lib/data-api-limits";
 
 export type GeneratedDataScope = { projectId: string; environment: Environment };
 
 export type ProjectApplicationPrincipal = {
   organizationId: string;
   actorRef: string;
-  role: "authenticated" | "anon" | "service_role";
+  role: "authenticated" | DataApiKeyClaim;
   subject: string;
   claims: GeneratedDataContext["claims"];
 };
@@ -110,10 +112,10 @@ export async function projectApplicationPrincipal(
     return {
       organizationId: principal.organizationId,
       actorRef: `project-api-key:${principal.id}`,
-      role: principal.kind === "service" ? "service_role" : "anon",
+      role: principal.kind === "service" ? DATA_API_LIMITS.keyClaims.service : DATA_API_LIMITS.keyClaims.public,
       subject: principal.id,
       claims: {
-        role: principal.kind === "service" ? "service_role" : "anon",
+        role: principal.kind === "service" ? DATA_API_LIMITS.keyClaims.service : DATA_API_LIMITS.keyClaims.public,
         subject: principal.id,
         keyId: principal.id,
       },

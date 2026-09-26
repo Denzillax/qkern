@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Braces, ExternalLink, Eye, RefreshCw, Table2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
@@ -28,6 +28,19 @@ type SchemaState = { state: "loading" | "ready" | "not-ready" | "unavailable" | 
 
 const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims } = DATA_API_LIMITS;
 
+type Payload = Record<string, unknown>;
+
+/** GET mit JSON-Antwort; ein Body, der kein Objekt ist, wird zu `{}`. */
+async function readJson(url: string, signal: AbortSignal): Promise<{ status: number; payload: Payload }> {
+  try {
+    const response = await fetch(url, { cache: "no-store", signal });
+    const body: unknown = (await response.json().catch(() => ({}))) ?? {};
+    return { status: response.status, payload: body !== null && typeof body === "object" && !Array.isArray(body) ? body as Payload : {} };
+  } catch (cause) {
+    return { status: 0, payload: { error: cause instanceof Error ? cause.message : "" } };
+  }
+}
+
 export function DataApiSettingsView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
   const openApiUrl = `${base}/generated-openapi?schema=${schema}`;
@@ -35,26 +48,39 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
   const [status, setStatus] = useState<{ readiness: DataApiReadiness | "loading"; exposed: string[]; message: string }>({ readiness: "loading", exposed: [], message: "" });
   const [tables, setTables] = useState<SchemaState>({ state: "loading", tables: [], truncated: false, message: "" });
 
+  // Jede Ladung bekommt einen eigenen AbortController. Eine neue Ladung, ein
+  // Wechsel der Umgebung oder das Aushaengen bricht die alte ab; eine
+  // abgebrochene Ladung setzt keinen Zustand mehr.
+  const current = useRef<AbortController | null>(null);
+
   const load = useCallback(async () => {
+    current.current?.abort();
+    const controller = new AbortController();
+    current.current = controller;
     setLoading(true);
     const [openApi, schemaResult] = await Promise.all([
-      fetch(openApiUrl, { cache: "no-store" }).then(async (response) => ({ status: response.status, payload: await response.json().catch(() => ({})) }), (cause: unknown) => ({ status: 0, payload: { error: cause instanceof Error ? cause.message : "" } })),
-      fetch(`${base}/schema?schema=${schema}`, { cache: "no-store" }).then(async (response) => ({ status: response.status, payload: await response.json().catch(() => ({})) }), (cause: unknown) => ({ status: 0, payload: { error: cause instanceof Error ? cause.message : "" } })),
+      readJson(openApiUrl, controller.signal),
+      readJson(`${base}/schema?schema=${schema}`, controller.signal),
     ]);
+    if (controller.signal.aborted) return;
 
     const readiness = dataApiReadiness(openApi.status, typeof openApi.payload.code === "string" ? openApi.payload.code : undefined);
     const paths = readiness === "ready" && openApi.payload.paths && typeof openApi.payload.paths === "object" ? openApi.payload.paths as Record<string, unknown> : {};
     setStatus({ readiness, exposed: exposedTablesFromOpenApi(paths), message: [openApi.payload.error, openApi.payload.code].filter((part) => typeof part === "string" && part).join(" · ") || t("Data API nicht verfügbar") });
 
-    if (schemaResult.status === 200 && Array.isArray(schemaResult.payload.data?.tables)) {
-      setTables({ state: "ready", tables: schemaResult.payload.data.tables as SchemaTable[], truncated: schemaResult.payload.data.truncated === true, message: "" });
+    const data = schemaResult.payload.data as { tables?: unknown; truncated?: unknown } | null | undefined;
+    if (schemaResult.status === 200 && data && typeof data === "object" && Array.isArray(data.tables)) {
+      setTables({ state: "ready", tables: data.tables as SchemaTable[], truncated: data.truncated === true, message: "" });
     } else {
       const state = schemaResult.status === 409 ? "not-ready" : schemaResult.status === 503 ? "unavailable" : "error";
       setTables({ state, tables: [], truncated: false, message: typeof schemaResult.payload.error === "string" && schemaResult.payload.error ? schemaResult.payload.error : t("Tabellen nicht verfügbar") });
     }
     setLoading(false);
   }, [base, openApiUrl]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { current.current?.abort(); };
+  }, [load]);
 
   const known = status.readiness === "ready";
   const exposed = new Set(status.exposed);

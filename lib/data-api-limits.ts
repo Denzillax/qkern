@@ -18,6 +18,7 @@ export const DATA_API_LIMITS = {
 } as const;
 
 export type DataApiFilterOperator = (typeof DATA_API_LIMITS.operators)[number];
+export type DataApiKeyClaim = (typeof DATA_API_LIMITS.keyClaims)[keyof typeof DATA_API_LIMITS.keyClaims];
 
 /** Quelle des Musters fuer sensible Spaltennamen; der Server baut daraus `new RegExp(..., "i")`. */
 export const SENSITIVE_COLUMN_PATTERN = "(?:password|secret|token|cookie|private.?key|authorization|api.?key)";

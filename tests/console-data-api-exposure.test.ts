@@ -53,6 +53,16 @@ describe("console data api exposure", () => {
     expect(server).not.toMatch(/\["eq", "neq"/);
   });
 
+  it("takes the key claims from the same constant", async () => {
+    const http = await readFile(path.resolve(process.cwd(), "lib/server/data-plane/generated-http.ts"), "utf8");
+    expect(http).toContain("DATA_API_LIMITS.keyClaims");
+    // Kommentare zaehlen nicht: Block- und Zeilenkommentare vor der Pruefung entfernen.
+    const code = http.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code).not.toContain('"service_role"');
+    expect(code).not.toContain('"anon"');
+    expect(DATA_API_LIMITS.keyClaims).toEqual({ public: "anon", service: "service_role" });
+  });
+
   it("keeps every limit number out of the view source", async () => {
     const source = await readFile(path.resolve(process.cwd(), "components/console/data-api-settings-view.tsx"), "utf8");
     // Text zwischen JSX-Tags ohne Ausdruecke: dort darf keine Zahl der Grenzen stehen.
