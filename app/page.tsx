@@ -266,6 +266,7 @@ export default async function HomePage() {
           </div>
           <div>
             <strong>{t.footer.developers}</strong>
+            <Link href="/docs">{t.footer.docs}</Link>
             <Link href="/console">{t.footer.console}</Link>
             <Link href="#developers">{t.footer.interfaces}</Link>
             <Link href="#security">{t.footer.gaps}</Link>

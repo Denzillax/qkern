@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { NAV, NAV_ENTRIES, PLACEHOLDERS, REAL_VIEWS, groupOf, isPlaceholder, labelOf } from "@/components/console/navigation";
 
@@ -63,5 +65,11 @@ describe("console navigation contract", () => {
     expect(labelOf("db-triggers")).toBe("Datenbank · Trigger");
     expect(labelOf("overview")).toBe("Übersicht");
     expect(labelOf("table")).toBe("Table Editor");
+  });
+
+  it("sends the documentation link to /docs, not to a landing anchor", async () => {
+    const source = await readFile(path.resolve(process.cwd(), "components/console/console-app.tsx"), "utf8");
+    expect(source).toContain('<Link href="/docs">');
+    expect(source).not.toContain('href="/#developers"');
   });
 });

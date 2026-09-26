@@ -172,7 +172,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
             </div>;
           })}
         </nav>
-        <div className="sidebar-bottom"><Link href="/#developers"><Code2 size={16}/><span>{t("Dokumentation")}</span></Link><button disabled className="is-placeholder" title={t("Teamverwaltung ist noch nicht verbunden")}><Users size={16}/><span>{t("Team")}</span></button><AccountMenu email={snapshot?.user.email ?? null} workspace={snapshot?.organization.name ?? null} collapsed={collapsed} onLogout={logout}/></div>
+        <div className="sidebar-bottom"><Link href="/docs"><Code2 size={16}/><span>{t("Dokumentation")}</span></Link><button disabled className="is-placeholder" title={t("Teamverwaltung ist noch nicht verbunden")}><Users size={16}/><span>{t("Team")}</span></button><AccountMenu email={snapshot?.user.email ?? null} workspace={snapshot?.organization.name ?? null} collapsed={collapsed} onLogout={logout}/></div>
       </aside>
       {mobileOpen && <button className="sidebar-scrim" aria-label={t("Navigation schließen")} onClick={() => setMobileOpen(false)} />}
 
