@@ -147,89 +147,109 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
   });
 
   it("records auth events through the auth role into the intact platform audit chain (2.35)", async () => {
-    // Eine eigene Organisation: audit_logs ist append-only, der Aufraeumschritt
-    // oben koennte sie nicht mehr loeschen. Rest bleibt im Wegwerf-Stack,
-    // wie bei den anderen Suiten mit Audit-Eintraegen.
+    // Eigene Organisation mit eigenem Besitzer. audit_logs ist append-only:
+    // Der Trigger audit_logs_append_only (0002) lehnt jedes UPDATE und DELETE
+    // je Zeile ab, fuer jede Rolle, auch fuer den Owner. Eine Organisation mit
+    // Audit-Zeilen laesst sich wegen audit_logs_organization_id_fkey (ON DELETE
+    // RESTRICT) nicht loeschen, und ihr Besitzer wegen
+    // organizations_created_by_fkey nicht. Darum haengt nichts davon am
+    // controlUser der Datei, dessen Aufraeumen in afterAll so weiter gelingt.
+    // Was der Fall an Project-Auth-Daten anlegt, raeumt er im finally selbst
+    // weg; Organisation, Projekt, Umgebung, Besitzer und die Audit-Zeilen
+    // bleiben als erwarteter Rest im Wegwerf-Stack, wie bei den anderen
+    // Suiten mit Audit-Eintraegen.
+    const auditOwner = randomUUID();
     const auditOrganization = randomUUID();
     const auditProject = randomUUID();
     const auditScope = { organizationId: auditOrganization, projectId: auditProject, environment: "development" as const };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [auditOwner, `project-auth-audit-owner-${auditOwner}@qkern.test`]);
     await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
-      VALUES ($1, 'Project Auth Audit', $2, $3)`, [auditOrganization, `project-auth-audit-${auditOrganization}`, controlUser]);
+      VALUES ($1, 'Project Auth Audit', $2, $3)`, [auditOrganization, `project-auth-audit-${auditOrganization}`, auditOwner]);
     await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
       VALUES ($1, $2, 'Project Auth Audit', $3, 'test', 'ready', $4)`,
-    [auditProject, auditOrganization, `project-auth-audit-${auditProject}`, controlUser]);
+    [auditProject, auditOrganization, `project-auth-audit-${auditProject}`, auditOwner]);
     await owner.query(`INSERT INTO project_environments
       (organization_id, project_id, environment, database_instance_ref)
       VALUES ($1, $2, 'development', $3)`, [auditOrganization, auditProject, `managed:${auditProject}`]);
-    const { privateKey } = generateKeyPairSync("ed25519");
-    const audited = new ProjectAuthService({
-      repository: new PostgresProjectAuthRepository(auth), passwords: new FastHasher(),
-      rateLimiter: new InMemoryRateLimiter(), audit: new PostgresProjectAuthAuditSink(auth),
-      tokens: new ProjectAuthTokenService({ kid: "postgres-audit", privateKey }, "https://qkern.test"),
-      mfa: new ProjectAuthTotp(), secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 8)),
-      delivery: new NoopDevelopmentProjectAuthDelivery(), oidcCatalog: new ProjectAuthOidcCatalog([]),
-      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
-      callbackBaseUrl: "https://qkern.test", allowedRedirectOrigins: new Set(["https://app.test"]),
-      exposeDeliveryTokens: true,
-    });
-    const errors = vi.spyOn(console, "error");
-    const email = `audit-${randomUUID()}@qkern.test`;
-    const password = "a sufficiently long password";
-    const signup = await audited.signUp(auditScope, {
-      email, password, redirectTo: "https://app.test/callback", rateLimitKey: randomUUID(),
-    });
-    const session = await audited.consumeEmailToken(auditScope, { token: signup.debugToken!, purpose: "email_verification" });
-    if ("mfaRequired" in session) throw new Error("unexpected MFA");
-    const userId = (await audited.verifyAccess(auditScope, session.accessToken)).user.id;
-    await expect(audited.passwordSignIn(auditScope, {
-      email: `unknown-${randomUUID()}@qkern.test`, password, rateLimitKey: randomUUID(),
-    })).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
-    expect(await audited.revokeAllSessions(auditScope, userId, { id: controlUser })).toEqual({ revoked: 1 });
-    // Kein Ereignis ist still verloren gegangen: der Sink hat nie geworfen.
-    expect(errors).not.toHaveBeenCalled();
-    errors.mockRestore();
+    try {
+      const { privateKey } = generateKeyPairSync("ed25519");
+      const audited = new ProjectAuthService({
+        repository: new PostgresProjectAuthRepository(auth), passwords: new FastHasher(),
+        rateLimiter: new InMemoryRateLimiter(), audit: new PostgresProjectAuthAuditSink(auth),
+        tokens: new ProjectAuthTokenService({ kid: "postgres-audit", privateKey }, "https://qkern.test"),
+        mfa: new ProjectAuthTotp(), secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 8)),
+        delivery: new NoopDevelopmentProjectAuthDelivery(), oidcCatalog: new ProjectAuthOidcCatalog([]),
+        oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+        callbackBaseUrl: "https://qkern.test", allowedRedirectOrigins: new Set(["https://app.test"]),
+        exposeDeliveryTokens: true,
+      });
+      const errors = vi.spyOn(console, "error");
+      const email = `audit-${randomUUID()}@qkern.test`;
+      const password = "a sufficiently long password";
+      const signup = await audited.signUp(auditScope, {
+        email, password, redirectTo: "https://app.test/callback", rateLimitKey: randomUUID(),
+      });
+      const session = await audited.consumeEmailToken(auditScope, { token: signup.debugToken!, purpose: "email_verification" });
+      if ("mfaRequired" in session) throw new Error("unexpected MFA");
+      const userId = (await audited.verifyAccess(auditScope, session.accessToken)).user.id;
+      await expect(audited.passwordSignIn(auditScope, {
+        email: `unknown-${randomUUID()}@qkern.test`, password, rateLimitKey: randomUUID(),
+      })).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+      expect(await audited.revokeAllSessions(auditScope, userId, { id: auditOwner })).toEqual({ revoked: 1 });
+      // Kein Ereignis ist still verloren gegangen: der Sink hat nie geworfen.
+      expect(errors).not.toHaveBeenCalled();
+      errors.mockRestore();
 
-    const page = await audited.listAuditEvents(auditScope, 10);
-    expect(page.events.map((event) => event.action)).toEqual([
-      "project_auth.sessions.revoked_all", "project_auth.login.failed",
-      "project_auth.login.succeeded", "project_auth.signup.succeeded",
-    ]);
-    expect(page.events[0]).toMatchObject({ actorType: "admin", actorRef: controlUser, resourceRef: `project_auth_user:${userId}` });
-    expect(page.events[1]).toMatchObject({ actorRef: "anonymous", metadata: { method: "password", reason: "invalid_credentials" } });
-    expect(page.events[2]).toMatchObject({ actorRef: `project_auth_user:${userId}`, metadata: { method: "email_verification" } });
-    const cursorPage = await audited.listAuditEvents(auditScope, 2, page.events[1].id);
-    expect(cursorPage.events.map((event) => event.action))
-      .toEqual(["project_auth.login.succeeded", "project_auth.signup.succeeded"]);
+      const page = await audited.listAuditEvents(auditScope, 10);
+      expect(page.events.map((event) => event.action)).toEqual([
+        "project_auth.sessions.revoked_all", "project_auth.login.failed",
+        "project_auth.login.succeeded", "project_auth.signup.succeeded",
+      ]);
+      expect(page.events[0]).toMatchObject({ actorType: "admin", actorRef: auditOwner, resourceRef: `project_auth_user:${userId}` });
+      expect(page.events[1]).toMatchObject({ actorRef: "anonymous", metadata: { method: "password", reason: "invalid_credentials" } });
+      expect(page.events[2]).toMatchObject({ actorRef: `project_auth_user:${userId}`, metadata: { method: "email_verification" } });
+      const cursorPage = await audited.listAuditEvents(auditScope, 2, page.events[1].id);
+      expect(cursorPage.events.map((event) => event.action))
+        .toEqual(["project_auth.login.succeeded", "project_auth.signup.succeeded"]);
 
-    const rows = await owner.query(`SELECT actor_type, actor_ref, action, resource_ref, status, redacted_metadata
-      FROM audit_logs WHERE organization_id = $1`, [auditOrganization]);
-    expect(rows.rows).toHaveLength(4);
-    const serialized = JSON.stringify(rows.rows);
-    expect(serialized).not.toContain("@");
-    expect(serialized).not.toMatch(/qk_(refresh|verify|magic|reset|challenge)_/);
-    expect(serialized).not.toContain(session.refreshToken);
+      const rows = await owner.query(`SELECT actor_type, actor_ref, action, resource_ref, status, redacted_metadata
+        FROM audit_logs WHERE organization_id = $1`, [auditOrganization]);
+      expect(rows.rows).toHaveLength(4);
+      const serialized = JSON.stringify(rows.rows);
+      expect(serialized).not.toContain("@");
+      expect(serialized).not.toMatch(/qk_(refresh|verify|magic|reset|challenge)_/);
+      expect(serialized).not.toContain(session.refreshToken);
 
-    // Die Kette neu rechnen, wie auditChainIntact im Backup-Drill: jeder
-    // entry_hash stimmt, und jeder previous_hash zeigt auf den Vorgaenger.
-    const chain = await owner.query<{ ok: boolean; linked: boolean }>(`
-      WITH ordered AS (
-        SELECT *, lag(entry_hash) OVER (PARTITION BY organization_id ORDER BY created_at, id) AS expected_previous
-        FROM audit_logs WHERE organization_id = $1
-      )
-      SELECT bool_and(entry_hash = encode(digest(jsonb_build_object(
-               'id', id, 'organization_id', organization_id, 'project_id', project_id, 'environment', environment,
-               'actor_type', actor_type, 'actor_ref', actor_ref, 'action', action, 'resource_ref', resource_ref,
-               'status', status, 'redacted_metadata', redacted_metadata, 'previous_hash', previous_hash, 'created_at', created_at
-             )::text, 'sha256'), 'hex')) AS ok,
-             bool_and(previous_hash IS NOT DISTINCT FROM expected_previous) AS linked
-      FROM ordered`, [auditOrganization]);
-    expect(chain.rows[0]).toEqual({ ok: true, linked: true });
+      // Die Kette neu rechnen, wie auditChainIntact im Backup-Drill: jeder
+      // entry_hash stimmt, und jeder previous_hash zeigt auf den Vorgaenger.
+      const chain = await owner.query<{ ok: boolean; linked: boolean }>(`
+        WITH ordered AS (
+          SELECT *, lag(entry_hash) OVER (PARTITION BY organization_id ORDER BY created_at, id) AS expected_previous
+          FROM audit_logs WHERE organization_id = $1
+        )
+        SELECT bool_and(entry_hash = encode(digest(jsonb_build_object(
+                 'id', id, 'organization_id', organization_id, 'project_id', project_id, 'environment', environment,
+                 'actor_type', actor_type, 'actor_ref', actor_ref, 'action', action, 'resource_ref', resource_ref,
+                 'status', status, 'redacted_metadata', redacted_metadata, 'previous_hash', previous_hash, 'created_at', created_at
+               )::text, 'sha256'), 'hex')) AS ok,
+               bool_and(previous_hash IS NOT DISTINCT FROM expected_previous) AS linked
+        FROM ordered`, [auditOrganization]);
+      expect(chain.rows[0]).toEqual({ ok: true, linked: true });
 
-    // Ein anderer Scope sieht nichts, und die Auth-Rolle liest unter einer
-    // anderen Organisation keine dieser Zeilen (RLS aus 0002).
-    expect((await audited.listAuditEvents({ ...auditScope, projectId }, 10)).events).toEqual([]);
-    const leaked = await withTenantTransaction(auth, { organizationId, readOnly: true }, (transaction) =>
-      transaction.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_logs WHERE organization_id = $1", [auditOrganization]));
-    expect(leaked.rows[0].count).toBe(0);
+      // Ein anderer Scope sieht nichts, und die Auth-Rolle liest unter einer
+      // anderen Organisation keine dieser Zeilen (RLS aus 0002).
+      expect((await audited.listAuditEvents({ ...auditScope, projectId }, 10)).events).toEqual([]);
+      const leaked = await withTenantTransaction(auth, { organizationId, readOnly: true }, (transaction) =>
+        transaction.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_logs WHERE organization_id = $1", [auditOrganization]));
+      expect(leaked.rows[0].count).toBe(0);
+    } finally {
+      // Project-Auth-Daten des Falls: one-time tokens zuerst (manche haben
+      // keinen Nutzer), dann die Nutzer; Sitzungen, Faktoren und
+      // Identitaeten folgen per ON DELETE CASCADE.
+      await owner.query("DELETE FROM project_auth_one_time_tokens WHERE organization_id = $1", [auditOrganization]);
+      await owner.query("DELETE FROM project_auth_users WHERE organization_id = $1", [auditOrganization]);
+    }
   });
 });
