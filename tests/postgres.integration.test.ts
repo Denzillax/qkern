@@ -856,15 +856,22 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(bucketAt(2)).toMatchObject({ accepted: "0", rejected: "0", events: 0 });
     // Angenommen und abgelehnt in derselben Stunde, getrennt gezaehlt.
     expect(bucketAt(1)).toMatchObject({ accepted: "100", rejected: "50", events: 2 });
-    expect(series.totals).toEqual({ accepted: "115", rejected: "50", events: 6 });
+    // Fuenf Ereignisse, nicht sechs: `edge-out` liegt eine Minute vor dem
+    // Fenster und zaehlt nirgends mit, wie die naechste Zusicherung verlangt.
+    // 115 = 3 + 5 + 7 + 100, dazu 50 abgelehnt.
+    expect(series.totals).toEqual({ accepted: "115", rejected: "50", events: 5 });
     // 999 lag vor dem Fenster und ist in keiner Summe.
     expect(JSON.stringify(series)).not.toContain("999");
 
-    // Dieselben Ereignisse in Tageseimern: andere Grenzen, dieselben Summen.
+    // Dieselben Ereignisse in Tageseimern, aber in einem anderen Fenster: 90
+    // Tage statt 48 Stunden. `edge-out` liegt darin, und die Quota hat es
+    // abgelehnt (999 ueber dem Limit 120). Deshalb sechs Ereignisse und
+    // 1049 = 999 + 50 abgelehnt. Genau daran zeigt sich, dass das Fenster und
+    // nicht die Eimergroesse darueber entscheidet, was mitzaehlt.
     const daily = await service.readSeries(reader, scope, { metric: "api_requests", bucket: "day" });
     expect(daily.bucketCount).toBe(90);
     expect(daily.buckets).toHaveLength(90);
-    expect(daily.totals).toEqual({ accepted: "115", rejected: "50", events: 6 });
+    expect(daily.totals).toEqual({ accepted: "115", rejected: "1049", events: 6 });
     for (const entry of daily.buckets) {
       expect(entry.start.endsWith("T00:00:00.000Z"), entry.start).toBe(true);
     }
