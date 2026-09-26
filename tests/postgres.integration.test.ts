@@ -224,16 +224,34 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`CREATE TABLE "${schema}".churn (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
       await owner.query(`CREATE TABLE "${schema}".untouched (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
       await owner.query(`CREATE TABLE "${schema}".calm (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
+      // `served` sieht aus wie `busy`, hat aber einen Index, den der Planer
+      // nutzt. Die Regel darf sie nicht melden; genau daran haengt die zweite
+      // Haelfte der Bedingung. Ohne diese Tabelle faellt eine Mutation, die
+      // die Indexscans ignoriert, im Stack nicht auf.
+      await owner.query(`CREATE TABLE "${schema}".served (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
       await owner.query(`INSERT INTO "${schema}".busy SELECT g, 'tag-' || (g % 7) FROM generate_series(1, 60000) AS g`);
       await owner.query(`INSERT INTO "${schema}".churn SELECT g, 'tag' FROM generate_series(1, 3000) AS g`);
       await owner.query(`INSERT INTO "${schema}".untouched SELECT g, 'tag' FROM generate_series(1, 2000) AS g`);
       await owner.query(`INSERT INTO "${schema}".calm SELECT g, 'tag' FROM generate_series(1, 1500) AS g`);
+      await owner.query(`INSERT INTO "${schema}".served SELECT g, 'tag-' || (g % 7) FROM generate_series(1, 60000) AS g`);
+      await owner.query(`CREATE INDEX served_tag_idx ON "${schema}".served (tag)`);
       // ANALYZE auf drei Tabellen, absichtlich nicht auf `untouched`.
-      await owner.query(`ANALYZE "${schema}".busy, "${schema}".churn, "${schema}".calm`);
+      await owner.query(`ANALYZE "${schema}".busy, "${schema}".churn, "${schema}".calm, "${schema}".served`);
       // Sequenzielle Scans erzwingen: `tag` hat noch keinen Index.
       for (let round = 0; round < PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans; round += 1) {
         await owner.query(`SELECT count(*) FROM "${schema}".busy WHERE tag = 'tag-3'`);
       }
+      // `served` bekommt gleich viele sequenzielle Scans wie `busy`, dazu aber
+      // mehr Indexscans als ein Zehntel davon. Der erzwungene Plan macht die
+      // Zahl unabhaengig von der Schaetzung des Planers.
+      for (let round = 0; round < PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans; round += 1) {
+        await owner.query(`SELECT count(*) FROM "${schema}".served`);
+      }
+      await owner.query("SET enable_seqscan = off");
+      for (let round = 0; round < PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans; round += 1) {
+        await owner.query(`SELECT count(*) FROM "${schema}".served WHERE tag = 'tag-3'`);
+      }
+      await owner.query("RESET enable_seqscan");
       // Der Index entsteht erst jetzt und wird von niemandem benutzt.
       await owner.query(`CREATE INDEX busy_tag_idx ON "${schema}".busy (tag, id)`);
       // Tote Zeilen, die niemand aufraeumt.
@@ -260,10 +278,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         const busy = result.tables.find((table) => table.table === "busy");
         const churn = result.tables.find((table) => table.table === "churn");
         const untouched = result.tables.find((table) => table.table === "untouched");
-        return Boolean(busy && churn && untouched &&
+        const served = result.tables.find((table) => table.table === "served");
+        return Boolean(busy && churn && untouched && served &&
           busy.seqScan >= PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans &&
           busy.liveTuples >= PERFORMANCE_THRESHOLDS.missingIndexMinLiveTuples &&
-          churn.deadTuples >= 3000 && untouched.liveTuples >= 2000);
+          churn.deadTuples >= 3000 && untouched.liveTuples >= 2000 &&
+          served.seqScan >= PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans &&
+          served.idxScan * PERFORMANCE_THRESHOLDS.missingIndexSeqToIdxFactor > served.seqScan);
       };
       const deadline = Date.now() + 20_000;
       let statistics = await service.inspectStatistics(context, scope, schema);
@@ -303,6 +324,17 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       ]);
       // Die gesunde Tabelle traegt keinen Befund, auch nicht ueber ihren Primaerschluessel.
       expect(result.findings.some((finding) => finding.object.name.startsWith("calm"))).toBe(false);
+      // Und `served` auch nicht: viele sequenzielle Scans, aber genug Indexscans.
+      const served = statistics.tables.find((table) => table.table === "served");
+      expect(
+        served,
+        `served fehlt in der Statistik: ${statistics.tables.map((table) => table.table).join(", ")}`,
+      ).toBeDefined();
+      expect(
+        served!.idxScan * PERFORMANCE_THRESHOLDS.missingIndexSeqToIdxFactor > served!.seqScan,
+        `served: ${served!.seqScan} sequenzielle, ${served!.idxScan} Indexscans`,
+      ).toBe(true);
+      expect(result.findings.some((finding) => finding.object.name.startsWith("served"))).toBe(false);
       expect(result.checks.filter((check) => check.ran).map((check) => check.rule).sort()).toEqual([
         "bloat_suspected", "missing_index_suspected", "never_analyzed", "unused_index",
       ]);
