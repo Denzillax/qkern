@@ -48,6 +48,7 @@ function objectLabel(kind: string): string {
     case "policy": return t("Policy");
     case "bucket": return t("Bucket");
     case "api_key": return t("API-Key");
+    case "auth_provider": return t("Anmeldeanbieter");
     default: return kind;
   }
 }
@@ -136,7 +137,7 @@ export function SecurityAdvisorView({ projectId, environment }: { projectId: str
         <div><strong>{ruleTitle(item.rule)}</strong> <code>{item.rule}</code>{SECURITY_RULES[item.rule] && <p className="muted">{t(SECURITY_RULES[item.rule].reads)}</p>}{item.reason && <p className="muted">{t(item.reason)}</p>}</div>
         <span className={item.ran ? "secure" : "risk medium"}>{item.ran ? t("geprüft") : t("nicht geprüft")}</span>
       </div>)}
-      <p className="muted">{t("Nicht im Blick: Funktionen mit SECURITY DEFINER, Views ohne security_invoker, Spaltenrechte, Schemas ausser public und alles, was nur in der Serverkonfiguration steht.")}</p>
+      <p className="muted">{t("Nicht im Blick: Funktionen mit SECURITY DEFINER, Views ohne security_invoker, Spaltenrechte, Schemas ausser public und an den Anmeldeanbietern alles ausser der Frage, ob sie email_verified verlangen.")}</p>
     </article>
   </div>;
 }

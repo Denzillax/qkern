@@ -57,16 +57,18 @@ export type PerformanceAdvisorIndex = {
 };
 
 /**
- * Ein Eintrag aus `pg_stat_statements`, falls die Quelle je geoeffnet wird.
- * `text` ist null, wenn der Text nicht gefahrlos gezeigt werden kann; dann
- * nennt der Befund nur die Kennung. Die Route dieser Version liest die Sicht
- * nicht, siehe `statementsNotRead`.
+ * Ein Eintrag aus `pg_stat_statements`, auf den sicheren Teil reduziert (2.57).
+ *
+ * Bis 2.56 hatte dieser Typ ein Feld `text`, das nie gefuellt wurde, weil
+ * die Route die Sicht gar nicht las. Ein Feld, das einen Abfragetext tragen
+ * koennte, ist jetzt ersatzlos weg: Was es nicht gibt, kann auch nicht aus
+ * Versehen gefuellt werden. Der Befund nennt darum die normalisierte
+ * Kennung, und die ist ein Hash ueber den Abfragebaum, kein Text.
  */
 export type PerformanceAdvisorStatement = {
   id: string;
   totalTimeMs: number;
   calls: number;
-  text: string | null;
 };
 
 type Unavailable = { unavailable: PerformanceCheckReason };
@@ -144,7 +146,7 @@ export function evaluatePerformanceRules(input: PerformanceAdvisorInput): Perfor
       .filter((entry) => entry.totalTimeMs >= limits.slowStatementMinTotalMs)
       .sort((a, b) => b.totalTimeMs - a.totalTimeMs || compare(a.id, b.id))
       .slice(0, limits.slowStatementCount);
-    for (const entry of ranked) findings.push(finding("slow_statement", "statement", entry.text ?? entry.id, entry.id));
+    for (const entry of ranked) findings.push(finding("slow_statement", "statement", entry.id));
     checks.set("slow_statement", check("slow_statement", true));
   }
 

@@ -24,7 +24,7 @@ function index(name: string, overrides: Partial<PerformanceAdvisorIndex> = {}): 
 function input(overrides: Partial<PerformanceAdvisorInput> = {}): PerformanceAdvisorInput {
   return {
     statistics: { schema: "public", tables: [], indexes: [], truncated: false },
-    statements: { unavailable: "statementsNotRead" },
+    statements: { entries: [] },
     ...overrides,
   };
 }
@@ -45,9 +45,11 @@ describe("performance advisor rules", () => {
     }));
     expect(result.findings).toEqual([]);
     expect(result.checks.map((item) => item.rule)).toEqual([...PERFORMANCE_RULE_IDS]);
-    expect(result.checks.filter((item) => !item.ran).map((item) => item.rule)).toEqual(["slow_statement"]);
+    // Seit 2.57 laeuft auch slow_statement; keine Regel bleibt dauerhaft
+    // ungeprueft stehen.
+    expect(result.checks.filter((item) => !item.ran).map((item) => item.rule)).toEqual([]);
     expect(result.checks.find((item) => item.rule === "slow_statement")).toEqual({
-      rule: "slow_statement", ran: false, reason: PERFORMANCE_CHECK_REASONS.statementsNotRead,
+      rule: "slow_statement", ran: true,
     });
   });
 
@@ -98,7 +100,10 @@ describe("performance advisor rules", () => {
   });
 
   it("marks every rule of a missing statistics source as not run, with the reason", () => {
-    const result = evaluatePerformanceRules(input({ statistics: { unavailable: "databaseDisabled" } }));
+    const result = evaluatePerformanceRules(input({
+      statistics: { unavailable: "databaseDisabled" },
+      statements: { unavailable: "databaseDisabled" },
+    }));
     expect(result.findings).toEqual([]);
     expect(result.checks.filter((item) => item.ran)).toEqual([]);
     for (const rule of ["missing_index_suspected", "bloat_suspected", "never_analyzed", "unused_index"] as const) {
@@ -118,14 +123,16 @@ describe("performance advisor rules", () => {
 
   it("slow_statement takes the most expensive statements above the floor when a source is given", () => {
     const entries = [
-      { id: "s1", totalTimeMs: 90_000, calls: 10, text: "SELECT $1" },
-      { id: "s2", totalTimeMs: limits.slowStatementMinTotalMs, calls: 4000, text: null },
-      { id: "s3", totalTimeMs: limits.slowStatementMinTotalMs - 1, calls: 2, text: "SELECT $2" },
+      { id: "8134713591", totalTimeMs: 90_000, calls: 10 },
+      { id: "-42", totalTimeMs: limits.slowStatementMinTotalMs, calls: 4000 },
+      { id: "7", totalTimeMs: limits.slowStatementMinTotalMs - 1, calls: 2 },
     ];
     const result = evaluatePerformanceRules(input({ statements: { entries } }));
-    expect(result.findings.map((item) => item.id)).toEqual(["slow_statement:statement:s1", "slow_statement:statement:s2"]);
-    // Ohne sicheren Text nennt der Befund nur die Kennung.
-    expect(result.findings.map((item) => item.object.name)).toEqual(["SELECT $1", "s2"]);
+    expect(result.findings.map((item) => item.id))
+      .toEqual(["slow_statement:statement:-42", "slow_statement:statement:8134713591"]);
+    // Der Befund nennt nur die normalisierte Kennung. Der Typ hat seit 2.57
+    // kein Feld mehr, in das ein Abfragetext passen wuerde.
+    expect(result.findings.map((item) => item.object.name)).toEqual(["-42", "8134713591"]);
     expect(result.checks.find((item) => item.rule === "slow_statement")).toEqual({ rule: "slow_statement", ran: true });
     const unavailable = evaluatePerformanceRules(input({ statements: { unavailable: "statementsUnavailable" } }));
     expect(unavailable.checks.find((item) => item.rule === "slow_statement")).toEqual({

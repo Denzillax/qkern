@@ -43,6 +43,9 @@ function port(overrides: Partial<ProjectDataPlanePort> = {}): ProjectDataPlanePo
     inspectSchema: vi.fn(), inspectPolicies: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(),
     inspectIndexes: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectForeignKeys: vi.fn(),
     inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectActivity: vi.fn(),
+    // Seit 2.57 liest die Route auch pg_stat_statements — hier ohne die
+    // Erweiterung, damit die bestehenden Faelle ihre Aussage behalten.
+    inspectStatements: vi.fn().mockResolvedValue({ source: "postgres", installed: false, statements: [], truncated: false }),
     ...overrides,
   } as ProjectDataPlanePort;
 }
@@ -74,9 +77,52 @@ describe("performance advisor route", () => {
       "unused_index:index:orders_note_idx",
     ]);
     expect(body.data.checks.map((item) => item.rule)).toEqual([...PERFORMANCE_RULE_IDS]);
+    // Ohne die Erweiterung laeuft die Statement-Regel nicht und sagt warum.
     expect(body.data.checks.filter((item) => !item.ran).map((item) => item.rule)).toEqual(["slow_statement"]);
+    expect(body.data.checks.find((item) => item.rule === "slow_statement"))
+      .toEqual({ rule: "slow_statement", ran: false, reason: PERFORMANCE_CHECK_REASONS.statementsUnavailable });
     expect(dataPlane.inspectStatistics).toHaveBeenCalledWith(
       expect.objectContaining({ actorRef: principal.user.email }), { projectId: "project", environment: "production" }, "public");
+  });
+
+  /**
+   * Der Punkt, der 2.40 offen geblieben ist: Mit `pg_stat_statements` laeuft
+   * die Regel, und was aus der Sicht herauskommt, ist eine Kennung und zwei
+   * Zahlen. Ein Abfragetext hat in dieser Antwort keine Stelle mehr, an der
+   * er stehen koennte.
+   */
+  it("runs the statement rule from digests and carries no query text out of it", async () => {
+    const principal = await identity();
+    const inspectStatements = vi.fn().mockResolvedValue({
+      source: "postgres", installed: true, truncated: false,
+      statements: [
+        { id: "8134713591", calls: 12, totalTimeMs: 90_000 },
+        { id: "17", calls: 3, totalTimeMs: 12 },
+      ],
+    });
+    const dataPlane = port({ inspectStatements });
+    const response = await handlePerformanceAdvisor(new NextRequest(url(), {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
+    }), params(), { dataPlane, keys: keys(vi.fn()), now: () => NOW });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { data: { findings: Array<{ id: string; object: { kind: string; name: string } }>; checks: Array<{ rule: string; ran: boolean }> } };
+    expect(body.data.checks.find((item) => item.rule === "slow_statement"))
+      .toEqual({ rule: "slow_statement", ran: true });
+    const statement = body.data.findings.find((item) => item.object.kind === "statement");
+    expect(statement).toEqual(expect.objectContaining({
+      id: "slow_statement:statement:8134713591", object: { kind: "statement", name: "8134713591" },
+    }));
+    // Das billige Statement bleibt unter der Schwelle und taucht nicht auf.
+    expect(body.data.findings.some((item) => item.object.name === "17")).toBe(false);
+    expect(inspectStatements).toHaveBeenCalledWith(
+      expect.objectContaining({ actorRef: principal.user.email }), { projectId: "project", environment: "production" });
+    // Jeder Name, den ein Befund traegt, ist ein Katalogname oder eine
+    // Kennung aus Ziffern; ein Abfragetext kaeme hier heraus. (Die Regeltexte
+    // selbst nennen SQL-Woerter, das sind feste Saetze aus dem Katalog der
+    // Texte und keine Werte aus der Datenbank.)
+    for (const finding of body.data.findings) {
+      expect(finding.object.name, finding.id).toMatch(/^[-_a-zA-Z0-9]+$/);
+    }
   });
 
   it("rejects any query parameter before touching a service", async () => {

@@ -40,19 +40,23 @@ function stateOf(result: ReturnType<typeof evaluateHealthRules>, id: string): He
 }
 
 describe("health rules", () => {
-  it("reports every subsystem in a fixed order and calls a healthy environment ok", () => {
+  it("reports every subsystem in a fixed order and separates asked from merely set up", () => {
     const result = evaluateHealthRules(healthy());
     expect(result.subsystems.map((subsystem) => subsystem.id)).toEqual([...HEALTH_SUBSYSTEM_IDS]);
-    expect(result.subsystems.every((subsystem) => subsystem.state === "ok")).toBe(true);
-    expect(result.overall).toBe("ok");
-    expect(result.counts).toEqual({ ok: 8, off: 0, unconfigured: 0, unknown: 0, degraded: 0 });
+    // Sechs Teile wurden wirklich gefragt. Realtime und Vault nicht: Dort ist
+    // nur etwas hinterlegt, und seit 2.57 heisst das `configured` und nicht
+    // mehr `ok`.
+    expect(result.subsystems.filter((subsystem) => subsystem.state === "configured").map((subsystem) => subsystem.id))
+      .toEqual(["realtime", "vault"]);
+    expect(result.overall).toBe("configured");
+    expect(result.counts).toEqual({ ok: 6, configured: 2, off: 0, unconfigured: 0, unknown: 0, degraded: 0 });
     expect(result.subsystems[0].detail).toBe(HEALTH_DETAILS.databaseCatalogRead);
     expect(result.subsystems[0].evidence).toEqual([
       { measure: "tables", label: HEALTH_MEASURES.tables, count: 12 },
     ]);
   });
 
-  it("produces each of the five states from the input that deserves it", () => {
+  it("produces each of the six states from the input that deserves it", () => {
     const result = evaluateHealthRules(healthy({
       // abgeschaltet
       database: { unavailable: "disabled" },
@@ -68,7 +72,8 @@ describe("health rules", () => {
     expect(stateOf(result, "auth")).toBe("degraded");
     expect(stateOf(result, "storage")).toBe("unknown");
     expect(stateOf(result, "compute")).toBe("ok");
-    expect(new Set(result.subsystems.map((subsystem) => subsystem.state)).size).toBe(5);
+    expect(stateOf(result, "realtime")).toBe("configured");
+    expect(new Set(result.subsystems.map((subsystem) => subsystem.state)).size).toBe(6);
   });
 
   it("makes the overall verdict the worst state present, never an average", () => {
@@ -79,10 +84,12 @@ describe("health rules", () => {
     expect(evaluateHealthRules(healthy({
       database: { unavailable: "disabled" }, storage: { buckets: 0 }, compute: { unavailable: "consoleOnly" },
     })).overall).toBe("unknown");
-    // Ein einziger gestoerter Teil schlaegt sieben erreichbare.
+    // Ein einziger gestoerter Teil schlaegt fuenf erreichbare und zwei
+    // eingerichtete.
     const degraded = evaluateHealthRules(healthy({ queuesCron: { queues: 2, cronDefinitions: 2, cronStale: 1 } }));
     expect(degraded.overall).toBe("degraded");
-    expect(degraded.counts.ok).toBe(7);
+    expect(degraded.counts.ok).toBe(5);
+    expect(degraded.counts.configured).toBe(2);
     expect(degraded.subsystems.find((subsystem) => subsystem.id === "queues_cron")!.detail)
       .toBe(HEALTH_DETAILS.cronNeverDispatched);
   });
@@ -106,6 +113,10 @@ describe("health rules", () => {
     expect(stateOf(evaluateHealthRules(healthy({ storage: { unavailable: "unavailable" } })), "storage")).toBe("degraded");
     expect(stateOf(evaluateHealthRules(healthy({ realtime: { configured: false } })), "realtime")).toBe("unconfigured");
     expect(stateOf(evaluateHealthRules(healthy({ vault: { connected: false } })), "vault")).toBe("unconfigured");
+    // Und der Gegenbeweis zur Umbenennung: Eine hinterlegte Adresse heisst
+    // nie "erreichbar". Gefragt hat diese Seite den Dienst nicht.
+    expect(stateOf(evaluateHealthRules(healthy({ realtime: { configured: true } })), "realtime")).toBe("configured");
+    expect(stateOf(evaluateHealthRules(healthy({ vault: { connected: true } })), "vault")).toBe("configured");
     expect(stateOf(evaluateHealthRules(healthy({ compute: { functions: 1, sandboxConfigured: false } })), "compute")).toBe("unconfigured");
   });
 

@@ -5566,3 +5566,56 @@ Schreiben der Position wiederholt hoechstens eine Stapelmenge. Die Migration
 `0051` ist nicht optional: fehlt sie, scheitert jede Anmeldung laut, weil
 dieselbe Zeile den Zweitfaktor-Schalter traegt. Mailtexte gibt es nur in
 einer Sprache und nur fest. Im Browser nicht gesehen.
+
+## Regeln, die nie liefen – Release 2.57
+
+Vier offene Punkte aus 2.39, 2.40, 2.44 und 2.46, alle vier von den Releases
+selbst notiert. Die Frage war jedes Mal dieselbe: Ist der Grund, aus dem
+damals nichts geschah, noch der Grund, oder war es Bequemlichkeit?
+
+Bei den Anmeldeanbietern war es der Grund, aber ein zu weiter. Die Projektion
+gab Slug und Issuer heraus, und die Regel brauchte weder das eine noch das
+andere, sondern ein Ja/Nein. Ein abgeleitetes `boolean` ist kein Durchreichen:
+Es ist ein Vergleich, und in einen Vergleich passt kein Secret. Die
+oeffentliche Provider-Route verengt trotzdem weiter auf zwei Felder, weil die
+Betriebsart eines Anbieters niemanden etwas angeht, der noch nicht angemeldet
+ist.
+
+Bei `pg_stat_statements` traf der Grund die Spalte `query` und die Zeilen
+fremder Datenbanken — und nicht die Zaehler. Zwei Klauseln reichten: `dbid`
+auf die eigene Datenbank, und `query` nirgends auswaehlen. Dazu ist das Feld
+`text` aus `PerformanceAdvisorStatement` verschwunden, das seit 2.40 nie
+gefuellt wurde. Ein Feld, das einen Abfragetext tragen koennte, ist ein Feld,
+das jemand spaeter fuellt.
+
+Bei Realtime und Vault war eine Probe der falsche Weg: Eine Verbindung
+aufzubauen oder den Vault zu fragen ist mehr, als diese Seite tun soll. Der
+ehrliche Weg war der billigere — der Zustand heisst jetzt `configured` und
+nicht mehr `ok`. Er liegt im Rang ueber `ok`, und damit sagt das Gesamturteil
+eines Projekts mit Realtime nicht mehr „erreichbar“. Das sieht aus wie eine
+Verschlechterung und ist die Korrektur einer Unwahrheit.
+
+Bei den Verbindungen war es nur eine Subtraktion, die bisher der Leser machen
+musste. `backends` minus die gezaehlten Gruppen steht jetzt als Kachel da,
+nach unten auf null geklemmt: Beide Zahlen kommen aus zwei Abfragen
+nacheinander, und eine dazwischen geschlossene Sitzung darf keine negative
+„unsichtbare“ Zahl ergeben.
+
+Der Zertifizierungsfall `(2.57) proves the advisor rules that used to be
+unreachable` legt einen Marker als Literal in den Text eines Utility-Befehls,
+weist nach, dass `pg_stat_statements` ihn wirklich traegt, und prueft danach,
+dass die ganze Antwort von `inspectStatements` frei davon ist — nach dem
+Muster von 2.46, wo derselbe Beweis fuer `pg_stat_activity` gefuehrt wurde.
+Dafuer laedt der PostgreSQL-Stack die Erweiterung seit diesem Release ueber
+`shared_preload_libraries`; die anderen Stacks legen sie nicht an, und der
+Berater meldet sie dort als nicht installiert.
+
+Lokal `2.57.0`: `npx tsc --noEmit -p .` gruen, Vitest 1724 bestanden, 0
+fehlgeschlagen, 275 uebersprungen.
+
+Nicht erbracht: Die PostgreSQL-Zertifizierung dieses Slices ist nicht
+gefahren; die Zahl 192 ist gezaehlt, nicht belegt. Ohne `pg_read_all_stats`
+sieht die Leserolle fremde Zeilen ohne Kennung, der Berater sieht also weniger
+als im Cluster steht. Die Provider-Regel sagt etwas ueber die Konfiguration
+und nichts darueber, ob ein Anbieter mit `required` seine Adressen wirklich
+prueft. Im Browser nicht gesehen.

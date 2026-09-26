@@ -100,6 +100,25 @@ export const CONNECTIONS_REPORT_HONESTY =
   "Gezählt wird, was diese Rolle sehen darf. Einzelne Sitzungen und ihre Abfragen zeigt QKERN nicht.";
 
 /**
+ * Die Verbindungen, die `pg_stat_database` zaehlt, die Gruppen aber nicht
+ * enthalten (2.57).
+ *
+ * 2.46 hat diesen Unterschied nur in Prosa erklaert ("die gezählte Summe
+ * kann niedriger sein als die Zahl der Backends"). Ein Leser musste zwei
+ * Zahlen im Kopf abziehen, um zu wissen, wie gross die Luecke ist. Sie ist
+ * eine Tatsache und steht jetzt als Zahl da.
+ *
+ * Geklemmt auf null nach unten: `numbackends` und `pg_stat_activity` werden
+ * nacheinander gelesen, eine geschlossene Sitzung dazwischen kann die
+ * Gruppen kurz groesser aussehen lassen. Eine negative "unsichtbare" Zahl
+ * waere eine Behauptung ueber etwas, das es nicht gibt.
+ */
+export function hiddenConnections(backends: number, counted: number): number {
+  if (!Number.isFinite(backends) || !Number.isFinite(counted)) return 0;
+  return Math.max(0, Math.floor(backends) - Math.floor(counted));
+}
+
+/**
  * Die Trefferquote des Caches: Anteil der Bloecke, die schon im Speicher
  * lagen. `null` heisst, dass noch kein Block gelesen wurde — weder aus dem
  * Cache noch von der Platte. Eine frisch zurueckgesetzte Statistik zeigt

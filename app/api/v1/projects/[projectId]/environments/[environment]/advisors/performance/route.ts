@@ -20,13 +20,16 @@ import { dataPlaneRouteError } from "@/app/api/v1/projects/[projectId]/environme
  * Inspektor. Fehlt die Quelle, laeuft ihre Regel nicht, und die Antwort sagt
  * das. Ein abgeschalteter Dienst ist kein 500.
  *
- * `pg_stat_statements` liest diese Route bewusst nicht: die Sicht gilt fuer
- * den ganzen Cluster, und der Text eines Utility-Befehls behaelt seine
- * Literale (`pg_stat_statements` normalisiert nur Abfragen). Dort koennten
- * Werte eines anderen Projekts stehen. Die Regel `slow_statement` steht
- * darum immer als "nicht geprueft" mit genau diesem Grund in der Antwort;
- * das reine Regelmodul koennte sie rechnen, wenn die Quelle je sicher zu
- * oeffnen ist.
+ * `pg_stat_statements` liest diese Route seit 2.57 — aber nur den sicheren
+ * Teilausschnitt. 2.40 hat die Sicht ganz liegen gelassen, weil sie fuer
+ * den ganzen Cluster gilt und der Text eines Utility-Befehls seine Literale
+ * behaelt (normalisiert wird nur eine Abfrage). Beide Gruende treffen die
+ * Spalte `query` und die Zeilen fremder Datenbanken, nicht die Zaehler:
+ * `inspectStatements` grenzt auf `dbid` der eigenen Datenbank ein und
+ * waehlt `query` nicht aus. Uebrig bleiben normalisierte Kennung, Aufrufe
+ * und Gesamtzeit — und `PerformanceAdvisorStatement` hat kein Feld mehr,
+ * in das ein Text passen wuerde. Fehlt die Erweiterung, laeuft die Regel
+ * nicht, und die Antwort sagt genau das.
  */
 const environmentSchema = z.enum(["development", "staging", "production"]);
 const SCHEMA = "public";
@@ -53,10 +56,13 @@ export async function handlePerformanceAdvisor(request: NextRequest, input: Rout
     const context = await generatedDataContext(request, scope, false, keys, dependencies.projectAuth);
     const dataContext = { organizationId: context.organizationId, actorRef: context.actorRef };
 
-    const statistics = await readStatistics(dependencies.dataPlane, dataContext, scope);
+    const [statistics, statements] = await Promise.all([
+      readStatistics(dependencies.dataPlane, dataContext, scope),
+      readStatements(dependencies.dataPlane, dataContext, scope),
+    ]);
     const now = (dependencies.now ?? (() => new Date()))();
 
-    const result = evaluatePerformanceRules({ statistics, statements: { unavailable: "statementsNotRead" } });
+    const result = evaluatePerformanceRules({ statistics, statements });
     return NextResponse.json(
       { data: { findings: result.findings, checks: result.checks, checkedAt: now.toISOString() } },
       { headers: { "Cache-Control": "private, no-store" } },
@@ -92,6 +98,34 @@ async function readStatistics(
       })),
       truncated: statistics.truncated,
     };
+  } catch (error) {
+    if (isProjectDataPlaneError(error, "DATA_PLANE_DISABLED")) return { unavailable: "databaseDisabled" };
+    if (isProjectDataPlaneError(error, "DATA_PLANE_NOT_READY")) return { unavailable: "databaseNotReady" };
+    if (isProjectDataPlaneError(error) || isConnectionUnavailable(error)) return { unavailable: "databaseUnavailable" };
+    throw error;
+  }
+}
+
+/**
+ * Die Statement-Kennungen der eigenen Datenbank (2.57).
+ *
+ * Was hier ankommt, hat die Grenze der Data Plane schon passiert: eine
+ * Kennung aus Ziffern und zwei Zaehler. Diese Funktion reicht genau das
+ * weiter und legt nichts dazu. Fehlt die Erweiterung, wird daraus kein
+ * Fehler, sondern der Grund, den die Karte zeigt.
+ */
+async function readStatements(
+  port: ProjectDataPlanePort | undefined,
+  context: { organizationId: string; actorRef: string },
+  scope: { projectId: string; environment: "development" | "staging" | "production" },
+): Promise<PerformanceAdvisorInput["statements"]> {
+  try {
+    const service = port ?? await getProjectDataPlane();
+    const result = await service.inspectStatements(context, scope);
+    if (!result.installed) return { unavailable: "statementsUnavailable" };
+    return { entries: result.statements.map((entry) => ({
+      id: entry.id, calls: entry.calls, totalTimeMs: entry.totalTimeMs,
+    })) };
   } catch (error) {
     if (isProjectDataPlaneError(error, "DATA_PLANE_DISABLED")) return { unavailable: "databaseDisabled" };
     if (isProjectDataPlaneError(error, "DATA_PLANE_NOT_READY")) return { unavailable: "databaseNotReady" };

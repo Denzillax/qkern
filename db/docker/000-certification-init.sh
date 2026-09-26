@@ -50,4 +50,20 @@ fi
 
 echo "certification-init: applied ${applied} migrations"
 
+# pg_stat_statements, falls der Stack sie vorgeladen hat (2.57).
+#
+# Keine Migration: Die Erweiterung verlangt Superuser und `shared_preload_
+# libraries`; als Migration wuerde sie jede Installation brechen, die beides
+# nicht hat. Hier laeuft sie im Init des Containers, also als Superuser, und
+# ein Fehlschlag ist ausdruecklich folgenlos -- die Stacks ohne Preload legen
+# sie einfach nicht an, und der Leistungsberater meldet sie dann als nicht
+# installiert.
+if ! psql \
+  --username "$POSTGRES_USER" \
+  --dbname "$POSTGRES_DB" \
+  --no-psqlrc \
+  --command "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"; then
+  echo "certification-init: pg_stat_statements not available, continuing without it"
+fi
+
 bash "$RUNTIME_LOGIN_SCRIPT"

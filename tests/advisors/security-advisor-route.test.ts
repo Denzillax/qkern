@@ -7,6 +7,7 @@ import { authRuntime } from "@/lib/server/auth/runtime";
 import { DisabledProjectDataPlane, type ProjectDataPlanePort } from "@/lib/server/data-plane/service";
 import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service";
 import { ProjectStorageError, type ProjectStorageService } from "@/lib/server/project-storage/service";
+import type { ProjectAuthService } from "@/lib/server/project-auth/service";
 import { tenancyService } from "@/lib/server/tenancy-service";
 import { SECURITY_CHECK_REASONS, SECURITY_RULE_IDS } from "@/lib/console/security-advisor-texts";
 
@@ -39,6 +40,7 @@ function port(overrides: Partial<ProjectDataPlanePort> = {}): ProjectDataPlanePo
     ] }),
     queryReadOnly: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectEnumTypes: vi.fn(),
     inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(),
+    inspectStatements: vi.fn(), inspectActivity: vi.fn(),
     ...overrides,
   } as ProjectDataPlanePort;
 }
@@ -73,7 +75,12 @@ describe("security advisor route", () => {
       "policy_always_true:policy:notes.anyone", "rls_disabled:table:open_orders", "bucket_public_read:bucket:avatars", "api_key_broad:api_key:k1",
     ]);
     expect(body.data.checks.map((item) => item.rule)).toEqual([...SECURITY_RULE_IDS]);
+    // Ohne `projectAuth` ist Project Auth in dieser Installation nicht
+    // freigeschaltet; die achte Regel laeuft dann nicht und sagt warum. Dass
+    // sie laufen *kann*, zeigt der Fall darunter.
     expect(body.data.checks.filter((item) => !item.ran).map((item) => item.rule)).toEqual(["auth_provider_unverified_email"]);
+    expect(body.data.checks.find((item) => item.rule === "auth_provider_unverified_email"))
+      .toEqual({ rule: "auth_provider_unverified_email", ran: false, reason: SECURITY_CHECK_REASONS.authDisabled });
     expect(dataPlane.inspectSchema).toHaveBeenCalledWith(
       expect.objectContaining({ actorRef: principal.user.email }), { projectId: "project", environment: "production" }, "public");
     expect(dataPlane.inspectPolicies).toHaveBeenCalledWith(expect.anything(), expect.anything(), "public");
@@ -81,6 +88,38 @@ describe("security advisor route", () => {
       expect.objectContaining({ role: "admin", subject: principal.user.id }),
       expect.objectContaining({ projectId: "project", environment: "production" }));
     expect(listKeys).toHaveBeenCalledWith(expect.objectContaining({ actor: { id: principal.user.id, ref: principal.user.email } }), "project", "production");
+  });
+
+  /**
+   * Der Punkt, der 2.39 offen geblieben ist: Die Regel
+   * `auth_provider_unverified_email` laeuft, weil die Provider-Projektion
+   * seit 2.57 das eine `boolean` traegt, das sie braucht — und sie traegt
+   * nichts sonst nach draussen.
+   */
+  it("runs the provider rule and carries no issuer, client id or secret out of it", async () => {
+    const principal = await identity();
+    const listOidcProviders = vi.fn().mockReturnValue([
+      { id: "strict", issuer: "https://strict.idp.test", requiresVerifiedEmail: true },
+      { id: "trusting", issuer: "https://trusting.idp.test", requiresVerifiedEmail: false },
+    ]);
+    const projectAuth = { listOidcProviders } as unknown as ProjectAuthService;
+    const response = await handleSecurityAdvisor(new NextRequest(url("development"), {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
+    }), params("development"), {
+      dataPlane: new DisabledProjectDataPlane(), storage: storage(vi.fn().mockResolvedValue([])),
+      keys: keys(vi.fn().mockResolvedValue([])), projectAuth, now: () => NOW,
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { data: { findings: Array<{ id: string; object: { kind: string; name: string } }>; checks: Array<{ rule: string; ran: boolean }> } };
+    expect(body.data.checks.find((item) => item.rule === "auth_provider_unverified_email"))
+      .toEqual({ rule: "auth_provider_unverified_email", ran: true });
+    expect(body.data.findings.map((item) => item.id)).toEqual(["auth_provider_unverified_email:auth_provider:trusting"]);
+    expect(body.data.findings[0].object).toEqual({ kind: "auth_provider", name: "trusting" });
+    // Der Issuer steht in der Projektion, geht aber nicht in die Antwort.
+    const serialised = JSON.stringify(body);
+    expect(serialised).not.toContain("idp.test");
+    expect(serialised).not.toContain("https://");
+    expect(listOidcProviders).toHaveBeenCalledTimes(1);
   });
 
   it("rejects any query parameter before touching a service", async () => {

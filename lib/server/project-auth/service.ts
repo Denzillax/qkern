@@ -696,13 +696,24 @@ export class ProjectAuthService {
    *
    * Der Katalog kannte `list()` seit 1.76; gerufen hat es bis 1.83 niemand —
    * weder Console noch App konnten die Auswahl aufzaehlen. Nach aussen gehen
-   * genau zwei Felder: Slug und Issuer. Client-ID, Endpunkte und der Name der
-   * Secret-Umgebungsvariablen bleiben drinnen.
+   * Slug, Issuer und seit 2.57 ein abgeleitetes Ja/Nein. Client-ID,
+   * Endpunkte und der Name der Secret-Umgebungsvariablen bleiben drinnen.
+   *
+   * `requiresVerifiedEmail` ist die eine Angabe, die der Sicherheitsberater
+   * fuer `auth_provider_unverified_email` braucht (2.39 hat die Regel
+   * genau deshalb nie laufen lassen). Sie ist ein `boolean`, abgeleitet aus
+   * `emailVerification`, und kein Durchreichen eines Feldes: Ein `boolean`
+   * hat keine Stelle, an der ein Secret, eine Adresse oder eine Client-ID
+   * stehen koennte. Die oeffentliche Provider-Route verengt trotzdem weiter
+   * auf Slug und Issuer; die Haltung eines Anbieters geht niemanden etwas
+   * an, der noch nicht angemeldet ist.
    */
-  listOidcProviders(): Array<{ id: string; issuer: string }> {
+  listOidcProviders(): Array<{ id: string; issuer: string; requiresVerifiedEmail: boolean }> {
     return this.dependencies.oidcCatalog.list().flatMap((id) => {
       const provider = this.dependencies.oidcCatalog.get(id);
-      return provider ? [{ id: provider.id, issuer: provider.issuer }] : [];
+      return provider
+        ? [{ id: provider.id, issuer: provider.issuer, requiresVerifiedEmail: provider.emailVerification !== "trusted" }]
+        : [];
     });
   }
 

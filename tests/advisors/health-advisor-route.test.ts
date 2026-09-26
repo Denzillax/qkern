@@ -107,8 +107,10 @@ describe("health advisor route", () => {
     expect(Object.keys(body.data).sort()).toEqual(["checkedAt", "counts", "overall", "subsystems"]);
     expect(body.data.checkedAt).toBe(NOW.toISOString());
     expect(body.data.subsystems.map((item) => item.id)).toEqual([...HEALTH_SUBSYSTEM_IDS]);
-    expect(body.data.overall).toBe("ok");
-    expect(body.data.counts.ok).toBe(8);
+    // Sechs Teile wurden gefragt, zwei sind nur hinterlegt (2.57).
+    expect(body.data.overall).toBe("configured");
+    expect(body.data.counts.ok).toBe(6);
+    expect(body.data.counts.configured).toBe(2);
     const database = body.data.subsystems[0];
     expect(database.evidence).toEqual([{ measure: "tables", label: "Tabellen im Schema public", count: 3 }]);
     // Der Beleg der Data API zaehlt nur die Zeilenrouten, nicht jeden Pfad.
@@ -152,8 +154,10 @@ describe("health advisor route", () => {
     expect(database.detail).toBe(HEALTH_DETAILS.unavailable);
     expect(database.evidence).toEqual([{ measure: "errorUnavailable", label: "Fehlerklasse: keine oder keine gültige Antwort", count: null }]);
     expect(body.data.overall).toBe("degraded");
-    expect(body.data.counts.ok).toBe(7);
-    expect(body.data.subsystems.filter((item) => item.state === "ok")).toHaveLength(7);
+    expect(body.data.counts.ok).toBe(5);
+    expect(body.data.subsystems.filter((item) => item.state === "ok")).toHaveLength(5);
+    expect(body.data.subsystems.filter((item) => item.state === "configured").map((item) => item.id))
+      .toEqual(["realtime", "vault"]);
   });
 
   it("turns a disabled, an unready and an unreachable service into its own state, never into an error", async () => {

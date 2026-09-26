@@ -7,6 +7,7 @@ import { useDatabaseActivity, type Environment } from "@/components/console/data
 import {
   CONNECTIONS_REPORT_HONESTY,
   connectionStateText,
+  hiddenConnections,
   sessionAge,
 } from "@/lib/console/database-activity-texts";
 
@@ -49,10 +50,14 @@ export function ConnectionsReportView({ projectId, environment }: { projectId: s
   const counted = groups.reduce((sum, group) => sum + group.count, 0);
   const roles = new Set(groups.map((group) => group.role)).size;
   const working = groups.filter((group) => group.state === "active").reduce((sum, group) => sum + group.count, 0);
+  // Der Unterschied zwischen numbackends und der Zählung ist eine Zahl, keine
+  // Fussnote (2.57).
+  const hidden = hiddenConnections(database.backends, counted);
 
   return <div className="module-grid">
     <article className="console-card auth-overview">
       <div><span>{t("GEZÄHLTE VERBINDUNGEN")}</span><strong>{NUMBER.format(counted)}</strong><small>{t("was diese Rolle sehen darf")}</small></div>
+      <div><span>{t("FÜR DIESE ROLLE UNSICHTBAR")}</span><strong className={hidden > 0 ? "risk medium" : undefined}>{NUMBER.format(hidden)}</strong><small>{t("Backends, die die Datenbank meldet und die Zählung nicht enthält")}</small></div>
       <div><span>{t("ROLLEN")}</span><strong>{NUMBER.format(roles)}</strong><small>{t("verschiedene Rollen in der Zählung")}</small></div>
       <div><span>{t("DAVON ARBEITEND")}</span><strong>{NUMBER.format(working)}</strong><small>{t("führen gerade ein Statement aus")}</small></div>
     </article>
@@ -63,7 +68,9 @@ export function ConnectionsReportView({ projectId, environment }: { projectId: s
       </div></div>
 
       <p className="muted">{t(CONNECTIONS_REPORT_HONESTY)}</p>
-      <p className="muted">{t("Die Datenbank selbst meldet")} {NUMBER.format(database.backends)} {t("offene Verbindungen bei einer Grenze von")} {NUMBER.format(database.maxConnections)}. {counted !== database.backends && t("Die Zählung unten liegt darunter, wenn diese Rolle nicht alle Sitzungen sehen darf.")}</p>
+      <p className="muted">{t("Die Datenbank selbst meldet")} {NUMBER.format(database.backends)} {t("offene Verbindungen bei einer Grenze von")} {NUMBER.format(database.maxConnections)}. {t("Gezählt sind")} {NUMBER.format(counted)}; {hidden > 0
+        ? <>{NUMBER.format(hidden)} {t("Verbindungen meldet die Datenbank, ohne dass diese Rolle die zugehörigen Sitzungen sehen darf. Sie fehlen in jeder Zeile unten.")}</>
+        : t("die Zählung erreicht die Zahl der Backends, diese Rolle sieht also gerade jede Sitzung dieser Datenbank.")}</p>
       {activity!.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; es gibt mehr Gruppen als hier stehen.")}</p>}
 
       {groups.length === 0 && <p className="muted">{t("Keine sichtbare Verbindung. Entweder ist gerade keine offen, oder diese Rolle darf keine sehen.")}</p>}

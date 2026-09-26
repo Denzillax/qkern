@@ -17,7 +17,13 @@ services:
     # in 1.89 mit "remaining connection slots are reserved" — in einem fremden
     # Fall, nicht im Slice. Der Wert steht hier, und ein Real-DB-Fall prueft
     # ihn (1.90).
-    command: ["postgres", "-c", "max_connections=300"]
+    # `shared_preload_libraries` seit 2.57: Der Fall "(2.57) proves the advisor
+    # rules that used to be unreachable" belegt, dass der Leistungsberater aus
+    # `pg_stat_statements` nur Kennung und Zaehler holt und keinen
+    # Abfragetext. Ohne Preload gibt es die Erweiterung nicht, und der Fall
+    # haette nichts, wogegen er laufen koennte. Die Erweiterung selbst legt
+    # `000-certification-init.sh` an.
+    command: ["postgres", "-c", "max_connections=300", "-c", "shared_preload_libraries=pg_stat_statements"]
     environment:
       POSTGRES_USER: qkern
       POSTGRES_PASSWORD: qkern_local_only
