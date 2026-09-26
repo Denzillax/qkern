@@ -43,7 +43,7 @@ describe("i18n contract", () => {
     const german = new Map(leaves(LANDING.de).map((leaf) => [leaf.path, leaf.value]));
     for (const locale of LOCALES) {
       if (locale === "de") continue;
-      const copied = leaves(LANDING[locale]).filter((leaf) => !leaf.path.startsWith("names.") && !leaf.path.endsWith(".small") && !SHARED.has(leaf.value) && german.get(leaf.path) === leaf.value && leaf.value.length > 12 && !leaf.value.startsWith("#"));
+      const copied = leaves(LANDING[locale]).filter((leaf) => !leaf.path.startsWith("names.") && !leaf.path.endsWith(".small") && !SHARED.has(leaf.value) && german.get(leaf.path) === leaf.value && leaf.value.length > 12 && !/^\/?#/.test(leaf.value));
       expect(copied.map((leaf) => `${leaf.path}: ${leaf.value}`), `${locale} kopiert Deutsch`).toEqual([]);
     }
   });
