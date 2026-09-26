@@ -1524,6 +1524,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     const projectId = randomUUID();
     const databaseName = `qkern_dbhook_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const table = `bestellungen_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const other = `fremde_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const rowId = randomUUID();
     // Ein Wert, der den Empfaenger nichts angeht. Er ist der Lackmustest.
     const confidential = `IBAN-CH93-${randomUUID()}`;
@@ -1582,6 +1583,15 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await project.query(`CREATE TRIGGER ${table}_capture
         AFTER INSERT OR UPDATE OR DELETE ON public.${table}
         FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
+      // Eine zweite Tabelle mit demselben Trigger, aber ohne Kopplung. Ohne sie
+      // bewiese der Fall nichts ueber den Tabellenfilter: Eine Bruecke, die
+      // jede Tabelle des Projekts nimmt, saehe genauso aus wie eine, die nur
+      // die genannte nimmt.
+      await project.query(
+        `CREATE TABLE public.${other} (id uuid PRIMARY KEY, iban text NOT NULL)`);
+      await project.query(`CREATE TRIGGER ${other}_capture
+        AFTER INSERT OR UPDATE OR DELETE ON public.${other}
+        FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
 
       await owner.query(`INSERT INTO users (id, email, password_hash, status)
         VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
@@ -1630,9 +1640,15 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // Die Aenderung. Ab hier macht der Trigger die Arbeit.
       await project.query(
         `INSERT INTO public.${table} (id, iban) VALUES ($1, $2)`, [rowId, confidential]);
+      // Dieselbe Sorte Aenderung in der nicht gekoppelten Tabelle.
+      await project.query(
+        `INSERT INTO public.${other} (id, iban) VALUES ($1, $2)`, [randomUUID(), confidential]);
       const feed = await project.query<{ n: string }>(
         `SELECT count(*)::text AS n FROM qkern_internal.change_feed WHERE table_name = $1`, [table]);
       expect(feed.rows[0]?.n, "der Trigger hat die Aenderung nicht erfasst").toBe("1");
+      const otherFeed = await project.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM qkern_internal.change_feed WHERE table_name = $1`, [other]);
+      expect(otherFeed.rows[0]?.n, "die zweite Tabelle wurde nicht erfasst").toBe("1");
 
       const resolvedProject = project;
       const outboxRepository = new PostgresWebhookOutboxRepository(control);
