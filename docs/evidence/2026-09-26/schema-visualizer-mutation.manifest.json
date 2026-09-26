@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Zielspalten alphabetisch statt in Schluesselreihenfolge",
+  "log": "schema-visualizer-mutation.log",
+  "commit": "22eb1bbd4a7de35a08928f62da1389d58b2f1a62",
+  "commitSubject": "console: Schema als Bild, Fremdschluessel aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 177 passed (178)",
+  "passed": 177,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

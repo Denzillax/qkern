@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "schema-visualizer-local-run2.log",
+  "commit": "22eb1bbd4a7de35a08928f62da1389d58b2f1a62",
+  "commitSubject": "console: Schema als Bild, Fremdschluessel aus dem Katalog",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1375 passed | 261 skipped (1636)",
+  "passed": 1375,
+  "failed": 0,
+  "skipped": 261,
+  "images": []
+}

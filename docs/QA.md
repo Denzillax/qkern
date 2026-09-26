@@ -5074,3 +5074,41 @@ Nicht erbracht: Der Berater repariert nichts und sagt nicht, welche Spalte
 einem Index fehlt. Ein Index fuer den Quartalsbericht erscheint als
 unbenutzt, und eine frische Datenbank hat noch keine Zaehler. Bloat ist
 eine Schaetzung des Kollektors, keine Messung. Im Browser nicht gesehen.
+
+## Das Schema als Bild – Release 2.41
+
+Die Ansicht Datenbank, Schema-Visualizer zeichnet, was der Katalog hergibt:
+Tabellen mit ihren Spalten und die Fremdschluessel dazwischen. Die
+Fremdschluessel kommen aus `pg_constraint`, und die Spalten beider Seiten
+stehen in der Reihenfolge des Schluessels, nicht in der des Alphabets. Genau
+das ist der Punkt, an dem eine Verwechslung unsichtbar bliebe: ein
+zusammengesetzter Schluessel mit verdrehten Zielspalten sieht in einer
+falschen Reihenfolge immer noch plausibel aus.
+
+Das Diagramm rechnet eine reine Funktion ohne neue Abhaengigkeit und ohne
+Farbe. Gleiche Eingabe gibt dieselbe Geometrie; die Kaesten liegen in einem
+Gitter, dessen Zeilen so hoch sind wie ihr hoechster Kasten, und darum kann
+sich kein Kasten mit einem anderen ueberschneiden. Der Test prueft das fuer
+Tabellenzahlen von eins bis vierzig. Neben dem Bild steht dieselbe Liste in
+Worten, damit das Bild nicht die einzige Quelle ist, und das SVG traegt
+`role="img"` mit einer Beschriftung, die Schema und Zahlen nennt.
+
+Mutation: die Zielspalten werden alphabetisch statt in Schluesselreihenfolge
+zurueckgegeben. Im Stack faellt 1 von 178 Faellen, exit 1. Lokal faellt
+nichts, weil die Regeltests mit Attrappen arbeiten; die Reihenfolge ist nur
+am echten Katalog beweisbar, und genau dafuer gibt es den Fall. Ein erster
+Mutationsversuch drehte die verweisende Seite, deren Namen im Fall schon
+alphabetisch stehen: er bewies nichts und wurde verworfen.
+
+Checkpoint `2.41.0` am 26. September 2026: PostgreSQL 17 mit 178 von 178,
+exit 0, zweimal reproduziert; Lokal 1375 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Das Bild bleibt etwa bis fuenfzehn Tabellen lesbar; Kanten
+weichen keinem Kasten aus, und Beschriftungen koennen sich an einem
+gemeinsamen Knick ueberlagern. Primaerschluessel fehlen, weil die
+Schema-Route sie nicht liefert; das steht in der Ansicht statt geraten zu
+werden. Einen Schema-Waehler gibt es nicht, die Ansicht zeigt `public`. Die
+neue Route nennt Namen von Tabellen und Spalten in fremden Schemas, die die
+Schema-Route nicht zeigt: nur Namen, keine Daten, und kein Recht, das die
+Leserolle nicht schon hatte. Im Browser nicht gesehen.

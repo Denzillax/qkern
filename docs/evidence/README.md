@@ -1465,3 +1465,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/performance-local-mutation.log` | Vitest lokal, Mutation, nur Regeltests | **30 von 31, exit 1 – absichtlich** |
 | `2026-09-26/performance-local-run1.log` | Vitest lokal (Windows) | 1358 bestanden, exit 0 |
 | `2026-09-26/performance-local-run2.log` | Vitest lokal (Windows) | 1358 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.41 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/schema-visualizer-run1.log` | PostgreSQL 17 | 178 von 178, exit 0 |
+| `2026-09-26/schema-visualizer-run2.log` | PostgreSQL 17 | 178 von 178, exit 0, Wiederholung |
+| `2026-09-26/schema-visualizer-mutation.log` | PostgreSQL 17, Mutation (Zielspalten alphabetisch) | **177 von 178, exit 1 – absichtlich** |
+| `2026-09-26/schema-visualizer-local-run1.log` | Vitest lokal (Windows) | 1375 bestanden, exit 0 |
+| `2026-09-26/schema-visualizer-local-run2.log` | Vitest lokal (Windows) | 1375 bestanden, exit 0, Wiederholung |

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.40.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.41.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,30 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.40.0`
-- Aktueller Slice: 2.40 Wo es langsam wird – der Platzhalter "Leistung"
+- Paketversion: `2.41.0`
+- Aktueller Slice: 2.41 Das Schema als Bild – der Platzhalter
+  "Schema-Visualizer" ist eine echte, nur lesende Ansicht
+  (`components/console/schema-visualizer-view.tsx`): Tabellen mit Spalten und
+  die Fremdschluessel dazwischen, als SVG. Neue Data-Plane-Methode
+  `inspectForeignKeys` liest `pg_constraint` mit `contype = 'f'`, loest
+  `conkey` und `confkey` ueber `unnest ... WITH ORDINALITY` in der
+  Schluesselreihenfolge auf, nennt das fremde Schema, wenn ein Schluessel
+  hinausgeht, und uebersetzt die Katalogbuchstaben in Woerter; Grenzen 400
+  Schluessel und 32 Spalten je Seite mit `truncated`-Flagge, ein unbekannter
+  Buchstabe wirft statt zu raten. Route
+  `GET .../schema/foreign-keys?schema=`, gleiche Tuer und gleiche
+  Query-Pruefung wie `/schema/policies`. Die Geometrie rechnet eine reine
+  Funktion (`lib/console/schema-diagram.ts`): Gitter mit 1 bis 4 Spalten,
+  Zeilenhoehe nach dem hoechsten Kasten, rechtwinklige Kanten, Schlaufe bei
+  Selbstbezug, hoechstens 12 Spalten je Kasten. Keine neue Abhaengigkeit,
+  keine Farbe im Modul. PostgreSQL-Fall "(2.41)": 178 statt 177 Faelle,
+  zusammengesetzter Schluessel mit verdrehten Zielspalten, Selbstbezug,
+  Schluessel in ein zweites Schema. Mutation (Zielspalten alphabetisch)
+  faellt im Stack in 1 Fall; lokal faellt sie nicht, weil die Regeltests mit
+  Attrappen arbeiten und die Reihenfolge nur am echten Katalog beweisbar ist.
+  Kein Schema-Waehler, wie bei den Policies; Primaerschluessel fehlen im
+  Bild, weil `/schema` sie nicht liefert. Im Browser nicht gesehen
+- Vorheriger Slice: 2.40 Wo es langsam wird – der Platzhalter "Leistung"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/performance-advisor-view.tsx`), gleiche Bauart wie der
   Sicherheitsberater aus 2.39. Neue Data-Plane-Methode `inspectStatistics`
@@ -72,7 +94,7 @@ Grossbuchstaben.
   Faelle. Die Mutationsprobe fand eine Luecke – der Fall prueft seit
   `14abe13` auch eine Tabelle mit vielen sequenziellen und genug Indexscans,
   die keinen Befund tragen darf. Im Browser nicht gesehen
-- Vorheriger Slice: 2.39 Was offen steht – der Platzhalter "Sicherheit"
+- Davor: 2.39 Was offen steht – der Platzhalter "Sicherheit"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/security-advisor-view.tsx`): Befunde nach Schwere,
   dazu eine Karte, die je Regel sagt, ob sie lief und warum nicht. Regeln
