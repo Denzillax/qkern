@@ -7,6 +7,7 @@ import { securityAdvisorTexts } from "@/lib/console/security-advisor-texts";
 import { performanceAdvisorTexts } from "@/lib/console/performance-advisor-texts";
 import { cronLogTexts } from "@/lib/console/cron-log-texts";
 import { healthAdvisorTexts } from "@/lib/console/health-advisor-texts";
+import { usageSeriesTexts } from "@/lib/console/usage-series-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -36,6 +37,9 @@ async function consoleKeys(): Promise<string[]> {
   for (const text of cronLogTexts()) keys.add(text);
   // Die Projekt-Gesundheit (2.44) zeigt Zustaende, Belege und Gruende ueber t(variable).
   for (const text of healthAdvisorTexts()) keys.add(text);
+  // Die Zeitreihen der Nutzung (2.45) zeigen Metriken, Titel und ihre
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of usageSeriesTexts()) keys.add(text);
   return [...keys];
 }
 

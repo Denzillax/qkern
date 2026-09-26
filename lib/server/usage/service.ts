@@ -5,11 +5,14 @@ import type { SqlQueryable } from "@/lib/server/db/sql";
 import {
   UNENFORCEABLE_USAGE_METRICS,
   USAGE_METRIC_DEFINITIONS,
+  USAGE_SERIES_BUCKETS,
   type PublicUsageDecision,
   type PublicUsageEvent,
   type PublicUsageProjection,
+  type PublicUsageSeries,
   type UsageDecisionMode,
   type UsageMetric,
+  type UsageSeriesBucket,
   type UsagePrincipal,
   type UsageQuotaMode,
   type UsageScope,
@@ -144,6 +147,82 @@ export class UsageService {
           revision: record?.policy?.revision ?? null,
         };
       }),
+    };
+  }
+
+  /**
+   * Die Zeitreihe einer Metrik (2.45): was gemessen wurde, ueber die Zeit.
+   *
+   * Aggregiert wird in der Datenbank. Die **leeren Eimer** entstehen hier, im
+   * reinen Teil, und nicht in SQL mit `generate_series`. Zwei Gruende:
+   *
+   * 1. Die Datenbank liest dann nur, was wirklich da ist — ein Index-Scan
+   *    ueber die Ereignisse eines Fensters statt ein Join gegen eine
+   *    erzeugte Reihe. Auf einem belebten Projekt ist das der teure Teil.
+   * 2. Fenster und Eimerzahl rechnet ohnehin dieser Dienst; wer sie kennt,
+   *    kann die Luecken fuellen. Und hier ist es ohne Datenbank pruefbar.
+   *
+   * Das Fenster kommt aus der Eimergroesse, nicht aus dem Aufruf: 48 Stunden
+   * oder 90 Tage, endend mit dem laufenden (noch unvollstaendigen) Eimer.
+   *
+   * Was die Reihe **nicht** ist: keine Antwortzeit, keine Fehlerrate und
+   * keine Belegung. Ein Nutzungsereignis traegt eine Menge und einen
+   * Zeitpunkt; mehr steht nicht darin. Und sie reicht nur so weit zurueck,
+   * wie `usage_events` aufbewahrt wird.
+   */
+  async readSeries(principal: UsagePrincipal, scope: UsageScope, input: {
+    metric?: string;
+    bucket?: string;
+  } = {}): Promise<PublicUsageSeries> {
+    assertPrincipal(principal, scope, ["reader", "operator"]);
+    await this.assertProject(principal, scope);
+    const metric = input.metric as UsageMetric;
+    const bucket = (input.bucket ?? "hour") as UsageSeriesBucket;
+    if (!METRICS.has(metric) || !Object.hasOwn(USAGE_SERIES_BUCKETS, bucket)) {
+      throw new UsageError("USAGE_INVALID_INPUT");
+    }
+    const read = this.dependencies.repository.readSeries?.bind(this.dependencies.repository);
+    // Wie beim Export: Ein Port ohne Aggregation liefert keine leere Reihe.
+    // Eine leere Reihe hiesse „nichts passiert", und das waere gelogen.
+    if (!read) throw new UsageError("USAGE_METERING_DISABLED");
+
+    const size = USAGE_SERIES_BUCKETS[bucket];
+    const window = seriesWindow(bucket, this.now());
+    const records = await read(principal, scope, {
+      metric, bucket, from: window.start, to: window.end,
+      // Eine Gruppe mehr als das Fenster fassen kann: So faellt auf, wenn die
+      // Aggregation je mehr Eimer liefert, als hier gerechnet wurden.
+      limit: size.maxBuckets + 1,
+    });
+    const truncated = records.length > size.maxBuckets;
+
+    const byStart = new Map(records.map((record) => [record.bucketStart.getTime(), record]));
+    let accepted = 0n;
+    let rejected = 0n;
+    let events = 0;
+    const buckets = Array.from({ length: size.maxBuckets }, (_, index) => {
+      const start = new Date(window.start.getTime() + index * size.seconds * 1000);
+      const record = byStart.get(start.getTime());
+      accepted += record?.acceptedQuantity ?? 0n;
+      rejected += record?.rejectedQuantity ?? 0n;
+      events += record?.events ?? 0;
+      return {
+        start: start.toISOString(),
+        accepted: (record?.acceptedQuantity ?? 0n).toString(),
+        rejected: (record?.rejectedQuantity ?? 0n).toString(),
+        events: record?.events ?? 0,
+      };
+    });
+    return {
+      metric,
+      ...USAGE_METRIC_DEFINITIONS[metric],
+      bucket,
+      windowStart: window.start.toISOString(),
+      windowEnd: window.end.toISOString(),
+      bucketCount: size.maxBuckets,
+      truncated,
+      buckets,
+      totals: { accepted: accepted.toString(), rejected: rejected.toString(), events },
     };
   }
 
@@ -290,6 +369,21 @@ export function parsePeriod(value: string | undefined, now: Date) {
   const oldest = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 23, 1));
   if (start > current || start < oldest) throw new UsageError("USAGE_INVALID_INPUT");
   return monthWindow(start);
+}
+
+/**
+ * Das Fenster einer Reihe: es endet mit dem Ende des laufenden Eimers und
+ * reicht so viele Eimer zurueck, wie die Groesse erlaubt.
+ *
+ * Gerechnet wird in UTC-Millisekunden. Stunde und Tag haben dort eine feste
+ * Laenge; eine Zeitzone mit Sommerzeit haette sie nicht, und dann waere ein
+ * „Tag" mal 23 und mal 25 Eimerbreiten lang.
+ */
+export function seriesWindow(bucket: UsageSeriesBucket, now: Date) {
+  const size = USAGE_SERIES_BUCKETS[bucket];
+  const step = size.seconds * 1000;
+  const end = new Date(Math.floor(now.getTime() / step) * step + step);
+  return { start: new Date(end.getTime() - size.maxBuckets * step), end };
 }
 
 function monthWindow(value: Date) {

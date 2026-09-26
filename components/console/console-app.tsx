@@ -27,6 +27,7 @@ import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
 import { CronLogView } from "@/components/console/cron-log-view";
+import { UsageSeriesView } from "@/components/console/usage-series-view";
 import { SchemaVisualizerView } from "@/components/console/schema-visualizer-view";
 import { PoliciesView } from "@/components/console/policies-view";
 import { EnumTypesView } from "@/components/console/enum-types-view";
@@ -258,6 +259,11 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "advisors-performance": return <PerformanceAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "advisors-health": return <HealthAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "logs-cron": return <CronLogView projectId={props.project.id} environment={props.environment}/>;
+    // Drei Seiten, eine Ansicht: Berichte -> API, Storage und Functions zeigen
+    // dieselbe Zeitreihe ueber verschiedene Metriken (2.45).
+    case "obs-api": return <UsageSeriesView key="obs-api" view="api" projectId={props.project.id} environment={props.environment}/>;
+    case "obs-storage": return <UsageSeriesView key="obs-storage" view="storage" projectId={props.project.id} environment={props.environment}/>;
+    case "obs-functions": return <UsageSeriesView key="obs-functions" view="functions" projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

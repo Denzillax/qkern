@@ -1111,3 +1111,14 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .schema-diagram-column { fill: var(--qkern-text); font: 500 11px var(--qkern-font-mono); }
 .schema-diagram-type { fill: var(--qkern-text-muted); font: 400 10.5px var(--qkern-font-mono); }
 .schema-diagram-edge-label { fill: var(--qkern-text-muted); font: 500 10px var(--qkern-font-sans); }
+
+/* 2.45: Zeitreihen der Nutzung. Wie beim Schema-Visualizer traegt das SVG
+   keine eigene Farbe: die Balken nehmen `currentColor`, die Flaeche des
+   abgelehnten Anteils die Oberflaechenvariable. Die Tabelle daneben zeigt
+   dieselben Zahlen; das Bild ist nie die einzige Quelle. */
+.usage-series-chart { margin: 12px 0; overflow: auto; border: 1px solid var(--qkern-border); border-radius: var(--radius-control); background: var(--qkern-surface-2); }
+.usage-series-chart svg { display: block; color: var(--qkern-border); }
+.usage-series-bar { color: var(--qkern-primary); }
+.usage-series-tick { fill: var(--qkern-text-muted); font: 500 9px var(--qkern-font-mono); }
+.usage-series-label { fill: var(--qkern-text-muted); font: 500 9px var(--qkern-font-sans); }
+.usage-series-table .log-row { grid-template-columns: 1.2fr 1fr 1fr 70px; min-width: 420px; }

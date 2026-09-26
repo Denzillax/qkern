@@ -96,6 +96,49 @@ export type UsageDecisionRecord = UsageEventInput & {
   deduplicated: boolean;
 };
 
+/**
+ * Die zwei erlaubten Eimergroessen einer Zeitreihe (2.45) und das Fenster,
+ * das zu jeder gehoert.
+ *
+ * Das Fenster haengt an der Eimergroesse und nicht am Aufruf: Wer die Groesse
+ * waehlt, waehlt damit auch, wie weit zurueck gelesen wird. Sonst koennte ein
+ * Aufruf 90 Tage in Stundeneimer schneiden und der Datenbank 2160 Gruppen
+ * abverlangen, nur weil zwei Zahlen frei kombinierbar waren.
+ */
+export const USAGE_SERIES_BUCKETS = {
+  hour: { seconds: 3600, maxBuckets: 48 },
+  day: { seconds: 86_400, maxBuckets: 90 },
+} as const;
+
+export type UsageSeriesBucket = keyof typeof USAGE_SERIES_BUCKETS;
+
+/** Eine Gruppe, wie die Datenbank sie liefert: nur Eimer mit Ereignissen. */
+export type UsageSeriesRecord = {
+  bucketStart: Date;
+  acceptedQuantity: bigint;
+  rejectedQuantity: bigint;
+  events: number;
+};
+
+/**
+ * Die Reihe, wie die Console sie sieht: **jeder** Eimer des Fensters, auch
+ * die leeren. Mengen bleiben Dezimalstrings, damit JavaScript nichts
+ * abschneidet.
+ */
+export type PublicUsageSeries = {
+  metric: UsageMetric;
+  label: string;
+  unit: UsageUnit;
+  bucket: UsageSeriesBucket;
+  windowStart: string;
+  windowEnd: string;
+  bucketCount: number;
+  /** Die Aggregation lief in die Zeilengrenze; die Reihe ist unvollstaendig. */
+  truncated: boolean;
+  buckets: Array<{ start: string; accepted: string; rejected: string; events: number }>;
+  totals: { accepted: string; rejected: string; events: number };
+};
+
 export type UsageWindowRecord = {
   metric: UsageMetric;
   quantity: bigint;

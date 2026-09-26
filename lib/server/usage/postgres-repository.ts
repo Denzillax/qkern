@@ -9,6 +9,8 @@ import type {
   UsageQuotaMode,
   UsageQuotaPolicy,
   UsageScope,
+  UsageSeriesBucket,
+  UsageSeriesRecord,
   UsageSource,
   UsageWindowRecord,
 } from "@/lib/server/usage/model";
@@ -160,6 +162,57 @@ export class PostgresUsageRepository implements UsageRepository {
     });
   }
 
+  /**
+   * Die Zeitreihe (2.45): `date_trunc`, `GROUP BY`, `ORDER BY` — in der
+   * Datenbank, nicht in JavaScript.
+   *
+   * Drei Dinge, die hier nicht beliebig sind:
+   *
+   * **`AT TIME ZONE 'UTC'`.** `date_trunc(feld, timestamptz)` schneidet in der
+   * Zeitzone der Sitzung. Ohne diese beiden Umrechnungen haetten dieselben
+   * Ereignisse je nach `TimeZone` der Verbindung andere Tagesgrenzen; mit
+   * ihnen liegt jeder Eimer auf der UTC-Grenze, die auch der Dienst rechnet.
+   *
+   * **`window_start` im WHERE.** Der Index `usage_events_window_idx` beginnt
+   * mit `(organization_id, project_id, environment, window_start, metric)`.
+   * Die Reihe fragt nach `observed_at`; die Monatsgrenzen dazu stehen im
+   * Aufruf, damit die Abfrage den Index benutzen kann statt die Tabelle zu
+   * lesen. Der CHECK der Migration haelt beide Felder im selben Monat.
+   *
+   * **Die Eimergroesse als Parameter.** `$9` ist ein Wert, kein Bezeichner.
+   * Der Dienst laesst ohnehin nur `hour` und `day` durch.
+   */
+  readSeries(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    input: { metric: UsageMetric; bucket: UsageSeriesBucket; from: Date; to: Date; limit: number },
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query<Row>(`SELECT
+          (date_trunc($9, observed_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS bucket_start,
+          COALESCE(SUM(quantity) FILTER (WHERE accepted), 0) AS accepted_quantity,
+          COALESCE(SUM(quantity) FILTER (WHERE NOT accepted), 0) AS rejected_quantity,
+          COUNT(*) AS events
+        FROM usage_events
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          AND window_start >= $4 AND window_start < $5
+          AND metric=$6
+          AND observed_at >= $7 AND observed_at < $8
+        GROUP BY 1
+        ORDER BY 1
+        LIMIT $10`, [
+        ...scopeValues(scope), monthStart(input.from), monthAfter(input.to), input.metric,
+        input.from, input.to, input.bucket, input.limit,
+      ]);
+      return result.rows.map((row): UsageSeriesRecord => ({
+        bucketStart: date(row.bucket_start),
+        acceptedQuantity: int8(row.accepted_quantity, "series quantity"),
+        rejectedQuantity: int8(row.rejected_quantity, "series quantity"),
+        events: countValue(row.events),
+      }));
+    });
+  }
+
   setPolicy(
     principal: UsagePrincipal,
     input: Omit<UsageQuotaPolicy, "revision" | "createdAt" | "updatedAt">,
@@ -293,6 +346,20 @@ function int8(value: unknown, field: string) {
   const parsed = BigInt(text);
   if (parsed > 9_223_372_036_854_775_807n) throw new Error(`Invalid ${field}`);
   return parsed;
+}
+/** `COUNT(*)` kommt als bigint-Text; mehr als 2^53 Ereignisse je Eimer gibt es nicht. */
+function countValue(value: unknown) {
+  const parsed = Number(String(value));
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error("Invalid usage event count");
+  return parsed;
+}
+/** Der Monat, in dem ein Zeitpunkt liegt — die Grenze, die `window_start` traegt. */
+function monthStart(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+/** Der Monat nach dem, in dem das Fensterende liegt; das Ende selbst ist exklusiv. */
+function monthAfter(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 1));
 }
 function positiveInteger(value: unknown, field: string) {
   const parsed = Number(value);

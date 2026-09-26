@@ -15,6 +15,8 @@ import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rule
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
 import { probeDatabaseHealth } from "@/app/api/v1/projects/[projectId]/environments/[environment]/advisors/health/route";
 import { PERFORMANCE_THRESHOLDS } from "@/lib/console/performance-advisor-texts";
+import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
+import { UsageService } from "@/lib/server/usage/service";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -768,6 +770,111 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // ein Verbindungsversuch, der abgewiesen wird. Keine Organisation und kein
     // Projekt entstehen, darum auch keine Audit-Zeile, die das gemeinsame
     // afterAll am Loeschen hindern koennte.
+  });
+
+  it("(2.45) aggregates usage events written through the real service into the right hourly buckets", async () => {
+    // Die Zeitreihe entsteht in der Datenbank: date_trunc, GROUP BY, ORDER BY
+    // ueber `usage_events`. Gegen den Memory-Port ist davon nichts zu sehen,
+    // denn der kann die Aggregation gar nicht; und die drei Dinge, die hier
+    // schiefgehen koennen, gehen nur echt schief: die Zeitzone von
+    // `date_trunc`, die Trennung von angenommen und abgelehnt (die eine echte
+    // Quota-Entscheidung braucht) und die Grenze des Fensters.
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.36, 2.42 und 2.43:
+    // Das Setzen der Quota schreibt eine Audit-Zeile, und eine Organisation
+    // mit Audit-Zeilen laesst sich nicht mehr loeschen; das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden.
+    const seriesOwner = randomUUID();
+    const seriesOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [seriesOwner, `series-owner-${seriesOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Usage Series', $2, $3)`, [seriesOrganization, `usage-series-${seriesOrganization}`, seriesOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: seriesOrganization, projectId, environment: "development" as const };
+    const base = { organizationId: seriesOrganization, subject: seriesOwner, actorRef: "series@qkern.test" };
+    const meter = { ...base, role: "meter" as const };
+    const operator = { ...base, role: "operator" as const };
+    const reader = { ...base, role: "reader" as const };
+
+    // Die Uhr des Dienstes steht fest, damit Fenster und Eimer berechenbar
+    // sind: der laufende Eimer ist die Stunde von `hour`.
+    const hour = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+    const at = (hours: number, minutes = 0) =>
+      new Date(hour.getTime() - hours * 3_600_000 + minutes * 60_000);
+    const service = new UsageService({
+      repository: new PostgresUsageRepository(new PostgresControlPlane(runtime)),
+      now: () => new Date(hour.getTime() + 30 * 60_000),
+    });
+    const key = randomUUID().slice(0, 8);
+    const record = (suffix: string, quantity: number, observedAt: Date) => service.record(meter, scope, {
+      metric: "api_requests", source: "data_plane", quantity,
+      idempotencyKey: `series-${key}-${suffix}`, observedAt,
+    });
+
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Usage Series', $3, 'test', 'ready', $4)`,
+    [projectId, seriesOrganization, `usage-series-${projectId}`, seriesOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [seriesOrganization, projectId, `managed:${projectId}`]);
+
+    // Eine harte Quota, damit es ueberhaupt eine abgelehnte Menge geben kann.
+    // Ohne sie waere jedes Ereignis angenommen, und die Trennung der beiden
+    // Summen bliebe unbelegt.
+    await service.setQuota(operator, scope, {
+      metric: "api_requests", limit: 120, mode: "enforce", expectedRevision: null,
+    });
+
+    // Genau am Fensteranfang (Ende minus 48 Stunden) und eine Minute davor.
+    await record("edge-in", 3, at(47));
+    await record("edge-out", 999, at(47, -1));
+    // Zwei Ereignisse in derselben Stunde, drei Stunden zurueck.
+    await record("a", 5, at(3, 10));
+    await record("b", 7, at(3, 50));
+    // Die Stunde davor bleibt leer; zwei Stunden spaeter greift die Quota.
+    await record("c", 100, at(1, 5));
+    const denied = await record("d", 50, at(1, 40));
+    expect(denied).toMatchObject({ accepted: false, rejectionCode: "QUOTA_EXCEEDED", mode: "enforce" });
+
+    const series = await service.readSeries(reader, scope, { metric: "api_requests", bucket: "hour" });
+    expect(series.bucketCount).toBe(48);
+    expect(series.buckets).toHaveLength(48);
+    expect(series.windowStart).toBe(at(47).toISOString());
+    expect(series.windowEnd).toBe(at(-1).toISOString());
+    expect(series.truncated).toBe(false);
+
+    const bucketAt = (hours: number) =>
+      series.buckets.find((entry) => entry.start === at(hours).toISOString());
+    // Der Eimer genau auf der Fenstergrenze traegt das Ereignis; das eine
+    // Minute aeltere Ereignis taucht nirgends auf.
+    expect(bucketAt(47)).toMatchObject({ accepted: "3", rejected: "0", events: 1 });
+    expect(series.buckets[0]?.start).toBe(at(47).toISOString());
+    // Zwei Ereignisse derselben Stunde werden eine Zeile.
+    expect(bucketAt(3)).toMatchObject({ accepted: "12", rejected: "0", events: 2 });
+    // Eine Stunde ohne Ereignis ist Null, nicht abwesend.
+    expect(bucketAt(2)).toMatchObject({ accepted: "0", rejected: "0", events: 0 });
+    // Angenommen und abgelehnt in derselben Stunde, getrennt gezaehlt.
+    expect(bucketAt(1)).toMatchObject({ accepted: "100", rejected: "50", events: 2 });
+    expect(series.totals).toEqual({ accepted: "115", rejected: "50", events: 6 });
+    // 999 lag vor dem Fenster und ist in keiner Summe.
+    expect(JSON.stringify(series)).not.toContain("999");
+
+    // Dieselben Ereignisse in Tageseimern: andere Grenzen, dieselben Summen.
+    const daily = await service.readSeries(reader, scope, { metric: "api_requests", bucket: "day" });
+    expect(daily.bucketCount).toBe(90);
+    expect(daily.buckets).toHaveLength(90);
+    expect(daily.totals).toEqual({ accepted: "115", rejected: "50", events: 6 });
+    for (const entry of daily.buckets) {
+      expect(entry.start.endsWith("T00:00:00.000Z"), entry.start).toBe(true);
+    }
+    expect(daily.buckets.filter((entry) => entry.events > 0).length).toBeLessThanOrEqual(3);
+
+    // Weggeraeumt wird nichts: `usage_events` ist append-only (der Trigger aus
+    // 0028 weist DELETE ab), die Audit-Zeile der Quota ist unveraenderlich.
+    // Eigene Organisation, eigenes Projekt, eigene Schluessel; der
+    // Wegwerf-Stack faellt nach dem Lauf weg.
+    // Ohne eigenes Zeitbudget: sechs Buchungen, eine Quota und zwei Aggregationen.
   });
 });
 

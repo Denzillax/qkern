@@ -674,6 +674,52 @@ Beispielantwort und offene Billing-Grenzen stehen in
 [USAGE_METERING.md](USAGE_METERING.md). Preise, Tarife, Rechnungen und Zahlungen
 sind nicht Teil dieses Releases.
 
+### Zeitreihen der Nutzung
+
+Seit `2.45.0` zeigen **Berichte → API**, **Berichte → Storage** und
+**Berichte → Functions** den Verlauf der gemessenen Nutzung. Drei Seiten, eine
+Ansicht, eine Route: Sie unterscheiden sich nur in der Metrik und in dem Satz,
+der sagt, was sie nicht zeigen können.
+
+Grundlage ist `usage_events` aus Migration `0028`. Eine neue Tabelle braucht es
+nicht: Eine Zeitreihe ist eine Aggregation über `observed_at`. Sie entsteht
+**in der Datenbank** (`date_trunc`, `GROUP BY`, `ORDER BY`), nicht durch Laden
+der Zeilen in JavaScript; die Eimergrösse ist ein Parameter, und `date_trunc`
+rechnet ausdrücklich in UTC, damit die Grenzen nicht an der Zeitzone der
+Verbindung hängen. Leere Eimer füllt der Dienst auf, nicht SQL: So liest die
+Datenbank nur, was wirklich vorhanden ist.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/usage/series?metric=<name>&bucket=<hour|day>`
+mit derselben Authentifizierung wie `usage/billing` und `usage/invoices`,
+`Cache-Control: private, no-store` und genau zwei Parametern. `metric` ist
+Pflicht und muss einer der sechs Metriknamen sein, `bucket` ist `hour` oder
+`day` und steht ohne Angabe auf `hour`. Ein unbekannter Name, eine zweite
+Angabe desselben Parameters und jeder fremde Parameter sind ein 400. Ist das
+Usage Metering abgeschaltet, kommt ein 503 mit `Usage Metering is disabled`,
+und die Ansicht sagt das statt einen Verlauf zu erfinden.
+
+Das Fenster steht nicht im Aufruf, sondern folgt der Eimergrösse: 48
+Stundeneimer oder 90 Tageseimer, endend mit dem laufenden und darum noch
+unvollständigen Eimer. Die Antwort nennt `windowStart`, `windowEnd`, `bucket`,
+`bucketCount` und `truncated`; jeder Eimer des Fensters steht darin, ein leerer
+als Null. Mengen sind Dezimalstrings.
+
+| Seite | Metriken | Was sie nicht zeigt |
+| --- | --- | --- |
+| Berichte → API | `api_requests`, `database_row_reads` | Antwortzeiten und Fehlercodes — sie stehen in keinem Nutzungsereignis |
+| Berichte → Storage | `storage_egress_bytes` | die Belegung eines Buckets; gezählt werden ausgehende Bytes je Abschnitt |
+| Berichte → Functions | `function_invocations` | ob ein Aufruf im Container gescheitert ist |
+
+`abgelehnt` heisst in allen drei Ansichten dasselbe: Eine Quota hat gegriffen.
+Es heisst **nicht**, dass eine Anfrage mit einem Fehler beantwortet wurde.
+
+Das Bild ist ein Balkendiagramm aus einer reinen Funktion
+(`lib/console/usage-series-chart.ts`), ohne neue Abhängigkeit und ohne eigene
+Farbe; daneben stehen dieselben Zahlen als Tabelle, weil ein Bild nicht die
+einzige Quelle sein darf. Die Reihe reicht nur so weit zurück, wie die
+Nutzungsereignisse aufbewahrt werden.
+
 ## 9a. Cron und Webhooks lokal betreiben
 
 Cron-Definitionen und Webhook-Zustellungen liegen seit `1.18.0` und `1.19.0` in

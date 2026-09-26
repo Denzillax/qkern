@@ -7,6 +7,8 @@ import type {
   UsagePrincipal,
   UsageQuotaPolicy,
   UsageScope,
+  UsageSeriesBucket,
+  UsageSeriesRecord,
   UsageWindowRecord,
 } from "@/lib/server/usage/model";
 import { USAGE_METRIC_DEFINITIONS } from "@/lib/server/usage/model";
@@ -72,6 +74,32 @@ export interface UsageRepository {
       limit: number;
     },
   ): Promise<UsageExportRecord[]>;
+  /**
+   * Aggregiert die Ereignisse eines Fensters zu Eimern (2.45).
+   *
+   * Gerechnet wird **in der Datenbank**: `date_trunc`, `GROUP BY`, `ORDER BY`.
+   * Zeilen nach JavaScript zu holen und dort zu summieren waere auf einem
+   * belebten Projekt eine Ladung von Hunderttausenden Zeilen fuer ein Bild mit
+   * 48 Balken.
+   *
+   * Zurueck kommen nur Eimer, in denen wirklich etwas passiert ist. Die leeren
+   * fuellt der Dienst auf, nicht die Datenbank — siehe `UsageService.readSeries`.
+   *
+   * Optional, aus demselben Grund wie `listEvents`: Der Memory-Port kann das
+   * nicht, und ein Ersatz aus dem Speicher waere eine andere Rechnung als die,
+   * die er vorgibt zu sein.
+   */
+  readSeries?(
+    principal: UsagePrincipal,
+    scope: UsageScope,
+    input: {
+      metric: UsageMetric;
+      bucket: UsageSeriesBucket;
+      from: Date;
+      to: Date;
+      limit: number;
+    },
+  ): Promise<UsageSeriesRecord[]>;
   setPolicy(
     principal: UsagePrincipal,
     policy: Omit<UsageQuotaPolicy, "revision" | "createdAt" | "updatedAt">,
