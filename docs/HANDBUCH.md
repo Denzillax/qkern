@@ -82,6 +82,48 @@ Verfügbare Endpunkte:
 - `GET /api/v1/projects/{projectId}/environments/{environment}/schema`
 - `POST /api/v1/projects/{projectId}/environments/{environment}/query`
 
+### Sicherheitsberater
+
+Seit `2.39.0` zeigt **Advisors → Sicherheit** konkrete Befunde für eine
+Umgebung. Der Berater liest nur und repariert nichts. Jeder Befund nennt das
+Objekt, die Regel, eine Schwere und in Worten, was zu tun ist. Darunter steht für
+jede Regel, ob sie gelaufen ist, und wenn nicht, warum.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/advisors/security`,
+mit derselben Tür wie `/schema/policies` (Session mit Leserecht oder
+scope-gebundener Projekt-Key), ohne Query-Parameter und mit
+`Cache-Control: private, no-store`. Die Antwort ist
+`{ data: { findings, checks, checkedAt } }`. Gerechnet wird bei jedem Aufruf neu.
+
+| Regel | Schwere | Liest | Befund, wenn |
+| --- | --- | --- | --- |
+| `rls_disabled` | hoch | Tabellen im Schema `public` | eine gewöhnliche oder partitionierte Tabelle hat RLS aus |
+| `rls_no_policies` | mittel | Tabellen und Policies in `public` | RLS ist an, aber keine Policy existiert (die Tabelle ist dann gesperrt, nicht offen) |
+| `policy_always_true` | hoch | Policies in `public` | eine erlaubende Policy für `public`, `anon` oder `authenticated` hat `USING` oder `WITH CHECK` gleich `true`, auch in Klammern |
+| `policy_check_missing` | niedrig | Policies in `public` | eine erlaubende INSERT-Policy hat kein `WITH CHECK`, oder eine UPDATE- oder ALL-Policy hat weder `WITH CHECK` noch `USING` |
+| `bucket_public_read` | mittel | Buckets | die Leserichtlinie ist `public` |
+| `bucket_authenticated_write_any_type` | niedrig | Buckets | die Schreibrichtlinie ist `authenticated` und keine MIME-Typen sind gesetzt |
+| `api_key_broad` | mittel | Art, Ablauf, Widerruf der API-Keys | in Production ist ein Service-Key aktiv |
+| `auth_provider_unverified_email` | niedrig | nichts | läuft nie, siehe unten |
+
+Buckets und API-Keys liest der Berater nur mit einer Console-Sitzung, deren Rolle
+`project_storage_admin` beziehungsweise `project_api_keys` hat; ein Projekt-Key
+sieht dort „nicht geprüft". Ist Storage aus, die Projektdatenbank nicht
+angebunden oder ein Dienst nicht erreichbar, laufen die betroffenen Regeln nicht
+(`ran: false` mit Grund); die Route antwortet trotzdem mit 200. Schneidet der
+Katalog ab (100 Tabellen, 200 Policies), sagt der Grund das; `rls_no_policies`
+läuft dann gar nicht, weil eine fehlende Policy nur abgeschnitten sein könnte.
+
+Was der Berater nicht sieht: Schemas ausser `public`, Funktionen mit
+`SECURITY DEFINER`, Views ohne `security_invoker`, Spaltenrechte, Tabellen ohne
+Spalten, Policies, die an die Verbindungsrolle der Data API statt an `public`
+gebunden sind, und alles, was nur in der Serverkonfiguration steht. Dazu gehört,
+ob ein OIDC-Anbieter mit `emailVerification: "trusted"` ohne `email_verified`
+zugelassen ist: Die Provider-Liste gibt bewusst nur Kennung und Issuer heraus.
+Ein Befund ist kein Urteil. Eine Policy mit `USING (true)` für eine wirklich
+öffentliche Tabelle ist gewollt; der Berater meldet sie trotzdem.
+
 ## 5. Generated Data API und Projekt-Keys
 
 CRUD ist unabhängig von der freien Lese-Data-Plane standardmäßig aus. Es benötigt

@@ -1,4 +1,5 @@
 import { DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
+import { SECURITY_RULE_IDS } from "@/lib/console/security-advisor-texts";
 const projectAuthScopeParameters = [
   { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
@@ -173,6 +174,23 @@ export const qkernOpenAPI = {
           "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
           "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/advisors/security": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectSecurityAdvisor",
+        summary: "List read-only security findings for the public schema, buckets and API keys of an environment",
+        description: "Same access as the schema routes: a session with read access or a scope-bound project key. Computed on every call from data QKERN already reads: tables and policies of the public schema, bucket read and write policies, and the kind, expiry and revocation of API keys (never a secret). Buckets and API keys are only read for a console session holding project_storage_admin or project_api_keys. A source that is disabled, unreachable or not permitted turns its rules into checks with ran false and a reason; it never fails the request. No query parameters. Nothing is written or fixed.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "Findings sorted by severity and object, one check per rule", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectSecurityAdvisorResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
         },
       },
     },
@@ -1223,6 +1241,11 @@ export const qkernOpenAPI = {
       ComputeDeletedResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["deleted"], properties: { deleted: { const: true } } } } },
       ProjectFunctionDefinition: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "runtime", "image", "entrypoint", "timeoutMs", "memoryMiB", "maxConcurrency", "egressOrigins", "secretRefs", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, runtime: { const: "nodejs24" }, image: { type: "string", pattern: "^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$" }, entrypoint: { type: "string", maxLength: 128 }, timeoutMs: { type: "integer", minimum: 100, maximum: 300000 }, memoryMiB: { type: "integer", minimum: 64, maximum: 2048 }, maxConcurrency: { type: "integer", minimum: 1, maximum: 100, description: "Recorded but not yet enforced." }, egressOrigins: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string", format: "uri" }, description: "A non-empty list is rejected at call time until an egress proxy exists." }, secretRefs: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string" }, description: "References only. Secret values never reach this surface or the sandbox environment." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
       ProjectFunctionSecretStatusResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["secrets", "checkedAt"], properties: { secrets: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["ref", "status"], properties: { ref: { type: "string", maxLength: 128 }, status: { type: "string", enum: ["present", "missing", "forbidden"] } } } }, checkedAt: { type: "string", format: "date-time" } } } } },
+      ProjectSecurityAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["findings", "checks", "checkedAt"], properties: {
+        findings: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "rule", "severity", "object", "summary", "remedy"], properties: { id: { type: "string" }, rule: { type: "string", enum: [...SECURITY_RULE_IDS] }, severity: { type: "string", enum: ["high", "medium", "low"] }, object: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: { kind: { type: "string", enum: ["table", "policy", "bucket", "api_key"] }, name: { type: "string" } } }, summary: { type: "string", description: "German; the console translates it." }, remedy: { type: "string", description: "German; the console translates it." } } } },
+        checks: { type: "array", items: { type: "object", additionalProperties: false, required: ["rule", "ran"], properties: { rule: { type: "string", enum: [...SECURITY_RULE_IDS] }, ran: { type: "boolean" }, reason: { type: "string", description: "Why a rule did not run or ran only partly. German." } } } },
+        checkedAt: { type: "string", format: "date-time" },
+      } } } },
       ProjectFunctionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectFunctionDefinition" } } },
       ProjectFunctionListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 500, items: { $ref: "#/components/schemas/ProjectFunctionDefinition" } } } },
       CreateProjectFunctionDefinition: { type: "object", additionalProperties: false, required: ["name", "image", "entrypoint"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, image: { type: "string", pattern: "^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$", description: "Content-addressed. A mutable tag is rejected." }, entrypoint: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$" }, timeoutMs: { type: "integer", minimum: 100, maximum: 300000, default: 30000 }, memoryMiB: { type: "integer", minimum: 64, maximum: 2048, default: 128 }, maxConcurrency: { type: "integer", minimum: 1, maximum: 100, default: 1 }, egressOrigins: { type: "array", maxItems: 20, items: { type: "string", format: "uri" } }, secretRefs: { type: "array", maxItems: 20, items: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$" } }, enabled: { type: "boolean", default: true } } },

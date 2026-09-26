@@ -4,8 +4,11 @@ import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool
 import type { SqlPool } from "@/lib/server/db/sql";
 import { AuditRepository } from "@/lib/server/db/repositories";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
+import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
+const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
 const authUrl = process.env.QKERN_TEST_AUTH_DATABASE_URL;
 const enabled = Boolean(ownerUrl && runtimeUrl && authUrl);
@@ -144,5 +147,63 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
              bool_and(previous_hash IS NOT DISTINCT FROM expected_previous) AS linked
       FROM ordered`, [chainOrganization]);
     expect(chain.rows[0]).toEqual({ ok: true, linked: true });
+  });
+
+  it("finds exactly the open table and the USING (true) policy through the real catalog (2.39)", async () => {
+    // Der Sicherheitsberater ueber echter Katalogausgabe: drei Tabellen in
+    // einem eigenen Schema der Projektdatenbank, gelesen ueber die Leserolle
+    // der Data API, dann durch das reine Regelmodul. Die saubere Tabelle darf
+    // keinen Befund tragen. Das Schema faellt am Ende samt Inhalt weg.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const schema = `advisor_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".open_notes (id integer PRIMARY KEY, body text)`);
+      await owner.query(`CREATE TABLE "${schema}".public_posts (id integer PRIMARY KEY, body text)`);
+      await owner.query(`ALTER TABLE "${schema}".public_posts ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY read_all ON "${schema}".public_posts FOR SELECT USING (true)`);
+      await owner.query(`CREATE TABLE "${schema}".own_rows (id integer PRIMARY KEY, owner text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".own_rows ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY own_select ON "${schema}".own_rows FOR SELECT TO qkern_project_api_app USING (owner = current_user)`);
+      await owner.query(`CREATE POLICY own_insert ON "${schema}".own_rows FOR INSERT TO qkern_project_api_app WITH CHECK (owner = current_user)`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const context = { organizationId: organizationA, actorRef: "advisor@qkern.test" };
+      const scope = { projectId: "certification-project", environment: "development" as const };
+      const [tables, policies] = await Promise.all([
+        service.inspectSchema(context, scope, schema),
+        service.inspectPolicies(context, scope, schema),
+      ]);
+      const result = evaluateSecurityRules({
+        environment: "development",
+        now: new Date(),
+        database: { schema, tables: tables.tables, tablesTruncated: tables.truncated, policies: policies.policies, policiesTruncated: policies.truncated },
+        storage: { buckets: [] },
+        apiKeys: { keys: [] },
+      });
+      expect(result.findings.map((finding) => finding.id)).toEqual([
+        "rls_disabled:table:open_notes",
+        "policy_always_true:policy:public_posts.read_all",
+      ]);
+      expect(result.findings.some((finding) => finding.object.name.startsWith("own_rows"))).toBe(false);
+      expect(result.checks.filter((check) => ["rls_disabled", "rls_no_policies", "policy_always_true", "policy_check_missing"].includes(check.rule)))
+        .toEqual([
+          { rule: "rls_disabled", ran: true }, { rule: "rls_no_policies", ran: true },
+          { rule: "policy_always_true", ran: true }, { rule: "policy_check_missing", ran: true },
+        ]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
   });
 });

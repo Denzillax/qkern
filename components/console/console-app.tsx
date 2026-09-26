@@ -19,6 +19,7 @@ import { QueuesView } from "@/components/console/queues-view";
 import { MigrationsView } from "@/components/console/migrations-view";
 import { InvocationsView } from "@/components/console/invocations-view";
 import { ComputeSecretsView } from "@/components/console/compute-secrets-view";
+import { SecurityAdvisorView } from "@/components/console/security-advisor-view";
 import { RealtimeInspectorView } from "@/components/console/realtime-inspector-view";
 import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
@@ -248,6 +249,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-billing": return <BillingSettingsView projectId={props.project.id} environment={props.environment} navigate={props.navigate}/>;
+    case "advisors-security": return <SecurityAdvisorView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
