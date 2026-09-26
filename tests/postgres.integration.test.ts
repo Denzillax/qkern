@@ -448,14 +448,27 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Einreihen schreibt, derselbe ist, den der Leser bildet. Deshalb wird hier
     // **nicht** von Hand eingefuegt, sondern ueber CronDispatcher und
     // ProjectQueueService eingereiht, genau wie im Betrieb.
+    // Eigene Organisation mit eigenem Besitzer, wie die Faelle 2.35 und 2.36:
+    // Das Anlegen einer Cron-Definition schreibt eine Audit-Zeile, und eine
+    // Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen. afterAll raeumt
+    // organizationA und organizationB weg; die muessen darum frei von
+    // Audit-Zeilen bleiben. Diese Organisation bleibt als erwarteter Rest im
+    // Wegwerf-Stack.
+    const cronOwner = randomUUID();
+    const cronOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [cronOwner, `cron-log-owner-${cronOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Cron Log', $2, $3)`, [cronOrganization, `cron-log-${cronOrganization}`, cronOwner]);
     const projectId = randomUUID();
-    const scope = { organizationId: organizationA, projectId, environment: "development" as const };
+    const scope = { organizationId: cronOrganization, projectId, environment: "development" as const };
     const admin = {
-      organizationId: organizationA, actorRef: "cron-log@qkern.test",
-      role: "admin" as const, subject: userId,
+      organizationId: cronOrganization, actorRef: "cron-log@qkern.test",
+      role: "admin" as const, subject: cronOwner,
     };
     const dispatcher = {
-      organizationId: organizationA, actorRef: "service-role:cron",
+      organizationId: cronOrganization, actorRef: "service-role:cron",
       role: "service_role" as const, subject: "cron",
     };
     const plane = new PostgresControlPlane(runtime);
@@ -464,10 +477,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     try {
       await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
         VALUES ($1, $2, 'Cron Log', $3, 'test', 'ready', $4)`,
-      [projectId, organizationA, `cron-log-${projectId}`, userId]);
+      [projectId, cronOrganization, `cron-log-${projectId}`, cronOwner]);
       await owner.query(`INSERT INTO project_environments
         (organization_id, project_id, environment, database_instance_ref)
-        VALUES ($1, $2, 'development', $3)`, [organizationA, projectId, `managed:${projectId}`]);
+        VALUES ($1, $2, 'development', $3)`, [cronOrganization, projectId, `managed:${projectId}`]);
       // Ein Tag Dedupe-Fenster: Im Pruefzeitraum verfaellt kein Verifikator,
       // sonst waere ein "nicht nachweisbar" das richtige Urteil und der Fall
       // wuerde die falsche Frage stellen.
@@ -524,13 +537,21 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const stored = await owner.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM project_queue_messages
           WHERE organization_id=$1 AND project_id=$2 AND dedupe_key_hash IS NOT NULL`,
-        [organizationA, projectId],
+        [cronOrganization, projectId],
       );
       expect(stored.rows[0]?.count).toBe(1);
     } finally {
-      // Das Projekt loeschen genuegt: project_environments haengt mit ON DELETE
-      // CASCADE daran, und Queue, Nachrichten und Cron-Definition daran.
-      await owner.query("DELETE FROM projects WHERE id=$1", [projectId]);
+      // Weggeraeumt wird nur, was das Produkt wegraeumen laesst. Zwei Zusagen
+      // stehen dem grossen Aufraeumen im Weg, und beide sind gewollt:
+      // `audit_logs` verweist auf das Projekt und ist nachtraeglich
+      // unveraenderlich (0046), und eine Queue-Nachricht mit Dedupe-Schluessel
+      // darf vor Ablauf der Aufbewahrung nicht geloescht werden (0026). Der
+      // Fall arbeitet ohnehin mit eigener Organisation, eigenem Projekt und
+      // eigenen Namen; der Wegwerf-Stack faellt nach dem Lauf weg.
+      await owner.query(
+        "DELETE FROM project_cron_definitions WHERE organization_id=$1 AND project_id=$2",
+        [cronOrganization, projectId],
+      );
     }
     // Ohne eigenes Zeitbudget: ein Projekt, eine Queue, eine Definition, eine
     // Einreihung und zwei Lesevorgaenge. Kein Statistik-Kollektor und kein
