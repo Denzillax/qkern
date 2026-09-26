@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 /**
- * Hamburger-Menue der Website (1.97). Unter 1000 px verschwindet die
+ * Hamburger-Menue der Website (1.97). Unter 1260 px verschwindet die
  * Desktop-Navigation; bis dahin gab es keinen Ersatz — die Seite war auf dem
  * Telefon ohne Navigation. Das Menue liegt als Blatt unter der Kapsel,
  * schliesst bei Escape, bei Klick auf einen Eintrag und beim Wechsel auf
@@ -20,7 +20,7 @@ export function SiteMenu({ links, labels }: {
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
-    const query = window.matchMedia("(min-width: 1001px)");
+    const query = window.matchMedia("(min-width: 1261px)");
     function onWidth(event: MediaQueryListEvent) { if (event.matches) setOpen(false); }
     document.addEventListener("keydown", onKey); query.addEventListener("change", onWidth);
     document.body.style.overflow = "hidden";

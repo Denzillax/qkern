@@ -209,7 +209,7 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 .footer-bottom { border-top: 1px solid #1c293c; margin-top: 60px; padding-top: 22px; display: flex; justify-content: space-between; color: #65758d; font-size: 9px; }
 
 @media (max-width: 1000px) {
-  .desktop-nav { display: none; }
+  .site-header .header-actions .button.small.desktop-only { display: none; }
   .hero { padding-top: 72px; }
   .hero-grid, .ai-grid, .architecture-grid { grid-template-columns: 1fr; }
   .hero-grid { gap: 50px; }
@@ -711,8 +711,8 @@ body { font-size: 15.5px; }
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px);
 }
-.desktop-nav { gap: 22px; font-size: 13.5px; }
-.desktop-nav a { padding: 8px 12px; border-radius: var(--radius-pill); }
+.desktop-nav { gap: 14px; font-size: 13.5px; }
+.desktop-nav a { padding: 8px 10px; border-radius: var(--radius-pill); white-space: nowrap; }
 .desktop-nav a:hover { background: var(--qkern-surface-2); }
 
 /* Bedienelemente: vollrund, etwas hoeher */
@@ -967,9 +967,12 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .site-menu-button:hover { background: var(--qkern-surface-2); }
 .site-menu { display: none; }
 .site-menu-backdrop { display: none; }
-@media (max-width: 1000px) {
+/* Sechs Eintraege plus Sprache, Thema, Anmelden und Knopf brauchen rund
+   1250 px. Darunter uebernimmt das Menue; die Seite selbst (Hero, Raster)
+   wechselt erst bei 1000 px. */
+@media (max-width: 1260px) {
+  .desktop-nav { display: none; }
   .site-menu-button { display: inline-flex; }
-  .site-header .header-actions .button.small.desktop-only { display: none; }
   /* Die Abdunkelung liegt im Stapel der Kapsel: unter Logo und Knoepfen,
      ohne Blur — sonst verschwimmt die Kopfzeile selbst. */
   .site-menu-backdrop { display: block; position: fixed; inset: 0; z-index: 48; background: color-mix(in srgb, var(--qkern-dark) 40%, transparent); }

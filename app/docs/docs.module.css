@@ -1,5 +1,5 @@
 .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; padding: 40px 0 96px; }
-.sidebar { position: sticky; top: 96px; align-self: start; display: grid; gap: 4px; padding: 4px; font-size: 14px; max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; }
+.sidebar { position: sticky; top: 96px; align-self: start; display: grid; gap: 4px; padding: 4px; font-size: 14px; max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--qkern-border) transparent; padding-right: 10px; }
 .sidebarToggle { display: none; }
 .sidebarBody { display: grid; gap: 4px; }
 .sidebarLabel { margin: 18px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--qkern-text-muted); }
