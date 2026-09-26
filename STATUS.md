@@ -113,6 +113,10 @@ sind. Sie gelten als übersprungen, nie als bestanden.
   vermeiden Präzisionsverlust, Event Keys und Einzelereignisse bleiben intern
 - lesende und schreibende, eng annotierte MCP-Werkzeuge über dieselben Policy-
   und Tenantgrenzen wie REST
+- read-only Sicht auf die Realtime-Grenzen in REST, OpenAPI und Console mit
+  Ursprung je Grenze (`environment`, `default`, `code`; keine liegt in der
+  Datenbank) und die Kanalrechte so benannt, wie der Code sie entscheidet:
+  feste Präfixregel plus RLS auf `changes:`-Kanälen, kein anlegbares Rechtemodell
 
 ## Product Preview oder offen
 

@@ -605,6 +605,59 @@ Der Prozess bindet ausschließlich Loopback und verweigert in dieser Version
 Neustart verloren. Das ist ein lokaler Funktionsdurchstich, kein Ersatz für TLS,
 persistenten CDC/Event Log, horizontalen Fan-out oder Lasttests.
 
+### Grenzen und Rechte in der Console
+
+Seit `2.48.0` zeigen **Realtime → Einstellungen** und **Realtime → Rechte**, was
+für den Transport dieser Installation tatsächlich gilt. Die Einstellungsseite
+liest eine Route:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/realtime/settings
+```
+
+Dieselbe Tür wie `/database/activity` (Session mit Leserecht oder
+scope-gebundener Projekt-Key), `Cache-Control: private, no-store`, und **kein
+einziger Query-Parameter**: Es gibt nichts zu wählen, darum ist jeder Parameter
+ein 400.
+
+Jede Grenze nennt ihren Wert, ihre Einheit und ihren **Ursprung**:
+
+* `environment` — die Variable ist gesetzt und trägt einen brauchbaren Wert.
+* `default` — die Variable gibt es, sie ist nicht gesetzt, es gilt die Vorgabe.
+* `code` — für diese Grenze gibt es gar keine Variable. Die Nachrichtenrate
+  (100 Nachrichten je 10 Sekunden und Verbindung), die Tiefe und die Knotenzahl
+  eines Payloads und die Feldzahl eines Presence-Zustands stehen fest im
+  Gateway beziehungsweise im Dienst.
+
+Einen Ursprung `database` gibt es bewusst nicht: **Keine Realtime-Grenze steht
+in einer Tabelle.** Trägt eine Variable etwas, das die Runtime ablehnt, meldet
+die Route `value: null` und `invalid: true` — das ist kein Rückfall auf die
+Vorgabe, sondern ein Realtime-Server, der gar nicht startet.
+
+Gelesen wird ausschliesslich die feste Liste in
+`lib/server/realtime/settings.ts`. Das Cursor-Geheimnis, die Datenbank-Adresse
+und die Origin-Liste stehen nicht darin und können diesen Weg nicht nehmen. Die
+Antwort trägt Variablennamen, nie fremde Werte. **Betriebszahlen fehlen mit
+Ansage:** Offene Verbindungen und Abonnements zählt der Realtime-Prozess, und
+ihn über das Netz zu fragen wäre eine Wirkung, die eine Leseroute nicht hat.
+
+Ändern lässt sich nichts davon in der Console. Die Seite hat kein Eingabefeld
+und keinen Speicherknopf, und hinter der Route steht kein Schreibverb.
+
+**Realtime → Rechte** braucht keine Route, weil es nichts abzufragen gibt: Es
+gibt keine Kanalrechte, die sich anlegen liessen, und keine Zeile in einer
+Tabelle. Wer welchen Kanal lesen und beschreiben darf, entscheidet allein
+`PrefixRealtimeAuthorization` aus der Rolle der Verbindung (`anon` bei Public
+Key, `authenticated` mit Project-Auth-Token, `service_role` bei Service Key) und
+dem Kanalpräfix. Die Seite zeigt diese Regel als Tabelle; der Vertrag
+`console-realtime-view` hält jede ihrer 36 Zellen gegen den Code.
+
+Auf `changes:`-Kanälen kommt die Row Level Security der Projekttabelle dazu:
+Jede geänderte Zeile wird je Abonnent mit dessen Claims durch die Generated Data
+API gelesen, und was RLS nicht herausgibt, kommt nicht an. Nach einem DELETE
+kann RLS nicht mehr beantworten, wer die Zeile hätte sehen dürfen; davon erfährt
+nur `service_role`, und nur den Schlüssel.
+
 ## 9. Project Queues lokal testen
 
 Project Queues Alpha 3 läuft im Memory-Modus prozesslokal oder im PostgreSQL-Modus

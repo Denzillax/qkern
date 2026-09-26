@@ -1183,6 +1183,23 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/realtime/settings": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectRealtimeSettings",
+        summary: "Read the effective realtime limits with value, unit and origin",
+        description: "Same access as /database/activity: a session with read access or a scope-bound project key, private, no-store. The route takes no query parameter at all; any parameter is a 400. Every limit says where it comes from: environment when the variable carries a usable value, default when the variable is unset, code when there is no environment variable for it at all. There is deliberately no origin database, because no realtime limit is stored in any table. A variable holding something the runtime would reject is reported with value null and invalid true, because with it the realtime server does not start. Only the fixed list of limit variables is read, so no secret, no connection string and no origin list can leave through this route; the variable names appear, never the values of anything else. Operating figures are not included: connections and subscriptions are counted inside the realtime process, and asking it over the network would be an effect a read route does not have. Nothing is written, and there is no writer behind this route.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "Effective realtime limits and switches of this installation", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectRealtimeSettingsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
     "/v1/approvals/{approvalId}/decision": {
       post: {
         tags: ["Approvals"], operationId: "decideApproval", summary: "Record an exactly-once approval decision",
@@ -1439,6 +1456,9 @@ export const qkernOpenAPI = {
       MigrationIncidentDeliveryRetryResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/MigrationIncidentDeliveryRetryResult" } } },
       MigrationIncidentResolutionVerificationResult: { type: "object", additionalProperties: false, required: ["outcome", "incidentId", "commandId", "idempotent", "executed"], properties: { outcome: { type: "string", enum: ["requested", "already_requested"] }, incidentId: { type: "string", format: "uuid" }, commandId: { type: "string", format: "uuid" }, idempotent: { type: "boolean" }, executed: { const: false } } },
       MigrationIncidentResolutionVerificationResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/MigrationIncidentResolutionVerificationResult" } } },
+      ProjectRealtimeLimit: { type: "object", additionalProperties: false, required: ["id", "group", "unit", "value", "origin", "variable", "minimum", "maximum", "invalid"], properties: { id: { type: "string", maxLength: 64 }, group: { type: "string", enum: ["transport", "session", "changes", "retention", "usage"] }, unit: { type: "string", enum: ["connections", "subscriptions", "messages", "events", "bytes", "milliseconds", "levels", "nodes", "keys"] }, value: { type: ["integer", "null"] }, origin: { type: "string", enum: ["environment", "default", "code"], description: "environment: the variable is set. default: the variable exists but is unset. code: there is no variable for this limit. No limit is stored in a database, so there is no database origin" }, variable: { type: ["string", "null"], pattern: "^QKERN_REALTIME_[A-Z_]+$" }, minimum: { type: ["integer", "null"] }, maximum: { type: ["integer", "null"] }, invalid: { type: "boolean", description: "The variable carries something the runtime rejects; the realtime server would not start" } } },
+      ProjectRealtimeSettings: { type: "object", additionalProperties: false, required: ["projectId", "environment", "limits", "features", "figures"], properties: { projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, limits: { type: "array", maxItems: 64, items: { $ref: "#/components/schemas/ProjectRealtimeLimit" } }, features: { type: "object", additionalProperties: false, required: ["enabled", "changes", "durableLog"], properties: { enabled: { type: "boolean" }, changes: { type: "boolean" }, durableLog: { type: "boolean" } } }, figures: { type: "object", additionalProperties: false, required: ["available", "reason"], properties: { available: { const: false }, reason: { const: "separate_process" } }, description: "Operating figures live in the realtime process and are not fetched from here" } } },
+      ProjectRealtimeSettingsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectRealtimeSettings" } } },
       Error: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" }, requestId: { type: "string" } } },
     },
     responses: {

@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -63,8 +63,6 @@ export const PLACEHOLDERS = {
   // Functions
   "compute-logs": { label: "Function-Logs", supabase: "Edge Functions → Logs", backend: "fehlt", note: "Ausgaben aus dem Container. Inhaltslogs bleiben heute im Container." },
   // Realtime
-  "realtime-policies": { label: "Policies", supabase: "Realtime → Policies", backend: "teilweise", note: "Wer welchen Kanal lesen und schreiben darf." },
-  "realtime-settings": { label: "Einstellungen", supabase: "Realtime → Settings", backend: "fehlt", note: "Grenzen für Verbindungen und Nachrichten je Sekunde." },
   // Berichte
   "obs-auth": { label: "Auth", supabase: "Observability → Auth", backend: "fehlt", note: "Anmeldungen, Fehlversuche und ausgegebene Token über die Zeit. Kein Zähler dafür." },
   "obs-realtime": { label: "Realtime", supabase: "Observability → Realtime", backend: "fehlt", note: "Verbindungen und Nachrichten über die Zeit." },
@@ -128,7 +126,7 @@ export const NAV: NavGroup[] = [
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
     { id: "compute", label: "Functions, Cron, Webhooks" }, { id: "compute-secrets", label: "Secrets" }, { id: "compute-invocations", label: "Aufrufe" }, ph("compute-logs"),
   ] },
-  { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [{ id: "realtime-inspector", label: "Inspector" }, ph("realtime-policies"), ph("realtime-settings")] },
+  { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [{ id: "realtime-inspector", label: "Inspector" }, { id: "realtime-policies", label: "Rechte" }, { id: "realtime-settings", label: "Einstellungen" }] },
   { id: "api", label: "API", icon: Braces },
   { id: "ai", label: "AI Bridge", icon: Bot },
   { id: "activity", label: "KI-Aktivität", icon: Activity },

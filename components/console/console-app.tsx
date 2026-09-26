@@ -23,6 +23,8 @@ import { SecurityAdvisorView } from "@/components/console/security-advisor-view"
 import { PerformanceAdvisorView } from "@/components/console/performance-advisor-view";
 import { HealthAdvisorView } from "@/components/console/health-advisor-view";
 import { RealtimeInspectorView } from "@/components/console/realtime-inspector-view";
+import { RealtimeSettingsView } from "@/components/console/realtime-settings-view";
+import { RealtimePoliciesView } from "@/components/console/realtime-policies-view";
 import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
@@ -270,6 +272,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Berichte -> Verbindungen die Gruppen je Rolle und Zustand (2.46).
     case "obs-database": return <DatabaseReportView projectId={props.project.id} environment={props.environment}/>;
     case "obs-connections": return <ConnectionsReportView projectId={props.project.id} environment={props.environment}/>;
+    // Realtime -> Einstellungen liest die wirksamen Grenzen; Realtime -> Rechte
+    // zeigt die feste Praefixregel aus dem Code und braucht darum keine Route (2.48).
+    case "realtime-settings": return <RealtimeSettingsView projectId={props.project.id} environment={props.environment}/>;
+    case "realtime-policies": return <RealtimePoliciesView/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
