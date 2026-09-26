@@ -33,7 +33,7 @@ Was kostet, sind zwei Dinge:
 
 Dort, wo QKERN läuft. QKERN schickt keine Daten an uns oder an Dritte; es gibt keinen zentralen Dienst, durch den etwas fliesst. Läuft QKERN auf einem Server in Zürich, liegen die Daten in Zürich.
 
-Ehrlich dazu: QKERN wird in der Schweiz entwickelt, aber es gibt heute keinen geprüften Nachweis über Datenstandort oder Hosting, weil es kein Hosting-Angebot gibt. Wer eine Aussage zu Datenschutz oder Standort braucht, bekommt sie vom Betreiber des Servers, nicht von QKERN.
+QKERN wird in der Schweiz entwickelt. Einen geprüften Nachweis über Datenstandort oder Hosting gibt es heute nicht, weil es kein Hosting-Angebot gibt. Wer eine Aussage zu Datenschutz oder Standort braucht, bekommt sie vom Betreiber des Servers, nicht von QKERN.
 
 ## Was "zertifiziert" hier heisst
 
@@ -62,7 +62,6 @@ Sieben Fragen, mit denen du ein Gespräch über das Backend führen kannst, ohne
 6. Wie kommen die Daten wieder heraus, falls wir das Werkzeug wechseln?
 7. Was von dem, was wir brauchen, ist bei QKERN heute ein Platzhalter?
 
-Wenn dein Entwickler auf jede dieser Fragen eine ruhige Antwort hat, seid ihr auf einem guten Weg.
 
 ## Ehrlich offen
 

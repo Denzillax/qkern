@@ -167,7 +167,7 @@ Was passiert ist: ein Array mit einem Objekt, `title: 'Erste Notiz'`. Das SDK ha
 
 ## 10. Im Table Editor ansehen
 
-Warum: die Konsole kann dieselben Daten zeigen, und sie tut es über dieselbe API, mit denselben Regeln. Es gibt keinen Hintereingang.
+Warum: die Konsole zeigt dieselben Daten über dieselbe API, mit denselben Regeln; einen Hintereingang gibt es nicht.
 
 Zurück in der Konsole: "Table Editor" öffnen und `public.notes` wählen. Die Zeile steht da, mit "Zeile einfügen" kommt eine zweite dazu.
 
