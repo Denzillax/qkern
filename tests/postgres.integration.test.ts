@@ -12,6 +12,8 @@ import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
+import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
+import { probeDatabaseHealth } from "@/app/api/v1/projects/[projectId]/environments/[environment]/advisors/health/route";
 import { PERFORMANCE_THRESHOLDS } from "@/lib/console/performance-advisor-texts";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -682,4 +684,97 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Ohne eigenes Zeitbudget: ein Projekt, zwei Queues, vier Einreihungen,
     // eine Definition und eine abgewiesene Direkteinfuegung.
   });
+  it("(2.44) reads a real catalog as a healthy database and a binding that points nowhere as degraded", async () => {
+    // Die Datenbankprobe der Projekt-Gesundheit gegen echte Verbindungen.
+    // Zwei Haelften, und die zweite ist die, die im Speicherbetrieb nie
+    // auffaellt: Eine Umgebung, deren Bindung ins Leere zeigt, darf keinen
+    // Stacktrace und keinen Verbindungsstring in die Antwort tragen, sondern
+    // nur die Fehlerklasse. Geschrieben wird nichts ausser dem eigenen
+    // Schema, und das faellt am Ende samt Inhalt weg.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const schema = `health_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    const nowhereUrl = new URL(projectApiUrl!);
+    nowhereUrl.pathname = `/absent_${randomUUID().replaceAll("-", "_")}`;
+    const nowhere = createPostgresPool({ connectionString: nowhereUrl.toString(), max: 1 });
+    const context = { organizationId: organizationA, actorRef: "health@qkern.test" };
+    const scope = { projectId: "certification-project", environment: "development" as const };
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".orders (id integer PRIMARY KEY, total integer NOT NULL)`);
+      await owner.query(`CREATE TABLE "${schema}".invoices (id integer PRIMARY KEY, total integer NOT NULL)`);
+      await owner.query(`CREATE TABLE "${schema}".notes (id integer PRIMARY KEY, body text)`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+
+      const reachable = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const healthy = await probeDatabaseHealth(reachable, context, scope, schema);
+      expect(healthy).toEqual({ tables: 3 });
+      const good = evaluateHealthRules(healthyInput({ database: healthy }));
+      expect(good.subsystems.find((subsystem) => subsystem.id === "database")).toEqual({
+        id: "database", state: "ok",
+        detail: "Die Projektdatenbank hat einen Katalogabruf beantwortet.",
+        evidence: [{ measure: "tables", label: "Tabellen im Schema public", count: 3 }],
+      });
+      expect(good.overall).toBe("ok");
+
+      // Zweite Haelfte: dieselbe Probe, aber die Bindung zeigt auf eine
+      // Datenbank, die es auf dem Cluster nicht gibt. PostgreSQL antwortet,
+      // und was ankommt, ist eine Fehlerklasse und kein Text der Datenbank.
+      const broken = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:absent" }) },
+        { resolve: async () => ({
+          pool: nowhere,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: nowhereUrl.pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const failed = await probeDatabaseHealth(broken, context, scope, schema);
+      expect(failed).toEqual({ unavailable: "unavailable" });
+      const bad = evaluateHealthRules(healthyInput({ database: failed }));
+      const report = bad.subsystems.find((subsystem) => subsystem.id === "database")!;
+      expect(report.state).toBe("degraded");
+      expect(report.evidence).toEqual([
+        { measure: "errorUnavailable", label: "Fehlerklasse: keine oder keine gültige Antwort", count: null },
+      ]);
+      expect(bad.overall).toBe("degraded");
+      // Kein Stacktrace, kein Verbindungsstring, kein Datenbankname.
+      const serialised = JSON.stringify(report);
+      expect(serialised).not.toContain("postgres");
+      expect(serialised).not.toContain(nowhereUrl.pathname.slice(1));
+      expect(serialised).not.toContain("at ");
+      expect(serialised).not.toContain("Error");
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await Promise.all([projectApi.end(), nowhere.end()]);
+    }
+    // Ohne eigenes Zeitbudget: ein Schema, drei Tabellen, ein Katalogabruf und
+    // ein Verbindungsversuch, der abgewiesen wird. Keine Organisation und kein
+    // Projekt entstehen, darum auch keine Audit-Zeile, die das gemeinsame
+    // afterAll am Loeschen hindern koennte.
+  });
 });
+
+/** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */
+function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInput {
+  return {
+    now: new Date("2026-09-26T12:00:00.000Z"),
+    database: { tables: 0 },
+    dataApi: { exposedTables: 2 },
+    auth: { providers: 1, signingKeys: 1 },
+    storage: { buckets: 1 },
+    compute: { functions: 1, sandboxConfigured: true },
+    queuesCron: { queues: 1, cronDefinitions: 1, cronStale: 0 },
+    realtime: { configured: true },
+    vault: { connected: true },
+    ...overrides,
+  };
+}

@@ -1,6 +1,7 @@
 import { DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
 import { SECURITY_RULE_IDS } from "@/lib/console/security-advisor-texts";
 import { PERFORMANCE_RULE_IDS } from "@/lib/console/performance-advisor-texts";
+import { HEALTH_MEASURES, HEALTH_STATES, HEALTH_SUBSYSTEM_IDS } from "@/lib/console/health-advisor-texts";
 const projectAuthScopeParameters = [
   { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
@@ -226,6 +227,23 @@ export const qkernOpenAPI = {
         ],
         responses: {
           "200": { description: "Findings sorted by severity and object, one check per rule", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectPerformanceAdvisorResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/advisors/health": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectHealthAdvisor",
+        summary: "Report the read-only state of every probed subsystem of an environment",
+        description: "Same access as the other two advisors: a session with read access or a scope-bound project key. Eight probes run concurrently and each catches its own failure: a catalog read of the public schema, the generated OpenAPI document, the sign-in providers and public JWKS keys, the bucket list, the function definitions and whether the sandbox is enabled, the queue and cron definitions including enabled cron definitions that never dispatched, whether a realtime address is configured, and whether a Vault is connected at all. Auth, storage, compute and queues need a console session with the matching capability; without it the subsystem reports unknown with that reason instead of failing the page. Every probe is bounded and writes nothing. A report carries only a fixed German text and at most one number, never a connection string, token, path or customer value. Healthy here means reachable and set up; it is no statement about the customer application. No query parameters.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "One report per subsystem in a fixed order, the count per state and the worst state as the overall verdict", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectHealthAdvisorResponse" } } } },
           "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
         },
@@ -1302,6 +1320,12 @@ export const qkernOpenAPI = {
       ProjectPerformanceAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["findings", "checks", "checkedAt"], properties: {
         findings: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "rule", "severity", "object", "summary", "remedy"], properties: { id: { type: "string" }, rule: { type: "string", enum: [...PERFORMANCE_RULE_IDS] }, severity: { type: "string", enum: ["high", "medium", "low"] }, object: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: { kind: { type: "string", enum: ["table", "index", "statement"] }, name: { type: "string" } } }, summary: { type: "string", description: "German; the console translates it." }, remedy: { type: "string", description: "German; the console translates it." } } } },
         checks: { type: "array", items: { type: "object", additionalProperties: false, required: ["rule", "ran"], properties: { rule: { type: "string", enum: [...PERFORMANCE_RULE_IDS] }, ran: { type: "boolean" }, reason: { type: "string", description: "Why a rule did not run or ran only partly. German." } } } },
+        checkedAt: { type: "string", format: "date-time" },
+      } } } },
+      ProjectHealthAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["overall", "counts", "subsystems", "checkedAt"], properties: {
+        overall: { type: "string", enum: [...HEALTH_STATES], description: "The worst state present among the subsystems." },
+        counts: { type: "object", additionalProperties: false, required: [...HEALTH_STATES], properties: Object.fromEntries(HEALTH_STATES.map((state) => [state, { type: "integer", minimum: 0 }])) },
+        subsystems: { type: "array", minItems: 8, maxItems: 8, items: { type: "object", additionalProperties: false, required: ["id", "state", "detail", "evidence"], properties: { id: { type: "string", enum: [...HEALTH_SUBSYSTEM_IDS] }, state: { type: "string", enum: [...HEALTH_STATES] }, detail: { type: "string", description: "German; the console translates it." }, evidence: { type: "array", maxItems: 4, items: { type: "object", additionalProperties: false, required: ["measure", "label", "count"], properties: { measure: { type: "string", enum: Object.keys(HEALTH_MEASURES) }, label: { type: "string", description: "German; the console translates it." }, count: { type: ["integer", "null"], minimum: 0, description: "The measured number, or null for a measure that has none, such as an error class." } } } } } } },
         checkedAt: { type: "string", format: "date-time" },
       } } } },
       ProjectFunctionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectFunctionDefinition" } } },

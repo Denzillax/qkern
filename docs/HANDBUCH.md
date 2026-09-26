@@ -171,6 +171,60 @@ fast nie zählen. Nicht im Blick sind einzelne Abfragepläne, Sperren,
 Cache-Trefferquoten, Verbindungen, die Grösse der Tabellen selbst und Schemas
 ausser `public`.
 
+### Projekt-Gesundheit
+
+Seit `2.44.0` zeigt **Advisors → Gesundheit** je Teilsystem einer Umgebung, ob
+es erreichbar, abgeschaltet, nicht eingerichtet oder gestört ist, und woran das
+abgelesen wurde. Nur lesend: kein Neustart, kein Einschalten, keine Reparatur.
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/advisors/health`,
+dieselbe Tür wie die beiden Berater daneben, ohne Query-Parameter, mit
+`Cache-Control: private, no-store` und der Antwort
+`{ data: { overall, counts, subsystems, checkedAt } }`. Die acht Proben laufen
+nebenläufig, und jede fängt ihren eigenen Fehlschlag: Ein abgeschalteter oder
+nicht erreichbarer Dienst wird zu einem Zustand, nie zu einem 500.
+
+| Teil | Probe | Beleg |
+| --- | --- | --- |
+| `database` | ein Katalogabruf im Schema `public` über die Leserolle der Data API | Anzahl Tabellen oder die Fehlerklasse |
+| `data_api` | das generierte OpenAPI-Dokument dieser Umgebung | Anzahl freigegebener Tabellen |
+| `auth` | Liste der Anmeldeanbieter und öffentliche Schlüssel aus dem JWKS | Anzahl Anbieter und Anzahl Signaturschlüssel |
+| `storage` | die Bucket-Liste der Umgebung | Anzahl Buckets |
+| `compute` | die Function-Definitionen, dazu ob die Sandbox freigeschaltet ist | Anzahl Definitionen, Sandbox ja oder nein |
+| `queues_cron` | Queue- und Cron-Definitionen, dazu der Ausdruck jeder aktiven Cron-Definition | Anzahl Queues, Anzahl Zeitpläne, Anzahl nie ausgelöster |
+| `realtime` | ob eine Adresse des Realtime-Servers hinterlegt ist | Adresse hinterlegt ja oder nein |
+| `vault` | ob überhaupt ein Vault verbunden ist | Vault verbunden ja oder nein |
+
+Fünf Zustände: `ok`, `off`, `unconfigured`, `unknown`, `degraded`. Das
+Gesamturteil ist der schlechteste vorhandene Zustand, in genau dieser
+Reihenfolge von harmlos nach schlimm. `degraded` steht über `unknown`, weil ein
+eingerichteter Dienst, der nicht antwortet, mehr aussagt als eine Probe, die
+nicht laufen konnte.
+
+`auth`, `storage`, `compute` und `queues_cron` liest die Seite nur mit einer
+Console-Sitzung, deren Rolle `project_auth_admin`, `project_storage_admin`,
+`project_compute_admin` beziehungsweise `project_queues_admin` hat. Fehlt sie,
+steht dort `unknown` mit genau diesem Grund — nicht 403 für die ganze Seite.
+Ein Projekt-Key sieht diese vier Teile deshalb nie.
+
+Ein Zeitplan, der noch nie ausgelöst hat, ist der einzige Befund dieser Seite,
+der auf etwas Laufendes zeigt. Gemessen wird am Ausdruck selbst: Das erste
+Vorkommen nach dem Anlegen und das zweite danach spannen ein Intervall auf; ist
+auch das zweite vorbei und nichts ausgelöst, ist das keine Frage des
+Zeitpunkts mehr.
+
+Was in die Antwort geht, ist festgelegt: ein Textschlüssel aus
+`lib/console/health-advisor-texts.ts` und höchstens eine Zahl. Ein
+Verbindungsstring, ein Token, ein Vault-Pfad oder ein Kundenwert hat dort keine
+Stelle, an der er stehen könnte. Realtime und Vault prüft die Seite nur als
+Konfiguration; eine Verbindung baut sie nicht auf, und den Vault fragt sie
+nicht.
+
+Und die Grenze steht auf der Seite selbst: Gesund heisst hier erreichbar und
+eingerichtet. Ob die Anwendung eines Kunden funktioniert, sagt diese Seite
+nicht. Sie misst keine Antwortzeit, ruft keine Function auf und liest kein
+Secret.
+
 ### Schema-Visualizer
 
 Seit `2.41.0` zeigt **Datenbank → Schema-Visualizer** das Schema `public` als

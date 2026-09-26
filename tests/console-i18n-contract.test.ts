@@ -6,6 +6,7 @@ import { NAV, PLACEHOLDERS } from "@/components/console/navigation";
 import { securityAdvisorTexts } from "@/lib/console/security-advisor-texts";
 import { performanceAdvisorTexts } from "@/lib/console/performance-advisor-texts";
 import { cronLogTexts } from "@/lib/console/cron-log-texts";
+import { healthAdvisorTexts } from "@/lib/console/health-advisor-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -33,6 +34,8 @@ async function consoleKeys(): Promise<string[]> {
   for (const text of performanceAdvisorTexts()) keys.add(text);
   // Das Cron-Log (2.42) zeigt seine Zustandstexte ueber t(variable).
   for (const text of cronLogTexts()) keys.add(text);
+  // Die Projekt-Gesundheit (2.44) zeigt Zustaende, Belege und Gruende ueber t(variable).
+  for (const text of healthAdvisorTexts()) keys.add(text);
   return [...keys];
 }
 
