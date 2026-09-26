@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.31.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.32.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,25 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.31.0`
-- Aktueller Slice: 2.31 Vier Sprachen – Schritt 2 des Doku-Plans: die
+- Paketversion: `2.32.0`
+- Aktueller Slice: 2.32 Was die Data API kann – der Platzhalter
+  "Data API" unter Einstellungen ist eine echte, nur lesende Ansicht
+  (`components/console/data-api-settings-view.tsx`): Status aus der
+  generierten OpenAPI (bereit mit Zahl der freigegebenen Tabellen und Link,
+  nicht bereit mit dem Hinweis auf `dev:bind-project-database`, abgeschaltet
+  mit `QKERN_GENERATED_DATA_API_ENABLED`, Fehler), freigegebene Tabellen
+  aus der Schema-Route (RLS an/aus, freigegeben ja/nein/unbekannt, Views
+  getrennt), Regeln und Grenzen aus einer Quelle `lib/data-api-limits.ts`,
+  die auch `generated-api.ts` und `generated-http.ts` nutzen (Zeilen 1 bis
+  100, 10 Filter, sieben Operatoren, sensible Spalten, Claims anon und
+  service_role). Reine Helfer in `lib/console/data-api-exposure.ts` mit
+  Test; ein Vertrag prueft, dass die Ansicht keine Zahl von Hand und keine
+  Schreibmethode enthaelt. Ehrlich: `public` ist Standard, nicht einziges
+  Schema; weitere Schemata und eigene Zeilengrenze nicht verbunden.
+  Publish-Trockenlauf mit Provenance aus dem oeffentlichen Repo lief, aber
+  uebersprang das Veroeffentlichen, weil 1.7.0-alpha.5 schon auf npm liegt;
+  der Nachweis ist erst beim naechsten Paketstand belegt
+- Vorheriger Slice: 2.31 Vier Sprachen – Schritt 2 des Doku-Plans: die
   fuenf Einstiegsseiten auf Englisch, Franzoesisch und Italienisch unter
   `docs/guide/en|fr|it/`, uebersetzt von drei parallelen Agenten mit
   denselben Regeln (Struktur, Codebloecke byteidentisch, Anker aus den
@@ -65,7 +82,7 @@ Grossbuchstaben.
   Zeilen, genau ein Fall faellt. Dazu: Repository oeffentlich (LICENSE an
   der Wurzel, `git clone` im Schnellstart, Provenance im Publish-Workflow
   standardmaessig an), Autor-Adresse GitHub-noreply
-- Vorheriger Slice: 2.30 Drei Tueren – die Einstiegsdoku fuer drei
+- Davor: 2.30 Drei Tueren – die Einstiegsdoku fuer drei
   Zielgruppen, nach Spec und Plan unter `docs/superpowers/`, umgesetzt mit
   Unteragenten (je Aufgabe Spec-Pruefung und Code-Review). Fuenf deutsche
   Seiten unter `docs/guide/de/` (Was ist QKERN, Schnellstart, Erstes

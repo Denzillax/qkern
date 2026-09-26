@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: 409 als bereit gedeutet",
+  "log": "data-api-view-mutation.log",
+  "commit": "295c74c3fef7a2904dc271f63ded56cf6cfc5e34",
+  "commitSubject": "console: Data-API-Ansicht ohne veraltete Antworten, Key-Claims aus einer Quelle",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 5 passed (6)",
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "data-api-view-local-run2.log",
+  "commit": "295c74c3fef7a2904dc271f63ded56cf6cfc5e34",
+  "commitSubject": "console: Data-API-Ansicht ohne veraltete Antworten, Key-Claims aus einer Quelle",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1270 passed | 253 skipped (1523)",
+  "passed": 1270,
+  "failed": 0,
+  "skipped": 253,
+  "images": []
+}

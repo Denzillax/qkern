@@ -4741,3 +4741,32 @@ Nicht erbracht: die Uebersetzungen hat kein Mensch gegengelesen; der
 franzoesische Text nennt die Freigabezentrale im Glossar "Centre
 d'approbation" und in der Konsole "Centre de validation", das ist im Text
 erklaert, aber zwei Namen fuer eine Sache.
+
+## Was die Data API kann – Release 2.32
+
+Die Ansicht Einstellungen, Data API zeigt, was die Data API dieser
+Umgebung wirklich tut, und behauptet nichts, was sie nicht weiss. Der
+Status kommt aus der generierten OpenAPI: 200 heisst bereit, 409 nicht
+bereit (die Umgebung hat keine gebundene Datenbank), 503 mit dem
+passenden Code abgeschaltet, alles andere ein Fehler. Die Tabellenliste
+kommt aus der Schema-Route; freigegeben ist, was in der OpenAPI einen
+Pfad hat, und wenn die OpenAPI nicht da ist, steht "unbekannt", nie
+"nein". Views stehen getrennt, weil der Server sie nur lesend freigibt.
+
+Die Regeln kommen aus `lib/data-api-limits.ts`, und dieselbe Quelle nutzt
+der Server: Zeilen je Anfrage, Filterzahl, Operatoren, Muster fuer
+sensible Spalten, Key-Claims. Ein Vertrag liest die Quelltexte und
+verlangt, dass `generated-api.ts` und `generated-http.ts` die Konstanten
+nutzen und dass die Ansicht keine Zahl von Hand und keine Schreibmethode
+enthaelt.
+
+Mutation: in `lib/console/data-api-exposure.ts` wird 409 als bereit
+gedeutet; genau ein Fall faellt, exit 1.
+
+Checkpoint `2.32.0` am 26. September 2026: Lokal 1270 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Mutation 1 von 1270 faellt, exit 1;
+`next build` gruen.
+
+Nicht erbracht: die Ansicht ist im Browser nur im Ladezustand gesehen,
+weil die Konsolensitzung im Speichermodus abgelaufen war; die Zustaende
+sind durch Einheitstests belegt, nicht durch einen Klick.

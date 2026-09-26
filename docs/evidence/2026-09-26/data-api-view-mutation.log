@@ -1,0 +1,31 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-data-api-exposure.test.ts (6 tests | 1 failed) 19ms
+     × maps the OpenAPI route status to a readiness 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-data-api-exposure.test.ts > console data api exposure > maps the OpenAPI route status to a readiness
+AssertionError: expected 'ready' to be 'not-ready' // Object.is equality
+
+Expected: "not-ready"
+Received: "ready"
+
+ ❯ tests/console-data-api-exposure.test.ts:29:67
+     27|   it("maps the OpenAPI route status to a readiness", () => {
+     28|     expect(dataApiReadiness(200)).toBe("ready");
+     29|     expect(dataApiReadiness(409, "GENERATED_DATA_API_NOT_READY")).toBe…
+       |                                                                   ^
+     30|     expect(dataApiReadiness(503, "GENERATED_DATA_API_DISABLED")).toBe(…
+     31|     expect(dataApiReadiness(503)).toBe("disabled");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  08:14:32
+   Duration  203ms (transform 32ms, setup 0ms, import 47ms, tests 19ms, environment 0ms)
+
+EXIT=1
