@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { GUIDE_PAGES, guidePath, pageBySlug } from "@/lib/docs/pages";
+import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
+import { loadGuidePage } from "@/lib/docs/load";
 
 describe("docs guide contract", () => {
   it("lists five pages whose files exist, with unique slugs", () => {
@@ -10,5 +12,20 @@ describe("docs guide contract", () => {
     expect(pageBySlug("glossar")?.file).toBe("GLOSSAR.md");
     expect(pageBySlug("nicht-da")).toBeUndefined();
     expect(guidePath("de", GUIDE_PAGES[0])).toBe(path.resolve(process.cwd(), "docs/guide/de/WAS_IST_QKERN.md"));
+  });
+
+  it("fills every placeholder from a real source and leaves none behind", async () => {
+    const values = await guidePlaceholders();
+    expect(values.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(values.node).toMatch(/^\d+\.\d+/);
+    expect(Number(values.postgresCases)).toBeGreaterThan(100);
+    expect(Number(values.languageCount)).toBe(4);
+    expect(fillPlaceholders("QKERN {{version}} auf Node {{node}}", values)).not.toContain("{{");
+    expect(() => fillPlaceholders("{{unbekannt}}", values)).toThrow(/unbekannt/);
+    for (const page of GUIDE_PAGES) {
+      const loaded = await loadGuidePage("de", page);
+      expect(JSON.stringify(loaded.document)).not.toContain("{{");
+      expect(loaded.document.title, `${page.file} braucht eine Ueberschrift der Ebene 1`).not.toBe("");
+    }
   });
 });
