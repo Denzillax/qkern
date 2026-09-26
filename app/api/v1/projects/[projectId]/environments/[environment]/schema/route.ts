@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import { z } from "zod";
@@ -16,7 +17,7 @@ import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
 import type { ProjectAuthService } from "@/lib/server/project-auth/service";
 
 const environmentSchema = z.enum(["development", "staging", "production"]);
-const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/).default("public");
+const schemaName = z.string().regex(DATA_IDENTIFIER).default("public");
 
 export async function handleProjectSchema(
   request: NextRequest,

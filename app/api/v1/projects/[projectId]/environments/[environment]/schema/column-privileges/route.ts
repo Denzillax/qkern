@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getProjectDataPlane } from "@/lib/server/data-plane/runtime";
@@ -15,7 +16,7 @@ import { dataPlaneRouteError } from "@/app/api/v1/projects/[projectId]/environme
  * Schemaaenderung ueber ein Change Set.
  */
 const environmentSchema = z.enum(["development", "staging", "production"]);
-const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/).default("public");
+const schemaName = z.string().regex(DATA_IDENTIFIER).default("public");
 
 export async function handleProjectColumnPrivileges(
   request: NextRequest,

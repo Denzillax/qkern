@@ -166,7 +166,7 @@ export const qkernOpenAPI = {
         parameters: [
           { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
           { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
-          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}$", default: "public" } },
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
         ],
         responses: {
           "200": { description: "Tenant-scoped schema metadata with sensitive columns marked", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectSchemaResponse" } } } },
@@ -746,7 +746,7 @@ export const qkernOpenAPI = {
         parameters: [
           { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
           { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
-          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: "^[a-z_][a-z0-9_]{0,62}$", default: "public" } },
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
         ],
         responses: {
           "200": { description: "Live generated OpenAPI 3.1 document" },
@@ -766,7 +766,7 @@ export const qkernOpenAPI = {
           { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
           { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
           { name: "table", in: "path", required: true, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$` } },
-          { name: "schema", in: "query", required: false, schema: { type: "string", default: "public" } },
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
           { name: "select", in: "query", required: false, schema: { type: "string" } },
           { name: "filter", in: "query", required: false, schema: { type: "array", maxItems: 10, items: { type: "string" } } },
           { name: "order", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}\\.(asc|desc)$` } },

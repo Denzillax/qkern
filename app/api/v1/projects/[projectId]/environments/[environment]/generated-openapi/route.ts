@@ -1,3 +1,4 @@
+import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { GeneratedDataApiPort } from "@/lib/server/data-plane/generated-api";
@@ -14,7 +15,7 @@ const paramsSchema = z.object({
   projectId: z.string().min(3).max(128),
   environment: z.enum(["development", "staging", "production"]),
 });
-const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
+const schemaName = z.string().regex(DATA_IDENTIFIER);
 type RouteContext = { params: Promise<{ projectId: string; environment: string }> };
 
 function response(data: unknown, status = 200) {

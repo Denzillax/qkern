@@ -14,6 +14,10 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
   let projectApi: SqlPool;
   let service: GeneratedDataApiService;
   const schema = `generated_${randomUUID().replaceAll("-", "_")}`;
+  // Ein Schema mit Grossbuchstaben, wie Prisma es anlegt (2.33), und sein
+  // kleingeschriebener Zwilling: PostgreSQL vergleicht exakt, die API auch.
+  const shopSchema = `Shop_${randomUUID().slice(0, 8)}`;
+  const shopTwin = shopSchema.toLowerCase();
   const ownerA = randomUUID();
   const ownerB = randomUUID();
   const rowA = randomUUID();
@@ -58,6 +62,7 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
 
   afterAll(async () => {
     if (owner) await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    if (owner) await owner.query(`DROP SCHEMA IF EXISTS "${shopSchema}", "${shopTwin}" CASCADE`);
     await Promise.all([owner?.end(), projectApi?.end()]);
   });
 
@@ -150,6 +155,39 @@ describe.runIf(enabled)("generated Data API PostgreSQL RLS certification", () =>
     const inspected = await dataPlane.inspectSchema({ organizationId: randomUUID(), actorRef: "console@qkern.test" }, scope, schema);
     const order = inspected.tables.find((table) => table.name === "Order");
     expect(order?.columns.map((column) => column.name)).toEqual(["id", "owner_id", "createdAt", "totalCents"]);
+  });
+
+  it("serves a schema with capitals exactly and never merges it with its lowercase twin (2.33)", async () => {
+    const itemId = randomUUID();
+    for (const name of [shopSchema, shopTwin]) {
+      await owner.query(`CREATE SCHEMA "${name}"`);
+      await owner.query(`CREATE TABLE "${name}"."Items" (id uuid PRIMARY KEY, label text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${name}"."Items" ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY items_read_all ON "${name}"."Items" FOR SELECT USING (true)`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${name}" TO qkern_project_api_app`);
+      await owner.query(`GRANT SELECT ON "${name}"."Items" TO qkern_project_api_app`);
+    }
+    await owner.query(`INSERT INTO "${shopSchema}"."Items" (id, label) VALUES ($1, 'nur im Shop')`, [itemId]);
+
+    const dataPlane = new ProjectDataPlaneService(
+      { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+      { resolve: async () => ({ pool: projectApi, expectedRole: "qkern_project_api_app", expectedDatabase: new URL(projectApiUrl!).pathname.slice(1), expectedLedgerOwner: "qkern" }) },
+    );
+    const inspected = await dataPlane.inspectSchema({ organizationId: randomUUID(), actorRef: "console@qkern.test" }, scope, shopSchema);
+    expect(inspected.schema).toBe(shopSchema);
+    expect(inspected.tables.find((table) => table.name === "Items")).toMatchObject({ rowSecurityEnabled: true });
+
+    const listed = await service.listRows(context(ownerA), scope, { schema: shopSchema, table: "Items" });
+    expect(listed.rows).toEqual([{ id: itemId, label: "nur im Shop" }]);
+    // Der Zwilling ist ein anderes Schema: leer, nicht die Zeilen von Shop.
+    const twin = await service.listRows(context(ownerA), scope, { schema: shopTwin, table: "Items" });
+    expect(twin.rows).toEqual([]);
+    // Unter einer dritten Schreibweise gibt es die Tabelle nicht.
+    await expect(service.listRows(context(ownerA), scope, { schema: shopSchema.toUpperCase(), table: "Items" }))
+      .rejects.toMatchObject({ code: "GENERATED_DATA_API_TABLE_NOT_FOUND" });
+
+    const document = await service.generateOpenApi(context(ownerA), scope, shopSchema) as { paths: Record<string, unknown> };
+    expect(document.paths["/v1/projects/certification-project/environments/development/tables/Items/rows"]).toBeDefined();
   });
 
   it("rejects identifier and column injection before PostgreSQL execution", async () => {

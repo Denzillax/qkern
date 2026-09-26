@@ -1,4 +1,4 @@
-import { DATA_IDENTIFIER, DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
+import { DATA_IDENTIFIER, DATA_IDENTIFIER_PATTERN, isDataSchemaName } from "@/lib/server/data-plane/identifiers";
 import { DATA_API_LIMITS, SENSITIVE_COLUMN_PATTERN, type DataApiFilterOperator } from "@/lib/data-api-limits";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
@@ -1143,8 +1143,7 @@ function assertRequest(
 }
 
 function safeSchema(value: string): boolean {
-  return safeIdentifier(value) && !value.startsWith("pg_") &&
-    value !== "information_schema" && value !== "qkern_internal";
+  return isDataSchemaName(value);
 }
 
 function safeIdentifier(value: unknown): value is string {

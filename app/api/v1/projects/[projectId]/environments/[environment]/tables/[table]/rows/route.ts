@@ -27,7 +27,7 @@ const paramsSchema = z.object({
   environment: z.enum(["development", "staging", "production"]),
   table: z.string().regex(DATA_IDENTIFIER),
 });
-const schemaName = z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/);
+const schemaName = z.string().regex(DATA_IDENTIFIER);
 const ALLOWED_QUERY = new Set(["schema", "select", "filter", "order", "cursor", "limit"]);
 
 type RouteContext = { params: Promise<{ projectId: string; environment: string; table: string }> };

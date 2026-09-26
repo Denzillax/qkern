@@ -1,4 +1,4 @@
-import { DATA_IDENTIFIER } from "@/lib/server/data-plane/identifiers";
+import { DATA_IDENTIFIER, isDataSchemaName } from "@/lib/server/data-plane/identifiers";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { isReadOnlySql, redactSensitive } from "@/lib/security";
 import type { Environment } from "@/lib/types";
@@ -9,6 +9,7 @@ import type {
 } from "@/lib/server/migrations/postgres-executor";
 import { isCatalogReference } from "@/lib/server/migrations/connection-catalog";
 
+// Rollen- und Datenbanknamen bleiben klein; Schemanamen stehen in identifiers.ts.
 const IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
 const SENSITIVE_COLUMN = /(?:password|secret|token|cookie|private.?key|authorization|api.?key)/i;
 const MAX_TABLES = 100;
@@ -696,8 +697,7 @@ const COLUMN_PRIVILEGES_SQL = `
   LIMIT $2`;
 
 function assertInspectableSchema(schema: string): void {
-  if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
-      schema === "information_schema" || schema === "qkern_internal") {
+  if (!isDataSchemaName(schema)) {
     throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
   }
 }
@@ -733,8 +733,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     schema: string,
   ): Promise<ProjectSchemaResult> {
     assertContextAndScope(context, scope);
-    if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
-        schema === "information_schema" || schema === "qkern_internal") {
+    if (!isDataSchemaName(schema)) {
       throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
     }
     return this.run(context, scope, async (client) => {
@@ -788,8 +787,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     schema: string,
   ): Promise<ProjectTriggerResult> {
     assertContextAndScope(context, scope);
-    if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
-        schema === "information_schema" || schema === "qkern_internal") {
+    if (!isDataSchemaName(schema)) {
       throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
     }
     return this.run(context, scope, async (client) => {
@@ -829,8 +827,7 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     schema: string,
   ): Promise<ProjectFunctionResult> {
     assertContextAndScope(context, scope);
-    if (!IDENTIFIER.test(schema) || schema.startsWith("pg_") ||
-        schema === "information_schema" || schema === "qkern_internal") {
+    if (!isDataSchemaName(schema)) {
       throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
     }
     return this.run(context, scope, async (client) => {

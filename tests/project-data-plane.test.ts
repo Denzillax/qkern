@@ -147,6 +147,20 @@ describe("project data plane", () => {
     )).toBe(true);
   });
 
+  it("accepts schema names with capitals and refuses system schemas and escaping names (2.33)", async () => {
+    const built = fixture(() => []);
+    await expect(built.service.inspectSchema(context, scope, "Shop")).resolves.toMatchObject({ schema: "Shop", tables: [] });
+    // Der Name geht exakt als Parameter hinaus, nicht kleingeschrieben.
+    expect(built.client.calls.find((call) => call.text.includes("pg_catalog.pg_namespace"))?.values?.[0]).toBe("Shop");
+
+    const refused = fixture(() => []);
+    for (const schema of ["pg_Shop", "pg_catalog", "information_schema", "qkern_internal", 'Shop"', "S".repeat(64), "shop.x", ""]) {
+      await expect(refused.service.inspectSchema(context, scope, schema))
+        .rejects.toMatchObject({ code: "DATA_PLANE_INVALID_INPUT" });
+    }
+    expect(refused.pool.connect).not.toHaveBeenCalled();
+  });
+
   it("rejects writes, reserved schemas and pending targets before a database call", async () => {
     const built = fixture(() => []);
     await expect(built.service.queryReadOnly(context, scope, "DELETE FROM products", 20))

@@ -60,6 +60,28 @@ describe("project data-plane routes", () => {
     );
   });
 
+  it("forwards schema names with capitals exactly and refuses names outside the grammar (2.33)", async () => {
+    const inspectSchema = vi.fn().mockResolvedValue({ source: "postgres", schema: "Shop", tables: [], truncated: false });
+    const dataPlane = { inspectSchema, queryReadOnly: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const keys = {
+      authenticate: vi.fn().mockResolvedValue({
+        id: "key-cli", organizationId: "org-cli", projectId: "project-cli",
+        environment: "development", kind: "service",
+      }),
+    } as unknown as ProjectApiKeyService;
+    const call = (schema: string) => handleProjectSchema(new NextRequest(
+      `https://qkern.test/api/v1/projects/project-cli/environments/development/schema?schema=${encodeURIComponent(schema)}`,
+      { headers: { "x-qkern-key": "qk_test_cli" } },
+    ), { params: Promise.resolve({ projectId: "project-cli", environment: "development" }) }, dataPlane, keys);
+
+    expect((await call("Shop")).status).toBe(200);
+    expect(inspectSchema).toHaveBeenCalledWith(expect.anything(), expect.anything(), "Shop");
+    for (const schema of ['Shop"', "S".repeat(64), "Shop.Items", "1Shop"]) {
+      expect((await call(schema)).status).toBe(400);
+    }
+    expect(inspectSchema).toHaveBeenCalledOnce();
+  });
+
   it("requires trusted origin and forwards only bounded query inputs", async () => {
     const principal = await identity();
     const queryReadOnly = vi.fn().mockResolvedValue({

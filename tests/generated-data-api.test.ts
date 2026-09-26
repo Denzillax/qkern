@@ -178,6 +178,22 @@ describe("generated project data API", () => {
       .rejects.toMatchObject({ code: "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED" });
   });
 
+  it("reads a schema with capitals through a quoted name and refuses system or escaping schemas (2.33)", async () => {
+    const built = fixture(() => []);
+    await built.service.listRows(context, scope, { schema: "Shop", table: "orders", select: ["id"] });
+    expect(built.client.calls.find((call) => call.text.includes("FROM pg_catalog.pg_namespace AS namespace"))?.values?.[0]).toBe("Shop");
+    expect(built.client.calls.some((call) => call.text.includes('FROM "Shop"."orders"'))).toBe(true);
+
+    const refused = fixture(() => []);
+    for (const schema of ["pg_Shop", "pg_catalog", "information_schema", "qkern_internal", 'Shop"', "S".repeat(64)]) {
+      await expect(refused.service.listRows(context, scope, { schema, table: "orders" }))
+        .rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      await expect(refused.service.generateOpenApi(context, scope, schema))
+        .rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    }
+    expect(refused.client.calls).toHaveLength(0);
+  });
+
   it("generates a live schema-derived OpenAPI document without sensitive columns", async () => {
     const built = fixture(() => []);
     const document = await built.service.generateOpenApi(context, scope, "public");

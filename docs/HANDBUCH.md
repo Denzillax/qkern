@@ -121,6 +121,10 @@ Listen akzeptieren `select=id,name`, bis zu zehn wiederholte
 zurückgegebenen opaken `cursor`. Erlaubte Operatoren sind `eq`, `neq`, `gt`,
 `gte`, `lt`, `lte` und `in`; JSON-Werte wie `true`, `42`, `null` oder
 `[1,2,3]` werden erkannt, alle Datenwerte aber serverseitig parametrisiert.
+Ohne `schema=` gilt `public`. Seit 2.33 gelten für Schemanamen dieselben Regeln
+wie für Tabellennamen, also auch Großbuchstaben wie in `schema=Shop`. Die
+Schreibweise zählt: `Shop` und `shop` sind zwei Schemas. Systemschemas (`pg_*`,
+`information_schema`, `qkern_internal`) lehnt die API ab.
 
 Beispiel mit einem bereits einmalig kopierten Key:
 

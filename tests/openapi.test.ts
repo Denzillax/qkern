@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { qkernOpenAPI } from "@/lib/openapi";
+import { DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
 
 describe("QKERN OpenAPI contract", () => {
   it("uses OpenAPI 3.1 and unique operation ids", () => {
@@ -202,5 +203,21 @@ describe("QKERN OpenAPI contract", () => {
     expect(JSON.stringify(qkernOpenAPI.components.schemas.MigrationIncidentItem)).not.toContain("statement");
     expect(JSON.stringify(qkernOpenAPI.components.schemas.MigrationIncidentDeliveryState)).not.toMatch(/lease|token|provider|response/i);
     expect(JSON.stringify(qkernOpenAPI.components.schemas.MigrationIncidentDeliveryHealth)).not.toMatch(/leaseOwner|leaseToken|token|provider|response/i);
+  });
+
+  it("documents schema names with the same grammar as table names (2.33)", () => {
+    const base = "/v1/projects/{projectId}/environments/{environment}";
+    const schemaParameter = (path: string, method: "get") => {
+      const operation = (qkernOpenAPI.paths as unknown as Record<string, Record<string, { parameters?: ReadonlyArray<{ name: string; schema: { pattern?: string; default?: string } }> }>>)[path][method];
+      return operation.parameters?.find((parameter) => parameter.name === "schema")?.schema;
+    };
+    for (const path of [`${base}/schema`, `${base}/generated-openapi`, `${base}/tables/{table}/rows`]) {
+      const schema = schemaParameter(path, "get");
+      expect(schema).toMatchObject({ pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" });
+      const pattern = new RegExp(schema!.pattern!);
+      expect(pattern.test("Shop")).toBe(true);
+      expect(pattern.test('Shop"')).toBe(false);
+      expect(pattern.test("S".repeat(64))).toBe(false);
+    }
   });
 });

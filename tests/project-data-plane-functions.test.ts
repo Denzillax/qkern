@@ -83,7 +83,7 @@ describe("project data plane functions", () => {
 
   it("refuses reserved schemas before any database call and stays closed while disabled", async () => {
     const built = fixture(() => []);
-    for (const schema of ["pg_catalog", "information_schema", "qkern_internal", "Public"]) {
+    for (const schema of ["pg_catalog", "information_schema", "qkern_internal", "pg_Shop", 'Shop"', "S".repeat(64)]) {
       await expect(built.service.inspectFunctions(context, scope, schema)).rejects.toMatchObject({ code: "DATA_PLANE_INVALID_INPUT" });
     }
     expect(built.client.calls).toHaveLength(0);
