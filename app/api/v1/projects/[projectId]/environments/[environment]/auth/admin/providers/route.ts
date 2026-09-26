@@ -11,8 +11,11 @@ import type { ProjectAuthService } from "@/lib/server/project-auth/service";
  * 1.76 ("Kein Console-Fluss fuer die Provider-Auswahl").
  *
  * Admin-Grenze wie die Nutzerliste daneben: Console-Session, kein Projekt-Key.
- * Was zurueckkommt, ist die Projektion aus `listOidcProviders` — Slug und
- * Issuer, nie Client-ID oder der Name der Secret-Umgebungsvariablen.
+ * Was zurueckkommt, ist die Projektion aus `listOidcProviders` — Slug,
+ * Issuer und seit 2.57 `requiresVerifiedEmail`, nie Client-ID und nie der
+ * Name der Secret-Umgebungsvariablen. Das dritte Feld ist ein abgeleitetes
+ * Ja/Nein hinter der Admin-Grenze; die oeffentliche Provider-Route zeigt es
+ * nicht.
  */
 export function createProjectAuthProvidersHandler(
   getService: () => ProjectAuthService = getProjectAuthService,

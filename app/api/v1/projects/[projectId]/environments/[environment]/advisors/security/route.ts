@@ -6,7 +6,8 @@ import { isProjectDataPlaneError, type ProjectDataPlanePort } from "@/lib/server
 import { generatedDataContext } from "@/lib/server/data-plane/generated-http";
 import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service";
 import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
-import type { ProjectAuthService } from "@/lib/server/project-auth/service";
+import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
+import { ProjectAuthError, type ProjectAuthService } from "@/lib/server/project-auth/service";
 import { getProjectStorageService } from "@/lib/server/project-storage/runtime";
 import { ProjectStorageError, type ProjectStorageService } from "@/lib/server/project-storage/service";
 import {
@@ -26,8 +27,9 @@ import { dataPlaneRouteError } from "@/app/api/v1/projects/[projectId]/environme
  * scope-gebundener Projekt-Key, `no-store`, keine Query-Parameter. Gelesen
  * wird das Schema `public` ueber die vorhandenen Katalogabfragen; Buckets und
  * API-Keys nur mit Console-Sitzung und der Faehigkeit, die ihre eigenen
- * Routen verlangen. Fehlt eine Quelle, laeuft ihre Regel nicht, und die
- * Antwort sagt das. Ein abgeschalteter Dienst ist kein 500.
+ * Routen verlangen; seit 2.57 ebenso die Anmeldeanbieter. Fehlt eine Quelle,
+ * laeuft ihre Regel nicht, und die Antwort sagt das. Ein abgeschalteter
+ * Dienst ist kein 500.
  */
 const environmentSchema = z.enum(["development", "staging", "production"]);
 const SCHEMA = "public";
@@ -59,9 +61,10 @@ export async function handleSecurityAdvisor(request: NextRequest, input: RouteIn
     const session = await consoleSession(request);
     const storage = await readStorage(session, dependencies.storage ?? getProjectStorageService, scope);
     const apiKeys = await readApiKeys(session, keys, scope);
+    const authProviders = readAuthProviders(session, dependencies.projectAuth);
     const now = (dependencies.now ?? (() => new Date()))();
 
-    const result = evaluateSecurityRules({ environment: scope.environment, now, database, storage, apiKeys });
+    const result = evaluateSecurityRules({ environment: scope.environment, now, database, storage, apiKeys, authProviders });
     return NextResponse.json(
       { data: { findings: result.findings, checks: result.checks, checkedAt: now.toISOString() } },
       { headers: { "Cache-Control": "private, no-store" } },
@@ -153,6 +156,33 @@ async function readApiKeys(
   } catch (error) {
     if (!isConnectionUnavailable(error)) console.error("[advisors] api keys unavailable", error);
     return { unavailable: "keysUnavailable" };
+  }
+}
+
+/**
+ * Die Anmeldeanbieter, so weit die achte Regel sie braucht (2.57).
+ *
+ * Gelesen wird die Projektion aus `listOidcProviders` und davon genau zwei
+ * Felder: der Slug und das abgeleitete `requiresVerifiedEmail`. Der Issuer
+ * geht hier nicht weiter, obwohl die Projektion ihn nennt — die Regel
+ * braucht ihn nicht. Dieselbe Faehigkeit wie die Gesundheitsprobe aus 2.44,
+ * und wie bei Storage und den Keys ist ein Projekt-Key zu wenig.
+ */
+function readAuthProviders(
+  session: AuthenticatedRequestContext | null,
+  injected: ProjectAuthService | undefined,
+): SecurityAdvisorInput["authProviders"] {
+  if (!session) return { unavailable: "consoleOnly" };
+  try { requireCapability(session, "project_auth_admin"); } catch { return { unavailable: "authForbidden" }; }
+  try {
+    const service = injected ?? getProjectAuthService();
+    return { providers: service.listOidcProviders().map((provider) => ({
+      id: provider.id, requiresVerifiedEmail: provider.requiresVerifiedEmail,
+    })) };
+  } catch (error) {
+    if (error instanceof ProjectAuthError && error.code === "PROJECT_AUTH_DISABLED") return { unavailable: "authDisabled" };
+    if (!isConnectionUnavailable(error)) console.error("[advisors] auth providers unavailable", error);
+    return { unavailable: "authUnavailable" };
   }
 }
 

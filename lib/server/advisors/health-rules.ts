@@ -206,28 +206,32 @@ export function evaluateHealthRules(input: HealthAdvisorInput): HealthAdvisorRes
         : report("queues_cron", "ok", "reachable", items));
   }
 
-  // Realtime: nur die Konfiguration. Eine Verbindung baut diese Seite nicht auf.
+  // Realtime: nur die Konfiguration. Eine Verbindung baut diese Seite nicht
+  // auf — darum `configured` und nicht `ok` (2.57). Bis 2.56 stand hier
+  // "erreichbar", obwohl niemand gefragt worden war; 2.44 hat das selbst als
+  // offenen Punkt notiert.
   if ("unavailable" in input.realtime) {
     subsystems.push(blocked("realtime", input.realtime.unavailable));
   } else {
     subsystems.push(input.realtime.configured
-      ? report("realtime", "ok", "realtimeConfigured", [evidence("transportConfigured")])
+      ? report("realtime", "configured", "realtimeConfigured", [evidence("transportConfigured")])
       : blocked("realtime", "notConfigured"));
   }
 
-  // Vault: nur ob einer verbunden ist. Kein Pfad, kein Secret, keine Anfrage.
+  // Vault: nur ob einer eingerichtet ist. Kein Pfad, kein Secret, keine
+  // Anfrage — und darum ebenfalls `configured`.
   if ("unavailable" in input.vault) {
     subsystems.push(blocked("vault", input.vault.unavailable));
   } else {
     subsystems.push(input.vault.connected
-      ? report("vault", "ok", "vaultConnected", [evidence("vaultConnected")])
+      ? report("vault", "configured", "vaultConnected", [evidence("vaultConnected")])
       : blocked("vault", "notConfigured"));
   }
 
   const order = new Map(HEALTH_SUBSYSTEM_IDS.map((id, index) => [id, index] as const));
   subsystems.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
-  const counts: Record<HealthState, number> = { ok: 0, off: 0, unconfigured: 0, unknown: 0, degraded: 0 };
+  const counts: Record<HealthState, number> = { ok: 0, configured: 0, off: 0, unconfigured: 0, unknown: 0, degraded: 0 };
   let overall: HealthState = "ok";
   for (const subsystem of subsystems) {
     counts[subsystem.state] += 1;

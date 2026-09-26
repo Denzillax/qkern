@@ -26,6 +26,7 @@ function input(overrides: Partial<SecurityAdvisorInput> = {}): SecurityAdvisorIn
     database: { schema: "public", tables: [], tablesTruncated: false, policies: [], policiesTruncated: false },
     storage: { buckets: [] },
     apiKeys: { keys: [] },
+    authProviders: { providers: [] },
     ...overrides,
   };
 }
@@ -43,9 +44,48 @@ describe("security advisor rules", () => {
     }));
     expect(result.findings).toEqual([]);
     expect(result.checks.map((item) => item.rule)).toEqual([...SECURITY_RULE_IDS]);
+    // Seit 2.57 laeuft auch die achte Regel; keine Regel bleibt dauerhaft
+    // ungeprueft stehen.
+    expect(result.checks.every((item) => item.ran)).toBe(true);
     expect(result.checks.find((item) => item.rule === "auth_provider_unverified_email")).toEqual({
-      rule: "auth_provider_unverified_email", ran: false, reason: SECURITY_CHECK_REASONS.providerNotExposed,
+      rule: "auth_provider_unverified_email", ran: true,
     });
+  });
+
+  it("auth_provider_unverified_email fires for a trusted provider and not for a strict one", () => {
+    const result = evaluateSecurityRules(input({ authProviders: { providers: [
+      { id: "strict", requiresVerifiedEmail: true },
+      { id: "trusting", requiresVerifiedEmail: false },
+    ] } }));
+    expect(rules(result)).toEqual(["auth_provider_unverified_email:trusting"]);
+    expect(result.findings[0]).toMatchObject({
+      id: "auth_provider_unverified_email:auth_provider:trusting",
+      severity: "low", object: { kind: "auth_provider", name: "trusting" },
+    });
+  });
+
+  it("names the reason when the providers cannot be read instead of guessing", () => {
+    const result = evaluateSecurityRules(input({ authProviders: { unavailable: "authForbidden" } }));
+    expect(result.findings).toEqual([]);
+    expect(result.checks.find((item) => item.rule === "auth_provider_unverified_email")).toEqual({
+      rule: "auth_provider_unverified_email", ran: false, reason: SECURITY_CHECK_REASONS.authForbidden,
+    });
+  });
+
+  /**
+   * Der strukturelle Teil: Die Eingabe der Regel hat genau zwei Felder, und
+   * das zweite ist ein `boolean`. Ein Issuer, eine Client-ID oder der Name
+   * einer Secret-Umgebungsvariablen hat darin keine Stelle, an der er stehen
+   * koennte — auch dann nicht, wenn jemand sie spaeter hineinreicht.
+   */
+  it("carries nothing but a slug and a yes-or-no out of the provider catalogue", () => {
+    const result = evaluateSecurityRules(input({ authProviders: { providers: [
+      { id: "trusting", requiresVerifiedEmail: false },
+    ] } }));
+    const serialised = JSON.stringify(result);
+    expect(serialised).not.toContain("https://");
+    expect(serialised).not.toContain("clientId");
+    expect(serialised).not.toContain("Secret");
   });
 
   it("rls_disabled fires for ordinary and partitioned tables, not for views", () => {
@@ -162,12 +202,14 @@ describe("security advisor rules", () => {
       database: { unavailable: "databaseDisabled" },
       storage: { unavailable: "storageDisabled" },
       apiKeys: { unavailable: "consoleOnly" },
+      authProviders: { unavailable: "consoleOnly" },
     }));
     expect(result.findings).toEqual([]);
     expect(result.checks.filter((item) => item.ran)).toEqual([]);
     expect(result.checks.find((item) => item.rule === "rls_disabled")?.reason).toBe(SECURITY_CHECK_REASONS.databaseDisabled);
     expect(result.checks.find((item) => item.rule === "bucket_public_read")?.reason).toBe(SECURITY_CHECK_REASONS.storageDisabled);
     expect(result.checks.find((item) => item.rule === "api_key_broad")?.reason).toBe(SECURITY_CHECK_REASONS.consoleOnly);
+    expect(result.checks.find((item) => item.rule === "auth_provider_unverified_email")?.reason).toBe(SECURITY_CHECK_REASONS.consoleOnly);
   });
 
   it("sorts by severity, then by object, and is deterministic", () => {

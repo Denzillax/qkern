@@ -23,7 +23,7 @@ async function identity() {
 }
 
 function port(method: ReturnType<typeof vi.fn>): ProjectDataPlanePort {
-  return { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectForeignKeys: method } as ProjectDataPlanePort;
+  return { inspectSchema: vi.fn(), inspectStatements: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectForeignKeys: method } as ProjectDataPlanePort;
 }
 
 const params = { params: Promise.resolve({ projectId: "project", environment: "development" }) };

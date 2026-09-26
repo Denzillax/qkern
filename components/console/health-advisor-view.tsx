@@ -112,6 +112,7 @@ export function HealthAdvisorView({ projectId, environment }: { projectId: strin
       <p><span className={stateTone(overall)}>{stateLabel(overall)}</span> — {t(HEALTH_STATE_TEXTS[overall]?.explains ?? "")}</p>
       <p className="muted">{t("Das Gesamturteil ist der schlechteste Zustand, den ein Teil trägt. Ein abgeschalteter Dienst zieht es darum weiter herunter als ein erreichbarer, aber weniger als ein gestörter.")}</p>
       <p className="muted">{t("Gesund heisst hier: erreichbar und eingerichtet. Ob deine Anwendung funktioniert, sagt diese Seite nicht.")}</p>
+      <p className="muted">{t("Erreichbar heisst: Der Dienst wurde gefragt und hat geantwortet. Eingerichtet heisst: Es ist eine Adresse oder eine Anbindung hinterlegt, gefragt wurde niemand. Realtime und Vault tragen nie mehr als das.")}</p>
       {checkedAt && <p className="muted">{t("Geprüft")}: {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(checkedAt))}</p>}
     </article>
 

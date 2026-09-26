@@ -68,9 +68,9 @@ export const PERFORMANCE_RULES: Record<PerformanceRuleId, PerformanceRuleText> =
   slow_statement: {
     severity: "medium",
     title: "Teures Statement",
-    summary: "Ein Statement trägt in pg_stat_statements die höchste Gesamtzeit (ab 10 Sekunden summiert, höchstens die fünf teuersten). Der Text steht nur im Befund, wenn er ohne fremde Werte gezeigt werden kann; sonst nennt der Befund nur die Kennung.",
-    remedy: "Das Statement mit EXPLAIN (ANALYZE) nachrechnen und entweder die Abfrage oder die Indizes ändern. Ein Statement mit vielen Aufrufen ist teuer, auch wenn ein einzelner Lauf schnell ist.",
-    reads: "Nichts: QKERN liest pg_stat_statements nicht, der Grund steht daneben.",
+    summary: "Ein Statement trägt in pg_stat_statements die höchste Gesamtzeit (ab 10 Sekunden summiert, höchstens die fünf teuersten). Der Befund nennt nur die normalisierte Kennung; den Abfragetext liest QKERN nicht, weil ein Utility-Befehl seine Literale behält.",
+    remedy: "Das Statement über seine Kennung in pg_stat_statements nachschlagen, mit EXPLAIN (ANALYZE) nachrechnen und entweder die Abfrage oder die Indizes ändern. Ein Statement mit vielen Aufrufen ist teuer, auch wenn ein einzelner Lauf schnell ist.",
+    reads: "Aus pg_stat_statements nur Zeilen der eigenen Datenbank, und je Zeile nur die normalisierte Kennung, die Zahl der Aufrufe und die Gesamtzeit. Nie die Spalte query.",
   },
   unused_index: {
     severity: "low",
@@ -101,7 +101,6 @@ export const PERFORMANCE_CHECK_REASONS = {
   databaseNotReady: "Die Projektdatenbank ist noch nicht bereit.",
   databaseUnavailable: "Die Projektdatenbank ist gerade nicht erreichbar.",
   statisticsTruncated: "Nur die ersten 200 Tabellen und 400 Indizes des Schemas geprüft.",
-  statementsNotRead: "QKERN liest pg_stat_statements nicht: Die Sicht gilt für den ganzen Cluster, und der Text eines Utility-Befehls behält seine Literale. Dort könnten Werte eines anderen Projekts stehen.",
   statementsUnavailable: "pg_stat_statements ist in dieser Datenbank nicht installiert oder für die Leserolle nicht lesbar.",
 } as const;
 

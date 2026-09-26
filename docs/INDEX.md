@@ -35,6 +35,7 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
+| [RELEASE_2.57.md](RELEASE_2.57.md) | Regeln, die nie liefen |
 | [RELEASE_2.51.md](RELEASE_2.51.md) | Aktueller Release: Die Bruecke laeuft |
 | [RELEASE_2.50.md](RELEASE_2.50.md) | Zweiter Faktor und Datenbank-Webhooks |
 | [RELEASE_2.49.md](RELEASE_2.49.md) | Was der Scanner sah |

@@ -12,7 +12,8 @@ import type { Environment } from "@/lib/types";
  * Die Regeln des Sicherheitsberaters (2.39), rein und ohne Ein- und Ausgabe.
  *
  * Eingabe sind Daten, die QKERN ohnehin liest: Tabellen und Policies aus dem
- * Katalog, die Richtlinien der Buckets, Art und Ablauf der API-Keys. Jede
+ * Katalog, die Richtlinien der Buckets, Art und Ablauf der API-Keys und seit
+ * 2.57 je Anmeldeanbieter ein Slug und ein Ja/Nein zu `email_verified`. Jede
  * Quelle kann fehlen; dann steht in `checks`, welche Regel deshalb nicht lief
  * und warum. Nichts hier schreibt, nichts repariert. Gleiche Eingabe gibt
  * gleiche Ausgabe, auch in derselben Reihenfolge.
@@ -22,7 +23,7 @@ export type SecurityFinding = {
   id: string;
   rule: SecurityRuleId;
   severity: SecuritySeverity;
-  object: { kind: "table" | "policy" | "bucket" | "api_key"; name: string };
+  object: { kind: "table" | "policy" | "bucket" | "api_key" | "auth_provider"; name: string };
   summary: string;
   remedy: string;
 };
@@ -60,6 +61,19 @@ export type SecurityAdvisorApiKey = {
   revokedAt: string | null;
 };
 
+/**
+ * Ein Anmeldeanbieter, so weit die Regel ihn braucht (2.57).
+ *
+ * Genau zwei Felder, und das zweite ist ein `boolean`. Issuer, Client-ID,
+ * Endpunkte und der Name der Secret-Umgebungsvariablen stehen hier
+ * ausdruecklich nicht: Der Slug benennt den Anbieter im Befund, das Ja/Nein
+ * entscheidet die Regel. In ein `boolean` passt kein Geheimnis.
+ */
+export type SecurityAdvisorAuthProvider = {
+  id: string;
+  requiresVerifiedEmail: boolean;
+};
+
 type Unavailable = { unavailable: SecurityCheckReason };
 
 export type SecurityAdvisorInput = {
@@ -74,6 +88,7 @@ export type SecurityAdvisorInput = {
   };
   storage: Unavailable | { buckets: SecurityAdvisorBucket[] };
   apiKeys: Unavailable | { keys: SecurityAdvisorApiKey[] };
+  authProviders: Unavailable | { providers: SecurityAdvisorAuthProvider[] };
 };
 
 export type SecurityAdvisorResult = { findings: SecurityFinding[]; checks: SecurityCheck[] };
@@ -207,8 +222,23 @@ export function evaluateSecurityRules(input: SecurityAdvisorInput): SecurityAdvi
     checks.set("api_key_broad", check("api_key_broad", true));
   }
 
-  // Die Provider-Projektion nennt nur Slug und Issuer (1.83); die Regel laeuft nie.
-  checks.set("auth_provider_unverified_email", check("auth_provider_unverified_email", false, "providerNotExposed"));
+  // Anmeldeanbieter: nur der Slug und das abgeleitete Ja/Nein aus 2.57.
+  //
+  // Bis 2.56 stand hier eine Regel, die nie lief, weil die Projektion nur
+  // Slug und Issuer nannte. Statt einen dauerhaften "nicht geprueft"-Eintrag
+  // stehen zu lassen, traegt die Projektion jetzt genau das eine `boolean`,
+  // das die Regel braucht.
+  if ("unavailable" in input.authProviders) {
+    checks.set("auth_provider_unverified_email",
+      check("auth_provider_unverified_email", false, input.authProviders.unavailable));
+  } else {
+    for (const provider of input.authProviders.providers) {
+      if (!provider.requiresVerifiedEmail) {
+        findings.push(finding("auth_provider_unverified_email", "auth_provider", provider.id));
+      }
+    }
+    checks.set("auth_provider_unverified_email", check("auth_provider_unverified_email", true));
+  }
 
   findings.sort((a, b) =>
     SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||

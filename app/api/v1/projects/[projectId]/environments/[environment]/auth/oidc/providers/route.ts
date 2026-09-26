@@ -16,6 +16,12 @@ import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
  * Zwei-Felder-Projektion aus 1.83: Slug und Issuer, nie Client-ID oder der
  * Name der Secret-Umgebungsvariablen. Eine App kann damit ihre
  * Login-Buttons aufzaehlen, statt Slugs zu raten.
+ *
+ * Seit 2.57 nennt `listOidcProviders` zusaetzlich `requiresVerifiedEmail`,
+ * damit der Sicherheitsberater seine achte Regel rechnen kann. Diese Tuer
+ * hier verengt wieder auf die zwei Felder: Ob ein Anbieter ohne
+ * `email_verified` zugelassen ist, ist eine Betriebsangabe fuer die Console
+ * und nichts, was ein noch nicht angemeldeter Aufrufer erfahren muss.
  */
 export function createProjectAuthPublicProvidersHandler(
   getService: () => ProjectAuthService = getProjectAuthService,
@@ -28,7 +34,9 @@ export function createProjectAuthPublicProvidersHandler(
       if ([...request.nextUrl.searchParams.keys()].length > 0) {
         return withProjectAuthCors(request, projectAuthNoStore({ error: "Invalid Project Auth request" }, 400));
       }
-      return withProjectAuthCors(request, projectAuthNoStore({ data: getService().listOidcProviders() }));
+      const providers = getService().listOidcProviders()
+        .map((provider) => ({ id: provider.id, issuer: provider.issuer }));
+      return withProjectAuthCors(request, projectAuthNoStore({ data: providers }));
     } catch (error) { return projectAuthRouteError(error, request); }
   };
 }

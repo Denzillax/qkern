@@ -84,9 +84,9 @@ export const SECURITY_RULES: Record<SecurityRuleId, SecurityRuleText> = {
   auth_provider_unverified_email: {
     severity: "low",
     title: "Anbieter ohne E-Mail-Bestätigung",
-    summary: "Ein Anmeldeanbieter akzeptiert Konten, deren E-Mail-Adresse er nicht als bestätigt meldet.",
-    remedy: "Beim Anbieter email_verified verlangen oder ihn nur verwenden, wenn er Adressen selbst prüft.",
-    reads: "Nichts: Die Angabe liegt nur in der Serverkonfiguration.",
+    summary: "Dieser Anmeldeanbieter ist als vertrauenswürdig hinterlegt: Ein ID-Token ohne den Claim email_verified wird angenommen. Wer beim Anbieter eine fremde Adresse einträgt, ohne sie zu bestätigen, landet damit im selben Konto.",
+    remedy: "Den Anbieter auf email_verification: required stellen, solange nicht belegt ist, dass er jede Adresse selbst prüft. Ein ausdrückliches email_verified: false weist QKERN in beiden Betriebsarten ab.",
+    reads: "Je Anmeldeanbieter den Slug und ein Ja/Nein, ob er email_verified verlangt. Nie Client-ID, Endpunkt oder Secret.",
   },
 };
 
@@ -105,7 +105,9 @@ export const SECURITY_CHECK_REASONS = {
   keysForbidden: "Deine Rolle darf die API-Keys nicht sehen.",
   consoleOnly: "Nur mit einer Console-Sitzung prüfbar, nicht mit einem Projekt-Key.",
   productionOnly: "Greift nur in Production; in dieser Umgebung gibt es dazu keinen Befund.",
-  providerNotExposed: "Die Liste der Anmeldeanbieter nennt nur Kennung und Issuer, nicht ob ein Anbieter ohne email_verified zugelassen ist.",
+  authDisabled: "Project Auth ist in dieser Installation nicht freigeschaltet.",
+  authUnavailable: "Der Anmeldedienst ist gerade nicht erreichbar.",
+  authForbidden: "Deine Rolle darf die Anmeldeanbieter nicht sehen.",
 } as const;
 
 export type SecurityCheckReason = keyof typeof SECURITY_CHECK_REASONS;

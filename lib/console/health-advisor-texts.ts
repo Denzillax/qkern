@@ -30,21 +30,37 @@ export const HEALTH_SUBSYSTEM_IDS = [
 export type HealthSubsystemId = (typeof HEALTH_SUBSYSTEM_IDS)[number];
 
 /**
- * Die fuenf Zustaende. `degraded` ist der schlimmste: Etwas ist eingerichtet
+ * Die sechs Zustaende. `degraded` ist der schlimmste: Etwas ist eingerichtet
  * und antwortet trotzdem nicht. `unknown` steht darueber, weil eine fehlende
  * Probe kein gutes Zeugnis ist, aber unter `degraded`, weil sie kein Defekt
  * ist. `off` und `unconfigured` sind Entscheidungen, keine Stoerungen.
+ *
+ * `configured` ist seit 2.57 dabei und trennt zwei Aussagen, die 2.44 beide
+ * `ok` genannt hat. `ok` heisst: Der Dienst wurde gefragt und hat
+ * geantwortet. `configured` heisst: Es ist etwas hinterlegt, gefragt wurde
+ * niemand. Realtime und Vault tragen genau das; sie als `ok` mit dem Label
+ * "erreichbar" zu zeigen, war die Unwahrheit, die 2.44 selbst als offen
+ * notiert hat.
  */
-export const HEALTH_STATES = ["ok", "off", "unconfigured", "unknown", "degraded"] as const;
+export const HEALTH_STATES = ["ok", "configured", "off", "unconfigured", "unknown", "degraded"] as const;
 export type HealthState = (typeof HEALTH_STATES)[number];
 
-/** Je hoeher, desto schlimmer. Das Gesamturteil ist das Maximum. */
+/**
+ * Je hoeher, desto schlimmer. Das Gesamturteil ist das Maximum.
+ *
+ * `configured` liegt ueber `ok` und unter `off`: Ein Dienst, von dem nur die
+ * Einrichtung bekannt ist, ist kein bewiesen erreichbarer, aber auch keine
+ * Entscheidung gegen ihn. Solange Realtime oder Vault eingerichtet sind,
+ * sagt das Gesamturteil darum nicht mehr "erreichbar", und das ist der
+ * Punkt.
+ */
 export const HEALTH_STATE_RANK: Record<HealthState, number> = {
   ok: 0,
-  off: 1,
-  unconfigured: 2,
-  unknown: 3,
-  degraded: 4,
+  configured: 1,
+  off: 2,
+  unconfigured: 3,
+  unknown: 4,
+  degraded: 5,
 };
 
 export type HealthStateText = {
@@ -59,6 +75,11 @@ export const HEALTH_STATE_TEXTS: Record<HealthState, HealthStateText> = {
     label: "erreichbar",
     explains: "Der Dienst ist eingerichtet und hat auf eine Leseanfrage geantwortet.",
     tone: "secure",
+  },
+  configured: {
+    label: "eingerichtet",
+    explains: "Für den Dienst ist etwas hinterlegt. Gefragt wurde er nicht, also sagt diese Seite auch nicht, dass er antwortet.",
+    tone: "muted",
   },
   off: {
     label: "abgeschaltet",
@@ -149,8 +170,8 @@ export const HEALTH_DETAILS = {
   computeSandboxOff: "Function-Definitionen sind lesbar, aber die Sandbox ist nicht freigeschaltet. Aufrufen lässt sich hier nichts.",
   queuesCronEmpty: "Queues und Cron antworten, aber es ist weder eine Queue noch ein Zeitplan definiert.",
   cronNeverDispatched: "Mindestens eine aktive Cron-Definition hat noch nie ausgelöst, obwohl ihr eigenes Intervall längst vergangen ist. Entweder läuft der Cron-Prozess nicht, oder das Einreihen scheitert.",
-  realtimeConfigured: "Für den Realtime-Server ist eine Adresse hinterlegt. Ob dort jemand zuhört, sagt diese Seite nicht.",
-  vaultConnected: "Ein Vault ist verbunden. Ob ein einzelnes Secret darin liegt, steht unter Functions & Jobs → Secrets.",
+  realtimeConfigured: "Für den Realtime-Server ist eine Adresse hinterlegt. Diese Seite hat dort nicht angeklopft; ob jemand zuhört, weiss sie nicht.",
+  vaultConnected: "Ein Vault ist eingerichtet. Diese Seite hat ihn nichts gefragt; ob ein einzelnes Secret darin liegt, steht unter Functions & Jobs → Secrets.",
 } as const;
 
 export type HealthDetailId = keyof typeof HEALTH_DETAILS;

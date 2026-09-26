@@ -105,7 +105,7 @@ scope-gebundener Projekt-Key), ohne Query-Parameter und mit
 | `bucket_public_read` | mittel | Buckets | die Leserichtlinie ist `public` |
 | `bucket_authenticated_write_any_type` | niedrig | Buckets | die Schreibrichtlinie ist `authenticated` und keine MIME-Typen sind gesetzt |
 | `api_key_broad` | mittel | Art, Ablauf, Widerruf der API-Keys | in Production ist ein Service-Key aktiv |
-| `auth_provider_unverified_email` | niedrig | nichts | läuft nie, siehe unten |
+| `auth_provider_unverified_email` | niedrig | je Anmeldeanbieter Slug und ein Ja/Nein zu `email_verified` | ein Anbieter ist mit `emailVerification: "trusted"` hinterlegt, nimmt also ein ID-Token ohne den Claim an |
 
 Buckets und API-Keys liest der Berater nur mit einer Console-Sitzung, deren Rolle
 `project_storage_admin` beziehungsweise `project_api_keys` hat; ein Projekt-Key
@@ -115,13 +115,22 @@ angebunden oder ein Dienst nicht erreichbar, laufen die betroffenen Regeln nicht
 Katalog ab (100 Tabellen, 200 Policies), sagt der Grund das; `rls_no_policies`
 läuft dann gar nicht, weil eine fehlende Policy nur abgeschnitten sein könnte.
 
+Die Anmeldeanbieter liest der Berater seit `2.57.0` — mit derselben Console-
+Sitzung und derselben Fähigkeit `project_auth_admin` wie die Gesundheitsseite.
+Bis `2.56.0` lief die Regel `auth_provider_unverified_email` nie, weil
+`listOidcProviders` nur Kennung und Issuer nannte. Die Projektion trägt jetzt
+ein drittes Feld, `requiresVerifiedEmail`, und mehr nicht: ein abgeleitetes
+`boolean` aus `emailVerification`, in das strukturell kein Geheimnis passt.
+Client-ID, Endpunkte und der Name der Secret-Umgebungsvariablen bleiben drinnen,
+und die **öffentliche** Provider-Route `/auth/oidc/providers` verengt weiterhin
+auf Kennung und Issuer: Wie ein Anbieter eingestellt ist, geht niemanden etwas
+an, der noch nicht angemeldet ist.
+
 Was der Berater nicht sieht: Schemas ausser `public`, Funktionen mit
 `SECURITY DEFINER`, Views ohne `security_invoker`, Spaltenrechte, Tabellen ohne
 Spalten, Policies, die an die Verbindungsrolle der Data API statt an `public`
-gebunden sind, und alles, was nur in der Serverkonfiguration steht. Dazu gehört,
-ob ein OIDC-Anbieter mit `emailVerification: "trusted"` ohne `email_verified`
-zugelassen ist: Die Provider-Liste gibt bewusst nur Kennung und Issuer heraus.
-Ein Befund ist kein Urteil. Eine Policy mit `USING (true)` für eine wirklich
+gebunden sind, und an den Anmeldeanbietern alles ausser der einen Frage nach
+`email_verified`. Ein Befund ist kein Urteil. Eine Policy mit `USING (true)` für eine wirklich
 öffentliche Tabelle ist gewollt; der Berater meldet sie trotzdem.
 
 ### Leistungsberater
@@ -141,7 +150,7 @@ READ-ONLY-Transaktion wie jeder andere Inspektor (höchstens 200 Tabellen und
 | Regel | Schwere | Liest | Befund, wenn |
 | --- | --- | --- | --- |
 | `missing_index_suspected` | mittel | Scans und lebende Zeilen je Tabelle | ab 50 sequenzielle Scans, höchstens ein Zehntel davon als Index-Scans, mindestens 1000 lebende Zeilen |
-| `slow_statement` | mittel | nichts | läuft nie, siehe unten |
+| `slow_statement` | mittel | aus `pg_stat_statements` nur Zeilen der eigenen Datenbank, je Zeile nur Kennung, Aufrufe und Gesamtzeit | ein Statement summiert mindestens 10 Sekunden; gemeldet werden höchstens die fünf teuersten |
 | `unused_index` | niedrig | Scans, Grösse und Art der Indizes | ein Index ohne Primärschlüssel- und Unique-Eigenschaft hat null Scans und mindestens 1 MiB |
 | `bloat_suspected` | niedrig | lebende und tote Zeilen je Tabelle | mindestens 1000 tote Zeilen und mindestens ein Fünftel so viele tote wie lebende |
 | `never_analyzed` | niedrig | letzte Stichprobe und letztes Autovacuum | mindestens 1000 lebende Zeilen, aber weder `ANALYZE` (auch nicht automatisch) noch Autovacuum |
@@ -149,14 +158,25 @@ READ-ONLY-Transaktion wie jeder andere Inspektor (höchstens 200 Tabellen und
 Die Schwellen stehen in `PERFORMANCE_THRESHOLDS` und nur dort; jeder Text nennt
 sie in Worten. Eine Regel feuert ab dem Wert, nicht erst darüber.
 
-`pg_stat_statements` liest QKERN bewusst nicht. Die Sicht gilt für den ganzen
-Cluster, und `pg_stat_statements` normalisiert nur Abfragen: der Text eines
-Utility-Befehls behält seine Literale, etwa ein Passwort aus
-`CREATE ROLE ... PASSWORD '...'`. Dort könnten also Werte eines anderen
-Projekts stehen. Darum steht `slow_statement` immer mit `ran: false` und genau
-diesem Grund in der Antwort. Das reine Regelmodul kann die Regel rechnen,
-sobald die Quelle sicher zu öffnen ist (eine je Projekt gefilterte Sicht mit
-`pg_read_all_stats` beim Betreiber wäre ein Weg); die Route öffnet sie nicht.
+`pg_stat_statements` liest QKERN seit `2.57.0` — aber nur den Teilausschnitt,
+der sicher ist. Bis `2.56.0` blieb die Sicht ganz ungelesen, mit zwei Gründen:
+Sie gilt für den ganzen Cluster, und sie normalisiert nur Abfragen, weshalb der
+Text eines Utility-Befehls seine Literale behält — etwa ein Passwort aus
+`CREATE ROLE ... PASSWORD '...'`. Beide Gründe treffen die Spalte `query` und
+die Zeilen fremder Datenbanken, nicht die Zähler. `inspectStatements` grenzt
+deshalb auf `dbid` der eigenen Datenbank ein, wählt `query` nirgends aus und
+lässt Zeilen ohne `queryid` weg (die zeigt PostgreSQL einer Rolle ohne
+`pg_read_all_stats` für fremde Sitzungen). Übrig bleiben die normalisierte
+Kennung, die Zahl der Aufrufe und die Gesamtzeit; `PerformanceAdvisorStatement`
+hat kein Feld mehr, in das ein Text passen würde. Ein Befund nennt darum die
+Kennung, und nachschlagen lässt sie sich in `pg_stat_statements` selbst.
+
+Ist die Erweiterung nicht installiert oder für die Leserolle nicht erreichbar,
+läuft die Regel nicht und die Antwort sagt genau das; eine Erweiterung, die es
+nicht gibt, ist kein Fehler. Der Zertifizierungsfall
+„(2.57) proves the advisor rules that used to be unreachable“ legt einen Marker
+als Literal in den Text eines Utility-Befehls, weist nach, dass die Sicht ihn
+wirklich trägt, und prüft danach, dass die ganze Antwort frei davon ist.
 
 Statistik ist kein Geheimnis eines anderen Mandanten: Scans, geschätzte Zeilen
 und Indexgrössen betreffen nur die Objekte dieses Schemas in dieser
@@ -174,8 +194,8 @@ ausser `public`.
 ### Projekt-Gesundheit
 
 Seit `2.44.0` zeigt **Advisors → Gesundheit** je Teilsystem einer Umgebung, ob
-es erreichbar, abgeschaltet, nicht eingerichtet oder gestört ist, und woran das
-abgelesen wurde. Nur lesend: kein Neustart, kein Einschalten, keine Reparatur.
+es erreichbar, nur eingerichtet, abgeschaltet, nicht eingerichtet oder gestört
+ist, und woran das abgelesen wurde. Nur lesend: kein Neustart, kein Einschalten, keine Reparatur.
 Die Route ist
 `GET /api/v1/projects/{projectId}/environments/{environment}/advisors/health`,
 dieselbe Tür wie die beiden Berater daneben, ohne Query-Parameter, mit
@@ -195,9 +215,17 @@ nicht erreichbarer Dienst wird zu einem Zustand, nie zu einem 500.
 | `realtime` | ob eine Adresse des Realtime-Servers hinterlegt ist | Adresse hinterlegt ja oder nein |
 | `vault` | ob überhaupt ein Vault verbunden ist | Vault verbunden ja oder nein |
 
-Fünf Zustände: `ok`, `off`, `unconfigured`, `unknown`, `degraded`. Das
-Gesamturteil ist der schlechteste vorhandene Zustand, in genau dieser
-Reihenfolge von harmlos nach schlimm. `degraded` steht über `unknown`, weil ein
+Sechs Zustände: `ok`, `configured`, `off`, `unconfigured`, `unknown`,
+`degraded`. Das Gesamturteil ist der schlechteste vorhandene Zustand, in genau
+dieser Reihenfolge von harmlos nach schlimm.
+
+`configured` gibt es seit `2.57.0` und trennt zwei Aussagen, die `2.44.0` beide
+`ok` genannt hat. `ok` heisst: Der Dienst wurde gefragt und hat geantwortet.
+`configured` heisst: Es ist eine Adresse oder eine Anbindung hinterlegt, gefragt
+wurde niemand. Realtime und Vault tragen nie mehr als das, und sie standen bis
+`2.56.0` mit dem Wort „erreichbar“ da, obwohl die Seite dort nie angeklopft
+hat. Solange einer der beiden eingerichtet ist, sagt darum auch das
+Gesamturteil nicht mehr „erreichbar“. `degraded` steht über `unknown`, weil ein
 eingerichteter Dienst, der nicht antwortet, mehr aussagt als eine Probe, die
 nicht laufen konnte.
 
@@ -218,7 +246,7 @@ Was in die Antwort geht, ist festgelegt: ein Textschlüssel aus
 Verbindungsstring, ein Token, ein Vault-Pfad oder ein Kundenwert hat dort keine
 Stelle, an der er stehen könnte. Realtime und Vault prüft die Seite nur als
 Konfiguration; eine Verbindung baut sie nicht auf, und den Vault fragt sie
-nicht.
+nicht. Genau deshalb heissen die beiden `configured` und nicht `ok`.
 
 Und die Grenze steht auf der Seite selbst: Gesund heisst hier erreichbar und
 eingerichtet. Ob die Anwendung eines Kunden funktioniert, sagt diese Seite
@@ -321,7 +349,15 @@ blendet für eine unprivilegierte Rolle die Sitzungen anderer Rollen aus (Zustan
 und Zeiten fehlen dann, die Zeile selbst kann ganz wegfallen). Das ist kein
 Defekt, sondern die Grenze, und die Seite sagt es: *Gezaehlt wird, was diese
 Rolle sehen darf.* Deshalb kann die Summe der Gruppen unter `backends` aus
-`pg_stat_database` liegen; beide Zahlen stehen nebeneinander.
+`pg_stat_database` liegen.
+
+Seit `2.57.0` ist dieser Unterschied eine Zahl und keine Fussnote mehr: Die
+Kachel **FÜR DIESE ROLLE UNSICHTBAR** zeigt `backends` minus die gezählten
+Gruppen, und der Satz darunter nennt dieselbe Zahl in Worten oder sagt
+ausdrücklich, dass die Zählung die Zahl der Backends erreicht. Nach unten wird
+auf null geklemmt: Beide Zahlen kommen aus zwei Abfragen nacheinander, und eine
+dazwischen geschlossene Sitzung soll keine negative „unsichtbare“ Zahl
+ergeben.
 
 Die Datenbankseite rechnet aus `blks_hit` und `blks_read` die
 Cache-Trefferquote und stellt `numbackends` gegen `max_connections`. Wurde noch

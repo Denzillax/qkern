@@ -256,6 +256,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         database: { schema, tables: tables.tables, tablesTruncated: tables.truncated, policies: policies.policies, policiesTruncated: policies.truncated },
         storage: { buckets: [] },
         apiKeys: { keys: [] },
+        // Die achte Regel hat ihren eigenen Fall (2.57); hier geht es um den
+        // Katalog, darum bleibt die Anbieterliste leer.
+        authProviders: { providers: [] },
       });
       expect(result.findings.map((finding) => finding.id)).toEqual([
         "rls_disabled:table:open_notes",
@@ -378,7 +381,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
           indexes: statistics.indexes,
           truncated: statistics.truncated,
         },
-        statements: { unavailable: "statementsNotRead" },
+        // Die Statement-Regel hat ihren eigenen Fall (2.57); hier geht es um
+        // die Tabellen- und Indexstatistik.
+        statements: { unavailable: "statementsUnavailable" },
       });
       expect(result.findings.map((finding) => finding.id)).toEqual([
         "missing_index_suspected:table:busy",
@@ -1883,6 +1888,224 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
   });
 
 
+
+  it("(2.57) proves the advisor rules that used to be unreachable", async () => {
+    // Zwei Regeln, die es seit 2.39 und 2.40 gibt und die bis 2.56 nie liefen,
+    // gegen die echte Datenbank -- jede mit dem Beleg, warum sie jetzt laufen
+    // darf, ohne dass ein Geheimnis mitgeht.
+    //
+    // 1. `auth_provider_unverified_email`: Die Provider-Projektion nannte nur
+    //    Slug und Issuer, also konnte die Regel nie sehen, ob ein Anbieter
+    //    ohne `email_verified` zugelassen ist. Sie nennt jetzt zusaetzlich ein
+    //    abgeleitetes `boolean`. Gelesen wird es hier aus dem echten
+    //    Anmeldedienst mit dem echten PostgreSQL-Repository, nicht aus einem
+    //    Nachbau.
+    // 2. `slow_statement`: `pg_stat_statements` gilt fuer den ganzen Cluster,
+    //    und ein Utility-Befehl behaelt seine Literale. Genau das stellt
+    //    dieser Fall absichtlich her -- ein Marker steckt als Literal im Text
+    //    eines Utility-Statements, und die Sicht traegt ihn nachweislich --
+    //    und danach muss die ganze Antwort von `inspectStatements` frei davon
+    //    sein. Gegen einen Fake waere das keine Aussage, weil der Fake den
+    //    Text gar nicht erst hat.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.45, 2.52 und 2.54:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und dieser Fall soll ihm dabei nicht im Weg stehen. Weggeraeumt wird nur,
+    // was das Produkt selbst loescht; Organisation, Projekt und Umgebung
+    // bleiben stehen wie in 2.54.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const advisorOwner = randomUUID();
+    const advisorOrganization = randomUUID();
+    const advisorProject = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [advisorOwner, `advisor-2-57-owner-${advisorOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Advisor 2.57', $2, $3)`,
+    [advisorOrganization, `advisor-2-57-${advisorOrganization}`, advisorOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Advisor 2.57', $3, 'test', 'ready', $4)`,
+    [advisorProject, advisorOrganization, `advisor-2-57-${advisorProject}`, advisorOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [advisorOrganization, advisorProject, `managed:${advisorProject}`]);
+
+    // --- Regel 1: der Anmeldeanbieter ohne E-Mail-Bestaetigung ---
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const authService = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-57", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 7)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      // Zwei echte Katalogeintraege: einer verlangt `email_verified` (die
+      // Voreinstellung), einer ist als vertrauenswuerdig hinterlegt. Beide
+      // tragen Client-ID, Endpunkte und Issuer -- genau das, was nicht
+      // hinausgehen darf.
+      oidcCatalog: new ProjectAuthOidcCatalog([
+        {
+          id: "strict", issuer: "https://strict-2-57.idp.test",
+          authorizationEndpoint: "https://strict-2-57.idp.test/auth",
+          tokenEndpoint: "https://strict-2-57.idp.test/token",
+          jwksUri: "https://strict-2-57.idp.test/keys",
+          clientId: "qkern-strict-secret-client", scopes: ["openid", "email"],
+        },
+        {
+          id: "trusting", issuer: "https://trusting-2-57.idp.test",
+          authorizationEndpoint: "https://trusting-2-57.idp.test/auth",
+          tokenEndpoint: "https://trusting-2-57.idp.test/token",
+          jwksUri: "https://trusting-2-57.idp.test/keys",
+          clientId: "qkern-trusting-secret-client", scopes: ["openid", "email"],
+          clientSecretEnv: "QKERN_OIDC_TRUSTING_SECRET",
+          emailVerification: "trusted",
+        },
+      ]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      now: () => new Date("2026-09-26T12:00:00.000Z"),
+    });
+
+    // Die Projektion selbst: drei Felder, und das dritte ist ein `boolean`.
+    const projected = authService.listOidcProviders();
+    expect(projected).toEqual([
+      { id: "strict", issuer: "https://strict-2-57.idp.test", requiresVerifiedEmail: true },
+      { id: "trusting", issuer: "https://trusting-2-57.idp.test", requiresVerifiedEmail: false },
+    ]);
+    for (const provider of projected) {
+      expect(Object.keys(provider).sort()).toEqual(["id", "issuer", "requiresVerifiedEmail"]);
+      expect(typeof provider.requiresVerifiedEmail).toBe("boolean");
+    }
+    // Weder die Client-ID noch der Name der Secret-Umgebungsvariablen stehen
+    // darin; beide sind im Katalog, und beide bleiben drinnen.
+    const projectedText = JSON.stringify(projected);
+    expect(projectedText).not.toContain("secret-client");
+    expect(projectedText).not.toContain("QKERN_OIDC_TRUSTING_SECRET");
+
+    const securityResult = evaluateSecurityRules({
+      environment: "development",
+      now: new Date("2026-09-26T12:00:00.000Z"),
+      database: { unavailable: "databaseDisabled" },
+      storage: { unavailable: "storageDisabled" },
+      apiKeys: { unavailable: "consoleOnly" },
+      authProviders: { providers: projected.map((provider) => ({
+        id: provider.id, requiresVerifiedEmail: provider.requiresVerifiedEmail,
+      })) },
+    });
+    // Die Regel laeuft -- das ist der ganze Punkt -- und sie meldet genau den
+    // einen Anbieter, der ohne `email_verified` auskommt.
+    expect(securityResult.checks.find((check) => check.rule === "auth_provider_unverified_email"))
+      .toEqual({ rule: "auth_provider_unverified_email", ran: true });
+    expect(securityResult.findings.map((finding) => finding.id))
+      .toEqual(["auth_provider_unverified_email:auth_provider:trusting"]);
+    const securityText = JSON.stringify(securityResult);
+    expect(securityText).not.toContain("idp.test");
+    expect(securityText).not.toContain("secret-client");
+
+    // --- Regel 2: das teure Statement, ohne seinen Text ---
+    const marker = `statementprobe_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // Ist die Erweiterung ueberhaupt da? Ohne sie hat dieser Teil nichts,
+      // wogegen er laufen koennte, und ein stillschweigend gruener Fall waere
+      // schlimmer als ein roter.
+      const installed = await owner.query<{ present: boolean }>(
+        "SELECT to_regclass('pg_stat_statements') IS NOT NULL AS present");
+      expect(installed.rows[0]?.present,
+        "pg_stat_statements fehlt; der Stack laedt sie ueber shared_preload_libraries").toBe(true);
+
+      // Ein Utility-Befehl mit dem Marker im Text. `pg_stat_statements`
+      // normalisiert Abfragen, aber keine Utility-Befehle: Der Name bleibt im
+      // gespeicherten Text stehen. Genau das ist der Grund, aus dem 2.40 die
+      // Sicht gar nicht erst gelesen hat.
+      await owner.query(`CREATE SCHEMA "${marker}"`);
+      await owner.query(`DROP SCHEMA "${marker}"`);
+      // Und eine Abfrage der Leserolle selbst, damit mindestens eine Zeile mit
+      // sichtbarer Kennung existiert: Ohne pg_read_all_stats zeigt PostgreSQL
+      // fremde Zeilen ohne `queryid`.
+      for (let round = 0; round < 3; round += 1) {
+        await projectApi.query("SELECT count(*) FROM pg_catalog.pg_class WHERE oid > $1", [round]);
+      }
+
+      // Der Marker steht wirklich in der Sicht. Sonst waere die Zusage unten
+      // geschenkt. Gefragt wird mit Parameter, damit der Abfragetext dieser
+      // Pruefung selbst den Marker nicht traegt.
+      const raw = await owner.query<{ hits: string }>(
+        "SELECT count(*)::text AS hits FROM pg_stat_statements WHERE query LIKE $1", [`%${marker}%`]);
+      expect(Number(raw.rows[0]?.hits ?? 0),
+        "Die Sicht traegt den Marker nicht; dann prueft dieser Fall nichts.").toBeGreaterThan(0);
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const digests = await service.inspectStatements(
+        { organizationId: advisorOrganization, actorRef: "advisor-2-57@qkern.test" },
+        { projectId: advisorProject, environment: "development" },
+      );
+
+      expect(digests.source).toBe("postgres");
+      expect(digests.installed).toBe(true);
+      expect(digests.statements.length).toBeGreaterThan(0);
+      for (const digest of digests.statements) {
+        // Drei Felder, und keines davon ist ein Text: eine Kennung aus
+        // Ziffern und zwei Zaehler. Ein Abfragetext hat hier keine Stelle.
+        expect(Object.keys(digest).sort()).toEqual(["calls", "id", "totalTimeMs"]);
+        expect(digest.id).toMatch(/^-?[0-9]{1,20}$/);
+        expect(Number.isInteger(digest.calls) && digest.calls > 0).toBe(true);
+        expect(Number.isInteger(digest.totalTimeMs) && digest.totalTimeMs >= 0).toBe(true);
+      }
+
+      // Der Kern des Falls: kein Feld der ganzen Antwort traegt den Text
+      // irgendeines Statements -- weder den Marker noch ein SQL-Wort.
+      const serialised = JSON.stringify(digests);
+      expect(serialised).not.toContain(marker);
+      expect(serialised).not.toContain("statementprobe");
+      expect(serialised.toLowerCase()).not.toContain("select");
+      expect(serialised.toLowerCase()).not.toContain("schema");
+      expect(serialised.toLowerCase()).not.toContain("pg_");
+
+      // Und die Regel rechnet damit. Die Schwelle von 10 Sekunden erreicht
+      // dieser Lauf nicht, darum zaehlt hier die Zusage, die zaehlbar ist:
+      // Die Regel lief, und ohne Schwellenwert gibt es keinen Befund.
+      const performance = evaluatePerformanceRules({
+        statistics: { unavailable: "databaseDisabled" },
+        statements: { entries: digests.statements.map((digest) => ({
+          id: digest.id, calls: digest.calls, totalTimeMs: digest.totalTimeMs,
+        })) },
+      });
+      expect(performance.checks.find((check) => check.rule === "slow_statement"))
+        .toEqual({ rule: "slow_statement", ran: true });
+      for (const finding of performance.findings) {
+        expect(finding.object.kind).toBe("statement");
+        expect(finding.object.name).toMatch(/^-?[0-9]{1,20}$/);
+      }
+
+      // Dieselbe Eingabe, nur mit einer Gesamtzeit ueber der Schwelle: Dann
+      // gibt es einen Befund, und er nennt genau die Kennung.
+      const expensive = digests.statements[0];
+      const raised = evaluatePerformanceRules({
+        statistics: { unavailable: "databaseDisabled" },
+        statements: { entries: [{
+          id: expensive.id, calls: expensive.calls,
+          totalTimeMs: PERFORMANCE_THRESHOLDS.slowStatementMinTotalMs,
+        }] },
+      });
+      expect(raised.findings.map((finding) => finding.id))
+        .toEqual([`slow_statement:statement:${expensive.id}`]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${marker}" CASCADE`);
+      await projectApi.end();
+    }
+  });
 
   it("(2.50) turns a real table change into a signed webhook delivery", async () => {
     // Der ganze Weg der Datenbank-Webhooks (2.50) an einem Stueck, und zwar an

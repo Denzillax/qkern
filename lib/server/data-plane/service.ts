@@ -163,6 +163,34 @@ export type ProjectStatisticsResult = {
 };
 
 /**
+ * Ein Statement aus `pg_stat_statements`, auf drei Zahlen reduziert (2.57).
+ *
+ * Es gibt hier kein Textfeld, und das ist der ganze Punkt. 2.40 hat die
+ * Sicht bewusst ungelesen gelassen, weil `pg_stat_statements` nur Abfragen
+ * normalisiert und ein Utility-Befehl (`CREATE ROLE … PASSWORD '…'`) seine
+ * Literale behaelt — auf einem Cluster auch die eines fremden Mandanten. Der
+ * sichere Teilausschnitt ist: nur Zeilen der eigenen Datenbank, und von
+ * jeder Zeile nur die normalisierte Kennung und zwei Zaehler. Die Kennung
+ * ist ein Hash ueber den Abfragebaum; sie traegt kein Literal, und aus ihr
+ * laesst sich der Text nicht zurueckrechnen.
+ */
+export type ProjectStatementDigest = {
+  /** `queryid` als Dezimaltext; `bigint` passt nicht verlustfrei in `number` */
+  id: string;
+  calls: number;
+  /** Gesamte Ausfuehrungszeit in Millisekunden, abgerundet */
+  totalTimeMs: number;
+};
+
+export type ProjectStatementResult = {
+  source: "postgres";
+  /** `false`, wenn `pg_stat_statements` in dieser Datenbank nicht erreichbar ist */
+  installed: boolean;
+  statements: ProjectStatementDigest[];
+  truncated: boolean;
+};
+
+/**
  * Betriebszahlen der Projektdatenbank aus `pg_stat_database` (2.46).
  *
  * Alles hier sind Zaehler seit `statsReset`, nicht seit dem Start des
@@ -389,6 +417,10 @@ export interface ProjectDataPlanePort {
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
   ): Promise<ProjectActivityResult>;
+  inspectStatements(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectStatementResult>;
   inspectForeignKeys(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -717,6 +749,56 @@ const INDEX_STATISTICS_SQL = `
   WHERE stat.schemaname = $1
   ORDER BY stat.relname ASC, stat.indexrelname ASC
   LIMIT $2`;
+
+type StatementDigestRow = {
+  statement_id: string;
+  calls: string | number;
+  total_time_ms: string | number;
+};
+
+/** Mehr als das braucht keine Regel; der Berater nimmt ohnehin nur die teuersten fuenf. */
+const MAX_STATEMENT_DIGESTS = 50;
+
+/**
+ * Gibt es `pg_stat_statements` ueberhaupt, und zwar im `search_path` dieser
+ * Sitzung? `to_regclass` antwortet mit NULL statt mit einem Fehler, und ein
+ * Fehler mitten in der lesenden Transaktion wuerde sie abbrechen. Steht die
+ * Erweiterung in einem Schema, das die Leserolle nicht im Pfad hat, gilt sie
+ * hier als nicht vorhanden — das ist die ehrlichere Antwort als ein Rateversuch.
+ */
+const STATEMENTS_INSTALLED_SQL = `
+  SELECT to_regclass('pg_stat_statements') IS NOT NULL AS installed`;
+
+/**
+ * Der sichere Teilausschnitt aus `pg_stat_statements` (2.57).
+ *
+ * Drei Zusagen stecken in dieser Abfrage, und jede davon ist der Grund,
+ * warum 2.40 die Sicht gar nicht erst angefasst hat:
+ *
+ * - **`dbid`.** Die Sicht gilt fuer den ganzen Cluster. `dbid` auf die OID
+ *   der eigenen Datenbank einzugrenzen ist die Mandantengrenze, nicht eine
+ *   Bequemlichkeit — genau wie `datname = current_database()` in 2.46.
+ * - **Kein `query`.** Die Spalte wird nicht ausgewaehlt, nicht gefiltert und
+ *   nicht sortiert. Ein Utility-Befehl behaelt seine Literale; in dieser
+ *   Antwort kann er sie darum nirgends unterbringen. Uebrig bleiben die
+ *   normalisierte Kennung und zwei Zaehler.
+ * - **`queryid IS NOT NULL`.** Wem `pg_read_all_stats` fehlt, dem zeigt
+ *   PostgreSQL fremde Zeilen ohne Kennung. Eine Zeile ohne Kennung waere im
+ *   Befund nicht benennbar; sie faellt hier heraus.
+ *
+ * `total_exec_time` ist `double precision`; `floor(...)::bigint` macht daraus
+ * einen Zaehler, den `counter` pruefen kann.
+ */
+const STATEMENT_DIGESTS_SQL = `
+  SELECT stat.queryid::text AS statement_id,
+         stat.calls AS calls,
+         floor(stat.total_exec_time)::bigint AS total_time_ms
+  FROM pg_stat_statements AS stat
+  WHERE stat.dbid = (SELECT database.oid FROM pg_catalog.pg_database AS database
+                     WHERE database.datname = current_database())
+    AND stat.queryid IS NOT NULL
+  ORDER BY stat.total_exec_time DESC, stat.queryid ASC
+  LIMIT $1`;
 
 type DatabaseActivityRow = {
   commits: string | number;
@@ -1339,6 +1421,51 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Die teuersten Statements der eigenen Datenbank, ohne ihren Text (2.57).
+   *
+   * Der Gegenentwurf zu "gar nicht lesen" aus 2.40: Statt die Sicht ganz
+   * liegen zu lassen, wird sie so eng gelesen, dass ihr gefaehrlicher Teil
+   * gar nicht erst mitkommt. `STATEMENT_DIGESTS_SQL` waehlt `query` nicht
+   * aus, und dieser Rumpf baut die Antwort aus drei Feldern, die alle die
+   * Grenze passieren muessen: eine Kennung aus Ziffern, zwei Zaehler. Was
+   * die Grenze nicht als solches erkennt, laesst den Aufruf scheitern,
+   * statt in die Console zu laufen.
+   *
+   * Fehlt die Erweiterung, ist das kein Fehler: `installed: false` ist die
+   * ehrliche Antwort, und der Berater macht daraus einen Grund.
+   */
+  async inspectStatements(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectStatementResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const probe = await client.query<{ installed: boolean }>(STATEMENTS_INSTALLED_SQL);
+      if (probe.rows[0]?.installed !== true) {
+        return { source: "postgres", installed: false, statements: [], truncated: false };
+      }
+      const result = await client.query<StatementDigestRow>(STATEMENT_DIGESTS_SQL, [MAX_STATEMENT_DIGESTS + 1]);
+      const rows = result.rows.slice(0, MAX_STATEMENT_DIGESTS);
+      const statements: ProjectStatementDigest[] = rows.map((row) => {
+        const calls = counter(row.calls);
+        const totalTimeMs = counter(row.total_time_ms);
+        // Eine `queryid` ist ein `bigint`, also hoechstens 20 Zeichen aus
+        // Ziffern und einem moeglichen Minus. Alles andere waere kein
+        // Statement-Hash, und was hier nicht hineinpasst, geht nicht hinaus.
+        if (typeof row.statement_id !== "string" || !/^-?[0-9]{1,20}$/.test(row.statement_id) ||
+            calls === null || totalTimeMs === null) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { id: row.statement_id, calls, totalTimeMs };
+      });
+      return {
+        source: "postgres", installed: true, statements,
+        truncated: result.rows.length > rows.length,
+      };
+    });
+  }
+
   async inspectForeignKeys(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1680,6 +1807,10 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
   }
 
   async inspectActivity(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectActivityResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectStatements(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectStatementResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 
