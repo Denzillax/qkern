@@ -42,6 +42,13 @@ import {
   type ProjectAuthRepository,
 } from "@/lib/server/project-auth/repository";
 import {
+  effectiveProjectAuthReturnTargets,
+  parseProjectAuthReturnTargets,
+  projectAuthReturnTargetAllowed,
+  PROJECT_AUTH_RETURN_TARGET_LIMIT,
+  type ProjectAuthReturnTargetRejection,
+} from "@/lib/server/project-auth/return-targets";
+import {
   hashProjectAuthToken,
   ProjectAuthTokenError,
   ProjectAuthTokenService,
@@ -144,6 +151,34 @@ export type PublicProjectAuthMfaPolicy = {
   factors: readonly ["totp"];
 };
 
+/**
+ * Was die Console ueber die Ruecksprungziele einer Umgebung sieht (2.54).
+ *
+ * Drei Listen, und der Unterschied ist der Punkt: `outerBound` ist, was der
+ * Betrieb erlaubt; `targets` ist, was diese Umgebung davon uebrig laesst;
+ * `effective` ist, was daraus wirklich gilt. Bei leerer `targets` sind
+ * `outerBound` und `effective` gleich.
+ */
+export type PublicProjectAuthReturnTargets = {
+  targets: string[];
+  outerBound: string[];
+  effective: string[];
+  limit: number;
+  updatedAt: string | null;
+};
+
+/** Die Ablehnung eines Eintrags, mit Grund und dem Wert, der sie ausgeloest hat. */
+export class ProjectAuthReturnTargetError extends Error {
+  constructor(
+    readonly reason: ProjectAuthReturnTargetRejection,
+    readonly value: string,
+  ) {
+    super("Invalid Project Auth return target");
+    this.name = "ProjectAuthReturnTargetError";
+  }
+}
+recognisedByName(ProjectAuthReturnTargetError, "ProjectAuthReturnTargetError");
+
 /** Wer in der Console handelt: die ID des Console-Nutzers, nie seine E-Mail. */
 export type ProjectAuthAdminActor = { id: string };
 
@@ -235,7 +270,7 @@ export class ProjectAuthService {
     const email = canonicalEmail(input.email);
     assertEmail(email);
     assertPassword(input.password);
-    const redirectTo = this.redirect(input.redirectTo);
+    const redirectTo = await this.returnTarget(scope, input.redirectTo);
     if (await this.dependencies.repository.findUserByEmail(scope, email)) {
       throw new ProjectAuthError("ACCOUNT_EXISTS");
     }
@@ -268,7 +303,7 @@ export class ProjectAuthService {
     assertScope(scope);
     const email = canonicalEmail(input.email);
     assertEmail(email);
-    const redirectTo = this.redirect(input.redirectTo);
+    const redirectTo = await this.returnTarget(scope, input.redirectTo);
     let user = await this.dependencies.repository.findUserByEmail(scope, email);
     if (!user && input.createUser) {
       user = await this.dependencies.repository.createUser({
@@ -300,7 +335,7 @@ export class ProjectAuthService {
     assertScope(scope);
     const email = canonicalEmail(input.email);
     assertEmail(email);
-    const redirectTo = this.redirect(input.redirectTo);
+    const redirectTo = await this.returnTarget(scope, input.redirectTo);
     const user = await this.dependencies.repository.findUserByEmail(scope, email);
     let token: string | undefined;
     if (user?.status === "active") {
@@ -560,6 +595,62 @@ export class ProjectAuthService {
     return mfaPolicy(settings.mfaRequired, settings.updatedAt, counts);
   }
 
+  /**
+   * Die erlaubten Ruecksprungziele dieser Umgebung (2.54), zusammen mit der
+   * aeusseren Grenze, gegen die sie gelten. Die Console braucht beide, sonst
+   * koennte sie nicht zeigen, warum ein Eintrag abgelehnt wurde.
+   */
+  async readReturnTargets(scope: ProjectAuthScope): Promise<PublicProjectAuthReturnTargets> {
+    assertScope(scope);
+    const settings = await this.dependencies.repository.readSettings(scope);
+    const targets = settings?.returnTargets ?? [];
+    return {
+      targets: [...targets],
+      outerBound: [...this.dependencies.allowedRedirectOrigins],
+      effective: effectiveProjectAuthReturnTargets(this.dependencies.allowedRedirectOrigins, targets),
+      limit: PROJECT_AUTH_RETURN_TARGET_LIMIT,
+      updatedAt: settings ? settings.updatedAt.toISOString() : null,
+    };
+  }
+
+  /**
+   * Ersetzt die Liste ganz. Jeder Eintrag muss die strenge Form haben und
+   * innerhalb der aeusseren Grenze liegen; ein Eintrag ausserhalb wird
+   * abgelehnt, nicht weggelassen — eine stille Filterung hiesse, dass die
+   * Console etwas anderes speichert, als dort stand.
+   *
+   * Eine Aenderung ist ein Schreibzugriff und schreibt einen Audit-Eintrag.
+   * Darin steht, wie viele Ziele es danach sind, nicht welche: Die
+   * Metadaten-Regel des Audits laesst ohnehin kein `//` und keinen Doppelpunkt
+   * in Folge durch, und die Liste selbst steht in der Tabelle.
+   */
+  async setReturnTargets(
+    scope: ProjectAuthScope,
+    targets: readonly unknown[],
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthReturnTargets> {
+    assertScope(scope);
+    if (!Array.isArray(targets)) throw new ProjectAuthError("INVALID_INPUT");
+    const parsed = parseProjectAuthReturnTargets(targets, this.dependencies.allowedRedirectOrigins);
+    if (!parsed.ok) throw new ProjectAuthReturnTargetError(parsed.reason, parsed.value);
+    const settings = await this.dependencies.repository.writeReturnTargets(scope, parsed.targets, this.now());
+    await this.recordAudit({
+      scope, action: "project_auth.return_targets.changed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "succeeded", metadata: { count: parsed.targets.length },
+    });
+    return {
+      targets: [...settings.returnTargets],
+      outerBound: [...this.dependencies.allowedRedirectOrigins],
+      effective: effectiveProjectAuthReturnTargets(
+        this.dependencies.allowedRedirectOrigins, settings.returnTargets,
+      ),
+      limit: PROJECT_AUTH_RETURN_TARGET_LIMIT,
+      updatedAt: settings.updatedAt.toISOString(),
+    };
+  }
+
   async verifyMfaChallenge(scope: ProjectAuthScope, input: {
     challengeToken: string;
     code: string;
@@ -625,7 +716,7 @@ export class ProjectAuthService {
     assertScope(scope);
     const provider = this.dependencies.oidcCatalog.get(input.provider);
     if (!provider) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
-    const redirectTo = this.redirect(input.redirectTo);
+    const redirectTo = await this.returnTarget(scope, input.redirectTo);
     const callbackUri = this.oidcCallbackUri(scope, provider.id);
     const state = this.opaqueToken("oidc");
     if (!OIDC_STATE_TOKEN.test(state)) throw new ProjectAuthError("INVALID_INPUT");
@@ -1055,16 +1146,30 @@ export class ProjectAuthService {
     return token;
   }
 
-  private redirect(value: string): string {
-    try {
-      const url = new URL(value);
-      if (!this.dependencies.allowedRedirectOrigins.has(url.origin) || url.username || url.password || url.hash) {
-        throw new Error("invalid");
-      }
-      return url.toString();
-    } catch {
-      throw new ProjectAuthError("INVALID_INPUT");
-    }
+  /**
+   * Die einzige Stelle, an der ein Ruecksprungziel angenommen wird (2.54).
+   *
+   * Vorher stand hier nur die aeussere Grenze aus der Prozessumgebung. Jetzt
+   * kommt die Liste der Projektumgebung dazu, und zwar als Verengung: Der
+   * Wert muss in der aeusseren Grenze liegen **und**, falls die Umgebung eine
+   * nicht leere Liste fuehrt, auch in dieser. Eine leere Liste verengt nicht.
+   *
+   * Warum das reicht, um alles zu erfassen: QKERN schickt selbst nie einen
+   * 302 an ein Ruecksprungziel. Der Wert wandert genau an zwei Orte — als
+   * `redirect_to` in den Link einer Aktionsmail und in den verschluesselten
+   * OIDC-Flow-Zustand — und beide Wege fuehren durch diese Methode, bevor
+   * irgendetwas gespeichert oder versendet wird.
+   */
+  private async returnTarget(scope: ProjectAuthScope, value: string): Promise<string> {
+    if (typeof value !== "string" || value.length > 2_048) throw new ProjectAuthError("INVALID_INPUT");
+    const settings = await this.dependencies.repository.readSettings(scope);
+    const allowed = projectAuthReturnTargetAllowed({
+      value,
+      outerBound: this.dependencies.allowedRedirectOrigins,
+      allowList: settings?.returnTargets ?? [],
+    });
+    if (!allowed) throw new ProjectAuthError("INVALID_INPUT");
+    return new URL(value).toString();
   }
 
   private oidcCallbackUri(scope: ProjectAuthScope, provider: string): string {
@@ -1128,6 +1233,8 @@ export class DisabledProjectAuthService {
   resolveMfaEnrollment(): never { return this.disabled(); }
   readMfaPolicy(): never { return this.disabled(); }
   setMfaRequired(): never { return this.disabled(); }
+  readReturnTargets(): never { return this.disabled(); }
+  setReturnTargets(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }

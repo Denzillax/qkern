@@ -81,12 +81,17 @@ export type ProjectAuthMfaFactor = ProjectAuthScope & {
 };
 
 /**
- * Was eine Projektumgebung ueber ihre Anmeldung festlegt (2.52). Heute genau
- * ein Schalter; die Zeile fehlt, solange niemand ihn je angefasst hat, und
- * eine fehlende Zeile heisst "nicht erzwungen".
+ * Was eine Projektumgebung ueber ihre Anmeldung festlegt (2.52, erweitert in
+ * 2.54). Die Zeile fehlt, solange niemand etwas angefasst hat; eine fehlende
+ * Zeile heisst "nicht erzwungen" und "nicht verengt".
+ *
+ * `returnTargets` sind die erlaubten Ruecksprungziele als exakte Herkuenfte.
+ * Eine leere Liste verengt nichts: Dann gilt allein die aeussere Grenze aus
+ * der Prozessumgebung. Weiten kann die Liste sie nie.
  */
 export type ProjectAuthSettings = ProjectAuthScope & {
   mfaRequired: boolean;
+  returnTargets: string[];
   updatedAt: Date;
 };
 

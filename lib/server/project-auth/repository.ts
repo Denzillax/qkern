@@ -74,6 +74,17 @@ export interface ProjectAuthRepository {
   readSettings(scope: ProjectAuthScope): Promise<ProjectAuthSettings | null>;
   /** Setzt den Schalter und legt die Zeile an, falls es noch keine gibt. */
   writeMfaRequired(scope: ProjectAuthScope, required: boolean, now: Date): Promise<ProjectAuthSettings>;
+  /**
+   * Ersetzt die erlaubten Ruecksprungziele ganz (2.54) und legt die Zeile an,
+   * falls es noch keine gibt. Ganz und nicht stueckweise, weil eine
+   * halbgeschriebene Liste eine gueltige Liste waere — und eine leere Liste
+   * hier "nicht verengt" bedeutet.
+   */
+  writeReturnTargets(
+    scope: ProjectAuthScope,
+    targets: readonly string[],
+    now: Date,
+  ): Promise<ProjectAuthSettings>;
   /** Zaehlt App-Nutzer und bestaetigte Faktoren dieser Umgebung. */
   countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount>;
 
@@ -263,13 +274,30 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
 
   async readSettings(scope: ProjectAuthScope) {
     const stored = this.settings.get(scopeKey(scope));
-    return stored ? { ...stored, updatedAt: new Date(stored.updatedAt) } : null;
+    return stored ? cloneProjectAuthSettings(stored) : null;
   }
 
   async writeMfaRequired(scope: ProjectAuthScope, required: boolean, now: Date) {
-    const stored: ProjectAuthSettings = { ...scope, mfaRequired: required, updatedAt: new Date(now) };
+    const previous = this.settings.get(scopeKey(scope));
+    const stored: ProjectAuthSettings = {
+      ...scope, mfaRequired: required,
+      // Die eine Einstellung fasst die andere nicht an; in PostgreSQL macht
+      // das ein UPDATE auf genau eine Spalte, hier der uebernommene Wert.
+      returnTargets: [...(previous?.returnTargets ?? [])],
+      updatedAt: new Date(now),
+    };
     this.settings.set(scopeKey(scope), stored);
-    return { ...stored, updatedAt: new Date(stored.updatedAt) };
+    return cloneProjectAuthSettings(stored);
+  }
+
+  async writeReturnTargets(scope: ProjectAuthScope, targets: readonly string[], now: Date) {
+    const previous = this.settings.get(scopeKey(scope));
+    const stored: ProjectAuthSettings = {
+      ...scope, mfaRequired: previous?.mfaRequired ?? false,
+      returnTargets: [...targets], updatedAt: new Date(now),
+    };
+    this.settings.set(scopeKey(scope), stored);
+    return cloneProjectAuthSettings(stored);
   }
 
   async countMfaEnrolment(scope: ProjectAuthScope) {
@@ -353,6 +381,15 @@ function sessionSummary(session: ProjectAuthSession): ProjectAuthSessionSummary 
     id: session.id, familyId: session.familyId, assurance: session.assurance,
     createdAt: new Date(session.createdAt), expiresAt: new Date(session.expiresAt),
     replacedBySessionId: session.replacedBySessionId,
+  };
+}
+
+/** Eine eigene Kopie, damit ein Aufrufer die gespeicherte Liste nicht veraendert. */
+function cloneProjectAuthSettings(settings: ProjectAuthSettings): ProjectAuthSettings {
+  return {
+    ...settings,
+    returnTargets: [...settings.returnTargets],
+    updatedAt: new Date(settings.updatedAt),
   };
 }
 

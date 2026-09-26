@@ -14,6 +14,7 @@ import { tableChangeSetTexts } from "@/lib/console/table-change-sets";
 import { authObservabilityTexts } from "@/lib/console/auth-observability-texts";
 import { storageLogTexts } from "@/lib/console/storage-log-texts";
 import { authMfaTexts } from "@/lib/console/auth-mfa-texts";
+import { authSettingsTexts } from "@/lib/console/auth-settings-texts";
 import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
 import { logViewTexts } from "@/lib/console/log-view-texts";
 
@@ -66,6 +67,10 @@ async function consoleKeys(): Promise<string[]> {
   // Auth → Mehrfaktor (2.52) zeigt Zustaende, Faktoren, Warnungen und
   // seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authMfaTexts()) keys.add(text);
+  // Die drei Auth-Seiten rund um die Anmeldung (2.54) zeigen Ablehnungsgruende,
+  // Betriebsarten, Herkuenfte, Zwecke und ihre Ehrlichkeitssaetze ueber
+  // t(variable).
+  for (const text of authSettingsTexts()) keys.add(text);
   // Die Datenbank-Webhooks (2.50) zeigen die Gruende einer Ablehnung ueber
   // t(variable).
   for (const text of databaseWebhookTexts()) keys.add(text);

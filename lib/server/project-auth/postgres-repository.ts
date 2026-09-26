@@ -251,6 +251,26 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     return settingsFromRow(result.rows[0]);
   }
 
+  /**
+   * Ersetzt die Liste der Ruecksprungziele ganz (2.54). Ein INSERT mit
+   * ON CONFLICT, wie beim Schalter: Die Zeile entsteht erst, wenn jemand
+   * etwas einstellt, und der Schalter bleibt dabei unberuehrt, weil das
+   * UPDATE genau zwei Spalten nennt.
+   */
+  async writeReturnTargets(
+    scope: ProjectAuthScope,
+    targets: readonly string[],
+    now: Date,
+  ): Promise<ProjectAuthSettings> {
+    const result = await query(this.pool, `INSERT INTO project_auth_settings
+      (organization_id, project_id, environment, redirect_allow_list, updated_at)
+      VALUES ($1,$2,$3,$4::text[],$5)
+      ON CONFLICT (organization_id, project_id, environment)
+      DO UPDATE SET redirect_allow_list = EXCLUDED.redirect_allow_list, updated_at = EXCLUDED.updated_at
+      RETURNING ${SETTINGS_COLUMNS}`, [...scopeValues(scope), [...targets], now]);
+    return settingsFromRow(result.rows[0]);
+  }
+
   async countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount> {
     // Beide Zahlen in einer Abfrage und in der Datenbank gezaehlt: Die
     // Console soll keine Nutzerliste laden muessen, um eine Zahl zu zeigen.
@@ -369,7 +389,7 @@ const INSERT_SESSION = `INSERT INTO project_auth_sessions
 
 const ONE_TIME_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, purpose,
   token_hash, metadata, created_at, expires_at, consumed_at`;
-const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, updated_at`;
+const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, redirect_allow_list, updated_at`;
 const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
@@ -496,6 +516,7 @@ function settingsFromRow(row: Row): ProjectAuthSettings {
     organizationId: String(row.organization_id), projectId: String(row.project_id),
     environment: row.environment as ProjectAuthScope["environment"],
     mfaRequired: row.mfa_required,
+    returnTargets: stringArray(row.redirect_allow_list, "return targets"),
     updatedAt: timestamp(row.updated_at, "settings update"),
   };
 }

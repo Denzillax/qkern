@@ -97,6 +97,28 @@ Grossbuchstaben.
   "(2.50)" und "(2.52)": 188 statt 186. Die Mutationsprobe entlarvte den
   Webhook-Fall: ohne eine zweite, nicht gekoppelte Tabelle bewies er nichts
   ueber den Tabellenfilter; seit `510be1c` tut er es. Im Browser nicht gesehen
+- Slice 2.54 (Zweig `slice/authsettings`): **Ruecksprungziele, Mailweg
+  ehrlich gezeigt.** Die drei Platzhalter `auth-url`, `auth-smtp` und
+  `auth-templates` sind weg. `auth-url` ist eine echte Ansicht mit genau
+  einem Schreibweg: eine Liste erlaubter Ruecksprungziele je
+  Projektumgebung, in `project_auth_settings` (Migration
+  `0051_project_auth_return_targets.sql`, Spalte `redirect_allow_list`,
+  keine zweite Tabelle). Die Liste **verengt** die aeussere Grenze aus
+  `QKERN_PROJECT_AUTH_REDIRECT_ORIGINS` und weitet sie nie; ein Eintrag
+  ausserhalb wird mit Grund abgelehnt, nicht still weggelassen. Durchgesetzt
+  in `ProjectAuthService.returnTarget`, der einzigen Stelle, an der ein Ziel
+  angenommen wird; vier Wege gehen hindurch (signup, magic-link,
+  password-reset, oidc authorize). QKERN schickt selbst nie einen 302 an ein
+  Ruecksprungziel. `auth-smtp` und `auth-templates` **lesen nur**: SMTP
+  steht in der Prozessumgebung, und die drei Aktionsmails haben einen festen
+  englischen Text; die Ansicht zeigt ihn aus derselben Funktion, die ihn
+  versendet (`projectAuthMailBody`). Kein Passwort, keine DSN, kein
+  Schreibverb auf `admin/mail`. PostgreSQL-Fall "(2.54) refuses a return
+  target outside the allowed list of the project": 27 statt 26 Faelle in
+  `tests/postgres.integration.test.ts`. Ehrlich offen:
+  `project_auth.return_targets.changed` zaehlt in der Auth-Zeitreihe unter
+  `other`; die zehn benannten Handlungen sind unveraendert. Im Browser nicht
+  gesehen
 - Vorheriger Slice: 2.49 Was der Scanner sah – "Storage" unter Logs ist
   eine echte, nur lesende Ansicht (`components/console/storage-log-view.tsx`)
   mit Filter nach Bucket und Urteil, dazu ist "Realtime" unter Berichte an
