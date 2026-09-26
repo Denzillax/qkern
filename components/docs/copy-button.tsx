@@ -22,11 +22,13 @@ export function CopyButton({ code, labels }: { code: string; labels: { copy: str
     }
   }
   return (
-    <button type="button" className="ghost-button docs-copy" onClick={copy}>
-      {done ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
-      <StableLabel current={done ? labels.copied : labels.copy} variants={[labels.copy, labels.copied]} />
-      {/* Screenreader hoeren nur die Bestaetigung, nicht jeden Wechsel der Beschriftung. */}
+    <>
+      <button type="button" className="ghost-button docs-copy" onClick={copy}>
+        {done ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+        <StableLabel current={done ? labels.copied : labels.copy} variants={[labels.copy, labels.copied]} />
+      </button>
+      {/* Screenreader hoeren nur die Bestaetigung. Ausserhalb des Knopfs, damit sein Name nicht doppelt klingt. */}
       <span role="status" className={styles.visuallyHidden}>{done ? labels.copied : ""}</span>
-    </button>
+    </>
   );
 }

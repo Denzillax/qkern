@@ -134,6 +134,12 @@ describe("guide markdown parser", () => {
     expect(() => parseGuide("# T\n\n## Siehe [Glossar](GLOSSAR.md)\n")).toThrow(/Zeile 3: Links in Ueberschriften sind nicht vorgesehen/);
   });
 
+  it("rejects link targets with a forbidden scheme at parse time, with the line", () => {
+    expect(() => parseGuide("# T\n\n[x](javascript:alert(1))\n")).toThrow(GuideSyntaxError);
+    expect(() => parseGuide("# T\n\n[x](javascript:alert(1))\n")).toThrow(/Zeile 3/);
+    expect(() => parseGuide("# T\n\n[x](javascript:alert(1))\n")).toThrow(/Schema/);
+  });
+
   it("reports the offending line inside multi-line paragraphs and quotes", () => {
     expect(() => parseGuide("a\n![x](y)\n")).toThrow(/Zeile 2/);
     expect(() => parseGuide("> a\n> <b>\n")).toThrow(/Zeile 2/);

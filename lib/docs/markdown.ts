@@ -9,6 +9,8 @@
  * Kursivschrift. Inline-Code wird vor fett und kursiv erkannt, damit Sternchen
  * im Code Text bleiben.
  */
+import { assertSafeHref } from "@/lib/docs/links";
+
 export type Inline =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "strong"; readonly text: string }
@@ -60,6 +62,16 @@ export function plain(inlines: Inlines): string {
 // 2 fett, 3 kursiv, 4 Link mit 5 Linktext und 6 Linkziel, 7 Bild, 8 HTML.
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(\[([^\]]+)\]\(([^)\s]+)\))|(!\[)|(<[a-zA-Z/])/g;
 
+/** Meldung von assertSafeHref als Text, oder null, wenn das Ziel erlaubt ist. */
+function hrefProblem(href: string): string | null {
+  try {
+    assertSafeHref(href);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 export function parseInline(text: string, line: number): Inlines {
   const out: Inline[] = [];
   let last = 0;
@@ -76,7 +88,11 @@ export function parseInline(text: string, line: number): Inlines {
       const label = match[5] ?? "";
       const href = match[6] ?? "";
       if (/[`*]/.test(label)) throw new GuideSyntaxError(line, "Auszeichnung im Linktext ist nicht vorgesehen");
+      // Ein verbotenes Schema wiegt schwerer als eine Klammer: javascript:f(1) meldet das Schema.
+      const unsafe = hrefProblem(href);
+      if (unsafe && /Schema/.test(unsafe)) throw new GuideSyntaxError(line, unsafe);
       if (href.includes("(")) throw new GuideSyntaxError(line, "Klammer im Linkziel ist nicht vorgesehen");
+      if (unsafe) throw new GuideSyntaxError(line, unsafe);
       out.push({ kind: "link", text: label, href });
     }
     last = index + token.length;
