@@ -7,8 +7,9 @@ import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
 import { loadGuidePage } from "@/lib/docs/load";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 import { parseGuide, plain, type Block, type Inline } from "@/lib/docs/markdown";
+import { isExternal } from "@/lib/docs/links";
 
-const BANNED = ["nahtlos", "robust", "leistungsstark", "revolutionär", "tauchen wir ein", "es ist wichtig zu beachten", "in der heutigen zeit", "spielt eine entscheidende rolle", "zusammenfassend", "—", "–"];
+const BANNED = ["nahtlos", "robust", "leistungsstark", "revolutionär", "tauchen wir ein", "es ist wichtig zu beachten", "in der heutigen zeit", "spielt eine entscheidende rolle", "zusammenfassend", "\u2014", "\u2013"];
 
 function walk(blocks: readonly Block[], visit: (text: string, inlines: readonly Inline[]) => void) {
   for (const block of blocks) {
@@ -63,7 +64,7 @@ describe("docs guide contract", () => {
       walk(doc.blocks, (_, inlines) => {
         for (const inline of inlines) {
           if (inline.kind !== "link") continue;
-          if (/^https?:\/\//.test(inline.href) || inline.href.startsWith("mailto:")) continue;
+          if (isExternal(inline.href)) continue;
           const [target, hash] = inline.href.replace(/^\.\//, "").split("#");
           const targetFile = target === "" ? file : target;
           expect(docs.has(targetFile), `${file}: Link auf ${inline.href} zeigt ins Leere`).toBe(true);
@@ -88,6 +89,8 @@ describe("docs guide contract", () => {
       if (list?.kind !== "list") continue;
       expect(list.items.length, `${plain(block.text)}: genau drei Zeilen`).toBe(3);
       expect(list.items.map((item) => (item[0]?.kind === "strong" ? item[0].text : ""))).toEqual(["Was es ist:", "In QKERN:", "Bei Supabase:"]);
+      const next = doc.blocks[i + 2];
+      expect(next === undefined || (next.kind === "heading" && next.level === 2), `${plain(block.text)}: nach den drei Zeilen kommt nichts mehr`).toBe(true);
     }
   });
 
