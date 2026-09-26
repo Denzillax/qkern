@@ -4663,3 +4663,47 @@ Nicht erbracht: der Verifier-Lauf auf dem Host scheitert an Windows-Pfaden
 (er verlangt absolute POSIX-Pfade), er laeuft im CI-Job auf Ubuntu; ein
 echter Hoster, ein externes Archiv und ein fremd verwahrter Schluessel
 fehlen weiterhin; die Konsole zeigt unter Backups noch den Platzhalter.
+
+## Drei Türen – Release 2.30
+
+Die Einstiegsdoku fuer drei Zielgruppen: Entwickler, die Supabase kennen,
+Entwickler beim ersten Backend, Gruender ohne Entwicklerhintergrund. Fuenf
+deutsche Seiten unter `docs/guide/de/`, auf der Website unter `/docs`.
+
+Der Renderer ist ein eigener Parser, der genau die Elemente kennt, die die
+Doku braucht, und bei allem anderen mit Zeilennummer wirft: Ueberschriften
+bis Ebene 3, Absaetze, Listen mit Bindestrich, Codeblock mit Sprache,
+Tabellen, Zitat; im Text fett, kursiv, Code, Link. Links in Ueberschriften,
+HTML, Bilder, verschachtelte Listen, `*`-Aufzaehlungen, Trennlinien,
+`javascript:`-Ziele: alles wirft. 44 Faelle im Parsertest.
+
+Drei Vertragstests halten die Texte wahr. `docs-guide-contract`: jeder Link
+trifft eine Datei, einen Anker oder einen Glossareintrag; das Glossar hat
+mindestens 80 Eintraege, alphabetisch nach deutscher Sortierung, je genau
+drei Zeilen mit festen Vorspaennen; keine Sperrwoerter und keine
+Gedankenstriche im Fliesstext; jede Seite hat einen Titel und keinen
+uebrigen Platzhalter. `docs-quickstart-contract`: Schnellstart und Erstes
+Backend haben dieselben Codebloecke; jedes `npm run` steht in package.json,
+jeder CLI-Befehl in der Nutzung, jede kopierte Datei liegt auf der Platte,
+jeder API-Pfad in der OpenAPI, Versionen nur als Platzhalter.
+`docs-founder-numbers-contract`: die Gruenderseite nennt Zahlen nur ueber
+Platzhalter, auch gebeugt und zusammengesetzt.
+
+Der Schnellstart wurde am 26. September 2026 in einem frischen Ordner
+komplett durchlaufen; Denzil registrierte das Konto, der Agent liest keine
+Geheimnisse. 31 Minuten am Stueck, rund 7 Minuten Kommandos. Zwei
+Textfehler fielen dabei auf und sind behoben: die Anleitung nannte zwei
+Geheimnisse, der Server braucht drei; der Key-Dialog laeuft ueber
+`window.prompt`, nicht ueber ein Eingabefeld. Log und Manifest unter
+`docs/evidence/2026-09-26/`.
+
+Mutation: ein Glossareintrag auf zwei Zeilen gekuerzt; genau ein Fall
+faellt ("genau drei Zeilen"), exit 1.
+
+Checkpoint `2.30.0` am 26. September 2026: Lokal 1236 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; Mutation 1 von 1236 faellt, exit 1;
+`next build` gruen.
+
+Nicht erbracht: Uebersetzungen (Schritt 2 des Plans); der Weg ueber Change
+Set fuer Projektdatenbanken ist lokal nicht verdrahtet, die Tabelle
+entsteht per SQL; das Bindungsskript macht nur das eine UPDATE.

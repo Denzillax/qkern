@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Glossareintrag auf zwei Zeilen",
+  "log": "docs-mutation.log",
+  "commit": "e23aca5e35836eb46a043b5128037cc9c66fa89e",
+  "commitSubject": "docs: Uebergabedatei wiederhergestellt, versehentlich gekuerzter Stand zurueck",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 5 passed (6)",
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

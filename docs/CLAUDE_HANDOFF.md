@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.29.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.30.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -39,36 +39,40 @@ Release Notes bleiben unverändert.
 
 ## Aktueller technischer Stand
 
-### Laufende Arbeit: Einstiegsdoku (Stand 26. September 2026, frueh)
+### Einstiegsdoku (Stand 26. September 2026)
 
 Spec `docs/superpowers/specs/2026-09-25-documentation-design.md`, Plan
-`docs/superpowers/plans/2026-09-25-documentation.md` (13 Aufgaben, Weg 1:
-Markdown im Repo, eigener Renderer, Route `/docs`). Umsetzung mit
-Unteragenten, je Aufgabe Spec-Pruefung und Code-Review.
+`docs/superpowers/plans/2026-09-25-documentation.md`. Schritt 1 (Deutsch,
+Website, Vertraege, Durchlauf) ist mit 2.30 abgeschlossen. Offen: Schritt 2
+Uebersetzungen (`docs/guide/en|fr|it/`, `GUIDE_LOCALES_AVAILABLE` in
+`lib/docs/pages.ts`), und Denzils Entscheidung, das Repository oeffentlich
+zu machen (Scan ohne Blocker; dann `git clone` statt "Zip" im Schnellstart
+und npm-Provenance einschalten).
 
-- Abgenommen und gepusht: Aufgaben 1 bis 10 und 12. Dev-Compose mit
-  `project_database`, Bindungsskript, `lib/docs/*` (Seitenliste, Parser,
-  Platzhalter, Laden, Links), Route `/docs` mit Seitenleiste und
-  Kopieren-Knopf, Links in Konsole und Kopfmenue, die fuenf deutschen Seiten
-  unter `docs/guide/de/` (Humanizer-Durchgang gemacht), drei Vertragstests
-  (`tests/docs-*`), Handbuch-Verweis, INDEX-Block, DOCS_MAINTENANCE-Abschnitt,
-  SDK-README. Volle Suite 1236 bestanden, CI gruen.
-- Offen, Aufgabe 11: der gemessene Schnellstart-Durchlauf in einem frischen
-  Ordner. Braucht Denzils Registrierung im Wegwerfstack (Konten legt der
-  Agent nicht an). Danach Zeit in `SCHNELLSTART.md` und
-  `ERSTES_BACKEND.md` eintragen, Log und Manifest unter `docs/evidence/`.
-- Offen, Aufgabe 13: Release 2.30 "Drei Tueren" nach dem Muster der
-  bisherigen Sweeps (Suite zweimal, Mutation am Glossar, Build, Docs).
-- Offen, Denzils Entscheidung: das Kopfmenue hat mit "Dokumentation" sieben
-  Eintraege und bricht bei mittlerer Breite um ("Offene Punkte" zweizeilig);
-  Vorschlag: `white-space: nowrap`, kleinerer Abstand, Hamburger frueher,
-  oder "Entwickler" aus dem Kopfmenue nehmen. Dazu die Scrollbar der
-  Doku-Seitenleiste schmal stylen.
-- Offen, Denzils Entscheidung: Repository privat lassen (Schnellstart sagt
-  "Zip oder git clone") oder oeffentlich.
-
-- Paketversion: `2.29.0`
-- Aktueller Slice: 2.29 Backup und Restore, lokal bewiesen – Denzils
+- Paketversion: `2.30.0`
+- Aktueller Slice: 2.30 Drei Tueren – die Einstiegsdoku fuer drei
+  Zielgruppen, nach Spec und Plan unter `docs/superpowers/`, umgesetzt mit
+  Unteragenten (je Aufgabe Spec-Pruefung und Code-Review). Fuenf deutsche
+  Seiten unter `docs/guide/de/` (Was ist QKERN, Schnellstart, Erstes
+  Backend, Fuer Gruender, Glossar mit 99 Eintraegen zu je drei Zeilen),
+  gerendert unter `/docs` durch einen eigenen kleinen Parser
+  (`lib/docs/markdown.ts`, wirft mit Zeilennummer bei allem, was die Doku
+  nicht nutzt), Seitenleiste, Kopieren-Knopf, Uebersetzungshinweis;
+  Platzhalter fuer Version, Node und Zahlen aus denselben Quellen wie
+  STATUS (`lib/docs/placeholders.ts`). Drei Vertragstests (`tests/docs-*`):
+  Links und Anker, Glossarform und Reihenfolge, Sperrliste; Kommandos,
+  Dateien, CLI-Befehle und API-Pfade des Schnellstarts existieren;
+  Gruenderseite ohne Zahl von Hand. Der Schnellstart wurde in einem frischen
+  Ordner komplett durchlaufen (Denzil registrierte, Agent liest keine
+  Geheimnisse): 31 Minuten am Stueck, rund 7 Minuten Kommandos, zwei
+  Textfehler dabei gefunden und behoben (drittes Geheimnis
+  `QKERN_STATEMENT_ENCRYPTION_KEY`, Key-Dialog per window.prompt). Dazu:
+  Dev-Compose mit `project_database`, Bindungsskript, Organisations-ID in
+  den Einstellungen, Links in Konsole, Kopfmenue (ohne "Entwickler", Menue
+  ab 1260 px) und Fusszeile, Handbuch-Verweis, INDEX-Block,
+  DOCS_MAINTENANCE-Abschnitt, SDK-README. Autor-Adresse des Repos jetzt
+  GitHub-noreply; Historien-Scan ohne Blocker (Bericht im Chat vom 26.9.)
+- Vorheriger Slice: 2.29 Backup und Restore, lokal bewiesen – Denzils
   Frage "geht das auch ohne Hosting?" beantwortet: Sprosse 10 laeuft als
   Wegwerfstack (`docker-compose.backup-certification.yml`,
   `npm run test:backup:docker`). Quell-PostgreSQL 17 mit TLS-Pflicht
@@ -93,7 +97,7 @@ Unteragenten, je Aufgabe Spec-Pruefung und Code-Review.
   `npm run dev:bind-project-database` bindet eine wartende Umgebung an
   `managed:database-1` als Provisionierer-Login im Mandantenkontext, nur
   lokal, nie production
-- Vorheriger Slice: 2.28 Was das zweite Review fand – ein zweiter Review-Agent
+- Davor: 2.28 Was das zweite Review fand – ein zweiter Review-Agent
   hat 2.24 bis 2.26 gelesen; sechs Befunde, alle behoben: (1)
   `Symbol.hasInstance` ist statisch vererbt, eine nicht registrierte
   Unterklasse nahm die Namen ihres Vorfahren als eigene; jetzt Registrierung

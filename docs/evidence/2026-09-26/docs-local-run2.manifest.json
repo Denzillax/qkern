@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "docs-local-run2.log",
+  "commit": "e23aca5e35836eb46a043b5128037cc9c66fa89e",
+  "commitSubject": "docs: Uebergabedatei wiederhergestellt, versehentlich gekuerzter Stand zurueck",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1236 passed | 253 skipped (1489)",
+  "passed": 1236,
+  "failed": 0,
+  "skipped": 253,
+  "images": []
+}
