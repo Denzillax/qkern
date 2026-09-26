@@ -45,6 +45,8 @@ import { ApiKeysView } from "@/components/console/api-keys-view";
 import { AuthProvidersView } from "@/components/console/auth-providers-view";
 import { AuthSessionsView } from "@/components/console/auth-sessions-view";
 import { AuthAuditView } from "@/components/console/auth-audit-view";
+import { AuthSeriesView } from "@/components/console/auth-series-view";
+import { AuthLogView } from "@/components/console/auth-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
@@ -278,6 +280,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // zeigt die feste Praefixregel aus dem Code und braucht darum keine Route (2.48).
     case "realtime-settings": return <RealtimeSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "realtime-policies": return <RealtimePoliciesView/>;
+    // Eine Quelle, zwei Fragen: Berichte -> Auth zeigt das Auth-Audit als
+    // Reihe, Logs -> Auth dieselben Eintraege als Protokoll (2.47).
+    case "obs-auth": return <AuthSeriesView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-auth": return <AuthLogView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

@@ -28,6 +28,12 @@ import { PostgresMigrationQueue } from "@/lib/server/migrations/postgres-queue";
 import { PostgresProjectDatabaseExecutor } from "@/lib/server/migrations/postgres-executor";
 import { MigrationWorker } from "@/lib/server/migrations/worker";
 import { createTableStatement, TableChangeSetError } from "@/lib/console/table-change-sets";
+import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
+import {
+  buildProjectAuthAuditSeries,
+  projectAuthSeriesRowLimit,
+  projectAuthSeriesWindow,
+} from "@/lib/server/project-auth/audit-series";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -1175,6 +1181,134 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`).catch(() => undefined);
     }
   }, 180_000);
+  it("(2.47) aggregates project auth audit rows into buckets without carrying an address", async () => {
+    // Die Zeitreihe der Anmeldungen entsteht in der Datenbank: date_trunc,
+    // GROUP BY, ORDER BY ueber `audit_logs`, gefiltert auf
+    // `project_auth.*`. Drei Dinge gehen nur echt schief und sind darum nur
+    // echt zu belegen: die Zeitzone von `date_trunc`, die Trennung von
+    // gelungen und gescheitert ueber `COUNT(*) FILTER`, und die Grenze des
+    // Fensters, die als WHERE in der Abfrage steht und nicht in JavaScript.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.36, 2.42, 2.43
+    // und 2.45: Die Eintraege sind Audit-Zeilen, und eine Organisation mit
+    // Audit-Zeilen laesst sich nicht mehr loeschen; das gemeinsame afterAll
+    // muss organizationA und organizationB loswerden. Weggeraeumt wird
+    // darum nichts: audit_logs ist append-only (der Trigger aus 0002 weist
+    // UPDATE und DELETE ab), und der Wegwerf-Stack faellt nach dem Lauf weg.
+    const seriesOwner = randomUUID();
+    const seriesOrganization = randomUUID();
+    const seriesProject = randomUUID();
+    const scope = { organizationId: seriesOrganization, projectId: seriesProject, environment: "development" as const };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [seriesOwner, `auth-series-owner-${seriesOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Series', $2, $3)`, [seriesOrganization, `auth-series-${seriesOrganization}`, seriesOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Series', $3, 'test', 'ready', $4)`,
+    [seriesProject, seriesOrganization, `auth-series-${seriesProject}`, seriesOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [seriesOrganization, seriesProject, `managed:${seriesProject}`]);
+
+    const sink = new PostgresProjectAuthAuditSink(auth);
+    const appUser = randomUUID();
+    const userRef = `project_auth_user:${appUser}`;
+    // `created_at` setzt die Datenbank selbst (DEFAULT now()), und die Kette
+    // ist append-only: Ein Zeitpunkt laesst sich nachtraeglich nicht setzen.
+    // Der bekannte Zeitpunkt ist darum die Stunde des Schreibens, aus der
+    // Kette zurueckgelesen und nicht von der Uhr dieses Prozesses; das
+    // Fenster wird um sie herum verschoben.
+    for (const event of [
+      { action: "project_auth.signup.succeeded", status: "succeeded" as const },
+      { action: "project_auth.login.succeeded", status: "succeeded" as const },
+      { action: "project_auth.login.failed", status: "failed" as const },
+    ]) {
+      await sink.record({
+        scope, actorType: "app_user", actorRef: userRef, resourceRef: userRef,
+        action: event.action, status: event.status, metadata: { method: "password" },
+      });
+    }
+    // Eine E-Mail kommt gar nicht erst in die Kette: Der Sanitizer wirft,
+    // bevor irgendetwas geschrieben wird. Ohne diese Zusicherung koennte die
+    // Reihe unten frei von "@" sein, nur weil nie eines geschrieben wurde.
+    await expect(sink.record({
+      scope, actorType: "app_user", actorRef: `app-${appUser}@example.test`,
+      resourceRef: userRef, action: "project_auth.login.succeeded", status: "succeeded",
+    })).rejects.toMatchObject({ name: "InvalidProjectAuthAuditEventError" });
+
+    const page = await sink.list(scope, { limit: 10 });
+    expect(page.events.map((event) => event.action)).toEqual([
+      "project_auth.login.failed", "project_auth.login.succeeded", "project_auth.signup.succeeded",
+    ]);
+    expect(page.events[0]).toMatchObject({ actorRef: userRef, resourceRef: userRef, status: "failed" });
+    const written = new Date(page.events[0].createdAt);
+    const hour = new Date(Math.floor(written.getTime() / 3_600_000) * 3_600_000);
+    // Alle drei Zeilen in derselben Stunde: Sonst haette das Schreiben eine
+    // Stundengrenze ueberquert, und die Zusicherungen unten meinten zwei
+    // Eimer statt einen.
+    for (const event of page.events) {
+      expect(new Date(event.createdAt).getTime()).toBeGreaterThanOrEqual(hour.getTime());
+      expect(new Date(event.createdAt).getTime()).toBeLessThan(hour.getTime() + 3_600_000);
+    }
+
+    const read = async (bucket: "hour" | "day", now: Date) => {
+      const window = projectAuthSeriesWindow(bucket, now);
+      const records = await sink.series(scope, {
+        bucket, from: window.start, to: window.end, limit: projectAuthSeriesRowLimit(bucket) + 1,
+      });
+      return buildProjectAuthAuditSeries({ bucket, now, records });
+    };
+
+    const series = await read("hour", written);
+    expect(series.bucketCount).toBe(48);
+    expect(series.buckets).toHaveLength(48);
+    expect(series.windowEnd).toBe(new Date(hour.getTime() + 3_600_000).toISOString());
+    expect(series.truncated).toBe(false);
+    // Drei Zeilen, in derselben Stunde, nach Handlung getrennt und nach
+    // Ausgang aufgeteilt. Die Aufteilung kommt aus COUNT(*) FILTER.
+    const current = series.buckets.find((entry) => entry.start === hour.toISOString())!;
+    expect(current).toMatchObject({ total: 3, succeeded: 2, failed: 1 });
+    expect(current.actions["project_auth.signup.succeeded"]).toBe(1);
+    expect(current.actions["project_auth.login.succeeded"]).toBe(1);
+    expect(current.actions["project_auth.login.failed"]).toBe(1);
+    expect(current.actions.other).toBe(0);
+    expect(series.totals).toMatchObject({ total: 3, succeeded: 2, failed: 1 });
+    // Jede andere Stunde ist Null, nicht abwesend.
+    expect(series.buckets.filter((entry) => entry.total > 0)).toHaveLength(1);
+    // `date_trunc` hat in UTC geschnitten: jede Eimergrenze eine volle Stunde.
+    for (const entry of series.buckets) expect(entry.start.endsWith(":00:00.000Z")).toBe(true);
+
+    // Die Fenstergrenze steckt in der Abfrage, nicht in JavaScript. 47
+    // Stunden spaeter liegen die Zeilen genau im ersten Eimer des Fensters,
+    // 48 Stunden spaeter liegen sie eine Stunde davor und zaehlen nirgends.
+    const edgeIn = await read("hour", new Date(written.getTime() + 47 * 3_600_000));
+    expect(edgeIn.buckets[0].start).toBe(hour.toISOString());
+    expect(edgeIn.buckets[0]).toMatchObject({ total: 3, succeeded: 2, failed: 1 });
+    expect(edgeIn.totals.total).toBe(3);
+    const edgeOut = await read("hour", new Date(written.getTime() + 48 * 3_600_000));
+    expect(new Date(edgeOut.windowStart).getTime()).toBe(hour.getTime() + 3_600_000);
+    expect(edgeOut.totals).toMatchObject({ total: 0, succeeded: 0, failed: 0 });
+    expect(edgeOut.buckets.every((entry) => entry.total === 0)).toBe(true);
+
+    // Dieselben Zeilen in Tageseimern: ein anderes Fenster, dieselbe Summe.
+    const daily = await read("day", written);
+    expect(daily.bucketCount).toBe(90);
+    expect(daily.totals).toMatchObject({ total: 3, succeeded: 2, failed: 1 });
+    for (const entry of daily.buckets) expect(entry.start.endsWith("T00:00:00.000Z")).toBe(true);
+
+    // Der Kern des Falls: Die Reihe traegt Zahlen und Zeitpunkte, sonst
+    // nichts. Kein "@", keine Referenz, kein Token, kein Kettenhash.
+    for (const answer of [series, edgeIn, edgeOut, daily]) {
+      const serialised = JSON.stringify(answer);
+      expect(serialised).not.toContain("@");
+      expect(serialised).not.toContain(appUser);
+      expect(serialised).not.toContain("project_auth_user");
+      expect(serialised).not.toMatch(/qk_|entry_hash/);
+    }
+    // Ohne eigenes Zeitbudget: drei Eintraege, ein Auszug und vier Aggregationen.
+  });
+
 });
 
 /** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */

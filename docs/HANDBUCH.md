@@ -485,6 +485,8 @@ Wichtige öffentliche Pfade beginnen mit
 - `admin/audit?limit=1..100&cursor=` (GET) liefert den Auth-Auszug aus der Audit-Kette
   der Plattform, neueste zuerst, nur für dieses Projekt und diese Umgebung; in der
   Console unter Auth → Audit-Log
+- `admin/audit/series?bucket=<hour|day>` (GET) fasst dieselben Einträge seit `2.47.0`
+  zu einer Zeitreihe zusammen; in der Console unter Berichte → Auth
 
 Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
 `project_auth.signup.succeeded`, `project_auth.login.succeeded`,
@@ -518,6 +520,53 @@ eines alten Refresh Tokens sperrt die ganze Familie. Deaktivieren eines Users od
 Logout widerruft die Session sofort, weil die JWT-Prüfung auch die persistierte
 Session kontrolliert. TOTP-Secrets sind AES-256-GCM-verschlüsselt; Recovery Codes
 werden nur als HMAC-Verifier gespeichert und sind einmalig.
+
+### Anmeldungen als Reihe und als Protokoll
+
+Seit `2.47.0` sind **Berichte → Auth** und **Logs → Auth** echte Ansichten.
+Beide lesen dasselbe: das Project-Auth-Audit aus `audit_logs`, das Release 2.35
+eingeführt hat. Der alte Hinweis auf dem Platzhalter — „Kein Zähler dafür“ —
+war seitdem falsch.
+
+Die Reihe entsteht **in der Datenbank** (`date_trunc`, `GROUP BY`, `ORDER BY`,
+ein `LIMIT`, jeder Wert ein Parameter): je Eimer und Handlung eine Gruppe mit
+Anzahl und Fehlversuchen. `date_trunc` rechnet ausdrücklich in UTC, sonst
+hängen die Eimergrenzen an der Zeitzone der Verbindung. Die leeren Eimer füllt
+der reine Teil (`lib/server/project-auth/audit-series.ts`), nicht SQL: So liest
+die Datenbank nur, was wirklich da ist.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/auth/admin/audit/series?bucket=<hour|day>`
+— dieselbe Tür wie `admin/audit`: Console-Session mit `project_auth_admin`,
+`Cache-Control: private, no-store`. Ein unbekannter Wert, eine zweite Angabe
+desselben Parameters und jeder fremde Parameter sind ein 400, vor jedem
+Dienstaufruf. Ohne eingerichteten Audit-Sink kommt ein 503 mit
+`Project Auth audit is not configured`; eine leere Reihe hiesse „es hat sich
+niemand angemeldet“, und das wäre gelogen.
+
+Das Fenster steht nicht im Aufruf, sondern folgt der Eimergrösse: 48
+Stundeneimer oder 90 Tageseimer, endend mit dem laufenden und darum noch
+unvollständigen Eimer. Die Antwort nennt `windowStart`, `windowEnd`, `bucket`,
+`bucketCount` und `truncated`; jeder Eimer des Fensters steht darin, ein leerer
+als Null.
+
+Gezählt werden die neun Handlungen, die der Dienst wirklich schreibt
+(`project_auth.signup.succeeded` bis `project_auth.sessions.revoked_all`), dazu
+`other` für eine `project_auth.*`-Handlung, die diese Fassung noch nicht kennt.
+Sie wegzulassen würde die Summe fälschen.
+
+| Seite | Was sie zeigt | Was sie nicht zeigen kann |
+| --- | --- | --- |
+| Berichte → Auth | Handlungen je Abschnitt, nach Art und Ausgang getrennt | wie viele Token ausgegeben wurden — eine Token-Ausgabe und ein Refresh werden nicht protokolliert |
+| Logs → Auth | die neuesten 50 Einträge mit Zeit, Handlung, Ausgang und Referenz | Magic Links, E-Mail-Adressen und TOTP-Codes — sie stehen in keinem Eintrag |
+
+Das Bild ist dasselbe Balkendiagramm aus einer reinen Funktion
+(`lib/console/usage-series-chart.ts`) wie bei den Nutzungsreihen, ohne neue
+Abhängigkeit und ohne eigene Farbe; daneben stehen dieselben Zahlen als
+Tabelle. Das Protokoll liest fünf Felder und kein sechstes: Zeit, Handlung,
+Art des Akteurs, Ausgang und die schon bereinigte Referenz. Adressen, Token und
+Schlüssel kommen dort ohnehin nie an, weil `sanitizeProjectAuthAuditEvent` sie
+gar nicht erst in die Kette lässt.
 
 ## 7. Project Storage
 
