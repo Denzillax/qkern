@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -62,7 +62,6 @@ export const PLACEHOLDERS = {
   "storage-analytics": { label: "Analytics-Buckets", supabase: "Storage → Analytics", backend: "fehlt", note: "Spaltenorientierte Ablage für grosse Auswertungen (Iceberg)." },
   "storage-vectors": { label: "Vektor-Buckets", supabase: "Storage → Vectors", backend: "fehlt", note: "Ablage für Embeddings mit Ähnlichkeitssuche." },
   // Functions
-  "compute-secrets": { label: "Secrets", supabase: "Edge Functions → Secrets", backend: "teilweise", note: "Geheimnisse für Functions. Referenzen auf den Vault gibt es; anlegen und lesen über die Console fehlt." },
   "compute-logs": { label: "Function-Logs", supabase: "Edge Functions → Logs", backend: "fehlt", note: "Ausgaben aus dem Container. Inhaltslogs bleiben heute im Container." },
   // Realtime
   "realtime-policies": { label: "Policies", supabase: "Realtime → Policies", backend: "teilweise", note: "Wer welchen Kanal lesen und schreiben darf." },
@@ -138,7 +137,7 @@ export const NAV: NavGroup[] = [
     ph("storage-analytics"), ph("storage-vectors"),
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
-    { id: "compute", label: "Functions, Cron, Webhooks" }, ph("compute-secrets"), { id: "compute-invocations", label: "Aufrufe" }, ph("compute-logs"),
+    { id: "compute", label: "Functions, Cron, Webhooks" }, { id: "compute-secrets", label: "Secrets" }, { id: "compute-invocations", label: "Aufrufe" }, ph("compute-logs"),
   ] },
   { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [{ id: "realtime-inspector", label: "Inspector" }, ph("realtime-policies"), ph("realtime-settings")] },
   { id: "api", label: "API", icon: Braces },

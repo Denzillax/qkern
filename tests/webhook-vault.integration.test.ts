@@ -1,7 +1,9 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catalog-vault";
 import { VaultWebhookSecretProvider } from "@/lib/server/compute/webhook-secret-vault";
+import { VaultFunctionSecretInspector } from "@/lib/server/compute/function-secret-inspector";
 import {
   HmacWebhookSigner,
   WebhookSigningError,
@@ -80,5 +82,64 @@ describe.runIf(enabled)("Webhook signing key Vault certification", () => {
     const second = await cached.resolve("vault:webhooks/orders");
     expect(second?.secret.equals(first!.secret)).toBe(true);
     expect(second?.keyId).toBe(first?.keyId);
+  });
+
+  it("(2.38) reports function secrets as present, missing or forbidden without reading a value", async () => {
+    // Seed mit dem Stack-Token: ein Secret unter einem erlaubten Pfad, keines
+    // unter dem zweiten. Der Inspektor selbst bekommt einen eingeschraenkten
+    // Token, der nur die Metadaten genau dieser zwei Pfade lesen darf.
+    const root = (await readFile(tokenFile!, "utf8")).trim();
+    const vault = new URL(kvUrl!);
+    const api = (path: string, init: RequestInit = {}) => fetch(new URL(path, vault.origin), {
+      ...init, headers: { "content-type": "application/json", "x-vault-token": root },
+    });
+    const mount = vault.pathname.replace(/^\/v1\//, "").replace(/\/$/, "");
+    const value = randomBytes(24).toString("base64url");
+    const seeded = await api(`${vault.pathname}/data/functions/billing`, {
+      method: "POST", body: JSON.stringify({ data: { value } }),
+    });
+    expect(seeded.ok).toBe(true);
+    const policy = await api("/v1/sys/policies/acl/qkern-function-secret-inspector", {
+      method: "PUT",
+      body: JSON.stringify({ policy: [
+        `path "${mount}/metadata/functions/billing" { capabilities = ["read"] }`,
+        `path "${mount}/metadata/functions/absent" { capabilities = ["read"] }`,
+      ].join("\n") }),
+    });
+    expect(policy.ok).toBe(true);
+    const created = await api("/v1/auth/token/create", {
+      method: "POST",
+      body: JSON.stringify({ policies: ["qkern-function-secret-inspector"], no_default_policy: true, ttl: "5m" }),
+    });
+    expect(created.ok).toBe(true);
+    const limited = ((await created.json()) as { auth: { client_token: string } }).auth.client_token;
+
+    const requests: string[] = [];
+    const inspector = new VaultFunctionSecretInspector({
+      vaultKvUrl: vault,
+      tokenProvider: { getToken: () => limited },
+      fetchFn: async (input, init) => {
+        requests.push(String(input));
+        return await fetch(input, init);
+      },
+    });
+
+    const results = {
+      billing: await inspector.hasSecret("vault:functions/billing"),
+      absent: await inspector.hasSecret("vault:functions/absent"),
+      // Grammatisch gueltig, aber ausserhalb der Policy: echter 403 vom Vault.
+      unlisted: await inspector.hasSecret("vault:functions/unlisted"),
+    };
+    expect(results).toEqual({ billing: "present", absent: "missing", unlisted: "forbidden" });
+    expect(requests).toHaveLength(3);
+
+    // Ausserhalb der Pfadregel: kein Zugriff, und keine Anfrage verlaesst den Prozess.
+    for (const reference of ["vault:../sys/policies/acl/root", "STRIPE_KEY", "vault:/sys/health"]) {
+      expect(await inspector.hasSecret(reference), reference).toBe("forbidden");
+    }
+    expect(requests).toHaveLength(3);
+    expect(requests.every((url) => url.includes(`${vault.pathname}/metadata/functions/`))).toBe(true);
+    expect(requests.some((url) => url.includes("/data/"))).toBe(false);
+    expect(JSON.stringify(results)).not.toContain(value);
   });
 });

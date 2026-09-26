@@ -80,9 +80,8 @@ export class VaultWebhookSecretProvider implements WebhookSecretProvider {
   }
 
   async resolve(secretRef: string): Promise<WebhookSigningKey | null> {
-    const match = SECRET_REF.exec(secretRef);
-    if (!match) return null;
-    const path = match[1];
+    const path = vaultSecretPath(secretRef);
+    if (path === null) return null;
 
     const cached = this.cache.get(path);
     if (cached && cached.expiresAt > this.now()) return cached.key;
@@ -199,7 +198,23 @@ function parseKey(raw: string): WebhookSigningKey {
   }
 }
 
-function validatedMount(input: URL, production: boolean): URL {
+/**
+ * Die einzige Pfadregel fuer Vault-Referenzen: `vault:` und danach Segmente
+ * aus Buchstaben, Ziffern, `_` und `-`, durch `/` getrennt. Kein `..`, kein
+ * fuehrender Schraegstrich, keine Query. Alles darunter liegt unter dem fest
+ * konfigurierten KV-Mount; eine Referenz kann ihn nicht verlassen.
+ */
+export function vaultSecretPath(secretRef: string): string | null {
+  if (typeof secretRef !== "string") return null;
+  const match = SECRET_REF.exec(secretRef);
+  return match ? match[1] : null;
+}
+
+export function validVaultNamespace(namespace: string): boolean {
+  return namespace.length <= 256 && VAULT_NAMESPACE.test(namespace);
+}
+
+export function validatedMount(input: URL, production: boolean): URL {
   if (!(input instanceof URL)) throw new WebhookSigningError();
   const url = new URL(input.toString());
   const path = url.pathname.replace(/\/$/, "");
@@ -212,7 +227,7 @@ function validatedMount(input: URL, production: boolean): URL {
   return url;
 }
 
-async function readBounded(response: Response, maximumBytes: number): Promise<string> {
+export async function readBounded(response: Response, maximumBytes: number): Promise<string> {
   const length = response.headers.get("content-length");
   if (length && (!/^\d+$/.test(length) || Number(length) > maximumBytes)) {
     await response.body?.cancel().catch(() => undefined);
@@ -239,11 +254,11 @@ async function readBounded(response: Response, maximumBytes: number): Promise<st
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
-function isJson(contentType: string | null): boolean {
+export function isJson(contentType: string | null): boolean {
   return /^application\/(?:[a-z0-9.+-]+\+)?json(?:\s*;|$)/i.test(contentType ?? "");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 

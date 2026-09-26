@@ -547,6 +547,42 @@ Dieselben Operationen stehen unter
 `/api/v1/projects/{projectId}/environments/{environment}/compute/` als REST zur
 Verfügung und sind im OpenAPI-Vertrag beschrieben.
 
+### Secrets der Functions
+
+Seit `2.38.0` zeigt **Functions & Jobs → Secrets** für jede Function die
+Secret-Referenzen, die ihre Definition deklariert, und ob der Vault sie auflöst:
+**vorhanden**, **fehlt** oder **kein Zugriff**. Einen Wert zeigt QKERN nie.
+Secrets werden im Vault angelegt und geändert; die Console prüft nur, ob eine
+Referenz aufgelöst wird.
+
+Die Route dazu ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/compute/functions/{functionId}/secrets`
+mit derselben Berechtigung wie die übrigen Definitionsrouten
+(`project_compute_admin`) und `Cache-Control: private, no-store`. Die Antwort
+trägt je Referenz nur `ref` und `status` sowie den Prüfzeitpunkt `checkedAt`.
+
+Geprüft wird über den Metadaten-Endpunkt von KV Version 2
+(`<mount>/metadata/<pfad>`), nie über den Datenendpunkt. Eine aktuelle Version,
+die gelöscht oder zerstört ist, gilt als **fehlt**, weil der Datenendpunkt dafür
+ebenfalls 404 liefert. Die Pfadregel ist dieselbe wie bei den
+Webhook-Signaturschlüsseln: `vault:` und danach Segmente aus Buchstaben, Ziffern,
+`_` und `-`, durch `/` getrennt, unter dem fest konfigurierten Mount. Eine
+Referenz, die nicht in diese Form passt, gilt als **kein Zugriff** und wird nicht
+angefragt. Antwortet der Vault mit 403, heisst das ebenfalls **kein Zugriff**:
+Die Policy des Tokens muss `read` auf `<mount>/metadata/<pfad>` erlauben, das
+Lesen der Daten braucht diese Ansicht nicht.
+
+```powershell
+$env:QKERN_VAULT_TOKEN_FILE="/run/qkern/vault-token"
+# Optional; ohne diese Variable gilt der Mount der Webhook-Signaturschlüssel.
+$env:QKERN_FUNCTIONS_VAULT_KV_URL="https://vault.example.net/v1/secret"
+```
+
+Ist kein Vault konfiguriert, antwortet die Route mit 503 und dem Code
+`VAULT_NOT_CONFIGURED`, und die Console zeigt „Vault nicht verbunden".
+`VAULT_MISCONFIGURED` steht für eine halbe Konfiguration, `VAULT_UNAVAILABLE`
+für einen Vault, der nicht oder nicht in der erwarteten Form geantwortet hat.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:
