@@ -10,6 +10,7 @@ import { healthAdvisorTexts } from "@/lib/console/health-advisor-texts";
 import { usageSeriesTexts } from "@/lib/console/usage-series-texts";
 import { databaseActivityTexts } from "@/lib/console/database-activity-texts";
 import { realtimeTexts } from "@/lib/console/realtime-texts";
+import { tableChangeSetTexts } from "@/lib/console/table-change-sets";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -48,6 +49,9 @@ async function consoleKeys(): Promise<string[]> {
   // Realtime-Einstellungen und -Rechte (2.48) zeigen Grenzen, Einheiten,
   // Urspruenge, Rollen und ihre Ehrlichkeitssaetze ueber t(variable).
   for (const text of realtimeTexts()) keys.add(text);
+  // Der Tabellen-Designer (2.49) zeigt Typen, Vorgabewerte und die Gruende
+  // einer Ablehnung ueber t(variable).
+  for (const text of tableChangeSetTexts()) keys.add(text);
   return [...keys];
 }
 

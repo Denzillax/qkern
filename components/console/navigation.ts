@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -38,7 +38,6 @@ export const PLACEHOLDERS = {
   // SQL Editor
   "sql-templates": { label: "Vorlagen", supabase: "SQL Editor → Templates", backend: "fehlt", note: "Fertige Abfragen zum Einfügen, etwa für Indizes, Rollen oder Statistiken. Der SQL Editor selbst läuft schon lesend gegen die Projektdatenbank." },
   // Datenbank
-  "db-tables": { label: "Tabellen", supabase: "Database → Tables", backend: "teilweise", note: "Tabellen anlegen, umbenennen, Spalten ändern. Lesen geht über den Table Editor; Schemaänderungen laufen über Change Sets und die Freigabezentrale." },
   "db-pipelines": { label: "Replikation", supabase: "Database → Replication", backend: "fehlt", note: "Daten in externe Ziele replizieren. Kein Backend, keine Ansicht." },
   "db-backups-pitr": { label: "Point-in-time Recovery", supabase: "Database → Backups → PITR", backend: "fehlt", note: "Wiederherstellung auf einen Zeitpunkt. Braucht ein WAL-Archiv ausserhalb des Wegwerf-Stacks." },
   "db-backups-restore": { label: "In neues Projekt wiederherstellen", supabase: "Database → Backups → Restore to new project", backend: "fehlt", note: "Ein Backup in ein frisches Projekt einspielen. Kein Backend." },
@@ -109,7 +108,7 @@ export const NAV: NavGroup[] = [
   { id: "table", label: "Table Editor", icon: Table2 },
   { id: "sql", label: "SQL Editor", icon: Terminal, children: [{ id: "sql", label: "Editor" }, ph("sql-templates")] },
   { id: "database", label: "Datenbank", icon: Database, children: [
-    { id: "database", label: "Übersicht" }, { id: "db-schemas", label: "Schema-Visualizer" }, ph("db-tables"), { id: "db-functions", label: "Funktionen" }, { id: "db-triggers", label: "Trigger" },
+    { id: "database", label: "Übersicht" }, { id: "db-schemas", label: "Schema-Visualizer" }, { id: "db-tables", label: "Tabellen" }, { id: "db-functions", label: "Funktionen" }, { id: "db-triggers", label: "Trigger" },
     { id: "db-types", label: "Enum-Typen" }, { id: "db-extensions", label: "Erweiterungen" }, { id: "db-indexes", label: "Indizes" }, { id: "db-publications", label: "Publikationen" }, ph("db-pipelines"), { id: "db-roles", label: "Rollen" },
     { id: "db-policies", label: "Policies" }, { id: "db-column-privileges", label: "Spaltenrechte" }, { id: "db-migrations", label: "Migrationen" }, { id: "backups", label: "Backups" },
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),
