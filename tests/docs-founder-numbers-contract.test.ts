@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { availableGuideLocales, guidePath, pageBySlug } from "@/lib/docs/pages";
 
 const COUNT = /\b\d{2,}\s+[\p{L}-]*(Fäll|Test|Prüfständ|Modul)/iu;
-/** Fuer en, fr, it: Zahl vor Faellen, Tests, Prueffeldern oder Modulen. */
-const COUNT_OTHER = /\b\d{2,}\s+[\p{L}-]*(cases|tests|stacks|modules|cas|piles|casi|test|modul)/iu;
+/** Fuer en, fr, it: Zahl vor Faellen, Tests, Prueffstaenden (bancs, banchi, stack, pile) oder Modulen; nur ganze Woerter. */
+const COUNT_OTHER = /\b\d{2,}\s+[\p{L}-]*(cases|tests?|stacks?|modules?|cas|piles?|bancs?|banchi|casi|test|moduli|stack)\b/iu;
 
 /** Entfernt Codebloecke und Inline-Code, bevor nach Zahlen gesucht wird. */
 function stripCode(raw: string): string {
@@ -25,8 +25,11 @@ describe("docs founder numbers contract", () => {
     for (const sample of ["22 Fälle", "134 Testfälle", "12 Prüfständen", "40 Module", "15 Tests", "30 postgres-Tests"]) {
       expect(sample, sample).toMatch(COUNT);
     }
-    for (const sample of ["22 cases", "134 test cases", "12 stacks", "40 modules", "22 cas", "12 piles", "22 casi", "15 test", "40 moduli"]) {
+    for (const sample of ["22 cases", "134 test cases", "12 stacks", "40 modules", "22 cas", "12 piles", "22 casi", "15 test", "40 moduli", "12 bancs d'essai", "12 banchi di prova", "12 stack", "12 pile"]) {
       expect(sample, sample).toMatch(COUNT_OTHER);
+    }
+    for (const sample of ["24 hours", "10 occasions", "15 podcasts", "10 case"]) {
+      expect(sample, sample).not.toMatch(COUNT_OTHER);
     }
     expect(stripCode("`134 Tests` und\n```\n22 Fälle\n```\n")).not.toMatch(COUNT);
   });

@@ -7,7 +7,7 @@ export type GuideLocaleText = Readonly<{
   banned: readonly string[];
 }>;
 
-const DASHES = ["—", "–"] as const;
+const DASHES = ["\u2014", "\u2013"] as const;
 
 export const GUIDE_LOCALE_TEXT: Readonly<Record<Locale, GuideLocaleText>> = {
   de: {
@@ -23,11 +23,11 @@ export const GUIDE_LOCALE_TEXT: Readonly<Record<Locale, GuideLocaleText>> = {
   fr: {
     leadIns: ["Ce que c'est :", "Dans QKERN :", "Chez Supabase :"],
     honest: "En toute franchise",
-    banned: ["sans faille", "robuste", "plongeons", "il est important de noter", "joue un rôle crucial", "en conclusion", ...DASHES],
+    banned: ["sans faille", "robuste", "robustes", "plongeons", "il est important de noter", "joue un rôle crucial", "en conclusion", ...DASHES],
   },
   it: {
     leadIns: ["Che cos'è:", "In QKERN:", "In Supabase:"],
     honest: "In tutta franchezza",
-    banned: ["senza soluzione di continuità", "robusto", "immergiamoci", "è importante notare", "gioca un ruolo cruciale", "in conclusione", ...DASHES],
+    banned: ["senza soluzione di continuità", "robusto", "robusta", "robusti", "immergiamoci", "è importante notare", "gioca un ruolo cruciale", "in conclusione", ...DASHES],
   },
 };

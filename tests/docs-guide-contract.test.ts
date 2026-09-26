@@ -11,7 +11,7 @@ import { loadCertificationSummary } from "@/lib/server/evidence/certification-su
 import { parseGuide, plain, type Block, type GuideDocument, type Inline } from "@/lib/docs/markdown";
 import { isExternal } from "@/lib/docs/links";
 
-/** Jede Sprache, deren fuenf Dateien schon da sind. Heute Deutsch; neue Ordner vergroessern die Abdeckung von selbst. */
+/** Jede Sprache, deren fuenf Dateien schon da sind. Deutsch immer; jede fertige Uebersetzung kommt von selbst dazu. */
 const LOCALES_ON_DISK = availableGuideLocales();
 
 async function readGuide(locale: Locale, file: string): Promise<GuideDocument> {
@@ -49,7 +49,15 @@ describe("docs guide contract", () => {
     for (const page of GUIDE_PAGES) for (const locale of LOCALES) expect(guideTitle(page, locale), `${page.file} ${locale}`).not.toBe("");
     expect(guideTitle(pageBySlug("schnellstart")!, "en")).toBe("Quick start");
     expect(LOCALES_ON_DISK).toContain("de");
-    for (const locale of LOCALES_ON_DISK) for (const page of GUIDE_PAGES) expect(existsSync(guidePath(locale, page))).toBe(true);
+  });
+
+  it("counts a locale as unavailable only while a file is missing", () => {
+    for (const locale of LOCALES.filter((entry) => !LOCALES_ON_DISK.includes(entry))) {
+      const missing = GUIDE_PAGES.filter((page) => !existsSync(guidePath(locale, page))).map((page) => page.file);
+      const folder = path.dirname(guidePath(locale, GUIDE_PAGES[0]));
+      const state = existsSync(folder) ? `unvollstaendig, es fehlen: ${missing.join(", ") || "nichts"}` : "Ordner fehlt";
+      expect(!existsSync(folder) || missing.length > 0, `${locale}: ${state}`).toBe(true);
+    }
   });
 
   it("fills every placeholder from a real source and leaves none behind", async () => {
@@ -124,6 +132,15 @@ describe.each(LOCALES_ON_DISK.map((locale) => [locale]))("docs guide contract (%
     }
   });
 
+  it(`${locale}: has an honest section on every page except the glossary`, async () => {
+    for (const page of GUIDE_PAGES) {
+      if (page.file === "GLOSSAR.md") continue; // Im Glossar sind die Abschnitte der Ebene 2 die Eintraege.
+      const doc = await readGuide(locale, page.file);
+      const level2 = doc.blocks.flatMap((b) => (b.kind === "heading" && b.level === 2 ? [plain(b.text)] : []));
+      expect(level2, `${locale}/${page.file}: Abschnitt "${text.honest}" fehlt`).toContain(text.honest);
+    }
+  });
+
   it(`${locale}: reads like a person wrote it`, async () => {
     for (const page of GUIDE_PAGES) {
       const doc = await readGuide(locale, page.file);
@@ -148,9 +165,8 @@ describe("docs guide cross-locale contract", () => {
       const de = await readGuide("de", page.file);
       const other = await readGuide(locale, page.file);
       const level2 = (doc: GuideDocument) => doc.blocks.filter((b) => b.kind === "heading" && b.level === 2).length;
-      expect(level2(other), `${locale}/${page.file}: Zahl der Abschnitte`).toBe(level2(de));
+      expect(level2(other), `${locale}/${page.file}: Zahl der Abschnitte (im Glossar: Eintraege)`).toBe(level2(de));
       expect(codeBlocks(other), `${locale}/${page.file}: Codebloecke`).toEqual(codeBlocks(de));
-      if (page.file === "GLOSSAR.md") expect(glossaryEntries(other).length, `${locale}: Glossareintraege`).toBe(glossaryEntries(de).length);
     }
   });
 });
