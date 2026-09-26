@@ -5342,3 +5342,46 @@ Login-Rolle je Person wuerde hier Namen zeigen. Eine hohe Trefferquote
 ueber eine frisch zurueckgesetzte Statistik sagt wenig, darum steht der
 Zeitpunkt des Zuruecksetzens daneben. Rollbacks zaehlen auch gewollte
 Ruecknahmen. Im Browser nicht gesehen.
+
+## Grenzen und Rechte von Realtime – Release 2.47
+
+Die beiden Platzhalter unter Realtime sind jetzt Ansichten, und beim Bauen
+kamen zwei Dinge ans Licht, die vorher niemand aufgeschrieben hatte.
+
+Die Nachrichtengrenze laesst sich nicht einstellen. Sie steht mit hundert
+Nachrichten je zehn Sekunden in der Sitzungsklasse, aber der Server reicht
+die Einstellung nie durch, also erreicht sie keine Umgebungsvariable. Die
+Ansicht weist die Herkunft deshalb als `code` aus statt als
+`environment`, und die Notiz, die "Grenzen fuer Nachrichten je Sekunde"
+versprach, ist weg.
+
+Kanalrechte gibt es, anders als der alte Hinweis nahelegte. Sie entscheiden
+aus Organisation, Rolle und Kanalpraefix; bei Aenderungskanaelen entscheidet
+zusaetzlich die Zeilensicherheit der Tabelle je Abonnent, und nach einem
+DELETE erfaehrt nur die Dienstrolle den Schluessel, weil die Zeile weg ist
+und niemand mehr beantworten kann, wer sie haette sehen duerfen.
+Gespeichert ist nichts davon: die Regeln stehen im Code, und genau das sagt
+die Ansicht. Der Vertragstest gleicht alle sechsunddreissig Felder der
+gezeigten Matrix gegen die echte Pruefklasse ab, dazu einen fremden
+Teilnehmer und eine fremde Organisation.
+
+Betriebszahlen zeigt die Seite nicht. Sie liegen im Realtime-Prozess, und
+der Next-Prozess haelt keinen Dienst davon. Statt Nullen zu zeigen, sagt
+die Antwort, dass die Zahlen in einem anderen Prozess liegen.
+
+Kein PostgreSQL-Fall: Der Slice liest nur Umgebungsvariablen und beruehrt
+die Datenbank nicht. Ein Fall haette die Arbeit der Nachbarn geprueft, nicht
+diese.
+
+Mutation: anon darf angeblich private Kanaele lesen. Lokal faellt 1 von 6
+Vertragsfaellen, exit 1.
+
+Checkpoint `2.47.0` am 26. September 2026: Lokal 1476 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen. Keine
+Serveraenderung an der Datenbank, deshalb keine Docker-Zertifizierung.
+
+Nicht erbracht: Die Route liest die Umgebung dieses Prozesses. In den
+Zertifizierungsstacks ist sie dieselbe wie im Realtime-Prozess, in einer
+geteilten Installation koennte sie abweichen; die Seite sagt das. Aendern
+lassen sich die Grenzen nur in der Umgebung, die Rechte nur im Code. Im
+Browser nicht gesehen.

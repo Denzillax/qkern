@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "realtime-local-run2.log",
+  "commit": "5e7a3335b22fa1c9869cef8fa81501d2362a1c61",
+  "commitSubject": "docs: Realtime-Abschnitt nennt die richtige Version",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1476 passed | 266 skipped (1742)",
+  "passed": 1476,
+  "failed": 0,
+  "skipped": 266,
+  "images": []
+}

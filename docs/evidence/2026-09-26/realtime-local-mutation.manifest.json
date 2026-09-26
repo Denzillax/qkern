@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: anon darf private Kanaele lesen",
+  "log": "realtime-local-mutation.log",
+  "commit": "5e7a3335b22fa1c9869cef8fa81501d2362a1c61",
+  "commitSubject": "docs: Realtime-Abschnitt nennt die richtige Version",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "1 failed | 5 passed (6)",
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

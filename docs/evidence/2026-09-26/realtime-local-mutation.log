@@ -1,0 +1,34 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-realtime-view-contract.test.ts (6 tests | 1 failed) 14ms
+     × matches every cell of the shown table against PrefixRealtimeAuthorization 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-realtime-view-contract.test.ts > console realtime settings and policies view contract > matches every cell of the shown table against PrefixRealtimeAuthorization
+AssertionError: private/anon/subscribe: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/console-realtime-view-contract.test.ts:128:56
+    126|         for (const action of REALTIME_ACTIONS) {
+    127|           const allowed = await authorization.authorize({ scope, princ…
+    128|           expect(allowed, `${kind}/${role}/${action}`).toBe(REALTIME_P…
+       |                                                        ^
+    129|           cells += 1;
+    130|         }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  20:32:49
+   Duration  431ms (transform 155ms, setup 0ms, import 255ms, tests 14ms, environment 0ms)
+
+EXIT=1

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.46.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.47.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,28 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.46.0`
-- Aktueller Slice: 2.46 Zahlen statt Abfragetexte – die Platzhalter
+- Paketversion: `2.47.0`
+- Aktueller Slice: 2.47 Grenzen und Rechte von Realtime – die Platzhalter
+  "Einstellungen" und "Policies" unter Realtime sind echte, nur lesende
+  Ansichten (`components/console/realtime-settings-view.tsx` und
+  `realtime-policies-view.tsx`). `lib/server/realtime/settings.ts` sammelt
+  die Grenzen mit Wert, Einheit und Herkunft: `environment`, `default` oder
+  `code`. Bewusst kein `database`, weil keine Grenze in einer Datenbank
+  steht. Zwei Befunde dabei: Die Nachrichtengrenze (100 je 10 Sekunden)
+  steht in `RealtimeGatewaySession`, aber `createRealtimeWebSocketServer`
+  reicht die Einstellung nie durch, also erreicht sie keine Variable. Und
+  Kanalrechte gibt es sehr wohl (`PrefixRealtimeAuthorization`): sie
+  entscheiden aus Organisation, Rolle und Praefix (`public:`, `private:`,
+  `user:<subject>:`, `changes:<schema>.<tabelle>`), bei Aenderungskanaelen
+  zusaetzlich die RLS der Tabelle je Abonnent; nach einem DELETE erfaehrt
+  nur `service_role` den Schluessel. Gespeichert ist nichts davon, es steht
+  im Code, und die Ansicht sagt das. Der Vertragstest gleicht alle 36 Felder
+  der gezeigten Matrix gegen die echte Pruefklasse ab. Betriebszahlen liegen
+  im Realtime-Prozess, nicht im Next-Prozess; die Route sagt das, statt
+  Nullen zu zeigen. Kein PostgreSQL-Fall, weil der Slice die Datenbank nicht
+  beruehrt. Mutation (anon darf private Kanaele lesen) faellt lokal in
+  1 Fall. Im Browser nicht gesehen
+- Vorheriger Slice: 2.46 Zahlen statt Abfragetexte – die Platzhalter
   "Datenbank" und "Verbindungen" unter Berichte sind echte, nur lesende
   Ansichten (`components/console/database-report-view.tsx` und
   `connections-report-view.tsx`) ueber eine geteilte Quelle. Neue
@@ -72,7 +92,7 @@ Grossbuchstaben.
   Mutation (Abfragetext wandert in den Zustand) faellt im Stack in 1 Fall.
   Offen: `usename` ist der einzige freie Text, der die Datenbank verlaesst.
   Im Browser nicht gesehen
-- Vorheriger Slice: 2.45 Der Verlauf – drei Platzhalter auf einmal: API,
+- Davor: 2.45 Der Verlauf – drei Platzhalter auf einmal: API,
   Storage und Functions unter Berichte sind echte, nur lesende Ansichten
   ueber eine geteilte Komponente (`components/console/usage-series-view.tsx`)
   und eine Route `GET .../usage/series?metric=&bucket=`. Keine neue Tabelle:
