@@ -5,6 +5,10 @@ import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catal
 import { VaultWebhookSecretProvider } from "@/lib/server/compute/webhook-secret-vault";
 import { VaultFunctionSecretInspector } from "@/lib/server/compute/function-secret-inspector";
 import {
+  collectVaultSecretOverview,
+  countVaultReferences,
+} from "@/lib/server/compute/vault-secret-overview";
+import {
   HmacWebhookSigner,
   WebhookSigningError,
   verifyWebhookSignature,
@@ -141,5 +145,76 @@ describe.runIf(enabled)("Webhook signing key Vault certification", () => {
     expect(requests.every((url) => url.includes(`${vault.pathname}/metadata/functions/`))).toBe(true);
     expect(requests.some((url) => url.includes("/data/"))).toBe(false);
     expect(JSON.stringify(results)).not.toContain(value);
+  });
+
+  it("(2.58) reports every referenced secret without reading a value", async () => {
+    // Die Uebersicht aus 2.58 gegen denselben echten Vault: drei Quellen, eine
+    // geteilte Referenz, und ein Spion auf `fetch`, der beweist, dass kein
+    // einziger Aufruf an den Datenendpunkt geht. Der Datenendpunkt liefert den
+    // Wert; die Frage "gibt es ihn" braucht ihn nicht, und die Console darf ihn
+    // nicht bekommen.
+    const root = (await readFile(tokenFile!, "utf8")).trim();
+    const vault = new URL(kvUrl!);
+    const api = (path: string, init: RequestInit = {}) => fetch(new URL(path, vault.origin), {
+      ...init, headers: { "content-type": "application/json", "x-vault-token": root },
+    });
+    const mount = vault.pathname.replace(/^\/v1\//, "").replace(/\/$/, "");
+    const value = randomBytes(24).toString("base64url");
+    const seeded = await api(`${vault.pathname}/data/overview/shared`, {
+      method: "POST", body: JSON.stringify({ data: { value } }),
+    });
+    expect(seeded.ok).toBe(true);
+    const policy = await api("/v1/sys/policies/acl/qkern-vault-overview", {
+      method: "PUT",
+      body: JSON.stringify({ policy: [
+        `path "${mount}/metadata/overview/shared" { capabilities = ["read"] }`,
+        `path "${mount}/metadata/overview/absent" { capabilities = ["read"] }`,
+      ].join("\n") }),
+    });
+    expect(policy.ok).toBe(true);
+    const created = await api("/v1/auth/token/create", {
+      method: "POST",
+      body: JSON.stringify({ policies: ["qkern-vault-overview"], no_default_policy: true, ttl: "5m" }),
+    });
+    expect(created.ok).toBe(true);
+    const limited = ((await created.json()) as { auth: { client_token: string } }).auth.client_token;
+
+    const requests: string[] = [];
+    const inspector = new VaultFunctionSecretInspector({
+      vaultKvUrl: vault,
+      tokenProvider: { getToken: () => limited },
+      fetchFn: async (input, init) => {
+        requests.push(String(input));
+        return await fetch(input, init);
+      },
+    });
+
+    const rows = await collectVaultSecretOverview({
+      // Dieselbe Referenz in einer Function und in einem Webhook.
+      functions: [{ id: "f1", name: "billing", secretRefs: ["vault:overview/shared", "STRIPE_KEY"] }],
+      webhooks: [
+        { id: "w1", name: "orders", signingSecretRef: "vault:overview/shared" },
+        // Die Definition aus 0032, die zum Datenbank-Webhook unten gehoert.
+        { id: "w9", name: "zeilen-intern", signingSecretRef: "vault:overview/absent" },
+      ],
+      databaseWebhooks: [
+        { id: "d1", webhookId: "w9", name: "zeilen", signingSecretRef: "vault:overview/absent" },
+      ],
+    }, inspector);
+
+    expect(rows.map((row) => [row.ref, row.status, row.users.map((user) => user.kind)])).toEqual([
+      ["STRIPE_KEY", "forbidden", ["function"]],
+      ["vault:overview/absent", "missing", ["database-webhook"]],
+      ["vault:overview/shared", "present", ["function", "webhook"]],
+    ]);
+    expect(countVaultReferences(rows)).toEqual({ total: 3, present: 1, missing: 1, forbidden: 1 });
+
+    // Zwei Anfragen fuer drei Referenzen: die geteilte einmal, die
+    // grammatisch ungueltige gar nicht.
+    expect(requests).toHaveLength(2);
+    expect(requests.every((url) => url.includes(`${vault.pathname}/metadata/overview/`))).toBe(true);
+    expect(requests.some((url) => url.includes("/data/"))).toBe(false);
+    // Und in der Uebersicht steht der Wert nirgends.
+    expect(JSON.stringify(rows)).not.toContain(value);
   });
 });

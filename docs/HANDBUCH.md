@@ -1374,6 +1374,73 @@ Datenbank: Migration `0049_project_database_webhooks.sql` hält die Kopplung.
 Die ausgehende Definition, die Outbox, die Lease, das Backoff und der Dead
 Letter bleiben in `0032`.
 
+### Vault: was QKERN kennt, und was es nicht kennt
+
+Seit `2.58.0` ist **Integrationen → Vault** keine Platzhalterseite mehr. Der
+Platzhalter versprach „Geheimnisse verwalten". Verwaltet wird dort nichts, und
+das ist die Zusage der Seite, nicht ihre Lücke: **QKERN zeigt nie einen
+Geheimniswert und nimmt nie einen über die Console entgegen.** Ein Formular, das
+ein Geheimnis entgegennimmt, trägt es durch einen Browser, ein Anfrageprotokoll
+und einen Prozess, die es nichts angeht.
+
+**Was die Seite zeigt.** Jede Secret-Referenz, auf die QKERN in dieser Umgebung
+selbst zeigt, mit der Stelle, die sie benutzt, und dem Urteil des Vaults:
+**vorhanden**, **fehlt** oder **kein Zugriff**. Drei Quellen gibt es heute:
+
+| Quelle | Woher die Referenz kommt |
+| --- | --- |
+| Function | `secretRefs` der Function-Definition |
+| Webhook | `signingSecretRef` des ausgehenden Webhooks aus `0032` |
+| Datenbank-Webhook | `signingSecretRef` der Kopplung aus `0049` (seit `2.50.0`) |
+
+Gruppiert wird nach der **Referenz**: Ein Geheimnis, das zwei Webhooks signiert,
+steht in einer Zeile, und beide Benutzer stehen darin. Ein Datenbank-Webhook
+besitzt zusätzlich eine ausgehende Definition aus `0032`; diese Definition
+erscheint nicht ein zweites Mal als eigener Benutzer, sonst stünde dieselbe
+Referenz unter zwei Namen da.
+
+**Was die Seite nicht zeigen kann.** Sie listet den Vault **nicht** auf. Ein
+Geheimnis, auf das nichts in QKERN zeigt, erscheint hier nicht — ohne eine
+Auflistung kann QKERN es nicht kennen, und ein Verzeichnis fremder Vault-Pfade
+in einer Web-Konsole wäre genau die Offenlegung, die diese Seite vermeidet: Wer
+die Console lesen darf, erführe damit die Struktur des Schlüsselspeichers, ohne
+je eine Vault-Policy dafür bekommen zu haben. Die Seite sagt diesen Satz
+wörtlich, statt eine Vollständigkeit zu behaupten, die sie nicht hat.
+
+**Was ein Betreiber im Vault selbst tun muss.** Anlegen, Rotieren und Löschen
+laufen über den Vault, etwa über `vault kv put`. Die Pfadregel, die QKERN
+akzeptiert, ist dieselbe wie bei den Webhook-Signaturschlüsseln: `vault:` und
+danach Segmente aus Buchstaben, Ziffern, `_` und `-`, durch `/` getrennt, jedes
+Segment höchstens 64 Zeichen, unter dem fest konfigurierten KV-Mount. Kein
+führender Schrägstrich, kein `..`, keine Query. Was nicht in diese Form passt,
+gilt als **kein Zugriff** und wird nicht angefragt.
+
+Die Policy des Tokens, mit dem die Console prüft, braucht genau eine Fähigkeit:
+
+```hcl
+path "secret/metadata/webhooks/*" { capabilities = ["read"] }
+```
+
+Der Zustellprozess signiert und liest dafür den Wert; sein Token braucht `read`
+auf `<mount>/data/<pfad>`. Das sind bewusst zwei Tokens mit zwei Policies: Die
+Console soll den Schlüssel nicht lesen können, den sie anzeigt.
+
+Die Route dazu ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/compute/secrets`
+mit derselben Berechtigung wie die übrigen Definitionsrouten
+(`project_compute_admin`) und `Cache-Control: private, no-store`. Jeder
+Query-Parameter ist ein 400, bevor irgendetwas gelesen wird. Die Antwort trägt
+je Referenz `ref`, `status` und `users`, dazu die Zähler je Zustand und den
+Prüfzeitpunkt `checkedAt` — kein Wert, keine Version, keine Metadaten. Es gibt
+auf diesem Pfad keine schreibende Operation. Gefragt wird je **verschiedener**
+Referenz genau einmal und ausschliesslich der Metadaten-Endpunkt von KV
+Version 2.
+
+Ist kein Vault konfiguriert, antwortet die Route mit 503 und dem Code
+`VAULT_NOT_CONFIGURED`, und die Console zeigt „Vault nicht verbunden".
+`VAULT_MISCONFIGURED` steht für eine halbe Konfiguration, `VAULT_UNAVAILABLE`
+für einen Vault, der nicht oder nicht in der erwarteten Form geantwortet hat.
+
 ### Function-Aufrufe im Protokoll
 
 Seit `2.51.0` ist **Logs → Functions** keine Platzhalterseite mehr. Der
