@@ -1488,6 +1488,183 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
   });
 
 
+  it("(2.54) refuses a return target outside the allowed list of the project", async () => {
+    // Der tragende Teil dieses Slices gegen die echte Datenbank: Die Liste
+    // der Projektumgebung verengt die aeussere Grenze des Betriebs, und
+    // zwar dort, wo ein Ruecksprungziel wirklich angenommen wird — im
+    // Anmeldedienst, bevor ein Token entsteht oder eine Mail hinausgeht.
+    //
+    // Echt ist hier alles, worauf es ankommt: das PostgreSQL-Repository mit
+    // der Spalte aus 0050, der Audit-Sink in der Hash-Kette, der
+    // Argon2-Hasher und der Ed25519-Signierer. Nur die Uhr und die
+    // Zustellung sind fest; beide gehoeren nicht zur Aussage.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.45, 2.50 und
+    // 2.52: Das Aendern der Liste schreibt eine Audit-Zeile, und eine
+    // Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen; das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden. Weggeraeumt
+    // wird darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const targetOwner = randomUUID();
+    const targetOrganization = randomUUID();
+    const targetProject = randomUUID();
+    const scope = {
+      organizationId: targetOrganization, projectId: targetProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [targetOwner, `auth-targets-owner-${targetOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Targets', $2, $3)`,
+    [targetOrganization, `auth-targets-${targetOrganization}`, targetOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Targets', $3, 'test', 'ready', $4)`,
+    [targetProject, targetOrganization, `auth-targets-${targetProject}`, targetOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [targetOrganization, targetProject, `managed:${targetProject}`]);
+
+    const at = new Date("2026-09-26T12:00:00.000Z");
+    const { privateKey } = generateKeyPairSync("ed25519");
+    // Die aeussere Grenze des Betriebs: zwei Herkuenfte, wie sie
+    // QKERN_PROJECT_AUTH_REDIRECT_ORIGINS beim Start ergeben haette.
+    const outerBound = new Set(["https://app.test", "https://admin.app.test"]);
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-54", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 9)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      // Ein echter Provider im Katalog, damit startOidc wirklich bis zur
+      // Pruefung des Ruecksprungziels kommt; das Netz wird dabei nicht
+      // beruehrt, startOidc baut nur eine Adresse.
+      oidcCatalog: new ProjectAuthOidcCatalog([{
+        id: "certification", issuer: "https://idp.test",
+        authorizationEndpoint: "https://idp.test/auth", tokenEndpoint: "https://idp.test/token",
+        jwksUri: "https://idp.test/keys", clientId: "qkern-certification", scopes: ["openid", "email"],
+      }]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: outerBound,
+      exposeDeliveryTokens: true,
+      now: () => new Date(at),
+    });
+    const password = "a sufficiently long certification password";
+    const signUp = (redirectTo: string) => service.signUp(scope, {
+      email: `app-${randomUUID()}@example.test`, password, redirectTo, rateLimitKey: randomUUID(),
+    });
+
+    // Ohne Zeile in project_auth_settings verengt die Umgebung nichts:
+    // beide Herkuenfte der aeusseren Grenze gehen, eine fremde nicht.
+    expect(await service.readReturnTargets(scope)).toMatchObject({
+      targets: [], outerBound: [...outerBound], effective: [...outerBound], updatedAt: null,
+    });
+    const first = await signUp("https://admin.app.test/willkommen");
+    expect(first.accepted).toBe(true);
+    await expect(signUp("https://attacker.test/")).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    // Die Verengung, ueber den echten Dienst und in die echte Spalte.
+    const narrowed = await service.setReturnTargets(scope, ["https://app.test"], { id: targetOwner });
+    expect(narrowed).toMatchObject({
+      targets: ["https://app.test"], outerBound: [...outerBound], effective: ["https://app.test"],
+    });
+    const stored = await auth.query<{ redirect_allow_list: string[] }>(
+      `SELECT redirect_allow_list FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [targetOrganization, targetProject],
+    );
+    expect(stored.rows).toEqual([{ redirect_allow_list: ["https://app.test"] }]);
+
+    // Und jetzt der Satz, um den es geht: Ein Ziel ausserhalb der Liste
+    // wird abgewiesen, obwohl der Betrieb es erlaubt.
+    await expect(signUp("https://admin.app.test/willkommen"))
+      .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    // Der Beweis steht in der Datenbank: Die abgewiesene Anmeldung hat
+    // weder einen Nutzer noch ein Aktionstoken hinterlassen.
+    const users = await auth.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM project_auth_users
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [targetOrganization, targetProject],
+    );
+    expect(users.rows[0].count).toBe("1");
+
+    // Alle vier Wege, die ein Ruecksprungziel annehmen, gehen durch
+    // dieselbe Pruefung — und alle vier weisen dieselbe Herkunft ab.
+    const outside = "https://admin.app.test/willkommen";
+    await expect(service.requestMagicLink(scope, {
+      email: `app-${randomUUID()}@example.test`, redirectTo: outside, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(service.requestPasswordReset(scope, {
+      email: `app-${randomUUID()}@example.test`, redirectTo: outside, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(service.startOidc(scope, {
+      provider: "certification", redirectTo: outside, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    // Was auf der Liste steht, geht weiterhin — die Verengung sperrt nicht
+    // alles aus, sie sperrt genau das Uebrige aus.
+    expect((await signUp("https://app.test/willkommen")).accepted).toBe(true);
+    // Und jede Form, die keine reine Herkunft ist, geht an keiner Stelle.
+    for (const hostile of [
+      "https://app.test.attacker.test/", "https://user:secret@app.test/", "http://app.test/",
+      "javascript:alert(1)", "https://app.test/willkommen#token",
+    ]) {
+      await expect(signUp(hostile), hostile).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    }
+
+    // Weiten kann die Liste nicht: Was die aeussere Grenze nie hatte, kommt
+    // auch mit einem Schreibzugriff nicht hinein — mit Grund, und ohne dass
+    // sich die gespeicherte Zeile bewegt.
+    await expect(service.setReturnTargets(scope, ["https://attacker.test"], { id: targetOwner }))
+      .rejects.toMatchObject({ reason: "outside_outer_bound", value: "https://attacker.test" });
+    const unchanged = await auth.query<{ redirect_allow_list: string[] }>(
+      `SELECT redirect_allow_list FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [targetOrganization, targetProject],
+    );
+    expect(unchanged.rows).toEqual([{ redirect_allow_list: ["https://app.test"] }]);
+
+    // Der Schalter aus 2.52 und die Liste aus 2.54 teilen sich eine Zeile,
+    // fassen einander aber nicht an.
+    await service.setMfaRequired(scope, true, { id: targetOwner });
+    expect(await service.readReturnTargets(scope)).toMatchObject({ targets: ["https://app.test"] });
+    const both = await auth.query<{ mfa_required: boolean; redirect_allow_list: string[] }>(
+      `SELECT mfa_required, redirect_allow_list FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [targetOrganization, targetProject],
+    );
+    expect(both.rows).toEqual([{ mfa_required: true, redirect_allow_list: ["https://app.test"] }]);
+
+    // Leeren nimmt die Verengung wieder weg; das ist kein Weiten, sondern
+    // die Rueckkehr auf die aeussere Grenze.
+    expect(await service.setReturnTargets(scope, [], { id: targetOwner }))
+      .toMatchObject({ targets: [], effective: [...outerBound] });
+
+    // Jede Aenderung steht in der Hash-Kette, mit der Anzahl danach und
+    // ohne Adresse und ohne Herkunft.
+    const page = await service.listAuditEvents(scope, 50);
+    const changed = page.events.filter((event) => event.action === "project_auth.return_targets.changed");
+    expect(changed).toHaveLength(2);
+    expect(changed[0]).toMatchObject({
+      actorType: "admin", actorRef: targetOwner, status: "succeeded",
+      resourceRef: "project_auth_environment:development", metadata: { count: 0 },
+    });
+    expect(changed[1].metadata).toEqual({ count: 1 });
+    expect(JSON.stringify(changed)).not.toContain("@");
+    expect(JSON.stringify(changed)).not.toContain("app.test");
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: die App-Nutzer. Ihre
+    // Token haengen per ON DELETE CASCADE daran. Organisation, Projekt und
+    // Umgebung bleiben, weil an ihnen Audit-Zeilen haengen; audit_logs ist
+    // append-only.
+    await owner.query(`DELETE FROM project_auth_users
+      WHERE organization_id = $1 AND project_id = $2`, [targetOrganization, targetProject]);
+  });
+
+
   it("(2.50) turns a real table change into a signed webhook delivery", async () => {
     // Der ganze Weg der Datenbank-Webhooks (2.50) an einem Stueck, und zwar an
     // dem Stueck, an dem er zerbrechen kann: Eine Zeile entsteht in einer

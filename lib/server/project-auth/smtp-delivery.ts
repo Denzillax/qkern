@@ -53,17 +53,44 @@ export type SmtpProjectAuthDeliveryConfig = {
   production?: boolean;
 };
 
-const SUBJECTS: Record<ProjectAuthDeliveryPurpose, string> = {
+/**
+ * Betreff und Einleitung der drei Aktionsmails. Seit 2.54 exportiert, weil
+ * die Console sie zeigt: Die Texte sind fest, und eine Ansicht, die sie
+ * abschreiben muesste, koennte von ihnen abweichen. Was hier steht, geht
+ * hinaus; nichts anderes.
+ */
+export const PROJECT_AUTH_MAIL_SUBJECTS: Record<ProjectAuthDeliveryPurpose, string> = {
   email_verification: "Confirm your email address",
   magic_link: "Your sign-in link",
   password_reset: "Reset your password",
 };
 
-const INTROS: Record<ProjectAuthDeliveryPurpose, string> = {
+export const PROJECT_AUTH_MAIL_INTROS: Record<ProjectAuthDeliveryPurpose, string> = {
   email_verification: "Confirm your email address by opening the link below.",
   magic_link: "Open the link below to sign in.",
   password_reset: "Open the link below to choose a new password.",
 };
+
+/**
+ * Der Rumpf einer Aktionsmail, genau so, wie er zugestellt wird. `render`
+ * ruft dieselbe Funktion; damit kann die Console den echten Text zeigen,
+ * ohne ihn zu kopieren.
+ */
+export function projectAuthMailBody(
+  purpose: ProjectAuthDeliveryPurpose,
+  link: string,
+  expiresAt: Date,
+): string {
+  return [
+    PROJECT_AUTH_MAIL_INTROS[purpose],
+    "",
+    link,
+    "",
+    `This link expires at ${expiresAt.toISOString()}.`,
+    "If you did not request it, no action is needed.",
+    "",
+  ].join("\r\n");
+}
 
 export class SmtpProjectAuthDelivery implements ProjectAuthDeliveryPort {
   private readonly host: string;
@@ -178,16 +205,8 @@ export class SmtpProjectAuthDelivery implements ProjectAuthDeliveryPort {
   render(message: ProjectAuthDelivery, recipient = message.email): string {
     const to = mailbox(recipient, "Project Auth recipient");
     const link = this.actionLink(message);
-    const subject = SUBJECTS[message.purpose];
-    const text = [
-      INTROS[message.purpose],
-      "",
-      link,
-      "",
-      `This link expires at ${message.expiresAt.toISOString()}.`,
-      "If you did not request it, no action is needed.",
-      "",
-    ].join("\r\n");
+    const subject = PROJECT_AUTH_MAIL_SUBJECTS[message.purpose];
+    const text = projectAuthMailBody(message.purpose, link, message.expiresAt);
 
     const headers = [
       `From: <${this.sender}>`,

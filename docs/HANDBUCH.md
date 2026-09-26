@@ -489,6 +489,10 @@ Wichtige öffentliche Pfade beginnen mit
   zu einer Zeitreihe zusammen; in der Console unter Berichte → Auth
 - `admin/mfa` (GET liest, PUT setzt) legt seit `2.49.0` fest, ob diese Umgebung den
   zweiten Faktor verlangt; in der Console unter Auth → Mehrfaktor
+- `admin/return-targets` (GET liest, PUT ersetzt) führt seit `2.51.0` die erlaubten
+  Rücksprungziele dieser Umgebung; in der Console unter Auth → URL-Konfiguration
+- `admin/mail` (nur GET) zeigt seit `2.51.0` den wirksamen Mailweg und die festen
+  Texte der Aktionsmails; in der Console unter Auth → SMTP und Auth → E-Mail-Vorlagen
 
 Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
 `project_auth.signup.succeeded`, `project_auth.login.succeeded`,
@@ -580,6 +584,96 @@ QKERN selbst ist davon unberührt; sie läuft nicht über Project Auth.
 
 Ausschalten nimmt die Pflicht weg, nicht die Faktoren: Wer einen bestätigten
 Faktor hat, wird weiterhin danach gefragt.
+
+### Rücksprungziele je Projektumgebung
+
+Seit `2.51.0` ist **Auth → URL-Konfiguration** keine Platzhalterseite mehr. Der
+alte Hinweis — „Site-URL und erlaubte Rücksprungziele für Magic Link und OIDC"
+— beschrieb eine Seite, die es nicht gab; es gab nur eine Liste in der
+Umgebung des Prozesses.
+
+Ein **Rücksprungziel** ist der Ort, an den ein Magic Link, eine
+Bestätigungsmail oder ein OIDC-Flow den Nutzer zurückschickt. Wer diese Liste
+weiten kann, kann sich ein Aktionstoken an eine fremde Adresse schicken
+lassen; sie hat darum echtes Sicherheitsgewicht.
+
+**Zwei Grenzen, und die Richtung trägt alles.**
+
+1. Die **äussere Grenze** ist `QKERN_PROJECT_AUTH_REDIRECT_ORIGINS`, gelesen
+   beim Start des Prozesses (`lib/server/project-auth/runtime.ts`). Sie gehört
+   dem Betrieb und ist aus der Console nicht erreichbar. Ohne den Wert nimmt
+   eine Nicht-Produktionsumgebung `NEXT_PUBLIC_APP_URL` oder
+   `http://localhost:3000`; in Produktion gibt es keinen Ersatzwert.
+2. Die **Liste der Projektumgebung** steht in `project_auth_settings`, Spalte
+   `redirect_allow_list` (`db/migrations/0050_project_auth_return_targets.sql`).
+   Sie kann die äussere Grenze nur **verengen**, nie weiten. Eine leere Liste
+   verengt nichts; dann gilt genau die äussere Grenze, also das Verhalten von
+   vor `2.51.0`. Jede Umgebung startet so.
+
+Ein Eintrag ausserhalb der äusseren Grenze wird **abgelehnt**, nicht
+stillschweigend weggelassen: Die Route antwortet mit 400 und nennt den Grund
+`outside_outer_bound` samt dem Wert, damit die Console sagen kann, warum. Dass
+die Liste nur verengt, steht auch auf der Seite selbst.
+
+**Die Form eines Eintrags** ist dieselbe strenge Form wie bei der äusseren
+Grenze: eine exakte Herkunft aus Schema, Host und Port. HTTPS, dazu HTTP nur
+auf `localhost`, `127.0.0.1` oder `[::1]`. Keine Zugangsdaten, kein Pfad,
+keine Abfrage, kein Fragment, kein Stern — Platzhalter gibt es an keiner
+Stelle dieses Produkts, und das bestehende Backend kannte nie einen. Höchstens
+zwanzig Einträge, je höchstens 255 Zeichen; doppelte fallen weg.
+
+**Wo geprüft wird.** In `ProjectAuthService.returnTarget`, der einzigen
+Stelle, an der ein Ziel angenommen wird, und zwar bevor irgendetwas
+gespeichert oder versendet wird. Vier Wege führen dort hindurch: `signup`,
+`magic-link`, `password-reset` und `oidc/{provider}/authorize`. QKERN schickt
+selbst **nie** einen 302 an ein Rücksprungziel; der Wert wandert als
+`redirect_to` in den Link der Aktionsmail und in den verschlüsselten
+OIDC-Flow-Zustand, sonst nirgendwohin. Die reine Entscheidung liegt in
+`lib/server/project-auth/return-targets.ts`, ohne Datenbank und ohne Zeit.
+
+Die Route ist
+`GET|PUT /api/v1/projects/{projectId}/environments/{environment}/auth/admin/return-targets`
+— dieselbe Tür wie die übrigen `admin/*`-Routen: Console-Session mit
+`project_auth_admin`, `Cache-Control: private, no-store`, bei `PUT` zusätzlich
+ein geprüfter Origin. Der Körper hat genau ein Feld, `targets`, und das ist
+ein Feld von Zeichenketten; `PUT` ersetzt die Liste ganz. Jede Änderung
+schreibt `project_auth.return_targets.changed` in die Audit-Kette, mit der
+Anzahl der Ziele danach und der ID des Console-Nutzers, nie mit seiner
+Adresse. In der Zeitreihe unter Berichte → Auth zählt diese Handlung unter
+`other`; die zehn benannten Handlungen der Reihe sind unverändert.
+
+### Der Mailweg, ehrlich gezeigt
+
+Seit `2.51.0` sind **Auth → SMTP** und **Auth → E-Mail-Vorlagen** echte
+Seiten — und beide **lesen nur**. Das ist keine halbe Arbeit, sondern die
+richtige Antwort auf die Lage:
+
+- **SMTP** steht in der Umgebung des Prozesses
+  (`QKERN_PROJECT_AUTH_SMTP_HOST`, `_PORT`, `_SECURITY`, `_USERNAME`,
+  `_PASSWORD`, `_SENDER` und `QKERN_PROJECT_AUTH_ACTION_BASE_URL`), nicht in
+  der Datenbank und nicht je Projekt. Der Dienst liest die Werte beim Start
+  und baut daraus seinen Adapter. Ein Formular in der Console hätte nichts,
+  wohin es schreiben könnte; also gibt es keines. Die Seite zeigt je Wert
+  seine Herkunft — aus der Umgebung, Vorgabe des Dienstes oder nicht gesetzt —
+  und sagt in ganzen Sätzen, dass die Einstellung woanders liegt. **Das
+  Passwort geht nie hinaus**, auch nicht gekürzt, und es gibt keine
+  zusammengesetzte Verbindungszeichenkette. Gezeigt wird nur, **ob** sich der
+  Dienst anmeldet. Ohne konfigurierten Host bleibt der Weg fail-closed: Eine
+  Produktion ohne Mailkonfiguration gibt gar kein Aktionstoken aus, statt
+  Mails still fallen zu lassen.
+- **Vorlagen** gibt es nicht. Die drei Aktionsmails — Adresse bestätigen,
+  Magic Link, Passwort zurücksetzen — haben einen festen Text im Quelltext,
+  auf Englisch, ohne Sprachvarianten. Die Seite zeigt diesen Text, und zwar
+  aus derselben Funktion, die ihn versendet (`projectAuthMailBody` in
+  `lib/server/project-auth/smtp-delivery.ts`), damit die Ansicht nicht vom
+  Versand abweichen kann. Der gezeigte Link ist ein Beispiel; ein echtes
+  Token steht dort nie. **Ändern heisst: Quelltext ändern und ausliefern.**
+  Ein Editor, der in nichts schreibt, wäre schlimmer als diese Auskunft.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/auth/admin/mail`
+— dieselbe Tür wie die übrigen `admin/*`-Routen, `Cache-Control: private,
+no-store`, und **nur GET**: kein PUT, kein POST, kein PATCH, kein DELETE.
 
 ### Anmeldungen als Reihe und als Protokoll
 
