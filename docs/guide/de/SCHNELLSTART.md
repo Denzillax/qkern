@@ -18,7 +18,7 @@ node --version
 docker compose up -d
 ```
 
-Erwartet: `v24.7.0` oder höher. Docker meldet `postgres`, `redis`, `minio` und `clamav` als gestartet, dazu vier kurze Prüfcontainer, die gleich wieder enden. Beim ersten Start legt PostgreSQL die Datenbank der [Control Plane](GLOSSAR.md#control-plane) und die Projektdatenbank `project_database` an; das dauert eine halbe Minute.
+Erwartet: `v{{node}}` oder höher. Docker meldet `postgres`, `redis`, `minio` und `clamav` als gestartet, dazu vier kurze Prüfcontainer, die gleich wieder enden. Beim ersten Start legt PostgreSQL die Datenbank der [Control Plane](GLOSSAR.md#control-plane) und die Projektdatenbank `project_database` an; das dauert eine halbe Minute.
 
 > Die Projektdatenbank entsteht nur auf einem frischen Volume. Wenn du QKERN schon einmal gestartet hast, löscht `docker compose down -v` alle lokalen Daten und du beginnst sauber.
 

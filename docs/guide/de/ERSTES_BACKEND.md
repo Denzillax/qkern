@@ -28,7 +28,7 @@ node --version
 docker compose up -d
 ```
 
-Was passiert ist: `node --version` zeigt `v24.7.0` oder höher; sonst Node aktualisieren. [Compose](GLOSSAR.md#compose) liest die Datei `docker-compose.yml` und startet `postgres`, `redis`, `minio` und `clamav` im Hintergrund, dazu vier kurze Prüfcontainer, die gleich wieder enden. Beim ersten Start legt PostgreSQL zwei Datenbanken an: die der [Control Plane](GLOSSAR.md#control-plane), in der QKERN seine eigenen Daten hält, und `project_database`, in der die Daten deiner App liegen werden. Das dauert eine halbe Minute.
+Was passiert ist: `node --version` zeigt `v{{node}}` oder höher; sonst Node aktualisieren. [Compose](GLOSSAR.md#compose) liest die Datei `docker-compose.yml` und startet `postgres`, `redis`, `minio` und `clamav` im Hintergrund, dazu vier kurze Prüfcontainer, die gleich wieder enden. Beim ersten Start legt PostgreSQL zwei Datenbanken an: die der [Control Plane](GLOSSAR.md#control-plane), in der QKERN seine eigenen Daten hält, und `project_database`, in der die Daten deiner App liegen werden. Das dauert eine halbe Minute.
 
 > Die Projektdatenbank entsteht nur auf einem frischen Volume. Ein [Volume](GLOSSAR.md#volume) ist der Speicher eines Containers, der Neustarts überlebt. Wenn du QKERN schon einmal gestartet hast, löscht `docker compose down -v` alle lokalen Daten und du beginnst sauber.
 
