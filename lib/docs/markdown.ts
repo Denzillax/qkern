@@ -4,9 +4,10 @@
  * anderen mit Zeilennummer. Der Fehler faellt im Vertragstest auf, nicht beim
  * Leser. Keine Abhaengigkeit, kein HTML, keine Bilder, keine Verschachtelung.
  *
- * Aufzaehlungen beginnen nur mit "- ". Ein "*" am Zeilenanfang ist Kursivschrift
- * im Absatz, kein Listenpunkt. Inline-Code wird vor fett und kursiv erkannt,
- * damit Sternchen im Code Text bleiben.
+ * Aufzaehlungen beginnen nur mit "- ". "* " oder "+ " mit Leerzeichen am
+ * Zeilenanfang wirft; nur "*kursiv*" ohne Leerzeichen nach dem Stern ist
+ * Kursivschrift. Inline-Code wird vor fett und kursiv erkannt, damit Sternchen
+ * im Code Text bleiben.
  */
 export type Inline =
   | { readonly kind: "text"; readonly text: string }
@@ -125,9 +126,14 @@ const REJECTED: ReadonlyArray<readonly [RegExp, string]> = [
   [/^>(?! )/, "Zitat braucht > mit Leerzeichen"],
   [/^</, "HTML ist in der Einstiegsdoku nicht vorgesehen"],
 ];
-// Zeilen, die einen Absatz beenden, weil dort ein anderer Block beginnt oder
-// ein Fehler mit genau dieser Zeile gemeldet werden soll.
-const BLOCK_START = /^(#|```|~~~|\||>|-\s|[*+]\s|\d+\.\s|<|\s+\S|(-{3,}|\*{3,}|_{3,}|={3,})\s*$)/;
+// Zeilen, die einen Absatz beenden, weil dort ein anderer Block beginnt. Was
+// abgewiesen wird, steht nur in REJECTED und beendet den Absatz ueber
+// endsParagraph, damit der Fehler genau diese Zeile nennt.
+const BLOCK_START = /^(#|```|\||> |-\s|\d+\.\s|\s+\S)/;
+
+function endsParagraph(raw: string): boolean {
+  return raw.trim() === "" || BLOCK_START.test(raw) || REJECTED.some(([pattern]) => pattern.test(raw));
+}
 
 function headingLevel(hashes: string, line: number): 1 | 2 | 3 {
   switch (hashes.length) {
@@ -213,7 +219,7 @@ function parseParagraph(lines: readonly string[], i: number): Parsed {
   // Schleife in parseGuide nie haengen bleibt.
   const parts: SourceLine[] = [{ text: lines[i].trim(), line: i + 1 }];
   let j = i + 1;
-  while (j < lines.length && lines[j].trim() !== "" && !BLOCK_START.test(lines[j])) {
+  while (j < lines.length && !endsParagraph(lines[j])) {
     parts.push({ text: lines[j].trim(), line: j + 1 });
     j += 1;
   }
@@ -221,7 +227,7 @@ function parseParagraph(lines: readonly string[], i: number): Parsed {
 }
 
 export function parseGuide(markdown: string): GuideDocument {
-  const lines = markdown.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+  const lines = markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").split("\n");
   const blocks: Block[] = [];
   const headings: GuideHeading[] = [];
   const used = new Set<string>();

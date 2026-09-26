@@ -70,7 +70,7 @@ describe("guide markdown parser", () => {
   });
 
   it("strips a leading byte order mark", () => {
-    const doc = parseGuide("﻿# Titel\n");
+    const doc = parseGuide("\uFEFF# Titel\n");
     expect(doc.title).toBe("Titel");
     expect(doc.blocks[0]).toMatchObject({ kind: "heading", level: 1, id: "titel" });
   });
