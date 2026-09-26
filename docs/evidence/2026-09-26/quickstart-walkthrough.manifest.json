@@ -1,0 +1,24 @@
+{
+  "stack": "Schnellstart-Durchlauf (Windows, Docker Desktop, frischer Ordner)",
+  "log": "quickstart-walkthrough.log",
+  "commit": "831b0c02b2100d2bab26fa6b25964ac50c1c9c7f",
+  "commitSubject": "web: Kopfmenue ohne Entwickler-Anker, kein Umbruch, Menue ab 1260 px",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "steps": 10,
+  "stepsPassed": 10,
+  "minutesTotal": 31,
+  "minutesCommands": 7,
+  "detours": [
+    "Port 3100 statt 3000 (Port 3000 auf dem Rechner belegt): QKERN_APP_ORIGINS und zwei Project-Auth-URLs angepasst, ein Neustart",
+    "QKERN_STATEMENT_ENCRYPTION_KEY fehlte in der Anleitung: gesetzt, ein Neustart, Text korrigiert",
+    "Key-Dialog anders als beschrieben (window.prompt): Text korrigiert",
+    "Schritt 9 lief ueber ein zweites Konto in Denzils eigenem Browser; zweites Projekt nachtraeglich gebunden"
+  ],
+  "images": [
+    "postgres:17-alpine",
+    "redis:8-alpine",
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5"
+  ]
+}

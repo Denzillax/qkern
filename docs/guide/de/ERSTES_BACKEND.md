@@ -40,10 +40,10 @@ Warum: QKERN liest seine Einstellungen aus [Umgebungsvariablen](GLOSSAR.md#umgeb
 Copy-Item .env.example .env.local
 ```
 
-Öffne `.env.local` und ändere fünf Dinge:
+Öffne `.env.local` und ändere sechs Dinge:
 
 - `QKERN_RUNTIME_MODE=postgres` steht schon so; lass es. Es sagt QKERN, dass es die echte Datenbank benutzt statt eines Speichers, der beim Neustart leer ist.
-- `QKERN_PASSWORD_PEPPER` und `QKERN_PROJECT_AUTH_PASSWORD_PEPPER`: je einen eigenen Zufallswert eintragen. Ein Pepper ist ein Geheimnis, das QKERN in jeden [Passwort-Hash](GLOSSAR.md#passwort-hash) mischt; ohne ihn liesse sich eine gestohlene Datenbank leichter knacken. Erzeugen mit dem Kommando unten, zweimal ausführen.
+- `QKERN_PASSWORD_PEPPER`, `QKERN_PROJECT_AUTH_PASSWORD_PEPPER` und `QKERN_STATEMENT_ENCRYPTION_KEY`: je einen eigenen Zufallswert eintragen. Ein Pepper ist ein Geheimnis, das QKERN in jeden [Passwort-Hash](GLOSSAR.md#passwort-hash) mischt; ohne ihn liesse sich eine gestohlene Datenbank leichter knacken. Der dritte Wert verschlüsselt gespeicherte SQL-Anweisungen in der Control Plane. Erzeugen mit dem Kommando unten, dreimal ausführen.
 - Im Block "Lokaler Schnellstart" die zwei auskommentierten JSON-Zeilen freischalten (das `# ` am Anfang entfernen). Sie sagen QKERN, wo `project_database` liegt und mit welchen Logins es sie erreicht.
 - Weiter unten die vier Schalter auf `true` setzen: `QKERN_DATA_PLANE_ENABLED`, `QKERN_ALLOW_LOCAL_PROJECT_DATABASE_CATALOG`, `QKERN_GENERATED_DATA_API_ENABLED`, `QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG`. Sie sind absichtlich aus, damit niemand aus Versehen eine Datenbank freigibt.
 
@@ -119,7 +119,7 @@ Mit `\q` verlässt du psql.
 
 Warum: wer über die API mit der Datenbank redet, muss sich ausweisen. Ein [API-Key](GLOSSAR.md#api-key) ist ein langes Geheimnis, das QKERN einem Projekt zuordnet.
 
-In der Konsole "API" öffnen. Unter "Public Keys" einen Namen eintragen, etwa `demo`, und "Public Key für den Browser" klicken. Der Schlüssel erscheint genau einmal; QKERN speichert nur eine Prüfsumme davon. Kopiere ihn in eine Umgebungsvariable des zweiten Terminals:
+In der Konsole "API" öffnen und unter "API-Keys des Projekts" auf "Public Key" klicken. Der Browser fragt nach einem Namen; `demo` reicht. Der Schlüssel erscheint genau einmal mit dem Hinweis "Jetzt kopieren, erscheint nur einmal"; QKERN speichert nur eine Prüfsumme davon. Kopiere ihn in eine Umgebungsvariable des zweiten Terminals:
 
 ```powershell
 $env:QKERN_PUBLIC_KEY = "<hier den Key einsetzen>"
@@ -184,7 +184,7 @@ Das Handbuch liegt im Repository unter `docs/HANDBUCH.md`.
 
 ## Ehrlich offen
 
-- Der letzte gemessene Durchlauf dieses Weges steht mit Zeit und Datum in `docs/evidence/`; solange dort kein Eintrag ist, ist die halbe Stunde eine Schätzung.
+- Letzter gemessener Durchlauf desselben Weges: 26. September 2026, 31 Minuten am Stück, davon rund sieben Minuten reine Kommandos; Einzelheiten unter `docs/evidence/2026-09-26/`.
 - Die Bindung in Schritt 5 macht ein Skript statt ein Provisionierer. Es führt nur das eine UPDATE aus und legt keinen Auftrag an.
 - Die Tabelle entsteht per SQL, nicht über einen Assistenten. Der Weg über Change Set und Freigabezentrale braucht den Migrations-Worker mit seinem Verbindungskatalog, und der ist im lokalen Schnellstart nicht eingerichtet.
 - Die zwei Regeln in Schritt 6 erlauben jedem alles. Für eine echte App sind sie zu grosszügig; das Handbuch zeigt Regeln je Nutzer.

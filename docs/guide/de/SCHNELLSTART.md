@@ -1,6 +1,6 @@
 # Schnellstart
 
-> Für Entwickler, die Supabase kennen. Ziel: QKERN lokal in [Docker](GLOSSAR.md#docker), ein [Projekt](GLOSSAR.md#projekt), eine [Tabelle](GLOSSAR.md#tabelle), eine Zeile per [REST](GLOSSAR.md#rest) und per [SDK](GLOSSAR.md#sdk) gelesen. Etwa fünfzehn Minuten. Am Ende steht, wie lange es beim letzten Durchlauf wirklich dauerte.
+> Für Entwickler, die Supabase kennen. Ziel: QKERN lokal in [Docker](GLOSSAR.md#docker), ein [Projekt](GLOSSAR.md#projekt), eine [Tabelle](GLOSSAR.md#tabelle), eine Zeile per [REST](GLOSSAR.md#rest) und per [SDK](GLOSSAR.md#sdk) gelesen. Die Kommandos brauchen etwa sieben Minuten, mit Lesen und Klicken eine Viertelstunde. Unter "Ehrlich offen" steht, wie lange der letzte gemessene Durchlauf dauerte.
 
 ## Was du brauchst
 
@@ -28,10 +28,10 @@ Erwartet: `v{{node}}` oder höher. Docker meldet `postgres`, `redis`, `minio` un
 Copy-Item .env.example .env.local
 ```
 
-Öffne `.env.local` und ändere fünf Dinge:
+Öffne `.env.local` und ändere sechs Dinge:
 
 - `QKERN_RUNTIME_MODE=postgres` steht schon so; lass es.
-- `QKERN_PASSWORD_PEPPER` und `QKERN_PROJECT_AUTH_PASSWORD_PEPPER`: je einen eigenen Zufallswert eintragen. Erzeugen mit dem Kommando unten, zweimal ausführen.
+- `QKERN_PASSWORD_PEPPER`, `QKERN_PROJECT_AUTH_PASSWORD_PEPPER` und `QKERN_STATEMENT_ENCRYPTION_KEY`: je einen eigenen Zufallswert eintragen. Erzeugen mit dem Kommando unten, dreimal ausführen.
 - Im Block "Lokaler Schnellstart" die zwei auskommentierten JSON-Zeilen freischalten (das `# ` am Anfang entfernen).
 - Weiter unten die vier Schalter auf `true` setzen: `QKERN_DATA_PLANE_ENABLED`, `QKERN_ALLOW_LOCAL_PROJECT_DATABASE_CATALOG`, `QKERN_GENERATED_DATA_API_ENABLED`, `QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG`.
 
@@ -91,7 +91,7 @@ INSERT INTO public.notes (title) VALUES ('Erste Notiz');
 
 ## 7. Einen Projekt-Key holen
 
-In der Konsole "API" öffnen. Unter "Public Keys" einen Namen eintragen, etwa `demo`, und "Public Key für den Browser" klicken. Der Schlüssel erscheint genau einmal; QKERN speichert nur eine Prüfsumme davon. Kopiere ihn in eine Umgebungsvariable des zweiten Terminals:
+In der Konsole "API" öffnen und unter "API-Keys des Projekts" auf "Public Key" klicken. Der Browser fragt nach einem Namen; `demo` reicht. Der Schlüssel erscheint genau einmal mit dem Hinweis "Jetzt kopieren, erscheint nur einmal"; QKERN speichert nur eine Prüfsumme davon. Kopiere ihn in eine Umgebungsvariable des zweiten Terminals:
 
 ```powershell
 $env:QKERN_PUBLIC_KEY = "<hier den Key einsetzen>"
@@ -160,7 +160,7 @@ Der grösste Unterschied im Alltag: bei QKERN umgeht auch der Service Key die Ro
 
 ## Ehrlich offen
 
-- Der letzte gemessene Durchlauf dieses Schnellstarts steht mit Zeit und Datum in `docs/evidence/`; solange dort kein Eintrag ist, ist die Viertelstunde eine Schätzung.
+- Letzter gemessener Durchlauf: 26. September 2026, frischer Ordner, 31 Minuten am Stück. Davon gingen rund 24 Minuten auf zwei Textfehler, die dabei gefunden und behoben wurden, und auf einen Umweg über ein zweites Konto; die Kommandos selbst liefen in rund sieben Minuten. Log und Manifest unter `docs/evidence/2026-09-26/`.
 - Die Bindung in Schritt 5 macht ein Skript statt ein Provisionierer. Es führt nur das eine UPDATE aus und legt keinen Auftrag an.
 - Die Tabelle entsteht per SQL, nicht über einen Assistenten. Der Weg über Change Set und Freigabezentrale braucht den Migrations-Worker mit seinem Verbindungskatalog, und der ist im lokalen Schnellstart nicht eingerichtet.
 - Das Repository ist heute privat; deshalb "Zip oder git clone" statt eines Links.

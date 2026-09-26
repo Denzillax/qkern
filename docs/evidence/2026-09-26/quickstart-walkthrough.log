@@ -1,0 +1,196 @@
+# Schnellstart-Durchlauf, frischer Ordner, 2026-09-26T06:57:20+02:00
+START 1790398640
+
+## 1. Dienste starten
+$ node --version
+v24.19.0
+$ docker compose up -d
+ Image redis:8-alpine Pulling 
+ 095940d4ebca Pulling fs layer 0B
+ 618072543738 Pulling fs layer 0B
+ d0c1d894c237 Pulling fs layer 0B
+ d60026184d2e Pulling fs layer 0B
+ 2f1039339059 Pulling fs layer 0B
+ 8c9c3a906635 Pulling fs layer 0B
+ 4f4fb700ef54 Pulling fs layer 0B
+ 4f4fb700ef54 Already exists 0B
+ 095940d4ebca Download complete 0B
+ 618072543738 Download complete 0B
+ d0c1d894c237 Downloading 1.049MB
+ d0c1d894c237 Downloading 2.097MB
+ 2f1039339059 Download complete 0B
+ d0c1d894c237 Download complete 0B
+ d60026184d2e Download complete 0B
+ d0c1d894c237 Extracting 1B
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 1.049MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 4.194MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 6.291MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 7.34MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 9.437MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 11.53MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 14.68MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 16.78MB
+ d0c1d894c237 Extracting 1B
+ 8c9c3a906635 Downloading 19.92MB
+ d0c1d894c237 Extracting 2B
+ 8c9c3a906635 Downloading 22.02MB
+ d0c1d894c237 Extracting 2B
+ 8c9c3a906635 Downloading 25.17MB
+ d0c1d894c237 Extracting 2B
+ 8c9c3a906635 Downloading 27.26MB
+ d0c1d894c237 Extracting 2B
+ 8c9c3a906635 Downloading 29.36MB
+ d0c1d894c237 Extracting 2B
+ 8c9c3a906635 Downloading 32.44MB
+ 618072543738 Extracting 1B
+ d0c1d894c237 Pull complete 0B
+ d60026184d2e Pull complete 0B
+ 2ea8415cd7b3 Download complete 0B
+ 8c9c3a906635 Downloading 35.05MB
+ 618072543738 Extracting 1B
+ 8c9c3a906635 Download complete 0B
+ 618072543738 Pull complete 0B
+ 8c9c3a906635 Extracting 1B
+ 10a82f6a874c Download complete 0B
+ 8c9c3a906635 Extracting 1B
+ 8c9c3a906635 Extracting 1B
+ 8c9c3a906635 Extracting 1B
+ 8c9c3a906635 Extracting 1B
+ 8c9c3a906635 Extracting 1B
+ 4f4fb700ef54 Pull complete 0B
+ 095940d4ebca Pull complete 0B
+ 2f1039339059 Pull complete 0B
+ 4f4fb700ef54 Pull complete 0B
+ 095940d4ebca Pull complete 0B
+ 2f1039339059 Pull complete 0B
+ 8c9c3a906635 Pull complete 0B
+ Image redis:8-alpine Pulled 
+ Network qkern-schnellstart_default Creating 
+ Network qkern-schnellstart_default Created 
+ Volume qkern-schnellstart_qkern-clamav-db Creating 
+ Volume qkern-schnellstart_qkern-clamav-db Created 
+ Volume qkern-schnellstart_qkern-minio Creating 
+ Volume qkern-schnellstart_qkern-minio Created 
+ Volume qkern-schnellstart_qkern-postgres Creating 
+ Volume qkern-schnellstart_qkern-postgres Created 
+ Container qkern-schnellstart-redis-1 Creating 
+ Container qkern-schnellstart-postgres-1 Creating 
+ Container qkern-schnellstart-clamav-1 Creating 
+ Container qkern-schnellstart-minio-1 Creating 
+ Container qkern-schnellstart-redis-1 Created 
+ Container qkern-schnellstart-minio-1 Created 
+ Container qkern-schnellstart-postgres-1 Created 
+ Container qkern-schnellstart-postgres-worker-check-1 Creating 
+ Container qkern-schnellstart-postgres-auth-check-1 Creating 
+ Container qkern-schnellstart-postgres-runtime-check-1 Creating 
+ Container qkern-schnellstart-postgres-provisioner-check-1 Creating 
+ Container qkern-schnellstart-postgres-auth-check-1 Created 
+ Container qkern-schnellstart-postgres-provisioner-check-1 Created 
+ Container qkern-schnellstart-postgres-worker-check-1 Created 
+ Container qkern-schnellstart-postgres-runtime-check-1 Created 
+ Container qkern-schnellstart-clamav-1 Created 
+ Container qkern-schnellstart-clamav-1 Starting 
+ Container qkern-schnellstart-postgres-1 Starting 
+ Container qkern-schnellstart-minio-1 Starting 
+ Container qkern-schnellstart-redis-1 Starting 
+ Container qkern-schnellstart-redis-1 Started 
+ Container qkern-schnellstart-minio-1 Started 
+ Container qkern-schnellstart-clamav-1 Started 
+ Container qkern-schnellstart-postgres-1 Started 
+ Container qkern-schnellstart-postgres-1 Waiting 
+ Container qkern-schnellstart-postgres-1 Waiting 
+ Container qkern-schnellstart-postgres-1 Waiting 
+ Container qkern-schnellstart-postgres-1 Waiting 
+ Container qkern-schnellstart-postgres-1 Healthy 
+ Container qkern-schnellstart-postgres-runtime-check-1 Starting 
+ Container qkern-schnellstart-postgres-1 Healthy 
+ Container qkern-schnellstart-postgres-provisioner-check-1 Starting 
+ Container qkern-schnellstart-postgres-1 Healthy 
+ Container qkern-schnellstart-postgres-auth-check-1 Starting 
+ Container qkern-schnellstart-postgres-1 Healthy 
+ Container qkern-schnellstart-postgres-worker-check-1 Starting 
+ Container qkern-schnellstart-postgres-auth-check-1 Started 
+ Container qkern-schnellstart-postgres-runtime-check-1 Started 
+ Container qkern-schnellstart-postgres-provisioner-check-1 Started 
+ Container qkern-schnellstart-postgres-worker-check-1 Started 
+STEP1_DONE 1790398664
+
+Postgres-Log:
+postgres-1  | certification-init: applied 45 migrations
+postgres-1  | project-database: project_database mit qkern_ledger_owner, qkern_project_reader und qkern_project_api_app angelegt
+
+## 2. Konfiguration
+$ Copy-Item .env.example .env.local
+$ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"  (zweimal, Werte nicht im Log)
+Geaendert: 2 Pepper, 4 Schalter auf true, 2 JSON-Zeilen freigeschaltet; QKERN_RUNTIME_MODE bleibt postgres
+STEP2_DONE 1790398681
+
+## 3. QKERN starten
+$ npm ci
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   esbuild@0.28.1 (postinstall: node install.js)
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
+NPM_CI_DONE 1790398732
+$ npm run dev  (hier: npx next dev -p 3100, weil Port 3000 auf diesem Rechner belegt ist)
+- Local:         http://localhost:3100
+✓ Ready in 5.8s
+SERVER_READY 1790398779
+
+## 4. Registrieren (Denzil, im Browser)
+Abweichung: Port 3100 statt 3000, deshalb QKERN_APP_ORIGINS und die zwei Project-Auth-URLs auf 3100 gesetzt (auf Port 3000 nicht noetig). Server neu gestartet. 1790398939
+REGISTERED 1790399196
+BEFUND: Konsole 500, QKERN_STATEMENT_ENCRYPTION_KEY fehlte in der Anleitung (Schritt 2 nennt nur zwei Pepper). Wert gesetzt, Server neu gestartet. 1790399215
+Einstellungen, Allgemein zeigt Projekt-ID 53971038-7ae6-4a9d-9727-ff36e13a278b und Organisations-ID 316d292a-aeb5-40a5-907b-4f8c67f91db5. STEP4_DONE 1790399386
+
+## 5. Umgebung an die Datenbank binden
+$ npm run dev:bind-project-database -- 53971038-7ae6-4a9d-9727-ff36e13a278b development 316d292a-aeb5-40a5-907b-4f8c67f91db5
+Ziel: localhost:5432/qkern_control
+Gebunden: development von 53971038-7ae6-4a9d-9727-ff36e13a278b an managed:database-1
+exit=0
+STEP5_DONE 1790399387
+
+## 6. Eine Tabelle anlegen
+$ docker compose exec postgres psql -U qkern -d project_database   (SQL wie in der Anleitung, hier per Pipe)
+SET
+CREATE TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+INSERT 0 1
+exit=0
+STEP6_DONE 1790399387
+
+## 7. Einen Projekt-Key holen
+Konsole, API: Knopf 'Public Key' oeffnet einen Browser-Dialog fuer den Namen (window.prompt), Name 'demo'. Key erschien einmal mit 'Jetzt kopieren, erscheint nur einmal'. Der Key verlaesst die Seite nicht (Agent-Regel: keine Geheimnisse im Chat). STEP7_DONE 1790399507
+BEFUND: Anleitung sagt 'Name eintragen und Public Key fuer den Browser klicken'; tatsaechlich: 'Public Key' klicken, dann Name im Dialog.
+
+## 8. Per REST lesen
+fetch aus der Konsolen-Seite mit Authorization: Bearer <key>, GET /api/v1/projects/53971038-7ae6-4a9d-9727-ff36e13a278b/environments/development/tables/notes/rows?limit=10
+status 200, data.rows = [{ id: 1, title: "Erste Notiz", done: false }], hasMore false
+STEP8_DONE 1790399507
+
+## 9. Per SDK lesen
+$ mkdir qkern-demo; cd qkern-demo; npm init -y; npm install @qkern/sdk@alpha
+
+found 0 vulnerabilities
+NPM_INSTALL_SDK_DONE 1790399511
+
+## 10. Im Table Editor ansehen
+Table Editor zeigt public.notes mit der Zeile: 1 | Erste Notiz | false. STEP10_DONE 1790399530
+
+Schritt 9 (SDK) wartet auf Denzil: der Key wird von ihm in die Shell kopiert, der Agent liest keine Geheimnisse. WAIT_SDK 1790399530
+HINWEIS: Denzil hat sich in einem zweiten Browser registriert (Projekt 5f5bd1fa, eigene Organisation); der Key gehoert zu diesem Projekt. Bindung fuer dieses Projekt nachgeholt, demo.mjs auf dessen Projekt-ID gesetzt. 1790400454
+$ node demo.mjs
+[ { id: 1, title: 'Erste Notiz', done: false } ]   (von Denzil ausgefuehrt und gemeldet)
+STEP9_DONE 1790400520
+
+ENDE 2026-09-26T07:28:40+02:00  Gesamt: 31 min 20 s
