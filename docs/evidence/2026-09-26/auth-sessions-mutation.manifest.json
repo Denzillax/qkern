@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "auth-sessions-mutation.log",
+  "commit": "f2dd01a62d16a5e3deb773042f881800598c33c9",
+  "commitSubject": "auth: Sitzungen, Tests belegen Isolation je Familie und Nutzer",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 45,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 172 passed (173)",
+  "passed": 172,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

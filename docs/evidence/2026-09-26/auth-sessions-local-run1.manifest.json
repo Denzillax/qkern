@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "auth-sessions-local-run1.log",
+  "commit": "f2dd01a62d16a5e3deb773042f881800598c33c9",
+  "commitSubject": "auth: Sitzungen, Tests belegen Isolation je Familie und Nutzer",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1279 passed | 255 skipped (1534)",
+  "passed": 1279,
+  "failed": 0,
+  "skipped": 255,
+  "images": []
+}

@@ -4811,3 +4811,46 @@ gruen.
 Nicht erbracht: die generierte OpenAPI fuer ein anderes Schema als `public`
 nennt die Tabellenpfade ohne `schema`-Parameter (schon vor 2.33 so); die
 Konsole schickt weiterhin nur `schema=public`.
+
+## Sitzungen sehen und beenden – Release 2.34
+
+Project Auth hatte Sitzungen mit Refresh-Familien, aber keine Liste und
+keinen Widerruf fuer Administratoren. Jetzt: `listActiveSessions` liefert
+je Nutzer die aktiven Sitzungen (nicht widerrufen, nicht abgelaufen, nicht
+kompromittiert), ohne Token-Hash; die Select-Liste nennt die Spalte nicht,
+und die Tests pinnen die Schluesselmenge der Antwort. `revokeSession`
+prueft, dass die Sitzung dem genannten Nutzer gehoert, und widerruft die
+ganze Refresh-Familie, weil eine rotierte Sitzung sonst weiterlebte; eine
+fremde Sitzung sieht aus wie eine unbekannte (404). `revokeAllSessions`
+beendet alles eines Nutzers, ohne ihn zu deaktivieren.
+
+Die Routen folgen den Admin-Routen fuer Nutzer: Konsolensitzung,
+Admin-Faehigkeit, Scope aus Organisation plus Pfad, CSRF auf DELETE,
+UUID-Pruefung, keine Caches. Route-Tests: Liste, Widerruf einer und aller,
+404 fuer unbekannte und fremde Nutzer und Sitzungen, 400 fuer schlechte
+UUIDs und Query-Parameter, 401 ohne Anmeldung, CSRF-Abweisung.
+Service-Tests: Familie A widerrufen laesst Familie B leben; Widerruf
+aller trifft den zweiten Nutzer nicht; eine Sitzung aus einer anderen
+Umgebung ist 404.
+
+PostgreSQL-Fall: Nutzer registriert, zweimal angemeldet (zwei Familien),
+eine Familie erneuert, Liste zeigt genau die aktiven; eine Familie
+widerrufen, ihr Refresh-Token scheitert (TOKEN_REPLAYED), die andere
+Familie erneuert weiter; alle widerrufen, beide scheitern, der zweite
+Nutzer erneuert weiter. 173 von 173, zweimal. Mutation: der Widerruf in
+`revokeSession` ausgelassen; genau der neue Fall faellt, 172 von 173.
+
+Sicherheits-Review offen gelassen: ein Refresh mit dem Token einer vom
+Administrator beendeten Familie landet in der Replay-Pruefung und markiert
+die Familie als kompromittiert, statt als schlicht widerrufen. Auf dem
+Draht ist beides 401 ohne Unterschied; ein eigener Code wuerde dem
+Tokeninhaber verraten, dass das Token gueltig war.
+
+Checkpoint `2.34.0` am 26. September 2026: PostgreSQL 17 173 von 173
+bestanden, exit 0, zweimal reproduziert; Mutation 172 von 173, exit 1;
+Lokal 1279 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: kein Audit-Ereignis fuer den Widerruf (Project Auth
+schreibt heute keine); die Ansicht ist im Browser nicht gesehen, weil die
+Konsolensitzung im Speichermodus abgelaufen war.

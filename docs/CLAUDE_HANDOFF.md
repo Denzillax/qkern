@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.33.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.34.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,26 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.33.0`
-- Aktueller Slice: 2.33 Schemanamen mit Grossbuchstaben – der in 2.26
+- Paketversion: `2.34.0`
+- Aktueller Slice: 2.34 Sitzungen sehen und beenden – der Platzhalter
+  "Sitzungen" unter Auth ist eine echte Ansicht: Nutzer waehlen, aktive
+  Sitzungen (angelegt, laeuft ab, Sicherungsstufe, Familie) sehen, eine
+  Sitzung oder alle beenden, mit Rueckfrage. Backend: Repository
+  `listActiveSessions` (Postgres und Speicher, nie mit Token-Hash),
+  Service `listSessions`/`revokeSession` (widerruft die ganze
+  Refresh-Familie; fremde oder unbekannte Sitzung ist 404, ohne
+  Unterschied)/`revokeAllSessions`, Routen `GET/DELETE
+  .../auth/admin/users/{userId}/sessions` und `DELETE .../sessions/{sessionId}`
+  mit Konsolensitzung, Admin-Faehigkeit, CSRF, zod-UUIDs; OpenAPI, Handbuch
+  Abschnitt 6. Sicherheits-Review: Scope aus Organisation plus Pfad, jede
+  Abfrage filtert Organisation, Projekt, Umgebung, Nutzer; Token-Material
+  verlaesst den Server nie (Testvertrag auf der Schluesselmenge). Ein
+  Refresh mit einem Token der widerrufenen Familie laeuft in die
+  Replay-Pruefung (401, Familie als kompromittiert markiert); auf dem Draht
+  kein Unterschied, bewusst so gelassen. PostgreSQL-Fall (zwei Familien,
+  Refresh, Liste, Widerruf einer Familie, aller, Zuschauer unberuehrt):
+  173 von 173; Mutation (Widerruf ausgelassen) faellt genau dort
+- Vorheriger Slice: 2.33 Schemanamen mit Grossbuchstaben – der in 2.26
   offen gelassene Schritt: Schemanamen der Data API folgen jetzt derselben
   Grammatik wie Tabellennamen (`isDataSchemaName` in `identifiers.ts`:
   `DATA_IDENTIFIER` minus `pg_*`, `information_schema`, `qkern_internal`).
@@ -64,7 +82,7 @@ Grossbuchstaben.
   Wartebudget von 75 s statt 30 s und nennt beim Fehlschlag die Zahl der
   fehlenden Aenderungen, nachdem ein CI-Runner 112 von 120 in 30 s
   schaffte (Wiederholung gruen); die harten Zusicherungen sind unveraendert
-- Vorheriger Slice: 2.32 Was die Data API kann – der Platzhalter
+- Davor: 2.32 Was die Data API kann – der Platzhalter
   "Data API" unter Einstellungen ist eine echte, nur lesende Ansicht
   (`components/console/data-api-settings-view.tsx`): Status aus der
   generierten OpenAPI (bereit mit Zahl der freigegebenen Tabellen und Link,
