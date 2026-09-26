@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.38.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.39.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,28 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.38.0`
-- Aktueller Slice: 2.38 Secrets, ohne Werte – der Platzhalter "Secrets"
+- Paketversion: `2.39.0`
+- Aktueller Slice: 2.39 Was offen steht – der Platzhalter "Sicherheit"
+  unter Advisors ist eine echte, nur lesende Ansicht
+  (`components/console/security-advisor-view.tsx`): Befunde nach Schwere,
+  dazu eine Karte, die je Regel sagt, ob sie lief und warum nicht. Regeln
+  rein in `lib/server/advisors/security-rules.ts` (gleiche Eingabe, gleiche
+  Ausgabe, gleiche Reihenfolge): Tabelle ohne RLS, RLS ohne Policy, Policy
+  mit Bedingung true fuer public, anon oder authenticated, Schreib-Policy
+  ohne Pruefung (nur wenn PostgreSQL USING nicht ersatzweise anwendet),
+  Bucket mit oeffentlichem Lesen, Bucket mit Schreiben fuer Angemeldete
+  ohne Typenliste, aktiver Service-Key in Produktion. Die Regel zu
+  unverifizierten Mail-Adressen laeuft nie, weil die Provider-Projektion
+  nur Slug und Issuer nennt; das steht in der Karte. Route
+  `GET .../advisors/security`, gleiche Tuer wie `/schema/policies`,
+  `private, no-store`, 400 bei jedem Query-Parameter; Buckets und Keys nur
+  mit Console-Sitzung und der Faehigkeit ihrer eigenen Routen, sonst
+  "nicht geprueft" statt 500. Texte deutsch an einer Stelle
+  (`lib/console/security-advisor-texts.ts`), vom i18n-Vertrag mitgelesen.
+  PostgreSQL-Fall "(2.39)" ueber echtem Katalog: 176 statt 175 Faelle.
+  Mutation (Policy ohne Bedingung nur bei WITH CHECK) faellt im Stack in
+  1 und lokal in 2 Faellen. Im Browser nicht gesehen
+- Vorheriger Slice: 2.38 Secrets, ohne Werte – der Platzhalter "Secrets"
   unter Functions & Jobs ist eine echte, nur lesende Ansicht
   (`components/console/compute-secrets-view.tsx`): je Function jede
   deklarierte Secret-Referenz und ob der Vault sie aufloest (vorhanden,
@@ -68,7 +88,7 @@ Grossbuchstaben.
   6 auf 7 Faelle. Mutation (403 gilt als fehlend) faellt lokal in 1 Fall
   und im Vault-Stack in 1 Fall. Anlegen und Aendern bleibt im Vault.
   Im Browser nicht gesehen (Sitzung abgelaufen)
-- Vorheriger Slice: 2.37 Was es kostet – der Platzhalter "Abrechnung"
+- Davor: 2.37 Was es kostet – der Platzhalter "Abrechnung"
   unter Einstellungen ist eine echte, nur lesende Ansicht
   (`components/console/billing-settings-view.tsx`): Preisblatt (aus den
   bepreisten Zeilen der Abrechnungsprojektion `usage/billing`, Preise zum

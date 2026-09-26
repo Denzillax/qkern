@@ -1,0 +1,63 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/advisors/security-rules.test.ts (13 tests | 1 failed) 16ms
+     × policy_always_true fires for true in USING or CHECK for broad roles, including parentheses and whitespace 7ms
+ ❯ tests/advisors/security-advisor-route.test.ts (5 tests | 1 failed) 376ms
+     × returns findings, checks and checkedAt with no-store for a console session 105ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/advisors/security-advisor-route.test.ts > security advisor route > returns findings, checks and checkedAt with no-store for a console session
+AssertionError: expected [ …(3) ] to deeply equal [ …(4) ]
+
+- Expected
++ Received
+
+  [
+-   "policy_always_true:policy:notes.anyone",
+    "rls_disabled:table:open_orders",
+    "bucket_public_read:bucket:avatars",
+    "api_key_broad:api_key:k1",
+  ]
+
+ ❯ tests/advisors/security-advisor-route.test.ts:72:55
+     70|     expect(Object.keys(body.data).sort()).toEqual(["checkedAt", "check…
+     71|     expect(body.data.checkedAt).toBe(NOW.toISOString());
+     72|     expect(body.data.findings.map((item) => item.id)).toEqual([
+       |                                                       ^
+     73|       "policy_always_true:policy:notes.anyone", "rls_disabled:table:op…
+     74|     ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/advisors/security-rules.test.ts > security advisor rules > policy_always_true fires for true in USING or CHECK for broad roles, including parentheses and whitespace
+AssertionError: expected [ 'policy_always_true:t.c_check' ] to deeply equal [ Array(4) ]
+
+- Expected
++ Received
+
+  [
+-   "policy_always_true:t.a_plain",
+-   "policy_always_true:t.b_parens",
+    "policy_always_true:t.c_check",
+-   "policy_always_true:t.d_authenticated",
+  ]
+
+ ❯ tests/advisors/security-rules.test.ts:85:27
+     83|       policy({ name: "d_authenticated", table: "t", roles: ["authentic…
+     84|     ]) }));
+     85|     expect(rules(result)).toEqual([
+       |                           ^
+     86|       "policy_always_true:t.a_plain", "policy_always_true:t.b_parens",…
+     87|     ]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 16 passed (18)
+   Start at  16:42:06
+   Duration  1.56s (transform 703ms, setup 0ms, import 1.08s, tests 392ms, environment 0ms)
+
+EXIT=1

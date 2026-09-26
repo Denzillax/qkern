@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Policy ohne Bedingung nur bei WITH CHECK, nur Regeltests",
+  "log": "advisor-local-mutation.log",
+  "commit": "5e7d607f0a9c21679db6fc2b4a56a1a286a2a4d6",
+  "commitSubject": "console: Sicherheitsberater aus vorhandenen Daten",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "2 failed | 16 passed (18)",
+  "passed": 16,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

@@ -4994,3 +4994,39 @@ Referenz ohne `vault:` ist in einer Definition erlaubt und erscheint hier
 als kein Zugriff; die Ansicht sagt das in einem Satz. Die Metadaten laufen
 durch den Serverprozess, auch wenn sie ihn nie verlassen. Im Browser nicht
 gesehen.
+
+## Was offen steht – Release 2.39
+
+Die Ansicht Advisors, Sicherheit rechnet Befunde aus Daten, die QKERN
+ohnehin liest: Tabellen und Policies aus dem Katalog, die Richtlinien der
+Buckets, Art und Ablauf der API-Keys. Nichts wird geschrieben, nichts
+repariert. Das Regelmodul ist rein und sortiert stabil, damit zwei Laeufe
+dieselbe Liste in derselben Reihenfolge ergeben.
+
+Zwei Entscheidungen sind enger als die Vorlage. Eine Schreib-Policy ohne
+WITH CHECK gilt nur als Befund, wenn auch keine USING-Bedingung da ist,
+denn PostgreSQL wendet USING ersatzweise auf neue Zeilen an; sonst waere
+fast jede UPDATE-Policy ein Fehlalarm. Und "RLS ohne Policy" bleibt
+ungeprueft, wenn die Policy-Liste am Limit abgeschnitten ist, weil die
+fehlende Policy dann nur abgeschnitten sein koennte. Beides steht in der
+Karte "Was geprueft wurde".
+
+Der PostgreSQL-Fall legt drei Tabellen in einem eigenen Schema an: eine
+ohne RLS, eine mit RLS und einer Policy `USING (true)`, eine mit RLS und
+zwei sauberen Policies. Gelesen wird ueber die Leserolle der Data API,
+gerechnet mit dem Regelmodul. Genau zwei Befunde kommen heraus, und die
+saubere Tabelle traegt keinen.
+
+Mutation: eine Policy ohne Bedingung wird nur noch bei WITH CHECK
+gemeldet, also nicht mehr bei `USING (true)`. Im Stack faellt 1 von 176,
+lokal fallen 2 von 18 Regeltests, exit 1 beide Male.
+
+Checkpoint `2.39.0` am 26. September 2026: PostgreSQL 17 mit 176 von 176,
+exit 0, zweimal reproduziert; Lokal 1341 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Der Berater repariert nichts. Eine absichtlich
+oeffentliche Tabelle erscheint als Befund hoher Schwere, und ein
+Service-Key in Produktion ebenfalls; beides kann gewollt sein. Nicht im
+Blick sind Funktionen mit SECURITY DEFINER, Views ohne security_invoker,
+Spaltenrechte und jedes Schema ausser public. Im Browser nicht gesehen.

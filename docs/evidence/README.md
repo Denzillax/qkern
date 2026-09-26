@@ -1443,3 +1443,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/function-secrets-local-mutation.log` | Vitest lokal, Mutation (403 gilt als fehlend), nur Inspektor-Tests | **9 von 10, exit 1 – absichtlich** |
 | `2026-09-26/function-secrets-local-run1.log` | Vitest lokal (Windows) | 1319 bestanden, exit 0 |
 | `2026-09-26/function-secrets-local-run2.log` | Vitest lokal (Windows) | 1319 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.39 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/advisor-run1.log` | PostgreSQL 17 | 176 von 176, exit 0 |
+| `2026-09-26/advisor-run2.log` | PostgreSQL 17 | 176 von 176, exit 0, Wiederholung |
+| `2026-09-26/advisor-mutation.log` | PostgreSQL 17, Mutation (Policy ohne Bedingung nur bei WITH CHECK) | **175 von 176, exit 1 – absichtlich** |
+| `2026-09-26/advisor-local-mutation.log` | Vitest lokal, Mutation, nur Regeltests | **16 von 18, exit 1 – absichtlich** |
+| `2026-09-26/advisor-local-run1.log` | Vitest lokal (Windows) | 1341 bestanden, exit 0 |
+| `2026-09-26/advisor-local-run2.log` | Vitest lokal (Windows) | 1341 bestanden, exit 0, Wiederholung |

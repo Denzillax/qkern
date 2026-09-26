@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "advisor-local-run2.log",
+  "commit": "5e7d607f0a9c21679db6fc2b4a56a1a286a2a4d6",
+  "commitSubject": "console: Sicherheitsberater aus vorhandenen Daten",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1341 passed | 259 skipped (1600)",
+  "passed": 1341,
+  "failed": 0,
+  "skipped": 259,
+  "images": []
+}

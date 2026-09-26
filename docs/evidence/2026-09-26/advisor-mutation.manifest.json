@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Policy ohne Bedingung nur bei WITH CHECK",
+  "log": "advisor-mutation.log",
+  "commit": "5e7d607f0a9c21679db6fc2b4a56a1a286a2a4d6",
+  "commitSubject": "console: Sicherheitsberater aus vorhandenen Daten",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 175 passed (176)",
+  "passed": 175,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

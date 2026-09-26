@@ -35,7 +35,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.38.md](RELEASE_2.38.md) | Aktueller Release: Secrets, ohne Werte |
+| [RELEASE_2.39.md](RELEASE_2.39.md) | Aktueller Release: Was offen steht |
+| [RELEASE_2.38.md](RELEASE_2.38.md) | Secrets, ohne Werte |
 | [RELEASE_2.37.md](RELEASE_2.37.md) | Was es kostet |
 | [RELEASE_2.36.md](RELEASE_2.36.md) | Die Kette in Zeitreihenfolge |
 | [RELEASE_2.35.md](RELEASE_2.35.md) | Was die Anmeldung tat |
