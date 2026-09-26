@@ -348,4 +348,92 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // asynchron schreibt. Die 5 Sekunden der Datei reichen dafuer nicht; die
     // Zusicherungen bleiben unveraendert scharf.
   }, 120_000);
+
+  it("reads composite, self-referencing and cross-schema foreign keys through the project read role (2.41)", async () => {
+    // Der Schema-Visualizer ueber echten Katalogzeilen: zwei eigene Schemas,
+    // damit ein Schluessel wirklich ueber die Schemagrenze zeigt. Gelesen wird
+    // durch `qkern_project_api_app`, also durch dieselbe Leserolle wie in der
+    // Console, nicht als Eigentuemer.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const nonce = randomUUID().replaceAll("-", "_");
+    const schema = `fk_${nonce}`;
+    const other = `fkother_${nonce}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${other}"`);
+      await owner.query(`CREATE TABLE "${other}".region (code text PRIMARY KEY)`);
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      // Der Elternschluessel ist zusammengesetzt, und `child` verweist mit
+      // vertauschten Spaltennamen darauf: `branch` gehoert zu `tenant_id`,
+      // `owner_id` zu `id`. Nur die Reihenfolge aus `conkey` und `confkey`
+      // bringt das richtig heraus; eine alphabetische Sortierung waere falsch.
+      await owner.query(`CREATE TABLE "${schema}".parent (tenant_id integer NOT NULL, id integer NOT NULL, PRIMARY KEY (tenant_id, id))`);
+      await owner.query(`CREATE TABLE "${schema}".child (
+        id integer PRIMARY KEY,
+        branch integer NOT NULL,
+        owner_id integer NOT NULL,
+        parent_child integer,
+        region_code text,
+        CONSTRAINT child_parent_fkey FOREIGN KEY (branch, owner_id) REFERENCES "${schema}".parent (tenant_id, id) ON DELETE CASCADE ON UPDATE RESTRICT,
+        CONSTRAINT child_self_fkey FOREIGN KEY (parent_child) REFERENCES "${schema}".child (id) ON DELETE SET NULL,
+        CONSTRAINT child_region_fkey FOREIGN KEY (region_code) REFERENCES "${other}".region (code) ON UPDATE CASCADE
+      )`);
+      for (const name of [schema, other]) {
+        await owner.query(`GRANT USAGE ON SCHEMA "${name}" TO qkern_project_api_app`);
+        await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${name}" TO qkern_project_api_app`);
+      }
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const result = await service.inspectForeignKeys(
+        { organizationId: organizationA, actorRef: "visualizer@qkern.test" },
+        { projectId: "certification-project", environment: "development" },
+        schema,
+      );
+      expect(result.source).toBe("postgres");
+      expect(result.schema).toBe(schema);
+      expect(result.truncated).toBe(false);
+      // Sortiert nach Tabelle und Constraint-Name; `parent` traegt keinen Schluessel.
+      expect(result.foreignKeys.map((key) => key.name)).toEqual([
+        "child_parent_fkey", "child_region_fkey", "child_self_fkey",
+      ]);
+      expect(result.foreignKeys.find((key) => key.name === "child_parent_fkey")).toEqual({
+        name: "child_parent_fkey", table: "child", columns: ["branch", "owner_id"],
+        referencedSchema: schema, referencedTable: "parent", referencedColumns: ["tenant_id", "id"],
+        onDelete: "cascade", onUpdate: "restrict",
+      });
+      expect(result.foreignKeys.find((key) => key.name === "child_self_fkey")).toEqual({
+        name: "child_self_fkey", table: "child", columns: ["parent_child"],
+        referencedSchema: schema, referencedTable: "child", referencedColumns: ["id"],
+        onDelete: "set_null", onUpdate: "no_action",
+      });
+      // Der Schluessel ueber die Schemagrenze bleibt drin und nennt das fremde Schema.
+      expect(result.foreignKeys.find((key) => key.name === "child_region_fkey")).toEqual({
+        name: "child_region_fkey", table: "child", columns: ["region_code"],
+        referencedSchema: other, referencedTable: "region", referencedColumns: ["code"],
+        onDelete: "no_action", onUpdate: "cascade",
+      });
+      // Das zweite Schema kennt den Schluessel nicht: gefiltert wird nach der verweisenden Tabelle.
+      const fromOther = await service.inspectForeignKeys(
+        { organizationId: organizationA, actorRef: "visualizer@qkern.test" },
+        { projectId: "certification-project", environment: "development" },
+        other,
+      );
+      expect(fromOther.foreignKeys).toEqual([]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await owner.query(`DROP SCHEMA IF EXISTS "${other}" CASCADE`);
+      await projectApi.end();
+    }
+    // Ohne eigenes Budget: der Fall legt zwei Schemas mit vier kleinen Tabellen
+    // an und liest zweimal aus dem Katalog. Kein Statistik-Kollektor, auf den
+    // gewartet werden muesste, also reichen die 5 Sekunden der Datei.
+  });
 });

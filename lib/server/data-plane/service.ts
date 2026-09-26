@@ -180,6 +180,34 @@ export type ProjectPolicyResult = {
   truncated: boolean;
 };
 
+/**
+ * Was PostgreSQL bei einer geloeschten oder geaenderten Elternzeile tut. Der
+ * Katalog schreibt einen Buchstaben; hier stehen Worte.
+ */
+export type ProjectForeignKeyAction = "no_action" | "restrict" | "cascade" | "set_null" | "set_default";
+
+export type ProjectForeignKey = {
+  name: string;
+  /** Die verweisende Tabelle; sie liegt im abgefragten Schema */
+  table: string;
+  /** Die verweisenden Spalten, in der Reihenfolge des Schluessels */
+  columns: string[];
+  /** Das Schema der Zieltabelle; kann ein anderes als das abgefragte sein */
+  referencedSchema: string;
+  referencedTable: string;
+  /** Die Zielspalten, in derselben Reihenfolge wie `columns` */
+  referencedColumns: string[];
+  onDelete: ProjectForeignKeyAction;
+  onUpdate: ProjectForeignKeyAction;
+};
+
+export type ProjectForeignKeyResult = {
+  source: "postgres";
+  schema: string;
+  foreignKeys: ProjectForeignKey[];
+  truncated: boolean;
+};
+
 export type ProjectEnumType = {
   name: string;
   /** In Sortierreihenfolge des Typs */
@@ -307,6 +335,11 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectStatisticsResult>;
+  inspectForeignKeys(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectForeignKeyResult>;
   inspectEnumTypes(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -512,6 +545,17 @@ type PolicyRow = {
   check_expression: string | null;
 };
 
+type ForeignKeyRow = {
+  constraint_name: string;
+  table_name: string;
+  referenced_schema: string;
+  referenced_table: string;
+  on_delete: string;
+  on_update: string;
+  columns: string[];
+  referenced_columns: string[];
+};
+
 type EnumTypeRow = {
   type_name: string;
   labels: string[];
@@ -641,6 +685,50 @@ const POLICIES_SQL = `
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
   WHERE namespace.nspname = $1
   ORDER BY relation.relname ASC, policy.polname ASC
+  LIMIT $2`;
+
+const MAX_FOREIGN_KEYS = 400;
+/** Ein zusammengesetzter Schluessel darf hoechstens so viele Spalten tragen; PostgreSQL erlaubt 32. */
+const MAX_FOREIGN_KEY_COLUMNS = 32;
+
+/**
+ * Fremdschluessel eines Schemas, aus `pg_constraint` mit `contype = 'f'`
+ * (2.41). Der Schema-Visualizer zeichnet daraus die Linien.
+ *
+ * `conkey` und `confkey` sind Arrays von Spaltennummern, und ihre Reihenfolge
+ * ist die des Schluessels: bei `FOREIGN KEY (b, a) REFERENCES p (y, x)` gehoert
+ * `b` zu `y`. `unnest ... WITH ORDINALITY` haelt genau diese Reihenfolge fest;
+ * `array_agg` ohne `ORDER BY` waere sonst die Reihenfolge des Joins, und das
+ * Bild wuerde die Spalten verwechseln. Dasselbe Muster wie `indkey` in
+ * `INDEXES_SQL`.
+ *
+ * Gefiltert wird nach dem Schema der verweisenden Tabelle. Zeigt ein Schluessel
+ * in ein anderes Schema, bleibt er drin und nennt jenes Schema; wegwerfen
+ * waere eine Luege im Bild.
+ */
+const FOREIGN_KEYS_SQL = `
+  SELECT fk.conname AS constraint_name,
+         relation.relname AS table_name,
+         referenced_namespace.nspname AS referenced_schema,
+         referenced.relname AS referenced_table,
+         fk.confdeltype AS on_delete,
+         fk.confupdtype AS on_update,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(fk.conkey) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = fk.conrelid AND attribute.attnum = key.attnum), ARRAY[]::text[]) AS columns,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(fk.confkey) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = fk.confrelid AND attribute.attnum = key.attnum), ARRAY[]::text[]) AS referenced_columns
+  FROM pg_catalog.pg_constraint AS fk
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = fk.conrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN pg_catalog.pg_class AS referenced ON referenced.oid = fk.confrelid
+  JOIN pg_catalog.pg_namespace AS referenced_namespace ON referenced_namespace.oid = referenced.relnamespace
+  WHERE namespace.nspname = $1
+    AND fk.contype = 'f'
+  ORDER BY relation.relname ASC, fk.conname ASC
   LIMIT $2`;
 
 /**
@@ -1070,6 +1158,41 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  async inspectForeignKeys(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectForeignKeyResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<ForeignKeyRow>(FOREIGN_KEYS_SQL, [schema, MAX_FOREIGN_KEYS + 1]);
+      const rows = result.rows.slice(0, MAX_FOREIGN_KEYS);
+      const foreignKeys: ProjectForeignKey[] = rows.map((row) => {
+        if (!catalogName(row.constraint_name) || !catalogName(row.table_name) ||
+            !catalogName(row.referenced_schema) || !catalogName(row.referenced_table) ||
+            !identifierList(row.columns, MAX_FOREIGN_KEY_COLUMNS) || row.columns.length === 0 ||
+            !identifierList(row.referenced_columns, MAX_FOREIGN_KEY_COLUMNS) ||
+            // Ein Fremdschluessel hat auf beiden Seiten gleich viele Spalten. Stimmt
+            // das nicht, hat die Abfrage eine Spalte verloren, und das Bild waere falsch.
+            row.referenced_columns.length !== row.columns.length) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.constraint_name,
+          table: row.table_name,
+          columns: row.columns,
+          referencedSchema: row.referenced_schema,
+          referencedTable: row.referenced_table,
+          referencedColumns: row.referenced_columns,
+          onDelete: foreignKeyAction(row.on_delete),
+          onUpdate: foreignKeyAction(row.on_update),
+        };
+      });
+      return { source: "postgres", schema, foreignKeys, truncated: result.rows.length > rows.length };
+    });
+  }
+
   async inspectEnumTypes(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1375,6 +1498,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 
+  async inspectForeignKeys(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectForeignKeyResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
   async inspectExtensions(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectExtensionResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
@@ -1419,6 +1550,23 @@ function assertResolvedBoundary(resolved: ResolvedProjectDatabaseConnection): vo
       !IDENTIFIER.test(resolved.expectedDatabase) || !resolved.pool ||
       typeof resolved.pool.connect !== "function") {
     throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+}
+
+/**
+ * `confdeltype` und `confupdtype` aus `pg_constraint` in Worte (2.41). Ein
+ * unbekannter Buchstabe ist kein Fall fuer eine Vorgabe: dann kennt QKERN die
+ * PostgreSQL-Version nicht, die ihn schreibt, und raten waere schlimmer als
+ * abbrechen.
+ */
+function foreignKeyAction(value: unknown): ProjectForeignKeyAction {
+  switch (value) {
+    case "a": return "no_action";
+    case "r": return "restrict";
+    case "c": return "cascade";
+    case "n": return "set_null";
+    case "d": return "set_default";
+    default: throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
   }
 }
 

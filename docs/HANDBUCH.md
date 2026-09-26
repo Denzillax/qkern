@@ -171,6 +171,56 @@ fast nie zählen. Nicht im Blick sind einzelne Abfragepläne, Sperren,
 Cache-Trefferquoten, Verbindungen, die Grösse der Tabellen selbst und Schemas
 ausser `public`.
 
+### Schema-Visualizer
+
+Seit `2.41.0` zeigt **Datenbank → Schema-Visualizer** das Schema `public` als
+Bild: je Tabelle ein Kasten mit ihren Spalten, je Fremdschlüssel eine Linie von
+der verweisenden Spalte zur Zieltabelle. Nur lesend; nichts wird verschoben,
+angelegt oder geändert, und eine Beziehung entsteht wie jede Schemaänderung über
+ein Change Set.
+
+Die Tabellen und Spalten kommen aus `/schema`, die Beziehungen aus der neuen
+Route
+`GET /api/v1/projects/{projectId}/environments/{environment}/schema/foreign-keys?schema=public`,
+mit derselben Tür wie `/schema/policies` (Session mit Leserecht oder
+scope-gebundener Projekt-Key), dieselbe Prüfung des Parameters `schema`
+(Vorgabe `public`, jeder andere Parameter und ein zweites `schema` sind ein 400),
+`Cache-Control: private, no-store`, Antwort
+`{ data: { source, schema, foreignKeys, truncated } }`.
+
+Gelesen wird `pg_constraint` mit `contype = 'f'`, verbunden mit `pg_class` und
+`pg_namespace`. `conkey` und `confkey` werden über
+`unnest ... WITH ORDINALITY` zu Spaltennamen aufgelöst, und zwar in der
+Reihenfolge des Schlüssels: bei `FOREIGN KEY (b, a) REFERENCES p (y, x)` gehört
+`b` zu `y`. `confdeltype` und `confupdtype` stehen als Worte in der Antwort
+(`no_action`, `restrict`, `cascade`, `set_null`, `set_default`); ein Buchstabe,
+den QKERN nicht kennt, wird abgewiesen statt geraten. Höchstens 400
+Fremdschlüssel, danach ist `truncated` wahr, und die Ansicht sagt das.
+
+Gefiltert wird nach dem Schema der verweisenden Tabelle. Zeigt ein Schlüssel in
+ein anderes Schema, bleibt er drin und nennt jenes Schema; im Bild steht dann
+ein gestrichelter Kasten mit `schema.tabelle`. Still wegwerfen wäre eine Lüge im
+Bild.
+
+Das Diagramm rechnet `buildSchemaDiagram` in `lib/console/schema-diagram.ts`
+aus: eine reine Funktion, keine neue Abhängigkeit, keine Farbe, keine Sprache.
+Tabellen nach Namen sortiert, in ein Gitter mit 1 bis 4 Spalten je nach
+Tabellenzahl, jede Gitterzeile so hoch wie ihr höchster Kasten, darum können
+sich zwei Kästen nie überschneiden. Linien laufen rechtwinklig mit einem Knick
+in der Mitte, ein Selbstverweis wird zur Schlaufe an der rechten Kante. Gleiche
+Eingabe ergibt dasselbe Bild. Gefärbt wird erst in der Ansicht, mit
+`currentColor` und den CSS-Variablen der Console, damit das Bild hell und dunkel
+lesbar bleibt.
+
+Unter dem Bild steht dieselbe Auskunft in Worten, denn ein Diagramm ist für eine
+Vorleseausgabe nichts. Das SVG selbst trägt `role="img"` und ein `aria-label`
+mit Schema und beiden Zählern.
+
+Gezeichnet wird, was der Katalog hergibt: Tabellen, Spalten und
+Fremdschlüssel. Vererbung, Partitionen, Sichten und Regeln fehlen im Bild,
+ebenso Primärschlüssel, denn die liefert `/schema` nicht mit. Bei mehr als zwölf
+Spalten zeigt ein Kasten die ersten zwölf und darunter die Zahl der übrigen.
+
 ## 5. Generated Data API und Projekt-Keys
 
 CRUD ist unabhängig von der freien Lese-Data-Plane standardmäßig aus. Es benötigt

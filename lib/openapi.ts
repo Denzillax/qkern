@@ -178,6 +178,25 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/schema/foreign-keys": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectForeignKeys",
+        summary: "List the foreign key constraints of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, no-store, and the schema query parameter defaulting to public. Read from pg_constraint with contype 'f'; the referencing and referenced column lists keep the exact order of the key, so the first referencing column belongs to the first referenced column. A key that points into another schema stays in the answer and names that schema. At most 400 keys, then truncated is true. Nothing is written; a relation is created like any schema change, through a Change Set.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
+        ],
+        responses: {
+          "200": { description: "Foreign keys ordered by table and constraint name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectForeignKeysResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/advisors/security": {
       get: {
         tags: ["Project Data"], operationId: "getProjectSecurityAdvisor",
@@ -1219,6 +1238,9 @@ export const qkernOpenAPI = {
       ProjectSchemaTable: { type: "object", additionalProperties: false, required: ["name", "kind", "rowSecurityEnabled", "columns", "truncated"], properties: { name: { type: "string" }, kind: { type: "string", enum: ["table", "partitioned_table", "view", "materialized_view"] }, rowSecurityEnabled: { type: "boolean" }, columns: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectSchemaColumn" } }, truncated: { type: "boolean" } } },
       ProjectSchema: { type: "object", additionalProperties: false, required: ["source", "schema", "tables", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, tables: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectSchemaTable" } }, truncated: { type: "boolean" } } },
       ProjectSchemaResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectSchema" } } },
+      ProjectForeignKey: { type: "object", additionalProperties: false, required: ["name", "table", "columns", "referencedSchema", "referencedTable", "referencedColumns", "onDelete", "onUpdate"], properties: { name: { type: "string", maxLength: 63 }, table: { type: "string", maxLength: 63 }, columns: { type: "array", minItems: 1, maxItems: 32, items: { type: "string", maxLength: 63 } }, referencedSchema: { type: "string", maxLength: 63 }, referencedTable: { type: "string", maxLength: 63 }, referencedColumns: { type: "array", minItems: 1, maxItems: 32, items: { type: "string", maxLength: 63 } }, onDelete: { type: "string", enum: ["no_action", "restrict", "cascade", "set_null", "set_default"] }, onUpdate: { type: "string", enum: ["no_action", "restrict", "cascade", "set_null", "set_default"] } } },
+      ProjectForeignKeys: { type: "object", additionalProperties: false, required: ["source", "schema", "foreignKeys", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, foreignKeys: { type: "array", maxItems: 400, items: { $ref: "#/components/schemas/ProjectForeignKey" } }, truncated: { type: "boolean" } } },
+      ProjectForeignKeysResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectForeignKeys" } } },
       ProjectReadQuery: { type: "object", additionalProperties: false, required: ["statement"], properties: { statement: { type: "string", minLength: 1, maxLength: 4000 }, limit: { type: "integer", minimum: 1, maximum: 100, default: 20 } } },
       ProjectReadQueryResult: { type: "object", additionalProperties: false, required: ["source", "columns", "rows", "rowCount", "truncated", "maxRows"], properties: { source: { const: "postgres" }, columns: { type: "array", maxItems: 128, items: { type: "string" } }, rows: { type: "array", maxItems: 100, items: { type: "object" } }, rowCount: { type: "integer", minimum: 0, maximum: 100 }, truncated: { type: "boolean" }, maxRows: { type: "integer", minimum: 1, maximum: 100 } } },
       ProjectReadQueryResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectReadQueryResult" } } },

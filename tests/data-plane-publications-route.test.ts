@@ -20,7 +20,7 @@ async function identity() {
 }
 
 function port(method: ReturnType<typeof vi.fn>): ProjectDataPlanePort {
-  return { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectPublications: method } as ProjectDataPlanePort;
+  return { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectPublications: method } as ProjectDataPlanePort;
 }
 
 describe("project publications route", () => {

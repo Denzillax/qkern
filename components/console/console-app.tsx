@@ -25,6 +25,7 @@ import { RealtimeInspectorView } from "@/components/console/realtime-inspector-v
 import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
+import { SchemaVisualizerView } from "@/components/console/schema-visualizer-view";
 import { PoliciesView } from "@/components/console/policies-view";
 import { EnumTypesView } from "@/components/console/enum-types-view";
 import { ExtensionsView } from "@/components/console/extensions-view";
@@ -240,6 +241,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "db-roles": return <RolesView projectId={props.project.id} environment={props.environment}/>;
     case "db-publications": return <PublicationsView projectId={props.project.id} environment={props.environment}/>;
     case "db-column-privileges": return <ColumnPrivilegesView projectId={props.project.id} environment={props.environment}/>;
+    case "db-schemas": return <SchemaVisualizerView projectId={props.project.id} environment={props.environment}/>;
     case "int-cron": return <CronView projectId={props.project.id} environment={props.environment}/>;
     case "set-api-keys": return <ApiKeysView projectId={props.project.id} environment={props.environment}/>;
     case "auth-providers": return <AuthProvidersView projectId={props.project.id} environment={props.environment}/>;
