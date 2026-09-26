@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "schema-names-mutation.log",
+  "commit": "fc9a32c46edd3f3e49b1e1dde35df88876cb1a9e",
+  "commitSubject": "tests: Realtime-Soak mit ausdruecklichem Wartebudget und Meldung",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 45,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 171 passed (172)",
+  "passed": 171,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

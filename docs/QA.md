@@ -4770,3 +4770,44 @@ fehlgeschlagen, zweimal reproduziert; Mutation 1 von 1270 faellt, exit 1;
 Nicht erbracht: die Ansicht ist im Browser nur im Ladezustand gesehen,
 weil die Konsolensitzung im Speichermodus abgelaufen war; die Zustaende
 sind durch Einheitstests belegt, nicht durch einen Klick.
+
+## Schemanamen mit Grossbuchstaben – Release 2.33
+
+Seit 2.26 duerfen Tabellen, Spalten, Funktionen und Argumente der Data API
+Grossbuchstaben tragen; Schemanamen blieben klein. Jetzt gilt fuer sie
+dieselbe Grammatik, `isDataSchemaName` in `identifiers.ts`: das Muster
+der Bezeichner, ohne `pg_*`, `information_schema` und `qkern_internal`.
+Elf Routen, der Katalogdienst, die generierte API und die OpenAPI nutzen
+sie. Andere Namen (Datenbanken, Rollen, Ledger-Owner, Realtime-Kanaele,
+Provisionierung) bleiben klein.
+
+SQL-Audit, zweimal gemacht (Implementierer und Reviewer): jeder Schemawert
+erreicht SQL als Parameter (`nspname = $1` in allen Katalogabfragen) oder
+durch `quoted()`, das die Grammatik erneut prueft und in `"..."` setzt;
+kein `lower(`, kein `ILIKE`, kein `search_path`. `Shop` und `shop` sind
+zwei Schemata, und der PostgreSQL-Fall belegt es: Schema `Shop_<hex>` mit
+Tabelle `Items`, RLS und Rechten fuer den API-Login; `inspectSchema` sieht
+die Tabelle, `listRows` liefert die Zeile, der Zwilling in Kleinschrift
+liefert nichts, die Grossschreibung ist nicht gefunden, die OpenAPI traegt
+den Pfad. Einheitstests: `Shop` angenommen, `pg_Shop`, `pg_catalog`,
+`information_schema`, `qkern_internal`, `Shop"`, 64 Zeichen, `shop.x`
+abgewiesen, ohne Verbindung.
+
+Mutation: `isDataSchemaName` auf die alte Grammatik (nur klein)
+zurueckgesetzt; genau der neue Fall faellt, 171 von 172, exit 1.
+
+Nebenbei: der Realtime-Soak-Test wartete hoechstens 30 s auf 120
+Aenderungen; ein geteilter CI-Runner schaffte 112 (2.32, Wiederholung
+gruen). Das Wartebudget ist jetzt ausdruecklich 75 s, die Testzeit 150 s,
+und die Meldung nennt beim Fehlschlag die fehlende Zahl und die Wartezeit.
+Vollstaendigkeit, Reihenfolge und die Latenzschranken je Ereignis sind
+unveraendert.
+
+Checkpoint `2.33.0` am 26. September 2026: PostgreSQL 17 172 von 172
+bestanden, exit 0, zweimal reproduziert; Mutation 171 von 172, exit 1;
+Lokal 1275 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: die generierte OpenAPI fuer ein anderes Schema als `public`
+nennt die Tabellenpfade ohne `schema`-Parameter (schon vor 2.33 so); die
+Konsole schickt weiterhin nur `schema=public`.

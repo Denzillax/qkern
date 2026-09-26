@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "schema-names-local-run2.log",
+  "commit": "fc9a32c46edd3f3e49b1e1dde35df88876cb1a9e",
+  "commitSubject": "tests: Realtime-Soak mit ausdruecklichem Wartebudget und Meldung",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1275 passed | 254 skipped (1529)",
+  "passed": 1275,
+  "failed": 0,
+  "skipped": 254,
+  "images": []
+}

@@ -35,7 +35,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.32.md](RELEASE_2.32.md) | Aktueller Release: Was die Data API kann |
+| [RELEASE_2.33.md](RELEASE_2.33.md) | Aktueller Release: Schemanamen mit Grossbuchstaben |
+| [RELEASE_2.32.md](RELEASE_2.32.md) | Was die Data API kann |
 | [RELEASE_2.31.md](RELEASE_2.31.md) | Vier Sprachen |
 | [RELEASE_2.30.md](RELEASE_2.30.md) | Drei Türen |
 | [RELEASE_2.29.md](RELEASE_2.29.md) | Backup und Restore, lokal bewiesen |

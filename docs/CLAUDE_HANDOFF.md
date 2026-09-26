@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.32.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.33.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,22 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.32.0`
-- Aktueller Slice: 2.32 Was die Data API kann – der Platzhalter
+- Paketversion: `2.33.0`
+- Aktueller Slice: 2.33 Schemanamen mit Grossbuchstaben – der in 2.26
+  offen gelassene Schritt: Schemanamen der Data API folgen jetzt derselben
+  Grammatik wie Tabellennamen (`isDataSchemaName` in `identifiers.ts`:
+  `DATA_IDENTIFIER` minus `pg_*`, `information_schema`, `qkern_internal`).
+  Elf Routen, `service.ts`, `generated-api.ts` und drei
+  OpenAPI-Parameter nutzen sie; SQL-Audit: jeder Schemawert ist Parameter
+  oder geht durch `quoted()`, kein `lower(`/`ILIKE`, `Shop` und `shop`
+  sind zwei Schemata. Neuer PostgreSQL-Fall (Schema `Shop_<hex>` mit
+  Tabelle `Items`, RLS, Zwilling in Kleinschrift bleibt leer, OpenAPI
+  enthaelt den Pfad): 172 von 172; Mutation (alte Grammatik nur klein)
+  faellt genau dort. Dazu: der Realtime-Soak-Test hat ein ausdrueckliches
+  Wartebudget von 75 s statt 30 s und nennt beim Fehlschlag die Zahl der
+  fehlenden Aenderungen, nachdem ein CI-Runner 112 von 120 in 30 s
+  schaffte (Wiederholung gruen); die harten Zusicherungen sind unveraendert
+- Vorheriger Slice: 2.32 Was die Data API kann – der Platzhalter
   "Data API" unter Einstellungen ist eine echte, nur lesende Ansicht
   (`components/console/data-api-settings-view.tsx`): Status aus der
   generierten OpenAPI (bereit mit Zahl der freigegebenen Tabellen und Link,
@@ -67,7 +81,7 @@ Grossbuchstaben.
   Publish-Trockenlauf mit Provenance aus dem oeffentlichen Repo lief, aber
   uebersprang das Veroeffentlichen, weil 1.7.0-alpha.5 schon auf npm liegt;
   der Nachweis ist erst beim naechsten Paketstand belegt
-- Vorheriger Slice: 2.31 Vier Sprachen – Schritt 2 des Doku-Plans: die
+- Davor: 2.31 Vier Sprachen – Schritt 2 des Doku-Plans: die
   fuenf Einstiegsseiten auf Englisch, Franzoesisch und Italienisch unter
   `docs/guide/en|fr|it/`, uebersetzt von drei parallelen Agenten mit
   denselben Regeln (Struktur, Codebloecke byteidentisch, Anker aus den

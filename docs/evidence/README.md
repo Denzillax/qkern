@@ -1384,3 +1384,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/data-api-view-local-run1.log` | Vitest lokal (Windows) | 1270 bestanden, exit 0 |
 | `2026-09-26/data-api-view-local-run2.log` | Vitest lokal (Windows) | 1270 bestanden, exit 0, Wiederholung |
 | `2026-09-26/data-api-view-mutation.log` | Vitest lokal, Mutation (409 als bereit) | **1 fällt, exit 1 – absichtlich** |
+
+## Läufe zu Release 2.33 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/schema-names-run1.log` | PostgreSQL 17 | 172 von 172, exit 0 |
+| `2026-09-26/schema-names-run2.log` | PostgreSQL 17 | 172 von 172, exit 0, Wiederholung |
+| `2026-09-26/schema-names-mutation.log` | PostgreSQL 17, Mutation | **171 von 172, exit 1 – absichtlich** |
+| `2026-09-26/schema-names-local-run1.log` | Vitest lokal (Windows) | 1275 bestanden, exit 0 |
+| `2026-09-26/schema-names-local-run2.log` | Vitest lokal (Windows) | 1275 bestanden, exit 0, Wiederholung |
