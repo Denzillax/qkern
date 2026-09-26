@@ -126,15 +126,20 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
 
     expect(await service.revokeSession(scope, userId, rotatedSession.id)).toEqual({ revoked: 1 });
     expect((await service.listSessions(scope, userId)).sessions).toHaveLength(1);
-    await expect(service.refresh(scope, rotated.refreshToken)).rejects.toBeTruthy();
+    // Ein widerrufenes Refresh Token laeuft in die Replay-Pruefung der Rotation.
+    await expect(service.refresh(scope, rotated.refreshToken)).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
     await expect(service.verifyAccess(scope, rotated.accessToken)).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+    // Die andere Familie lebt weiter: ihr Refresh Token rotiert normal.
+    const secondRotated = await service.refresh(scope, second.refreshToken);
+    expect(secondRotated.refreshToken).toMatch(/^qk_refresh_/);
 
     expect(await service.revokeAllSessions(scope, userId)).toEqual({ revoked: 1 });
     expect((await service.listSessions(scope, userId)).sessions).toEqual([]);
-    await expect(service.refresh(scope, second.refreshToken)).rejects.toBeTruthy();
+    await expect(service.refresh(scope, secondRotated.refreshToken)).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
 
     const bystanderId = (await service.verifyAccess(scope, bystander.session.accessToken)).user.id;
     expect((await service.listSessions(scope, bystanderId)).sessions).toHaveLength(1);
+    await expect(service.refresh(scope, bystander.session.refreshToken)).resolves.toMatchObject({ tokenType: "Bearer" });
     await expect(service.listSessions({ ...scope, projectId: randomUUID() }, userId))
       .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
   });

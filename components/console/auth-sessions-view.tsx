@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, LogOut, RefreshCw, Users } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
@@ -25,15 +25,23 @@ export function AuthSessionsView({ projectId, environment }: { projectId: string
   const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
+  // Jede Ladeanfrage bekommt eine Nummer; nur die juengste darf den Zustand
+  // setzen. Sonst koennte eine langsame Antwort fuer Nutzer A nach dem
+  // Wechsel zu Nutzer B dessen Liste ueberschreiben.
+  const request = useRef(0);
 
   const loadSessions = useCallback(async (userId: string) => {
-    if (!userId) { setSessions([]); return; }
+    const ticket = ++request.current;
+    const current = () => ticket === request.current;
+    setSessions([]);
+    if (!userId) return;
     try {
       const response = await fetch(`${base}/${userId}/sessions`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) { setSessions([]); setMessage(payload.error ?? t("Sitzungen nicht verfügbar")); return; }
+      if (!current()) return;
+      if (!response.ok) { setMessage(payload.error ?? t("Sitzungen nicht verfügbar")); return; }
       setMessage(""); setSessions(payload.data.sessions as Session[]);
-    } catch { setSessions([]); setMessage(t("Sitzungen nicht verfügbar")); }
+    } catch { if (current()) setMessage(t("Sitzungen nicht verfügbar")); }
   }, [base]);
 
   const load = useCallback(async () => {
@@ -56,17 +64,23 @@ export function AuthSessionsView({ projectId, environment }: { projectId: string
   async function revoke(session: Session) {
     if (!window.confirm(t("Diese Sitzung beenden? Die App muss sich danach neu anmelden."))) return;
     setBusy(session.id);
-    const response = await fetch(`${base}/${selected}/sessions/${session.id}`, { method: "DELETE" });
-    setBusy("");
-    if (response.ok) await loadSessions(selected); else setMessage(t("Die Sitzung konnte nicht beendet werden."));
+    try {
+      const response = await fetch(`${base}/${selected}/sessions/${session.id}`, { method: "DELETE" });
+      if (!response.ok) { setMessage(t("Die Sitzung konnte nicht beendet werden.")); return; }
+      await loadSessions(selected);
+    } catch { setMessage(t("Die Sitzung konnte nicht beendet werden.")); }
+    finally { setBusy(""); }
   }
 
   async function revokeAll() {
     if (!window.confirm(t("Alle Sitzungen dieses Nutzers beenden? Er wird überall abgemeldet, bleibt aber aktiv."))) return;
     setBusy("all");
-    const response = await fetch(`${base}/${selected}/sessions`, { method: "DELETE" });
-    setBusy("");
-    if (response.ok) await loadSessions(selected); else setMessage(t("Die Sitzungen konnten nicht beendet werden."));
+    try {
+      const response = await fetch(`${base}/${selected}/sessions`, { method: "DELETE" });
+      if (!response.ok) { setMessage(t("Die Sitzungen konnten nicht beendet werden.")); return; }
+      await loadSessions(selected);
+    } catch { setMessage(t("Die Sitzungen konnten nicht beendet werden.")); }
+    finally { setBusy(""); }
   }
 
   if (state === "loading") return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Sitzungen werden geladen…")}</h3></div>;

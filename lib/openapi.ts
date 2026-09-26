@@ -751,7 +751,7 @@ export const qkernOpenAPI = {
         description: "Owner or administrator only with trusted same-origin validation. Access tokens stop working immediately because verification checks the persisted session.",
         security: [{ sessionCookie: [] }],
         parameters: [...projectAuthScopeParameters, { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
+        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions/{sessionId}": {
@@ -760,7 +760,7 @@ export const qkernOpenAPI = {
         description: "Owner or administrator only with trusted same-origin validation. The session must be active and belong to the user; otherwise the answer is not found. Every refresh token of that sign-in stops working; other sessions of the user are untouched.",
         security: [{ sessionCookie: [] }],
         parameters: [...projectAuthScopeParameters, { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, { name: "sessionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
+        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/generated-openapi": {

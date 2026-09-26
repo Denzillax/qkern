@@ -195,6 +195,8 @@ describe("Project Auth service", () => {
       .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     await expect(built.service.listSessions({ ...scope, projectId: "project-2" }, userId))
       .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    await expect(built.service.revokeSession({ ...scope, environment: "staging" }, userId, secondPrincipal.session.id))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
 
     const rotatedId = (await built.service.verifyAccess(scope, rotated.accessToken)).session.id;
     expect(await built.service.revokeSession(scope, userId, rotatedId)).toEqual({ revoked: 1 });

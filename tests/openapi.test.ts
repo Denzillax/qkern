@@ -48,6 +48,7 @@ describe("QKERN OpenAPI contract", () => {
     const sessions = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions"];
     expect(sessions.get.description).toContain("verifiers are never selected");
     expect(sessions.delete.summary).toContain("without disabling");
+    expect(Object.keys(sessions.delete.responses)).toEqual(expect.arrayContaining(["401", "503"]));
     expect(qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions/{sessionId}"].delete.summary)
       .toContain("whole refresh family");
     expect(Object.keys(qkernOpenAPI.components.schemas.ProjectAuthSessionSummary.properties)).not.toContain("refreshTokenHash");

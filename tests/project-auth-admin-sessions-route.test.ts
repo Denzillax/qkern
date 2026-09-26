@@ -105,7 +105,7 @@ describe("project auth admin sessions routes", () => {
     const revoked = await built.one(built.call(`/${userId}/sessions/${sessionId}`, "DELETE"), built.params({ userId, sessionId }));
     expect(revoked.status).toBe(200);
     expect(await revoked.json()).toEqual({ data: { revoked: 1 } });
-    await expect(built.service.refresh(built.scope, user.session.refreshToken)).rejects.toBeTruthy();
+    await expect(built.service.refresh(built.scope, user.session.refreshToken)).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
 
     const all = await built.handlers.DELETE(built.call(`/${userId}/sessions`, "DELETE"), built.params({ userId }));
     expect(all.status).toBe(200);
