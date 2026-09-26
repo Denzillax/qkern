@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "cron-log-run1.log",
+  "commit": "86ae9c143779dafb8a5ff95bc0ed08d7e82cd4e7",
+  "commitSubject": "tests: Cron-Fall bekommt eine eigene Organisation",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 47,
+  "testFiles": "31 passed (31)",
+  "tests": "179 passed (179)",
+  "passed": 179,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

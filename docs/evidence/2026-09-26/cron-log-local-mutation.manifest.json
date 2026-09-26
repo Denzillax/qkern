@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Verifikator aus dem Namen, nur Cron-Tests",
+  "log": "cron-log-local-mutation.log",
+  "commit": "86ae9c143779dafb8a5ff95bc0ed08d7e82cd4e7",
+  "commitSubject": "tests: Cron-Fall bekommt eine eigene Organisation",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "2 failed | 9 passed (11)",
+  "passed": 9,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.41.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.42.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,33 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.41.0`
-- Aktueller Slice: 2.41 Das Schema als Bild – der Platzhalter
+- Paketversion: `2.42.0`
+- Aktueller Slice: 2.42 Was der Zeitplan ausgeloest hat – der Platzhalter
+  "Cron" unter Logs ist eine echte, nur lesende Ansicht
+  (`components/console/cron-log-view.tsx`). Es gibt kein Laufprotokoll; das
+  Log wird rekonstruiert: erwartete Vorkommen aus dem Ausdruck, dazu der
+  Verifikator, den der Dispatcher beim Einreihen schreibt. Der
+  Dedupe-Schluessel `cron:<id>:<ISO-Zeit>` stand inline im Dispatcher und ist
+  jetzt `cronOccurrenceDedupeKey` in `lib/server/compute/cron.ts`, die der
+  Dispatcher selbst benutzt; die Hashfunktion wurde nicht nachgebaut, sondern
+  als `projectQueueDedupeKeyHash` aus `project-queues/service.ts`
+  exportiert. Vier Zustaende: gefunden, fehlt, noch nicht faellig (mit fuenf
+  Minuten Nachsicht fuer Taktung und Uhrenversatz) und erwartet – vor der
+  Anlage oder nach Ablauf des Dedupe-Fensters, wo ein fehlender Eintrag
+  nichts beweist. Fenster: letzte 24 Stunden plus die naechste Stunde,
+  hoechstens 50 Vorkommen, im Dienst begrenzt und in der Antwort genannt.
+  Nicht zurueckgegeben werden Payload, Dedupe-Schluessel, Verifikator,
+  Nachrichten-Id und alle Lease-Spalten. PostgreSQL-Fall "(2.42)" reiht ueber
+  CronDispatcher und ProjectQueueService ein, nicht von Hand: 179 statt 178
+  Faelle. Der Fall brauchte drei Anlaeufe beim Aufraeumen (Audit-Zeilen
+  unveraenderlich, Queue-Nachricht vor Aufbewahrungsfrist geschuetzt) und hat
+  jetzt eine eigene Organisation wie die Faelle 2.35 und 2.36. Mutation
+  (Verifikator aus dem Namen statt der Kennung) faellt im Stack in 1 und
+  lokal in 2 Faellen. Offener Fehler nebenbei gefunden: eine Queue mit
+  Dedupe-Fenster 0 verletzt zusammen mit einem Dedupe-Schluessel
+  `project_queue_messages_dedupe_pair`, ein solcher Cron-Job scheitert bei
+  jedem Vorkommen. Im Browser nicht gesehen
+- Vorheriger Slice: 2.41 Das Schema als Bild – der Platzhalter
   "Schema-Visualizer" ist eine echte, nur lesende Ansicht
   (`components/console/schema-visualizer-view.tsx`): Tabellen mit Spalten und
   die Fremdschluessel dazwischen, als SVG. Neue Data-Plane-Methode
@@ -72,7 +97,7 @@ Grossbuchstaben.
   Attrappen arbeiten und die Reihenfolge nur am echten Katalog beweisbar ist.
   Kein Schema-Waehler, wie bei den Policies; Primaerschluessel fehlen im
   Bild, weil `/schema` sie nicht liefert. Im Browser nicht gesehen
-- Vorheriger Slice: 2.40 Wo es langsam wird – der Platzhalter "Leistung"
+- Davor: 2.40 Wo es langsam wird – der Platzhalter "Leistung"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/performance-advisor-view.tsx`), gleiche Bauart wie der
   Sicherheitsberater aus 2.39. Neue Data-Plane-Methode `inspectStatistics`

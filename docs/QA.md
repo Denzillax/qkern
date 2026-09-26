@@ -5112,3 +5112,52 @@ werden. Einen Schema-Waehler gibt es nicht, die Ansicht zeigt `public`. Die
 neue Route nennt Namen von Tabellen und Spalten in fremden Schemas, die die
 Schema-Route nicht zeigt: nur Namen, keine Daten, und kein Recht, das die
 Leserolle nicht schon hatte. Im Browser nicht gesehen.
+
+## Was der Zeitplan ausgeloest hat – Release 2.42
+
+QKERN protokolliert keine Cron-Laeufe. Die Ansicht Logs, Cron baut das Log
+deshalb aus zwei Quellen zusammen: den erwarteten Vorkommen aus dem
+Ausdruck und den Nachrichten der Queue. Verbunden werden sie ueber den
+Verifikator, den der Dispatcher beim Einreihen schreibt und den die Queue
+nur als Hash speichert, nie im Klartext.
+
+Genau daran haengt die ganze Behauptung. Bildet der Leser den Verifikator
+anders als der Dispatcher, zeigt die Ansicht lauter Luecken, wo in
+Wirklichkeit alles eingereiht wurde, und niemand merkt es. Der
+Dedupe-Schluessel stand bisher inline im Dispatcher; er ist jetzt eine
+benannte Funktion, die der Dispatcher selbst benutzt, und die Hashfunktion
+wurde nicht nachgebaut, sondern exportiert. Der Zertifizierungsfall reiht
+ueber Dispatcher und Queue-Dienst ein, nicht von Hand, sonst pruefte er
+seine eigene Annahme.
+
+Es gibt vier Zustaende, nicht drei. Neben gefunden, fehlt und noch nicht
+faellig steht erwartet: fuer Vorkommen vor der Anlage der Definition und
+fuer solche, deren Dedupe-Fenster abgelaufen ist. Dort beweist ein
+fehlender Eintrag nichts, und die Ansicht sagt das, statt eine Luecke zu
+behaupten.
+
+Der Fall brauchte drei Anlaeufe beim Aufraeumen, und jeder Fehlschlag war
+eine Produktzusage: Audit-Zeilen sind nachtraeglich unveraenderlich und
+verweisen auf das Projekt; eine Queue-Nachricht mit Dedupe-Schluessel darf
+vor Ablauf der Aufbewahrung nicht geloescht werden; und eine Organisation
+mit Audit-Zeilen laesst sich nicht mehr loeschen. Der Fall hat jetzt eine
+eigene Organisation und raeumt nur ab, was er abraeumen darf.
+
+Mutation: der Leser bildet den Verifikator aus dem Namen statt aus der
+Kennung. Im Stack faellt 1 von 179 Faellen, lokal 2 von 11
+Cron-Tests, exit 1 beide Male.
+
+Checkpoint `2.42.0` am 26. September 2026: PostgreSQL 17 mit 179 von 179,
+exit 0, zweimal reproduziert; Lokal 1395 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Was der Container ausgegeben hat, steht nicht im Log. Ein
+Dedupe-Fenster, das kuerzer ist als der Cron-Takt, macht aeltere Vorkommen
+unbeweisbar; die Voreinstellung sind fuenf Minuten. Die Nachsicht von fuenf
+Minuten misst gegen die Uhr der API, nicht die des Schedulers. Ein
+geaenderter Ausdruck ist nicht rekonstruierbar, weil Ausdruck und Queue
+unveraenderlich sind und eine Aenderung eine neue Definition ist. Die
+Aufbewahrung loescht Nachrichten, ein Vorkommen wandert dann von gefunden
+zu erwartet. Offen und nicht repariert: eine Queue mit Dedupe-Fenster 0
+laesst zusammen mit einem Dedupe-Schluessel jeden Cron-Lauf scheitern. Im
+Browser nicht gesehen.

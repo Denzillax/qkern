@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "cron-log-local-run2.log",
+  "commit": "86ae9c143779dafb8a5ff95bc0ed08d7e82cd4e7",
+  "commitSubject": "tests: Cron-Fall bekommt eine eigene Organisation",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1395 passed | 262 skipped (1657)",
+  "passed": 1395,
+  "failed": 0,
+  "skipped": 262,
+  "images": []
+}

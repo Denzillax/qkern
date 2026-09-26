@@ -1,0 +1,51 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/compute-cron-occurrences.test.ts (11 tests | 2 failed) 70ms
+     × builds every dedupe verifier exactly as the dispatcher and the queue do 10ms
+     × puts the found message beside its occurrence, with state, attempts and enqueue time 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/compute-cron-occurrences.test.ts > cron occurrence assembly > builds every dedupe verifier exactly as the dispatcher and the queue do
+AssertionError: expected 'd7f814339a6acbf158c0486470c5f3c7ae03d…' to be '2884012f9610aab0d72b9ad7653e1302c3c60…' // Object.is equality
+
+Expected: "2884012f9610aab0d72b9ad7653e1302c3c60c109833842f5748f89fc839c7f8"
+Received: "d7f814339a6acbf158c0486470c5f3c7ae03d40c1a2828dfbc654be45a100740"
+
+ ❯ tests/compute-cron-occurrences.test.ts:102:39
+    100|     ]);
+    101|     for (const candidate of candidates) {
+    102|       expect(candidate.dedupeKeyHash).toBe(projectQueueDedupeKeyHash(
+       |                                       ^
+    103|         `cron:${cronId}:${candidate.occurredAt.toISOString()}`,
+    104|       ));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/compute-cron-occurrences.test.ts > cron occurrence assembly > puts the found message beside its occurrence, with state, attempts and enqueue time
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/compute-cron-occurrences.test.ts:115:19
+    113|     const log = await service.listCronOccurrences(admin, scope, cronId…
+    114|     const found = log.occurrences.filter((entry) => entry.status === "…
+    115|     expect(found).toHaveLength(1);
+       |                   ^
+    116|     expect(found[0]).toEqual({
+    117|       occurredAt: "2026-08-04T11:45:00.000Z",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 passed (11)
+   Start at  18:23:54
+   Duration  427ms (transform 143ms, setup 0ms, import 190ms, tests 70ms, environment 0ms)
+
+EXIT=1
