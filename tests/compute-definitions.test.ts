@@ -75,6 +75,10 @@ function harness(options: {
     async listFunctionDeployments() { return []; },
     async recordFunctionInvocation() {},
     async listFunctionInvocations() { return []; },
+    async listInvocationLog(_principal, _scope, query) {
+      calls.push({ method: "listInvocationLog", payload: query });
+      return { rows: [], limit: query.limit, offset: query.offset, hasMore: false, counts: { completed: 0, failed: 0 } };
+    },
     async listCron() { return cron; },
     async createCron(_principal, _scope, input) {
       calls.push({ method: "createCron", payload: input });

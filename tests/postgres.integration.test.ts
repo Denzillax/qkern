@@ -59,6 +59,11 @@ import { WebhookDeliverer } from "@/lib/server/compute/webhooks";
 import { HmacWebhookSigner, verifyWebhookSignature } from "@/lib/server/compute/webhook-signer";
 import { VaultWebhookSecretProvider } from "@/lib/server/compute/webhook-secret-vault";
 import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catalog-vault";
+// Das Aufrufprotokoll (2.55): echte Definition, echter Aufrufdienst, echtes
+// Protokoll. Nur die Sandbox ist ersetzt, die ist im Functions-Stack eigens
+// zertifiziert.
+import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
+import { FunctionInvocationError } from "@/lib/server/compute/functions";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -1761,6 +1766,139 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         .catch(() => undefined);
     }
   });
+
+  it("(2.55) lists function invocations with outcome and duration without the container output", async () => {
+    // Das Aufrufprotokoll aus Migration 0045 an einem echten Server. Nur echt
+    // zu belegen sind die Dinge, auf die es hier ankommt: die Formpruefung
+    // `project_function_invocations_outcome_shape` (Status oder Fehlercode,
+    // nie beides), die Sortierung und der Seitenschnitt in SQL, die Zaehlung
+    // je Ausgang, die den Ausgangsfilter ignoriert, und die RLS der Tabelle.
+    // Gegen einen Memory-Port waere davon nichts zu sehen.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.45, 2.50 und 2.52:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und eine Organisation mit unloeschbaren Zeilen darunter blockiert das.
+    const logOwner = randomUUID();
+    const logOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [logOwner, `function-log-${logOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Function Log', $2, $3)`, [logOrganization, `function-log-${logOrganization}`, logOwner]);
+    const logProject = randomUUID();
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Function Log', $3, 'test', 'ready', $4)`,
+    [logProject, logOrganization, `function-log-${logProject}`, logOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [logOrganization, logProject, `managed:${logProject}`]);
+
+    const scope = {
+      organizationId: logOrganization, projectId: logProject, environment: "development" as const,
+    };
+    const admin = {
+      organizationId: logOrganization, actorRef: `function-log-${logOwner}@qkern.test`,
+      role: "admin" as const, subject: logOwner,
+    };
+    const repository = new PostgresComputeDefinitionRepository(new PostgresControlPlane(runtime));
+    const definitions = new ComputeDefinitionService({ repository });
+    const image = `registry.example.com/qkern/probe@sha256:${"b".repeat(64)}`;
+    const suffix = randomUUID().slice(0, 8);
+    const green = await definitions.createFunction(admin, scope, {
+      name: `log-green-${suffix}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+    const red = await definitions.createFunction(admin, scope, {
+      name: `log-red-${suffix}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+
+    // Genau das, was ein Container drucken wuerde. Es darf nirgends im
+    // Protokoll wieder auftauchen: 0045 speichert stdout und stderr nicht.
+    const containerOutput = `stdout-${randomUUID()}`;
+    const succeeding = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      invoker: {
+        async invoke() {
+          return Object.freeze({ statusCode: 201, headers: {}, body: { printed: containerOutput } });
+        },
+      },
+    });
+    const failing = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      invoker: { async invoke() { throw new FunctionInvocationError("FUNCTION_TIMEOUT"); } },
+    });
+
+    await succeeding.invoke(admin, scope, green.name, { probe: containerOutput });
+    await succeeding.invoke(admin, scope, green.name, { probe: containerOutput });
+    await expect(failing.invoke(admin, scope, red.name, { probe: containerOutput }))
+      .rejects.toBeInstanceOf(FunctionInvocationError);
+
+    const page = await definitions.readFunctionInvocationLog(admin, scope, { limit: 2, offset: 0 });
+    expect(page.rows).toHaveLength(2);
+    expect(page.limit).toBe(2);
+    expect(page.offset).toBe(0);
+    // Drei Aufrufe, zwei je Seite: Es gibt eine zweite Seite.
+    expect(page.hasMore).toBe(true);
+    // Die Zaehlung kommt aus der Datenbank, nicht aus den geladenen Zeilen.
+    expect(page.counts).toEqual({ completed: 2, failed: 1 });
+
+    // Die Formpruefung der Migration, an echten Zeilen: erfolgreich traegt
+    // einen Status und keinen Fehlercode, fehlgeschlagen umgekehrt.
+    for (const row of page.rows) {
+      expect(row.durationMs, row.invocationId).toBeGreaterThanOrEqual(0);
+      expect(row.invokedBy).toBe(admin.actorRef);
+      if (row.outcome === "completed") {
+        expect(row.statusCode).toBe(201);
+        expect(row.errorCode).toBeNull();
+      } else {
+        expect(row.statusCode).toBeNull();
+        expect(row.errorCode).toBe("FUNCTION_TIMEOUT");
+      }
+    }
+
+    // Der Kern dieses Falls: Weder die Nutzlast noch die Ausgabe des
+    // Containers steht irgendwo in der Antwort.
+    expect(JSON.stringify(page)).not.toContain(containerOutput);
+
+    const second = await definitions.readFunctionInvocationLog(admin, scope, { limit: 2, offset: 2 });
+    expect(second.rows).toHaveLength(1);
+    expect(second.hasMore).toBe(false);
+    // Keine Zeile steht auf beiden Seiten.
+    expect(page.rows.map((row) => row.invocationId))
+      .not.toContain(second.rows[0]?.invocationId);
+
+    // Filter nach Ausgang: nur die gescheiterte Zeile, aber dieselbe Zaehlung.
+    const failed = await definitions.readFunctionInvocationLog(admin, scope, { outcome: "failed" });
+    expect(failed.rows.map((row) => row.outcome)).toEqual(["failed"]);
+    expect(failed.rows[0]?.functionName).toBe(red.name);
+    expect(failed.counts).toEqual({ completed: 2, failed: 1 });
+
+    // Filter nach Function: die Zaehlung folgt diesem Filter.
+    const onlyGreen = await definitions.readFunctionInvocationLog(admin, scope, { functionId: green.id });
+    expect(onlyGreen.rows).toHaveLength(2);
+    expect(onlyGreen.counts).toEqual({ completed: 2, failed: 0 });
+    expect(new Set(onlyGreen.rows.map((row) => row.functionName))).toEqual(new Set([green.name]));
+    // Neueste zuerst: Die Sortierung steht in SQL, nicht in JavaScript.
+    const times = onlyGreen.rows.map((row) => Date.parse(row.startedAt));
+    expect(times[0]).toBeGreaterThanOrEqual(times[1]);
+
+    // Eine fremde Organisation sieht nichts, auch nicht ueber denselben Pool:
+    // Die RLS von 0045 haengt an qkern_current_organization_id().
+    const foreign = await definitions.readFunctionInvocationLog(
+      { ...admin, organizationId: organizationA },
+      { ...scope, organizationId: organizationA },
+    );
+    expect(foreign.rows).toEqual([]);
+    expect(foreign.counts).toEqual({ completed: 0, failed: 0 });
+
+    // Weggeraeumt wird nichts: `project_function_invocations` ist append-only
+    // (0045 hat weder UPDATE- noch DELETE-Policy). Eigene Organisation,
+    // eigenes Projekt, eigene Namen; der Wegwerf-Stack faellt nach dem Lauf
+    // weg. Loeschen laesst das Produkt hier nur die Function selbst, und die
+    // naehme ihr Protokoll mit; also bleibt beides stehen.
+  });
+
 });
 
 /**

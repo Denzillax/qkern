@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -67,9 +67,7 @@ export const PLACEHOLDERS = {
   // Logs
   "logs-api": { label: "API-Gateway", supabase: "Logs → API Gateway", backend: "fehlt", note: "Jede Anfrage am Rand mit Status und Dauer." },
   "logs-postgres": { label: "Postgres", supabase: "Logs → Postgres", backend: "fehlt", note: "Das Serverlog der Projektdatenbank: Verbindungen, Fehler, langsame Statements." },
-  "logs-postgrest": { label: "Data API", supabase: "Logs → PostgREST", backend: "fehlt", note: "Log der generierten Data API: jede Anfrage mit Rolle, Tabelle und Antwortzeit." },
   "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
-  "logs-functions": { label: "Functions", supabase: "Logs → Edge Functions", backend: "fehlt", note: "Start, Ende und Fehler je Function-Aufruf, mit Dauer und Ausgangsverbindungen." },
   "logs-pooler": { label: "Pooler", supabase: "Logs → Pooler", backend: "fehlt", note: "Log des Verbindungspools: Warteschlange, abgewiesene Verbindungen, Grenzen." },
   "logs-explorer": { label: "Log-Explorer", supabase: "Logs → Explorer", backend: "fehlt", note: "Logs mit SQL durchsuchen, speichern, als Vorlage ablegen." },
   // Integrationen
@@ -130,8 +128,8 @@ export const NAV: NavGroup[] = [
     ph("obs-query-performance"), ph("obs-query-insights"), { id: "obs-connections", label: "Verbindungen" },
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
-    { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), ph("logs-postgrest"), { id: "logs-auth", label: "Auth" }, { id: "logs-storage", label: "Storage" },
-    ph("logs-realtime"), ph("logs-functions"), ph("logs-pooler"), { id: "logs-cron", label: "Cron" }, ph("logs-explorer"),
+    { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), { id: "logs-postgrest", label: "Data API" }, { id: "logs-auth", label: "Auth" }, { id: "logs-storage", label: "Storage" },
+    ph("logs-realtime"), { id: "logs-functions", label: "Functions" }, ph("logs-pooler"), { id: "logs-cron", label: "Cron" }, ph("logs-explorer"),
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [

@@ -7,6 +7,8 @@ import {
   type ComputeDefinitionScope,
   type CronDefinitionRecord,
   type FunctionDefinitionRecord,
+  type FunctionInvocationLogPage,
+  type FunctionInvocationLogQuery,
   type FunctionInvocationRecord,
   type WebhookDefinitionRecord,
   type WebhookDeliveryRecord,
@@ -329,6 +331,70 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
         invocationId: row.invocation_id, invokedBy: row.invoked_by, startedAt: row.started_at,
         durationMs: row.duration_ms, outcome: row.outcome, statusCode: row.status_code, errorCode: row.error_code,
       }));
+    });
+  }
+
+  /**
+   * Das Aufrufprotokoll einer Umgebung ueber alle Functions (2.51).
+   *
+   * Zwei Abfragen in einer Transaktion: die Seite und die Zaehlung je
+   * Ausgang. Gezaehlt wird in der Datenbank; die Zeilen dafuer nach
+   * JavaScript zu holen, um sie dort zu zaehlen, waere bei 10'000 Aufrufen
+   * genau der Fehler, den der Seitenschnitt vermeiden soll.
+   *
+   * Der Ausgangsfilter gilt nur fuer die Seite, nicht fuer die Zaehlung:
+   * Sonst koennte die Ansicht neben "nur fehlgeschlagene" nie sagen, wie
+   * viele Aufrufe es insgesamt gab.
+   *
+   * `hasMore` kommt aus einer Zeile mehr statt aus einem zweiten COUNT ueber
+   * die gefilterte Menge: Die Frage ist "gibt es noch eine Seite", nicht
+   * "wie viele".
+   */
+  async listInvocationLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    query: FunctionInvocationLogQuery): Promise<FunctionInvocationLogPage> {
+    return await this.read(principal, async (database) => {
+      const page = await database.query<{
+        function_id: string; function_name: string; invocation_id: string; invoked_by: string;
+        started_at: string; duration_ms: number; outcome: "completed" | "failed";
+        status_code: number | null; error_code: string | null;
+      }>(
+        `SELECT log.function_id, fn.name AS function_name, log.invocation_id, log.invoked_by,
+                log.started_at::text AS started_at, log.duration_ms, log.outcome,
+                log.status_code, log.error_code
+         FROM project_function_invocations AS log
+         JOIN project_functions AS fn
+           ON fn.organization_id = log.organization_id AND fn.project_id = log.project_id
+          AND fn.environment = log.environment AND fn.id = log.function_id
+         WHERE log.organization_id = $1 AND log.project_id = $2 AND log.environment = $3
+           AND ($4::uuid IS NULL OR log.function_id = $4::uuid)
+           AND ($5::text IS NULL OR log.outcome = $5::text)
+         ORDER BY log.started_at DESC, log.invocation_id DESC
+         LIMIT $6 OFFSET $7`,
+        [...scopeValues(scope), query.functionId, query.outcome, query.limit + 1, query.offset]);
+
+      const counts = await database.query<{ outcome: "completed" | "failed"; total: string }>(
+        `SELECT outcome, count(*)::text AS total
+         FROM project_function_invocations
+         WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+           AND ($4::uuid IS NULL OR function_id = $4::uuid)
+         GROUP BY outcome`,
+        [...scopeValues(scope), query.functionId]);
+
+      const rows = page.rows.slice(0, query.limit).map((row) => Object.freeze({
+        functionId: row.function_id, functionName: row.function_name,
+        invocationId: row.invocation_id, invokedBy: row.invoked_by, startedAt: row.started_at,
+        durationMs: row.duration_ms, outcome: row.outcome, statusCode: row.status_code,
+        errorCode: row.error_code,
+      }));
+      const total = (outcome: "completed" | "failed") =>
+        Number(counts.rows.find((row) => row.outcome === outcome)?.total ?? "0");
+      return Object.freeze({
+        rows: Object.freeze(rows),
+        limit: query.limit,
+        offset: query.offset,
+        hasMore: page.rows.length > query.limit,
+        counts: Object.freeze({ completed: total("completed"), failed: total("failed") }),
+      });
     });
   }
 

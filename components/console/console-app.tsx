@@ -50,6 +50,8 @@ import { AuthMfaView } from "@/components/console/auth-mfa-view";
 import { AuthSeriesView } from "@/components/console/auth-series-view";
 import { AuthLogView } from "@/components/console/auth-log-view";
 import { StorageLogView } from "@/components/console/storage-log-view";
+import { FunctionLogView } from "@/components/console/function-log-view";
+import { DataApiLogView } from "@/components/console/data-api-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
@@ -271,6 +273,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "advisors-performance": return <PerformanceAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "advisors-health": return <HealthAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "logs-cron": return <CronLogView projectId={props.project.id} environment={props.environment}/>;
+    // Logs -> Functions zeigt das Aufrufprotokoll aus 0045; Logs -> Data API
+    // sagt, dass es fuer die Data API kein Anfrageprotokoll gibt (2.51).
+    case "logs-functions": return <FunctionLogView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-postgrest": return <DataApiLogView projectId={props.project.id} environment={props.environment}/>;
     // Drei Seiten, eine Ansicht: Berichte -> API, Storage und Functions zeigen
     // dieselbe Zeitreihe ueber verschiedene Metriken (2.45).
     case "obs-api": return <UsageSeriesView key="obs-api" view="api" projectId={props.project.id} environment={props.environment}/>;

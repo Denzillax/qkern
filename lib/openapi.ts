@@ -622,6 +622,29 @@ export const qkernOpenAPI = {
         responses: { "200": { description: "Secret reference status", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionSecretStatusResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "No Vault is connected (VAULT_NOT_CONFIGURED), its configuration is invalid (VAULT_MISCONFIGURED) or it did not answer (VAULT_UNAVAILABLE)" } },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/compute/invocations": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectFunctionInvocationLog",
+        summary: "Read the invocation log of one project environment across all functions",
+        description: "Owner or administrator only, read-only, newest first. One row per invocation: start, duration, outcome and either an HTTP status or a fixed error code. The log deliberately carries no request payload, no container output (stdout and stderr are never stored) and no error message from the sandbox or the database. Optional filters are one function id and one outcome; counts per outcome ignore the outcome filter so the page can still state the total. Any unknown or repeated query parameter is a 400 before the service is called.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, {
+          name: "function", in: "query", required: false,
+          description: "Restrict the log to one function.",
+          schema: { type: "string", format: "uuid" },
+        }, {
+          name: "outcome", in: "query", required: false,
+          schema: { type: "string", enum: ["completed", "failed"] },
+        }, {
+          name: "limit", in: "query", required: false,
+          schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+        }, {
+          name: "offset", in: "query", required: false,
+          schema: { type: "integer", minimum: 0, maximum: 10000, default: 0 },
+        }],
+        responses: { "200": { description: "One page of the invocation log", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionInvocationLogResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/compute/invoke/{name}": {
       post: {
         tags: ["Project Compute"], operationId: "invokeProjectFunction",
@@ -1464,6 +1487,8 @@ export const qkernOpenAPI = {
       SetComputeDefinitionEnabled: { type: "object", additionalProperties: false, required: ["enabled"], properties: { enabled: { type: "boolean" } } },
       ComputeDeletedResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["deleted"], properties: { deleted: { const: true } } } } },
       ProjectFunctionDefinition: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "runtime", "image", "entrypoint", "timeoutMs", "memoryMiB", "maxConcurrency", "egressOrigins", "secretRefs", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, runtime: { const: "nodejs24" }, image: { type: "string", pattern: "^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$" }, entrypoint: { type: "string", maxLength: 128 }, timeoutMs: { type: "integer", minimum: 100, maximum: 300000 }, memoryMiB: { type: "integer", minimum: 64, maximum: 2048 }, maxConcurrency: { type: "integer", minimum: 1, maximum: 100, description: "Recorded but not yet enforced." }, egressOrigins: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string", format: "uri" }, description: "A non-empty list is rejected at call time until an egress proxy exists." }, secretRefs: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string" }, description: "References only. Secret values never reach this surface or the sandbox environment." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectFunctionInvocationLogRow: { type: "object", additionalProperties: false, required: ["functionId", "functionName", "invocationId", "invokedBy", "startedAt", "durationMs", "outcome", "statusCode", "errorCode"], properties: { functionId: { type: "string", format: "uuid" }, functionName: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, invocationId: { type: "string", format: "uuid" }, invokedBy: { type: "string", maxLength: 320 }, startedAt: { type: "string" }, durationMs: { type: "integer", minimum: 0 }, outcome: { type: "string", enum: ["completed", "failed"] }, statusCode: { type: ["integer", "null"], minimum: 100, maximum: 599 }, errorCode: { type: ["string", "null"], pattern: "^[A-Z_]{3,64}$", description: "A fixed code, never a message from the sandbox or the database." } } },
+      ProjectFunctionInvocationLogResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["rows", "limit", "offset", "hasMore", "counts"], properties: { rows: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectFunctionInvocationLogRow" } }, limit: { type: "integer", minimum: 1, maximum: 200 }, offset: { type: "integer", minimum: 0, maximum: 10000 }, hasMore: { type: "boolean", description: "Read from one extra row, not from a total count." }, counts: { type: "object", additionalProperties: false, required: ["completed", "failed"], properties: { completed: { type: "integer", minimum: 0 }, failed: { type: "integer", minimum: 0 } }, description: "Counted without the outcome filter, with the function filter." } } } } },
       ProjectFunctionSecretStatusResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["secrets", "checkedAt"], properties: { secrets: { type: "array", maxItems: 20, items: { type: "object", additionalProperties: false, required: ["ref", "status"], properties: { ref: { type: "string", maxLength: 128 }, status: { type: "string", enum: ["present", "missing", "forbidden"] } } } }, checkedAt: { type: "string", format: "date-time" } } } } },
       ProjectSecurityAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["findings", "checks", "checkedAt"], properties: {
         findings: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "rule", "severity", "object", "summary", "remedy"], properties: { id: { type: "string" }, rule: { type: "string", enum: [...SECURITY_RULE_IDS] }, severity: { type: "string", enum: ["high", "medium", "low"] }, object: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: { kind: { type: "string", enum: ["table", "policy", "bucket", "api_key"] }, name: { type: "string" } } }, summary: { type: "string", description: "German; the console translates it." }, remedy: { type: "string", description: "German; the console translates it." } } } },

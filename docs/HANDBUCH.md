@@ -1280,6 +1280,76 @@ Datenbank: Migration `0049_project_database_webhooks.sql` hält die Kopplung.
 Die ausgehende Definition, die Outbox, die Lease, das Backoff und der Dead
 Letter bleiben in `0032`.
 
+### Function-Aufrufe im Protokoll
+
+Seit `2.51.0` ist **Logs → Functions** keine Platzhalterseite mehr. Der
+Platzhalter versprach „Start, Ende und Fehler je Function-Aufruf, mit Dauer
+und Ausgangsverbindungen“. Eingelöst wird davon das, was seit `1.89.0` in
+`project_function_invocations` (Migration `0045`) wirklich steht.
+
+**Was eine Zeile trägt:** den Beginn des Aufrufs, die Function, den Auslöser
+(Projektschlüssel oder Administratorin), die Dauer in Millisekunden, den
+Ausgang — `completed` oder `failed` — und entweder den HTTP-Status der Antwort
+oder einen festen Fehlercode wie `FUNCTION_TIMEOUT`. Mehr nicht.
+
+**Was sie nicht trägt, und warum:**
+
+- **Keine Ausgabe des Containers.** stdout und stderr werden nicht
+  gespeichert. Sie stammen aus fremdem Code und könnten alles enthalten, was
+  die Function gesehen hat; das ist die Haltung aus `1.22.0` und sie gilt
+  weiter. Die Platzhalterseite **Functions → Function-Logs** bleibt deshalb
+  ein Platzhalter.
+- **Keine Ausgangsverbindungen.** Jede Verbindung einer Function wird gegen
+  ihre Allowlist geprüft, aber die Prüfung hinterlässt keine Zeile. Eine
+  Liste der Ziele je Aufruf gibt es nicht, und diese Seite erfindet keine.
+- **Kein eigenes Ende.** Es ergibt sich aus Beginn plus Dauer.
+- **Keine Nutzlast** und **keine Fehlermeldung** aus Sandbox oder Datenbank.
+  Im Fehlerfall steht ein fester Code, nie ein Text.
+
+Das Protokoll ist append-only: `0045` hat weder eine UPDATE- noch eine
+DELETE-Policy. Was gelaufen ist, lässt sich nicht umschreiben.
+
+Die Lesefläche ist
+`GET .../compute/invocations` mit `function`, `outcome`, `limit` (höchstens
+200) und `offset` (höchstens 10 000). Jeder andere Parameter, jede doppelte
+Angabe und jede Zahl ausserhalb der Form sind ein 400, bevor der Dienst
+gerufen wird; die Antwort trägt `Cache-Control: private, no-store`. Die
+Zählung je Ausgang ignoriert den Ausgangsfilter, damit die Seite neben
+„nur fehlgeschlagene“ weiterhin sagen kann, wie viele Aufrufe es insgesamt
+gab. Die ältere Route `.../compute/functions/{functionId}/invocations` aus
+`1.89.0` bleibt daneben bestehen; sie liest eine einzelne Function.
+
+### Data API: kein Anfrageprotokoll
+
+Seit `2.51.0` ist auch **Logs → Data API** keine Platzhalterseite mehr — und
+die Seite sagt als Erstes, dass es das Versprochene nicht gibt. Der
+Platzhalter nannte „jede Anfrage mit Rolle, Tabelle und Antwortzeit“.
+
+**Eine solche Zeile schreibt niemand.** QKERN führt für die generierte Data
+API kein Protokoll je Anfrage. An ihrer HTTP-Grenze wird **gezählt**, nicht
+protokolliert: `admitApiRequest` legt ein Nutzungsereignis der Metrik
+`api_requests` an, und das trägt eine Menge, einen Zeitpunkt, seine Quelle
+und den Entscheid der Quota — keine Rolle, keine Tabelle, keinen Statuscode,
+keine Dauer.
+
+Die Seite zeigt deshalb genau zwei Dinge, jedes mit seinem Namen:
+
+1. **Die Stundenreihe der Metrik `api_requests`** aus `2.45.0`. Sie ist
+   ausdrücklich **keine** Zahl der Data-API-Anfragen: Unter derselben Metrik
+   zählen auch Control Plane, Auth, Storage, Queues, Realtime und MCP mit. Das
+   Ereignis trägt seine Quelle zwar in der Spalte `source`, die Aggregation
+   gruppiert aber nur nach Metrik. Die Kurve ist eine Obergrenze.
+2. **Die Freigabe der Data API** aus `2.32.0`: welche Tabellen im erzeugten
+   OpenAPI-Dokument stehen. Das sagt, was möglich ist, nicht was geschehen
+   ist.
+
+**Was ein echtes Anfrageprotokoll bräuchte:** eine Zeile je Anfrage, erzeugt
+an der HTTP-Grenze der generierten Data API, mit Rolle, Schema, Tabelle,
+Operation, Statuscode und Dauer, dazu eine eigene Aufbewahrung und ein eigenes
+Leserecht. Bevor es diese Zeile gibt, kann die Seite kein Log zeigen — und
+auch dann trüge sie nie Filter, Werte oder gelesene Zeilen einer Anfrage.
+
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

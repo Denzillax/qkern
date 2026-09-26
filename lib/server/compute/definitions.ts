@@ -136,6 +136,50 @@ export type FunctionInvocationRecord = Readonly<{
   errorCode: string | null;
 }>;
 
+/**
+ * Eine Zeile des Aufrufprotokolls mit der Function, zu der sie gehoert.
+ *
+ * Der Name steht dabei, weil das Protokoll ueber alle Functions einer
+ * Umgebung laeuft; eine Id allein waere in einer Tabelle nicht lesbar.
+ * Mehr als die Zeile aus Migration 0045 traegt sie nicht: keine Nutzlast,
+ * keine Ausgabe des Containers, kein Geheimnis.
+ */
+export type FunctionInvocationLogRow = FunctionInvocationRecord & Readonly<{
+  functionId: string;
+  functionName: string;
+}>;
+
+/** Filter und Seitenschnitt des Aufrufprotokolls. `null` heisst: kein Filter. */
+export type FunctionInvocationLogQuery = Readonly<{
+  functionId: string | null;
+  outcome: "completed" | "failed" | null;
+  limit: number;
+  offset: number;
+}>;
+
+/**
+ * Eine Seite des Aufrufprotokolls.
+ *
+ * `counts` zaehlt die Ausgaenge **ohne** den Ausgangsfilter, aber mit dem
+ * Function-Filter: Sonst zeigte die Ansicht neben dem Filter "fehlgeschlagen"
+ * nur die fehlgeschlagenen und koennte nie sagen, wie viele es insgesamt
+ * sind. `hasMore` kommt aus einer Zeile mehr, nicht aus einem Gesamtzaehler.
+ */
+export type FunctionInvocationLogPage = Readonly<{
+  rows: readonly FunctionInvocationLogRow[];
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  counts: Readonly<{ completed: number; failed: number }>;
+}>;
+
+export const FUNCTION_INVOCATION_LOG_LIMITS = Object.freeze({
+  maxLimit: 200,
+  defaultLimit: 50,
+  /** Tiefer blaettern geht nicht; ein OFFSET ohne Grenze ist ein Tischscan. */
+  maxOffset: 10_000,
+});
+
 export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -186,6 +230,9 @@ export interface ComputeDefinitionRepository {
     functionId: string, entry: FunctionInvocationRecord): Promise<void>;
   listFunctionInvocations(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
     functionId: string, limit: number): Promise<FunctionInvocationRecord[]>;
+  /** Das Aufrufprotokoll ueber alle Functions einer Umgebung (2.51). */
+  listInvocationLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    query: FunctionInvocationLogQuery): Promise<FunctionInvocationLogPage>;
   listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
     Promise<FunctionDefinitionRecord[]>;
   createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -530,6 +577,45 @@ export class ComputeDefinitionService {
     const existing = await this.options.repository.getFunction(principal, scope, id);
     if (!existing) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
     return await this.options.repository.listFunctionInvocations(principal, scope, id, limit);
+  }
+
+  /**
+   * Das Aufrufprotokoll einer ganzen Umgebung (2.51) — die Lesefläche der
+   * Seite Logs → Functions.
+   *
+   * Nur Admins, neueste zuerst, mit Seitenschnitt und zwei Filtern. Ein
+   * unbekannter Ausgang, eine unbrauchbare Function-Id, ein Limit ausserhalb
+   * der Grenze oder ein zu tiefer Versatz sind eine ungueltige Eingabe und
+   * kommen nie bis zur Datenbank.
+   *
+   * Anders als `listFunctionInvocations` wird hier **nicht** geprueft, ob es
+   * die gefilterte Function gibt: Das Protokoll einer geloeschten Function
+   * ist ohnehin mitgeloescht (0045 kaskadiert), und ein 404 statt einer
+   * leeren Seite waere fuer eine Filterauswahl die falsche Antwort.
+   */
+  async readFunctionInvocationLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    input: {
+      functionId?: string | null; outcome?: string | null;
+      limit?: number; offset?: number;
+    } = {}): Promise<FunctionInvocationLogPage> {
+    this.assertScope(principal, scope);
+    const limit = input.limit ?? FUNCTION_INVOCATION_LOG_LIMITS.defaultLimit;
+    const offset = input.offset ?? 0;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > FUNCTION_INVOCATION_LOG_LIMITS.maxLimit ||
+        !Number.isSafeInteger(offset) || offset < 0 || offset > FUNCTION_INVOCATION_LOG_LIMITS.maxOffset) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    const outcome = input.outcome ?? null;
+    if (outcome !== null && outcome !== "completed" && outcome !== "failed") {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    const functionId = input.functionId ?? null;
+    if (functionId !== null && !ID.test(functionId)) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    return await this.options.repository.listInvocationLog(principal, scope, Object.freeze({
+      functionId, outcome, limit, offset,
+    }));
   }
 
   async getFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {

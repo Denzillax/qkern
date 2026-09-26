@@ -15,6 +15,7 @@ import { authObservabilityTexts } from "@/lib/console/auth-observability-texts";
 import { storageLogTexts } from "@/lib/console/storage-log-texts";
 import { authMfaTexts } from "@/lib/console/auth-mfa-texts";
 import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
+import { logViewTexts } from "@/lib/console/log-view-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -68,6 +69,9 @@ async function consoleKeys(): Promise<string[]> {
   // Die Datenbank-Webhooks (2.50) zeigen die Gruende einer Ablehnung ueber
   // t(variable).
   for (const text of databaseWebhookTexts()) keys.add(text);
+  // Logs -> Functions und Logs -> Data API (2.51) zeigen Spalten, Ausgaenge,
+  // Zustaende und ihre Ehrlichkeitssaetze ueber t(variable).
+  for (const text of logViewTexts()) keys.add(text);
   return [...keys];
 }
 
