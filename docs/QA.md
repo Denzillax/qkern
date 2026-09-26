@@ -4899,3 +4899,39 @@ in der Abfrage); jeder Fehlversuch schreibt eine Kettenzeile unter dem
 Organisationslock, begrenzt nur durch das Passwortlimit von 10 je 15
 Minuten; die Ansicht ist im Browser nur im Zustand "nicht aktiviert"
 gesehen.
+
+## Die Kette in Zeitreihenfolge – Release 2.36
+
+Das Sicherheits-Review zu 2.35 fand eine alte Schwaeche, die mit den
+Anmelde-Ereignissen wahrscheinlich wurde: `audit_logs.created_at` ist
+`now()`, also der Beginn der Transaktion, der Kettenlock wird erst im
+Trigger genommen. Beginnen zwei Transaktionen in der einen und nehmen den
+Lock in der anderen Reihenfolge, zeigt `previous_hash` auf eine Zeile mit
+spaeterem Zeitstempel. Wer die Kette nach `(created_at, id)` nachrechnet,
+so wie der Backup-Drill und der Auth-Audit-Fall, meldet dann einen Bruch
+ohne Manipulation.
+
+Migration 0047 ersetzt den Trigger: nach dem Lock liest er Hash und
+Zeitstempel der neuesten Zeile der Organisation und setzt den eigenen
+Zeitstempel auf das Maximum aus Wanduhr und Vorgaenger plus einer
+Mikrosekunde, bevor er den Hash rechnet. Der Hash-Payload, der Lock und
+die SECURITY-Art sind unveraendert; `CREATE OR REPLACE` behaelt die
+EXECUTE-Grants. Damit gilt: Kettenreihenfolge gleich `(created_at, id)`
+je Organisation.
+
+Der PostgreSQL-Fall stellt das Rennen nach: A beginnt und liest `now()`,
+B haengt an und committet, dann haengt A an. A traegt einen spaeteren
+Zeitstempel als B, A.previous_hash ist B.entry_hash, und die Nachrechnung
+ist intakt. 175 von 175, zweimal. Mutation: die Anhebung im Trigger
+entfernt; genau dieser Fall faellt, 174 von 175.
+
+Checkpoint `2.36.0` am 26. September 2026: PostgreSQL 17 175 von 175
+bestanden, exit 0, zweimal reproduziert; Mutation 174 von 175, exit 1;
+Lokal 1290 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build`
+gruen.
+
+Nicht erbracht: der Trigger ueberschreibt einen explizit gesetzten
+Zeitstempel (kein Codepfad setzt einen; eine logische Wiederherstellung
+mit aktiven Triggern wuerde Hashes brechen); Zeilen vor 0047 koennen alte
+Paare tragen; unter REPEATABLE READ saehe der Trigger frische Zeilen nicht,
+kein Code setzt diese Stufe.

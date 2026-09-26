@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "audit-order-local-run1.log",
+  "commit": "c254af11ece3ace900b1eae050ae83bb67ecb1ed",
+  "commitSubject": "audit: Kettenreihenfolge gleich Zeitreihenfolge, auch bei gleichzeitigen Schreibern",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1290 passed | 257 skipped (1547)",
+  "passed": 1290,
+  "failed": 0,
+  "skipped": 257,
+  "images": []
+}

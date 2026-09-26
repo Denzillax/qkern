@@ -1414,3 +1414,13 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/auth-audit-mutation.log` | PostgreSQL 17, Mutation | **173 von 174, exit 1 – absichtlich** |
 | `2026-09-26/auth-audit-local-run1.log` | Vitest lokal (Windows) | 1289 bestanden, exit 0 |
 | `2026-09-26/auth-audit-local-run2.log` | Vitest lokal (Windows) | 1289 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.36 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/audit-order-run1.log` | PostgreSQL 17 | 175 von 175, exit 0 |
+| `2026-09-26/audit-order-run2.log` | PostgreSQL 17 | 175 von 175, exit 0, Wiederholung |
+| `2026-09-26/audit-order-mutation.log` | PostgreSQL 17, Mutation | **174 von 175, exit 1 – absichtlich** |
+| `2026-09-26/audit-order-local-run1.log` | Vitest lokal (Windows) | 1290 bestanden, exit 0 |
+| `2026-09-26/audit-order-local-run2.log` | Vitest lokal (Windows) | 1290 bestanden, exit 0, Wiederholung |

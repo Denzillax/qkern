@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.35.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.36.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,25 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.35.0`
-- Aktueller Slice: 2.35 Was die Anmeldung tat – Project Auth schreibt
+- Paketversion: `2.36.0`
+- Aktueller Slice: 2.36 Die Kette in Zeitreihenfolge – Befund aus dem
+  Sicherheits-Review zu 2.35: `created_at` der Audit-Zeile ist `now()`
+  der Transaktion, der Kettenlock kommt spaeter; zwei gleichzeitige
+  Schreiber konnten die Kette in eine Reihenfolge bringen, die der
+  Sortierung `(created_at, id)` widerspricht, und jede Nachrechnung haette
+  Manipulation gemeldet, wo keine war. Migration
+  `0047_audit_chain_order.sql` ersetzt `qkern_prepare_audit_log` mit dem
+  Koerper aus 0002 plus `NEW.created_at := greatest(clock_timestamp(),
+  previous_created_at + 1 us)` vor der Hashberechnung (created_at ist Teil
+  des Payloads), gleiche SECURITY-Art, Grants bleiben. Statischer
+  Migrationstest; PostgreSQL-Fall (A beginnt und friert now() ein, B
+  schreibt und committet, A schreibt: A.created_at > B, A.previous_hash =
+  B.entry_hash, Kette nachgerechnet intakt): 175 von 175; Mutation (Anhebung
+  entfernt) faellt genau dort. SECURITY.md nennt die Garantie. Offen: der
+  Trigger ueberschreibt ein explizit gesetztes created_at; Zeilen vor 0047
+  koennen alte Paare tragen; REPEATABLE READ waere weiterhin ein Problem,
+  wird nirgends gesetzt
+- Vorheriger Slice: 2.35 Was die Anmeldung tat – Project Auth schreibt
   jetzt Audit-Ereignisse in die Hash-Kette der Plattform: signup, login
   (erfolgreich und fehlgeschlagen), logout, mfa enrolled/verified, admin
   user.updated, session.revoked, sessions.revoked_all; kein Refresh. Sink
@@ -71,7 +88,7 @@ Grossbuchstaben.
   Aufraeumen: Audit-Zeilen sind append-only (Trigger ohne Ausnahme), eine
   Organisation mit Audit-Zeilen laesst sich nie loeschen; der Fall haengt
   deshalb nichts an den Kontrollnutzer der Datei
-- Vorheriger Slice: 2.34 Sitzungen sehen und beenden – der Platzhalter
+- Davor: 2.34 Sitzungen sehen und beenden – der Platzhalter
   "Sitzungen" unter Auth ist eine echte Ansicht: Nutzer waehlen, aktive
   Sitzungen (angelegt, laeuft ab, Sicherungsstufe, Familie) sehen, eine
   Sitzung oder alle beenden, mit Rueckfrage. Backend: Repository

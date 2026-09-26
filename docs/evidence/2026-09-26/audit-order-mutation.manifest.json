@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "audit-order-mutation.log",
+  "commit": "c254af11ece3ace900b1eae050ae83bb67ecb1ed",
+  "commitSubject": "audit: Kettenreihenfolge gleich Zeitreihenfolge, auch bei gleichzeitigen Schreibern",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 174 passed (175)",
+  "passed": 174,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}
