@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Pruefung an der Tuer entfernt",
+  "log": "welle2-mutation-mfa.log",
+  "commit": "510be1cd79da2d7533e2c3ead3c36ac30cd63c21",
+  "commitSubject": "tests: Webhook-Fall prueft den Tabellenfilter mit einer zweiten Tabelle",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 48,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 186 passed (187)",
+  "passed": 186,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

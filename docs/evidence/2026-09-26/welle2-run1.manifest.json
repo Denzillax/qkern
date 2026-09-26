@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle2-run1.log",
+  "commit": "510be1cd79da2d7533e2c3ead3c36ac30cd63c21",
+  "commitSubject": "tests: Webhook-Fall prueft den Tabellenfilter mit einer zweiten Tabelle",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 49,
+  "testFiles": "31 passed (31)",
+  "tests": "188 passed (188)",
+  "passed": 188,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

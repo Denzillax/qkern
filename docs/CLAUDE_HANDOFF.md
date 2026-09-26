@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.49.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.50.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,34 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.49.0`
-- Aktueller Slice: 2.49 Was der Scanner sah – "Storage" unter Logs ist
+- Paketversion: `2.50.0`
+- Aktueller Slice: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
+  Implementierer parallel, danach zusammengefuehrt. **Zweiter Faktor**:
+  `auth-mfa` ist eine echte Ansicht, und der Schalter wirkt an drei Stellen
+  in `lib/server/project-auth/service.ts`, nicht in der Console: beim
+  Entstehen der Sitzung, beim Auffrischen (die Familie wird widerrufen, nicht
+  bloss abgelehnt) und bei jeder Pruefung eines Zugriffstokens, was das
+  Restfenster von bis zu 15 Minuten schliesst. Wer keinen Faktor hat, bekommt
+  statt einer Sitzung einen Einrichtungsschein (`qk_enroll_`, 15 Minuten, nur
+  als Verifikator gespeichert, oeffnet nur die Einrichtung). Migration
+  `0048_project_auth_mfa_enforcement.sql`. Dabei kam ein alter Fehler ans
+  Licht: `recovery_code_hashes` ist jsonb, und der Treiber machte aus dem
+  JavaScript-Feld ein Postgres-Feld – die Einrichtung des zweiten Faktors
+  scheiterte an der echten Datenbank, in zwei Pfaden, und kein Fall ging
+  bisher diesen Weg. **Datenbank-Webhooks**: `int-webhooks` ist eine echte
+  Ansicht; gekoppelt wird ueber den vorhandenen Change Feed
+  (`qkern_internal.change_feed`), kein zweiter Trigger in der Kundendatenbank.
+  Eine Zustellung traegt Schema, Tabelle, Vorgang, Primaerschluessel, Position
+  und Zeitpunkt – und nichts sonst, weil der Feed selbst keine
+  Zeilenwerte fuehrt. Migration `0049_project_database_webhooks.sql` (beide
+  Zweige hatten 0048 vergeben). Der Stack hat jetzt einen Vault-Dienst, weil
+  der Fall eine echte Projektdatenbank und einen echten Vault gleichzeitig
+  braucht. **Ehrlich offen**: Die Bruecke hat noch keinen dauerhaften
+  Aufrufer, sie ist gebaut und zertifiziert, aber untaetig. PostgreSQL-Faelle
+  "(2.50)" und "(2.52)": 188 statt 186. Die Mutationsprobe entlarvte den
+  Webhook-Fall: ohne eine zweite, nicht gekoppelte Tabelle bewies er nichts
+  ueber den Tabellenfilter; seit `510be1c` tut er es. Im Browser nicht gesehen
+- Vorheriger Slice: 2.49 Was der Scanner sah – "Storage" unter Logs ist
   eine echte, nur lesende Ansicht (`components/console/storage-log-view.tsx`)
   mit Filter nach Bucket und Urteil, dazu ist "Realtime" unter Berichte an
   die geteilte Reihe aus 2.45 angeschlossen, weil die Metrik
@@ -67,7 +93,7 @@ Grossbuchstaben.
   **PostgreSQL**-Stack gefahren wird und nicht vom versitygw-Stack.
   Mutation (entfernte Zeilen wieder ausgeblendet) faellt dort in 1 Fall.
   Im Browser nicht gesehen
-- Vorheriger Slice: 2.48 Drei Slices nebeneinander – zwei Implementierer
+- Davor: 2.48 Drei Slices nebeneinander – zwei Implementierer
 - Paketversion: `2.48.0`
 - Aktueller Slice: 2.50 Datenbank-Webhooks – "Datenbank-Webhooks" unter
   Integrationen ist eine echte Ansicht

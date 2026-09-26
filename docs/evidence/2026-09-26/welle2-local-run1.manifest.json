@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle2-local-run1.log",
+  "commit": "510be1cd79da2d7533e2c3ead3c36ac30cd63c21",
+  "commitSubject": "tests: Webhook-Fall prueft den Tabellenfilter mit einer zweiten Tabelle",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1648 passed | 271 skipped (1919)",
+  "passed": 1648,
+  "failed": 0,
+  "skipped": 271,
+  "images": []
+}

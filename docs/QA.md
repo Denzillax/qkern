@@ -5466,3 +5466,54 @@ signierte Adresse und kein Provider-Schluessel in der Antwort. Die Zahlen je
 Urteil folgen dem gewaehlten Bucket, nicht dem gewaehlten Urteil. Die
 Reihe fuer Realtime zaehlt zugestellte Nachrichten, nicht Verbindungen. Im
 Browser nicht gesehen.
+
+## Zweiter Faktor und Datenbank-Webhooks – Release 2.50
+
+Zwei Slices, beide mit einem Fund, der ohne sie nicht aufgefallen waere.
+
+Der Schalter fuer den zweiten Faktor wirkt an drei Stellen im Dienst, nicht
+in der Console: dort wo eine Sitzung entsteht, beim Auffrischen und bei
+jeder Pruefung eines Zugriffstokens. Die dritte kostet einen kleinen
+Lesezugriff je Anfrage und schliesst dafuer das Fenster von bis zu fuenfzehn
+Minuten, in dem ein vor dem Umschalten ausgegebenes Token sonst weitergaelte.
+Wer noch keinen Faktor hat, bekommt statt einer Sitzung einen
+Einrichtungsschein, der nur die Einrichtung oeffnet; ohne ihn wuerde das
+Einschalten alle aussperren.
+
+Der Fall dazu brachte einen alten Fehler ans Licht: Die
+Wiederherstellungscodes gehen in eine jsonb-Spalte, wurden aber als
+JavaScript-Feld uebergeben, und der Treiber macht daraus ein Postgres-Feld
+in geschweiften Klammern. Die Datenbank weist das ab. Die Einrichtung des
+zweiten Faktors hat gegen eine echte PostgreSQL-Datenbank also nie
+funktioniert, in zwei Pfaden, obwohl TOTP als zertifiziert galt: kein
+Zertifizierungsfall ging bisher diesen Weg, und die Einzeltests arbeiten mit
+einer Attrappe, die keine Spaltentypen kennt.
+
+Die Datenbank-Webhooks koppeln an den vorhandenen Change Feed statt einen
+zweiten Trigger in die Kundendatenbank zu legen. Die Begruendung steht im
+Code: zwei Erfassungswege hiessen zwei Zusagen darueber, was eine erfasste
+Aenderung traegt, und genau diese Zusage ist der einzige Grund, warum die
+Flaeche sicher ist. Eine Zustellung traegt Schema, Tabelle, Vorgang,
+Primaerschluessel, Position und Zeitpunkt.
+
+Die Mutationsprobe war hier lehrreich. Der erste Versuch, die geaenderte
+Zeile in die Nutzlast zu schmuggeln, schrieb schlicht nichts: eine Aenderung
+im Feed traegt gar keine Zeilenwerte. Die Sicherheit liegt nicht in einem
+Filter der Bruecke, sondern darin, dass die Quelle die Werte nie hergibt.
+Der zweite Versuch, die Kopplung jede Tabelle nehmen zu lassen, blieb
+ebenfalls gruen – weil der Fall nur eine Tabelle kannte. Seit der
+Erweiterung um eine zweite, nicht gekoppelte Tabelle faellt er.
+
+Checkpoint `2.50.0` am 26. September 2026: PostgreSQL 17 mit Vault 1.18 mit
+188 von 188, exit 0, zweimal reproduziert; Lokal 1648 bestanden, 0
+fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Die Bruecke der Webhooks hat keinen dauerhaften Aufrufer;
+sie ist gebaut, zertifiziert und untaetig, weil der Compute-Prozess keine
+Verbindung zur Projektdatenbank haelt. Der Primaerschluessel erreicht den
+Empfaenger, auch beim Loeschen, und laesst sich nicht unterdruecken. Eine
+Tabelle ohne Erfassung erzeugt keine Zustellung. Beim zweiten Faktor bleibt
+ein Restweg: Wer QKERN-Token eigenstaendig gegen den oeffentlichen
+Schluessel prueft, sieht ein vor dem Umschalten ausgegebenes Token bis zum
+Ablauf als gueltig; das Token traegt seine Stufe, aber QKERN kann einen
+fremden Pruefer nicht zwingen, sie zu lesen. Im Browser nicht gesehen.
