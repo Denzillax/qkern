@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Beleg baut seine Beschriftung zusammen, nur Gesundheitstests",
+  "log": "health-local-mutation.log",
+  "commit": "ee95dce489ce4fb5f5038a5085674b597a4c3c0c",
+  "commitSubject": "tests: Stapelspur-Probe trifft nicht mehr das Wort hat",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "3 failed | 10 passed (13)",
+  "passed": 10,
+  "failed": 3,
+  "skipped": 0,
+  "images": []
+}

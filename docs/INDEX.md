@@ -35,7 +35,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.43.md](RELEASE_2.43.md) | Aktueller Release: Ein Fenster von null |
+| [RELEASE_2.44.md](RELEASE_2.44.md) | Aktueller Release: Was gerade laeuft |
+| [RELEASE_2.43.md](RELEASE_2.43.md) | Ein Fenster von null |
 | [RELEASE_2.42.md](RELEASE_2.42.md) | Was der Zeitplan ausgelöst hat |
 | [RELEASE_2.41.md](RELEASE_2.41.md) | Das Schema als Bild |
 | [RELEASE_2.40.md](RELEASE_2.40.md) | Wo es langsam wird |

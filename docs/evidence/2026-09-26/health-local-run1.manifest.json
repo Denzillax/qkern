@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "health-local-run1.log",
+  "commit": "ee95dce489ce4fb5f5038a5085674b597a4c3c0c",
+  "commitSubject": "tests: Stapelspur-Probe trifft nicht mehr das Wort hat",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1418 passed | 264 skipped (1682)",
+  "passed": 1418,
+  "failed": 0,
+  "skipped": 264,
+  "images": []
+}

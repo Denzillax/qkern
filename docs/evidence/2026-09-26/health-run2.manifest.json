@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "health-run2.log",
+  "commit": "ee95dce489ce4fb5f5038a5085674b597a4c3c0c",
+  "commitSubject": "tests: Stapelspur-Probe trifft nicht mehr das Wort hat",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 47,
+  "testFiles": "31 passed (31)",
+  "tests": "181 passed (181)",
+  "passed": 181,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

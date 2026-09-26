@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.43.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.44.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,32 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.43.0`
-- Aktueller Slice: 2.43 Ein Fenster von null – keine neue Ansicht, sondern
+- Paketversion: `2.44.0`
+- Aktueller Slice: 2.44 Was gerade laeuft – der Platzhalter "Gesundheit"
+  unter Advisors ist eine echte, nur lesende Ansicht
+  (`components/console/health-advisor-view.tsx`). Acht Teilsysteme werden
+  nebenlaeufig geprobt, jede Probe faengt ihren eigenen Fehler: Datenbank
+  (Katalogabfrage, Beleg ist die Tabellenzahl), Data API (erzeugtes
+  OpenAPI, Zahl der ausgelieferten Tabellen), Auth (Provider und
+  Signaturschluessel), Storage (Buckets), Compute (Definitionen und
+  Sandbox-Schalter), Queues und Cron (Zahlen, dazu nie ausgeloeste aktive
+  Definitionen), Realtime und Vault. Zustaende: ok, aus, nicht eingerichtet,
+  gestoert, unbekannt; das Gesamturteil ist der schlechteste vorkommende
+  Zustand. Fehlt dem Aufrufer eine Faehigkeit, meldet die einzelne Probe
+  `unbekannt` mit Grund statt die Seite mit 403 zu kippen. Der Beleg kann
+  strukturell kein Geheimnis tragen: er ist ein Schluessel in eine feste
+  Texttabelle plus Zahl oder null, und der Vertragstest verbietet
+  zusammengesetzte Zeichenketten im Regelmodul; der Routentest wirft eine
+  Verbindungszeichenkette mit Passwort als Fehler hinein und prueft, dass
+  nichts davon in der Antwort steht. PostgreSQL-Fall "(2.44)": 181 statt 180
+  Faelle, er probt eine echte Datenbank und eine Bindung ins Leere. Der Fall
+  fiel zuerst an einer zu groben Probe gegen Stapelspuren, die das deutsche
+  Wort "hat" traf; sie sucht jetzt die Form einer Stapelzeile und prueft
+  zusaetzlich die Gestalt jedes Belegs. Mutation (Beleg baut seine
+  Beschriftung zusammen) faellt im Stack in 1 und lokal in 3 Faellen.
+  Bekannte Grenze: Bei Realtime und Vault heisst gruen nur, dass eine
+  Adresse hinterlegt ist. Im Browser nicht gesehen
+- Vorheriger Slice: 2.43 Ein Fenster von null – keine neue Ansicht, sondern
   die Behebung eines Fehlers, den 2.42 nebenbei zutage brachte. Eine Queue
   mit `dedupeWindowSeconds = 0` liess jedes Einreihen mit Dedupe-Schluessel
   scheitern. Die Ursache lag nicht beim gleichen Zeitpunkt, sondern bei einer
@@ -73,7 +97,7 @@ Grossbuchstaben.
   zurueckgedreht) faellt im Stack in 1 und lokal in 1 Fall. Nebenbefund,
   nicht geaendert: genau auf der Fensterkante entdoppelt der Speicherport
   einschliessend, PostgreSQL nicht
-- Vorheriger Slice: 2.42 Was der Zeitplan ausgeloest hat – der Platzhalter
+- Davor: 2.42 Was der Zeitplan ausgeloest hat – der Platzhalter
   "Cron" unter Logs ist eine echte, nur lesende Ansicht
   (`components/console/cron-log-view.tsx`). Es gibt kein Laufprotokoll; das
   Log wird rekonstruiert: erwartete Vorkommen aus dem Ausdruck, dazu der

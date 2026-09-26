@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Beleg baut seine Beschriftung zusammen",
+  "log": "health-mutation.log",
+  "commit": "ee95dce489ce4fb5f5038a5085674b597a4c3c0c",
+  "commitSubject": "tests: Stapelspur-Probe trifft nicht mehr das Wort hat",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 47,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 180 passed (181)",
+  "passed": 180,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

@@ -5208,3 +5208,44 @@ eingereiht" gelesen hat, sieht jetzt mehrere Nachrichten. Genau auf der
 Fensterkante entdoppelt der Speicherport einschliessend und PostgreSQL
 nicht; der Test meidet die Kante und nennt den Grund, geaendert wurde
 nichts.
+
+## Was gerade laeuft – Release 2.44
+
+Die Ansicht Advisors, Gesundheit probt acht Teilsysteme eines Projekts und
+sagt je Teil, ob es erreichbar, abgeschaltet, nicht eingerichtet oder
+gestoert ist, mit dem Beleg fuer dieses Urteil. Die Proben laufen
+nebenlaeufig, und jede faengt ihren eigenen Fehler: ein abgeschalteter
+Dienst kippt nicht die Seite. Fehlt dem Aufrufer eine Faehigkeit, meldet
+genau diese Probe "unbekannt" mit Grund, statt die ganze Seite mit 403 zu
+beenden.
+
+Der Beleg kann strukturell kein Geheimnis tragen. Er besteht aus einem
+Schluessel in eine feste Texttabelle und einer Zahl oder null; im
+Regelmodul wird keine Zeichenkette zusammengesetzt, und der Vertragstest
+prueft genau das. Der Routentest wirft eine Verbindungszeichenkette samt
+Passwort als Fehler in eine Probe und verlangt, dass nichts davon in der
+Antwort erscheint.
+
+Der Zertifizierungsfall fiel zuerst, und zwar an seiner eigenen Probe: Er
+suchte die Zeichenfolge "at ", um Stapelspuren auszuschliessen, und traf
+damit das deutsche Wort "hat" im eigenen Text. Die Probe sucht jetzt die
+Form einer Stapelzeile mit Datei, Zeile und Spalte und prueft zusaetzlich,
+dass jeder Beleg nur eine bekannte Messgroesse mit Zahl oder null traegt.
+Das ist schaerfer als vorher, nicht lockerer.
+
+Mutation: der Beleg baut seine Beschriftung aus dem Mass zusammen, oeffnet
+also genau den Schlitz, durch den spaeter ein Wert rutschen koennte. Im
+Stack faellt 1 von 181 Faellen, lokal 3 von 13 Gesundheitstests,
+exit 1 beide Male.
+
+Checkpoint `2.44.0` am 26. September 2026: PostgreSQL 17 mit 181 von 181,
+exit 0, zweimal reproduziert; Lokal 1418 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Gesund heisst hier erreichbar und eingerichtet, nicht dass
+die Anwendung funktioniert. Bei Realtime und beim Vault heisst gruen nur,
+dass eine Adresse hinterlegt ist; der Dienst wird nicht gefragt. Der
+Sandbox-Schalter der Functions ist prozessweit und keine Aussage je
+Projekt. Acht Proben je Aufruf ohne Zwischenspeicher: die Datenbankprobe
+liest Spalten je Tabelle, die Data-API-Probe erzeugt das ganze
+OpenAPI-Dokument. Im Browser nicht gesehen.
