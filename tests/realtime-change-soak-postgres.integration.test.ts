@@ -279,7 +279,9 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
     await loop;
     expect(
       sink.order.length,
-      `soak: ${sink.order.length} von ${written.length} Aenderungen nach ${waitedMs} ms angekommen`,
+      `soak: ${sink.order.length} von ${written.length} Aenderungen nach ${waitedMs} ms angekommen; `
+      + `ueberlastet: ${overloaded.length}, Pollerfehler: ${failures.length}, `
+      + `Position ${loopPoller.currentPosition}, letzte angekommene: ${sink.order.at(-1) ?? "keine"}`,
     ).toBe(written.length);
 
     const latencies = written
