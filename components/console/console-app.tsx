@@ -39,7 +39,8 @@ import { StorageSettingsView } from "@/components/console/storage-settings-view"
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
+import { InvoicesCard } from "@/components/console/invoices-card";
+import { BillingSettingsView } from "@/components/console/billing-settings-view";
 import { loadConsoleAuthProviders, type ConsoleAuthProviderResult } from "@/components/console/auth-providers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type {
@@ -244,6 +245,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-policies": return <StoragePoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
+    case "set-billing": return <BillingSettingsView projectId={props.project.id} environment={props.environment} navigate={props.navigate}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
@@ -689,30 +691,6 @@ function UsageView({projectId,environment}:{projectId:string;environment:Environ
     </article>
     <InvoicesCard projectId={projectId} environment={environment}/>
   </>;
-}
-
-/**
- * Die ausgestellten Rechnungen — lesend, aus dem eingefrorenen Dokument des
- * Rechnungslaufs. Der Ladeweg steckt in `loadConsoleInvoices`, damit er ohne
- * Browser-Testumgebung pruefbar ist; hier wird er nur eingehaengt.
- */
-function InvoicesCard({projectId,environment}:{projectId:string;environment:Environment}) {
-  const [result,setResult]=useState<ConsoleInvoiceResult|null>(null);
-  const load=useCallback(async()=>{
-    setResult(null);
-    setResult(await loadConsoleInvoices(projectId,environment));
-  },[projectId,environment]);
-  useEffect(()=>{void load();},[load]);
-  return <article className="console-card chart-card">
-    <div className="card-head"><div><span>{t("RECHNUNGEN")}</span><h3>{t("Ausgestellte Rechnungen")}</h3></div><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> {t("Aktualisieren")}</button></div>
-    {result===null&&<p className="muted">{t("Rechnungen werden geladen…")}</p>}
-    {result?.state==="disabled"&&<p className="muted">Usage Metering ist deaktiviert; ohne Zähler gibt es keinen Rechnungslauf.</p>}
-    {result?.state==="error"&&<p className="muted">{t("Die Rechnungen konnten nicht geladen werden.")}</p>}
-    {result?.state==="ready"&&result.invoices.length===0&&<p className="muted">{t("Noch keine Rechnung. Der Rechnungslauf fakturiert abgeschlossene Monate.")}</p>}
-    {result?.state==="ready"&&result.invoices.length>0&&<div className="detail-list">
-      {result.invoices.map(invoice=><div key={invoice.invoiceNumber}><span>Rechnung Nr. {invoice.invoiceNumber}<small>{invoice.periodStart} bis {invoice.periodEnd} · fällig {invoice.dueAt.slice(0,10)} · {invoice.lines.length} {invoice.lines.length===1?t("Posten"):t("Posten")}</small></span><strong>{invoice.total} {invoice.currency}</strong></div>)}
-    </div>}
-  </article>;
 }
 
 function BackupsView(){return <div className="module-grid"><article className="console-card span-2 placeholder-state"><ArchiveRestore size={26}/><div><span className="console-kicker">{t("Backups")}</span><h2>{t("Noch nicht verbunden")}</h2><p>{t("Backups, Point-in-time-Recovery und Restore-Drills brauchen ein WAL-Archiv ausserhalb des Wegwerf-Stacks. Bis dahin zeigt diese Ansicht keine erfundenen Wiederherstellungspunkte.")}</p></div><button className="button small is-placeholder" disabled title={t("Backups sind noch nicht verbunden")}>{t("Backup erstellen")}</button></article></div>}

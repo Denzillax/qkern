@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -107,7 +107,6 @@ export const PLACEHOLDERS = {
   "set-addons": { label: "Add-ons", supabase: "Project Settings → Add Ons", backend: "fehlt", note: "Zusatzleistungen wie eigene Domain oder mehr Backups." },
   "set-log-drains": { label: "Log-Drains", supabase: "Project Settings → Log Drains", backend: "fehlt", note: "Logs an fremde Ziele weiterleiten, etwa an einen Log-Dienst oder ein SIEM." },
   "set-webhooks": { label: "Dashboard-Webhooks", supabase: "Project Settings → Webhooks", backend: "fehlt", note: "Benachrichtigungen bei Ereignissen des Projekts selbst." },
-  "set-billing": { label: "Abrechnung", supabase: "Project Settings → Billing / Usage", backend: "teilweise", note: "Nutzung, Preisblatt und Rechnungen stehen unter Nutzung & Limits. Keine Zahlungsanbindung." },
   "set-dashboard": { label: "Dashboard", supabase: "Project Settings → Dashboard", backend: "fehlt", note: "Darstellung der Console selbst, etwa Zeitzone und Startseite." },
 } as const satisfies Record<string, Placeholder>;
 
@@ -162,7 +161,7 @@ export const NAV: NavGroup[] = [
   { id: "branches", label: "Branches", icon: GitBranch, children: [ph("branches"), ph("branches-merge")] },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [
     { id: "settings", label: "Allgemein" }, ph("set-compute"), ph("set-infrastructure"), ph("set-integrations"), ph("set-addons"),
-    { id: "set-api", label: "Data API" }, { id: "set-api-keys", label: "API-Keys" }, { id: "set-jwt", label: "JWT-Schlüssel" }, ph("set-log-drains"), ph("set-webhooks"), ph("set-billing"), ph("set-dashboard"),
+    { id: "set-api", label: "Data API" }, { id: "set-api-keys", label: "API-Keys" }, { id: "set-jwt", label: "JWT-Schlüssel" }, ph("set-log-drains"), ph("set-webhooks"), { id: "set-billing", label: "Abrechnung" }, ph("set-dashboard"),
   ] },
 ];
 

@@ -12,7 +12,8 @@ describe("console invoices loader", () => {
   const wire = {
     data: [{
       invoiceNumber: "3", periodStart: "2026-05-01", periodEnd: "2026-06-01",
-      currency: "CHF", total: "0.025000", dueAt: "2026-07-01T00:00:00.000Z",
+      currency: "CHF", total: "0.025000", totalMicros: "25000", unpricedMetrics: ["api_requests"],
+      dueAt: "2026-07-01T00:00:00.000Z",
       issuedAt: "2026-06-01T00:00:00.000Z",
       lines: [{ metric: "queue_operations", amount: "0.025000" }],
     }],
@@ -30,7 +31,8 @@ describe("console invoices loader", () => {
       state: "ready",
       invoices: [{
         invoiceNumber: "3", periodStart: "2026-05-01", periodEnd: "2026-06-01",
-        currency: "CHF", total: "0.025000", dueAt: "2026-07-01T00:00:00.000Z",
+        currency: "CHF", total: "0.025000", totalMicros: "25000", unpricedMetrics: ["api_requests"],
+        dueAt: "2026-07-01T00:00:00.000Z",
         issuedAt: "2026-06-01T00:00:00.000Z",
         lines: [{ metric: "queue_operations", amount: "0.025000" }],
       }],
@@ -41,6 +43,9 @@ describe("console invoices loader", () => {
     const disabled = vi.fn().mockResolvedValue(new Response("{}", { status: 503 }));
     expect(await loadConsoleInvoices("prj-1", "development", disabled as unknown as typeof fetch))
       .toEqual({ state: "disabled" });
+    const pool = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Usage unavailable" }), { status: 503 }));
+    expect(await loadConsoleInvoices("prj-1", "development", pool as unknown as typeof fetch))
+      .toEqual({ state: "unavailable" });
     const failing = vi.fn().mockResolvedValue(new Response("{}", { status: 500 }));
     expect(await loadConsoleInvoices("prj-1", "development", failing as unknown as typeof fetch))
       .toEqual({ state: "error" });
