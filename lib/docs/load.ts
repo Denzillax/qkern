@@ -4,7 +4,7 @@ import { parseGuide, type GuideDocument } from "@/lib/docs/markdown";
 import { GUIDE_LOCALES_AVAILABLE, guidePath, type GuidePage } from "@/lib/docs/pages";
 import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
 
-export type LoadedGuidePage = { page: GuidePage; locale: Locale; document: GuideDocument; translated: boolean };
+export type LoadedGuidePage = Readonly<{ page: GuidePage; locale: Locale; document: GuideDocument; translated: boolean }>;
 
 /** Liest eine Seite; fehlt die Sprache, kommt Deutsch mit `translated: false`. */
 export async function loadGuidePage(locale: Locale, page: GuidePage): Promise<LoadedGuidePage> {

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { GUIDE_PAGES, guidePath, pageBySlug } from "@/lib/docs/pages";
 import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
 import { loadGuidePage } from "@/lib/docs/load";
+import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 
 describe("docs guide contract", () => {
   it("lists five pages whose files exist, with unique slugs", () => {
@@ -27,5 +28,17 @@ describe("docs guide contract", () => {
       expect(JSON.stringify(loaded.document)).not.toContain("{{");
       expect(loaded.document.title, `${page.file} braucht eine Ueberschrift der Ebene 1`).not.toBe("");
     }
+  });
+
+  it("throws instead of guessing when a source is missing", async () => {
+    const summary = await loadCertificationSummary();
+    await expect(guidePlaceholders({
+      readPackage: async () => ({ version: "9.9.9" }),
+      summary: async () => summary,
+    })).rejects.toThrow("package.json ohne engines.node");
+    await expect(guidePlaceholders({
+      readPackage: async () => ({ version: "9.9.9", engines: { node: ">=24.7.0" } }),
+      summary: async () => ({ ...summary, rows: summary.rows.filter((row) => row.name !== "Control Plane und Data API") }),
+    })).rejects.toThrow("Kein gruener Nachweis fuer Control Plane und Data API in docs/evidence");
   });
 });
