@@ -89,4 +89,30 @@ describe("createComputeRuntimeFromEnv", () => {
     expect(() => createComputeRuntimeFromEnv({ ...base, QKERN_COMPUTE_WORKER_ID: "worker id!" }))
       .toThrow(/worker identity/);
   });
+
+  /**
+   * Die Webhook-Bruecke (2.53) braucht eine Verbindung zu den
+   * Projektdatenbanken. Ohne sie sagt die Komposition es, statt die Bruecke
+   * vorhanden aussehen zu lassen und nichts zu tun -- genau dieser Zustand war
+   * der Anlass des Slices.
+   */
+  it("refuses the database webhook bridge without a project database connection", () => {
+    expect(() => createComputeRuntimeFromEnv({
+      ...base, QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED: "true",
+    })).toThrow(/project database connection/);
+  });
+
+  it("refuses the database webhook bridge without the delivery loop that empties its outbox", () => {
+    expect(() => createComputeRuntimeFromEnv({
+      ...base,
+      QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED: "true",
+      QKERN_COMPUTE_WEBHOOKS_ENABLED: "false",
+    })).toThrow(/webhook delivery loop/);
+  });
+
+  it("refuses an implausible bridge interval before opening a pool", () => {
+    expect(() => createComputeRuntimeFromEnv({
+      ...base, QKERN_COMPUTE_DATABASE_WEBHOOK_POLL_MS: "10",
+    })).toThrow(ConfigurationError);
+  });
 });

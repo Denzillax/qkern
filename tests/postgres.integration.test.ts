@@ -64,6 +64,8 @@ import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catal
 // zertifiziert.
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
 import { FunctionInvocationError } from "@/lib/server/compute/functions";
+// Die Bruecke als Prozess (2.53): derselbe Prozess, den der Betrieb startet.
+import { spawn } from "node:child_process";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -1899,6 +1901,301 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // naehme ihr Protokoll mit; also bleibt beides stehen.
   });
 
+  /**
+   * Die Bruecke als **Prozess** (2.53).
+   *
+   * Der Fall (2.50) daneben belegt die Kette und ruft die Bruecke dabei selbst
+   * auf: `await bridge.poll()`. Genau das ist der Unterschied, den dieser Fall
+   * schliesst. Niemand ruft hier irgendetwas auf. Es laeuft `npm run
+   * worker:compute` -- derselbe Prozess, den der Betrieb startet -- und die
+   * Zustellung entsteht, weil er sie erzeugt.
+   *
+   * Belegt werden vier Dinge, die eine Bibliothek nicht belegen kann:
+   *
+   * 1. Der Prozess findet die Umgebung selbst. In der Konfiguration steht eine
+   *    Scope-Liste, keine Kopplung; welche Umgebung gelesen wird, entscheidet
+   *    er aus der Control Plane.
+   * 2. Er haelt seine Position dauerhaft. Nach dem zweiten Start entsteht
+   *    **keine** zweite Zustellung fuer dieselbe Aenderung, und die Aenderung
+   *    aus der Pause geht nicht verloren -- kein Wiederholen, kein
+   *    Ueberspringen.
+   * 3. Er hoert auf dasselbe Signal wie die anderen Worker und endet sauber.
+   * 4. Er ist danach wirklich aus: Eine Aenderung waehrend der Pause erzeugt
+   *    nichts. Ein Fall, der nur das Ende des Kindprozesses prueft, koennte
+   *    einen Prozess uebersehen, der weiterarbeitet.
+   *
+   * Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.42, 2.45, 2.49 und
+   * 2.50: Das gemeinsame afterAll muss organizationA und organizationB
+   * loswerden, und eine Organisation mit Audit-Zeilen laesst sich wegen
+   * audit_logs_organization_id_fkey nicht mehr loeschen. Abgeraeumt wird, was
+   * das Produkt hergibt: die Wegwerf-Projektdatenbank.
+   *
+   * Das Zeitbudget ist ausdruecklich gross: Der Fall startet zweimal einen
+   * echten Node-Prozess mit `tsx`, und jeder Start uebersetzt die Module neu.
+   * Gewartet wird trotzdem nie blind -- jede Wartezeit hat eine Bedingung, eine
+   * Frist und eine Meldung, die sagt, was stattdessen dastand.
+   */
+  it("(2.53) delivers a table change through the running bridge process", async () => {
+    expect(process.env.QKERN_TEST_ALLOW_DATABASE_CREATE_DROP,
+      "QKERN_TEST_ALLOW_DATABASE_CREATE_DROP fehlt").toBe("true");
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const bridgeOwner = randomUUID();
+    const bridgeOrganization = randomUUID();
+    const projectId = randomUUID();
+    const databaseName = `qkern_bridge_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const table = `lieferungen_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const firstRow = randomUUID();
+    const secondRow = randomUUID();
+    const thirdRow = randomUUID();
+    // Ein Wert, der den Empfaenger nichts angeht -- und der Beleg dafuer, dass
+    // auch der laufende Prozess ihn nicht mitnimmt.
+    const confidential = `IBAN-CH93-${randomUUID()}`;
+    const scope = {
+      organizationId: bridgeOrganization, projectId, environment: "development" as const,
+    };
+
+    const withDatabase = (base: string, name: string) => {
+      const url = new URL(base);
+      url.pathname = `/${name}`;
+      return url.toString();
+    };
+
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_project_migrator LOGIN PASSWORD 'qkern_project_migrator_local_only'
+        NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    // Wie im Fall 2.49 und 2.50: Seit PostgreSQL 16 teilt `CREATE ROLE` die
+    // neue Rolle dem Erzeuger mit ADMIN OPTION zu, und der Zaun aus 0002
+    // verlangt einen Ledger-Eigentuemer ohne jede Mitgliedschaft.
+    await owner.query(`DO $$ DECLARE entry record; BEGIN
+      FOR entry IN SELECT m.member::regrole::text AS role FROM pg_auth_members m
+        WHERE m.roleid = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE qkern_ledger_owner FROM %I', entry.role);
+      END LOOP;
+      FOR entry IN SELECT m.roleid::regrole::text AS role FROM pg_auth_members m
+        WHERE m.member = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE %I FROM qkern_ledger_owner', entry.role);
+      END LOOP;
+    END $$;`);
+
+    await owner.query(`CREATE DATABASE "${databaseName}"`);
+    let project: SqlPool | undefined;
+    const children: ReturnType<typeof spawn>[] = [];
+    try {
+      project = createPostgresPool({
+        connectionString: withDatabase(ownerUrl!, databaseName), max: 2,
+        statementTimeoutMillis: 120_000,
+      });
+      for (const file of ["0001_qkern_migration_ledger.sql", "0002_qkern_migration_fence.sql",
+        "0003_qkern_change_feed.sql"]) {
+        await project.query(await readFile(path.resolve(process.cwd(), "db/project", file), "utf8"));
+      }
+      await project.query(
+        `CREATE TABLE public.${table} (id uuid PRIMARY KEY, iban text NOT NULL)`);
+      await project.query(`CREATE TRIGGER ${table}_capture
+        AFTER INSERT OR UPDATE OR DELETE ON public.${table}
+        FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
+
+      await owner.query(`INSERT INTO users (id, email, password_hash, status)
+        VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+      [bridgeOwner, `bridge-process-${bridgeOwner}@qkern.test`]);
+      await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+        VALUES ($1, 'Bridge Process', $2, $3)`,
+      [bridgeOrganization, `bridge-process-${bridgeOrganization}`, bridgeOwner]);
+      await owner.query(`INSERT INTO organization_members
+        (organization_id, user_id, role, is_personal_workspace)
+        VALUES ($1, $2, 'owner', true)`, [bridgeOrganization, bridgeOwner]);
+      await owner.query(`INSERT INTO projects
+        (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Bridge Process', $3, 'test', 'ready', $4)`,
+      [projectId, bridgeOrganization, `bridge-process-${projectId}`, bridgeOwner]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`,
+      [bridgeOrganization, projectId, `managed:${projectId}`]);
+
+      // Die Kopplung ueber den echten Dienst. Sie ist das Einzige, was dieser
+      // Fall dem Prozess mitgibt -- seine Konfiguration nennt sie nicht.
+      const repository = new PostgresDatabaseWebhookRepository(new PostgresControlPlane(owner));
+      const definition = await new DatabaseWebhookService({ repository }).create({
+        organizationId: bridgeOrganization,
+        actorRef: `bridge-process-${bridgeOwner}@qkern.test`,
+        role: "admin" as const,
+        subject: bridgeOwner,
+      }, scope, {
+        name: "lieferungen-an-erp",
+        table,
+        events: ["insert"],
+        url: "https://empfaenger.example.com/hooks/qkern",
+        signingSecretRef: databaseWebhookSecretRef!,
+      });
+      expect(definition.enabled).toBe(true);
+
+      /** Der ausgelieferte Prozess, nichts daneben. */
+      const start = () => {
+        const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+            // Cron aus: Dieser Fall misst die Bruecke, und ein Cron-Lauf
+            // braeuchte eine Warteschlange, die hier nichts zu suchen hat.
+            QKERN_COMPUTE_CRON_ENABLED: "false",
+            QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
+            QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED: "true",
+            QKERN_COMPUTE_DATABASE_WEBHOOK_POLL_MS: "200",
+            QKERN_COMPUTE_DATABASE_WEBHOOK_DISCOVERY_MS: "1000",
+            QKERN_COMPUTE_WORKER_ID: "certification-bridge-1",
+            // Die Scope-Liste nennt die Umgebung, nicht die Kopplung. Welche
+            // Umgebung ueberhaupt gelesen wird, entscheidet der Prozess.
+            QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+            QKERN_RUNTIME_MODE: "postgres",
+            QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+            QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            // Derselbe Katalog wie bei Realtime Changes: dieselbe
+            // unprivilegierte Rolle, der `db/project/0003` das Leserecht auf
+            // dem Feed erteilt.
+            QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG: "true",
+            QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON: JSON.stringify([{
+              databaseInstanceRef: `managed:${projectId}`,
+              connectionString: withDatabase(projectApiUrl!, databaseName),
+              expectedRole: "qkern_project_api_app",
+              expectedDatabase: databaseName,
+              expectedLedgerOwner: "qkern_ledger_owner",
+            }]),
+            QKERN_WEBHOOK_VAULT_KV_URL: vaultKvUrl!,
+            QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
+          },
+        });
+        let noise = "";
+        child.stderr?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        child.stdout?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        children.push(child);
+        return { child, output: () => noise };
+      };
+
+      const deliveries = async () => {
+        const result = await owner.query<{
+          event_type: string; payload: Record<string, unknown>;
+        }>(`SELECT event_type, payload FROM project_webhook_deliveries
+             WHERE organization_id = $1 AND project_id = $2
+             ORDER BY (payload->>'position')::bigint`, [bridgeOrganization, projectId]);
+        return result.rows;
+      };
+
+      /** Wartet auf eine Bedingung mit Frist und Diagnose, nie blind. */
+      const until = async (
+        what: string, budgetMs: number, condition: () => Promise<boolean>, diagnose: () => string,
+      ) => {
+        const deadline = Date.now() + budgetMs;
+        while (Date.now() < deadline) {
+          if (await condition()) return;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        expect.fail(`${what} blieb ${budgetMs} ms aus. ${diagnose()}`);
+      };
+
+      /** Beendet den Prozess ueber **das** Signal und wartet auf sein Ende. */
+      const stop = async (runner: { child: ReturnType<typeof spawn>; output: () => string }) => {
+        runner.child.kill("SIGTERM");
+        const exit = await Promise.race([
+          new Promise<number | null>((resolve) => runner.child.once("exit", resolve)),
+          new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 30_000)),
+        ]);
+        expect(exit, `Der Prozess endete nicht auf SIGTERM: ${runner.output().slice(-800)}`)
+          .not.toBe("timeout");
+        return exit;
+      };
+
+      // --- Erster Lauf -------------------------------------------------------
+      const first = start();
+      await until("Die Startzeile des Prozesses", 120_000,
+        async () => first.output().includes("database webhook bridge"),
+        () => `Ausgabe: ${first.output().slice(-800)}`);
+
+      await project.query(
+        `INSERT INTO public.${table} (id, iban) VALUES ($1, $2)`, [firstRow, confidential]);
+
+      await until("Die Zustellung aus dem laufenden Prozess", 90_000,
+        async () => (await deliveries()).length >= 1,
+        () => `Ausgabe: ${first.output().slice(-800)}`);
+
+      const afterFirst = await deliveries();
+      expect(afterFirst).toHaveLength(1);
+      expect(afterFirst[0].event_type).toBe("db.insert");
+      expect(afterFirst[0].payload.key).toEqual({ id: firstRow });
+      expect(JSON.stringify(afterFirst[0].payload),
+        "die Nutzlast traegt einen Spaltenwert, den der Empfaenger nie lesen duerfte")
+        .not.toContain(confidential);
+      // Die Position liegt dauerhaft in der Control Plane, nicht im Prozess.
+      const cursor = await owner.query<{ position: string }>(
+        `SELECT position::text FROM project_database_webhook_cursors
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+        [bridgeOrganization, projectId]);
+      expect(Number(cursor.rows[0]?.position),
+        "der Prozess hat seine Position nicht festgehalten").toBeGreaterThan(0);
+
+      // --- Anhalten ----------------------------------------------------------
+      expect(await stop(first)).toBe(0);
+
+      // Und er ist wirklich aus: Eine Aenderung waehrend der Pause erzeugt
+      // nichts. Ohne diese Probe pruefte der Fall nur das Ende eines
+      // Kindprozesses, nicht das Ende seiner Arbeit.
+      await project.query(
+        `INSERT INTO public.${table} (id, iban) VALUES ($1, $2)`, [secondRow, confidential]);
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(await deliveries(),
+        "der angehaltene Prozess hat weitergearbeitet").toHaveLength(1);
+
+      // --- Zweiter Lauf: kein Wiederholen, kein Ueberspringen ----------------
+      const second = start();
+      await until("Die Startzeile des zweiten Prozesses", 120_000,
+        async () => second.output().includes("database webhook bridge"),
+        () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      await project.query(
+        `INSERT INTO public.${table} (id, iban) VALUES ($1, $2)`, [thirdRow, confidential]);
+      await until("Die beiden Zustellungen nach dem Neustart", 90_000,
+        async () => (await deliveries()).length >= 3,
+        () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      const afterSecond = await deliveries();
+      // Genau drei: die erste aus dem ersten Lauf, die aus der Pause und die
+      // nach dem Neustart. Eine vierte waere eine Wiederholung, zwei waeren
+      // eine verlorene Aenderung.
+      expect(afterSecond, `Ausgabe: ${second.output().slice(-800)}`).toHaveLength(3);
+      expect(afterSecond.map((row) => (row.payload as { key: { id: string } }).key.id))
+        .toEqual([firstRow, secondRow, thirdRow]);
+
+      expect(await stop(second)).toBe(0);
+
+      // Was der Prozess ueber sich meldet, ist redigiert: keine Verbindung,
+      // kein Geheimnis, kein Tabellenname des Kunden.
+      for (const runner of [first, second]) {
+        expect(runner.output()).not.toContain(confidential);
+        expect(runner.output()).not.toContain(databaseName);
+        expect(runner.output()).not.toContain("qkern_project_api_local_only");
+      }
+    } finally {
+      for (const child of children) child.kill("SIGKILL");
+      await Promise.allSettled([project?.end()]);
+      await owner.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+        .catch(() => undefined);
+    }
+    // 600 Sekunden: zwei echte Node-Starts mit `tsx`, jeder mit eigener
+    // Uebersetzung der Module, dazu zwei bewusst grosszuegige Wartefristen.
+    // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
+  }, 600_000);
 });
 
 /**

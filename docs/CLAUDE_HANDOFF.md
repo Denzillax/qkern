@@ -49,6 +49,27 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
+- Neu in diesem Zweig: 2.53 Die Webhook-Bruecke laeuft als Prozess – das
+  "Ehrlich offen" aus 2.50 ist geschlossen. Der Compute-Prozess
+  (`npm run worker:compute`) liest jetzt den Change Feed der
+  Projektdatenbanken, die er bedient, und nennt die Bruecke in seiner
+  Startzeile. Welche Umgebungen gelesen werden, steht **nicht** in der
+  Konfiguration: Aus `QKERN_COMPUTE_SCOPES_JSON` nimmt er die, die in der
+  Control Plane eine Kopplung haben. Eine Umgebung mit ausschliesslich
+  abgeschalteten Kopplungen bleibt bewusst dabei – sonst wuerde aus dem
+  Pausieren ein Stauen. Der Projektdatenbank-Katalog ist **derselbe** wie fuer
+  Realtime Changes (`QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON`); nur
+  `db/project/0003` erteilt genau dieser Rolle das Leserecht auf dem Feed.
+  Migration `0050_project_database_webhook_cursors.sql` haelt die Position je
+  Umgebung, monoton ueber `GREATEST`, ohne DELETE-Recht: Ein Neustart
+  wiederholt hoechstens einen Stapel und ueberspringt nichts. Eine
+  unerreichbare Projektdatenbank bekommt ein verdoppelndes Backoff, die
+  uebrigen Umgebungen laufen weiter. PostgreSQL-Fall "(2.53) delivers a table
+  change through the running bridge process": 27 statt 26 Faelle im Modul
+  Control Plane. Ehrlich offen: Waehrend **alle** Kopplungen einer Umgebung
+  weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
+  weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
+  seither haelt. Im Browser nicht gesehen
 - Paketversion: `2.50.0`
 - Aktueller Slice: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
   Implementierer parallel, danach zusammengefuehrt. **Zweiter Faktor**:

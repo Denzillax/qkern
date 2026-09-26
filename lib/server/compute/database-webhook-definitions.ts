@@ -43,8 +43,26 @@ export interface DatabaseWebhookRepository {
     enabled: boolean): Promise<DatabaseWebhookRecord | null>;
 }
 
+/**
+ * Der Stand der Bruecke (2.53), so weit die Ansicht ihn zeigen darf.
+ *
+ * Seit die Bruecke als Prozess laeuft, gibt es dazu eine ehrliche Angabe, und
+ * vorher gab es keine: `project_database_webhook_cursors` haelt je Umgebung
+ * die zuletzt gelesene Feed-Position und wann sie geschrieben wurde. Mehr
+ * behauptet diese Naht nicht -- insbesondere nicht, wann zuletzt *gepollt*
+ * wurde. Der Prozess liest im Sekundentakt und schreibt nur, wenn er etwas
+ * gefunden hat; "zuletzt nachgesehen" waere eine Zahl, die es nirgends gibt.
+ */
+export interface DatabaseWebhookBridgeSource {
+  lastAdvance(
+    principal: { organizationId: string; actorRef: string },
+    scope: ComputeDefinitionScope,
+  ): Promise<{ position: number; updatedAt: string } | null>;
+}
+
 export type DatabaseWebhookServiceOptions = {
   repository: DatabaseWebhookRepository;
+  bridge?: DatabaseWebhookBridgeSource;
   maxPerScope?: number;
 };
 
@@ -64,6 +82,19 @@ export class DatabaseWebhookService {
   async list(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
     this.assertScope(principal, scope);
     return await this.options.repository.list(principal, scope);
+  }
+
+  /**
+   * Wann die Bruecke den Feed dieser Umgebung zuletzt weitergelesen hat.
+   *
+   * `null` heisst "noch nie" und ist kein Fehler: So sieht eine Umgebung aus,
+   * in der die Bruecke nicht laeuft oder noch keine Aenderung gefunden hat.
+   * Die Ansicht muss beides unterscheiden koennen, ohne zu raten.
+   */
+  async bridgeState(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
+    this.assertScope(principal, scope);
+    if (!this.options.bridge) return null;
+    return await this.options.bridge.lastAdvance(principal, scope);
   }
 
   async get(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {

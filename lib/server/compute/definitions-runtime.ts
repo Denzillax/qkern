@@ -12,6 +12,8 @@ import { PostgresComputeDefinitionRepository } from
 import { DatabaseWebhookService } from "@/lib/server/compute/database-webhook-definitions";
 import { PostgresDatabaseWebhookRepository } from
   "@/lib/server/compute/database-webhook-postgres-repository";
+import { PostgresDatabaseWebhookCursorRepository } from
+  "@/lib/server/compute/database-webhook-cursor-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
@@ -127,10 +129,13 @@ export function createDatabaseWebhookServiceFromEnv(
   if (runtimeModeFromEnv(env) !== "postgres") {
     throw new ConfigurationError("Database webhooks require the PostgreSQL runtime mode.");
   }
+  const controlPlane = new PostgresControlPlane(getPostgresPool(env));
   return new DatabaseWebhookService({
-    repository: new PostgresDatabaseWebhookRepository(
-      new PostgresControlPlane(getPostgresPool(env)),
-    ),
+    repository: new PostgresDatabaseWebhookRepository(controlPlane),
+    // Der Stand der Bruecke (2.53). Er steht in der Control Plane, seit der
+    // Compute-Prozess die Bruecke wirklich betreibt; ohne den Prozess bleibt
+    // die Zeile leer, und die Ansicht sagt genau das.
+    bridge: new PostgresDatabaseWebhookCursorRepository(controlPlane),
   });
 }
 

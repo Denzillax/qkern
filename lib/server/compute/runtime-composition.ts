@@ -4,6 +4,14 @@ import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { CronDispatcher } from "@/lib/server/compute/cron";
 import { PostgresCronRepository } from "@/lib/server/compute/cron-postgres-repository";
 import { CronScheduler } from "@/lib/server/compute/cron-scheduler";
+import { DatabaseWebhookBridgeRuntime } from
+  "@/lib/server/compute/database-webhook-bridge-runtime";
+import { PostgresDatabaseWebhookRepository } from
+  "@/lib/server/compute/database-webhook-postgres-repository";
+import { PostgresDatabaseWebhookCursorRepository } from
+  "@/lib/server/compute/database-webhook-cursor-postgres-repository";
+import { PostgresRealtimeChangeSource, type ProjectConnection } from
+  "@/lib/server/realtime/postgres-change-source";
 import { WebhookDeliveryRuntime } from "@/lib/server/compute/webhook-delivery-runtime";
 import { WebhookRetentionRuntime } from "@/lib/server/compute/webhook-retention-runtime";
 import { WebhookOutbox } from "@/lib/server/compute/webhook-outbox";
@@ -43,11 +51,14 @@ export type ComputeScopeConfig = Readonly<{
  * Scope eine Zeile ueber nichts.
  */
 export type ComputeRuntimeLogEvent = Readonly<{
-  event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed";
+  event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed"
+  | "compute.database_webhook_round" | "compute.database_webhook_failed";
   scopeIndex: number;
   dispatched?: number;
   failures?: number;
   failureCode?: string;
+  /** Zahl der von der Webhook-Bruecke eingereihten Zustellungen (2.53). */
+  enqueued?: number;
 }>;
 
 export interface ComputeRuntimeLogger {
@@ -80,6 +91,17 @@ export type ComputeRuntimeDependencies = {
    * es klemmt — nicht, was geschehen ist.
    */
   logger?: ComputeRuntimeLogger;
+  /**
+   * Die Verbindung zu den Projektdatenbanken, aus denen die Webhook-Bruecke
+   * liest (2.53).
+   *
+   * Sie wird **eingereicht** und nicht hier gebaut, aus demselben Grund wie in
+   * der Realtime-Runtime: Der Katalog entsteht asynchron aus der Umgebung, und
+   * diese Fabrik ist synchron. Der Prozess baut ihn, diese Komposition
+   * verdrahtet ihn. Ohne ihn bleibt die Bruecke aus, statt vorhanden
+   * auszusehen und nichts zu tun.
+   */
+  projectConnection?: ProjectConnection;
 };
 
 /**
@@ -129,6 +151,8 @@ export function computeScopesFromEnv(
 export type ComputeRuntime = {
   run(signal: AbortSignal): Promise<void>;
   readonly scopes: readonly ComputeScopeConfig[];
+  /** Ob die Webhook-Bruecke (2.53) in diesem Prozess laeuft. Fuer die Startzeile. */
+  readonly databaseWebhookBridge: boolean;
 };
 
 /**
@@ -158,6 +182,21 @@ export function createComputeRuntimeFromEnv(
   if (!cronEnabled && !webhooksEnabled) {
     throw new ConfigurationError("The compute runtime would do nothing with both loops disabled.");
   }
+  // Die Webhook-Bruecke (2.53) ist ausdruecklich anzuschalten, wie Postgres
+  // Changes in der Realtime-Runtime: Sie oeffnet Verbindungen zu
+  // Kundendatenbanken, und das soll niemand versehentlich einschalten.
+  const databaseWebhooksEnabled = env.QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED === "true";
+  if (databaseWebhooksEnabled && !webhooksEnabled) {
+    // Sonst reiht die Bruecke Zustellungen ein, die in diesem Prozess niemand
+    // abholt. Eine wachsende Outbox ohne Zusteller ist schlimmer als eine
+    // abgeschaltete Bruecke.
+    throw new ConfigurationError(
+      "The database webhook bridge needs the webhook delivery loop in the same process.");
+  }
+  if (databaseWebhooksEnabled && !dependencies.projectConnection) {
+    throw new ConfigurationError(
+      "The database webhook bridge requires a project database connection.");
+  }
   const scopes = computeScopesFromEnv(env);
   const workerId = workerIdentity(env);
   const cronIntervalMs = integer(env.QKERN_COMPUTE_CRON_INTERVAL_MS, 30_000, 1_000, 900_000);
@@ -165,6 +204,14 @@ export function createComputeRuntimeFromEnv(
   const webhookBatch = integer(env.QKERN_COMPUTE_WEBHOOK_BATCH, 5, 1, 10);
   const webhookIdleMs = integer(env.QKERN_COMPUTE_WEBHOOK_IDLE_MS, 1_000, 50, 60_000);
   const visibilityMs = integer(env.QKERN_COMPUTE_WEBHOOK_VISIBILITY_MS, 30_000, 1_000, 900_000);
+  // Der Takt der Bruecke (2.53), benannt wie der der Zustellung und mit
+  // denselben Grenzen wie die Realtime-Gegenstuecke.
+  const bridgeBatch = integer(env.QKERN_COMPUTE_DATABASE_WEBHOOK_BATCH, 100, 1, 500);
+  const bridgeMaxBatches = integer(env.QKERN_COMPUTE_DATABASE_WEBHOOK_MAX_BATCHES, 10, 1, 100);
+  const bridgeIdleMs = integer(env.QKERN_COMPUTE_DATABASE_WEBHOOK_POLL_MS, 1_000, 50, 60_000);
+  const bridgeErrorMs = integer(env.QKERN_COMPUTE_DATABASE_WEBHOOK_ERROR_MS, 5_000, 100, 300_000);
+  const bridgeDiscoveryMs = integer(
+    env.QKERN_COMPUTE_DATABASE_WEBHOOK_DISCOVERY_MS, 30_000, 250, 3_600_000);
 
   const controlPlane = new PostgresControlPlane(getPostgresPool(env));
 
@@ -225,12 +272,49 @@ export function createComputeRuntimeFromEnv(
     ...(sleep ? { sleep } : {}),
   }) : undefined;
 
+  // Die Bruecke (2.53): ein Leser fuer alle Umgebungen dieses Prozesses, mit
+  // der Reihenfolge der Scope-Liste und einer dauerhaften Position je Umgebung.
+  const cursors = databaseWebhooksEnabled
+    ? new PostgresDatabaseWebhookCursorRepository(controlPlane)
+    : undefined;
+  const bridgeRuntime = cursors && dependencies.projectConnection
+    ? new DatabaseWebhookBridgeRuntime({
+      scopes,
+      source: new PostgresRealtimeChangeSource(dependencies.projectConnection),
+      bindings: new PostgresDatabaseWebhookRepository(controlPlane),
+      census: cursors,
+      cursors,
+      outbox,
+      batchSize: bridgeBatch,
+      maxBatches: bridgeMaxBatches,
+      idleIntervalMs: bridgeIdleMs,
+      errorIntervalMs: bridgeErrorMs,
+      discoveryIntervalMs: bridgeDiscoveryMs,
+      // Redigiert wie beim Zusteller: ein fester Code und der Scope-Index,
+      // keine Datenbankmeldung, keine Id, kein Endpunkt.
+      onFailure: (failureCode, scopeIndex) => {
+        safeRuntimeProbe(dependencies.probe, "iterationFailed");
+        safeComputeLog(dependencies.logger, {
+          event: "compute.database_webhook_failed", scopeIndex, failureCode,
+        });
+      },
+      onEnqueued: (scopeIndex, enqueued) => safeComputeLog(dependencies.logger, {
+        event: "compute.database_webhook_round", scopeIndex, enqueued,
+      }),
+    })
+    : undefined;
+
   return {
     scopes,
+    databaseWebhookBridge: Boolean(bridgeRuntime),
     async run(signal: AbortSignal): Promise<void> {
       const loops: Promise<void>[] = [];
       const stops: Array<() => void> = [];
 
+      if (bridgeRuntime) {
+        stops.push(() => bridgeRuntime.stop());
+        loops.push(bridgeRuntime.run());
+      }
       if (retention) {
         stops.push(() => retention.stop());
         loops.push(retention.run());
