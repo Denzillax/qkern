@@ -29,6 +29,16 @@ import { PostgresProjectDatabaseExecutor } from "@/lib/server/migrations/postgre
 import { MigrationWorker } from "@/lib/server/migrations/worker";
 import { createTableStatement, TableChangeSetError } from "@/lib/console/table-change-sets";
 import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
+// Der erzwingbare zweite Faktor (2.52): echte Repository-, Audit- und
+// Token-Teile hinter dem echten Dienst.
+import { createHmac, generateKeyPairSync } from "node:crypto";
+import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
+import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
+import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
+import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
+import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
+import { NoopDevelopmentProjectAuthDelivery, ProjectAuthService } from "@/lib/server/project-auth/service";
+import { ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
 import {
   buildProjectAuthAuditSeries,
   projectAuthSeriesRowLimit,
@@ -1309,7 +1319,180 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Ohne eigenes Zeitbudget: drei Eintraege, ein Auszug und vier Aggregationen.
   });
 
+  it("(2.52) refuses a usable session without the second factor when the project requires it", async () => {
+    // Der tragende Teil dieses Slices gegen die echte Datenbank: Steht der
+    // Schalter der Umgebung auf "verlangt", darf keine Anmeldung ohne
+    // zweiten Faktor eine brauchbare Sitzung ergeben — und ein Nutzer ohne
+    // Faktor muss trotzdem an die Einrichtung kommen, sonst sperrte das
+    // Einschalten jeden aus.
+    //
+    // Echt ist hier alles, worauf es ankommt: das PostgreSQL-Repository, der
+    // Audit-Sink in der Hash-Kette, der Argon2-Hasher, der Ed25519-Signierer
+    // und TOTP. Nur die Uhr und die Zustellung sind fest; beide gehoeren
+    // nicht zur Aussage.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.42, 2.45 und
+    // 2.47: Das Aendern des Schalters schreibt eine Audit-Zeile, und eine
+    // Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen; das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden. Weggeraeumt
+    // wird darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const mfaOwner = randomUUID();
+    const mfaOrganization = randomUUID();
+    const mfaProject = randomUUID();
+    const scope = { organizationId: mfaOrganization, projectId: mfaProject, environment: "development" as const };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [mfaOwner, `auth-mfa-owner-${mfaOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth MFA', $2, $3)`, [mfaOrganization, `auth-mfa-${mfaOrganization}`, mfaOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth MFA', $3, 'test', 'ready', $4)`,
+    [mfaProject, mfaOrganization, `auth-mfa-${mfaProject}`, mfaOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [mfaOrganization, mfaProject, `managed:${mfaProject}`]);
+
+    const at = new Date("2026-09-26T12:00:00.000Z");
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-52", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 5)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+      now: () => new Date(at),
+    });
+    const email = `app-${randomUUID()}@example.test`;
+    const password = "a sufficiently long certification password";
+
+    // Ohne Schalter: eine gewoehnliche aal1-Sitzung, und sie gilt.
+    const signup = await service.signUp(scope, {
+      email, password, redirectTo: "https://app.test/callback", rateLimitKey: randomUUID(),
+    });
+    const first = await service.consumeEmailToken(scope, {
+      token: signup.debugToken!, purpose: "email_verification",
+    });
+    if ("mfaRequired" in first) throw new Error("unexpected MFA");
+    const principal = await service.verifyAccess(scope, first.accessToken);
+    expect(principal.claims.aal).toBe("aal1");
+
+    // Der Schalter, ueber den echten Dienst und in die echte Tabelle.
+    const policy = await service.setMfaRequired(scope, true, { id: mfaOwner });
+    expect(policy).toMatchObject({ required: true, users: 1, enrolled: 0, notEnrolled: 1 });
+    const stored = await auth.query<{ mfa_required: boolean }>(
+      `SELECT mfa_required FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [mfaOrganization, mfaProject],
+    );
+    expect(stored.rows).toEqual([{ mfa_required: true }]);
+
+    // Die bestehende aal1-Sitzung hoert auf zu gelten — an der Pruefung des
+    // Access Tokens und am Erneuern, und das Erneuern widerruft die Familie
+    // in der Datenbank, nicht nur im Speicher.
+    await expect(service.verifyAccess(scope, first.accessToken)).rejects.toMatchObject({ code: "MFA_REQUIRED" });
+    await expect(service.refresh(scope, first.refreshToken)).rejects.toMatchObject({ code: "MFA_REQUIRED" });
+    const revoked = await auth.query<{ revoked: boolean }>(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM project_auth_sessions
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development' AND id = $3`,
+      [mfaOrganization, mfaProject, principal.session.id],
+    );
+    expect(revoked.rows).toEqual([{ revoked: true }]);
+
+    // Eine neue Anmeldung mit richtigem Passwort ergibt keine Sitzung,
+    // sondern einen Einrichtungsschein. Der Beweis steht in der Tabelle:
+    // keine einzige lebende Sitzung dieses Nutzers.
+    const blocked = await service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() });
+    if (!("enrollmentRequired" in blocked)) throw new Error("expected an enrolment grant");
+    expect(blocked).toMatchObject({ mfaRequired: true, enrollmentRequired: true });
+    expect(blocked).not.toHaveProperty("accessToken");
+    const live = async () => (await auth.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM project_auth_sessions
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+         AND auth_user_id = $3 AND revoked_at IS NULL AND compromised_at IS NULL`,
+      [mfaOrganization, mfaProject, principal.user.id],
+    )).rows[0].count;
+    expect(await live()).toBe("0");
+
+    // Und trotzdem kommt er an die Einrichtung: Der Schein loest auf, das
+    // Geheimnis entsteht, ein echter TOTP-Code bestaetigt es.
+    const grant = await service.resolveMfaEnrollment(scope, blocked.enrollmentToken);
+    expect(grant.user.id).toBe(principal.user.id);
+    const enrollment = await service.enrollMfa(grant);
+    expect(enrollment.recoveryCodes).toHaveLength(10);
+    await expect(service.confirmMfa(grant, certificationTotp(enrollment.secret, at)))
+      .resolves.toEqual({ verified: true });
+    // Der Schein ist verbraucht; ein zweites Mal oeffnet er nichts.
+    await expect(service.resolveMfaEnrollment(scope, blocked.enrollmentToken))
+      .rejects.toMatchObject({ code: "INVALID_TOKEN" });
+    // Bis hierher ist immer noch keine Sitzung entstanden.
+    expect(await live()).toBe("0");
+
+    // Jetzt, und erst jetzt, endet die Anmeldung in einer brauchbaren
+    // Sitzung — und die traegt aal2.
+    const challenge = await service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() });
+    if (!("challengeToken" in challenge)) throw new Error("expected a challenge");
+    const session = await service.verifyMfaChallenge(scope, {
+      challengeToken: challenge.challengeToken, code: certificationTotp(enrollment.secret, at),
+      rateLimitKey: randomUUID(),
+    });
+    expect((await service.verifyAccess(scope, session.accessToken)).claims.aal).toBe("aal2");
+    expect(await live()).toBe("1");
+    const rotated = await service.refresh(scope, session.refreshToken);
+    expect((await service.verifyAccess(scope, rotated.accessToken)).claims.aal).toBe("aal2");
+
+    // Die Aenderung des Schalters steht in der Hash-Kette, mit dem neuen
+    // Zustand und ohne Adresse.
+    const page = await service.listAuditEvents(scope, 50);
+    const changed = page.events.filter((event) => event.action === "project_auth.mfa.enforcement_changed");
+    expect(changed).toHaveLength(1);
+    expect(changed[0]).toMatchObject({
+      actorType: "admin", actorRef: mfaOwner, status: "succeeded",
+      resourceRef: "project_auth_environment:development", metadata: { required: true },
+    });
+    expect(JSON.stringify(page.events)).not.toContain("@");
+    expect(JSON.stringify(page.events)).not.toMatch(/qk_/);
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: der App-Nutzer. Seine
+    // Sitzungen, Token und sein Faktor haengen per ON DELETE CASCADE daran.
+    // Organisation, Projekt und Umgebung bleiben, weil an ihnen Audit-Zeilen
+    // haengen; audit_logs ist append-only.
+    await owner.query("DELETE FROM project_auth_users WHERE id = $1", [principal.user.id]);
+    expect(await live()).toBe("0");
+  });
+
 });
+
+/**
+ * TOTP wie RFC 6238, dieselbe Rechnung wie `ProjectAuthTotp`, nur von aussen:
+ * Der Fall (2.52) muss einen echten Code vorzeigen, sonst pruefte er die
+ * Bestaetigung des Faktors gar nicht.
+ */
+function certificationTotp(secret: string, now: Date): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  const decoded: number[] = [];
+  for (const character of secret) {
+    value = (value << 5) | alphabet.indexOf(character);
+    bits += 5;
+    if (bits >= 8) { decoded.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(now.getTime() / 30_000)));
+  const digest = createHmac("sha1", Buffer.from(decoded)).update(counter).digest();
+  const offset = digest[digest.length - 1] & 15;
+  return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, "0");
+}
+
 
 /** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */
 function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInput {

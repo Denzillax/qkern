@@ -487,12 +487,15 @@ Wichtige öffentliche Pfade beginnen mit
   Console unter Auth → Audit-Log
 - `admin/audit/series?bucket=<hour|day>` (GET) fasst dieselben Einträge seit `2.47.0`
   zu einer Zeitreihe zusammen; in der Console unter Berichte → Auth
+- `admin/mfa` (GET liest, PUT setzt) legt seit `2.49.0` fest, ob diese Umgebung den
+  zweiten Faktor verlangt; in der Console unter Auth → Mehrfaktor
 
 Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
 `project_auth.signup.succeeded`, `project_auth.login.succeeded`,
 `project_auth.login.failed`, `project_auth.logout`, `project_auth.mfa.enrolled`,
 `project_auth.mfa.verified`, `project_auth.user.updated`,
-`project_auth.session.revoked` und `project_auth.sessions.revoked_all`. Ein Refresh
+`project_auth.session.revoked`, `project_auth.sessions.revoked_all` und seit
+`2.49.0` `project_auth.mfa.enforcement_changed`. Ein Refresh
 wird nicht protokolliert, das wäre zu viel Rauschen. App-Nutzer erscheinen nur als
 `project_auth_user:<id>`, ein Fehlversuch mit unbekannter E-Mail als `anonymous`,
 Console-Aktionen mit der ID des Console-Nutzers. E-Mails, Passwörter, Token und
@@ -520,6 +523,63 @@ eines alten Refresh Tokens sperrt die ganze Familie. Deaktivieren eines Users od
 Logout widerruft die Session sofort, weil die JWT-Prüfung auch die persistierte
 Session kontrolliert. TOTP-Secrets sind AES-256-GCM-verschlüsselt; Recovery Codes
 werden nur als HMAC-Verifier gespeichert und sind einmalig.
+
+### Zweiter Faktor je Projekt erzwingbar
+
+Seit `2.49.0` ist **Auth → Mehrfaktor** keine Platzhalterseite mehr. Der alte
+Hinweis — „Erzwingen je Projekt und weitere Faktoren fehlen“ — stimmt zur
+Hälfte nicht mehr: Erzwingen gibt es jetzt. Weitere Faktoren gibt es weiterhin
+nicht, und die Seite sagt das auch.
+
+Die Einstellung gehört zur **Projektumgebung**, nicht zum Nutzer und nicht zum
+Prozess: Development darf offen bleiben, während Production den Faktor
+verlangt. Sie liegt in `project_auth_settings`
+(`db/migrations/0048_project_auth_mfa_enforcement.sql`); eine fehlende Zeile
+heisst „nicht erzwungen“.
+
+**Was Erzwingen tut.** Ist der Schalter an, ergibt eine Anmeldung ohne zweiten
+Faktor keine brauchbare Sitzung. Geprüft wird an genau den drei Stellen, an
+denen eine Sitzung brauchbar wird, und alle drei liegen im Dienst, nicht in der
+Console:
+
+1. **Beim Anlegen** (`beginAuthenticatedSession`): Ein Nutzer ohne bestätigten
+   Faktor bekommt keine Zeile in `project_auth_sessions` und kein Access Token.
+2. **Beim Erneuern** (`refresh`): Eine `aal1`-Sitzung wird nicht rotiert,
+   sondern ihre ganze Refresh-Familie widerrufen. Sonst lebten die Sitzungen
+   von vor dem Einschalten bis zum Ablauf ihres Refresh Tokens weiter, und der
+   steht auf 30 Tagen.
+3. **Beim Prüfen** (`verifyAccess`): Die Tür, durch die Data API, Realtime,
+   `auth/user` und `auth/mfa/enroll` gehen. Damit schliesst sich auch das
+   Restfenster von bis zu 15 Minuten, in dem ein vorher ausgegebenes
+   `aal1`-Token sonst noch gälte.
+
+**Wer noch keinen Faktor hat, kommt trotzdem zur Einrichtung.** Die Anmeldung
+gibt ihm statt einer Sitzung einen Einrichtungsschein: ein opakes
+`qk_enroll_…`-Token, 15 Minuten gültig, gespeichert nur als Verifier. Es öffnet
+einzig `auth/mfa/enroll` — dort wird es als Bearer vorgezeigt — und sonst
+nichts; jede andere Grenze prüft ein Access Token, und ein `qk_`-Token wird
+dort als Bearer abgewiesen. Beim gelungenen Bestätigen ist der Schein
+verbraucht. Ohne diesen Weg würde das Einschalten jeden aussperren, der noch
+keinen Faktor hat — und das wäre beim ersten Mal jeder. Die Anmeldung, die nur
+einen Schein ergibt, steht als `project_auth.login.failed` mit dem Grund
+`mfa_enrollment_required` im Audit.
+
+Die Route ist
+`GET|PUT /api/v1/projects/{projectId}/environments/{environment}/auth/admin/mfa`
+— dieselbe Tür wie die übrigen `admin/*`-Routen: Console-Session mit
+`project_auth_admin`, `Cache-Control: private, no-store`, bei `PUT` zusätzlich
+ein geprüfter Origin. Der Körper hat genau ein Feld, `required`, und muss ein
+Boolean sein; alles andere ist ein 400 vor dem Dienstaufruf. Jede Änderung
+schreibt `project_auth.mfa.enforcement_changed` in die Audit-Kette, mit dem
+neuen Zustand und sonst nichts.
+
+Als zweiter Faktor gibt es heute genau einen: TOTP aus einer Authenticator-App
+mit einmaligen Recovery-Codes. **WebAuthn, Passkeys, SMS und E-Mail-Codes gibt
+es nicht**, und dieser Schalter bringt sie nicht mit. Die Console-Anmeldung von
+QKERN selbst ist davon unberührt; sie läuft nicht über Project Auth.
+
+Ausschalten nimmt die Pflicht weg, nicht die Faktoren: Wer einen bestätigten
+Faktor hat, wird weiterhin danach gefragt.
 
 ### Anmeldungen als Reihe und als Protokoll
 
@@ -550,8 +610,8 @@ unvollständigen Eimer. Die Antwort nennt `windowStart`, `windowEnd`, `bucket`,
 `bucketCount` und `truncated`; jeder Eimer des Fensters steht darin, ein leerer
 als Null.
 
-Gezählt werden die neun Handlungen, die der Dienst wirklich schreibt
-(`project_auth.signup.succeeded` bis `project_auth.sessions.revoked_all`), dazu
+Gezählt werden die zehn Handlungen, die der Dienst wirklich schreibt
+(`project_auth.signup.succeeded` bis `project_auth.mfa.enforcement_changed`), dazu
 `other` für eine `project_auth.*`-Handlung, die diese Fassung noch nicht kennt.
 Sie wegzulassen würde die Summe fälschen.
 

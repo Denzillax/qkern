@@ -57,7 +57,8 @@ export type ProjectAuthOneTimePurpose =
   | "magic_link"
   | "password_reset"
   | "oidc_state"
-  | "mfa_challenge";
+  | "mfa_challenge"
+  | "mfa_enrollment";
 
 export type ProjectAuthOneTimeToken = ProjectAuthScope & {
   id: string;
@@ -77,6 +78,22 @@ export type ProjectAuthMfaFactor = ProjectAuthScope & {
   recoveryCodeHashes: string[];
   createdAt: Date;
   verifiedAt: Date | null;
+};
+
+/**
+ * Was eine Projektumgebung ueber ihre Anmeldung festlegt (2.52). Heute genau
+ * ein Schalter; die Zeile fehlt, solange niemand ihn je angefasst hat, und
+ * eine fehlende Zeile heisst "nicht erzwungen".
+ */
+export type ProjectAuthSettings = ProjectAuthScope & {
+  mfaRequired: boolean;
+  updatedAt: Date;
+};
+
+/** Wie viele App-Nutzer es gibt und wie viele davon einen bestaetigten Faktor haben. */
+export type ProjectAuthMfaEnrolmentCount = {
+  users: number;
+  enrolled: number;
 };
 
 export type ProjectAuthOidcIdentity = ProjectAuthScope & {

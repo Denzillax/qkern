@@ -1,6 +1,7 @@
 import { InvalidRecordError, mapPostgresError } from "@/lib/server/db/errors";
 import type { SqlPool, SqlQueryable, SqlValue } from "@/lib/server/db/sql";
 import type {
+  ProjectAuthMfaEnrolmentCount,
   ProjectAuthMfaFactor,
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
@@ -8,6 +9,7 @@ import type {
   ProjectAuthScope,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
+  ProjectAuthSettings,
   ProjectAuthUser,
 } from "@/lib/server/project-auth/model";
 import {
@@ -218,6 +220,50 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     return result.rows[0] ? oneTimeFromRow(result.rows[0]) : null;
   }
 
+  async findActiveOneTimeToken(
+    scope: ProjectAuthScope,
+    tokenHash: string,
+    purpose: ProjectAuthOneTimePurpose,
+    now: Date,
+  ) {
+    const result = await query(this.pool, `SELECT ${ONE_TIME_COLUMNS}
+      FROM project_auth_one_time_tokens
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND token_hash = $4 AND purpose = $5 AND consumed_at IS NULL AND expires_at > $6
+      LIMIT 1`, [...scopeValues(scope), tokenHash, purpose, now]);
+    return result.rows[0] ? oneTimeFromRow(result.rows[0]) : null;
+  }
+
+  async readSettings(scope: ProjectAuthScope): Promise<ProjectAuthSettings | null> {
+    const result = await query(this.pool, `${SETTINGS_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+      LIMIT 1`, scopeValues(scope));
+    return result.rows[0] ? settingsFromRow(result.rows[0]) : null;
+  }
+
+  async writeMfaRequired(scope: ProjectAuthScope, required: boolean, now: Date): Promise<ProjectAuthSettings> {
+    const result = await query(this.pool, `INSERT INTO project_auth_settings
+      (organization_id, project_id, environment, mfa_required, updated_at)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (organization_id, project_id, environment)
+      DO UPDATE SET mfa_required = EXCLUDED.mfa_required, updated_at = EXCLUDED.updated_at
+      RETURNING ${SETTINGS_COLUMNS}`, [...scopeValues(scope), required, now]);
+    return settingsFromRow(result.rows[0]);
+  }
+
+  async countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount> {
+    // Beide Zahlen in einer Abfrage und in der Datenbank gezaehlt: Die
+    // Console soll keine Nutzerliste laden muessen, um eine Zahl zu zeigen.
+    const result = await query(this.pool, `SELECT
+        (SELECT COUNT(*) FROM project_auth_users
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3) AS users,
+        (SELECT COUNT(*) FROM project_auth_mfa_factors
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+            AND verified_at IS NOT NULL) AS enrolled`, scopeValues(scope));
+    const row = result.rows[0] ?? {};
+    return { users: count(row.users, "user count"), enrolled: count(row.enrolled, "enrolment count") };
+  }
+
   async getMfaFactor(scope: ProjectAuthScope, userId: string) {
     const result = await query(this.pool, `${MFA_SELECT}
       WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4
@@ -317,6 +363,8 @@ const INSERT_SESSION = `INSERT INTO project_auth_sessions
 
 const ONE_TIME_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, purpose,
   token_hash, metadata, created_at, expires_at, consumed_at`;
+const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, updated_at`;
+const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
 const MFA_SELECT = `SELECT ${MFA_COLUMNS} FROM project_auth_mfa_factors`;
@@ -351,6 +399,15 @@ function timestamp(value: unknown, name: string): Date {
 
 function optionalTimestamp(value: unknown, name: string): Date | null {
   return value === null || value === undefined ? null : timestamp(value, name);
+}
+
+function count(value: unknown, name: string): number {
+  // PostgreSQL liefert COUNT(*) als bigint, und der Treiber reicht bigint als
+  // Zeichenkette weiter. Number(...) ohne Pruefung machte aus einem
+  // unerwarteten Wert stillschweigend NaN.
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new InvalidRecordError(`Invalid project auth ${name}.`);
+  return parsed;
 }
 
 function jsonObject(value: unknown, name: string): Record<string, unknown> {
@@ -422,6 +479,18 @@ function oneTimeFromRow(row: Row): ProjectAuthOneTimeToken {
     metadata: jsonObject(row.metadata, "one-time metadata"),
     createdAt: timestamp(row.created_at, "token creation"), expiresAt: timestamp(row.expires_at, "token expiry"),
     consumedAt: optionalTimestamp(row.consumed_at, "token consumption"),
+  };
+}
+
+function settingsFromRow(row: Row): ProjectAuthSettings {
+  if (!row || typeof row.mfa_required !== "boolean") {
+    throw new InvalidRecordError("Invalid project auth settings.");
+  }
+  return {
+    organizationId: String(row.organization_id), projectId: String(row.project_id),
+    environment: row.environment as ProjectAuthScope["environment"],
+    mfaRequired: row.mfa_required,
+    updatedAt: timestamp(row.updated_at, "settings update"),
   };
 }
 

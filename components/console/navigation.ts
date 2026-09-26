@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -47,7 +47,6 @@ export const PLACEHOLDERS = {
   "auth-rate-limits": { label: "Rate Limits", supabase: "Authentication → Rate Limits", backend: "fehlt", note: "Grenzen für Anmeldungen, Mails und Token je Zeitfenster." },
   "auth-templates": { label: "E-Mail-Vorlagen", supabase: "Authentication → Emails → Templates", backend: "fehlt", note: "Texte für Bestätigung, Magic Link und Zurücksetzen. Mails gehen heute mit festem Text." },
   "auth-smtp": { label: "SMTP", supabase: "Authentication → Emails → SMTP Settings", backend: "teilweise", note: "Eigener Mailserver. SMTP ist gegen Mailpit zertifiziert; die Einstellung liegt in der Umgebung, nicht in der Console." },
-  "auth-mfa": { label: "Mehrfaktor", supabase: "Authentication → Multi-Factor", backend: "teilweise", note: "TOTP mit Recovery-Codes ist zertifiziert. Erzwingen je Projekt und weitere Faktoren fehlen." },
   "auth-passkeys": { label: "Passkeys", supabase: "Authentication → Passkeys", backend: "fehlt", note: "Anmeldung mit WebAuthn statt Passwort, etwa per Fingerabdruck oder Sicherheitsschlüssel. Kein Backend." },
   "auth-url": { label: "URL-Konfiguration", supabase: "Authentication → URL Configuration", backend: "fehlt", note: "Site-URL und erlaubte Rücksprungziele für Magic Link und OIDC." },
   "auth-protection": { label: "Angriffsschutz", supabase: "Authentication → Attack Protection", backend: "fehlt", note: "Captcha, Passwortprüfung gegen bekannte Lecks, Bot-Abwehr." },
@@ -111,7 +110,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
     { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, { id: "auth-sessions", label: "Sitzungen" }, ph("auth-rate-limits"),
-    ph("auth-templates"), ph("auth-smtp"), ph("auth-mfa"), ph("auth-passkeys"), ph("auth-url"), ph("auth-protection"),
+    ph("auth-templates"), ph("auth-smtp"), { id: "auth-mfa", label: "Mehrfaktor" }, ph("auth-passkeys"), ph("auth-url"), ph("auth-protection"),
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), { id: "auth-audit", label: "Audit-Log" }, ph("auth-performance"),
   ] },
   { id: "storage", label: "Storage", icon: Cloud, children: [

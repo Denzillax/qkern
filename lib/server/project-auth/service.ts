@@ -29,6 +29,10 @@ import {
 } from "@/lib/server/project-auth/audit-series";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import {
+  projectAuthMfaOutcome,
+  projectAuthSessionUsable,
+} from "@/lib/server/project-auth/mfa-enforcement";
+import {
   ProjectAuthOidcCatalog,
   ProjectAuthOidcClient,
   ProjectAuthOidcError,
@@ -46,6 +50,7 @@ import {
 
 const REFRESH_TOKEN = /^qk_refresh_[A-Za-z0-9_-]{43}$/;
 const CHALLENGE_TOKEN = /^qk_challenge_[A-Za-z0-9_-]{43}$/;
+const ENROLLMENT_TOKEN = /^qk_enroll_[A-Za-z0-9_-]{43}$/;
 const ONE_TIME_TOKEN = /^qk_(verify|magic|reset)_[A-Za-z0-9_-]{43}$/;
 const OIDC_STATE_TOKEN = /^qk_oidc_[A-Za-z0-9_-]{43}$/;
 const PASSWORD_RATE = { limit: 10, windowMs: 15 * 60 * 1_000 };
@@ -92,11 +97,51 @@ export type ProjectAuthMfaRequired = {
   expiresAt: string;
 };
 
+/**
+ * Die Antwort auf eine Anmeldung, die stimmt, aber keine Sitzung ergeben
+ * darf (2.52): Die Umgebung verlangt den zweiten Faktor, und dieser Nutzer
+ * hat noch keinen bestaetigten.
+ *
+ * `mfaRequired` steht hier absichtlich auch: Beide Antworten sagen dasselbe
+ * — ohne zweiten Faktor gibt es keine Sitzung. Der Unterschied ist, was der
+ * Nutzer als Naechstes tun kann. Mit `challengeToken` bestaetigt er einen
+ * Faktor, den er schon hat; mit `enrollmentToken` richtet er erst einen ein.
+ * Der Einrichtungsschein oeffnet nur `auth/mfa/enroll`, sonst nichts.
+ */
+export type ProjectAuthMfaEnrollmentRequired = {
+  mfaRequired: true;
+  enrollmentRequired: true;
+  enrollmentToken: string;
+  expiresAt: string;
+};
+
 export type VerifiedProjectAuthPrincipal = {
   scope: ProjectAuthScope;
   user: ProjectAuthUser;
   session: ProjectAuthSession;
   claims: ProjectAuthAccessClaims;
+};
+
+/**
+ * Wer mit einem Einrichtungsschein statt mit einer Sitzung kommt. Dieselben
+ * zwei Felder, die `enrollMfa` und `confirmMfa` wirklich brauchen, plus der
+ * Verifier des Scheins, damit das gelungene Bestaetigen ihn verbraucht.
+ * `VerifiedProjectAuthPrincipal` passt ohne Weiteres darauf.
+ */
+export type ProjectAuthEnrollmentPrincipal = {
+  scope: ProjectAuthScope;
+  user: ProjectAuthUser;
+  enrollmentGrantHash?: string;
+};
+
+/** Was die Console ueber den zweiten Faktor einer Umgebung sieht (2.52). */
+export type PublicProjectAuthMfaPolicy = {
+  required: boolean;
+  updatedAt: string | null;
+  users: number;
+  enrolled: number;
+  notEnrolled: number;
+  factors: readonly ["totp"];
 };
 
 /** Wer in der Console handelt: die ID des Console-Nutzers, nie seine E-Mail. */
@@ -286,7 +331,7 @@ export class ProjectAuthService {
   async consumeEmailToken(scope: ProjectAuthScope, input: {
     token: string;
     purpose: "email_verification" | "magic_link";
-  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired> {
+  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
     assertScope(scope);
     const prefix = input.purpose === "email_verification" ? "qk_verify_" : "qk_magic_";
     if (!ONE_TIME_TOKEN.test(input.token) || !input.token.startsWith(prefix)) {
@@ -312,7 +357,7 @@ export class ProjectAuthService {
     email: string;
     password: string;
     rateLimitKey: string;
-  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired> {
+  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
     const now = this.now();
     await this.assertRateLimit(`project-password:${scopeKey(scope)}:${input.rateLimitKey}`, PASSWORD_RATE, now);
     assertScope(scope);
@@ -355,6 +400,15 @@ export class ProjectAuthService {
       await this.dependencies.repository.revokeSessionFamily(scope, current.familyId, now, false);
       throw new ProjectAuthError("INVALID_TOKEN");
     }
+    // Der zweite Ort, an dem eine Sitzung brauchbar wird (2.52). Beim
+    // Einschalten des Schalters leben die bestehenden aal1-Sitzungen sonst
+    // bis zum Ablauf ihres Refresh Tokens weiter, und der steht auf 30 Tagen.
+    // Die Familie wird widerrufen und nicht bloss abgelehnt: Ein Refresh
+    // Token, das nie wieder gelten darf, gehoert nicht in die Datenbank.
+    if (!projectAuthSessionUsable({ required: await this.mfaRequired(scope), assurance: current.assurance })) {
+      await this.dependencies.repository.revokeSessionFamily(scope, current.familyId, now, false);
+      throw new ProjectAuthError("MFA_REQUIRED");
+    }
     const nextToken = this.opaqueToken("refresh");
     if (!REFRESH_TOKEN.test(nextToken)) throw new ProjectAuthError("INVALID_INPUT");
     const next = this.session(scope, user.id, current.assurance, now, nextToken, current.familyId);
@@ -379,6 +433,15 @@ export class ProjectAuthService {
         session.assurance !== claims.aal || user.email !== claims.email) {
       throw new ProjectAuthError("INVALID_TOKEN");
     }
+    // Die eigentliche Tuer (2.52): Hier kommt jede Nutzung eines Access
+    // Tokens vorbei — Data API, Realtime, `auth/user`, `auth/mfa/enroll`.
+    // Wird der Faktor verlangt, oeffnet nur `aal2`. Damit schliesst sich
+    // auch das Restfenster von bis zu 15 Minuten, in dem ein vor dem
+    // Einschalten ausgegebenes aal1-Token sonst noch gaelte. Der Preis ist
+    // ein kleiner Lesezugriff je Anfrage, auf den Primaerschluessel.
+    if (!projectAuthSessionUsable({ required: await this.mfaRequired(scope), assurance: session.assurance })) {
+      throw new ProjectAuthError("MFA_REQUIRED");
+    }
     return { scope, user, session, claims };
   }
 
@@ -391,7 +454,7 @@ export class ProjectAuthService {
     await this.recordAudit(this.userEvent(scope, "project_auth.logout", session.userId, "succeeded", { family: session.familyId }));
   }
 
-  async enrollMfa(principal: VerifiedProjectAuthPrincipal): Promise<{
+  async enrollMfa(principal: ProjectAuthEnrollmentPrincipal): Promise<{
     factorId: string;
     secret: string;
     uri: string;
@@ -411,14 +474,90 @@ export class ProjectAuthService {
     return { factorId, ...enrollment };
   }
 
-  async confirmMfa(principal: VerifiedProjectAuthPrincipal, code: string): Promise<{ verified: true }> {
+  async confirmMfa(principal: ProjectAuthEnrollmentPrincipal, code: string): Promise<{ verified: true }> {
     const factor = await this.dependencies.repository.getMfaFactor(principal.scope, principal.user.id);
     if (!factor || factor.verifiedAt || !this.dependencies.mfa.verify(
       this.dependencies.secrets.decrypt(factor.encryptedSecret), code, this.now(),
     )) throw new ProjectAuthError("INVALID_MFA");
     await this.dependencies.repository.upsertMfaFactor({ ...factor, verifiedAt: this.now() });
+    // Der Einrichtungsschein hat seinen Zweck erfuellt und wird verbraucht.
+    // Ab jetzt fuehrt der Weg wieder ueber eine richtige Anmeldung, die nun
+    // mit einer Challenge endet und eine aal2-Sitzung ergibt.
+    if (principal.enrollmentGrantHash) {
+      await this.dependencies.repository.consumeOneTimeToken(
+        principal.scope, principal.enrollmentGrantHash, "mfa_enrollment", this.now(),
+      );
+    }
     await this.recordAudit(this.userEvent(principal.scope, "project_auth.mfa.enrolled", principal.user.id, "succeeded", { factor: "totp" }));
     return { verified: true };
+  }
+
+  /**
+   * Loest einen Einrichtungsschein auf, ohne ihn zu verbrauchen (2.52).
+   *
+   * Der Schein oeffnet genau zwei Aufrufe: Geheimnis holen und Code
+   * bestaetigen. Er traegt weder Rolle noch Ablaufzeit eines Access Tokens
+   * und laesst sich nirgends sonst vorzeigen; `presentedProjectAccessToken`
+   * lehnt jedes `qk_`-Token als Bearer ab, und keine andere Route kennt
+   * diesen Weg.
+   *
+   * Wer schon einen bestaetigten Faktor hat, bekommt hier nichts: Sein
+   * Schein waere ein zweiter Weg an der Challenge vorbei.
+   */
+  async resolveMfaEnrollment(scope: ProjectAuthScope, token: string): Promise<ProjectAuthEnrollmentPrincipal> {
+    assertScope(scope);
+    if (!ENROLLMENT_TOKEN.test(token)) throw new ProjectAuthError("INVALID_TOKEN");
+    const tokenHash = hashProjectAuthToken(token);
+    const grant = await this.dependencies.repository.findActiveOneTimeToken(
+      scope, tokenHash, "mfa_enrollment", this.now(),
+    );
+    if (!grant?.userId) throw new ProjectAuthError("INVALID_TOKEN");
+    const user = await this.dependencies.repository.findUserById(scope, grant.userId);
+    if (!user || user.status !== "active") throw new ProjectAuthError("INVALID_TOKEN");
+    const factor = await this.dependencies.repository.getMfaFactor(scope, user.id);
+    if (factor?.verifiedAt) throw new ProjectAuthError("INVALID_TOKEN");
+    return { scope, user, enrollmentGrantHash: tokenHash };
+  }
+
+  /**
+   * Was die Console ueber den zweiten Faktor dieser Umgebung sieht (2.52):
+   * der Schalter, wann er zuletzt bewegt wurde, und wie viele App-Nutzer
+   * einen bestaetigten Faktor haben. `notEnrolled` ist die Differenz und
+   * damit genau die Zahl der Nutzer, die beim Einschalten zuerst durch die
+   * Einrichtung muessen.
+   *
+   * `factors` nennt, was es heute gibt, und das ist einer: TOTP. WebAuthn
+   * und Passkeys stehen nicht darin, weil sie nicht existieren.
+   */
+  async readMfaPolicy(scope: ProjectAuthScope): Promise<PublicProjectAuthMfaPolicy> {
+    assertScope(scope);
+    const settings = await this.dependencies.repository.readSettings(scope);
+    const counts = await this.dependencies.repository.countMfaEnrolment(scope);
+    return mfaPolicy(settings?.mfaRequired ?? false, settings?.updatedAt ?? null, counts);
+  }
+
+  /**
+   * Bewegt den Schalter. Jede Aenderung schreibt einen Audit-Eintrag; darin
+   * steht die Handlung und der neue Zustand, sonst nichts — der Sanitizer
+   * laesst Adressen und Schluessel ohnehin nicht durch, und es gaebe hier
+   * auch keine.
+   */
+  async setMfaRequired(
+    scope: ProjectAuthScope,
+    required: boolean,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthMfaPolicy> {
+    assertScope(scope);
+    if (typeof required !== "boolean") throw new ProjectAuthError("INVALID_INPUT");
+    const settings = await this.dependencies.repository.writeMfaRequired(scope, required, this.now());
+    await this.recordAudit({
+      scope, action: "project_auth.mfa.enforcement_changed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "succeeded", metadata: { required },
+    });
+    const counts = await this.dependencies.repository.countMfaEnrolment(scope);
+    return mfaPolicy(settings.mfaRequired, settings.updatedAt, counts);
   }
 
   async verifyMfaChallenge(scope: ProjectAuthScope, input: {
@@ -510,7 +649,7 @@ export class ProjectAuthService {
     provider: string;
     state: string;
     code: string;
-  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired> {
+  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
     assertScope(scope);
     if (!OIDC_STATE_TOKEN.test(input.state)) throw new ProjectAuthError("INVALID_TOKEN");
     const provider = this.dependencies.oidcCatalog.get(input.provider);
@@ -737,6 +876,11 @@ export class ProjectAuthService {
     return buildProjectAuthAuditSeries({ bucket, now, records });
   }
 
+  /** Verlangt diese Umgebung den zweiten Faktor? Keine Zeile heisst nein. */
+  private async mfaRequired(scope: ProjectAuthScope): Promise<boolean> {
+    return (await this.dependencies.repository.readSettings(scope))?.mfaRequired ?? false;
+  }
+
   private async requireUser(scope: ProjectAuthScope, userId: string): Promise<void> {
     const user = await this.dependencies.repository.findUserById(scope, userId);
     if (!user) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
@@ -796,9 +940,14 @@ export class ProjectAuthService {
     now: Date,
     method: ProjectAuthSignInMethod,
     provider?: string,
-  ): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired> {
+  ): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
     const factor = await this.dependencies.repository.getMfaFactor(scope, user.id);
-    if (factor?.verifiedAt) {
+    // Der Schalter der Umgebung wird nur gelesen, wenn es ueberhaupt darauf
+    // ankommt: Wer einen bestaetigten Faktor hat, bekommt so oder so eine
+    // Challenge. Das spart den Lesezugriff auf dem haeufigsten Weg.
+    const required = factor?.verifiedAt ? false : await this.mfaRequired(scope);
+    const outcome = projectAuthMfaOutcome({ required, factor });
+    if (outcome === "challenge") {
       const challengeToken = this.opaqueToken("challenge");
       if (!CHALLENGE_TOKEN.test(challengeToken)) throw new ProjectAuthError("INVALID_INPUT");
       const expiresAt = new Date(now.getTime() + 5 * 60 * 1_000);
@@ -809,6 +958,28 @@ export class ProjectAuthService {
       });
       // Noch keine Anmeldung: die zaehlt erst, wenn der zweite Faktor stimmt.
       return { mfaRequired: true, challengeToken, expiresAt: expiresAt.toISOString() };
+    }
+    if (outcome === "enrollment_required") {
+      // Hier entsteht bewusst **keine** Sitzung, keine Zeile in
+      // project_auth_sessions und kein Access Token. Der Nutzer bekommt nur
+      // einen Schein, mit dem er `auth/mfa/enroll` erreicht. Ohne diesen Weg
+      // sperrte das Einschalten des Schalters jeden aus, der noch keinen
+      // Faktor hat — und das waere beim ersten Mal jeder.
+      const enrollmentToken = this.opaqueToken("enroll");
+      if (!ENROLLMENT_TOKEN.test(enrollmentToken)) throw new ProjectAuthError("INVALID_INPUT");
+      const expiresAt = new Date(now.getTime() + 15 * 60 * 1_000);
+      await this.dependencies.repository.createOneTimeToken({
+        ...scope, id: this.id(), userId: user.id, purpose: "mfa_enrollment",
+        tokenHash: hashProjectAuthToken(enrollmentToken), metadata: {}, createdAt: now,
+        expiresAt, consumedAt: null,
+      });
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", user.id, "failed", {
+        method, ...(provider ? { provider } : {}), reason: "mfa_enrollment_required",
+      }));
+      return {
+        mfaRequired: true, enrollmentRequired: true, enrollmentToken,
+        expiresAt: expiresAt.toISOString(),
+      };
     }
     const result = await this.createSessionResult(scope, user, "aal1", now);
     await this.recordAudit(this.userEvent(scope, "project_auth.login.succeeded", user.id, "succeeded", {
@@ -954,6 +1125,9 @@ export class DisabledProjectAuthService {
   logout(): never { return this.disabled(); }
   enrollMfa(): never { return this.disabled(); }
   confirmMfa(): never { return this.disabled(); }
+  resolveMfaEnrollment(): never { return this.disabled(); }
+  readMfaPolicy(): never { return this.disabled(); }
+  setMfaRequired(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
@@ -966,6 +1140,23 @@ export class DisabledProjectAuthService {
   revokeAllSessions(): never { return this.disabled(); }
   listAuditEvents(): never { return this.disabled(); }
   readAuditSeries(): never { return this.disabled(); }
+}
+
+function mfaPolicy(
+  required: boolean,
+  updatedAt: Date | null,
+  counts: { users: number; enrolled: number },
+): PublicProjectAuthMfaPolicy {
+  return {
+    required,
+    updatedAt: updatedAt ? updatedAt.toISOString() : null,
+    users: counts.users,
+    enrolled: counts.enrolled,
+    // Nie negativ, auch wenn beide Zahlen aus zwei Unterabfragen stammen und
+    // zwischen ihnen ein Nutzer verschwinden koennte.
+    notEnrolled: Math.max(counts.users - counts.enrolled, 0),
+    factors: ["totp"],
+  };
 }
 
 function canonicalEmail(email: string): string { return email.trim().toLowerCase(); }
