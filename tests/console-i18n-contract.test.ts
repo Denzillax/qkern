@@ -17,6 +17,7 @@ import { authMfaTexts } from "@/lib/console/auth-mfa-texts";
 import { authSettingsTexts } from "@/lib/console/auth-settings-texts";
 import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
 import { logViewTexts } from "@/lib/console/log-view-texts";
+import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -77,6 +78,9 @@ async function consoleKeys(): Promise<string[]> {
   // Logs -> Functions und Logs -> Data API (2.51) zeigen Spalten, Ausgaenge,
   // Zustaende und ihre Ehrlichkeitssaetze ueber t(variable).
   for (const text of logViewTexts()) keys.add(text);
+  // Auth -> Rate Limits (2.56) zeigt Arten, Gruende einer Ablehnung und seine
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authRateLimitTexts()) keys.add(text);
   return [...keys];
 }
 

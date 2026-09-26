@@ -2,6 +2,7 @@ import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
   ProjectAuthMfaEnrolmentCount,
   ProjectAuthMfaFactor,
+  ProjectAuthRateCount,
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
   ProjectAuthOneTimeToken,
@@ -11,6 +12,12 @@ import type {
   ProjectAuthSettings,
   ProjectAuthUser,
 } from "@/lib/server/project-auth/model";
+
+import {
+  DEFAULT_PROJECT_AUTH_RATE_LIMITS,
+  type ProjectAuthRateLimitKind,
+  type ProjectAuthRateLimits,
+} from "@/lib/server/project-auth/rate-limits";
 
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
   "passwordHash" | "status" | "emailVerifiedAt" | "userMetadata" | "appMetadata" | "updatedAt">>;
@@ -85,6 +92,40 @@ export interface ProjectAuthRepository {
     targets: readonly string[],
     now: Date,
   ): Promise<ProjectAuthSettings>;
+  /**
+   * Setzt alle drei Grenzen je Zeitfenster (2.56) und legt die Zeile an,
+   * falls es noch keine gibt. Alle drei zusammen, weil ein Koerper mit nur
+   * einer Art offen liesse, was mit den anderen geschehen soll.
+   */
+  writeRateLimits(
+    scope: ProjectAuthScope,
+    limits: ProjectAuthRateLimits,
+    now: Date,
+  ): Promise<ProjectAuthSettings>;
+  /**
+   * Zaehlt einen Versuch und gibt den Stand **nach** dem Hochzaehlen zurueck
+   * (2.56).
+   *
+   * Der tragende Teil dieses Slices. Zwei Eigenschaften machen die Aussage:
+   *
+   * 1. Gezaehlt wird in der Datenbank, in **einer** Anweisung, die den Wert
+   *    zurueckgibt. Zwei Instanzen, die gleichzeitig denselben Schluessel
+   *    zaehlen, bekommen darum 1 und 2 und nie zweimal 1.
+   * 2. `subjectHash` ist schon gehasht, wenn es hier ankommt. Diese Grenze
+   *    sieht nie eine Adresse und nie eine Sitzungs-ID im Klartext.
+   *
+   * `windowStart` rechnet der Dienst aus, nicht die Datenbank: Beide
+   * Instanzen sollen dieselbe Zeile treffen, und dafuer muss der Wert aus
+   * derselben Formel kommen und nicht aus zwei `now()`-Aufrufen.
+   */
+  countRateLimitAttempt(
+    scope: ProjectAuthScope,
+    input: {
+      kind: ProjectAuthRateLimitKind;
+      subjectHash: string;
+      windowStart: Date;
+    },
+  ): Promise<ProjectAuthRateCount>;
   /** Zaehlt App-Nutzer und bestaetigte Faktoren dieser Umgebung. */
   countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount>;
 
@@ -115,6 +156,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly mfaFactors = new Map<string, ProjectAuthMfaFactor>();
   private readonly oidcIdentities = new Map<string, ProjectAuthOidcIdentity>();
   private readonly settings = new Map<string, ProjectAuthSettings>();
+  private readonly rateCounters = new Map<string, number>();
 
   async findUserByEmail(scope: ProjectAuthScope, email: string) {
     const user = [...this.users.values()].find((candidate) => sameScope(candidate, scope) && candidate.email === email);
@@ -284,6 +326,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       // Die eine Einstellung fasst die andere nicht an; in PostgreSQL macht
       // das ein UPDATE auf genau eine Spalte, hier der uebernommene Wert.
       returnTargets: [...(previous?.returnTargets ?? [])],
+      rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -294,10 +337,50 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     const previous = this.settings.get(scopeKey(scope));
     const stored: ProjectAuthSettings = {
       ...scope, mfaRequired: previous?.mfaRequired ?? false,
-      returnTargets: [...targets], updatedAt: new Date(now),
+      returnTargets: [...targets],
+      rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
+      updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
     return cloneProjectAuthSettings(stored);
+  }
+
+  async writeRateLimits(scope: ProjectAuthScope, limits: ProjectAuthRateLimits, now: Date) {
+    const previous = this.settings.get(scopeKey(scope));
+    const stored: ProjectAuthSettings = {
+      ...scope, mfaRequired: previous?.mfaRequired ?? false,
+      returnTargets: [...(previous?.returnTargets ?? [])],
+      rateLimits: cloneRateLimits(limits), updatedAt: new Date(now),
+    };
+    this.settings.set(scopeKey(scope), stored);
+    return cloneProjectAuthSettings(stored);
+  }
+
+  /**
+   * Dieselbe Rechnung wie PostgreSQL, nur im Speicher: eine Zeile je
+   * (Scope, Art, Schluessel, Fensteranfang), und abgelaufene Fenster
+   * desselben Schluessels fallen dabei weg.
+   *
+   * Was diese Fassung **nicht** kann, ist der Punkt des ganzen Slices: Sie
+   * gilt nur in diesem Prozess. Zwei Instanzen teilen sie nicht. Fuer
+   * Entwicklung und Tests ist sie richtig, fuer den Betrieb nicht — dort
+   * zaehlt PostgreSQL, und der Fall "(2.56)" belegt es mit zwei
+   * Dienstinstanzen an einer Datenbank.
+   */
+  async countRateLimitAttempt(
+    scope: ProjectAuthScope,
+    input: { kind: ProjectAuthRateLimitKind; subjectHash: string; windowStart: Date },
+  ) {
+    const prefix = `${scopeKey(scope)}\0${input.kind}\0${input.subjectHash}\0`;
+    for (const key of [...this.rateCounters.keys()]) {
+      if (key.startsWith(prefix) && key !== `${prefix}${input.windowStart.toISOString()}`) {
+        this.rateCounters.delete(key);
+      }
+    }
+    const key = `${prefix}${input.windowStart.toISOString()}`;
+    const attempts = (this.rateCounters.get(key) ?? 0) + 1;
+    this.rateCounters.set(key, attempts);
+    return { kind: input.kind, attempts, windowStart: new Date(input.windowStart) };
   }
 
   async countMfaEnrolment(scope: ProjectAuthScope) {
@@ -389,7 +472,16 @@ function cloneProjectAuthSettings(settings: ProjectAuthSettings): ProjectAuthSet
   return {
     ...settings,
     returnTargets: [...settings.returnTargets],
+    rateLimits: cloneRateLimits(settings.rateLimits),
     updatedAt: new Date(settings.updatedAt),
+  };
+}
+
+function cloneRateLimits(limits: ProjectAuthRateLimits): ProjectAuthRateLimits {
+  return {
+    sign_in: { ...limits.sign_in },
+    mail: { ...limits.mail },
+    refresh: { ...limits.refresh },
   };
 }
 

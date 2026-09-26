@@ -2,6 +2,19 @@ import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PasswordHasher } from "@/lib/server/auth/password";
 import type { RateLimiter } from "@/lib/server/auth/rate-limit";
+import {
+  DEFAULT_PROJECT_AUTH_RATE_LIMITS,
+  parseProjectAuthRateLimits,
+  projectAuthRateAllowed,
+  projectAuthRateRetryAfterSeconds,
+  projectAuthRateSubjectHash,
+  projectAuthRateWindowStart,
+  PROJECT_AUTH_RATE_LIMIT_BOUNDS,
+  PROJECT_AUTH_RATE_LIMIT_KINDS,
+  type ProjectAuthRateLimitKind,
+  type ProjectAuthRateLimitRejection,
+  type ProjectAuthRateLimits,
+} from "@/lib/server/project-auth/rate-limits";
 import type {
   ProjectAuthAssurance,
   ProjectAuthOidcIdentity,
@@ -167,6 +180,42 @@ export type PublicProjectAuthReturnTargets = {
   updatedAt: string | null;
 };
 
+/**
+ * Was die Console ueber die Grenzen je Zeitfenster einer Umgebung sieht
+ * (2.56).
+ *
+ * `limits` sind die geltenden Werte, `defaults` die Vorgaben und `bounds` die
+ * Raender, innerhalb derer sich beide Zahlen bewegen duerfen. Die Console
+ * braucht alle drei: die Vorgaben, um sagen zu koennen, was "unveraendert"
+ * heisst, und die Raender, um eine Eingabe abzulehnen, bevor sie eine Route
+ * ablehnt.
+ *
+ * `configured` sagt, ob diese Umgebung ueberhaupt je etwas eingestellt hat.
+ * Ohne Zeile gelten die Vorgaben, und das ist etwas anderes als "jemand hat
+ * die Vorgaben eingetragen" — obwohl beides gleich wirkt, soll die Seite
+ * nicht behaupten, jemand haette hier etwas entschieden.
+ */
+export type PublicProjectAuthRateLimits = {
+  limits: ProjectAuthRateLimits;
+  defaults: ProjectAuthRateLimits;
+  bounds: typeof PROJECT_AUTH_RATE_LIMIT_BOUNDS;
+  kinds: readonly ProjectAuthRateLimitKind[];
+  configured: boolean;
+  updatedAt: string | null;
+};
+
+/** Die Ablehnung einer Grenze, mit Grund und der Art, die sie ausgeloest hat. */
+export class ProjectAuthRateLimitError extends Error {
+  constructor(
+    readonly reason: ProjectAuthRateLimitRejection,
+    readonly field: string,
+  ) {
+    super("Invalid Project Auth rate limit");
+    this.name = "ProjectAuthRateLimitError";
+  }
+}
+recognisedByName(ProjectAuthRateLimitError, "ProjectAuthRateLimitError");
+
 /** Die Ablehnung eines Eintrags, mit Grund und dem Wert, der sie ausgeloest hat. */
 export class ProjectAuthReturnTargetError extends Error {
   constructor(
@@ -269,6 +318,10 @@ export class ProjectAuthService {
     assertScope(scope);
     const email = canonicalEmail(input.email);
     assertEmail(email);
+    // Die Grenze aus der Datenbank, nach der Identitaet gezaehlt (2.56), und
+    // zwar bevor irgendetwas nachgeschlagen wird: Sonst unterschiede sich die
+    // Antwort fuer eine bekannte und eine unbekannte Adresse.
+    await this.assertStoredRateLimit(scope, "mail", email, now);
     assertPassword(input.password);
     const redirectTo = await this.returnTarget(scope, input.redirectTo);
     if (await this.dependencies.repository.findUserByEmail(scope, email)) {
@@ -303,6 +356,7 @@ export class ProjectAuthService {
     assertScope(scope);
     const email = canonicalEmail(input.email);
     assertEmail(email);
+    await this.assertStoredRateLimit(scope, "mail", email, now);
     const redirectTo = await this.returnTarget(scope, input.redirectTo);
     let user = await this.dependencies.repository.findUserByEmail(scope, email);
     if (!user && input.createUser) {
@@ -335,6 +389,7 @@ export class ProjectAuthService {
     assertScope(scope);
     const email = canonicalEmail(input.email);
     assertEmail(email);
+    await this.assertStoredRateLimit(scope, "mail", email, now);
     const redirectTo = await this.returnTarget(scope, input.redirectTo);
     const user = await this.dependencies.repository.findUserByEmail(scope, email);
     let token: string | undefined;
@@ -396,7 +451,13 @@ export class ProjectAuthService {
     const now = this.now();
     await this.assertRateLimit(`project-password:${scopeKey(scope)}:${input.rateLimitKey}`, PASSWORD_RATE, now);
     assertScope(scope);
-    const user = await this.dependencies.repository.findUserByEmail(scope, canonicalEmail(input.email));
+    const email = canonicalEmail(input.email);
+    // Die Grenze aus der Datenbank, nach der Identitaet gezaehlt (2.56). Sie
+    // steht vor dem Nachschlagen und vor dem Pruefen des Passworts: Ein
+    // Angreifer soll aus einer 429 nicht lesen koennen, ob es die Adresse
+    // gibt, und ein Raten soll schon vor dem teuren Argon2 enden.
+    await this.assertStoredRateLimit(scope, "sign_in", email, now);
+    const user = await this.dependencies.repository.findUserByEmail(scope, email);
     const valid = await this.dependencies.passwords.verify(
       input.password, user?.passwordHash ?? this.dependencies.passwords.dummyHash,
     );
@@ -430,6 +491,12 @@ export class ProjectAuthService {
       scope, hashProjectAuthToken(refreshToken),
     );
     if (!current) throw new ProjectAuthError("INVALID_TOKEN");
+    // Die Grenze aus der Datenbank, nach der Sitzungsfamilie gezaehlt (2.56).
+    // Sie steht hinter dem Nachschlagen und nicht davor, weil es vorher keine
+    // Familie gibt: Ein zufaellig geratenes Refresh Token gehoert zu keiner
+    // und ist schon eine Zeile darueber abgewiesen. Gezaehlt wird also das,
+    // was zaehlbar ist — wie oft eine echte Anmeldung ihr Token erneuert.
+    await this.assertStoredRateLimit(scope, "refresh", current.familyId, now);
     const user = await this.dependencies.repository.findUserById(scope, current.userId);
     if (!user || user.status !== "active") {
       await this.dependencies.repository.revokeSessionFamily(scope, current.familyId, now, false);
@@ -649,6 +716,133 @@ export class ProjectAuthService {
       limit: PROJECT_AUTH_RETURN_TARGET_LIMIT,
       updatedAt: settings.updatedAt.toISOString(),
     };
+  }
+
+  /**
+   * Die Grenzen je Zeitfenster dieser Umgebung (2.56), zusammen mit den
+   * Vorgaben und den Raendern. Ohne Zeile in `project_auth_settings` sind die
+   * Grenzen die Vorgaben und `configured` ist falsch.
+   */
+  async readRateLimits(scope: ProjectAuthScope): Promise<PublicProjectAuthRateLimits> {
+    assertScope(scope);
+    const settings = await this.dependencies.repository.readSettings(scope);
+    return publicRateLimits(settings?.rateLimits, settings?.updatedAt ?? null, Boolean(settings));
+  }
+
+  /**
+   * Setzt alle drei Grenzen. Alle drei zusammen, weil ein Koerper mit nur
+   * einer Art offen liesse, was mit den anderen geschehen soll, und
+   * "unveraendert lassen" eine Annahme waere, die niemand aufgeschrieben hat.
+   *
+   * Jede Aenderung schreibt einen Audit-Eintrag. Darin stehen die sechs
+   * Zahlen danach und sonst nichts — kein Schluessel, keine Adresse, keine
+   * Zaehlerstaende. Die Zahlen sind keine Geheimnisse; wer sie kennt, weiss,
+   * wie oft er es versuchen darf, und das steht ohnehin in der Antwort.
+   */
+  async setRateLimits(
+    scope: ProjectAuthScope,
+    limits: unknown,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthRateLimits> {
+    assertScope(scope);
+    const parsed = parseProjectAuthRateLimits(limits);
+    if (!parsed.ok) throw new ProjectAuthRateLimitError(parsed.reason, parsed.field);
+    const settings = await this.dependencies.repository.writeRateLimits(scope, parsed.limits, this.now());
+    await this.recordAudit({
+      scope, action: "project_auth.rate_limits.changed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "succeeded",
+      metadata: {
+        signInMax: parsed.limits.sign_in.max, signInWindow: parsed.limits.sign_in.windowSeconds,
+        mailMax: parsed.limits.mail.max, mailWindow: parsed.limits.mail.windowSeconds,
+        refreshMax: parsed.limits.refresh.max, refreshWindow: parsed.limits.refresh.windowSeconds,
+      },
+    });
+    return publicRateLimits(settings.rateLimits, settings.updatedAt, true);
+  }
+
+  /**
+   * Die Durchsetzung (2.56). Der tragende Teil dieses Slices, und die
+   * Entscheidungen darin sind einzeln begruendet:
+   *
+   * **Gezaehlt wird in der Datenbank**, nicht im Prozessspeicher. Mehr als
+   * eine Instanz ist ein erlaubter Betrieb; ein Zaehler im Speicher gaebe bei
+   * n Instanzen in Wahrheit das n-Fache der eingestellten Grenze frei und
+   * faenge nach jedem Neustart bei null an.
+   *
+   * **Gezaehlt wird nach dem richtigen Schluessel**: bei einer Anmeldung nach
+   * der Identitaet, bei einer Erneuerung nach der Sitzungsfamilie. Nie nach
+   * einer IP-Adresse allein — ein Angreifer wechselt sie, ein ganzes Buero
+   * teilt sich eine, und sie waere personenbezogene Bestandsdaten in einer
+   * Zaehltabelle. Der Schluessel geht ausserdem nur als SHA-256 hinein; in
+   * `project_auth_rate_counters` steht keine Adresse.
+   *
+   * **Auf der Grenze wird geschlossen, auf einem Fehler des Zaehlers
+   * geoeffnet.** Das ist die unbequeme Haelfte und darum ausgeschrieben: Wer
+   * die Grenze erreicht, wird abgewiesen, ohne Ausnahme. Wer sie nicht
+   * erreicht, weil der Zaehler selbst kaputt ist — ein Fehler beim Lesen der
+   * Einstellungen oder beim Hochzaehlen —, darf weiter. Der Grund ist, dass
+   * dieser Zaehler eine Schutzschicht ist und keine Tuer: Die Tuer ist die
+   * Passwortpruefung, und die steht unberuehrt dahinter. Waere es umgekehrt,
+   * machte ein Fehler in der Zaehltabelle die ganze Anmeldung der Umgebung
+   * unbrauchbar — aus einem Schutz vor Raten wuerde ein Ausfall fuer alle.
+   * Der Fehler faellt dabei nicht unter den Tisch: Er landet als Zeile im
+   * Betriebsprotokoll.
+   *
+   * **Die Antwort verraet nichts.** `RATE_LIMITED` ist dieselbe Antwort fuer
+   * eine bekannte und eine unbekannte Adresse, weil gezaehlt wird, bevor
+   * irgendetwas nachgeschlagen wurde. Ein Angreifer lernt aus einer 429
+   * darum nur, dass er zu oft gefragt hat.
+   */
+  private async assertStoredRateLimit(
+    scope: ProjectAuthScope,
+    kind: ProjectAuthRateLimitKind,
+    subject: string,
+    now: Date,
+  ): Promise<void> {
+    let retryAfterSeconds: number;
+    let max: number;
+    let windowSeconds: number;
+    try {
+      const settings = await this.dependencies.repository.readSettings(scope);
+      const limit = (settings?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS)[kind];
+      const windowStart = projectAuthRateWindowStart(now, limit.windowSeconds);
+      const counted = await this.dependencies.repository.countRateLimitAttempt(scope, {
+        kind,
+        subjectHash: projectAuthRateSubjectHash({ ...scope, kind, subject }),
+        windowStart,
+      });
+      if (projectAuthRateAllowed({ count: counted.attempts, max: limit.max })) return;
+      max = limit.max;
+      windowSeconds = limit.windowSeconds;
+      retryAfterSeconds = projectAuthRateRetryAfterSeconds({
+        windowStart: counted.windowStart, windowSeconds: limit.windowSeconds, at: now,
+      });
+    } catch (error) {
+      // Offen auf einem Fehler des Zaehlers, geschlossen auf der Grenze. Der
+      // Versuch geht weiter zur eigentlichen Pruefung; ohne diese Zeile waere
+      // eine kaputte Zaehltabelle ein Totalausfall der Anmeldung.
+      console.error("Project Auth rate counter was not consulted", {
+        kind, error: error instanceof Error ? error.name : "unknown",
+      });
+      return;
+    }
+    // Ausserhalb des try, damit die eigene Ablehnung nicht in den Fang faellt,
+    // der auf einen Fehler des Zaehlers oeffnet.
+    await this.recordAudit({
+      scope, action: "project_auth.rate_limit.blocked",
+      actorType: "system", actorRef: "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "failed",
+      // Kein Schluessel, kein Hash, keine Adresse. Der Sanitizer liesse eine
+      // Adresse ohnehin nicht durch; ein Hash waere ein Pseudonym der
+      // Adresse und hat in der Kette genauso wenig zu suchen. Was hier steht,
+      // ist die Art, die Grenze und das Fenster — genug, um zu sehen, dass
+      // und welche Grenze gegriffen hat.
+      metadata: { kind, max, windowSeconds },
+    });
+    throw new ProjectAuthError("RATE_LIMITED", retryAfterSeconds);
   }
 
   async verifyMfaChallenge(scope: ProjectAuthScope, input: {
@@ -1235,6 +1429,8 @@ export class DisabledProjectAuthService {
   setMfaRequired(): never { return this.disabled(); }
   readReturnTargets(): never { return this.disabled(); }
   setReturnTargets(): never { return this.disabled(); }
+  readRateLimits(): never { return this.disabled(); }
+  setRateLimits(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
@@ -1247,6 +1443,30 @@ export class DisabledProjectAuthService {
   revokeAllSessions(): never { return this.disabled(); }
   listAuditEvents(): never { return this.disabled(); }
   readAuditSeries(): never { return this.disabled(); }
+}
+
+function publicRateLimits(
+  limits: ProjectAuthRateLimits | undefined,
+  updatedAt: Date | null,
+  configured: boolean,
+): PublicProjectAuthRateLimits {
+  const effective = limits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS;
+  return {
+    limits: {
+      sign_in: { ...effective.sign_in },
+      mail: { ...effective.mail },
+      refresh: { ...effective.refresh },
+    },
+    defaults: {
+      sign_in: { ...DEFAULT_PROJECT_AUTH_RATE_LIMITS.sign_in },
+      mail: { ...DEFAULT_PROJECT_AUTH_RATE_LIMITS.mail },
+      refresh: { ...DEFAULT_PROJECT_AUTH_RATE_LIMITS.refresh },
+    },
+    bounds: PROJECT_AUTH_RATE_LIMIT_BOUNDS,
+    kinds: PROJECT_AUTH_RATE_LIMIT_KINDS,
+    configured,
+    updatedAt: updatedAt ? updatedAt.toISOString() : null,
+  };
 }
 
 function mfaPolicy(
