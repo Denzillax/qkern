@@ -34,6 +34,7 @@ import { AuthProvidersView } from "@/components/console/auth-providers-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
+import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
@@ -238,6 +239,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "set-jwt": return <JwtKeysView projectId={props.project.id} environment={props.environment}/>;
     case "storage-policies": return <StoragePoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
+    case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

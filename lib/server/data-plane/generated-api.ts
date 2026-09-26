@@ -1,4 +1,5 @@
 import { DATA_IDENTIFIER, DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
+import { DATA_API_LIMITS, SENSITIVE_COLUMN_PATTERN, type DataApiFilterOperator } from "@/lib/data-api-limits";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
 import type { Environment } from "@/lib/types";
@@ -16,11 +17,14 @@ import type {
 
 // Seit 2.26 mit Grossbuchstaben (`"Order"`, `"createdAt"`); siehe identifiers.ts.
 const IDENTIFIER = DATA_IDENTIFIER;
-const SENSITIVE_COLUMN = /(?:password|secret|token|cookie|private.?key|authorization|api.?key)/i;
-const MAX_ROWS = 100;
+// Zeilengrenze, Filterzahl, Operatoren und das Muster fuer sensible Spalten
+// stehen in lib/data-api-limits.ts, weil die Console sie auch zeigt.
+const SENSITIVE_COLUMN = new RegExp(SENSITIVE_COLUMN_PATTERN, "i");
+const MAX_ROWS = DATA_API_LIMITS.rowsMax;
+const MIN_ROWS = DATA_API_LIMITS.rowsMin;
 const MAX_INSERT_ROWS = 25;
 const MAX_COLUMNS = 100;
-const MAX_FILTERS = 10;
+const MAX_FILTERS = DATA_API_LIMITS.maxFilters;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_INPUT_BYTES = 64 * 1024;
 
@@ -42,7 +46,7 @@ export type GeneratedDataContext = {
   claims: ProjectDataClaims;
 };
 
-export type GeneratedDataFilterOperator = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in";
+export type GeneratedDataFilterOperator = DataApiFilterOperator;
 export type GeneratedDataFilter = {
   column: string;
   operator: GeneratedDataFilterOperator;
@@ -518,7 +522,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
   ): Promise<GeneratedListResult> {
     assertRequest(context, scope, input.schema, input.table);
     const limit = input.limit ?? 20;
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ROWS ||
+    if (!Number.isSafeInteger(limit) || limit < MIN_ROWS || limit > MAX_ROWS ||
         (input.select?.length ?? 0) > MAX_COLUMNS ||
         (input.filters?.length ?? 0) > MAX_FILTERS) {
       throw invalidInput();
@@ -1215,7 +1219,7 @@ function quoted(identifier: string): string {
 
 function isFilter(value: GeneratedDataFilter): boolean {
   if (!safeIdentifier(value.column) ||
-      !["eq", "neq", "gt", "gte", "lt", "lte", "in"].includes(value.operator)) return false;
+      !DATA_API_LIMITS.operators.includes(value.operator)) return false;
   if (value.operator === "in") {
     return Array.isArray(value.value) && value.value.length >= 1 && value.value.length <= 20 &&
       value.value.every(isScalarDataValue);
