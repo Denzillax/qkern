@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.47.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.48.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,31 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.47.0`
-- Aktueller Slice: 2.47 Grenzen und Rechte von Realtime – die Platzhalter
+- Paketversion: `2.48.0`
+- Aktueller Slice: 2.48 Drei Slices nebeneinander – zwei Implementierer
+  arbeiteten gleichzeitig in eigenen Arbeitskopien, ihre Zweige wurden
+  danach zusammengefuehrt. **Anmeldungen beobachten**: "Auth" unter Berichte
+  und unter Logs sind echte Ansichten
+  (`components/console/auth-series-view.tsx`, `auth-log-view.tsx`) ueber das
+  Auth-Audit aus 2.35. Zehn Handlungsarten aus dem Code gelesen, dazu eine
+  Sammelgruppe `other`, damit eine kuenftige Handlung die Summen nicht
+  verfaelscht; Aggregation in der Datenbank, Nullfuellung in der reinen
+  Schicht, neuer Fehlercode `AUDIT_UNAVAILABLE` statt leerer Reihe. Der
+  Fall kann keine Zeitstempel in die Vergangenheit legen, weil die Tabelle
+  anhaengend ist, und verschiebt darum das Fenster um die echten
+  Zeitstempel herum. **Tabellen-Designer**: "Tabellen" unter Datenbank ist
+  eine echte Ansicht (`components/console/table-designer-view.tsx`), der
+  erste schreibende Slice. Jede Aenderung wird ein Change Set und geht
+  durch die Freigabe; kein DROP, kein Typwechsel, kein Spaltenwechsel. Die
+  Anweisungen baut ein reines Modul (`lib/console/table-change-sets.ts`)
+  aus festen Typ- und Vorgabelisten, die einzige freie Eingabe sind Namen,
+  und die muessen zweimal durch die Bezeichnergrammatik. Genau das zeigte
+  die Mutationsprobe: eine aufgehobene Pruefung faengt die zweite noch ab
+  (lokal 20 von 66 Faellen rot, Stack gruen), erst mit beiden faellt der
+  Zertifizierungsfall. PostgreSQL-Faelle "(2.47)" und "(2.49)": 185 statt
+  183 Faelle. Beim Zusammenfuehren fielen zwei Vertraege zu Recht, verwaiste
+  Uebersetzungen und die Fallzahl. Im Browser nicht gesehen
+- Vorheriger Slice: 2.47 Grenzen und Rechte von Realtime – die Platzhalter
   "Einstellungen" und "Policies" unter Realtime sind echte, nur lesende
   Ansichten (`components/console/realtime-settings-view.tsx` und
   `realtime-policies-view.tsx`). `lib/server/realtime/settings.ts` sammelt
@@ -70,7 +93,7 @@ Grossbuchstaben.
   Nullen zu zeigen. Kein PostgreSQL-Fall, weil der Slice die Datenbank nicht
   beruehrt. Mutation (anon darf private Kanaele lesen) faellt lokal in
   1 Fall. Im Browser nicht gesehen
-- Vorheriger Slice: 2.46 Zahlen statt Abfragetexte – die Platzhalter
+- Davor: 2.46 Zahlen statt Abfragetexte – die Platzhalter
   "Datenbank" und "Verbindungen" unter Berichte sind echte, nur lesende
   Ansichten (`components/console/database-report-view.tsx` und
   `connections-report-view.tsx`) ueber eine geteilte Quelle. Neue

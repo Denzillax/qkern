@@ -1,0 +1,70 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/table-change-sets.test.ts (66 tests | 20 failed) 42ms
+     × refuses a column name with Anführungszeichen 5ms
+     × refuses a column name with nur ein Anführungszeichen 1ms
+     × refuses a column name with Semikolon 0ms
+     × refuses a column name with Zeilenkommentar 0ms
+     × refuses a column name with Blockkommentar 1ms
+     × refuses a column name with Punkt und Schema 0ms
+     × refuses a column name with Leerzeichen 0ms
+     × refuses a column name with Bindestrich 0ms
+     × refuses a column name with Klammern 0ms
+     × refuses a column name with Rückstrich 0ms
+     × refuses a column name with Dollarzeichen 0ms
+     × refuses a column name with Zeilenumbruch 0ms
+     × refuses a column name with Nullbyte 0ms
+     × refuses a column name with kyrillisches a 0ms
+     × refuses a column name with Fullwidth-Buchstabe 0ms
+     × refuses a column name with Umlaut 0ms
+     × refuses a column name with türkisches punktloses i 0ms
+     × refuses a column name with Ziffer am Anfang 0ms
+     × refuses a column name with nur Leerzeichen 0ms
+     × refuses a column name with 64 Zeichen 0ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 20 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Anführungszeichen
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with nur ein Anführungszeichen
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Semikolon
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Zeilenkommentar
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Blockkommentar
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Punkt und Schema
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Leerzeichen
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Bindestrich
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Klammern
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Rückstrich
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Dollarzeichen
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Zeilenumbruch
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Nullbyte
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with kyrillisches a
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Fullwidth-Buchstabe
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Umlaut
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with türkisches punktloses i
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with Ziffer am Anfang
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with nur Leerzeichen
+ FAIL  tests/table-change-sets.test.ts > table change set hostile input > refuses a column name with 64 Zeichen
+AssertionError: expected 'INVALID_TABLE_NAME' to be 'INVALID_COLUMN_NAME' // Object.is equality
+
+Expected: "INVALID_COLUMN_NAME"
+Received: "INVALID_TABLE_NAME"
+
+ ❯ rejects tests/table-change-sets.test.ts:29:49
+     27|     expect.unreachable("kein Fehler geworfen");
+     28|   } catch (error) {
+     29|     expect((error as TableChangeSetError).code).toBe(code);
+       |                                                 ^
+     30|   }
+     31| }
+ ❯ tests/table-change-sets.test.ts:132:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/20]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  20 failed | 46 passed (66)
+   Start at  20:38:27
+   Duration  314ms (transform 55ms, setup 0ms, import 95ms, tests 42ms, environment 0ms)
+
+EXIT=1

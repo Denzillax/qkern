@@ -5385,3 +5385,46 @@ Zertifizierungsstacks ist sie dieselbe wie im Realtime-Prozess, in einer
 geteilten Installation koennte sie abweichen; die Seite sagt das. Aendern
 lassen sich die Grenzen nur in der Umgebung, die Rechte nur im Code. Im
 Browser nicht gesehen.
+
+## Drei Slices nebeneinander – Release 2.48
+
+Zum ersten Mal haben mehrere Implementierer gleichzeitig gearbeitet, jeder
+in einer eigenen Arbeitskopie desselben Repositorys. Das Zusammenfuehren
+brachte fuenf Konflikte, alle mechanisch, weil drei Zweige an dieselben
+Listenenden angefuegt hatten. Danach fielen zwei Vertraege, und beide zu
+Recht: neun verwaiste Uebersetzungen, weil jeder Zweig nur seine eigenen
+Platzhalternotizen entfernt hatte, und die Zahl der Datenbankfaelle, die
+zwei neue Faelle nicht kannte. Das Verfahren hat also genau das gefangen,
+was paralleles Arbeiten neu einbringt.
+
+Die Anmeldungen bekommen eine Reihe und ein Protokoll. Die Handlungsarten
+stammen aus dem Code, nicht aus einer Liste im Kopf, und eine Sammelgruppe
+faengt auf, was eine kuenftige Version schreiben koennte: ohne sie waeren
+die Summen irgendwann falsch, ohne dass es jemand merkt. Der
+Zertifizierungsfall kann keine Zeitstempel in die Vergangenheit legen, weil
+die Tabelle anhaengend ist; er liest die echten Zeitstempel zurueck und
+verschiebt das Fenster darum herum.
+
+Der Tabellen-Designer ist der erste Slice heute, der schreibt. Er schreibt
+aber nichts selbst: jede Aenderung wird ein Change Set und geht durch
+dieselbe Freigabe wie jede andere Schemaaenderung. Geloescht wird nichts,
+Typen werden nicht gewechselt. Die einzige freie Eingabe sind Namen.
+
+Die Mutationsprobe wurde dort zur interessantesten des Tages. Beim
+Aufheben der Bezeichnerpruefung fielen lokal 20 von 66 Faellen, im Stack
+aber keiner – weil das Zitieren den Namen ein zweites Mal prueft. Der
+Kommentar im Code sagt "zwei Pruefungen, weil eine zu wenig waere", und das
+ist jetzt belegt statt behauptet. Erst mit beiden aufgehobenen Schichten
+faellt der Zertifizierungsfall. Die zweite Mutation, Fehlversuche nicht
+mehr getrennt zu zaehlen, faellt im Auth-Fall.
+
+Checkpoint `2.48.0` am 26. September 2026: PostgreSQL 17 mit 185 von 185,
+exit 0, zweimal reproduziert; Lokal 1567 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Der Designer legt keine Schluessel an und kennt nur das
+Schema `public`; breite Tabellen muessen ueber den SQL-Editor. Ein
+Aufrufer kann weiterhin beliebiges SQL an die Change-Set-Route schicken,
+das war schon vorher so; der Designer fuegt keine Flaeche hinzu. Die
+Reihe der Anmeldungen kennt kein Auffrischen von Token, weil der Dienst es
+nicht protokolliert. Im Browser nicht gesehen.

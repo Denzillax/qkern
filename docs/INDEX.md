@@ -35,7 +35,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SDK_TYPESCRIPT.md](SDK_TYPESCRIPT.md) | TypeScript SDK, Typed Clients und Sicherheitsverträge |
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
-| [RELEASE_2.47.md](RELEASE_2.47.md) | Aktueller Release: Grenzen und Rechte von Realtime |
+| [RELEASE_2.48.md](RELEASE_2.48.md) | Aktueller Release: Drei Slices nebeneinander |
+| [RELEASE_2.47.md](RELEASE_2.47.md) | Grenzen und Rechte von Realtime |
 | [RELEASE_2.46.md](RELEASE_2.46.md) | Zahlen statt Abfragetexte |
 | [RELEASE_2.45.md](RELEASE_2.45.md) | Der Verlauf |
 | [RELEASE_2.44.md](RELEASE_2.44.md) | Was gerade läuft |

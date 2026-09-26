@@ -1536,3 +1536,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/realtime-local-run1.log` | Vitest lokal (Windows) | 1476 bestanden, exit 0 |
 | `2026-09-26/realtime-local-run2.log` | Vitest lokal (Windows) | 1476 bestanden, exit 0, Wiederholung |
 | `2026-09-26/realtime-local-mutation.log` | Vitest lokal, Mutation (anon liest private Kanäle) | **1 von 6 fällt, exit 1 – absichtlich** |
+
+## Läufe zu Release 2.48 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/parallel-run1.log` | PostgreSQL 17 | 185 von 185, exit 0 |
+| `2026-09-26/parallel-run2.log` | PostgreSQL 17 | 185 von 185, exit 0, Wiederholung |
+| `2026-09-26/parallel-mutation-tables.log` | PostgreSQL 17, Mutation (beide Bezeichnerprüfungen aufgehoben) | **184 von 185, exit 1 – absichtlich** |
+| `2026-09-26/parallel-mutation-auth.log` | PostgreSQL 17, Mutation (Fehlversuche nicht getrennt) | **184 von 185, exit 1 – absichtlich** |
+| `2026-09-26/parallel-local-mutation.log` | Vitest lokal, Mutation (eine Bezeichnerprüfung aufgehoben) | **46 von 66, exit 1 – absichtlich** |
+| `2026-09-26/parallel-local-run1.log` | Vitest lokal (Windows) | 1567 bestanden, exit 0 |
+| `2026-09-26/parallel-local-run2.log` | Vitest lokal (Windows) | 1567 bestanden, exit 0, Wiederholung |

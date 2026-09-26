@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Bezeichnerpruefung aufgehoben, nur Generatortests",
+  "log": "parallel-local-mutation.log",
+  "commit": "e128809a7758baa3d83e925d8bdb33980b42b1bc",
+  "commitSubject": "merge: Anmeldungen beobachten aus slice/auth",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "tests": "20 failed | 46 passed (66)",
+  "passed": 46,
+  "failed": 20,
+  "skipped": 0,
+  "images": []
+}
