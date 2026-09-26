@@ -220,4 +220,11 @@ describe("QKERN OpenAPI contract", () => {
       expect(pattern.test("S".repeat(64))).toBe(false);
     }
   });
+  it("gives every generated request body a schema pattern, like the query parameters", () => {
+    const schemas = (qkernOpenAPI.components as unknown as { schemas: Record<string, { properties?: Record<string, { pattern?: string; default?: string }> }> }).schemas;
+    for (const name of ["GeneratedInsertRows", "GeneratedUpdateRow", "GeneratedDeleteRow"]) {
+      expect(schemas[name].properties?.schema, name).toMatchObject({ pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" });
+    }
+  });
+
 });
