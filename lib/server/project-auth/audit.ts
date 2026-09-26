@@ -68,7 +68,7 @@ const MAX_METADATA_KEYS = 12;
  * "@" faellt still weg, statt geschrieben zu werden.
  */
 export function sanitizeProjectAuthAuditEvent(event: ProjectAuthAuditEvent): ProjectAuthAuditEvent {
-  if (!ACTION.test(event.action) || !REFERENCE.test(event.actorRef) || !REFERENCE.test(event.resourceRef) ||
+  if (!ACTION.test(event.action) || !safeReference(event.actorRef) || !safeReference(event.resourceRef) ||
       !["app_user", "admin", "system"].includes(event.actorType) ||
       !["succeeded", "failed"].includes(event.status)) {
     throw new InvalidProjectAuthAuditEventError();
@@ -83,6 +83,13 @@ export function sanitizeProjectAuthAuditEvent(event: ProjectAuthAuditEvent): Pro
     }
   }
   return { ...event, metadata };
+}
+
+// Ein QKERN-Token beginnt mit `qk_`. In einer Referenz hat das nichts zu
+// suchen, egal an welcher Stelle: lieber das Ereignis verwerfen als ein
+// Token in die Kette schreiben, aus der es nie mehr herauskommt.
+function safeReference(value: string): boolean {
+  return REFERENCE.test(value) && !value.toLowerCase().includes("qk_");
 }
 
 export function projectAuthUserRef(userId: string): string {

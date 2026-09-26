@@ -27,4 +27,17 @@ GRANT EXECUTE ON FUNCTION qkern_current_organization_id() TO qkern_auth;
 GRANT EXECUTE ON FUNCTION qkern_prepare_audit_log() TO qkern_auth;
 GRANT EXECUTE ON FUNCTION qkern_reject_audit_mutation() TO qkern_auth;
 
+-- Die Auth-Rolle haengt nur eigene Aktionen an. Ohne diese Grenze koennte
+-- ein kompromittierter Auth-Dienst fremde Plattform-Geschichte in die Kette
+-- schreiben, etwa Change-Set-, Freigabe- oder Deployment-Eintraege, und sie
+-- saehen aus wie echte. RESTRICTIVE wird mit der permissiven Policy
+-- audit_logs_insert aus 0002 verknuepft (beide muessen gelten), die
+-- Organisationsgrenze bleibt also bestehen. Die Policy nennt die
+-- Gruppenrolle qkern_auth; die Login-Rolle qkern_auth_app ist Mitglied mit
+-- INHERIT und faellt damit darunter. Die SELECT-Policy bleibt bewusst weit:
+-- Der Trigger der Kette muss den neuesten Hash der ganzen Organisation lesen,
+-- sonst verzweigte die Kette.
+CREATE POLICY audit_logs_project_auth_insert ON audit_logs AS RESTRICTIVE
+  FOR INSERT TO qkern_auth WITH CHECK (starts_with(action, 'project_auth.'));
+
 COMMIT;

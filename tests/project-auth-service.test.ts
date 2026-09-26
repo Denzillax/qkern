@@ -350,6 +350,32 @@ describe("Project Auth audit events", () => {
       resourceRef: "project_auth_user:unknown", status: "failed",
     })).rejects.toThrow();
   });
+
+  it("drops and logs an event whose reference contains a qk_ token, never writing it", async () => {
+    const audit = new MemoryProjectAuthAuditSink();
+    const built = fixture(audit);
+    const errors: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      // recordAudit ist privat; der Test ruft genau den Weg, den jedes
+      // Ereignis des Dienstes nimmt.
+      await (built.service as unknown as { recordAudit(event: ProjectAuthAuditEvent): Promise<void> }).recordAudit({
+        scope, action: "project_auth.logout", actorType: "app_user", actorRef: "anonymous",
+        resourceRef: "project_auth_user:qk_refresh_x", status: "succeeded",
+      });
+    } finally {
+      console.error = original;
+    }
+    expect((await audit.list(scope, { limit: 10 })).events).toEqual([]);
+    expect(errors).toEqual([["Project Auth audit event was not recorded",
+      { action: "project_auth.logout", error: "InvalidProjectAuthAuditEventError" }]]);
+    expect(JSON.stringify(errors)).not.toContain("qk_refresh_x");
+    await expect(audit.record({
+      scope, action: "project_auth.logout", actorType: "app_user", actorRef: "project_auth_user:x-QK_magic",
+      resourceRef: "project_auth_user:unknown", status: "succeeded",
+    })).rejects.toThrow();
+  });
 });
 
 function totp(secret: string, now: Date): string {

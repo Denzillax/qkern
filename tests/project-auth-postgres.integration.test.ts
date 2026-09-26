@@ -4,6 +4,7 @@ import type { PasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import type { SqlPool } from "@/lib/server/db/sql";
+import { AuditRepository } from "@/lib/server/db/repositories";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
@@ -173,6 +174,7 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
     await owner.query(`INSERT INTO project_environments
       (organization_id, project_id, environment, database_instance_ref)
       VALUES ($1, $2, 'development', $3)`, [auditOrganization, auditProject, `managed:${auditProject}`]);
+    const errors = vi.spyOn(console, "error");
     try {
       const { privateKey } = generateKeyPairSync("ed25519");
       const audited = new ProjectAuthService({
@@ -185,7 +187,6 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
         callbackBaseUrl: "https://qkern.test", allowedRedirectOrigins: new Set(["https://app.test"]),
         exposeDeliveryTokens: true,
       });
-      const errors = vi.spyOn(console, "error");
       const email = `audit-${randomUUID()}@qkern.test`;
       const password = "a sufficiently long password";
       const signup = await audited.signUp(auditScope, {
@@ -200,7 +201,6 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
       expect(await audited.revokeAllSessions(auditScope, userId, { id: auditOwner })).toEqual({ revoked: 1 });
       // Kein Ereignis ist still verloren gegangen: der Sink hat nie geworfen.
       expect(errors).not.toHaveBeenCalled();
-      errors.mockRestore();
 
       const page = await audited.listAuditEvents(auditScope, 10);
       expect(page.events.map((event) => event.action)).toEqual([
@@ -244,7 +244,20 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
       const leaked = await withTenantTransaction(auth, { organizationId, readOnly: true }, (transaction) =>
         transaction.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_logs WHERE organization_id = $1", [auditOrganization]));
       expect(leaked.rows[0].count).toBe(0);
+
+      // Die RESTRICTIVE-Policy aus 0046: Ueber den Auth-Pool laesst sich keine
+      // fremde Plattform-Geschichte anhaengen, auch nicht in der eigenen
+      // Organisation. Die Kette bleibt bei ihren vier Eintraegen.
+      await expect(withTenantTransaction(auth, { organizationId: auditOrganization }, (transaction) =>
+        new AuditRepository(transaction).append({
+          projectId: auditProject, environment: "development", actorType: "user", actorRef: auditOwner,
+          action: "change_set.approved", resourceRef: "forged", status: "success",
+        }))).rejects.toBeTruthy();
+      const after = await owner.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM audit_logs WHERE organization_id = $1", [auditOrganization]);
+      expect(after.rows[0].count).toBe(4);
     } finally {
+      errors.mockRestore();
       // Project-Auth-Daten des Falls: one-time tokens zuerst (manche haben
       // keinen Nutzer), dann die Nutzer; Sitzungen, Faktoren und
       // Identitaeten folgen per ON DELETE CASCADE.
