@@ -115,3 +115,49 @@ export function publicStorageObject(object: ProjectStorageObject): PublicProject
     deleteAfter: object.deleteAfter?.toISOString() ?? null,
   };
 }
+
+/**
+ * Ein Eintrag der Speicher-Uebersicht der Console (2.51).
+ *
+ * Bewusst **kein** Ereignis: QKERN fuehrt kein Zugriffsprotokoll je Objekt.
+ * `project_storage_objects` traegt den aktuellen Stand eines Objekts und das
+ * letzte Urteil des Scanners, nicht seine Geschichte. Der Eintrag nennt
+ * deshalb den Stand und die drei Zeitpunkte, die die Tabelle wirklich hat:
+ * Anlage, geplante Loeschung, vollzogene Loeschung.
+ *
+ * Der Provider-Schluessel und die Pruefsumme fehlen hier genauso wie in
+ * `PublicProjectStorageObject`; der Bucket steht mit Namen dabei, weil eine
+ * Uebersicht ueber alle Buckets sonst nur Uuids zeigt.
+ */
+export type ProjectStorageLogEntry = {
+  id: string;
+  bucketId: string;
+  bucketName: string;
+  key: string;
+  ownerSubject: string | null;
+  sizeBytes: number;
+  contentType: string;
+  status: ProjectStorageObjectStatus;
+  createdAt: string;
+  deleteAfter: string | null;
+  deletedAt: string | null;
+};
+
+export function projectStorageLogEntry(
+  object: ProjectStorageObject,
+  bucketName: string,
+): ProjectStorageLogEntry {
+  return {
+    id: object.id,
+    bucketId: object.bucketId,
+    bucketName,
+    key: object.key,
+    ownerSubject: object.ownerSubject,
+    sizeBytes: object.sizeBytes,
+    contentType: object.contentType,
+    status: object.status,
+    createdAt: object.createdAt.toISOString(),
+    deleteAfter: object.deleteAfter?.toISOString() ?? null,
+    deletedAt: object.deletedAt?.toISOString() ?? null,
+  };
+}

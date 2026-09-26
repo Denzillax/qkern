@@ -115,6 +115,53 @@ export interface ProjectStorageRepository {
     scope: ProjectStorageScope,
     now: Date,
   ): Promise<ProjectStorageUpload[]>;
+  /**
+   * Der Stand der Objekte einer Umgebung, neueste zuerst (2.51) — ueber alle
+   * Buckets oder ueber einen, wahlweise auf ein Urteil eingeschraenkt.
+   *
+   * Anders als `listObjects` blendet diese Abfrage geloeschte Objekte **nicht**
+   * aus. Ein befallenes Objekt bekommt beim Urteil sofort ein `deleted_at`;
+   * wer nur die lebenden Zeilen liest, sieht kein einziges `infected` und
+   * haelt das fuer eine saubere Umgebung.
+   */
+  listObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    input: ProjectStorageLogQuery,
+  ): Promise<ProjectStorageObject[]>;
+  /** Wie viele Objekte je Urteil, im selben Ausschnitt wie `listObjectLog`. */
+  countObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucketId?: string,
+  ): Promise<Record<ProjectStorageObjectStatus, number>>;
+}
+
+/** Schluessel der Seitenfolge: Anlagezeitpunkt und Id, beide absteigend. */
+export type ProjectStorageLogCursor = { createdAt: Date; id: string };
+
+export type ProjectStorageLogQuery = {
+  bucketId?: string;
+  status?: ProjectStorageObjectStatus;
+  limit: number;
+  cursor?: ProjectStorageLogCursor;
+};
+
+/** Ein Zaehler je Urteil, mit Null vorbelegt — eine Null ist eine Auskunft. */
+export function emptyObjectLogCounts(): Record<ProjectStorageObjectStatus, number> {
+  return { quarantined: 0, clean: 0, infected: 0 };
+}
+
+/** Neueste zuerst: absteigend nach Anlagezeitpunkt, bei Gleichstand nach Id. */
+export function compareObjectLogOrder(a: ProjectStorageObject, b: ProjectStorageObject): number {
+  const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+  return byTime !== 0 ? byTime : b.id.localeCompare(a.id);
+}
+
+function afterObjectLogCursor(object: ProjectStorageObject, cursor: ProjectStorageLogCursor): boolean {
+  const created = object.createdAt.getTime();
+  const pivot = cursor.createdAt.getTime();
+  return created < pivot || (created === pivot && object.id.localeCompare(cursor.id) < 0);
 }
 
 export class MemoryProjectStorageRepository implements ProjectStorageRepository {
@@ -360,6 +407,37 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
       upload.organizationId === principal.organizationId && sameScope(upload, scope) &&
       upload.kind === "multipart" && upload.status === "pending" && upload.expiresAt > now)
       .map(cloneUpload);
+  }
+
+  async listObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    input: ProjectStorageLogQuery,
+  ) {
+    return this.objectLogRows(principal, scope, input.bucketId)
+      .filter((object) => (!input.status || object.status === input.status) &&
+        (!input.cursor || afterObjectLogCursor(object, input.cursor)))
+      .sort(compareObjectLogOrder).slice(0, input.limit).map(cloneObject);
+  }
+
+  async countObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucketId?: string,
+  ) {
+    const counts = emptyObjectLogCounts();
+    for (const object of this.objectLogRows(principal, scope, bucketId)) counts[object.status] += 1;
+    return counts;
+  }
+
+  private objectLogRows(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucketId?: string,
+  ): ProjectStorageObject[] {
+    return [...this.objects.values()].filter((object) =>
+      object.organizationId === principal.organizationId && sameScope(object, scope) &&
+      (!bucketId || object.bucketId === bucketId));
   }
 
   private releaseExpiredReservations(bucket: ProjectStorageBucket, now: Date) {

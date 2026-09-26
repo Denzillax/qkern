@@ -10,9 +10,11 @@ import type {
   ProjectStorageUpload,
 } from "@/lib/server/project-storage/model";
 import {
+  emptyObjectLogCounts,
   ProjectStorageConflictError,
   ProjectStorageQuotaError,
   type ProjectStorageBucketPatch,
+  type ProjectStorageLogQuery,
   type ProjectStorageRepository,
 } from "@/lib/server/project-storage/repository";
 
@@ -427,6 +429,52 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
           AND kind='multipart' AND status='pending' AND expires_at > $4
         ORDER BY created_at ASC,id ASC LIMIT 1000`, [...scopeValues(scope), now]);
       return result.rows.map(uploadFromRow);
+    });
+  }
+
+  /**
+   * Der Stand der Objekte, neueste zuerst (2.51). Geloeschte Zeilen bleiben
+   * drin: Ein befallenes Objekt traegt sein `deleted_at` seit dem Urteil, und
+   * ohne diese Zeilen zeigte die Uebersicht nie ein `infected`.
+   */
+  listObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    input: ProjectStorageLogQuery,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`${OBJECT_SELECT}
+        WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+          AND ($4::uuid IS NULL OR bucket_id = $4::uuid)
+          AND ($5::text IS NULL OR status = $5)
+          AND ($6::timestamptz IS NULL OR (created_at, id) < ($6::timestamptz, $7::uuid))
+        ORDER BY created_at DESC, id DESC LIMIT $8`, [
+        ...scopeValues(scope), input.bucketId ?? null, input.status ?? null,
+        input.cursor?.createdAt ?? null, input.cursor?.id ?? null, input.limit,
+      ]);
+      return result.rows.map(objectFromRow);
+    });
+  }
+
+  countObjectLog(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucketId?: string,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`SELECT status, count(*)::bigint AS total
+        FROM project_storage_objects
+        WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+          AND ($4::uuid IS NULL OR bucket_id = $4::uuid)
+        GROUP BY status`, [...scopeValues(scope), bucketId ?? null]);
+      const counts = emptyObjectLogCounts();
+      for (const row of result.rows) {
+        const status = String(row.status);
+        if (status === "quarantined" || status === "clean" || status === "infected") {
+          counts[status] = safeInteger(row.total);
+        }
+      }
+      return counts;
     });
   }
 

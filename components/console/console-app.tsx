@@ -47,6 +47,7 @@ import { AuthSessionsView } from "@/components/console/auth-sessions-view";
 import { AuthAuditView } from "@/components/console/auth-audit-view";
 import { AuthSeriesView } from "@/components/console/auth-series-view";
 import { AuthLogView } from "@/components/console/auth-log-view";
+import { StorageLogView } from "@/components/console/storage-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
@@ -284,6 +285,8 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Reihe, Logs -> Auth dieselben Eintraege als Protokoll (2.47).
     case "obs-auth": return <AuthSeriesView projectId={props.project.id} environment={props.environment}/>;
     case "logs-auth": return <AuthLogView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-storage": return <StorageLogView projectId={props.project.id} environment={props.environment}/>;
+    case "obs-realtime": return <UsageSeriesView key="obs-realtime" view="realtime" projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

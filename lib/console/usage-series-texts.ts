@@ -72,6 +72,16 @@ export const USAGE_SERIES_VIEWS = {
     metrics: ["function_invocations"],
     cannotShow: "Ob ein Aufruf im Container gescheitert ist, steht nicht in den Nutzungsereignissen. Diese Reihe zählt die Aufrufe; abgelehnt heisst hier, dass eine Quota gegriffen hat, nicht dass die Function einen Fehler geworfen hat.",
   },
+  // Seit 2.51 auch Realtime. Der Platzhalter versprach „Verbindungen und
+  // Nachrichten"; gemessen wird nur die Nachricht — `realtime_messages` aus
+  // Migration 0028. Eine offene Verbindung ist kein Nutzungsereignis, also
+  // sagt die Seite das, statt eine Verbindungskurve zu erfinden.
+  realtime: {
+    kicker: "BERICHTE",
+    title: "Realtime über die Zeit",
+    metrics: ["realtime_messages"],
+    cannotShow: "Wie viele Verbindungen offen waren und welche Kanäle sie abonniert hatten, steht nicht in den Nutzungsereignissen: Gemessen wird die zugestellte Nachricht, nicht die Verbindung. Eine ruhige Stunde kann viele offene Verbindungen bedeuten, und abgelehnt heisst hier, dass eine Quota gegriffen hat, nicht dass die Zustellung fehlschlug.",
+  },
 } as const satisfies Record<string, UsageSeriesViewText>;
 
 export type UsageSeriesViewId = keyof typeof USAGE_SERIES_VIEWS;

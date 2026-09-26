@@ -1040,6 +1040,48 @@ Ist kein Vault konfiguriert, antwortet die Route mit 503 und dem Code
 `VAULT_MISCONFIGURED` steht für eine halbe Konfiguration, `VAULT_UNAVAILABLE`
 für einen Vault, der nicht oder nicht in der erwarteten Form geantwortet hat.
 
+### Speicherobjekte und ihr Urteil
+
+Seit `2.49.0` ist **Logs → Storage** keine Platzhalterseite mehr — und heisst
+trotzdem etwas anderes, als sie liefert. Der Platzhalter versprach „Uploads,
+Downloads und Scanner-Urteile je Objekt". Zwei der drei Dinge gibt es nicht:
+**QKERN führt kein Zugriffsprotokoll je Objekt.** Ein Upload hinterlässt die
+Reservierung in `project_storage_uploads`, die beim Abschluss zur Objektzeile
+wird; ein Download hinterlässt nur eine kurzlebige signierte Adresse und sonst
+nichts. Die einzige dauerhafte Tatsache über ein Objekt ist seine Zeile in
+`project_storage_objects` aus Migration `0025`: Bucket, Schlüssel, Grösse,
+Typ, Eigentümer, der aktuelle Stand (`quarantined`, `clean`, `infected`) und
+drei Zeitpunkte — Anlage, geplante Löschung, vollzogene Löschung. Die Ansicht
+zeigt genau das und sagt es vor der ersten Zeile selbst.
+
+Entfernte Objekte bleiben in der Liste. Das ist kein Versehen: Ein befallenes
+Objekt bekommt beim Urteil im selben Schritt sein `deleted_at`, und wer nur
+die lebenden Zeilen liest, sieht nie ein einziges `infected` und hält das für
+eine saubere Umgebung.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/storage/objects`
+mit derselben Berechtigung wie die übrigen Console-Routen von Storage
+(`project_storage_admin`), `Cache-Control: private, no-store` und genau vier
+Parametern: `bucket` (Id oder Name, unbekannt ist ein 404), `status`, `cursor`
+und `limit` (1 bis 100, ohne Angabe 50). Jeder fremde Parameter, jede zweite
+Angabe desselben Parameters und jeder Wert ausserhalb der Grenzen sind ein
+400. Die Seitenfolge läuft über den Schlüssel `<Millisekunden>.<Uuid>`,
+neueste zuerst. Ist der Object Storage abgeschaltet, kommt ein 503 mit
+`Project Storage is disabled`, und die Ansicht sagt das, statt eine Liste zu
+erfinden.
+
+**Nie ein Provider-Schlüssel, nie eine Prüfsumme, nie eine signierte Adresse
+und nie der Inhalt eines Objekts.** Signieren bleibt ein eigener Weg
+(`storage/buckets/{bucketId}/downloads`) unter Storage → Buckets.
+
+Ebenfalls seit `2.49.0` ist **Berichte → Realtime** echt. Es ist dieselbe
+Ansicht wie die drei Zeitreihen aus `2.45.0`, nur mit der Metrik
+`realtime_messages` aus Migration `0028`. Auch hier sagt die Seite, was sie
+nicht zeigt: Wie viele Verbindungen offen waren und welche Kanäle sie
+abonniert hatten, steht in keinem Nutzungsereignis — gemessen wird die
+zugestellte Nachricht, nicht die Verbindung.
+
 ### Cron-Log
 
 Seit `2.42.0` zeigt **Logs → Cron** je Cron-Definition, was aus ihren

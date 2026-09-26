@@ -3,7 +3,9 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { ControlPlaneService } from "@/lib/server/control-plane/model";
 import type {
   ProjectStorageBucket,
+  ProjectStorageLogEntry,
   ProjectStorageObject,
+  ProjectStorageObjectStatus,
   ProjectStoragePrincipal,
   ProjectStorageReadPolicy,
   ProjectStorageScope,
@@ -11,15 +13,40 @@ import type {
   PublicProjectStorageBucket,
   PublicProjectStorageObject,
 } from "@/lib/server/project-storage/model";
-import { publicStorageBucket, publicStorageObject } from "@/lib/server/project-storage/model";
+import {
+  projectStorageLogEntry,
+  publicStorageBucket,
+  publicStorageObject,
+} from "@/lib/server/project-storage/model";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
 import type { ProjectStorageProvider, ProjectStorageScanner } from "@/lib/server/project-storage/provider";
 import { ProjectStorageProviderError } from "@/lib/server/project-storage/provider";
 import {
   ProjectStorageConflictError,
   ProjectStorageQuotaError,
+  type ProjectStorageLogCursor,
   type ProjectStorageRepository,
 } from "@/lib/server/project-storage/repository";
+
+/** `<Millisekunden>.<Uuid>` — der Schluessel der Seitenfolge als ein Wort. */
+const LOG_CURSOR = /^(\d{1,15})\.([0-9a-fA-F-]{36})$/;
+
+function objectStatus(value: string): ProjectStorageObjectStatus {
+  if (value === "quarantined" || value === "clean" || value === "infected") return value;
+  throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+}
+
+function encodeObjectLogCursor(object: ProjectStorageObject): string {
+  return `${object.createdAt.getTime()}.${object.id}`;
+}
+
+function decodeObjectLogCursor(value: string): ProjectStorageLogCursor {
+  const match = LOG_CURSOR.exec(value);
+  if (!match) throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+  const createdAt = new Date(Number(match[1]));
+  if (Number.isNaN(createdAt.getTime())) throw new ProjectStorageError("STORAGE_INVALID_INPUT");
+  return { createdAt, id: match[2] };
+}
 
 const COMPLETION_TOKEN = /^qk_upload_[A-Za-z0-9_-]{43}$/;
 const CHECKSUM_SHA256 = /^[A-Za-z0-9+/]{43}=$/;
@@ -593,6 +620,54 @@ export class ProjectStorageService {
     return {
       objects: page.map(publicStorageObject),
       nextCursor: visible.length > limit ? page.at(-1)?.key ?? null : null,
+    };
+  }
+
+  /**
+   * Der Stand der Objekte einer Umgebung fuer die Console (2.51).
+   *
+   * Kein Zugriffsprotokoll: QKERN schreibt weder Upload noch Download je
+   * Objekt in eine Ereignistabelle. Was es gibt, ist die Zeile in
+   * `project_storage_objects` — Bucket, Schluessel, Groesse, Typ, das letzte
+   * Urteil des Scanners und drei Zeitpunkte. Genau das liefert diese Lesung,
+   * ohne Provider-Schluessel, ohne Pruefsumme und ohne signierte Adresse.
+   *
+   * Nur Admins. Die anwendungsseitige Sicht auf Objekte bleibt
+   * `listObjects`, und dort sieht ein Mandant weiterhin nur saubere.
+   */
+  async readObjectLog(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, input: {
+    bucket?: string;
+    status?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<{
+    entries: ProjectStorageLogEntry[];
+    counts: Record<ProjectStorageObjectStatus, number>;
+    nextCursor: string | null;
+    buckets: Array<{ id: string; name: string }>;
+  }> {
+    await this.assertAdminScope(principal, scope);
+    const status = input.status === undefined ? undefined : objectStatus(input.status);
+    const cursor = input.cursor === undefined ? undefined : decodeObjectLogCursor(input.cursor);
+    const limit = integer(input.limit ?? 50, 1, 100);
+    const buckets = await this.dependencies.repository.listBuckets(principal, scope);
+    const names = new Map(buckets.map((bucket) => [bucket.id, bucket.name] as const));
+    let bucketId: string | undefined;
+    if (input.bucket !== undefined) {
+      const chosen = buckets.find((entry) => entry.id === input.bucket || entry.name === input.bucket);
+      if (!chosen) throw new ProjectStorageError("STORAGE_RESOURCE_NOT_FOUND");
+      bucketId = chosen.id;
+    }
+    const rows = await this.dependencies.repository.listObjectLog(principal, scope, {
+      bucketId, status, limit: limit + 1, cursor,
+    });
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      entries: page.map((object) => projectStorageLogEntry(object, names.get(object.bucketId) ?? "")),
+      counts: await this.dependencies.repository.countObjectLog(principal, scope, bucketId),
+      nextCursor: rows.length > limit && last ? encodeObjectLogCursor(last) : null,
+      buckets: buckets.map((bucket) => ({ id: bucket.id, name: bucket.name })),
     };
   }
 

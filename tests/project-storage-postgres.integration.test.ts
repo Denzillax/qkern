@@ -271,6 +271,63 @@ describe.runIf(enabled)("Project Storage PostgreSQL certification", () => {
     const outsider = { ...admin, organizationId: randomUUID() };
     await expect(service.listBuckets(outsider, scope)).rejects.toMatchObject({ code: "STORAGE_ACCESS_DENIED" });
   });
+
+  it("(2.51) lists objects with their scanner verdict without exposing a provider key", async () => {
+    const bucket = await service.createBucket(admin, scope, {
+      name: `verdicts-${randomUUID().slice(0, 8)}`,
+      readPolicy: "owner", writePolicy: "owner", maxObjectBytes: 100, quotaBytes: 1_000,
+    });
+    const stored: string[] = [];
+    for (const key of ["owner/clean.png", "owner/bad.png"]) {
+      const prepared = await service.prepareUpload(application, scope, bucket.id, {
+        key, contentType: "image/png", sizeBytes: 12, checksumSha256: checksum,
+      });
+      provider.putForTest(prepared.upload.fields.key, {
+        sizeBytes: 12, contentType: "image/png", checksumSha256: checksum, etag: "verdict-etag",
+      });
+      stored.push((await service.completeUpload(application, scope, {
+        uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      })).id);
+    }
+    // Ein zweiter Dienst auf demselben Bestand, nur mit einem Scanner, der
+    // ablehnt: Das Urteil und das Entfernen geschehen im selben Schritt.
+    const rejecting = new ProjectStorageService({
+      repository, provider,
+      scanner: { async scan() { return "infected" as const; } },
+    });
+    await rejecting.scanObject(admin, scope, stored[1]);
+
+    const log = await service.readObjectLog(admin, scope, { bucket: bucket.name });
+    expect(log.counts).toEqual({ quarantined: 0, clean: 1, infected: 1 });
+    expect(log.entries.map((entry) => entry.key).sort())
+      .toEqual(["owner/bad.png", "owner/clean.png"]);
+    const infected = log.entries.find((entry) => entry.key === "owner/bad.png")!;
+    expect(infected).toMatchObject({ status: "infected", bucketName: bucket.name, sizeBytes: 12 });
+    // Das entfernte Objekt bleibt sichtbar; ohne seine Zeile gaebe es kein Urteil.
+    expect(infected.deletedAt).not.toBeNull();
+    expect(log.entries.find((entry) => entry.key === "owner/clean.png")!.deletedAt).toBeNull();
+
+    // Der Provider-Schluessel steht in der Datenbank und nie in der Antwort.
+    const row = await owner.query<{ provider_key: string }>(
+      "SELECT provider_key FROM project_storage_objects WHERE id=$1", [stored[1]],
+    );
+    expect(row.rows[0]?.provider_key).toMatch(/\S/);
+    const answer = JSON.stringify(log);
+    expect(answer).not.toContain(row.rows[0]!.provider_key);
+    expect(answer).not.toContain(checksum);
+    for (const leak of ["providerKey", "provider_key", "checksumSha256", "signature"]) {
+      expect(answer, leak).not.toContain(leak);
+    }
+
+    // Die Seitenfolge liest denselben Bestand in zwei Schritten.
+    const first = await service.readObjectLog(admin, scope, { bucket: bucket.id, limit: 1 });
+    expect(first.entries).toHaveLength(1);
+    expect(first.nextCursor).toMatch(/^\d+\.[0-9a-f-]{36}$/);
+    const second = await service.readObjectLog(admin, scope, { bucket: bucket.id, limit: 1, cursor: first.nextCursor! });
+    expect(second.entries).toHaveLength(1);
+    expect(second.entries[0].key).not.toBe(first.entries[0].key);
+    expect(second.nextCursor).toBeNull();
+  }, 30_000);
 });
 
 class BlockingScanner implements ProjectStorageScanner {
