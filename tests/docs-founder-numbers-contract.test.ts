@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { guidePath, pageBySlug } from "@/lib/docs/pages";
 
-const COUNT = /\d{2,}\s+[\p{L}-]*(Fäll|Test|Prüfständ|Modul)/iu;
+const COUNT = /\b\d{2,}\s+[\p{L}-]*(Fäll|Test|Prüfständ|Modul)/iu;
 
 /** Entfernt Codebloecke und Inline-Code, bevor nach Zahlen gesucht wird. */
 function stripCode(raw: string): string {
