@@ -14,7 +14,7 @@ import { formatMoneyMicros } from "@/lib/console/money";
  *
  * Die Karte steht unter Nutzung & Limits und unter Einstellungen →
  * Abrechnung. Dort bekommt sie `onOpenUsage` und zeigt den Weg zurueck zur
- * Nutzung. Der Betrag ist auf Rappen gerundet; der exakte Wert aus dem
+ * Nutzung. Der Betrag ist auf Rappen abgerundet, wie im Rechnungslauf; der exakte Wert aus dem
  * Dokument steht im Tooltip.
  */
 export function InvoicesCard({ projectId, environment, onOpenUsage }: {

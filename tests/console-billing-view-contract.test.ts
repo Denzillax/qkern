@@ -40,6 +40,8 @@ describe("console billing view", () => {
   it("formats invoice totals through the shared helper", async () => {
     const card = await read("components/console/invoices-card.tsx");
     expect(card).toContain("formatMoneyMicros(invoice.totalMicros");
+    // Der Tooltip zeigt den exakten Wert aus dem Dokument, ungerundet.
+    expect(card).toContain("title={`${invoice.total} ${invoice.currency}`}");
     const app = await read("components/console/console-app.tsx");
     expect(app).not.toMatch(/function InvoicesCard/);
     expect(app).toContain('from "@/components/console/invoices-card"');

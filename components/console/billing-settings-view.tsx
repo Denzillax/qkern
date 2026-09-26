@@ -135,7 +135,7 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
           </div>)}
         </div>
         {projection.unpricedMetrics.length > 0 && <p className="muted">{t("Ohne Preis und nicht in der Summe:")} {projection.unpricedMetrics.map(billingMetricLabel).join(", ")}</p>}
-        <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Je Metrik ist auf die Mikro-Einheit abgerundet; angezeigt wird auf zwei Nachkommastellen gerundet.")}</p>
+        <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Je Metrik ist auf die Mikro-Einheit abgerundet; angezeigt wird auf zwei Nachkommastellen abgerundet.")}</p>
       </>}
     </article>
 

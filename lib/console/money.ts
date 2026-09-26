@@ -4,8 +4,12 @@
  * Das Backend rechnet in Mikro-Einheiten der Waehrung (BigInt, als
  * Dezimalstring auf dem Draht). Die Console zeigt daraus zwei Formen:
  *
- * - `formatMoneyMicros`: auf Rappen gerundet, kaufmaennisch (halb weg von
- *   null), etwa "CHF 12.35". Fuer Summen und Rechnungsbetraege.
+ * - `formatMoneyMicros`: auf Rappen abgerundet, Richtung null, etwa
+ *   "CHF 12.34" fuer 12.349999. Fuer Summen und Rechnungsbetraege. Der
+ *   Grund: Rechnungen runden zugunsten des Kunden ab (Rechnungslauf und
+ *   Projektion rechnen mit BigInt-Division), und die Anzeige darf nicht mehr
+ *   zeigen als der Ledger. Auch ein negativer Betrag wird Richtung null
+ *   gekuerzt, sein Betrag waechst also nie.
  * - `formatUnitPriceMicros`: ohne Rundung, mindestens zwei und hoechstens
  *   sechs Nachkommastellen, etwa "CHF 0.00025". Ein Stueckpreis unter einem
  *   Rappen darf nicht als "CHF 0.00" erscheinen.
@@ -30,12 +34,12 @@ function compose(currency: string, negative: boolean, whole: bigint, fraction: s
   return `${currency} ${sign}${GROUPING.format(whole)}.${fraction}`;
 }
 
-/** Mikro-Einheiten auf Rappen gerundet, halb weg von null: 12_345_000 → "CHF 12.35". */
+/** Mikro-Einheiten auf Rappen abgerundet, Richtung null: 12_349_999 → "CHF 12.34". */
 export function formatMoneyMicros(micros: string | bigint, currency: string): string {
   const value = parseMicros(micros);
   if (value === null) return `${currency} –`;
   const negative = value < 0n;
-  const cents = ((negative ? -value : value) + MICROS_PER_CENT / 2n) / MICROS_PER_CENT;
+  const cents = (negative ? -value : value) / MICROS_PER_CENT;
   const whole = cents / 100n;
   const fraction = (cents % 100n).toString().padStart(2, "0");
   return compose(currency, negative && cents > 0n, whole, fraction);
