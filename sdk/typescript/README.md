@@ -1,7 +1,7 @@
 # @qkern/sdk
 
-Typed, framework-free ESM client for QKERN. This Alpha package is private and is
-not published to a registry. Build it from the repository root with
+Typed, framework-free ESM client for QKERN. Published on npm under the `alpha`
+tag: `npm install @qkern/sdk@alpha`. To build it from the repository root run
 `npm run build:sdk`; distributable JavaScript and declarations are written to
 `sdk/typescript/dist`.
 

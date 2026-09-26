@@ -46,3 +46,22 @@ Zwei Regeln folgen daraus:
 
 Kommt ein neuer Zertifizierungsstack dazu, muss seine Zuordnung in der Liste
 `CLAIMS` des Tests ergaenzt werden. Fehlt sie, faellt der Vertrag laut aus.
+
+## Einstiegsdoku bei jedem Release prüfen
+
+Die fünf Seiten unter `docs/guide/de/` gehören zum Release-Doc-Sweep:
+
+1. `npx vitest run tests/docs-` muss grün sein; rote Fälle sind Textfehler
+   (toter Link, falscher Anker, Glossareintrag ohne drei Zeilen, Sperrwort,
+   Kommando, das es nicht gibt).
+2. Kommt ein Kommando, ein Klickweg oder ein Begriff dazu, den der Schnellstart
+   berührt, wird der Text geändert und der Durchlauf wiederholt
+   (`docs/evidence/<datum>/quickstart-walkthrough.manifest.json` mit neuem
+   Commit).
+3. Neue Fachbegriffe in Code oder Konsole bekommen einen Glossareintrag mit
+   den drei Zeilen: Was es ist, In QKERN, Bei Supabase.
+4. Zahlen kommen aus Platzhaltern (`lib/docs/placeholders.ts`), nie aus dem
+   Text; `{{version}}`, `{{node}}`, `{{postgresCases}}`, `{{stackCount}}`,
+   `{{languageCount}}`.
+5. Jeder Text für Leser geht durch den Humanizer-Durchgang: kein
+   Gedankenstrich, keine Sperrwörter, keine Einzeiler als Schluss.

@@ -2,6 +2,10 @@
 
 Dieses Handbuch gilt für `2.29.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
+> Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md). Dieses
+> Handbuch ist die Fassung für Fortgeschrittene; auf der Website steht der
+> Einstieg unter `/docs`.
+
 ## 1. Lokaler Schnellstart unter Windows PowerShell
 
 ```powershell

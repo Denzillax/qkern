@@ -1,5 +1,20 @@
 # QKERN Dokumentation
 
+## Einstieg
+
+| Seite | Für wen |
+| --- | --- |
+| [Was ist QKERN](guide/de/WAS_IST_QKERN.md) | alle |
+| [Schnellstart](guide/de/SCHNELLSTART.md) | Entwickler, die Supabase kennen |
+| [Erstes Backend](guide/de/ERSTES_BACKEND.md) | Entwickler, die ihr erstes Backend bauen |
+| [Für Gründer](guide/de/FUER_GRUENDER.md) | Gründer ohne Entwicklerhintergrund |
+| [Glossar](guide/de/GLOSSAR.md) | alle |
+
+Die Seiten liegen unter `docs/guide/de/` und werden auf der Website unter `/docs`
+gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
+
+## Referenz
+
 | Dokument | Zweck |
 | --- | --- |
 | [STATUS.md](../STATUS.md) | Aktueller, ehrlicher Produkt- und Releasezustand |
