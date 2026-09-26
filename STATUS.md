@@ -48,7 +48,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **versitygw-/ClamAV-Zertifizierung** | **8 von 8 bestanden, exit 0, zweimal reproduziert — seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
 | **Functions gegen Docker plus PostgreSQL** | **27 von 27 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll am echten Container** |
-| **Webhook-Signatur gegen echten Vault** | **7 von 7 bestanden, exit 0, zweimal reproduziert** |
+| **Webhook-Signatur gegen echten Vault** | **8 von 8 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **14 von 14 bestanden, exit 0, zweimal reproduziert** |
 | **Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv** | **1 von 1 bestanden, exit 0, zweimal reproduziert — seit `2.29.0`: verschlüsseltes Basisbackup über `sslmode=verify-full`, Wiederherstellung bis zu einem Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest belegt, Evidenz vom Produkt-Verifier geprüft; Mutation (Archiv aus) fällt** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |

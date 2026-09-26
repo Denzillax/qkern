@@ -1,0 +1,18 @@
+{
+  "stack": "HashiCorp Vault 1.18, Mutation: Datenendpunkt statt Metadaten",
+  "log": "vault-overview-mutation.log",
+  "commit": "a3da55808f0be732b41f617f988162b26758865b",
+  "commitSubject": "docs: Vault-Abschnitt nennt die richtige Version",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "2 failed | 6 passed (8)",
+  "passed": 6,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "hashicorp/vault:1.18.3",
+    "node:24.7.0-alpine"
+  ]
+}
