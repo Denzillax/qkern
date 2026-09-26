@@ -9,6 +9,10 @@ import {
   validateDatabaseWebhook,
 } from "@/lib/console/database-webhooks";
 import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
+import {
+  DatabaseWebhookService,
+  type DatabaseWebhookRepository,
+} from "@/lib/server/compute/database-webhook-definitions";
 
 /**
  * Die Pruefung eines Datenbank-Webhooks (2.50), rein und ohne Datenbank.
@@ -173,5 +177,62 @@ describe("database webhook definition", () => {
   it("offers every reason to the translation contract", () => {
     expect(databaseWebhookTexts()).toEqual(Object.values(DATABASE_WEBHOOK_REASONS));
     for (const text of databaseWebhookTexts()) expect(text.length).toBeGreaterThan(20);
+  });
+});
+
+/**
+ * Der Stand der Bruecke (2.53), wie die Ansicht ihn bekommt.
+ *
+ * Zwei Zusicherungen, und beide sind Zusicherungen ueber Ehrlichkeit: Ohne
+ * Quelle gibt es `null` statt eines erfundenen Zeitpunkts, und die Mandanten-
+ * und Rollengrenze gilt hier genauso wie fuer die Liste daneben.
+ */
+describe("database webhook bridge state", () => {
+  const scope = {
+    organizationId: "11111111-1111-4111-8111-111111111111",
+    projectId: "prj-database-webhooks",
+    environment: "development" as const,
+  };
+  const principal = {
+    organizationId: scope.organizationId,
+    actorRef: "admin@qkern.test",
+    role: "admin" as const,
+    subject: "11111111-1111-4111-8111-111111111112",
+  };
+  const repository = {
+    list: async () => [], get: async () => null,
+    create: async () => { throw new Error("nicht gebraucht"); },
+    setEnabled: async () => null,
+  } as unknown as DatabaseWebhookRepository;
+
+  it("says null when nothing has ever read the feed of this environment", async () => {
+    const service = new DatabaseWebhookService({
+      repository, bridge: { lastAdvance: async () => null },
+    });
+    expect(await service.bridgeState(principal, scope)).toBeNull();
+  });
+
+  it("says null when this deployment has no bridge at all", async () => {
+    const service = new DatabaseWebhookService({ repository });
+    expect(await service.bridgeState(principal, scope)).toBeNull();
+  });
+
+  it("passes the position and the moment through unchanged", async () => {
+    const service = new DatabaseWebhookService({
+      repository,
+      bridge: { lastAdvance: async () => ({ position: 4711, updatedAt: "2026-09-26T19:00:00.000Z" }) },
+    });
+    expect(await service.bridgeState(principal, scope))
+      .toEqual({ position: 4711, updatedAt: "2026-09-26T19:00:00.000Z" });
+  });
+
+  it("refuses a caller who is not an administrator of this organization", async () => {
+    const service = new DatabaseWebhookService({
+      repository, bridge: { lastAdvance: async () => ({ position: 1, updatedAt: "x" }) },
+    });
+    await expect(service.bridgeState({ ...principal, role: "member" as never }, scope))
+      .rejects.toThrowError(/COMPUTE_NOT_FOUND/);
+    await expect(service.bridgeState(principal, { ...scope, organizationId: "andere" }))
+      .rejects.toThrowError(/COMPUTE_NOT_FOUND/);
   });
 });

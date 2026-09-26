@@ -44,6 +44,20 @@ type Delivery = {
   attemptCount: number; lastFailureCode: string | null; occurredAt: string; settledAt: string | null;
 };
 type State = "loading" | "ready" | "unavailable" | "error";
+/**
+ * Der Stand der Brücke (2.53).
+ *
+ * Seit der Compute-Prozess die Brücke wirklich betreibt, gibt es dazu eine
+ * ehrliche Zahl: die zuletzt gelesene Position im Änderungs-Feed und wann sie
+ * festgehalten wurde. `null` heisst "noch nie" — die Brücke läuft für diese
+ * Umgebung nicht, oder sie hat noch keine Änderung gefunden. Die Ansicht sagt
+ * das so und erfindet keinen Zeitpunkt.
+ *
+ * Bewusst **nicht** "zuletzt nachgesehen": Der Prozess liest im Sekundentakt
+ * und hält nur fest, wenn er etwas gefunden hat. Eine Zahl für das Nachsehen
+ * gibt es nirgends, und eine zu zeigen hiesse, sie zu erfinden.
+ */
+type BridgeState = { position: number; updatedAt: string } | null;
 
 const EVENT_LABELS: Record<DatabaseWebhookEvent, string> = {
   insert: "Einfügen (insert)",
@@ -71,6 +85,7 @@ export function DatabaseWebhooksView({ projectId, environment }: {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [hooks, setHooks] = useState<DatabaseWebhookRecord[]>([]);
   const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({});
+  const [bridge, setBridge] = useState<BridgeState>(null);
   const [state, setState] = useState<State>("loading");
   const [message, setMessage] = useState("");
 
@@ -95,6 +110,7 @@ export function DatabaseWebhooksView({ projectId, environment }: {
       if (!response.ok) throw new Error(payload.error ?? t("Datenbank-Webhooks nicht verfügbar"));
       const list = (payload.data ?? []) as DatabaseWebhookRecord[];
       setHooks(list);
+      setBridge((payload.bridge ?? null) as BridgeState);
       setState("ready");
 
       // Der Zustellstatus haengt an der ausgehenden Definition; das ist
@@ -191,6 +207,13 @@ export function DatabaseWebhooksView({ projectId, environment }: {
       <div><span>{t("KOPPLUNGEN")}</span><strong>{hooks.length}</strong><small>{t("in dieser Umgebung")}</small></div>
       <div><span>{t("AKTIV")}</span><strong>{hooks.filter((hook) => hook.enabled).length}</strong><small>{t("lösen aus")}</small></div>
       <div><span>{t("ABGESCHALTET")}</span><strong>{hooks.filter((hook) => !hook.enabled).length}</strong><small>{t("warten")}</small></div>
+      <div>
+        <span>{t("BRÜCKE ZULETZT")}</span>
+        <strong>{bridge ? formatTime(bridge.updatedAt) : t("noch nie")}</strong>
+        <small>{bridge
+          ? `${t("gelesen bis Position")} ${bridge.position}`
+          : t("kein Änderungs-Feed gelesen")}</small>
+      </div>
     </article>
 
     <article className="console-card span-2">

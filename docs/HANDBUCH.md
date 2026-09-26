@@ -1280,6 +1280,71 @@ Datenbank: Migration `0049_project_database_webhooks.sql` hält die Kopplung.
 Die ausgehende Definition, die Outbox, die Lease, das Backoff und der Dead
 Letter bleiben in `0032`.
 
+#### Die Brücke laufen lassen
+
+`2.50.0` hat die Brücke gebaut und zertifiziert — und niemanden gehabt, der sie
+aufruft. Seit `2.53.0` betreibt sie der Compute-Prozess. Es ist derselbe
+Prozess, der Cron auslöst und Webhooks zustellt; er liest jetzt zusätzlich den
+Änderungs-Feed der Projektdatenbanken, die er bedient.
+
+Anschalten ist ausdrücklich, aus demselben Grund wie bei Realtime Changes: Der
+Prozess öffnet damit Verbindungen zu Kundendatenbanken. Der Katalog ist
+**derselbe** wie für Realtime Changes und die Generated Data API — dieselbe
+unprivilegierte Rolle in denselben Datenbanken, und `db/project/0003` erteilt
+genau ihr das Leserecht auf dem Feed:
+
+```powershell
+$env:QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED="true"
+$env:QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG="true"
+$env:QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON='[{"databaseInstanceRef":"managed:database-1","connectionString":"postgresql://qkern_project_api_app:local-only@127.0.0.1:5432/project_database","expectedRole":"qkern_project_api_app","expectedDatabase":"project_database","expectedLedgerOwner":"qkern_ledger_owner"}]'
+npm run worker:compute
+```
+
+**Welche Umgebungen gelesen werden, steht nicht in der Konfiguration.** In
+`QKERN_COMPUTE_SCOPES_JSON` stehen die Umgebungen, die dieser Prozess bedient;
+welche davon die Brücke anfasst, fragt er alle
+`QKERN_COMPUTE_DATABASE_WEBHOOK_DISCOVERY_MS` in der Control Plane nach. Eine
+Umgebung ohne jede Kopplung sieht von der Brücke keine einzige Verbindung.
+
+Eine Umgebung, deren Kopplungen **alle abgeschaltet** sind, wird weiter gelesen
+— sie erzeugt dabei nichts, aber ihre Position wandert weiter. Das ist Absicht
+und dieselbe Regel wie beim Abschalten einer einzelnen Kopplung: Abschalten ist
+pausieren, nicht stauen. Ohne dieses Weiterlesen bekäme ein Empfänger beim
+Wiedereinschalten auf einen Schlag alles, was der Feed seither hält.
+
+**Die Position liegt in der Datenbank**, je Umgebung eine Zeile in
+`0050_project_database_webhook_cursors.sql`. Sie wird erst fortgeschrieben,
+nachdem die Zustellungen eines Stapels eingereiht sind, und sie kann nur
+vorwärts. Damit wiederholt ein Neustart höchstens einen Stapel; er überspringt
+nichts. Lieber eine Zustellung doppelt als eine verlorene — die Zustellung
+trägt eine eigene Id, und `position` in der Nutzlast macht die Wiederholung für
+den Empfänger erkennbar.
+
+**Eine unerreichbare Projektdatenbank nimmt die anderen nicht mit.** Sie
+bekommt eine Wartezeit, die sich mit jedem Fehlschlag verdoppelt (Grundwert
+`QKERN_COMPUTE_DATABASE_WEBHOOK_ERROR_MS`, Obergrenze fünf Minuten); die
+übrigen Umgebungen laufen weiter. Der Prozess meldet dabei
+`compute.database_webhook_failed` mit einem festen Code und dem Index der
+Umgebung in Ihrer Scope-Liste — keine Datenbankmeldung, keine Id, kein
+Endpunkt. Ist die Datenbank zurück, läuft sie ohne Eingriff weiter.
+
+Gelesen wird der Reihe nach, in der Reihenfolge Ihrer Scope-Liste, und immer
+nur eine Umgebung gleichzeitig: So hält der Prozess zu jedem Zeitpunkt
+höchstens **eine** Verbindung zu einer Projektdatenbank offen, und zwar nur für
+die Dauer einer Abfrage. `QKERN_COMPUTE_DATABASE_WEBHOOK_MAX_BATCHES` begrenzt,
+wie viel eine einzelne Umgebung je Runde aufholen darf; ohne diese Grenze
+könnte eine Umgebung mit großem Rückstand die übrigen aushungern.
+
+**Aufgeräumt wird hier nichts, und das ist keine Lücke.** Den Feed räumt die
+Realtime-Aufbewahrung (`QKERN_REALTIME_CHANGE_RETENTION_MS`); die Brücke wüsste
+nicht, was Realtime noch braucht. Die Zustellungen, die sie erzeugt, räumt die
+vorhandene Webhook-Aufbewahrung im selben Prozess — sie unterscheiden sich in
+nichts von jeder anderen Zustellung.
+
+Der Prozess nennt die Brücke in seiner Startzeile. Ein Prozess, der sie stumm
+laufen ließe, wäre von einem ohne sie nicht zu unterscheiden — und genau diese
+Verwechslung war zwischen `2.50.0` und `2.52.0` der Zustand.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

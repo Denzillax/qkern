@@ -37,7 +37,14 @@ export function createDatabaseWebhookHandlers(service: DatabaseWebhookService) {
     GET: async (request: NextRequest, routeContext: ComputeDefinitionRouteContext) => {
       try {
         const context = await adminComputeContext(request, routeContext);
-        return computeNoStore({ data: await service.list(context.principal, context.scope) });
+        // Die Kopplungen und, seit 2.53, der Stand der Bruecke: wann sie den
+        // Feed dieser Umgebung zuletzt weitergelesen hat. `null` heisst "noch
+        // nie", und die Ansicht sagt das auch so.
+        const [data, bridge] = await Promise.all([
+          service.list(context.principal, context.scope),
+          service.bridgeState(context.principal, context.scope),
+        ]);
+        return computeNoStore({ data, bridge });
       } catch (error) { return computeRouteError(error); }
     },
     POST: async (request: NextRequest, routeContext: ComputeDefinitionRouteContext) => {
