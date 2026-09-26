@@ -34,11 +34,29 @@ import {
   projectAuthSeriesRowLimit,
   projectAuthSeriesWindow,
 } from "@/lib/server/project-auth/audit-series";
+// Datenbank-Webhooks (2.50): echter Change Feed, echte Control Plane, echte
+// Outbox, echter Zusteller, echter Vault.
+import { DatabaseWebhookService } from "@/lib/server/compute/database-webhook-definitions";
+import { PostgresDatabaseWebhookRepository } from
+  "@/lib/server/compute/database-webhook-postgres-repository";
+import { DatabaseWebhookBridge } from "@/lib/server/compute/database-webhook-bridge";
+import { PostgresRealtimeChangeSource } from "@/lib/server/realtime/postgres-change-source";
+import { WebhookOutbox } from "@/lib/server/compute/webhook-outbox";
+import { PostgresWebhookOutboxRepository } from
+  "@/lib/server/compute/webhook-postgres-repository";
+import { WebhookDeliveryRuntime } from "@/lib/server/compute/webhook-delivery-runtime";
+import { WebhookDeliverer } from "@/lib/server/compute/webhooks";
+import { HmacWebhookSigner, verifyWebhookSignature } from "@/lib/server/compute/webhook-signer";
+import { VaultWebhookSecretProvider } from "@/lib/server/compute/webhook-secret-vault";
+import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catalog-vault";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
 const authUrl = process.env.QKERN_TEST_AUTH_DATABASE_URL;
+const vaultKvUrl = process.env.QKERN_TEST_VAULT_KV_URL;
+const vaultTokenFile = process.env.QKERN_TEST_VAULT_TOKEN_FILE;
+const databaseWebhookSecretRef = process.env.QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF;
 const enabled = Boolean(ownerUrl && runtimeUrl && authUrl);
 
 describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
@@ -1309,6 +1327,264 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Ohne eigenes Zeitbudget: drei Eintraege, ein Auszug und vier Aggregationen.
   });
 
+
+  it("(2.50) turns a real table change into a signed webhook delivery", async () => {
+    // Der ganze Weg der Datenbank-Webhooks (2.50) an einem Stueck, und zwar an
+    // dem Stueck, an dem er zerbrechen kann: Eine Zeile entsteht in einer
+    // echten Projektdatenbank, der Trigger aus `db/project/0003` erfasst sie,
+    // die Bruecke macht daraus eine wartende Zustellung in der echten Outbox,
+    // der echte Zustellprozess holt sie und signiert mit einem Schluessel, den
+    // ein echter HashiCorp Vault haelt. Nachgerechnet wird die Signatur am Ende
+    // ohne den Produktcode, mit demselben Schluessel aus demselben Vault.
+    //
+    // Nachgebaut ist an diesem Weg nur der Empfaenger: Er nimmt die Anfrage
+    // entgegen, statt sie ins Internet zu senden. Genau diese Stelle ist
+    // ausserdem der Beleg dafuer, was **nicht** mitgeht -- die Zeile traegt
+    // einen Wert, den niemand sehen darf, und er steht weder in der
+    // gespeicherten Nutzlast noch im gesendeten Koerper.
+    //
+    // Der Stack: seit 2.50 laeuft im PostgreSQL-Stack auch ein Vault, weil
+    // dieser Fall beides an einem Ort braucht. Der Vault-Stack hat keine
+    // Datenbank; ein Fall, der die ganze Kette belegt, haette sonst nirgends
+    // laufen koennen.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.42, 2.45, 2.47 und
+    // 2.49: Das gemeinsame afterAll muss organizationA und organizationB
+    // loswerden, und eine Organisation, an der Audit-Zeilen haengen, laesst
+    // sich wegen audit_logs_organization_id_fkey nicht mehr loeschen.
+    // Abgeraeumt wird, was das Produkt hergibt: die Wegwerf-Projektdatenbank.
+    expect(process.env.QKERN_TEST_ALLOW_DATABASE_CREATE_DROP,
+      "QKERN_TEST_ALLOW_DATABASE_CREATE_DROP fehlt").toBe("true");
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const hookOwner = randomUUID();
+    const hookOrganization = randomUUID();
+    const projectId = randomUUID();
+    const databaseName = `qkern_dbhook_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const table = `bestellungen_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const rowId = randomUUID();
+    // Ein Wert, der den Empfaenger nichts angeht. Er ist der Lackmustest.
+    const confidential = `IBAN-CH93-${randomUUID()}`;
+
+    const withDatabase = (base: string, name: string) => {
+      const url = new URL(base);
+      url.pathname = `/${name}`;
+      return url.toString();
+    };
+
+    // Die Rollen sind clusterweit; ein zweiter Lauf im selben Cluster findet
+    // sie vor, und das ist kein Fehler. `IF NOT EXISTS` vor `CREATE ROLE` ist
+    // nicht atomar, der Ausnahmezweig schon. `db/project/0001` verlangt beide
+    // Rollen und dass die Migrationsrolle den Ledger-Eigentuemer nicht erbt.
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_project_migrator LOGIN PASSWORD 'qkern_project_migrator_local_only'
+        NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    // Seit PostgreSQL 16 teilt `CREATE ROLE` die neue Rolle dem Erzeuger mit
+    // ADMIN OPTION zu. Der Zaun verlangt einen Ledger-Eigentuemer ohne jede
+    // Mitgliedschaft; aufgeraeumt wird deshalb hier, dieselbe Stelle wie im
+    // Fall 2.49.
+    await owner.query(`DO $$ DECLARE entry record; BEGIN
+      FOR entry IN SELECT m.member::regrole::text AS role FROM pg_auth_members m
+        WHERE m.roleid = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE qkern_ledger_owner FROM %I', entry.role);
+      END LOOP;
+      FOR entry IN SELECT m.roleid::regrole::text AS role FROM pg_auth_members m
+        WHERE m.member = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE %I FROM qkern_ledger_owner', entry.role);
+      END LOOP;
+    END $$;`);
+
+    await owner.query(`CREATE DATABASE "${databaseName}"`);
+    let project: SqlPool | undefined;
+    try {
+      project = createPostgresPool({
+        connectionString: withDatabase(ownerUrl!, databaseName), max: 2,
+        statementTimeoutMillis: 120_000,
+      });
+      // Genau das, was der Provisioner taete: Ledger, Zaun und der echte
+      // Change Feed -- die ausgelieferten Dateien, nicht Nachbauten.
+      for (const file of ["0001_qkern_migration_ledger.sql", "0002_qkern_migration_fence.sql",
+        "0003_qkern_change_feed.sql"]) {
+        await project.query(await readFile(path.resolve(process.cwd(), "db/project", file), "utf8"));
+      }
+      // Die Tabelle des Kunden, mit der Aenderungserfassung angeschaltet. Das
+      // ist derselbe Trigger, den Realtime benutzt; ein zweiter wird nicht
+      // angelegt.
+      await project.query(
+        `CREATE TABLE public.${table} (id uuid PRIMARY KEY, iban text NOT NULL)`);
+      await project.query(`CREATE TRIGGER ${table}_capture
+        AFTER INSERT OR UPDATE OR DELETE ON public.${table}
+        FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
+
+      await owner.query(`INSERT INTO users (id, email, password_hash, status)
+        VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+      [hookOwner, `database-webhook-${hookOwner}@qkern.test`]);
+      await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+        VALUES ($1, 'Database Webhooks', $2, $3)`,
+      [hookOrganization, `database-webhooks-${hookOrganization}`, hookOwner]);
+      await owner.query(`INSERT INTO organization_members
+        (organization_id, user_id, role, is_personal_workspace)
+        VALUES ($1, $2, 'owner', true)`, [hookOrganization, hookOwner]);
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Database Webhooks', $3, 'test', 'ready', $4)`,
+      [projectId, hookOrganization, `database-webhooks-${projectId}`, hookOwner]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`,
+      [hookOrganization, projectId, `managed:${projectId}`]);
+
+      const control = new PostgresControlPlane(owner);
+      const repository = new PostgresDatabaseWebhookRepository(control);
+      const scope = {
+        organizationId: hookOrganization, projectId, environment: "development" as const,
+      };
+      const principal = {
+        organizationId: hookOrganization,
+        actorRef: `database-webhook-${hookOwner}@qkern.test`,
+        role: "admin" as const,
+        subject: hookOwner,
+      };
+
+      // Die Definition ueber den echten Dienst, mit der echten Pruefung.
+      const definition = await new DatabaseWebhookService({ repository }).create(principal, scope, {
+        name: "bestellungen-an-erp",
+        table,
+        events: ["insert", "delete"],
+        url: "https://empfaenger.example.com/hooks/qkern",
+        signingSecretRef: databaseWebhookSecretRef!,
+      });
+      expect(definition.schema).toBe("public");
+      expect(definition.eventTypes).toEqual(["db.insert", "db.delete"]);
+      expect(definition.enabled).toBe(true);
+      // Kein Geheimniswert, nirgends -- nur die Referenz.
+      expect(JSON.stringify(definition)).not.toContain("secret\":\"");
+      expect(definition.signingSecretRef).toBe(databaseWebhookSecretRef);
+
+      // Die Aenderung. Ab hier macht der Trigger die Arbeit.
+      await project.query(
+        `INSERT INTO public.${table} (id, iban) VALUES ($1, $2)`, [rowId, confidential]);
+      const feed = await project.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM qkern_internal.change_feed WHERE table_name = $1`, [table]);
+      expect(feed.rows[0]?.n, "der Trigger hat die Aenderung nicht erfasst").toBe("1");
+
+      const resolvedProject = project;
+      const outboxRepository = new PostgresWebhookOutboxRepository(control);
+      const bridge = new DatabaseWebhookBridge({
+        source: new PostgresRealtimeChangeSource({
+          withProject: async (_scope, work) => work(resolvedProject),
+        }),
+        bindings: repository,
+        outbox: new WebhookOutbox({ repository: outboxRepository }),
+        scope,
+      });
+      expect(await bridge.poll(), "die Bruecke hat nichts eingereiht").toBe(1);
+
+      // Der Beleg in der Control Plane: eine wartende Zustellung, und ihre
+      // Nutzlast traegt genau das, was der Feed traegt.
+      const pending = await owner.query<{
+        event_type: string; status: string; payload: Record<string, unknown>;
+      }>(`SELECT event_type, status, payload FROM project_webhook_deliveries
+           WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, projectId]);
+      expect(pending.rows).toHaveLength(1);
+      expect(pending.rows[0].event_type).toBe("db.insert");
+      expect(pending.rows[0].status).toBe("pending");
+      expect(Object.keys(pending.rows[0].payload).sort()).toEqual([
+        "committedAt", "key", "operation", "position", "schema", "table",
+      ]);
+      expect(pending.rows[0].payload.key).toEqual({ id: rowId });
+      expect(JSON.stringify(pending.rows[0].payload),
+        "die Nutzlast traegt einen Spaltenwert, den der Empfaenger nie lesen duerfte")
+        .not.toContain(confidential);
+
+      // Der echte Zustellprozess mit dem echten Signierer und dem echten Vault.
+      const secrets = new VaultWebhookSecretProvider({
+        vaultKvUrl: new URL(vaultKvUrl!),
+        tokenProvider: new VaultTokenFileProvider(vaultTokenFile!),
+        cacheTtlMs: 0,
+      });
+      const sent: Array<{ headers: Record<string, string>; body: string; url: string }> = [];
+      const runtime = new WebhookDeliveryRuntime({
+        outbox: new WebhookOutbox({ repository: outboxRepository }),
+        definitions: outboxRepository,
+        deliverer: new WebhookDeliverer(new HmacWebhookSigner(secrets), {
+          // Der Empfaenger ist die eine nachgebaute Stelle: Er bestaetigt die
+          // Zustellung so, wie der Vertrag es verlangt, und haelt fest, was
+          // wirklich gesendet wurde.
+          send: async (request) => {
+            sent.push({
+              headers: { ...request.headers }, body: request.body, url: request.url,
+            });
+            return {
+              status: 200,
+              acknowledgementId: request.headers["x-qkern-delivery-id"] ?? null,
+            };
+          },
+        }),
+        scope,
+        workerId: "certification-database-webhooks-1",
+      });
+      const result = await runtime.runOnce();
+      expect(result, "der Zustellprozess hat nicht zugestellt")
+        .toMatchObject({ delivered: 1, failed: 0, skipped: 0 });
+      expect(sent).toHaveLength(1);
+
+      const delivered = sent[0];
+      expect(delivered.url).toBe("https://empfaenger.example.com/hooks/qkern");
+      expect(delivered.headers["x-qkern-event"]).toBe("db.insert");
+      expect(delivered.body).not.toContain(confidential);
+      expect(delivered.body).toContain(rowId);
+
+      // Die Gegenrechnung: der Schluessel aus dem Vault, die Pruefung ohne den
+      // Signierer. Eine Signatur, die nur gegen sich selbst stimmt, waere
+      // keine.
+      const key = await secrets.resolve(databaseWebhookSecretRef!);
+      expect(key, "der Vault haelt den Schluessel nicht").not.toBeNull();
+      const signature = delivered.headers["x-qkern-signature"];
+      expect(signature).toMatch(/^v1=[A-Za-z0-9_-]{43,128};key=[A-Za-z0-9._:-]{1,64}$/);
+      const presented = signature.slice("v1=".length, signature.indexOf(";key="));
+      expect(signature.endsWith(`;key=${key!.keyId}`)).toBe(true);
+      expect(verifyWebhookSignature({
+        secret: key!.secret,
+        canonicalPayload: `${delivered.headers["x-qkern-timestamp"]}.${delivered.body}`,
+        signature: presented,
+      }), "die Signatur stimmt nicht mit dem Schluessel des Vaults").toBe(true);
+      // Und sie stimmt nicht gegen einen anderen Koerper: Der Zeitstempel steht
+      // **im** signierten Text, nicht nur im Header.
+      expect(verifyWebhookSignature({
+        secret: key!.secret,
+        canonicalPayload: `${Number(delivered.headers["x-qkern-timestamp"]) + 1}.${delivered.body}`,
+        signature: presented,
+      })).toBe(false);
+
+      const settled = await owner.query<{ status: string; attempt_count: number }>(
+        `SELECT status, attempt_count FROM project_webhook_deliveries
+          WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, projectId]);
+      expect(settled.rows[0]).toMatchObject({ status: "delivered", attempt_count: 1 });
+
+      // Abgeschaltet erzeugt die Kopplung nichts Neues. Die zweite Aenderung
+      // liegt im Feed und bleibt dort -- das ist der Unterschied zwischen
+      // pausieren und stauen.
+      await new DatabaseWebhookService({ repository })
+        .setEnabled(principal, scope, definition.id, false);
+      await project.query(`DELETE FROM public.${table} WHERE id = $1`, [rowId]);
+      expect(await bridge.poll()).toBe(0);
+      const afterDisable = await owner.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM project_webhook_deliveries
+          WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, projectId]);
+      expect(afterDisable.rows[0]?.n).toBe("1");
+    } finally {
+      await Promise.allSettled([project?.end()]);
+      await owner.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+        .catch(() => undefined);
+    }
+  });
 });
 
 /** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */

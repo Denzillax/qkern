@@ -50,7 +50,31 @@ Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
 - Paketversion: `2.48.0`
-- Aktueller Slice: 2.48 Drei Slices nebeneinander – zwei Implementierer
+- Aktueller Slice: 2.50 Datenbank-Webhooks – "Datenbank-Webhooks" unter
+  Integrationen ist eine echte Ansicht
+  (`components/console/database-webhooks-view.tsx`); der Platzhalter
+  `int-webhooks` ist weg. Die **Kopplung ist der vorhandene Change Feed**
+  (`db/project/0003`, `qkern_internal.capture_change()`), den Realtime schon
+  liest — kein zweiter Trigger in der Kundendatenbank. Der verworfene
+  Gegenentwurf (eigener Trigger ueber ein Change Set) haette zwei
+  Erfassungswege mit zwei Zusicherungen darueber nebeneinander gestellt, was
+  eine erfasste Aenderung traegt. Ehrliche Grenze: Eine Tabelle ohne
+  Aenderungserfassung erzeugt keine Zustellung; das Anschalten je Tabelle
+  bleibt eine Schemaaenderung ueber die Freigabezentrale.
+  Eine Zustellung traegt genau sechs Felder — Schema, Tabelle, Operation,
+  Primaerschluessel, Feed-Position, Commit-Zeit — und keinen weiteren
+  Spaltenwert, kein Vorher- und kein Nachher-Bild. Der Primaerschluessel ist
+  die eine bewusste Offenlegung und steht so in der Ansicht.
+  Migration `0048_project_database_webhooks.sql` haelt nur die Kopplung
+  (Tabelle, Ereignisse, Verweis auf `project_webhooks`); Ziel, Referenz,
+  Outbox, Lease, Backoff und Dead Letter bleiben in 0032, signiert wird wie
+  bisher ueber den Vault. Routen unter `/compute/database-webhooks`,
+  `private, no-store`, **ohne DELETE** (Abschalten ja). Im PostgreSQL-Stack
+  laeuft seit diesem Slice auch ein Vault, weil der Fall
+  "(2.50) turns a real table change into a signed webhook delivery" eine
+  echte Projektdatenbank **und** einen echten Schluessel an einem Ort
+  braucht. Im Browser nicht gesehen
+- Davor: 2.48 Drei Slices nebeneinander – zwei Implementierer
   arbeiteten gleichzeitig in eigenen Arbeitskopien, ihre Zweige wurden
   danach zusammengefuehrt. **Anmeldungen beobachten**: "Auth" unter Berichte
   und unter Logs sind echte Ansichten
@@ -1179,6 +1203,16 @@ verdrahtet. Es existieren keine Preise, Tarife, Rechnungen oder Payments.
 
 ## Ehrlich offene Arbeit
 
+- Datenbank-Webhooks (2.50): Die Bruecke `DatabaseWebhookBridge` ist gebaut,
+  einzeln geprueft und im PostgreSQL-Fall über den ganzen Weg belegt, aber
+  **kein Dauerprozess ruft sie**. Der Compute-Worker kennt die Scopes und die
+  Control Plane, hat aber keine Verbindung zur Projektdatenbank; die braucht
+  es fuer `qkern_internal.change_feed`. Der Weg dorthin steht im
+  Realtime-Worker vor (`ControlPlaneRealtimeProjectConnection` plus
+  `createLocalProjectDatabaseCatalogFromEnv`) und gehoert als naechstes in
+  `lib/server/compute/runtime-composition.ts`. Bis dahin entsteht im Betrieb
+  keine Zustellung aus einer Tabellenaenderung — dasselbe Muster, das dieser
+  Sprint schon beim Realtime-Poller und beim Event-Log gefunden hat;
 - konkreter startbarer Handler-Host/Consumer-Vertrag und Sandbox;
 - externer Queue-Metrics-Exporter, Tracing, Alerting und Capacity-Grenzen;
 - archivierte Real-PostgreSQL-Multi-Instance-, Crash-, Cleanup-, Soak- und Lastläufe;
