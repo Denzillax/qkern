@@ -9,6 +9,7 @@ import { cronLogTexts } from "@/lib/console/cron-log-texts";
 import { healthAdvisorTexts } from "@/lib/console/health-advisor-texts";
 import { usageSeriesTexts } from "@/lib/console/usage-series-texts";
 import { databaseActivityTexts } from "@/lib/console/database-activity-texts";
+import { tableChangeSetTexts } from "@/lib/console/table-change-sets";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -44,6 +45,9 @@ async function consoleKeys(): Promise<string[]> {
   // Datenbank und Verbindungen (2.46) zeigen Zustaende, Einheiten und ihre
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of databaseActivityTexts()) keys.add(text);
+  // Der Tabellen-Designer (2.49) zeigt Typen, Vorgabewerte und die Gruende
+  // einer Ablehnung ueber t(variable).
+  for (const text of tableChangeSetTexts()) keys.add(text);
   return [...keys];
 }
 

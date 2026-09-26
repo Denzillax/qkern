@@ -329,6 +329,58 @@ kein Block gelesen, zeigt sie keine Quote statt null Prozent. Alle Zähler gelte
 seit `stats_reset`, nicht seit dem Start der Datenbank; auch dieser Satz steht
 über den Zahlen und nicht im Kleingedruckten.
 
+### Tabellen-Designer
+
+Seit `2.49.0` ist **Datenbank → Tabellen** keine Platzhalterseite mehr. Die
+Ansicht listet die Tabellen des Schemas `public` mit ihren Spalten (dieselbe
+Route `/schema` wie der Schema-Visualizer) und bereitet drei Änderungen vor:
+eine Tabelle anlegen, eine Tabelle umbenennen, einer Tabelle eine Spalte geben.
+
+Neu ist daran, dass die Console zum ersten Mal schreibt, und zwar auf dem Weg,
+den das Produkt ohnehin vorschreibt. Die Ansicht führt **kein** SQL aus. Sie
+erzeugt genau eine Anweisung, zeigt sie vollständig an, und schickt sie danach
+an die bestehende Route `POST /api/v1/changesets`. Eine neue Route gibt es
+nicht. Was dann geschieht, entscheidet die **Freigabezentrale**; angewendet wird
+ausschließlich vom Migrationsprozess, nach der Freigabe. Die Seite sagt das und
+verlinkt dorthin.
+
+Die Anweisungen entstehen in `lib/console/table-change-sets.ts`, einem reinen
+Modul ohne React, ohne `fetch`, ohne Datenbank:
+
+```
+CREATE TABLE "public"."kunden" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "name" text NOT NULL, "erstellt_am" timestamptz DEFAULT now())
+ALTER TABLE "public"."kunden" RENAME TO "kundschaft"
+ALTER TABLE "public"."kunden" ADD COLUMN "notiz" text
+```
+
+Drei Regeln tragen das Modul. Erstens muss jeder Name die Grammatik der Data API
+erfüllen (`[A-Za-z_][A-Za-z0-9_]{0,62}`); ein Anführungszeichen, ein Semikolon,
+ein Kommentarzeichen, ein kyrillisches `а` oder ein 64. Zeichen fällt damit
+durch. Zweitens kommen Typ und Vorgabewert nicht aus der Eingabe, sondern aus
+zwei festen Listen (`text`, `integer`, `bigint`, `numeric`, `boolean`, `uuid`,
+`date`, `timestamptz`, `jsonb`; `keine Vorgabe`, `now()`, `gen_random_uuid()`),
+und ein Vorgabewert muss zum Typ passen. Drittens wird erst nach der Prüfung
+zitiert und immer zitiert; weil die Grammatik das Anführungszeichen verbietet,
+kann kein Name aus seinen Anführungszeichen ausbrechen. Zusätzlich lehnt der
+Designer reservierte Wörter von PostgreSQL ab (zitiert funktionierten sie, aber
+eine Tabelle `"order"` zwingt jede spätere Abfrage zu Anführungszeichen) und
+eine neue Spalte mit `NOT NULL` ohne Vorgabewert, weil sie an den Zeilen
+scheitern würde, die es schon gibt.
+
+Was der Designer bewusst nicht kann: Tabellen oder Spalten entfernen, den Typ
+einer bestehenden Spalte ändern, eine Spalte umbenennen, einen
+Primärschlüssel oder einen Fremdschlüssel setzen. Es gibt im Modul keinen Weg,
+eine solche Anweisung zu erzeugen; die Ansicht sagt das ebenfalls. Verlorene
+Daten gehören nicht in einen ersten schreibenden Slice.
+
+Zertifiziert ist der ganze Weg gegen echte Dienste: Fall `(2.49)` in
+`tests/postgres.integration.test.ts` baut mit dem Generator ein Change Set,
+lässt es über den echten Freigabe- und Apply-Dienst laufen, lässt den echten
+Worker es mit dem echten Executor in eine echte Projektdatenbank anwenden und
+liest danach den Katalog zurück: Spalten, Typen, `NOT NULL` und Vorgabewerte wie
+beschrieben, dazu der Ledger-Eintrag. Ein feindlicher Name wird im selben Fall
+abgewiesen, bevor irgendetwas geschrieben ist.
+
 ## 5. Generated Data API und Projekt-Keys
 
 CRUD ist unabhängig von der freien Lese-Data-Plane standardmäßig aus. Es benötigt
