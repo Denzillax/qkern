@@ -42,7 +42,9 @@ describe("docs guide contract", () => {
       expect(JSON.stringify(loaded.document)).not.toContain("{{");
       expect(loaded.document.title, `${page.file} braucht eine Ueberschrift der Ebene 1`).not.toBe("");
     }
-  });
+    // Liest einmal das ganze Manifestarchiv unter docs/evidence; in der vollen
+    // Suite auf einer beschaeftigten Platte reichte die Vorgabe von 5 s nicht.
+  }, 60_000);
 
   it("throws instead of guessing when a source is missing", async () => {
     const summary = await loadCertificationSummary();

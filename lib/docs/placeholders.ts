@@ -22,7 +22,18 @@ async function readPackageJson(): Promise<PackageInfo> {
   return JSON.parse(await readFile(path.resolve(process.cwd(), "package.json"), "utf8")) as PackageInfo;
 }
 
+// Die echten Quellen werden je Prozess einmal gelesen: das Manifestarchiv
+// unter docs/evidence hat Hunderte Dateien, und jede Seite braucht dieselben
+// fuenf Werte. Mit eigenen Quellen (Tests) wird nicht gemerkt.
+let real: Promise<GuidePlaceholders> | undefined;
+
 export async function guidePlaceholders(deps: GuidePlaceholderDeps = {}): Promise<GuidePlaceholders> {
+  if (deps.readPackage || deps.summary) return computePlaceholders(deps);
+  real ??= computePlaceholders(deps).catch((error: unknown) => { real = undefined; throw error; });
+  return real;
+}
+
+async function computePlaceholders(deps: GuidePlaceholderDeps): Promise<GuidePlaceholders> {
   const pkg = await (deps.readPackage ?? readPackageJson)();
   const summary = await (deps.summary ?? loadCertificationSummary)();
   const node = pkg.engines?.node;
