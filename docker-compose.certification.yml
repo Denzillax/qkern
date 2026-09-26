@@ -40,11 +40,39 @@ services:
       timeout: 5s
       retries: 30
 
+  # Seit 2.50 laeuft im PostgreSQL-Stack auch ein Vault.
+  #
+  # Der Fall "(2.50) turns a real table change into a signed webhook delivery"
+  # braucht beides an einem Ort: eine echte Projektdatenbank, in der eine Zeile
+  # entsteht und der Trigger sie erfasst, und einen echten Vault, aus dem der
+  # Signaturschluessel kommt. Der Vault-Stack hat keine Datenbank, dieser Stack
+  # hatte keinen Vault -- ein Fall, der die ganze Kette belegt, haette sonst
+  # nirgends laufen koennen.
+  #
+  # Dev-Modus wie im Vault-Stack: ein Root-Token, in-memory, kein Unseal. Die
+  # Produktgrenzen bleiben in Kraft; der Provider liest den Token
+  # ausschliesslich aus einer Datei, und der Stack legt sie an, statt die Grenze
+  # aufzuweichen.
+  vault:
+    image: hashicorp/vault:1.18.3
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: qkern-certification-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8200/v1/sys/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   certification:
     image: node:24-alpine
     working_dir: /workspace/qkern
     depends_on:
       postgres:
+        condition: service_healthy
+      vault:
         condition: service_healthy
     volumes:
       - .:/qkern-src:ro
@@ -59,11 +87,36 @@ services:
       QKERN_TEST_WORKER_DATABASE_URL: postgresql://qkern_worker_app:qkern_worker_local_only@postgres:5432/qkern_control
       QKERN_TEST_PROVISIONER_DATABASE_URL: postgresql://qkern_provisioner_app:qkern_provisioner_local_only@postgres:5432/qkern_control
       QKERN_TEST_PROJECT_API_DATABASE_URL: postgresql://qkern_project_api_app:qkern_project_api_local_only@postgres:5432/qkern_control
+      QKERN_TEST_VAULT_KV_URL: http://vault:8200/v1/secret
+      QKERN_TEST_VAULT_TOKEN: qkern-certification-root-token
+      QKERN_TEST_VAULT_TOKEN_FILE: /run/qkern/vault-token
+      QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF: vault:webhooks/database-webhooks
     command:
       - "sh"
       - "-ec"
       - |
-        mkdir -p /workspace/qkern
+        mkdir -p /workspace/qkern /run/qkern
+        # Der Provider liest den Token nur aus einer Datei -- wie im Vault-Stack.
+        printf '%s' "$$QKERN_TEST_VAULT_TOKEN" > /run/qkern/vault-token
+        chmod 0600 /run/qkern/vault-token
+        # Ein 32-Byte-Geheimnis fuer den Datenbank-Webhook-Fall. Der Seed laeuft
+        # im Testcontainer selbst ueber dieselbe HTTP-API wie der Provider; ein
+        # eigener Seed-Container haette mit --abort-on-container-exit den ganzen
+        # Stack mitgerissen, sobald er fertig ist.
+        node -e "
+          import { randomBytes } from 'node:crypto';
+          const secret = randomBytes(32).toString('base64url');
+          const response = await fetch(process.env.QKERN_TEST_VAULT_KV_URL + '/data/webhooks/database-webhooks', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-vault-token': process.env.QKERN_TEST_VAULT_TOKEN,
+            },
+            body: JSON.stringify({ data: { keyId: 'database-webhooks-2026-09', secret } }),
+          });
+          if (!response.ok) throw new Error('vault-seed: ' + response.status);
+          console.error('vault-seed: one signing secret written');
+        " --input-type=module
         tar -C /qkern-src \
           --exclude=./node_modules \
           --exclude=./.next \

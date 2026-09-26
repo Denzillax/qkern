@@ -1198,6 +1198,88 @@ Nachricht, jedes fällige Vorkommen steht dann als **nicht nachweisbar** da, und
 der Cron-Job verliert seine Zusage, dass ein Vorkommen höchstens eine Nachricht
 erzeugt.
 
+### Datenbank-Webhooks
+
+Seit `2.50.0` ist **Integrationen → Datenbank-Webhooks** keine Platzhalterseite
+mehr: Eine Änderung an einer Tabelle der Projektdatenbank löst einen
+ausgehenden, signierten Webhook aus.
+
+**Die Kopplung ist der vorhandene Änderungs-Feed.** QKERN beobachtet
+Tabellenänderungen seit `db/project/0003` über `qkern_internal.change_feed` und
+den Trigger `qkern_internal.capture_change()`; Realtime liest diesen Feed.
+Datenbank-Webhooks lesen **denselben** Feed. QKERN legt dafür keinen
+zusätzlichen Trigger und keine zusätzliche Funktion in Ihrer Datenbank an.
+
+Der verworfene Gegenentwurf wäre ein eigener Trigger über ein Change Set
+gewesen. Er hätte zwei Erfassungswege nebeneinander gestellt, mit zwei
+Zusicherungen darüber, was eine erfasste Änderung trägt — und genau diese
+Zusicherung ist der Grund, warum die Fläche sicher ist. Dazu hätte jede Tabelle
+zwei Trigger für dieselbe Beobachtung getragen.
+
+Daraus folgt eine Grenze, die offen dasteht: **Eine Tabelle ohne
+Änderungserfassung erzeugt keine Zustellung.** Das Anschalten je Tabelle ist
+eine Schemaänderung und läuft über ein Change Set und die Freigabezentrale —
+derselbe Weg, den Realtime dafür schon nimmt.
+
+**Was eine Zustellung trägt.** Genau das, was der Feed hält:
+
+```json
+{
+  "schema": "public",
+  "table": "bestellungen",
+  "operation": "insert",
+  "key": { "id": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" },
+  "position": 4711,
+  "committedAt": "2026-09-26T19:00:00.000Z"
+}
+```
+
+**Was sie nicht trägt:** keinen weiteren Spaltenwert, kein Bild der Zeile vor
+der Änderung, keines danach, keine Liste der geänderten Spalten und keine
+Claims eines Nutzers. Der Feed speichert diese Werte gar nicht; Realtime liest
+die Zeile je Abonnent frisch unter dessen Rechten, und Row Level Security
+autorisiert und erzeugt die Nutzlast in einem Schritt. Ein Empfänger im Internet
+hat keine solchen Rechte — die Zeile für ihn zu lesen hieße, die
+Sichtbarkeitsfrage außerhalb der Datenbank zu beantworten.
+
+Der Primärschlüssel geht mit, sonst könnte ein Empfänger nichts anfangen. Er
+ist ein Zeilenwert, und das ist die eine bewusste Offenlegung: Der Empfänger
+erfährt, dass es eine Zeile mit diesem Schlüssel gibt, auch bei einem `delete`.
+Dieselbe Vertrauensstufe räumt der Feed `service_role`-Abonnenten schon ein, und
+das Ziel hat ein Projektadministrator zusammen mit einer Vault-Referenz
+eingetragen.
+
+**Signiert wird wie jeder andere ausgehende Webhook**: HMAC-SHA256 über
+`<zeitstempel>.<körper>`, Schlüssel aus dem Vault, `x-qkern-signature:
+v1=<signatur>;key=<keyId>`. Gespeichert wird ausschließlich die **Referenz**.
+QKERN zeigt den Wert eines Signaturgeheimnisses nirgends an — weder in der
+Console noch über eine Route.
+
+**Die Routen**, mit `project_compute_admin` und `Cache-Control: private,
+no-store` wie die benachbarten Definitionsrouten:
+
+- `GET /api/v1/projects/{projectId}/environments/{environment}/compute/database-webhooks`
+- `POST` auf dieselbe Route legt an. Ziel, Tabelle, Ereignisse und Referenz sind
+  danach unveränderlich; eine Änderung ist Neuanlegen.
+- `GET` und `PATCH` auf
+  `.../compute/database-webhooks/{databaseWebhookId}`; `PATCH` nimmt nur
+  `{ "enabled": true | false }`.
+
+**Kein DELETE.** Löschen nähme über den Fremdschlüssel die wartenden
+Zustellungen mit; dieser Verlust braucht eine eigene, bewusste Fläche.
+Abschalten leistet, was der Alltag braucht: Es erzeugt keine neuen Zustellungen
+mehr, hält die wartenden an, statt ihre Versuche zu verbrennen, und ist
+rücknehmbar.
+
+Der Zustellstatus steht unter
+`.../compute/webhooks/{webhookId}/deliveries` — dieselbe Liste wie für jeden
+anderen ausgehenden Webhook, weiterhin **ohne Nutzlast**. Die Console zeigt die
+letzten fünf je Kopplung.
+
+Datenbank: Migration `0049_project_database_webhooks.sql` hält die Kopplung.
+Die ausgehende Definition, die Outbox, die Lease, das Backoff und der Dead
+Letter bleiben in `0032`.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

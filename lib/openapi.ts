@@ -22,6 +22,11 @@ const projectComputeWebhookParameters = [
   { name: "webhookId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
 ] as const;
 
+const projectDatabaseWebhookParameters = [
+  ...projectAuthScopeParameters,
+  { name: "databaseWebhookId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+] as const;
+
 const projectQueueParameters = [
   ...projectAuthScopeParameters,
   { name: "queue", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" } },
@@ -520,6 +525,40 @@ export const qkernOpenAPI = {
         description: "The webhook must be disabled first. Deletion removes pending deliveries with it, so the two-step makes that loss deliberate.",
         security: [{ sessionCookie: [] }], parameters: projectComputeWebhookParameters,
         responses: { "200": { description: "Webhook definition deleted", content: { "application/json": { schema: { $ref: "#/components/schemas/ComputeDeletedResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "The webhook is still enabled" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/database-webhooks": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectDatabaseWebhooks",
+        summary: "List database webhooks with table, events, target and state",
+        description: "Owner or administrator only. Since `2.50.0`. Only the signing secret reference is returned; the secret itself lives in the Vault and never reaches this surface.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Database webhooks", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseWebhookListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "createProjectDatabaseWebhook",
+        summary: "Couple a table in schema public to an outgoing signed webhook",
+        description: "Owner or administrator only with trusted same-origin validation. Since `2.50.0`. Creates the outgoing webhook definition and the coupling in one transaction. Deliveries are triggered through the change feed Realtime already reads; no additional trigger is installed in the project database, and a table whose change capture is not switched on produces no delivery. A delivery carries schema, table, operation, the primary key values, the feed position and the commit time, no other column value and no before or after image. Table, events, target and signing reference are immutable afterwards.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectDatabaseWebhook" } } } },
+        responses: { "201": { description: "Database webhook created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "The webhook name already exists in this project environment or the limit is reached" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/database-webhooks/{databaseWebhookId}": {
+      get: {
+        tags: ["Project Compute"], operationId: "getProjectDatabaseWebhook",
+        summary: "Read one database webhook",
+        description: "Owner or administrator only. Since `2.50.0`.",
+        security: [{ sessionCookie: [] }], parameters: projectDatabaseWebhookParameters,
+        responses: { "200": { description: "Database webhook", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseWebhookResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      patch: {
+        tags: ["Project Compute"], operationId: "setProjectDatabaseWebhookEnabled",
+        summary: "Enable or disable one database webhook",
+        description: "Since `2.50.0`. Disabling stops both the triggering and the delivery: no new delivery is produced while it is off, and pending deliveries are parked instead of burning attempts. There is deliberately no DELETE in this surface; deleting would take pending deliveries with it.",
+        security: [{ sessionCookie: [] }], parameters: projectDatabaseWebhookParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
+        responses: { "200": { description: "Database webhook", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/compute/webhooks/{webhookId}/deliveries": {
@@ -1418,6 +1457,10 @@ export const qkernOpenAPI = {
       ProjectCronOccurrenceLogResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectCronOccurrenceLog" } } },
       ProjectWebhookDelivery: { type: "object", additionalProperties: false, required: ["id", "webhookId", "eventType", "status", "attemptCount", "lastFailureCode", "occurredAt", "availableAt", "settledAt"], properties: { id: { type: "string", format: "uuid" }, webhookId: { type: "string", format: "uuid" }, eventType: { type: "string" }, status: { type: "string", enum: ["pending", "in_flight", "delivered", "dead_lettered"] }, attemptCount: { type: "integer", minimum: 0, maximum: 20 }, lastFailureCode: { type: ["string", "null"], enum: ["WEBHOOK_INVALID", "WEBHOOK_TIMEOUT", "WEBHOOK_REJECTED", "WEBHOOK_SIGNING_FAILED", null] }, occurredAt: { type: "string", format: "date-time" }, availableAt: { type: "string", format: "date-time" }, settledAt: { type: ["string", "null"], format: "date-time" } } },
       ProjectWebhookDeliveryListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectWebhookDelivery" } } } },
+      ProjectDatabaseWebhook: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "webhookId", "name", "schema", "table", "events", "eventTypes", "url", "signingSecretRef", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, webhookId: { type: "string", format: "uuid", description: "The outgoing webhook definition this coupling drives. Its delivery status is listed under compute/webhooks/{webhookId}/deliveries." }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, schema: { const: "public" }, table: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$" }, events: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string", enum: ["insert", "update", "delete"] } }, eventTypes: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string", enum: ["db.insert", "db.update", "db.delete"] } }, url: { type: "string", format: "uri" }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectDatabaseWebhookResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseWebhook" } } },
+      ProjectDatabaseWebhookListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectDatabaseWebhook" } } } },
+      CreateProjectDatabaseWebhook: { type: "object", additionalProperties: false, required: ["name", "table", "events", "url", "signingSecretRef"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, table: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$", description: "A table in schema public. The schema is fixed and cannot be sent." }, events: { type: "array", minItems: 1, maxItems: 3, items: { type: "string", enum: ["insert", "update", "delete"] } }, url: { type: "string", format: "uri", description: "Exact public HTTPS target on port 443 without query, fragment or credentials, validated by the same rule the deliverer applies." }, signingSecretRef: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$", description: "Reference only. Never send a secret value to this endpoint; there is no field for one." }, enabled: { type: "boolean", default: true } } },
       SetComputeDefinitionEnabled: { type: "object", additionalProperties: false, required: ["enabled"], properties: { enabled: { type: "boolean" } } },
       ComputeDeletedResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["deleted"], properties: { deleted: { const: true } } } } },
       ProjectFunctionDefinition: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "runtime", "image", "entrypoint", "timeoutMs", "memoryMiB", "maxConcurrency", "egressOrigins", "secretRefs", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, runtime: { const: "nodejs24" }, image: { type: "string", pattern: "^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$" }, entrypoint: { type: "string", maxLength: 128 }, timeoutMs: { type: "integer", minimum: 100, maximum: 300000 }, memoryMiB: { type: "integer", minimum: 64, maximum: 2048 }, maxConcurrency: { type: "integer", minimum: 1, maximum: 100, description: "Recorded but not yet enforced." }, egressOrigins: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string", format: "uri" }, description: "A non-empty list is rejected at call time until an egress proxy exists." }, secretRefs: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string" }, description: "References only. Secret values never reach this surface or the sandbox environment." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },

@@ -9,6 +9,9 @@ import {
 } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from
   "@/lib/server/compute/definitions-postgres-repository";
+import { DatabaseWebhookService } from "@/lib/server/compute/database-webhook-definitions";
+import { PostgresDatabaseWebhookRepository } from
+  "@/lib/server/compute/database-webhook-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
@@ -107,9 +110,34 @@ function integer(raw: string | undefined, fallback: number): number {
   return value;
 }
 
+/**
+ * Datenbank-Webhooks (2.50).
+ *
+ * Dieselbe Freischaltung wie die uebrigen Definitionen: Wer die
+ * Verwaltungsflaeche fuer Cron und Webhooks nicht hat, soll auch diese nicht
+ * haben. Ein eigener Schalter waere eine zweite Stelle, an der jemand eine
+ * Flaeche ohne Absicht aufmacht.
+ */
+export function createDatabaseWebhookServiceFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  if (env.QKERN_COMPUTE_DEFINITIONS_ENABLED !== "true") {
+    throw new ConfigurationError("Set QKERN_COMPUTE_DEFINITIONS_ENABLED=true explicitly.");
+  }
+  if (runtimeModeFromEnv(env) !== "postgres") {
+    throw new ConfigurationError("Database webhooks require the PostgreSQL runtime mode.");
+  }
+  return new DatabaseWebhookService({
+    repository: new PostgresDatabaseWebhookRepository(
+      new PostgresControlPlane(getPostgresPool(env)),
+    ),
+  });
+}
+
 type GlobalComputeDefinitions = typeof globalThis & {
   __qkernComputeDefinitionService?: ComputeDefinitionService;
   __qkernFunctionInvocationService?: FunctionInvocationService;
+  __qkernDatabaseWebhookService?: DatabaseWebhookService;
 };
 
 export function getComputeDefinitionService() {
@@ -122,4 +150,10 @@ export function getFunctionInvocationService() {
   const runtime = globalThis as GlobalComputeDefinitions;
   runtime.__qkernFunctionInvocationService ??= createFunctionInvocationServiceFromEnv();
   return runtime.__qkernFunctionInvocationService;
+}
+
+export function getDatabaseWebhookService() {
+  const runtime = globalThis as GlobalComputeDefinitions;
+  runtime.__qkernDatabaseWebhookService ??= createDatabaseWebhookServiceFromEnv();
+  return runtime.__qkernDatabaseWebhookService;
 }

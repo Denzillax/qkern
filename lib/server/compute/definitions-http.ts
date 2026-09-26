@@ -17,6 +17,7 @@ export type ComputeDefinitionRouteContext = {
   params: Promise<{
     projectId: string; environment: string;
     cronId?: string; webhookId?: string; functionId?: string; name?: string;
+    databaseWebhookId?: string;
   }>;
 };
 

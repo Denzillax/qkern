@@ -14,6 +14,7 @@ import { tableChangeSetTexts } from "@/lib/console/table-change-sets";
 import { authObservabilityTexts } from "@/lib/console/auth-observability-texts";
 import { storageLogTexts } from "@/lib/console/storage-log-texts";
 import { authMfaTexts } from "@/lib/console/auth-mfa-texts";
+import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -64,6 +65,9 @@ async function consoleKeys(): Promise<string[]> {
   // Auth → Mehrfaktor (2.52) zeigt Zustaende, Faktoren, Warnungen und
   // seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authMfaTexts()) keys.add(text);
+  // Die Datenbank-Webhooks (2.50) zeigen die Gruende einer Ablehnung ueber
+  // t(variable).
+  for (const text of databaseWebhookTexts()) keys.add(text);
   return [...keys];
 }
 

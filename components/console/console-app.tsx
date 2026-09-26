@@ -41,6 +41,7 @@ import { RolesView } from "@/components/console/roles-view";
 import { PublicationsView } from "@/components/console/publications-view";
 import { ColumnPrivilegesView } from "@/components/console/column-privileges-view";
 import { CronView } from "@/components/console/cron-view";
+import { DatabaseWebhooksView } from "@/components/console/database-webhooks-view";
 import { ApiKeysView } from "@/components/console/api-keys-view";
 import { AuthProvidersView } from "@/components/console/auth-providers-view";
 import { AuthSessionsView } from "@/components/console/auth-sessions-view";
@@ -289,6 +290,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "logs-auth": return <AuthLogView projectId={props.project.id} environment={props.environment}/>;
     case "logs-storage": return <StorageLogView projectId={props.project.id} environment={props.environment}/>;
     case "obs-realtime": return <UsageSeriesView key="obs-realtime" view="realtime" projectId={props.project.id} environment={props.environment}/>;
+    case "int-database-webhooks": return <DatabaseWebhooksView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
