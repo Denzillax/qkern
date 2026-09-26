@@ -738,6 +738,31 @@ export const qkernOpenAPI = {
         responses: { "200": { description: "Redacted updated app user" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthAdminListSessions", summary: "List the active sessions of one app user without any token material",
+        description: "Owner or administrator console session. Returns sessions that are neither revoked, compromised nor expired, newest first, at most 100. Refresh-token verifiers are never selected. A user outside the caller's organization, project and environment is reported as not found.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Active sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionListEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
+      },
+      delete: {
+        tags: ["Project Auth"], operationId: "projectAuthAdminRevokeAllSessions", summary: "Revoke every session of one app user without disabling the user",
+        description: "Owner or administrator only with trusted same-origin validation. Access tokens stop working immediately because verification checks the persisted session.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions/{sessionId}": {
+      delete: {
+        tags: ["Project Auth"], operationId: "projectAuthAdminRevokeSession", summary: "Revoke one session together with its whole refresh family",
+        description: "Owner or administrator only with trusted same-origin validation. The session must be active and belong to the user; otherwise the answer is not found. Every refresh token of that sign-in stops working; other sessions of the user are untouched.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }, { name: "sessionId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: { "200": { description: "Number of revoked sessions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthSessionRevocationEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/generated-openapi": {
       get: {
         tags: ["Project Data"], operationId: "getGeneratedProjectOpenApi",
@@ -1207,6 +1232,9 @@ export const qkernOpenAPI = {
       ProjectAuthMfaRequired: { type: "object", additionalProperties: false, required: ["mfaRequired", "challengeToken", "expiresAt"], properties: { mfaRequired: { const: true }, challengeToken: { type: "string", writeOnly: true }, expiresAt: { type: "string", format: "date-time" } } },
       ProjectAuthSessionEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { oneOf: [{ $ref: "#/components/schemas/ProjectAuthSession" }, { $ref: "#/components/schemas/ProjectAuthMfaRequired" }] } } },
       ProjectAuthUserListEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["users", "nextCursor"], properties: { users: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectAuthUser" } }, nextCursor: { type: ["string", "null"] } } } } },
+      ProjectAuthSessionSummary: { type: "object", additionalProperties: false, required: ["id", "familyId", "assurance", "createdAt", "expiresAt", "replacedBySessionId"], properties: { id: { type: "string", format: "uuid" }, familyId: { type: "string", format: "uuid" }, assurance: { type: "string", enum: ["aal1", "aal2"] }, createdAt: { type: "string", format: "date-time" }, expiresAt: { type: "string", format: "date-time" }, replacedBySessionId: { type: ["string", "null"], format: "uuid" } } },
+      ProjectAuthSessionListEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["sessions"], properties: { sessions: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectAuthSessionSummary" } } } } } },
+      ProjectAuthSessionRevocationEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["revoked"], properties: { revoked: { type: "integer", minimum: 0 } } } } },
       ProjectAuthAdminUpdateUser: { type: "object", additionalProperties: false, minProperties: 1, properties: { status: { type: "string", enum: ["active", "disabled"] }, appMetadata: { type: "object", maxProperties: 32, description: "Server-only RLS claims; JSON-encoded size is limited to 512 bytes" } } },
       GeneratedTable: { type: "object", additionalProperties: false, required: ["schema", "name", "rowSecurityEnabled", "primaryKey", "columns"], properties: { schema: { type: "string" }, name: { type: "string" }, rowSecurityEnabled: { const: true }, primaryKey: { type: "array", minItems: 1, items: { type: "string" } }, columns: { type: "array", maxItems: 100, items: { type: "object" } } } },
       GeneratedRows: { type: "object", additionalProperties: false, required: ["source", "table", "rows", "rowCount", "hasMore", "nextCursor", "maxRows"], properties: { source: { const: "postgres" }, table: { $ref: "#/components/schemas/GeneratedTable" }, rows: { type: "array", maxItems: 100, items: { type: "object" } }, rowCount: { type: "integer", minimum: 0, maximum: 100 }, hasMore: { type: "boolean" }, nextCursor: { type: ["string", "null"] }, maxRows: { type: "integer", minimum: 1, maximum: 100 } } },

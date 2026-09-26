@@ -179,6 +179,10 @@ Wichtige öffentliche Pfade beginnen mit
 - `mfa/enroll`, `mfa/challenge`, `user` und `logout`
 - `oidc/{provider}/authorize`, `oidc/{provider}/callback` und `.well-known/jwks.json`
 - `admin/users` für Owner/Administratoren über die QKERN-Console-Session
+- `admin/users/{userId}/sessions` (GET listet die aktiven Sitzungen ohne Token-Material,
+  DELETE beendet alle) und `admin/users/{userId}/sessions/{sessionId}` (DELETE beendet
+  eine Sitzung samt ihrer ganzen Refresh-Familie), ebenfalls nur über die Console-Session
+  und mit geprüftem Origin; in der Console unter Auth → Sitzungen
 
 Alle öffentlichen Auth-Aufrufe benötigen einen exakt passenden Projekt-Key.
 Für normale Tabellenzugriffe sendet die Anwendung den Projekt-Key in

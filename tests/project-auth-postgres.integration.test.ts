@@ -97,4 +97,45 @@ describe.runIf(enabled)("Project Auth PostgreSQL certification", () => {
     await expect(service.refresh(scope, initial.refreshToken)).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
     await expect(service.verifyAccess(scope, rotated.accessToken)).rejects.toMatchObject({ code: "INVALID_TOKEN" });
   });
+
+  it("lists active sessions and revokes one family or all of one user in PostgreSQL (2.34)", async () => {
+    const password = "a sufficiently long password";
+    async function verifiedUser(prefix: string) {
+      const email = `${prefix}-${randomUUID()}@qkern.test`;
+      const signup = await service.signUp(scope, {
+        email, password, redirectTo: "https://app.test/callback", rateLimitKey: randomUUID(),
+      });
+      const session = await service.consumeEmailToken(scope, { token: signup.debugToken!, purpose: "email_verification" });
+      if ("mfaRequired" in session) throw new Error("unexpected MFA");
+      return { email, session };
+    }
+    const target = await verifiedUser("sessions");
+    const bystander = await verifiedUser("sessions-bystander");
+    const second = await service.passwordSignIn(scope, { email: target.email, password, rateLimitKey: randomUUID() });
+    if ("mfaRequired" in second) throw new Error("unexpected MFA");
+    const userId = (await service.verifyAccess(scope, target.session.accessToken)).user.id;
+    // Die erste Anmeldung rotiert einmal: die alte Zeile ist ersetzt und
+    // widerrufen, nur die neue zaehlt als aktiv.
+    const rotated = await service.refresh(scope, target.session.refreshToken);
+    const rotatedSession = (await service.verifyAccess(scope, rotated.accessToken)).session;
+
+    const listed = await service.listSessions(scope, userId);
+    expect(listed.sessions).toHaveLength(2);
+    expect(listed.sessions.map((entry) => entry.id)).toContain(rotatedSession.id);
+    expect(JSON.stringify(listed)).not.toMatch(/refreshTokenHash|qk_refresh_/);
+
+    expect(await service.revokeSession(scope, userId, rotatedSession.id)).toEqual({ revoked: 1 });
+    expect((await service.listSessions(scope, userId)).sessions).toHaveLength(1);
+    await expect(service.refresh(scope, rotated.refreshToken)).rejects.toBeTruthy();
+    await expect(service.verifyAccess(scope, rotated.accessToken)).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+
+    expect(await service.revokeAllSessions(scope, userId)).toEqual({ revoked: 1 });
+    expect((await service.listSessions(scope, userId)).sessions).toEqual([]);
+    await expect(service.refresh(scope, second.refreshToken)).rejects.toBeTruthy();
+
+    const bystanderId = (await service.verifyAccess(scope, bystander.session.accessToken)).user.id;
+    expect((await service.listSessions(scope, bystanderId)).sessions).toHaveLength(1);
+    await expect(service.listSessions({ ...scope, projectId: randomUUID() }, userId))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+  });
 });

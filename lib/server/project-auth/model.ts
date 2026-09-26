@@ -37,6 +37,21 @@ export type ProjectAuthSession = ProjectAuthScope & {
   compromisedAt: Date | null;
 };
 
+/**
+ * Was die Admin-Sicht von einer Sitzung zeigt (2.34). Bewusst ohne den
+ * Verifier des Refresh Tokens und ohne Scope-Spalten: die Liste verlaesst
+ * den Server und darf nichts enthalten, womit sich eine Sitzung nachbauen
+ * oder einem anderen Mandanten zuordnen liesse.
+ */
+export type ProjectAuthSessionSummary = {
+  id: string;
+  familyId: string;
+  assurance: ProjectAuthAssurance;
+  createdAt: Date;
+  expiresAt: Date;
+  replacedBySessionId: string | null;
+};
+
 export type ProjectAuthOneTimePurpose =
   | "email_verification"
   | "magic_link"

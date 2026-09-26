@@ -7,6 +7,7 @@ import type {
   ProjectAuthOneTimeToken,
   ProjectAuthScope,
   ProjectAuthSession,
+  ProjectAuthSessionSummary,
   ProjectAuthUser,
 } from "@/lib/server/project-auth/model";
 import {
@@ -160,6 +161,19 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
       WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4
         AND revoked_at IS NULL`, [...scopeValues(scope), userId, now]);
     return result.rowCount ?? 0;
+  }
+
+  async listActiveSessions(scope: ProjectAuthScope, userId: string, now: Date) {
+    // Die Spaltenliste nennt refresh_token_hash absichtlich nicht: der
+    // Verifier soll gar nicht erst aus der Datenbank herauskommen.
+    const result = await query(this.pool, `SELECT id, family_id, assurance, created_at, expires_at,
+        replaced_by_session_id
+      FROM project_auth_sessions
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4
+        AND revoked_at IS NULL AND compromised_at IS NULL AND expires_at > $5
+      ORDER BY created_at DESC, id DESC
+      LIMIT 100`, [...scopeValues(scope), userId, now]);
+    return result.rows.map(sessionSummaryFromRow);
   }
 
   async createOneTimeToken(token: ProjectAuthOneTimeToken) {
@@ -384,6 +398,18 @@ function sessionFromRow(row: Row): ProjectAuthSession {
     revokedAt: optionalTimestamp(row.revoked_at, "session revocation"),
     replacedBySessionId: row.replaced_by_session_id === null ? null : String(row.replaced_by_session_id),
     compromisedAt: optionalTimestamp(row.compromised_at, "session compromise"),
+  };
+}
+
+function sessionSummaryFromRow(row: Row): ProjectAuthSessionSummary {
+  if (!row || !["aal1", "aal2"].includes(String(row.assurance))) {
+    throw new InvalidRecordError("Invalid project auth session.");
+  }
+  return {
+    id: String(row.id), familyId: String(row.family_id),
+    assurance: row.assurance as ProjectAuthSessionSummary["assurance"],
+    createdAt: timestamp(row.created_at, "session creation"), expiresAt: timestamp(row.expires_at, "session expiry"),
+    replacedBySessionId: row.replaced_by_session_id === null ? null : String(row.replaced_by_session_id),
   };
 }
 

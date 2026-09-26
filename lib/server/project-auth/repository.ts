@@ -6,6 +6,7 @@ import type {
   ProjectAuthOneTimeToken,
   ProjectAuthScope,
   ProjectAuthSession,
+  ProjectAuthSessionSummary,
   ProjectAuthUser,
 } from "@/lib/server/project-auth/model";
 
@@ -32,6 +33,11 @@ export interface ProjectAuthRepository {
   ): Promise<ProjectAuthRotationResult>;
   revokeSessionFamily(scope: ProjectAuthScope, familyId: string, now: Date, compromised: boolean): Promise<number>;
   revokeAllUserSessions(scope: ProjectAuthScope, userId: string, now: Date): Promise<number>;
+  /**
+   * Aktive Sitzungen eines Nutzers: nicht widerrufen, nicht kompromittiert,
+   * nicht abgelaufen; neueste zuerst, hoechstens 100. Nie mit Token-Verifier.
+   */
+  listActiveSessions(scope: ProjectAuthScope, userId: string, now: Date): Promise<ProjectAuthSessionSummary[]>;
 
   createOneTimeToken(token: ProjectAuthOneTimeToken): Promise<ProjectAuthOneTimeToken>;
   findActiveOneTimeTokenScope(
@@ -177,6 +183,15 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     return count;
   }
 
+  async listActiveSessions(scope: ProjectAuthScope, userId: string, now: Date) {
+    return [...this.sessions.values()]
+      .filter((session) => sameScope(session, scope) && session.userId === userId && !session.revokedAt &&
+        !session.compromisedAt && session.expiresAt.getTime() > now.getTime())
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id))
+      .slice(0, 100)
+      .map(sessionSummary);
+  }
+
   async createOneTimeToken(token: ProjectAuthOneTimeToken) {
     if (this.oneTimeTokens.has(token.tokenHash)) throw new Error("DUPLICATE_PROJECT_AUTH_TOKEN");
     const stored = cloneOneTimeToken(token);
@@ -270,6 +285,14 @@ function cloneSession(session: ProjectAuthSession): ProjectAuthSession {
     createdAt: new Date(session.createdAt), expiresAt: new Date(session.expiresAt),
     revokedAt: session.revokedAt ? new Date(session.revokedAt) : null,
     compromisedAt: session.compromisedAt ? new Date(session.compromisedAt) : null,
+  };
+}
+
+function sessionSummary(session: ProjectAuthSession): ProjectAuthSessionSummary {
+  return {
+    id: session.id, familyId: session.familyId, assurance: session.assurance,
+    createdAt: new Date(session.createdAt), expiresAt: new Date(session.expiresAt),
+    replacedBySessionId: session.replacedBySessionId,
   };
 }
 

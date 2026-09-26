@@ -31,6 +31,7 @@ import { ColumnPrivilegesView } from "@/components/console/column-privileges-vie
 import { CronView } from "@/components/console/cron-view";
 import { ApiKeysView } from "@/components/console/api-keys-view";
 import { AuthProvidersView } from "@/components/console/auth-providers-view";
+import { AuthSessionsView } from "@/components/console/auth-sessions-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
@@ -236,6 +237,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "int-cron": return <CronView projectId={props.project.id} environment={props.environment}/>;
     case "set-api-keys": return <ApiKeysView projectId={props.project.id} environment={props.environment}/>;
     case "auth-providers": return <AuthProvidersView projectId={props.project.id} environment={props.environment}/>;
+    case "auth-sessions": return <AuthSessionsView projectId={props.project.id} environment={props.environment}/>;
     case "set-jwt": return <JwtKeysView projectId={props.project.id} environment={props.environment}/>;
     case "storage-policies": return <StoragePoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;

@@ -168,6 +168,52 @@ describe("Project Auth service", () => {
     await built.service.updateUser(scope, principal.user.id, { status: "disabled" });
     await expect(built.service.verifyAccess(scope, session.accessToken)).rejects.toBeInstanceOf(ProjectAuthError);
   });
+
+  it("lists active sessions without token material and revokes one family or all of one user (2.34)", async () => {
+    const built = fixture();
+    const first = await verifiedAccount(built, "sessions@example.test");
+    const second = await built.service.passwordSignIn(scope, {
+      email: "sessions@example.test", password: "a sufficiently long password", rateLimitKey: "sessions-second",
+    });
+    if ("mfaRequired" in second) throw new Error("unexpected MFA");
+    const other = await verifiedAccount(built, "bystander@example.test");
+    const firstPrincipal = await built.service.verifyAccess(scope, first.accessToken);
+    const secondPrincipal = await built.service.verifyAccess(scope, second.accessToken);
+    const otherPrincipal = await built.service.verifyAccess(scope, other.accessToken);
+    const userId = firstPrincipal.user.id;
+    // Eine Rotation ersetzt die erste Sitzung; nur die neue gilt als aktiv.
+    const rotated = await built.service.refresh(scope, first.refreshToken);
+
+    const listed = await built.service.listSessions(scope, userId);
+    expect(listed.sessions).toHaveLength(2);
+    expect(listed.sessions.map((entry) => entry.familyId).sort())
+      .toEqual([firstPrincipal.session.familyId, secondPrincipal.session.familyId].sort());
+    expect(JSON.stringify(listed)).not.toMatch(/refreshTokenHash|qk_refresh_|organizationId/);
+
+    // Fremde Sitzung unter diesem Nutzer: 404, und sie bleibt bestehen.
+    await expect(built.service.revokeSession(scope, userId, otherPrincipal.session.id))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    await expect(built.service.listSessions({ ...scope, projectId: "project-2" }, userId))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+
+    const rotatedId = (await built.service.verifyAccess(scope, rotated.accessToken)).session.id;
+    expect(await built.service.revokeSession(scope, userId, rotatedId)).toEqual({ revoked: 1 });
+    await expect(built.service.refresh(scope, rotated.refreshToken)).rejects.toBeInstanceOf(ProjectAuthError);
+    await expect(built.service.verifyAccess(scope, rotated.accessToken)).rejects.toBeInstanceOf(ProjectAuthError);
+    await expect(built.service.verifyAccess(scope, second.accessToken)).resolves.toBeTruthy();
+    expect((await built.service.listSessions(scope, userId)).sessions.map((entry) => entry.id))
+      .toEqual([secondPrincipal.session.id]);
+    await expect(built.service.revokeSession(scope, userId, rotatedId))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+
+    expect(await built.service.revokeAllSessions(scope, userId)).toEqual({ revoked: 1 });
+    expect((await built.service.listSessions(scope, userId)).sessions).toEqual([]);
+    await expect(built.service.verifyAccess(scope, second.accessToken)).rejects.toBeInstanceOf(ProjectAuthError);
+    expect((await built.service.verifyAccess(scope, other.accessToken)).user.id).toBe(otherPrincipal.user.id);
+    expect((await built.service.listSessions(scope, otherPrincipal.user.id)).sessions).toHaveLength(1);
+    await expect(built.service.revokeAllSessions(scope, "00000000-0000-4000-8000-999999999999"))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+  });
 });
 
 function totp(secret: string, now: Date): string {

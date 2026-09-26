@@ -8,6 +8,7 @@ import type {
   ProjectAuthOneTimePurpose,
   ProjectAuthScope,
   ProjectAuthSession,
+  ProjectAuthSessionSummary,
   ProjectAuthUser,
   ProjectAuthUserStatus,
   PublicProjectAuthUser,
@@ -558,6 +559,54 @@ export class ProjectAuthService {
     return publicProjectAuthUser(updated);
   }
 
+  /**
+   * Aktive Sitzungen eines App-Nutzers fuer die Console (2.34). Ein Nutzer,
+   * den es in diesem Scope nicht gibt, ist 404, auch wenn er in einem
+   * anderen Projekt existiert.
+   */
+  async listSessions(scope: ProjectAuthScope, userId: string): Promise<{ sessions: ProjectAuthSessionSummary[] }> {
+    assertScope(scope);
+    assertAdminId(userId);
+    const now = this.now();
+    await this.requireUser(scope, userId);
+    return { sessions: await this.dependencies.repository.listActiveSessions(scope, userId, now) };
+  }
+
+  /**
+   * Beendet eine Sitzung. Widerrufen wird die ganze Refresh-Familie, nicht
+   * nur die eine Zeile: jede Zeile einer Familie stammt aus derselben
+   * Anmeldung, und nur so ist sicher, dass kein aelteres oder parallel
+   * rotiertes Refresh Token dieser Anmeldung weiterlebt. Andere Familien
+   * desselben Nutzers bleiben unberuehrt. `revoked` zaehlt die beendeten
+   * aktiven Sitzungen; eine Familie hat davon hoechstens eine.
+   */
+  async revokeSession(scope: ProjectAuthScope, userId: string, sessionId: string): Promise<{ revoked: number }> {
+    assertScope(scope);
+    assertAdminId(userId);
+    assertAdminId(sessionId);
+    const now = this.now();
+    const session = await this.dependencies.repository.findActiveSessionById(scope, sessionId, now);
+    // Eine Sitzung eines anderen Nutzers sieht aus wie eine, die es nicht
+    // gibt: kein Unterschied zwischen fremd und unbekannt nach aussen.
+    if (!session || session.userId !== userId) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.dependencies.repository.revokeSessionFamily(scope, session.familyId, now, false);
+    return { revoked: 1 };
+  }
+
+  /** Beendet alle Sitzungen eines Nutzers, ohne ihn zu deaktivieren. */
+  async revokeAllSessions(scope: ProjectAuthScope, userId: string): Promise<{ revoked: number }> {
+    assertScope(scope);
+    assertAdminId(userId);
+    const now = this.now();
+    await this.requireUser(scope, userId);
+    return { revoked: await this.dependencies.repository.revokeAllUserSessions(scope, userId, now) };
+  }
+
+  private async requireUser(scope: ProjectAuthScope, userId: string): Promise<void> {
+    const user = await this.dependencies.repository.findUserById(scope, userId);
+    if (!user) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+  }
+
   private async beginAuthenticatedSession(
     scope: ProjectAuthScope,
     user: ProjectAuthUser,
@@ -722,6 +771,9 @@ export class DisabledProjectAuthService {
   jwks(): never { return this.disabled(); }
   listUsers(): never { return this.disabled(); }
   updateUser(): never { return this.disabled(); }
+  listSessions(): never { return this.disabled(); }
+  revokeSession(): never { return this.disabled(); }
+  revokeAllSessions(): never { return this.disabled(); }
 }
 
 function canonicalEmail(email: string): string { return email.trim().toLowerCase(); }
@@ -734,6 +786,10 @@ function assertEmail(email: string): void {
 
 function assertPassword(password: string): void {
   if (password.length < 12 || password.length > 256) throw new ProjectAuthError("INVALID_INPUT");
+}
+
+function assertAdminId(id: string): void {
+  if (!id || id.length > 128) throw new ProjectAuthError("INVALID_INPUT");
 }
 
 function assertScope(scope: ProjectAuthScope): void {

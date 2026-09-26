@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "set-jwt", "storage-policies", "storage-settings", "set-api",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "set-jwt", "storage-policies", "storage-settings", "set-api",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -46,7 +46,6 @@ export const PLACEHOLDERS = {
   "db-settings": { label: "Datenbank-Einstellungen", supabase: "Database → Settings", backend: "fehlt", note: "Verbindungsdaten, Pooler, SSL-Zwang, Netzwerkbeschränkungen. Die Provisionierung ist noch nicht verbunden." },
   // Auth
   "auth-policies": { label: "Policies", supabase: "Authentication → Policies", backend: "teilweise", note: "RLS-Regeln aus Sicht der Anmeldung. Gleiche Lage wie unter Datenbank → Policies." },
-  "auth-sessions": { label: "Sitzungen", supabase: "Authentication → Sessions", backend: "teilweise", note: "Laufende Sitzungen sehen und beenden. Sitzungen gibt es; eine Liste und ein Widerruf fehlen." },
   "auth-rate-limits": { label: "Rate Limits", supabase: "Authentication → Rate Limits", backend: "fehlt", note: "Grenzen für Anmeldungen, Mails und Token je Zeitfenster." },
   "auth-templates": { label: "E-Mail-Vorlagen", supabase: "Authentication → Emails → Templates", backend: "fehlt", note: "Texte für Bestätigung, Magic Link und Zurücksetzen. Mails gehen heute mit festem Text." },
   "auth-smtp": { label: "SMTP", supabase: "Authentication → Emails → SMTP Settings", backend: "teilweise", note: "Eigener Mailserver. SMTP ist gegen Mailpit zertifiziert; die Einstellung liegt in der Umgebung, nicht in der Console." },
@@ -132,7 +131,7 @@ export const NAV: NavGroup[] = [
     ph("db-backups-pitr"), ph("db-backups-restore"), ph("db-settings"),
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
-    { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, ph("auth-sessions"), ph("auth-rate-limits"),
+    { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, { id: "auth-sessions", label: "Sitzungen" }, ph("auth-rate-limits"),
     ph("auth-templates"), ph("auth-smtp"), ph("auth-mfa"), ph("auth-passkeys"), ph("auth-url"), ph("auth-protection"),
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), ph("auth-audit"), ph("auth-performance"),
   ] },
