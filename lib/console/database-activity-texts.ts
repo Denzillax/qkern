@@ -88,7 +88,7 @@ export function connectionStateText(state: string): ConnectionStateText {
  * zwei Wochen.
  */
 export const DATABASE_REPORT_HONESTY =
-  "Die Zahlen gelten seit dem letzten Zuruecksetzen der Statistik, nicht seit dem Start der Datenbank.";
+  "Die Zahlen gelten seit dem letzten Zurücksetzen der Statistik, nicht seit dem Start der Datenbank.";
 
 /**
  * Der Satz der Verbindungsseite. PostgreSQL blendet fuer eine
@@ -97,7 +97,7 @@ export const DATABASE_REPORT_HONESTY =
  * und sie gehoert auf die Seite.
  */
 export const CONNECTIONS_REPORT_HONESTY =
-  "Gezaehlt wird, was diese Rolle sehen darf. Einzelne Sitzungen und ihre Abfragen zeigt QKERN nicht.";
+  "Gezählt wird, was diese Rolle sehen darf. Einzelne Sitzungen und ihre Abfragen zeigt QKERN nicht.";
 
 /**
  * Die Trefferquote des Caches: Anteil der Bloecke, die schon im Speicher

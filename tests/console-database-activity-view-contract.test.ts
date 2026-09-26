@@ -90,8 +90,8 @@ describe("console database and connections view contract", () => {
   it("says what the numbers mean, what they cannot cover and what was cut off", async () => {
     const database = await source(DATABASE_VIEW);
     const connections = await source(CONNECTIONS_VIEW);
-    expect(DATABASE_REPORT_HONESTY).toBe("Die Zahlen gelten seit dem letzten Zuruecksetzen der Statistik, nicht seit dem Start der Datenbank.");
-    expect(CONNECTIONS_REPORT_HONESTY).toBe("Gezaehlt wird, was diese Rolle sehen darf. Einzelne Sitzungen und ihre Abfragen zeigt QKERN nicht.");
+    expect(DATABASE_REPORT_HONESTY).toBe("Die Zahlen gelten seit dem letzten Zurücksetzen der Statistik, nicht seit dem Start der Datenbank.");
+    expect(CONNECTIONS_REPORT_HONESTY).toBe("Gezählt wird, was diese Rolle sehen darf. Einzelne Sitzungen und ihre Abfragen zeigt QKERN nicht.");
     expect(database).toContain("DATABASE_REPORT_HONESTY");
     expect(connections).toContain("CONNECTIONS_REPORT_HONESTY");
     // Leerer Zustand und Abschneiden stehen da, statt still zu fehlen.
