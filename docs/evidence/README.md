@@ -1454,3 +1454,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/advisor-local-mutation.log` | Vitest lokal, Mutation, nur Regeltests | **16 von 18, exit 1 – absichtlich** |
 | `2026-09-26/advisor-local-run1.log` | Vitest lokal (Windows) | 1341 bestanden, exit 0 |
 | `2026-09-26/advisor-local-run2.log` | Vitest lokal (Windows) | 1341 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.40 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/performance-run1.log` | PostgreSQL 17 | 177 von 177, exit 0 |
+| `2026-09-26/performance-run2.log` | PostgreSQL 17 | 177 von 177, exit 0, Wiederholung |
+| `2026-09-26/performance-mutation.log` | PostgreSQL 17, Mutation (fehlender Index ohne Blick auf Indexscans) | **176 von 177, exit 1 – absichtlich** |
+| `2026-09-26/performance-local-mutation.log` | Vitest lokal, Mutation, nur Regeltests | **30 von 31, exit 1 – absichtlich** |
+| `2026-09-26/performance-local-run1.log` | Vitest lokal (Windows) | 1358 bestanden, exit 0 |
+| `2026-09-26/performance-local-run2.log` | Vitest lokal (Windows) | 1358 bestanden, exit 0, Wiederholung |

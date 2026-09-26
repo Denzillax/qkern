@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "performance-run1.log",
+  "commit": "14abe13dd5c0991567c59f02d6a5e99a47cf5fd1",
+  "commitSubject": "tests: Leistungsfall prueft auch die Indexscan-Haelfte",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 47,
+  "testFiles": "31 passed (31)",
+  "tests": "177 passed (177)",
+  "passed": 177,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

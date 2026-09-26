@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.39.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.40.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,30 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.39.0`
-- Aktueller Slice: 2.39 Was offen steht – der Platzhalter "Sicherheit"
+- Paketversion: `2.40.0`
+- Aktueller Slice: 2.40 Wo es langsam wird – der Platzhalter "Leistung"
+  unter Advisors ist eine echte, nur lesende Ansicht
+  (`components/console/performance-advisor-view.tsx`), gleiche Bauart wie der
+  Sicherheitsberater aus 2.39. Neue Data-Plane-Methode `inspectStatistics`
+  liest `pg_stat_user_tables` und `pg_stat_user_indexes` mit `pg_index` und
+  `pg_relation_size`, Grenzen 200 Tabellen und 400 Indizes mit
+  `truncated`-Flagge. Regeln rein in
+  `lib/server/advisors/performance-rules.ts`, Schwellen an einer Stelle in
+  `PERFORMANCE_THRESHOLDS` und in jedem Text benannt: fehlender Index
+  vermutet (ab 50 sequenziellen Scans, Indexscans hoechstens ein Zehntel
+  davon, ab 1000 Zeilen), unbenutzter Index (nicht Primaer, nicht unique,
+  null Scans, ab 1 MiB), Bloat vermutet (ab 1000 toten Zeilen und einem
+  Fuenftel der lebenden), nie analysiert (ab 1000 Zeilen). `last_analyze` ist
+  `GREATEST(last_analyze, last_autoanalyze)`, sonst waere jede autoanalysierte
+  Tabelle ein Fehlalarm. `pg_stat_statements` wird bewusst nicht gelesen: die
+  Sicht ist clusterweit, und ein Utility-Statement behaelt seine Literale;
+  die Regel steht als "nicht geprueft" mit diesem Grund in der Karte, das
+  Regelmodul hat sie fertig. PostgreSQL-Fall "(2.40)" mit eigenem Zeitbudget
+  von 120 s und Warten auf die Zaehler statt auf eine Dauer: 177 statt 176
+  Faelle. Die Mutationsprobe fand eine Luecke – der Fall prueft seit
+  `14abe13` auch eine Tabelle mit vielen sequenziellen und genug Indexscans,
+  die keinen Befund tragen darf. Im Browser nicht gesehen
+- Vorheriger Slice: 2.39 Was offen steht – der Platzhalter "Sicherheit"
   unter Advisors ist eine echte, nur lesende Ansicht
   (`components/console/security-advisor-view.tsx`): Befunde nach Schwere,
   dazu eine Karte, die je Regel sagt, ob sie lief und warum nicht. Regeln
@@ -70,7 +92,7 @@ Grossbuchstaben.
   PostgreSQL-Fall "(2.39)" ueber echtem Katalog: 176 statt 175 Faelle.
   Mutation (Policy ohne Bedingung nur bei WITH CHECK) faellt im Stack in
   1 und lokal in 2 Faellen. Im Browser nicht gesehen
-- Vorheriger Slice: 2.38 Secrets, ohne Werte – der Platzhalter "Secrets"
+- Davor: 2.38 Secrets, ohne Werte – der Platzhalter "Secrets"
   unter Functions & Jobs ist eine echte, nur lesende Ansicht
   (`components/console/compute-secrets-view.tsx`): je Function jede
   deklarierte Secret-Referenz und ob der Vault sie aufloest (vorhanden,

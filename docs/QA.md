@@ -5030,3 +5030,47 @@ oeffentliche Tabelle erscheint als Befund hoher Schwere, und ein
 Service-Key in Produktion ebenfalls; beides kann gewollt sein. Nicht im
 Blick sind Funktionen mit SECURITY DEFINER, Views ohne security_invoker,
 Spaltenrechte und jedes Schema ausser public. Im Browser nicht gesehen.
+
+## Wo es langsam wird – Release 2.40
+
+Die Ansicht Advisors, Leistung rechnet Befunde aus den Statistiken von
+PostgreSQL: sequenzielle Scans gegen Indexscans, Scans je Index samt
+Groesse, tote gegen lebende Zeilen, Zeitpunkt der letzten Stichprobe. Die
+Schwellen stehen an einer Stelle, und jeder Text nennt sie in Worten.
+
+Zwei Entscheidungen sind bewusst. Als letzte Stichprobe zaehlt der spaetere
+Zeitpunkt aus manuellem und automatischem Analyze, sonst waere jede
+autoanalysierte Tabelle ein Fehlalarm. Und `pg_stat_statements` liest der
+Berater nicht: die Sicht ist clusterweit, und der Text eines
+Utility-Statements behaelt seine Literale, bis zu einem Passwort aus einem
+Rollenbefehl. Ein Statement aus einem fremden Projekt koennte so mitkommen.
+Die Regel steht deshalb als nicht geprueft mit diesem Grund in der Karte;
+das Regelmodul hat sie fertig, damit die Quelle spaeter geoeffnet werden
+kann.
+
+Der PostgreSQL-Fall legt fuenf Tabellen in einem eigenen Schema an,
+Autovacuum je Tabelle abgeschaltet, damit der Daemon das Bild nicht
+waehrend des Laufs aufraeumt. Der Statistiksammler schreibt verzoegert,
+also wartet der Fall auf die Bedingung statt auf eine Dauer, mit 20
+Sekunden Budget und dem letzten gesehenen Zustand in der Meldung. Der erste
+Lauf fiel in die Fuenf-Sekunden-Grenze der Datei; der Fall hat jetzt ein
+eigenes Budget von 120 Sekunden, und keine Zusicherung wurde dafuer
+angetastet.
+
+Die Mutationsprobe fand eine echte Luecke. Mit ignorierten Indexscans blieb
+der Stack gruen, weil keine Tabelle viele sequenzielle Scans und trotzdem
+genug Indexscans zeigte. Der Fall prueft das jetzt mit einer eigenen
+Tabelle, deren Index der Planer benutzt; sie darf keinen Befund tragen.
+Danach faellt die Mutation im Stack in 1 von 177 Faellen und lokal in 1 von
+31 Regeltests, exit 1 beide Male.
+
+Checkpoint `2.40.0` am 26. September 2026: PostgreSQL 17 mit 177 von 177,
+exit 0, zweimal reproduziert; Lokal 1358 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen. Ein Lauf dazwischen fiel am
+Realtime-Soak mit p95 5088 ms gegen 5000 ms; der Wiederholungslauf lag bei
+980 ms. Das Budget blieb unveraendert.
+
+Nicht erbracht: Der Berater repariert nichts und sagt nicht, welche Spalte
+einem Index fehlt. Ein Index fuer den Quartalsbericht erscheint als
+unbenutzt, und eine frische Datenbank hat noch keine Zaehler. Bloat ist
+eine Schaetzung des Kollektors, keine Messung. Im Browser nicht gesehen.

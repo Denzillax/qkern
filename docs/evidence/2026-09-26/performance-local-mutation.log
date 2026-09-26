@@ -1,0 +1,36 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/advisors/performance-rules.test.ts (9 tests | 1 failed) 14ms
+     × missing_index_suspected fires on the threshold and stays silent one step below it 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/advisors/performance-rules.test.ts > performance advisor rules > missing_index_suspected fires on the threshold and stays silent one step below it
+AssertionError: expected [ 'missing_index_suspected:hot', …(1) ] to deeply equal [ 'missing_index_suspected:hot' ]
+
+- Expected
++ Received
+
+  [
+    "missing_index_suspected:hot",
++   "missing_index_suspected:indexed",
+  ]
+
+ ❯ tests/advisors/performance-rules.test.ts:75:27
+     73|       { ...fires, name: "small", liveTuples: limits.missingIndexMinLiv…
+     74|     ]) }));
+     75|     expect(rules(result)).toEqual(["missing_index_suspected:hot"]);
+       |                           ^
+     76|     expect(result.findings[0].severity).toBe("medium");
+     77|     expect(result.findings[0].summary).toMatch(/ab 50 Scans/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 30 passed (31)
+   Start at  17:15:34
+   Duration  1.47s (transform 1.15s, setup 0ms, import 1.91s, tests 693ms, environment 0ms)
+
+EXIT=1

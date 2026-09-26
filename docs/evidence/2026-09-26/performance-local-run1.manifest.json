@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "performance-local-run1.log",
+  "commit": "14abe13dd5c0991567c59f02d6a5e99a47cf5fd1",
+  "commitSubject": "tests: Leistungsfall prueft auch die Indexscan-Haelfte",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1358 passed | 260 skipped (1618)",
+  "passed": 1358,
+  "failed": 0,
+  "skipped": 260,
+  "images": []
+}
