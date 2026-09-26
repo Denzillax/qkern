@@ -23,7 +23,7 @@ describe("project trigger route", () => {
   it("binds trigger inspection to the authenticated tenant and disables caching", async () => {
     const principal = await identity();
     const inspectTriggers = vi.fn().mockResolvedValue({ source: "postgres", schema: "public", triggers: [], truncated: false });
-    const dataPlane = { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers, inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectTriggers, inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const response = await handleProjectTriggers(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/schema/triggers?schema=public", {
       headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
     }), { params: Promise.resolve({ projectId: "project", environment: "development" }) }, dataPlane);
@@ -38,7 +38,7 @@ describe("project trigger route", () => {
 
   it("rejects unknown parameters and anonymous callers without touching the data plane", async () => {
     const inspectTriggers = vi.fn();
-    const dataPlane = { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers, inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectSchema: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectTriggers, inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const params = { params: Promise.resolve({ projectId: "project", environment: "development" }) };
     const bad = await handleProjectTriggers(new NextRequest("https://qkern.test/x/schema/triggers?schema=public&table=orders"), params, dataPlane);
     expect(bad.status).toBe(400);

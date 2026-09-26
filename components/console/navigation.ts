@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -67,7 +67,6 @@ export const PLACEHOLDERS = {
   "realtime-policies": { label: "Policies", supabase: "Realtime → Policies", backend: "teilweise", note: "Wer welchen Kanal lesen und schreiben darf." },
   "realtime-settings": { label: "Einstellungen", supabase: "Realtime → Settings", backend: "fehlt", note: "Grenzen für Verbindungen und Nachrichten je Sekunde." },
   // Advisors
-  "advisors-performance": { label: "Leistung", supabase: "Advisors → Performance Advisor", backend: "fehlt", note: "Fehlende Indizes, langsame Abfragen, unbenutzte Indizes." },
   "advisors-health": { label: "Projekt-Gesundheit", supabase: "Advisors → Health", backend: "fehlt", note: "Zustand aller Dienste eines Projekts auf einer Seite." },
   // Berichte
   "obs-api": { label: "API", supabase: "Observability → API", backend: "teilweise", note: "Anfragen, Fehler und Antwortzeiten der Data API. Der Zähler für API-Anfragen meldet; Zeitreihen fehlen." },
@@ -143,7 +142,7 @@ export const NAV: NavGroup[] = [
   { id: "ai", label: "AI Bridge", icon: Bot },
   { id: "activity", label: "KI-Aktivität", icon: Activity },
   { id: "approvals", label: "Freigabezentrale", icon: ShieldCheck },
-  { id: "advisors-security", label: "Advisors", icon: Stethoscope, children: [{ id: "advisors-security", label: "Sicherheit" }, ph("advisors-performance"), ph("advisors-health")] },
+  { id: "advisors-security", label: "Advisors", icon: Stethoscope, children: [{ id: "advisors-security", label: "Sicherheit" }, { id: "advisors-performance", label: "Leistung" }, ph("advisors-health")] },
   { id: "obs-api", label: "Berichte", icon: BarChart3, children: [
     ph("obs-api"), ph("obs-auth"), ph("obs-storage"), ph("obs-database"), ph("obs-realtime"), ph("obs-functions"),
     ph("obs-query-performance"), ph("obs-query-insights"), ph("obs-connections"),

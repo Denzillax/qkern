@@ -130,6 +130,38 @@ export type ProjectIndexResult = {
   truncated: boolean;
 };
 
+export type ProjectTableStatistics = {
+  table: string;
+  /** Sequenzielle Scans seit dem letzten Zuruecksetzen der Zaehler */
+  seqScan: number;
+  seqTupRead: number;
+  /** Scans ueber einen Index der Tabelle; null im Katalog heisst 0 */
+  idxScan: number;
+  /** Schaetzungen des Statistiksammlers, keine exakte Zeilenzahl */
+  liveTuples: number;
+  deadTuples: number;
+  lastAutovacuum: string | null;
+  /** Letzte Stichprobe, manuell oder automatisch (`GREATEST`) */
+  lastAnalyze: string | null;
+};
+
+export type ProjectIndexStatistics = {
+  name: string;
+  table: string;
+  scans: number;
+  sizeBytes: number;
+  isUnique: boolean;
+  isPrimary: boolean;
+};
+
+export type ProjectStatisticsResult = {
+  source: "postgres";
+  schema: string;
+  tables: ProjectTableStatistics[];
+  indexes: ProjectIndexStatistics[];
+  truncated: boolean;
+};
+
 export type ProjectPolicy = {
   name: string;
   table: string;
@@ -270,6 +302,11 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectPolicyResult>;
+  inspectStatistics(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectStatisticsResult>;
   inspectEnumTypes(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -517,6 +554,72 @@ const INDEXES_SQL = `
   ORDER BY relation.relname ASC, index_class.relname ASC
   LIMIT $2`;
 
+type TableStatisticsRow = {
+  table_name: string;
+  seq_scan: string | number;
+  seq_tup_read: string | number;
+  idx_scan: string | number;
+  live_tuples: string | number;
+  dead_tuples: string | number;
+  last_autovacuum: string | null;
+  last_analyze: string | null;
+};
+
+type IndexStatisticsRow = {
+  index_name: string;
+  table_name: string;
+  scans: string | number;
+  size_bytes: string | number;
+  is_unique: boolean;
+  is_primary: boolean;
+};
+
+const MAX_STATISTICS_TABLES = 200;
+const MAX_STATISTICS_INDEXES = 400;
+
+/**
+ * Tabellenstatistik eines Schemas, aus `pg_stat_user_tables` (2.40).
+ *
+ * Der Leistungsberater rechnet daraus seine Verdachtsfaelle. Die Sicht zeigt
+ * Zaehler, keine Zeileninhalte: Scans, geschaetzte lebende und tote Zeilen,
+ * Zeitpunkte des letzten Aufraeumens. `last_analyze` und `last_autoanalyze`
+ * kommen als `GREATEST` heraus: eine nur automatisch analysierte Tabelle hat
+ * eine Stichprobe, und die Regel `never_analyzed` soll sie nicht melden.
+ * Zeitpunkte als UTC-Text wie in `ROLES_SQL`, damit kein Treibertyp mitreist.
+ */
+const TABLE_STATISTICS_SQL = `
+  SELECT stat.relname AS table_name,
+         stat.seq_scan AS seq_scan,
+         stat.seq_tup_read AS seq_tup_read,
+         COALESCE(stat.idx_scan, 0) AS idx_scan,
+         stat.n_live_tup AS live_tuples,
+         stat.n_dead_tup AS dead_tuples,
+         to_char(stat.last_autovacuum AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_autovacuum,
+         to_char(GREATEST(stat.last_analyze, stat.last_autoanalyze) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_analyze
+  FROM pg_catalog.pg_stat_user_tables AS stat
+  WHERE stat.schemaname = $1
+  ORDER BY stat.relname ASC
+  LIMIT $2`;
+
+/**
+ * Indexstatistik eines Schemas, aus `pg_stat_user_indexes` (2.40), mit
+ * `pg_index` fuer unique und Primaerschluessel und `pg_relation_size` fuer die
+ * Groesse. Ein Index mit null Scans ist erst dann ein Befund, wenn er auch
+ * Platz kostet; darum gehoert die Groesse dazu.
+ */
+const INDEX_STATISTICS_SQL = `
+  SELECT stat.indexrelname AS index_name,
+         stat.relname AS table_name,
+         COALESCE(stat.idx_scan, 0) AS scans,
+         pg_catalog.pg_relation_size(stat.indexrelid) AS size_bytes,
+         idx.indisunique AS is_unique,
+         idx.indisprimary AS is_primary
+  FROM pg_catalog.pg_stat_user_indexes AS stat
+  JOIN pg_catalog.pg_index AS idx ON idx.indexrelid = stat.indexrelid
+  WHERE stat.schemaname = $1
+  ORDER BY stat.relname ASC, stat.indexrelname ASC
+  LIMIT $2`;
+
 /**
  * Row-Level-Security-Regeln eines Schemas, aus `pg_policy` (2.19). Abgeleitet
  * aus `policies.sql` in supabase/postgres-meta (Apache 2.0). `polroles = {0}`
@@ -717,6 +820,22 @@ function boundedText(value: unknown, max: number): value is string | null {
   return value === null || (typeof value === "string" && value.length <= max);
 }
 
+/**
+ * Ein Zaehler aus einer Statistiksicht (2.40). `bigint` kommt beim Treiber als
+ * Dezimaltext an, darum beides. Ueber 2^53 wird gekappt statt abgelehnt: ein
+ * Zaehler dieser Groesse ist real, und ein abgelehnter Wert wuerde den ganzen
+ * Berater abschalten. Alle Schwellen liegen weit darunter. `null` heisst:
+ * kein gueltiger Zaehler.
+ */
+function counter(value: unknown): number | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  if (typeof value === "string" && /^[0-9]{1,20}$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+  }
+  return null;
+}
+
 function identifierList(value: unknown, max: number): value is string[] {
   return Array.isArray(value) && value.length <= max && value.every((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 63);
 }
@@ -908,6 +1027,46 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
         };
       });
       return { source: "postgres", schema, policies, truncated: result.rows.length > rows.length };
+    });
+  }
+
+  async inspectStatistics(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<ProjectStatisticsResult> {
+    assertContextAndScope(context, scope);
+    assertInspectableSchema(schema);
+    return this.run(context, scope, async (client) => {
+      const tableRows = await client.query<TableStatisticsRow>(TABLE_STATISTICS_SQL, [schema, MAX_STATISTICS_TABLES + 1]);
+      const indexRows = await client.query<IndexStatisticsRow>(INDEX_STATISTICS_SQL, [schema, MAX_STATISTICS_INDEXES + 1]);
+      const selectedTables = tableRows.rows.slice(0, MAX_STATISTICS_TABLES);
+      const selectedIndexes = indexRows.rows.slice(0, MAX_STATISTICS_INDEXES);
+      const tables: ProjectTableStatistics[] = selectedTables.map((row) => {
+        const numbers = [counter(row.seq_scan), counter(row.seq_tup_read), counter(row.idx_scan), counter(row.live_tuples), counter(row.dead_tuples)];
+        if (!catalogName(row.table_name) || numbers.some((value) => value === null) ||
+            !boundedText(row.last_autovacuum, 40) || !boundedText(row.last_analyze, 40)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        const [seqScan, seqTupRead, idxScan, liveTuples, deadTuples] = numbers as number[];
+        return {
+          table: row.table_name, seqScan, seqTupRead, idxScan, liveTuples, deadTuples,
+          lastAutovacuum: row.last_autovacuum, lastAnalyze: row.last_analyze,
+        };
+      });
+      const indexes: ProjectIndexStatistics[] = selectedIndexes.map((row) => {
+        const scans = counter(row.scans);
+        const sizeBytes = counter(row.size_bytes);
+        if (!catalogName(row.index_name) || !catalogName(row.table_name) || scans === null || sizeBytes === null ||
+            typeof row.is_unique !== "boolean" || typeof row.is_primary !== "boolean") {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { name: row.index_name, table: row.table_name, scans, sizeBytes, isUnique: row.is_unique, isPrimary: row.is_primary };
+      });
+      return {
+        source: "postgres", schema, tables, indexes,
+        truncated: tableRows.rows.length > selectedTables.length || indexRows.rows.length > selectedIndexes.length,
+      };
     });
   }
 
@@ -1205,6 +1364,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectEnumTypeResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectStatistics(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _schema: string,
+  ): Promise<ProjectStatisticsResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

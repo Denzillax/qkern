@@ -1,5 +1,6 @@
 import { DATA_IDENTIFIER_PATTERN } from "@/lib/server/data-plane/identifiers";
 import { SECURITY_RULE_IDS } from "@/lib/console/security-advisor-texts";
+import { PERFORMANCE_RULE_IDS } from "@/lib/console/performance-advisor-texts";
 const projectAuthScopeParameters = [
   { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
@@ -189,6 +190,23 @@ export const qkernOpenAPI = {
         ],
         responses: {
           "200": { description: "Findings sorted by severity and object, one check per rule", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectSecurityAdvisorResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/advisors/performance": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectPerformanceAdvisor",
+        summary: "List read-only performance findings for the public schema of an environment",
+        description: "Same access as the security advisor: a session with read access or a scope-bound project key. Computed on every call from the statistics views of the project database: sequential and index scans, live and dead tuple estimates, the last autovacuum and analyze per table, and scans, size, uniqueness and primary-key flag per index. The counters only exist for a database that has been in use; a fresh one yields no findings. pg_stat_statements is deliberately not read, because the view is cluster-wide and a utility statement keeps its literals, so the slow_statement rule always reports ran false with that reason. A source that is disabled, not ready or unreachable turns its rules into checks with ran false and a reason; it never fails the request. No query parameters. Nothing is written, reset or fixed.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "Findings sorted by severity and object, one check per rule", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectPerformanceAdvisorResponse" } } } },
           "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
         },
@@ -1244,6 +1262,11 @@ export const qkernOpenAPI = {
       ProjectSecurityAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["findings", "checks", "checkedAt"], properties: {
         findings: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "rule", "severity", "object", "summary", "remedy"], properties: { id: { type: "string" }, rule: { type: "string", enum: [...SECURITY_RULE_IDS] }, severity: { type: "string", enum: ["high", "medium", "low"] }, object: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: { kind: { type: "string", enum: ["table", "policy", "bucket", "api_key"] }, name: { type: "string" } } }, summary: { type: "string", description: "German; the console translates it." }, remedy: { type: "string", description: "German; the console translates it." } } } },
         checks: { type: "array", items: { type: "object", additionalProperties: false, required: ["rule", "ran"], properties: { rule: { type: "string", enum: [...SECURITY_RULE_IDS] }, ran: { type: "boolean" }, reason: { type: "string", description: "Why a rule did not run or ran only partly. German." } } } },
+        checkedAt: { type: "string", format: "date-time" },
+      } } } },
+      ProjectPerformanceAdvisorResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["findings", "checks", "checkedAt"], properties: {
+        findings: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "rule", "severity", "object", "summary", "remedy"], properties: { id: { type: "string" }, rule: { type: "string", enum: [...PERFORMANCE_RULE_IDS] }, severity: { type: "string", enum: ["high", "medium", "low"] }, object: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: { kind: { type: "string", enum: ["table", "index", "statement"] }, name: { type: "string" } } }, summary: { type: "string", description: "German; the console translates it." }, remedy: { type: "string", description: "German; the console translates it." } } } },
+        checks: { type: "array", items: { type: "object", additionalProperties: false, required: ["rule", "ran"], properties: { rule: { type: "string", enum: [...PERFORMANCE_RULE_IDS] }, ran: { type: "boolean" }, reason: { type: "string", description: "Why a rule did not run or ran only partly. German." } } } },
         checkedAt: { type: "string", format: "date-time" },
       } } } },
       ProjectFunctionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectFunctionDefinition" } } },

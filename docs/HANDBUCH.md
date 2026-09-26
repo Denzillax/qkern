@@ -124,6 +124,53 @@ zugelassen ist: Die Provider-Liste gibt bewusst nur Kennung und Issuer heraus.
 Ein Befund ist kein Urteil. Eine Policy mit `USING (true)` für eine wirklich
 öffentliche Tabelle ist gewollt; der Berater meldet sie trotzdem.
 
+### Leistungsberater
+
+Seit `2.40.0` zeigt **Advisors → Leistung** Verdachtsfälle aus der Statistik
+einer Umgebung. Gleiche Bauart wie der Sicherheitsberater: nur lesend, kein
+Reparieren, kein Zurücksetzen eines Zählers. Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/advisors/performance`,
+dieselbe Tür, ohne Query-Parameter, mit `Cache-Control: private, no-store` und
+der Antwort `{ data: { findings, checks, checkedAt } }`.
+
+Gelesen wird `pg_stat_user_tables` und `pg_stat_user_indexes` für das Schema
+`public`, dazu `pg_index` und `pg_relation_size`, in derselben
+READ-ONLY-Transaktion wie jeder andere Inspektor (höchstens 200 Tabellen und
+400 Indizes, danach sagt der Grund, dass abgeschnitten wurde).
+
+| Regel | Schwere | Liest | Befund, wenn |
+| --- | --- | --- | --- |
+| `missing_index_suspected` | mittel | Scans und lebende Zeilen je Tabelle | ab 50 sequenzielle Scans, höchstens ein Zehntel davon als Index-Scans, mindestens 1000 lebende Zeilen |
+| `slow_statement` | mittel | nichts | läuft nie, siehe unten |
+| `unused_index` | niedrig | Scans, Grösse und Art der Indizes | ein Index ohne Primärschlüssel- und Unique-Eigenschaft hat null Scans und mindestens 1 MiB |
+| `bloat_suspected` | niedrig | lebende und tote Zeilen je Tabelle | mindestens 1000 tote Zeilen und mindestens ein Fünftel so viele tote wie lebende |
+| `never_analyzed` | niedrig | letzte Stichprobe und letztes Autovacuum | mindestens 1000 lebende Zeilen, aber weder `ANALYZE` (auch nicht automatisch) noch Autovacuum |
+
+Die Schwellen stehen in `PERFORMANCE_THRESHOLDS` und nur dort; jeder Text nennt
+sie in Worten. Eine Regel feuert ab dem Wert, nicht erst darüber.
+
+`pg_stat_statements` liest QKERN bewusst nicht. Die Sicht gilt für den ganzen
+Cluster, und `pg_stat_statements` normalisiert nur Abfragen: der Text eines
+Utility-Befehls behält seine Literale, etwa ein Passwort aus
+`CREATE ROLE ... PASSWORD '...'`. Dort könnten also Werte eines anderen
+Projekts stehen. Darum steht `slow_statement` immer mit `ran: false` und genau
+diesem Grund in der Antwort. Das reine Regelmodul kann die Regel rechnen,
+sobald die Quelle sicher zu öffnen ist (eine je Projekt gefilterte Sicht mit
+`pg_read_all_stats` beim Betreiber wäre ein Weg); die Route öffnet sie nicht.
+
+Statistik ist kein Geheimnis eines anderen Mandanten: Scans, geschätzte Zeilen
+und Indexgrössen betreffen nur die Objekte dieses Schemas in dieser
+Projektdatenbank, und gelesen wird über dieselbe Leserolle wie jeder Katalog.
+Ein Statementtext kann dagegen Literale tragen, und deshalb bleibt er draussen.
+
+Die Zähler laufen seit dem letzten Reset und seit dem Start des Clusters. Eine
+frische Datenbank hat keine Statistik, und dann gibt es zu Recht keinen Befund;
+die Ansicht sagt das selbst. Jeder Befund ist ein Verdacht: welche Spalte einem
+Index fehlt, sagt kein Zähler, und ein Index für einen seltenen Bericht darf
+fast nie zählen. Nicht im Blick sind einzelne Abfragepläne, Sperren,
+Cache-Trefferquoten, Verbindungen, die Grösse der Tabellen selbst und Schemas
+ausser `public`.
+
 ## 5. Generated Data API und Projekt-Keys
 
 CRUD ist unabhängig von der freien Lese-Data-Plane standardmäßig aus. Es benötigt

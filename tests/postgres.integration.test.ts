@@ -6,6 +6,8 @@ import { AuditRepository } from "@/lib/server/db/repositories";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
+import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
+import { PERFORMANCE_THRESHOLDS } from "@/lib/console/performance-advisor-texts";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -201,6 +203,110 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
           { rule: "rls_disabled", ran: true }, { rule: "rls_no_policies", ran: true },
           { rule: "policy_always_true", ran: true }, { rule: "policy_check_missing", ran: true },
         ]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  });
+
+  it("finds the suspected missing index, the unused index, the bloat and the missing sample in real statistics (2.40)", async () => {
+    // Der Leistungsberater ueber echten Zaehlern: ein eigenes Schema, damit die
+    // Zaehler dieses Falls nur von ihm kommen und kein Reset fremde Statistik
+    // trifft. Autovacuum ist je Tabelle abgeschaltet, sonst raeumt der Daemon
+    // waehrend des Laufs auf und macht aus einem Befund Zufall.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const schema = `perf_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      const options = "WITH (autovacuum_enabled = false)";
+      await owner.query(`CREATE TABLE "${schema}".busy (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
+      await owner.query(`CREATE TABLE "${schema}".churn (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
+      await owner.query(`CREATE TABLE "${schema}".untouched (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
+      await owner.query(`CREATE TABLE "${schema}".calm (id integer PRIMARY KEY, tag text NOT NULL) ${options}`);
+      await owner.query(`INSERT INTO "${schema}".busy SELECT g, 'tag-' || (g % 7) FROM generate_series(1, 60000) AS g`);
+      await owner.query(`INSERT INTO "${schema}".churn SELECT g, 'tag' FROM generate_series(1, 3000) AS g`);
+      await owner.query(`INSERT INTO "${schema}".untouched SELECT g, 'tag' FROM generate_series(1, 2000) AS g`);
+      await owner.query(`INSERT INTO "${schema}".calm SELECT g, 'tag' FROM generate_series(1, 1500) AS g`);
+      // ANALYZE auf drei Tabellen, absichtlich nicht auf `untouched`.
+      await owner.query(`ANALYZE "${schema}".busy, "${schema}".churn, "${schema}".calm`);
+      // Sequenzielle Scans erzwingen: `tag` hat noch keinen Index.
+      for (let round = 0; round < PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans; round += 1) {
+        await owner.query(`SELECT count(*) FROM "${schema}".busy WHERE tag = 'tag-3'`);
+      }
+      // Der Index entsteht erst jetzt und wird von niemandem benutzt.
+      await owner.query(`CREATE INDEX busy_tag_idx ON "${schema}".busy (tag, id)`);
+      // Tote Zeilen, die niemand aufraeumt.
+      await owner.query(`UPDATE "${schema}".churn SET tag = tag || 'x'`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO qkern_project_api_app`);
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const context = { organizationId: organizationA, actorRef: "advisor@qkern.test" };
+      const scope = { projectId: "certification-project", environment: "development" as const };
+
+      // Der Statistiksammler schreibt verzoegert. Gewartet wird auf die
+      // Bedingung, nicht auf eine Dauer, mit Budget und mit dem letzten
+      // gesehenen Zustand in der Meldung. Die Zusicherung bleibt dieselbe.
+      const settled = (result: Awaited<ReturnType<typeof service.inspectStatistics>>) => {
+        const busy = result.tables.find((table) => table.table === "busy");
+        const churn = result.tables.find((table) => table.table === "churn");
+        const untouched = result.tables.find((table) => table.table === "untouched");
+        return Boolean(busy && churn && untouched &&
+          busy.seqScan >= PERFORMANCE_THRESHOLDS.missingIndexMinSeqScans &&
+          busy.liveTuples >= PERFORMANCE_THRESHOLDS.missingIndexMinLiveTuples &&
+          churn.deadTuples >= 3000 && untouched.liveTuples >= 2000);
+      };
+      const deadline = Date.now() + 20_000;
+      let statistics = await service.inspectStatistics(context, scope, schema);
+      let attempts = 1;
+      while (!settled(statistics) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        statistics = await service.inspectStatistics(context, scope, schema);
+        attempts += 1;
+      }
+      expect(settled(statistics),
+        `Zaehler nach ${attempts} Abfragen in 20 s nicht vollstaendig: ${JSON.stringify(statistics.tables)}`).toBe(true);
+      expect(statistics.source).toBe("postgres");
+      expect(statistics.truncated).toBe(false);
+      const unusedIndex = statistics.indexes.find((index) => index.name === "busy_tag_idx");
+      expect(unusedIndex?.sizeBytes ?? 0,
+        `busy_tag_idx bleibt unter der Schwelle: ${JSON.stringify(unusedIndex)}`).toBeGreaterThanOrEqual(PERFORMANCE_THRESHOLDS.unusedIndexMinBytes);
+      expect(unusedIndex).toMatchObject({ table: "busy", scans: 0, isUnique: false, isPrimary: false });
+
+      const result = evaluatePerformanceRules({
+        statistics: {
+          schema,
+          tables: statistics.tables.map((table) => ({
+            name: table.table, seqScan: table.seqScan, seqTupRead: table.seqTupRead, idxScan: table.idxScan,
+            liveTuples: table.liveTuples, deadTuples: table.deadTuples,
+            lastAutovacuum: table.lastAutovacuum, lastAnalyze: table.lastAnalyze,
+          })),
+          indexes: statistics.indexes,
+          truncated: statistics.truncated,
+        },
+        statements: { unavailable: "statementsNotRead" },
+      });
+      expect(result.findings.map((finding) => finding.id)).toEqual([
+        "missing_index_suspected:table:busy",
+        "unused_index:index:busy_tag_idx",
+        "bloat_suspected:table:churn",
+        "never_analyzed:table:untouched",
+      ]);
+      // Die gesunde Tabelle traegt keinen Befund, auch nicht ueber ihren Primaerschluessel.
+      expect(result.findings.some((finding) => finding.object.name.startsWith("calm"))).toBe(false);
+      expect(result.checks.filter((check) => check.ran).map((check) => check.rule).sort()).toEqual([
+        "bloat_suspected", "missing_index_suspected", "never_analyzed", "unused_index",
+      ]);
+      expect(result.checks.find((check) => check.rule === "slow_statement")?.ran).toBe(false);
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();

@@ -237,6 +237,15 @@ describe("QKERN OpenAPI contract", () => {
     }
   });
 
+  it("documents the performance advisor as a read-only GET without query parameters (2.40)", () => {
+    const path = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/advisors/performance"];
+    expect(Object.keys(path)).toEqual(["get"]);
+    expect(path.get.operationId).toBe("getProjectPerformanceAdvisor");
+    expect(path.get.parameters.every((parameter) => parameter.in === "path")).toBe(true);
+    expect(path.get.description).toContain("never fails the request");
+    expect(path.get.description).toContain("pg_stat_statements is deliberately not read");
+  });
+
   it("documents the security advisor as a read-only GET without query parameters (2.39)", () => {
     const path = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/advisors/security"];
     expect(Object.keys(path)).toEqual(["get"]);
