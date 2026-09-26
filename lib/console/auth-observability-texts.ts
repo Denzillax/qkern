@@ -37,6 +37,7 @@ export const PROJECT_AUTH_AUDIT_ACTIONS = [
   "project_auth.user.updated",
   "project_auth.session.revoked",
   "project_auth.sessions.revoked_all",
+  "project_auth.mfa.enforcement_changed",
 ] as const;
 
 export type ProjectAuthAuditAction = (typeof PROJECT_AUTH_AUDIT_ACTIONS)[number];
@@ -65,6 +66,7 @@ export const AUTH_AUDIT_ACTION_TEXTS: Record<ProjectAuthAuditActionId, string> =
   "project_auth.user.updated": "Nutzer geändert",
   "project_auth.session.revoked": "Sitzung beendet",
   "project_auth.sessions.revoked_all": "Alle Sitzungen beendet",
+  "project_auth.mfa.enforcement_changed": "Zweiter Faktor erzwungen oder freigestellt",
   other: "Andere Handlung",
 };
 

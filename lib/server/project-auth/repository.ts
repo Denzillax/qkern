@@ -1,5 +1,6 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
 import type {
+  ProjectAuthMfaEnrolmentCount,
   ProjectAuthMfaFactor,
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
@@ -7,6 +8,7 @@ import type {
   ProjectAuthScope,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
+  ProjectAuthSettings,
   ProjectAuthUser,
 } from "@/lib/server/project-auth/model";
 
@@ -53,6 +55,27 @@ export interface ProjectAuthRepository {
     purpose: ProjectAuthOneTimePurpose,
     now: Date,
   ): Promise<ProjectAuthOneTimeToken | null>;
+  /**
+   * Liest ein gueltiges kurzlebiges Token, ohne es zu verbrauchen (2.52).
+   *
+   * Gebraucht fuer den Einrichtungsschein des zweiten Faktors: Er oeffnet
+   * zwei Aufrufe nacheinander (Geheimnis holen, Code bestaetigen) und darf
+   * darum nicht schon beim ersten verfallen. Verbraucht wird er beim
+   * gelungenen Bestaetigen, ueber `consumeOneTimeToken`.
+   */
+  findActiveOneTimeToken(
+    scope: ProjectAuthScope,
+    tokenHash: string,
+    purpose: ProjectAuthOneTimePurpose,
+    now: Date,
+  ): Promise<ProjectAuthOneTimeToken | null>;
+
+  /** Die Einstellungen der Umgebung, oder null, solange nie eine gesetzt wurde. */
+  readSettings(scope: ProjectAuthScope): Promise<ProjectAuthSettings | null>;
+  /** Setzt den Schalter und legt die Zeile an, falls es noch keine gibt. */
+  writeMfaRequired(scope: ProjectAuthScope, required: boolean, now: Date): Promise<ProjectAuthSettings>;
+  /** Zaehlt App-Nutzer und bestaetigte Faktoren dieser Umgebung. */
+  countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount>;
 
   getMfaFactor(scope: ProjectAuthScope, userId: string): Promise<ProjectAuthMfaFactor | null>;
   upsertMfaFactor(factor: ProjectAuthMfaFactor): Promise<ProjectAuthMfaFactor>;
@@ -80,6 +103,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly oneTimeTokens = new Map<string, ProjectAuthOneTimeToken>();
   private readonly mfaFactors = new Map<string, ProjectAuthMfaFactor>();
   private readonly oidcIdentities = new Map<string, ProjectAuthOidcIdentity>();
+  private readonly settings = new Map<string, ProjectAuthSettings>();
 
   async findUserByEmail(scope: ProjectAuthScope, email: string) {
     const user = [...this.users.values()].find((candidate) => sameScope(candidate, scope) && candidate.email === email);
@@ -225,6 +249,38 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     return cloneOneTimeToken(token);
   }
 
+  async findActiveOneTimeToken(
+    scope: ProjectAuthScope,
+    tokenHash: string,
+    purpose: ProjectAuthOneTimePurpose,
+    now: Date,
+  ) {
+    const token = this.oneTimeTokens.get(tokenHash);
+    if (!token || !sameScope(token, scope) || token.purpose !== purpose || token.consumedAt ||
+        token.expiresAt.getTime() <= now.getTime()) return null;
+    return cloneOneTimeToken(token);
+  }
+
+  async readSettings(scope: ProjectAuthScope) {
+    const stored = this.settings.get(scopeKey(scope));
+    return stored ? { ...stored, updatedAt: new Date(stored.updatedAt) } : null;
+  }
+
+  async writeMfaRequired(scope: ProjectAuthScope, required: boolean, now: Date) {
+    const stored: ProjectAuthSettings = { ...scope, mfaRequired: required, updatedAt: new Date(now) };
+    this.settings.set(scopeKey(scope), stored);
+    return { ...stored, updatedAt: new Date(stored.updatedAt) };
+  }
+
+  async countMfaEnrolment(scope: ProjectAuthScope) {
+    const users = [...this.users.values()].filter((user) => sameScope(user, scope));
+    const enrolled = users.filter((user) => {
+      const factor = this.mfaFactors.get(user.id);
+      return Boolean(factor && sameScope(factor, scope) && factor.verifiedAt);
+    });
+    return { users: users.length, enrolled: enrolled.length };
+  }
+
   async getMfaFactor(scope: ProjectAuthScope, userId: string) {
     const factor = this.mfaFactors.get(userId);
     return factor && sameScope(factor, scope) ? cloneMfaFactor(factor) : null;
@@ -262,6 +318,10 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
 function sameScope(left: ProjectAuthScope, right: ProjectAuthScope): boolean {
   return left.organizationId === right.organizationId && left.projectId === right.projectId &&
     left.environment === right.environment;
+}
+
+function scopeKey(scope: ProjectAuthScope): string {
+  return [scope.organizationId, scope.projectId, scope.environment].join("\0");
 }
 
 function oidcKey(scope: ProjectAuthScope, provider: string, subject: string): string {

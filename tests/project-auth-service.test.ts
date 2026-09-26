@@ -143,7 +143,7 @@ describe("Project Auth service", () => {
       email: "mfa@example.test", password: "a sufficiently long password", rateLimitKey: "mfa-login",
     });
     expect(login).toMatchObject({ mfaRequired: true });
-    if (!("mfaRequired" in login)) throw new Error("MFA challenge missing");
+    if (!("challengeToken" in login)) throw new Error("MFA challenge missing");
     const aal2 = await built.service.verifyMfaChallenge(scope, {
       challengeToken: login.challengeToken, code, rateLimitKey: "mfa-code",
     });
@@ -152,7 +152,7 @@ describe("Project Auth service", () => {
     const recoveryLogin = await built.service.passwordSignIn(scope, {
       email: "mfa@example.test", password: "a sufficiently long password", rateLimitKey: "recovery-login",
     });
-    if (!("mfaRequired" in recoveryLogin)) throw new Error("MFA challenge missing");
+    if (!("challengeToken" in recoveryLogin)) throw new Error("MFA challenge missing");
     await expect(built.service.verifyMfaChallenge(scope, {
       challengeToken: recoveryLogin.challengeToken, code: enrollment.recoveryCodes[0], rateLimitKey: "recovery-code",
     })).resolves.toMatchObject({ tokenType: "Bearer" });
@@ -160,7 +160,7 @@ describe("Project Auth service", () => {
     const replayLogin = await built.service.passwordSignIn(scope, {
       email: "mfa@example.test", password: "a sufficiently long password", rateLimitKey: "recovery-replay-login",
     });
-    if (!("mfaRequired" in replayLogin)) throw new Error("MFA challenge missing");
+    if (!("challengeToken" in replayLogin)) throw new Error("MFA challenge missing");
     await expect(built.service.verifyMfaChallenge(scope, {
       challengeToken: replayLogin.challengeToken, code: enrollment.recoveryCodes[0], rateLimitKey: "recovery-replay",
     })).rejects.toMatchObject({ code: "INVALID_MFA" });

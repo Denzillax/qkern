@@ -12,6 +12,7 @@ import { databaseActivityTexts } from "@/lib/console/database-activity-texts";
 import { realtimeTexts } from "@/lib/console/realtime-texts";
 import { tableChangeSetTexts } from "@/lib/console/table-change-sets";
 import { authObservabilityTexts } from "@/lib/console/auth-observability-texts";
+import { authMfaTexts } from "@/lib/console/auth-mfa-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -56,6 +57,9 @@ async function consoleKeys(): Promise<string[]> {
   // Die beiden Auth-Berichte (2.47) zeigen Handlungen, Akteure und ihre
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of authObservabilityTexts()) keys.add(text);
+  // Auth → Mehrfaktor (2.52) zeigt Zustaende, Faktoren, Warnungen und
+  // seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authMfaTexts()) keys.add(text);
   return [...keys];
 }
 

@@ -10,8 +10,22 @@ import { ProjectAuthError } from "@/lib/server/project-auth/service";
 
 const schema = z.object({ code: z.string().regex(/^\d{6}$/) }).strict();
 
+/**
+ * Zwei Wege herein, und nur hier gibt es den zweiten (2.52).
+ *
+ * Der gewohnte Weg ist ein Access Token einer brauchbaren Sitzung. Verlangt
+ * die Umgebung den zweiten Faktor, gibt es fuer einen Nutzer ohne Faktor
+ * aber gar keine Sitzung — dann kommt er mit dem Einrichtungsschein
+ * `qk_enroll_...`, den ihm die Anmeldung zurueckgegeben hat. Der Schein
+ * oeffnet nur diese Route; jede andere Grenze prueft ein Access Token, und
+ * `presentedProjectAccessToken` weist jedes `qk_`-Token als Bearer ab.
+ */
 async function principal(request: NextRequest, routeContext: ProjectAuthRouteContext) {
   const scope = await publicProjectAuthScope(request, routeContext);
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+([^\s]+)$/i)?.[1] ?? null;
+  if (bearer?.startsWith("qk_enroll_")) {
+    return getProjectAuthService().resolveMfaEnrollment(scope, bearer);
+  }
   const token = presentedProjectAccessToken(request);
   if (!token) throw new ProjectAuthError("INVALID_TOKEN");
   return getProjectAuthService().verifyAccess(scope, token);
