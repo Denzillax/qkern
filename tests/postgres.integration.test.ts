@@ -311,5 +311,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();
     }
-  });
+    // Ausdrueckliches Budget: Der Fall baut 60'000 Zeilen, erzwingt 50
+    // sequenzielle Scans und wartet danach auf den Statistik-Kollektor, der
+    // asynchron schreibt. Die 5 Sekunden der Datei reichen dafuer nicht; die
+    // Zusicherungen bleiben unveraendert scharf.
+  }, 120_000);
 });
