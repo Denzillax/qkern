@@ -25,6 +25,7 @@ import { RealtimeInspectorView } from "@/components/console/realtime-inspector-v
 import { TriggersView } from "@/components/console/triggers-view";
 import { FunctionsView } from "@/components/console/functions-view";
 import { IndexesView } from "@/components/console/indexes-view";
+import { CronLogView } from "@/components/console/cron-log-view";
 import { SchemaVisualizerView } from "@/components/console/schema-visualizer-view";
 import { PoliciesView } from "@/components/console/policies-view";
 import { EnumTypesView } from "@/components/console/enum-types-view";
@@ -254,6 +255,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "set-billing": return <BillingSettingsView projectId={props.project.id} environment={props.environment} navigate={props.navigate}/>;
     case "advisors-security": return <SecurityAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "advisors-performance": return <PerformanceAdvisorView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-cron": return <CronLogView projectId={props.project.id} environment={props.environment}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }

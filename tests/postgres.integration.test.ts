@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import type { SqlPool } from "@/lib/server/db/sql";
-import { AuditRepository } from "@/lib/server/db/repositories";
+import { AuditRepository, PostgresControlPlane } from "@/lib/server/db/repositories";
+import { CronDispatcher } from "@/lib/server/compute/cron";
+import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
+import { PostgresComputeDefinitionRepository } from "@/lib/server/compute/definitions-postgres-repository";
+import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
+import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
@@ -435,5 +440,100 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Ohne eigenes Budget: der Fall legt zwei Schemas mit vier kleinen Tabellen
     // an und liest zweimal aus dem Katalog. Kein Statistik-Kollektor, auf den
     // gewartet werden muesste, also reichen die 5 Sekunden der Datei.
+  });
+  it("(2.42) reconstructs the cron log from the real dedupe verifier of an enqueued occurrence", async () => {
+    // Das Cron-Log behauptet, ein Vorkommen in der Queue wiederzufinden, ohne
+    // dass irgendwo ein Lauf protokolliert wird. Diese Behauptung steht und
+    // faellt mit einer Sache: dass der Verifikator, den der Dispatcher beim
+    // Einreihen schreibt, derselbe ist, den der Leser bildet. Deshalb wird hier
+    // **nicht** von Hand eingefuegt, sondern ueber CronDispatcher und
+    // ProjectQueueService eingereiht, genau wie im Betrieb.
+    const projectId = randomUUID();
+    const scope = { organizationId: organizationA, projectId, environment: "development" as const };
+    const admin = {
+      organizationId: organizationA, actorRef: "cron-log@qkern.test",
+      role: "admin" as const, subject: userId,
+    };
+    const dispatcher = {
+      organizationId: organizationA, actorRef: "service-role:cron",
+      role: "service_role" as const, subject: "cron",
+    };
+    const plane = new PostgresControlPlane(runtime);
+    const queues = new ProjectQueueService({ repository: new PostgresProjectQueueRepository(plane) });
+    const queue = `cron-log-${randomUUID().slice(0, 8)}`;
+    try {
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Cron Log', $3, 'test', 'ready', $4)`,
+      [projectId, organizationA, `cron-log-${projectId}`, userId]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`, [organizationA, projectId, `managed:${projectId}`]);
+      // Ein Tag Dedupe-Fenster: Im Pruefzeitraum verfaellt kein Verifikator,
+      // sonst waere ein "nicht nachweisbar" das richtige Urteil und der Fall
+      // wuerde die falsche Frage stellen.
+      await queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 86_400 });
+
+      const definitions = new ComputeDefinitionService({
+        repository: new PostgresComputeDefinitionRepository(plane),
+      });
+      const definition = await definitions.createCron(admin, scope, {
+        name: `cron-log-${randomUUID().slice(0, 8)}`, expression: "*/5 * * * *", queue,
+        payload: { task: "run", customer: "darf-nicht-im-log-stehen" },
+      });
+
+      // Zwei Vorkommen **nach** dem Anlegen: das erste wird eingereiht, das
+      // zweite bleibt leer. Vor dem Anlegen holt der Scheduler nichts nach,
+      // deshalb waeren vergangene Vorkommen keine Luecke.
+      const created = new Date(definition.createdAt).getTime();
+      const first = new Date(Math.floor(created / 300_000) * 300_000 + 300_000);
+      const second = new Date(first.getTime() + 300_000);
+      const receipt = await new CronDispatcher(queues).dispatch(definition, first, dispatcher);
+      expect(receipt.status).toBe("dispatched");
+
+      // Gelesen wird mit einer Uhr hinter dem zweiten Vorkommen: Beide sind
+      // dann faellig, und die Karenz von fuenf Minuten deckt keines mehr.
+      const reader = new ComputeDefinitionService({
+        repository: new PostgresComputeDefinitionRepository(plane),
+        now: () => new Date(second.getTime() + 6 * 60_000),
+      });
+      const log = await reader.listCronOccurrences(admin, scope, definition.id);
+
+      expect(log.window.queueFound).toBe(true);
+      expect(log.expression).toBe("*/5 * * * *");
+      const found = log.occurrences.find((entry) => entry.occurredAt === first.toISOString());
+      expect(found?.status).toBe("found");
+      expect(found?.message).toMatchObject({ state: "pending", attempts: 0 });
+      // Die Einreihung traegt die echte Zeit der Transaktion, nicht die des
+      // Vorkommens: Der Dispatcher reicht ausdruecklich kein scheduledAt weiter.
+      expect(new Date(found!.message!.enqueuedAt).getTime())
+        .toBeGreaterThanOrEqual(created - 1_000);
+      expect(found!.message!.settledAt).toBeNull();
+
+      const gap = log.occurrences.find((entry) => entry.occurredAt === second.toISOString());
+      expect(gap).toMatchObject({ status: "missing", message: null });
+      expect(log.counts.found).toBeGreaterThanOrEqual(1);
+      expect(log.counts.missing).toBeGreaterThanOrEqual(1);
+
+      // Nutzlast und Verifikator bleiben drinnen, auch wenn beide in derselben
+      // Zeile der Datenbank stehen.
+      const serialised = JSON.stringify(log);
+      expect(serialised).not.toContain("darf-nicht-im-log-stehen");
+      expect(serialised).not.toMatch(/[0-9a-f]{64}/);
+
+      // Und die Queue hat wirklich genau eine Nachricht mit einem Verifikator.
+      const stored = await owner.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM project_queue_messages
+          WHERE organization_id=$1 AND project_id=$2 AND dedupe_key_hash IS NOT NULL`,
+        [organizationA, projectId],
+      );
+      expect(stored.rows[0]?.count).toBe(1);
+    } finally {
+      // Das Projekt loeschen genuegt: project_environments haengt mit ON DELETE
+      // CASCADE daran, und Queue, Nachrichten und Cron-Definition daran.
+      await owner.query("DELETE FROM projects WHERE id=$1", [projectId]);
+    }
+    // Ohne eigenes Zeitbudget: ein Projekt, eine Queue, eine Definition, eine
+    // Einreihung und zwei Lesevorgaenge. Kein Statistik-Kollektor und kein
+    // Prozessstart, auf den gewartet werden muesste.
   });
 });

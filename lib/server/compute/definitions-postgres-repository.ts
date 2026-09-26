@@ -11,6 +11,7 @@ import {
   type WebhookDefinitionRecord,
   type WebhookDeliveryRecord,
 } from "@/lib/server/compute/definitions";
+import type { CronOccurrenceMessageRow } from "@/lib/server/compute/cron-occurrences";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import type { Environment } from "@/lib/types";
 
@@ -32,6 +33,15 @@ type DeliveryRow = {
   id: string; webhook_id: string; event_type: string; status: WebhookDeliveryRecord["status"];
   attempt_count: number; last_failure_code: string | null; occurred_at: Date;
   available_at: Date; delivered_at: Date | null; dead_lettered_at: Date | null;
+};
+
+type OccurrenceMessageRow = {
+  dedupe_key_hash: string;
+  status: "available" | "in_flight" | "completed" | "dead_lettered";
+  attempt_count: number;
+  created_at: Date;
+  completed_at: Date | null;
+  dead_lettered_at: Date | null;
 };
 
 type FunctionRow = {
@@ -122,6 +132,48 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
           RETURNING id`, [...scopeValues(scope), id],
       );
       return result.rows.length === 1;
+    });
+  }
+
+  /**
+   * Nachrichten zu bekannten Dedupe-Verifikatoren, fuer das Cron-Log (2.42).
+   *
+   * Gelesen wird ausschliesslich Zustand, Versuchszahl und Zeit — **keine
+   * Nutzlast**, kein `dedupe_key_hash` mehr als der Aufrufer selbst
+   * mitgebracht hat, keine Lease-Referenz. Ein leeres Array an Verifikatoren
+   * fragt die Datenbank gar nicht erst.
+   *
+   * `dedupe_window_seconds` kommt mit: Nach seinem Ablauf setzt die Queue den
+   * Verifikator auf NULL (0026), und erst damit kann das Log ein ehrliches
+   * "nicht mehr rekonstruierbar" von einem "fehlt" unterscheiden.
+   */
+  async listCronOccurrenceMessages(
+    principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, queue: string,
+    dedupeKeyHashes: readonly string[],
+  ) {
+    return await this.read(principal, async (database) => {
+      const found = await database.query<{ id: string; dedupe_window_seconds: number }>(
+        `SELECT id, dedupe_window_seconds FROM project_queues
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND name=$4`,
+        [...scopeValues(scope), queue],
+      );
+      const row = found.rows[0];
+      if (!row) return { dedupeWindowSeconds: null, messages: [] };
+      if (dedupeKeyHashes.length === 0) {
+        return { dedupeWindowSeconds: Number(row.dedupe_window_seconds), messages: [] };
+      }
+      const messages = await database.query<OccurrenceMessageRow>(
+        `SELECT dedupe_key_hash, status, attempt_count, created_at, completed_at, dead_lettered_at
+           FROM project_queue_messages
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+            AND dedupe_key_hash = ANY($5::text[])
+          ORDER BY created_at ASC, dedupe_key_hash ASC`,
+        [...scopeValues(scope), row.id, [...dedupeKeyHashes]],
+      );
+      return {
+        dedupeWindowSeconds: Number(row.dedupe_window_seconds),
+        messages: messages.rows.map(toOccurrenceMessage),
+      };
     });
   }
 
@@ -464,6 +516,21 @@ function toFunction(row: FunctionRow): FunctionDefinitionRecord {
     enabled: row.enabled,
     createdAt: new Date(row.created_at).toISOString(),
   });
+}
+
+/** Der Zustand der Queue in der Sprache des Logs. */
+function toOccurrenceMessage(row: OccurrenceMessageRow): CronOccurrenceMessageRow {
+  const state = row.status === "available" ? "pending"
+    : row.status === "in_flight" ? "in_flight"
+      : row.status === "completed" ? "done" : "dead_letter";
+  const settled = row.completed_at ?? row.dead_lettered_at;
+  return {
+    dedupeKeyHash: row.dedupe_key_hash,
+    state,
+    attempts: row.attempt_count,
+    enqueuedAt: new Date(row.created_at),
+    settledAt: settled === null ? null : new Date(settled),
+  };
 }
 
 function toDelivery(row: DeliveryRow): WebhookDeliveryRecord {

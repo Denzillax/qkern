@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "logs-cron",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -86,7 +86,6 @@ export const PLACEHOLDERS = {
   "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
   "logs-functions": { label: "Functions", supabase: "Logs → Edge Functions", backend: "fehlt", note: "Start, Ende und Fehler je Function-Aufruf, mit Dauer und Ausgangsverbindungen." },
   "logs-pooler": { label: "Pooler", supabase: "Logs → Pooler", backend: "fehlt", note: "Log des Verbindungspools: Warteschlange, abgewiesene Verbindungen, Grenzen." },
-  "logs-cron": { label: "Cron", supabase: "Logs → Cron", backend: "teilweise", note: "Jede Einreihung mit Dedupe-Schlüssel. Der Cron-Prozess ist zertifiziert; ein Log je Lauf fehlt in der Console." },
   "logs-explorer": { label: "Log-Explorer", supabase: "Logs → Explorer", backend: "fehlt", note: "Logs mit SQL durchsuchen, speichern, als Vorlage ablegen." },
   // Integrationen
   "int-vault": { label: "Vault", supabase: "Integrations → Vault", backend: "teilweise", note: "Geheimnisse verwalten. Webhook-Signaturen liegen im Vault und sind zertifiziert; eine Verwaltung fehlt." },
@@ -148,7 +147,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
     { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), ph("logs-postgrest"), ph("logs-auth"), ph("logs-storage"),
-    ph("logs-realtime"), ph("logs-functions"), ph("logs-pooler"), ph("logs-cron"), ph("logs-explorer"),
+    ph("logs-realtime"), ph("logs-functions"), ph("logs-pooler"), { id: "logs-cron", label: "Cron" }, ph("logs-explorer"),
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [

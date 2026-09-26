@@ -1,5 +1,14 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { nextCronOccurrence } from "@/lib/server/compute/cron";
+import {
+  buildCronOccurrenceLog,
+  cronOccurrenceCandidates,
+  CRON_OCCURRENCE_LIMIT,
+  CRON_OCCURRENCE_LOOKAHEAD_SECONDS,
+  CRON_OCCURRENCE_WINDOW_SECONDS,
+  type CronOccurrenceLog,
+  type CronOccurrenceMessageRow,
+} from "@/lib/server/compute/cron-occurrences";
 import { validateFunctionDefinition } from "@/lib/server/compute/functions";
 import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
@@ -137,6 +146,18 @@ export interface ComputeDefinitionRepository {
   setCronEnabled(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string,
     enabled: boolean): Promise<CronDefinitionRecord | null>;
   deleteCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string): Promise<boolean>;
+  /**
+   * Nachrichten der Zielqueue zu bekannten Dedupe-Verifikatoren, plus das
+   * Dedupe-Fenster dieser Queue (`null`, wenn es die Queue nicht gibt).
+   *
+   * Bewusst so schmal: Der Aufrufer kennt die Verifikatoren schon, weil er sie
+   * aus den erwarteten Vorkommen gebildet hat. Die Queue muss dafuer nichts
+   * durchsuchen, was ihm nicht gehoert, und keine Nutzlast herausgeben.
+   */
+  listCronOccurrenceMessages(
+    principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, queue: string,
+    dedupeKeyHashes: readonly string[],
+  ): Promise<{ dedupeWindowSeconds: number | null; messages: CronOccurrenceMessageRow[] }>;
 
   listWebhooks(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
     Promise<WebhookDefinitionRecord[]>;
@@ -200,6 +221,8 @@ export type ComputeDefinitionServiceOptions = {
   maxWebhooksPerScope?: number;
   maxFunctionsPerScope?: number;
   maxPayloadBytes?: number;
+  /** Nur fuer Tests einsetzbar; im Betrieb die Systemuhr. */
+  now?: () => Date;
 };
 
 const NAME = /^[a-z][a-z0-9_-]{2,62}$/;
@@ -226,8 +249,10 @@ export class ComputeDefinitionService {
   private readonly maxWebhooks: number;
   private readonly maxFunctions: number;
   private readonly maxPayloadBytes: number;
+  private readonly now: () => Date;
 
   constructor(private readonly options: ComputeDefinitionServiceOptions) {
+    this.now = options.now ?? (() => new Date());
     this.maxCron = bounded(options.maxCronPerScope ?? 50, 1, 500);
     this.maxWebhooks = bounded(options.maxWebhooksPerScope ?? 50, 1, 500);
     this.maxFunctions = bounded(options.maxFunctionsPerScope ?? 50, 1, 500);
@@ -290,6 +315,46 @@ export class ComputeDefinitionService {
     if (!await this.options.repository.deleteCron(principal, scope, id)) {
       throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
     }
+  }
+
+  /**
+   * Das Cron-Log einer Definition (2.42): erwartete Vorkommen und ihr Ausgang.
+   *
+   * Nur lesend, und ohne Nutzlast, Dedupe-Schluessel oder Nachrichten-Id: Die
+   * Nutzlast eines Cron-Jobs kann Kundendaten tragen, und die Betriebsfrage
+   * ("laeuft es?") braucht sie nicht. Das Fenster ist gebunden: die letzten 24
+   * Stunden plus die naechste Stunde, hoechstens 50 Vorkommen, neueste zuerst.
+   */
+  async listCronOccurrences(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    id: string): Promise<CronOccurrenceLog> {
+    this.assertScope(principal, scope);
+    this.assertId(id);
+    const definition = await this.options.repository.getCron(principal, scope, id);
+    if (!definition) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+
+    const now = this.now();
+    const from = new Date(now.getTime() - CRON_OCCURRENCE_WINDOW_SECONDS * 1_000);
+    const to = new Date(now.getTime() + CRON_OCCURRENCE_LOOKAHEAD_SECONDS * 1_000);
+    let candidates;
+    try {
+      candidates = cronOccurrenceCandidates(definition, { from, to, limit: CRON_OCCURRENCE_LIMIT });
+    } catch (cause) {
+      // Der Definitionsdienst laesst keinen unlesbaren Ausdruck entstehen, ein
+      // direkter INSERT schon (der CHECK in 0031 prueft nur die Laenge). Dann
+      // gibt es keine erwarteten Vorkommen, und das ist eine Aussage ueber die
+      // Definition, nicht ueber die Anfrage.
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT", { cause });
+    }
+    const found = await this.options.repository.listCronOccurrenceMessages(
+      principal, scope, definition.queue, candidates.map((candidate) => candidate.dedupeKeyHash),
+    );
+    return buildCronOccurrenceLog({
+      definition: { ...definition, createdAt: new Date(definition.createdAt) },
+      candidates,
+      messages: found.messages,
+      now, from, to, limit: CRON_OCCURRENCE_LIMIT,
+      dedupeWindowSeconds: found.dedupeWindowSeconds,
+    });
   }
 
   async listWebhooks(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {

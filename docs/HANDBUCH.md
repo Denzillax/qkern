@@ -722,6 +722,58 @@ Ist kein Vault konfiguriert, antwortet die Route mit 503 und dem Code
 `VAULT_MISCONFIGURED` steht für eine halbe Konfiguration, `VAULT_UNAVAILABLE`
 für einen Vault, der nicht oder nicht in der erwarteten Form geantwortet hat.
 
+### Cron-Log
+
+Seit `2.42.0` zeigt **Logs → Cron** je Cron-Definition, was aus ihren
+Vorkommen geworden ist. Nur lesend: kein Auslösen von Hand, kein Wiederholen,
+kein Pausieren — das bleibt unter Functions & Jobs.
+
+QKERN schreibt **kein** Protokoll je Cron-Lauf. Das Log wird aus zwei Tatsachen
+zusammengesetzt: dem Ausdruck der Definition und den Nachrichten der Zielqueue.
+Die Brücke ist der Dedupe-Schlüssel `cron:<id>:<zeitpunkt>`, den der
+Dispatcher beim Einreihen setzt; die Queue speichert davon nur den
+SHA-256-Verifikator `dedupe_key_hash`, nie den Schlüssel selbst. Die Ansicht
+rechnet die erwarteten Vorkommen mit demselben Parser aus, den der Scheduler
+benutzt, bildet denselben Verifikator und stellt die gefundene Nachricht
+daneben. Was der Container ausgegeben hat, steht nicht dort.
+
+Die Route ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/compute/cron/{cronId}/occurrences`
+mit derselben Berechtigung wie die übrigen Definitionsrouten
+(`project_compute_admin`), `Cache-Control: private, no-store` und **ohne jeden
+Query-Parameter**: Jeder Parameter ist ein 400, eine unbekannte oder fremde
+Definition ein 404. Das Fenster steht im Dienst und nicht im Aufruf — die
+letzten 24 Stunden und die nächste Stunde, höchstens 50 Vorkommen, neueste
+zuerst.
+
+Je Vorkommen nennt die Antwort den Zeitpunkt, den Zustand und, wenn es eine
+Nachricht gibt, deren Zustand (`pending`, `in_flight`, `done`, `dead_letter`),
+die Versuchszahl, den Zeitpunkt der Einreihung und den des Abschlusses.
+**Nie die Nutzlast, nie den Dedupe-Schlüssel, nie die Nachrichten-Id**: Die
+Nutzlast eines Cron-Jobs kann Kundendaten tragen, und die Betriebsfrage braucht
+sie nicht. Den Zeitpunkt des letzten Versuchs gibt es nicht, weil die Queue ihn
+nicht führt.
+
+Vier Zustände, weil zwei gelogen wären:
+
+- **gefunden** — eine Nachricht mit dem Verifikator dieses Vorkommens liegt in
+  der Queue.
+- **fehlt** — das Vorkommen war fällig, die Definition gab es schon, und es
+  liegt keine Nachricht dazu vor.
+- **noch nicht fällig** — das Vorkommen liegt in der Zukunft oder ist erst
+  wenige Minuten her. Der Dispatcher läuft im Intervall; fünf Minuten Karenz
+  verhindern eine Lücke, die es nicht gibt.
+- **nicht nachweisbar** — das Vorkommen liegt vor dem Anlegen der Definition,
+  oder das Dedupe-Fenster der Queue ist abgelaufen und der Verifikator darin
+  gelöscht (Migration 0026). Dort beweist eine fehlende Nachricht nichts.
+
+Zwei Grenzen bleiben: Ein geänderter Ausdruck ist nicht rekonstruierbar —
+Ausdruck und Queue sind unveränderlich, eine Änderung ist Löschen und
+Neuanlegen, und die alten Vorkommen gehören dann zu einer anderen Id. Und ein
+Dedupe-Fenster, das kürzer ist als der Takt des Cron-Jobs, macht das Log
+wertlos, noch bevor es alt ist; 300 Sekunden Vorgabe reichen für einen
+Minutentakt, nicht für einen stündlichen.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

@@ -444,6 +444,18 @@ function integer(value: number, min: number, max: number) {
 
 function hash(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
 
+/**
+ * Der Verifikator eines Dedupe-Schluessels, exportiert fuer Leser.
+ *
+ * Die Queue speichert nur `dedupe_key_hash`, nie den Schluessel. Wer eine
+ * Nachricht zu einem bekannten Schluessel wiederfinden will — das Cron-Log aus
+ * 2.42 tut genau das — muss deshalb denselben Verifikator bilden. Genau
+ * dieselbe Funktion, nicht eine zweite mit derselben Absicht: Ein Unterschied
+ * zwischen beiden waere eine Ansicht, die dauerhaft "fehlt" meldet, obwohl die
+ * Nachricht da ist.
+ */
+export function projectQueueDedupeKeyHash(dedupeKey: string): string { return hash(dedupeKey); }
+
 function mapError(error: unknown): ProjectQueueError {
   if (isProjectQueueError(error)) return error;
   if (error instanceof ProjectQueueConflictError) return new ProjectQueueError(error.code);

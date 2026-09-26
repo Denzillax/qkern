@@ -100,6 +100,20 @@ export function nextCronOccurrence(expression: string, after: Date): Date {
   throw new Error(UNSUPPORTED);
 }
 
+/**
+ * Der Dedupe-Schluessel eines Vorkommens: `cron:<id>:<zeitpunkt>`.
+ *
+ * Bis 2.42 stand diese Form nur hier im Aufruf des Dispatchers und ausserdem
+ * in zwei Migrationskommentaren. Das Cron-Log liest die Queue ueber genau
+ * diesen Schluessel wieder; damit es nicht an einer zweiten Schreibweise
+ * scheitert, gibt es die Form jetzt einmal als Funktion, und der Dispatcher
+ * benutzt sie selbst. Der Zeitpunkt ist ISO-8601 in UTC mit Millisekunden,
+ * wie `Date.prototype.toISOString` ihn schreibt.
+ */
+export function cronOccurrenceDedupeKey(definitionId: string, scheduledAt: Date): string {
+  return `cron:${definitionId}:${scheduledAt.toISOString()}`;
+}
+
 export class CronDispatcher {
   constructor(private readonly queues: Pick<ProjectQueueService, "enqueue">) {}
 
@@ -119,7 +133,7 @@ export class CronDispatcher {
       environment: definition.environment,
     }, definition.queue, {
       payload: definition.payload,
-      dedupeKey: `cron:${definition.id}:${scheduledAt.toISOString()}`,
+      dedupeKey: cronOccurrenceDedupeKey(definition.id, scheduledAt),
       // Bewusst **kein** scheduledAt. Ein Vorkommen ist faellig, wenn es
       // ausgeloest wird; die Nachricht soll sofort verfuegbar sein. Wurde der
       // Zeitpunkt weitergereicht, wies die Queue jedes nachgeholte Vorkommen

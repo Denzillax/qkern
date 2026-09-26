@@ -8,6 +8,7 @@ import {
   type FunctionDefinitionRecord,
   type WebhookDefinitionRecord,
 } from "@/lib/server/compute/definitions";
+import type { CronOccurrenceMessageRow } from "@/lib/server/compute/cron-occurrences";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 
 const scope: ComputeDefinitionScope = {
@@ -58,6 +59,8 @@ function harness(options: {
   webhooks?: WebhookDefinitionRecord[];
   functions?: FunctionDefinitionRecord[];
   queues?: string[];
+  occurrences?: { dedupeWindowSeconds: number | null; messages: CronOccurrenceMessageRow[] };
+  now?: () => Date;
 } = {}) {
   const calls: Array<{ method: string; payload?: unknown }> = [];
   const cron = options.cron ?? [];
@@ -104,6 +107,10 @@ function harness(options: {
       calls.push({ method: "deleteWebhook", payload: id });
       return webhooks.some((entry) => entry.id === id);
     },
+    async listCronOccurrenceMessages(_principal, _scope, queue, hashes) {
+      calls.push({ method: "listCronOccurrenceMessages", payload: { queue, hashes } });
+      return options.occurrences ?? { dedupeWindowSeconds: null, messages: [] };
+    },
     async listDeliveries() { return []; },
     async listFunctions() { return functions; },
     async createFunction(_principal, _scope, input) {
@@ -130,6 +137,7 @@ function harness(options: {
   const service = new ComputeDefinitionService({
     repository,
     ...(options.queues ? { queues: { async queueNames() { return options.queues!; } } } : {}),
+    ...(options.now ? { now: options.now } : {}),
   });
   return { service, calls, repository };
 }

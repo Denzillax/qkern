@@ -237,6 +237,25 @@ describe("QKERN OpenAPI contract", () => {
     }
   });
 
+  it("documents the cron log as a read-only GET without query parameters (2.42)", () => {
+    const path = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/compute/cron/{cronId}/occurrences"];
+    expect(Object.keys(path)).toEqual(["get"]);
+    expect(path.get.operationId).toBe("listProjectCronOccurrences");
+    expect(path.get.parameters.every((parameter) => parameter.in === "path")).toBe(true);
+    // Der Vertrag nennt die Bruecke und ihre Grenze, nicht nur das Ergebnis.
+    expect(path.get.description).toContain("cron:<id>:<timestamp>");
+    expect(path.get.description).toContain("absence proves nothing");
+    expect(path.get.description).toContain("at most 50 occurrences");
+    const log = qkernOpenAPI.components.schemas.ProjectCronOccurrenceLog;
+    expect(Object.keys(log.properties)).not.toContain("payload");
+    expect(log.properties.occurrences.maxItems).toBe(50);
+    expect(qkernOpenAPI.components.schemas.ProjectCronOccurrence.properties.status.enum)
+      .toEqual(["found", "missing", "not_yet_due", "expected"]);
+    const message = qkernOpenAPI.components.schemas.ProjectCronOccurrenceMessage;
+    expect(Object.keys(message.properties).sort()).toEqual(["attempts", "enqueuedAt", "settledAt", "state"]);
+    expect(message.properties.state.enum).toEqual(["pending", "in_flight", "done", "dead_letter"]);
+  });
+
   it("documents the performance advisor as a read-only GET without query parameters (2.40)", () => {
     const path = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/advisors/performance"];
     expect(Object.keys(path)).toEqual(["get"]);
