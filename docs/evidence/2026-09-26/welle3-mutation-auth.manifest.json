@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Projektliste der Ruecksprungziele leer",
+  "log": "welle3-mutation-auth.log",
+  "commit": "312881cd35a3e15dc49ccebcc67b2a5090f0d394",
+  "commitSubject": "merge: Ruecksprungziele und Mailweg aus slice/authsettings, Migration auf 0051",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 51,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 190 passed (191)",
+  "passed": 190,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

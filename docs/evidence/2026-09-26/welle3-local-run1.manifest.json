@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle3-local-run1.log",
+  "commit": "312881cd35a3e15dc49ccebcc67b2a5090f0d394",
+  "commitSubject": "merge: Ruecksprungziele und Mailweg aus slice/authsettings, Migration auf 0051",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1719 passed | 274 skipped (1993)",
+  "passed": 1719,
+  "failed": 0,
+  "skipped": 274,
+  "images": []
+}

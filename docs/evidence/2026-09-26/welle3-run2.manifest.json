@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle3-run2.log",
+  "commit": "312881cd35a3e15dc49ccebcc67b2a5090f0d394",
+  "commitSubject": "merge: Ruecksprungziele und Mailweg aus slice/authsettings, Migration auf 0051",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 51,
+  "testFiles": "31 passed (31)",
+  "tests": "191 passed (191)",
+  "passed": 191,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: Ausgangsfilter wirkungslos",
+  "log": "welle3-mutation-logs.log",
+  "commit": "312881cd35a3e15dc49ccebcc67b2a5090f0d394",
+  "commitSubject": "merge: Ruecksprungziele und Mailweg aus slice/authsettings, Migration auf 0051",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 49,
+  "testFiles": "2 failed | 29 passed (31)",
+  "tests": "2 failed | 187 passed (189)",
+  "passed": 187,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

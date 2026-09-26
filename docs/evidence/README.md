@@ -1569,3 +1569,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/welle2-mutation-webhook.log` | Mutation: Kopplung nimmt jede Tabelle | **187 von 188, exit 1 – absichtlich** |
 | `2026-09-26/welle2-local-run1.log` | Vitest lokal (Windows) | 1648 bestanden, exit 0 |
 | `2026-09-26/welle2-local-run2.log` | Vitest lokal (Windows) | 1648 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.51 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/welle3-run1.log` | PostgreSQL 17 | 191 von 191, exit 0 |
+| `2026-09-26/welle3-run2.log` | PostgreSQL 17 | 191 von 191, exit 0, Wiederholung |
+| `2026-09-26/welle3-mutation-worker.log` | Mutation: Neustart beginnt bei null | **190 von 191, exit 1 – absichtlich** |
+| `2026-09-26/welle3-mutation-auth.log` | Mutation: Projektliste leer | **190 von 191, exit 1 – absichtlich** |
+| `2026-09-26/welle3-mutation-logs.log` | Mutation: Ausgangsfilter wirkungslos | **187 von 189, exit 1 – absichtlich, dazu ein Queue-Fall unter Last** |
+| `2026-09-26/welle3-local-run1.log` | Vitest lokal (Windows) | 1719 bestanden, exit 0 |
+| `2026-09-26/welle3-local-run2.log` | Vitest lokal (Windows) | 1719 bestanden, exit 0, Wiederholung |

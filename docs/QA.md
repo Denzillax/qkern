@@ -5517,3 +5517,52 @@ ein Restweg: Wer QKERN-Token eigenstaendig gegen den oeffentlichen
 Schluessel prueft, sieht ein vor dem Umschalten ausgegebenes Token bis zum
 Ablauf als gueltig; das Token traegt seine Stufe, aber QKERN kann einen
 fremden Pruefer nicht zwingen, sie zu lesen. Im Browser nicht gesehen.
+
+## Die Bruecke laeuft – Release 2.51
+
+Release 2.50 hinterliess einen Satz, der so nicht stehen bleiben durfte: die
+Webhook-Bruecke war gebaut, zertifiziert und untaetig, weil kein Prozess sie
+aufrief. Jetzt laeuft sie, und der Zertifizierungsfall beweist es als
+Prozess und nicht als Funktionsaufruf: Er startet den Worker, macht eine
+Aenderung, wartet auf die Zustellung, schickt ein Beendigungssignal, prueft
+dass waehrend der Pause nichts geliefert wird, startet neu und zaehlt genau
+drei Zustellungen in Reihenfolge.
+
+Die Position ist dafuer dauerhaft geworden. Sie wird nie rueckwaerts
+geschrieben, weil zwei Instanzen eine zulaessige Aufstellung sind und die
+langsamere die schnellere nicht zurueckdrehen darf. Laesst sie sich nicht
+lesen, startet die Umgebung gar nicht: bei null zu beginnen hiesse, den
+ganzen Strom zu wiederholen.
+
+Bei den Ruecksprungzielen kam ein Befund heraus, der die Arbeit einfacher
+machte als gedacht: QKERN leitet nirgends selbst um. Das Ziel reist nur in
+die Adresse einer Aktionsmail und in den verschluesselten OIDC-Zustand, wo
+es ungenutzt bleibt. Es gibt also wirklich nur eine Engstelle, und der
+Vertragstest verlangt, dass genau sie viermal aufgerufen wird und die alte
+Direktpruefung nirgends mehr steht.
+
+Bei den Protokollen wurde vor allem abgeraeumt. Das Aufrufprotokoll der
+Functions ist echt, traegt aber weder die Ausgabe des Containers noch die
+Ausgangsverbindungen noch einen Endzeitpunkt; der Platzhalter versprach
+alle drei. Fuer die Data API gibt es ueberhaupt kein Protokoll je Anfrage,
+und der vorhandene Zaehler mischt alle Quellen in eine Zahl. Die Ansicht
+sagt das zuerst und zeigt dann zwei belegbare Dinge, benannt als das, was
+sie sind.
+
+Drei Mutationen, drei Treffer: ein wirkungsloser Ausgangsfilter, eine leere
+Projektliste bei den Ruecksprungzielen, ein Neustart der wieder bei null
+beginnt. Eine vierte Mutation traf daneben und lehrte etwas: Sie drehte nur
+den Aktualisierungspfad des Cursors, und weil der Fall nur einmal neu
+startet, blieb sie folgenlos. Der Fehler lag in der Mutation, nicht im Fall.
+
+Checkpoint `2.51.0` am 26. September 2026: PostgreSQL 17 mit 191 von 191,
+exit 0, zweimal reproduziert; Lokal 1719 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Werden alle Kopplungen einer Umgebung geloescht statt
+ausgeschaltet, haelt ihre Position an, und eine spaeter angelegte Kopplung
+sieht, was der Strom noch haelt. Ein Absturz zwischen Einreihen und
+Schreiben der Position wiederholt hoechstens eine Stapelmenge. Die Migration
+`0051` ist nicht optional: fehlt sie, scheitert jede Anmeldung laut, weil
+dieselbe Zeile den Zweitfaktor-Schalter traegt. Mailtexte gibt es nur in
+einer Sprache und nur fest. Im Browser nicht gesehen.

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.50.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.51.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,31 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.50.0`
-- Aktueller Slice: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
+- Paketversion: `2.51.0`
+- Aktueller Slice: 2.51 Die Bruecke laeuft – drei Implementierer parallel.
+  **Webhook-Prozess**: Die Bruecke aus 2.50 war gebaut, zertifiziert und
+  untaetig; jetzt laeuft sie im Compute-Worker
+  (`lib/server/compute/database-webhook-bridge-runtime.ts`), eine Schleife
+  ueber die Umgebungen mit Kopplung, eine Projektverbindung zur Zeit,
+  Verdopplungs-Backoff je Umgebung, feste Fehlercodes ohne Datenbankmeldung.
+  Die Position ist dauerhaft (Migration `0050`, `GREATEST` in der Anweisung,
+  kein DELETE-Recht); laesst sie sich nicht lesen, startet die Umgebung
+  nicht, statt bei null zu beginnen. Umgebungen mit ausgeschalteten
+  Kopplungen bleiben bewusst in Beobachtung, sonst wuerde Ausschalten
+  aufstauen statt pausieren. **Ruecksprungziele**: je Umgebung eine Liste
+  (Migration `0051`, Spalte in `project_auth_settings`), durchgesetzt an der
+  einzigen Engstelle `returnTarget`, die der Vertragstest genau viermal
+  aufgerufen sehen will. Befund: QKERN leitet nirgends selbst um, das Ziel
+  reist nur in die Mailadresse und in den OIDC-Zustand. Mailweg und
+  Vorlagen sind nur lesend; die Vorlagenansicht zeigt den Text aus derselben
+  Funktion, die ihn versendet. **Protokolle**: Function-Aufrufe mit Ausgang
+  und Dauer; das Protokoll traegt weder Containerausgabe noch
+  Ausgangsverbindungen noch einen Endzeitpunkt, und die Ansicht sagt das.
+  Fuer die Data API gibt es kein Protokoll je Anfrage; der Zaehler mischt
+  alle Quellen, also ist er nicht einmal eine Obergrenze fuer sie allein.
+  PostgreSQL-Faelle "(2.53)", "(2.54)", "(2.55)": 191 statt 188. Drei
+  Mutationen fallen. Im Browser nicht gesehen
+- Vorheriger Slice: 2.50 Zweiter Faktor und Datenbank-Webhooks – zwei
   Implementierer parallel, danach zusammengefuehrt. **Zweiter Faktor**:
   `auth-mfa` ist eine echte Ansicht, und der Schalter wirkt an drei Stellen
   in `lib/server/project-auth/service.ts`, nicht in der Console: beim
@@ -119,7 +142,7 @@ Grossbuchstaben.
   `project_auth.return_targets.changed` zaehlt in der Auth-Zeitreihe unter
   `other`; die zehn benannten Handlungen sind unveraendert. Im Browser nicht
   gesehen
-- Vorheriger Slice: 2.49 Was der Scanner sah – "Storage" unter Logs ist
+- Davor: 2.49 Was der Scanner sah – "Storage" unter Logs ist
   eine echte, nur lesende Ansicht (`components/console/storage-log-view.tsx`)
   mit Filter nach Bucket und Urteil, dazu ist "Realtime" unter Berichte an
   die geteilte Reihe aus 2.45 angeschlossen, weil die Metrik
