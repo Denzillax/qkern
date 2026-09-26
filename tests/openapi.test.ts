@@ -52,6 +52,9 @@ describe("QKERN OpenAPI contract", () => {
     expect(qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/auth/admin/users/{userId}/sessions/{sessionId}"].delete.summary)
       .toContain("whole refresh family");
     expect(Object.keys(qkernOpenAPI.components.schemas.ProjectAuthSessionSummary.properties)).not.toContain("refreshTokenHash");
+    const audit = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/auth/admin/audit"];
+    expect(audit.get.description).toContain("never recorded");
+    expect(Object.keys(qkernOpenAPI.components.schemas.ProjectAuthAuditEvent.properties)).not.toContain("entryHash");
     const keys = qkernOpenAPI.paths["/v1/projects/{projectId}/environments/{environment}/api-keys"];
     expect(keys.post.description).toContain("service keys do not bypass RLS");
     expect(keys.post.responses["201"].description).toContain("shown once");

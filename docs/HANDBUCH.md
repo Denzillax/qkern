@@ -183,6 +183,22 @@ Wichtige öffentliche Pfade beginnen mit
   DELETE beendet alle) und `admin/users/{userId}/sessions/{sessionId}` (DELETE beendet
   eine Sitzung samt ihrer ganzen Refresh-Familie), ebenfalls nur über die Console-Session
   und mit geprüftem Origin; in der Console unter Auth → Sitzungen
+- `admin/audit?limit=1..100&cursor=` (GET) liefert den Auth-Auszug aus der Audit-Kette
+  der Plattform, neueste zuerst, nur für dieses Projekt und diese Umgebung; in der
+  Console unter Auth → Audit-Log
+
+Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
+`project_auth.signup.succeeded`, `project_auth.login.succeeded`,
+`project_auth.login.failed`, `project_auth.logout`, `project_auth.mfa.enrolled`,
+`project_auth.mfa.verified`, `project_auth.user.updated`,
+`project_auth.session.revoked` und `project_auth.sessions.revoked_all`. Ein Refresh
+wird nicht protokolliert, das wäre zu viel Rauschen. App-Nutzer erscheinen nur als
+`project_auth_user:<id>`, ein Fehlversuch mit unbekannter E-Mail als `anonymous`,
+Console-Aktionen mit der ID des Console-Nutzers. E-Mails, Passwörter, Token und
+Codes stehen nie im Audit. Fällt das Schreiben aus, gelingt die Anmeldung trotzdem;
+im Log steht dann nur die Aktion. Eine Lücke im Audit ist besser als ein Ausfall
+aller Anmeldungen, und die Kette bleibt intakt, weil nichts Halbes geschrieben wird.
+Die Rechte dafür vergibt `db/migrations/0046_project_auth_audit.sql`.
 
 Alle öffentlichen Auth-Aufrufe benötigen einen exakt passenden Projekt-Key.
 Für normale Tabellenzugriffe sendet die Anwendung den Projekt-Key in

@@ -36,10 +36,10 @@ export function createProjectAuthSessionsHandlers(
       if (!hasTrustedOrigin(request)) return csrfRejected();
       try {
         const parsed = await parsedProjectAuthParams(routeContext);
-        const { scope } = await adminProjectAuthScope(request, routeContext);
+        const { scope, actor } = await adminProjectAuthScope(request, routeContext);
         const userId = uuid.safeParse(parsed?.raw.userId);
         if (!userId.success) return projectAuthNoStore({ error: "Invalid Project Auth request" }, 400);
-        return projectAuthNoStore({ data: await getService().revokeAllSessions(scope, userId.data) });
+        return projectAuthNoStore({ data: await getService().revokeAllSessions(scope, userId.data, { id: actor.id }) });
       } catch (error) { return projectAuthRouteError(error); }
     },
   };

@@ -21,13 +21,13 @@ export function createProjectAuthSessionHandler(
     if (!hasTrustedOrigin(request)) return csrfRejected();
     try {
       const parsed = await parsedProjectAuthParams(routeContext);
-      const { scope } = await adminProjectAuthScope(request, routeContext);
+      const { scope, actor } = await adminProjectAuthScope(request, routeContext);
       const userId = uuid.safeParse(parsed?.raw.userId);
       const sessionId = uuid.safeParse(parsed?.raw.sessionId);
       if (!userId.success || !sessionId.success) {
         return projectAuthNoStore({ error: "Invalid Project Auth request" }, 400);
       }
-      return projectAuthNoStore({ data: await getService().revokeSession(scope, userId.data, sessionId.data) });
+      return projectAuthNoStore({ data: await getService().revokeSession(scope, userId.data, sessionId.data, { id: actor.id }) });
     } catch (error) { return projectAuthRouteError(error); }
   };
 }

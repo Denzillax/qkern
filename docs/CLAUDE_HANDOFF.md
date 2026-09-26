@@ -760,7 +760,9 @@ Grossbuchstaben.
 - `changes:` ist opt-in ueber `QKERN_REALTIME_CHANGES_ENABLED`
 - Projekt-DB-Migration: `db/project/0003_qkern_change_feed.sql` (gegen echtes PostgreSQL zertifiziert)
 - Sechs Zertifizierungslaeufe: `test:postgres:docker`, `test:storage:docker`, `test:auth:docker`, `test:functions:docker`, `test:vault:docker`, `test:receiver:docker`
-- Letzte Control-Plane-Migration: `db/migrations/0045_project_function_invocations.sql`
+- Letzte Control-Plane-Migration: `db/migrations/0046_project_auth_audit.sql`
+  (SELECT und INSERT auf audit_logs fuer qkern_auth, damit Project Auth in die
+  Hash-Kette schreibt). Davor: `db/migrations/0045_project_function_invocations.sql`
   — die eine Tuer fuer Image-Deployments: Wechsel nur zusammen mit der
   append-only Historienzeile. Davor: `db/migrations/0041_project_storage_multipart.sql`
   — `kind` und `provider_upload_id` an der Upload-Reservierung fuer

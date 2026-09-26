@@ -6,6 +6,8 @@ import { ProjectAuthSecretProtector, ProjectAuthTotp, projectAuthSecretProtector
   "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcClient, ProjectAuthOidcCatalog, projectAuthOidcCatalogFromEnv } from
   "@/lib/server/project-auth/oidc";
+import { MemoryProjectAuthAuditSink, type ProjectAuthAuditSink } from "@/lib/server/project-auth/audit";
+import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
 import { MemoryProjectAuthRepository, type ProjectAuthRepository } from "@/lib/server/project-auth/repository";
 import {
@@ -27,6 +29,7 @@ export type ProjectAuthRuntimeDependencies = {
   secrets?: ProjectAuthSecretProtector;
   oidcCatalog?: ProjectAuthOidcCatalog;
   oidcClient?: ProjectAuthOidcClient;
+  audit?: ProjectAuthAuditSink;
 };
 
 export function createProjectAuthServiceFromEnv(
@@ -39,9 +42,15 @@ export function createProjectAuthServiceFromEnv(
   if (production && exposeTokens) {
     throw new ConfigurationError("Project Auth delivery tokens can never be exposed in production.");
   }
-  const repository = dependencies.repository ?? (runtimeModeFromEnv(env) === "postgres"
+  const postgres = runtimeModeFromEnv(env) === "postgres";
+  const repository = dependencies.repository ?? (postgres
     ? new PostgresProjectAuthRepository(getAuthPostgresPool(env))
     : new MemoryProjectAuthRepository());
+  // Audit ueber denselben Auth-Pool in die Hash-Kette der Plattform (2.35);
+  // im Speicherbetrieb ein Speicher-Sink, damit die Console etwas zeigt.
+  const audit = dependencies.audit ?? (postgres
+    ? new PostgresProjectAuthAuditSink(getAuthPostgresPool(env))
+    : new MemoryProjectAuthAuditSink());
   const allowedRedirectOrigins = redirectOriginsFromEnv(env);
   const callbackBaseUrl = callbackBaseFromEnv(env);
   // A configured SMTP host is the only way to obtain real delivery. Without it
@@ -61,6 +70,7 @@ export function createProjectAuthServiceFromEnv(
     delivery,
     oidcCatalog: dependencies.oidcCatalog ?? projectAuthOidcCatalogFromEnv(env),
     oidcClient: dependencies.oidcClient ?? new ProjectAuthOidcClient(env),
+    audit,
     callbackBaseUrl,
     allowedRedirectOrigins,
     exposeDeliveryTokens: exposeTokens,

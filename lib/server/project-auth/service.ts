@@ -14,6 +14,12 @@ import type {
   PublicProjectAuthUser,
 } from "@/lib/server/project-auth/model";
 import { publicProjectAuthUser } from "@/lib/server/project-auth/model";
+import {
+  projectAuthUserRef,
+  type ProjectAuthAuditEvent,
+  type ProjectAuthAuditPage,
+  type ProjectAuthAuditSink,
+} from "@/lib/server/project-auth/audit";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import {
   ProjectAuthOidcCatalog,
@@ -38,6 +44,7 @@ const OIDC_STATE_TOKEN = /^qk_oidc_[A-Za-z0-9_-]{43}$/;
 const PASSWORD_RATE = { limit: 10, windowMs: 15 * 60 * 1_000 };
 const EMAIL_RATE = { limit: 5, windowMs: 60 * 60 * 1_000 };
 const MFA_RATE = { limit: 8, windowMs: 15 * 60 * 1_000 };
+const AUDIT_CURSOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ProjectAuthDeliveryPurpose = "email_verification" | "magic_link" | "password_reset";
 export type ProjectAuthDelivery = {
@@ -85,6 +92,11 @@ export type VerifiedProjectAuthPrincipal = {
   claims: ProjectAuthAccessClaims;
 };
 
+/** Wer in der Console handelt: die ID des Console-Nutzers, nie seine E-Mail. */
+export type ProjectAuthAdminActor = { id: string };
+
+type ProjectAuthSignInMethod = "password" | "magic_link" | "email_verification" | "oidc";
+
 export type ProjectAuthAdminContext = {
   organizationId: string;
   actor: { id: string; ref: string };
@@ -130,6 +142,8 @@ export type ProjectAuthServiceDependencies = {
   delivery: ProjectAuthDeliveryPort;
   oidcCatalog: ProjectAuthOidcCatalog;
   oidcClient: ProjectAuthOidcClient;
+  /** Optional: ohne Sink schreibt der Dienst keine Audit-Ereignisse. */
+  audit?: ProjectAuthAuditSink;
   callbackBaseUrl: string;
   allowedRedirectOrigins: ReadonlySet<string>;
   exposeDeliveryTokens?: boolean;
@@ -185,6 +199,7 @@ export class ProjectAuthService {
       if (error instanceof DuplicateProjectAuthIdentityError) throw new ProjectAuthError("ACCOUNT_EXISTS");
       throw error;
     }
+    await this.recordAudit(this.userEvent(scope, "project_auth.signup.succeeded", user.id, "succeeded", { method: "password" }));
     const token = await this.issueDeliveryToken(scope, user, "email_verification", redirectTo, 30 * 60 * 1_000);
     return { accepted: true, ...(this.dependencies.exposeDeliveryTokens ? { debugToken: token } : {}) };
   }
@@ -210,6 +225,9 @@ export class ProjectAuthService {
         if (error instanceof DuplicateProjectAuthIdentityError) return null;
         throw error;
       });
+      if (user) {
+        await this.recordAudit(this.userEvent(scope, "project_auth.signup.succeeded", user.id, "succeeded", { method: "magic_link" }));
+      }
       user ??= await this.dependencies.repository.findUserByEmail(scope, email);
     }
     let token: string | undefined;
@@ -279,7 +297,7 @@ export class ProjectAuthService {
       });
       if (!user) throw new ProjectAuthError("INVALID_TOKEN");
     }
-    return this.beginAuthenticatedSession(scope, user, now);
+    return this.beginAuthenticatedSession(scope, user, now, input.purpose);
   }
 
   async passwordSignIn(scope: ProjectAuthScope, input: {
@@ -295,10 +313,25 @@ export class ProjectAuthService {
       input.password, user?.passwordHash ?? this.dependencies.passwords.dummyHash,
     );
     if (!user || !user.passwordHash || !valid || user.status !== "active") {
+      // Eine unbekannte E-Mail erscheint als "anonymous", nie im Klartext.
+      // Ein bekannter Nutzer erscheint mit seiner ID; das Audit liest nur die
+      // Admin-Grenze, dort ist die ID ohnehin sichtbar.
+      const reason = user && valid && user.passwordHash && user.status !== "active" ? "user_disabled" : "invalid_credentials";
+      await this.recordAudit(user
+        ? this.userEvent(scope, "project_auth.login.failed", user.id, "failed", { method: "password", reason })
+        : {
+          scope, action: "project_auth.login.failed", actorType: "app_user", actorRef: "anonymous",
+          resourceRef: "project_auth_user:unknown", status: "failed", metadata: { method: "password", reason },
+        });
       throw new ProjectAuthError("INVALID_CREDENTIALS");
     }
-    if (!user.emailVerifiedAt) throw new ProjectAuthError("EMAIL_NOT_VERIFIED");
-    return this.beginAuthenticatedSession(scope, user, now);
+    if (!user.emailVerifiedAt) {
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", user.id, "failed", {
+        method: "password", reason: "email_not_verified",
+      }));
+      throw new ProjectAuthError("EMAIL_NOT_VERIFIED");
+    }
+    return this.beginAuthenticatedSession(scope, user, now, "password");
   }
 
   async refresh(scope: ProjectAuthScope, refreshToken: string): Promise<ProjectAuthSessionResult> {
@@ -345,7 +378,9 @@ export class ProjectAuthService {
     assertScope(scope);
     if (!REFRESH_TOKEN.test(refreshToken)) return;
     const session = await this.dependencies.repository.findSessionByRefreshHash(scope, hashProjectAuthToken(refreshToken));
-    if (session) await this.dependencies.repository.revokeSessionFamily(scope, session.familyId, this.now(), false);
+    if (!session) return;
+    await this.dependencies.repository.revokeSessionFamily(scope, session.familyId, this.now(), false);
+    await this.recordAudit(this.userEvent(scope, "project_auth.logout", session.userId, "succeeded", { family: session.familyId }));
   }
 
   async enrollMfa(principal: VerifiedProjectAuthPrincipal): Promise<{
@@ -374,6 +409,7 @@ export class ProjectAuthService {
       this.dependencies.secrets.decrypt(factor.encryptedSecret), code, this.now(),
     )) throw new ProjectAuthError("INVALID_MFA");
     await this.dependencies.repository.upsertMfaFactor({ ...factor, verifiedAt: this.now() });
+    await this.recordAudit(this.userEvent(principal.scope, "project_auth.mfa.enrolled", principal.user.id, "succeeded", { factor: "totp" }));
     return { verified: true };
   }
 
@@ -399,8 +435,22 @@ export class ProjectAuthService {
     const validRecovery = validTotp ? false : await this.dependencies.repository.consumeRecoveryCode(
       scope, user.id, this.dependencies.secrets.recoveryHash(input.code),
     );
-    if (!validTotp && !validRecovery) throw new ProjectAuthError("INVALID_MFA");
-    return this.createSessionResult(scope, user, "aal2", now);
+    if (!validTotp && !validRecovery) {
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", user.id, "failed", {
+        method: "mfa", reason: "invalid_mfa",
+      }));
+      throw new ProjectAuthError("INVALID_MFA");
+    }
+    const result = await this.createSessionResult(scope, user, "aal2", now);
+    // Die Anmeldung mit zweitem Faktor endet hier: ein Ereignis fuer den
+    // Faktor, eines fuer die Anmeldung, damit ein Filter auf Anmeldungen
+    // auch diese findet.
+    const factorKind = validTotp ? "totp" : "recovery_code";
+    await this.recordAudit(this.userEvent(scope, "project_auth.mfa.verified", user.id, "succeeded", { factor: factorKind }));
+    await this.recordAudit(this.userEvent(scope, "project_auth.login.succeeded", user.id, "succeeded", {
+      method: "mfa", factor: factorKind, assurance: "aal2",
+    }));
+    return result;
   }
 
   /**
@@ -471,7 +521,14 @@ export class ProjectAuthService {
         code: input.code, codeVerifier: flow.codeVerifier, nonce: flow.nonce, callbackUri: flow.callbackUri,
       });
     } catch (error) {
-      if (error instanceof ProjectAuthOidcError) throw new ProjectAuthError("INVALID_CREDENTIALS");
+      if (error instanceof ProjectAuthOidcError) {
+        await this.recordAudit({
+          scope, action: "project_auth.login.failed", actorType: "app_user", actorRef: "anonymous",
+          resourceRef: "project_auth_user:unknown", status: "failed",
+          metadata: { method: "oidc", provider: provider.id, reason: "invalid_credentials" },
+        });
+        throw new ProjectAuthError("INVALID_CREDENTIALS");
+      }
       throw error;
     }
     const email = canonicalEmail(claims.email);
@@ -486,6 +543,9 @@ export class ProjectAuthService {
           userMetadata: claims.name ? { name: claims.name } : {},
           appMetadata: { providers: [provider.id] }, createdAt: now, updatedAt: now,
         });
+        await this.recordAudit(this.userEvent(scope, "project_auth.signup.succeeded", user.id, "succeeded", {
+          method: "oidc", provider: provider.id,
+        }));
       } else if (!user.emailVerifiedAt) {
         user = await this.dependencies.repository.updateUser(scope, user.id, {
           emailVerifiedAt: now, updatedAt: now,
@@ -503,8 +563,13 @@ export class ProjectAuthService {
         if (!winner || winner.userId !== user.id) throw new ProjectAuthError("INVALID_CREDENTIALS");
       }
     }
-    if (user.status !== "active") throw new ProjectAuthError("INVALID_CREDENTIALS");
-    return this.beginAuthenticatedSession(scope, user, now);
+    if (user.status !== "active") {
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", user.id, "failed", {
+        method: "oidc", provider: provider.id, reason: "user_disabled",
+      }));
+      throw new ProjectAuthError("INVALID_CREDENTIALS");
+    }
+    return this.beginAuthenticatedSession(scope, user, now, "oidc", provider.id);
   }
 
   async resolveOidcScope(input: {
@@ -542,7 +607,7 @@ export class ProjectAuthService {
   async updateUser(scope: ProjectAuthScope, userId: string, input: {
     status?: ProjectAuthUserStatus;
     appMetadata?: Record<string, unknown>;
-  }): Promise<PublicProjectAuthUser> {
+  }, admin?: ProjectAuthAdminActor): Promise<PublicProjectAuthUser> {
     assertScope(scope);
     if (!userId || userId.length > 128 || (input.status === undefined && input.appMetadata === undefined) ||
         (input.status !== undefined && !["active", "disabled"].includes(input.status))) {
@@ -556,6 +621,12 @@ export class ProjectAuthService {
     });
     if (!updated) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
     if (input.status === "disabled") await this.dependencies.repository.revokeAllUserSessions(scope, userId, now);
+    // Nur was sich geaendert hat, nie der Inhalt von app_metadata: dort
+    // koennen Anwendungen beliebige Claims ablegen.
+    await this.recordAudit(this.adminEvent(scope, "project_auth.user.updated", userId, admin, {
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.appMetadata ? { appMetadataChanged: true } : {}),
+    }));
     return publicProjectAuthUser(updated);
   }
 
@@ -580,7 +651,12 @@ export class ProjectAuthService {
    * desselben Nutzers bleiben unberuehrt. `revoked` zaehlt die beendeten
    * aktiven Sitzungen; eine Familie hat davon hoechstens eine.
    */
-  async revokeSession(scope: ProjectAuthScope, userId: string, sessionId: string): Promise<{ revoked: number }> {
+  async revokeSession(
+    scope: ProjectAuthScope,
+    userId: string,
+    sessionId: string,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<{ revoked: number }> {
     assertScope(scope);
     assertAdminId(userId);
     assertAdminId(sessionId);
@@ -590,16 +666,35 @@ export class ProjectAuthService {
     // gibt: kein Unterschied zwischen fremd und unbekannt nach aussen.
     if (!session || session.userId !== userId) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
     await this.dependencies.repository.revokeSessionFamily(scope, session.familyId, now, false);
+    await this.recordAudit(this.adminEvent(scope, "project_auth.session.revoked", userId, admin, {
+      family: session.familyId, revokedCount: 1,
+    }));
     return { revoked: 1 };
   }
 
   /** Beendet alle Sitzungen eines Nutzers, ohne ihn zu deaktivieren. */
-  async revokeAllSessions(scope: ProjectAuthScope, userId: string): Promise<{ revoked: number }> {
+  async revokeAllSessions(scope: ProjectAuthScope, userId: string, admin?: ProjectAuthAdminActor): Promise<{ revoked: number }> {
     assertScope(scope);
     assertAdminId(userId);
     const now = this.now();
     await this.requireUser(scope, userId);
-    return { revoked: await this.dependencies.repository.revokeAllUserSessions(scope, userId, now) };
+    const revoked = await this.dependencies.repository.revokeAllUserSessions(scope, userId, now);
+    await this.recordAudit(this.adminEvent(scope, "project_auth.sessions.revoked_all", userId, admin, { revokedCount: revoked }));
+    return { revoked };
+  }
+
+  /**
+   * Der Auth-Auszug aus der Audit-Kette fuer die Console (2.35): nur
+   * `project_auth.*` im exakten Scope, neueste zuerst. Ohne Sink gibt es
+   * nichts zu lesen, und das ist ehrlich eine leere Liste.
+   */
+  async listAuditEvents(scope: ProjectAuthScope, limit = 50, cursor?: string): Promise<ProjectAuthAuditPage> {
+    assertScope(scope);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (cursor !== undefined && !AUDIT_CURSOR.test(cursor))) {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+    if (!this.dependencies.audit) return { events: [], nextCursor: null };
+    return this.dependencies.audit.list(scope, { limit, ...(cursor ? { cursor } : {}) });
   }
 
   private async requireUser(scope: ProjectAuthScope, userId: string): Promise<void> {
@@ -607,10 +702,60 @@ export class ProjectAuthService {
     if (!user) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
   }
 
+  /**
+   * Schreibt ein Audit-Ereignis, ohne den Auth-Fluss je zu brechen.
+   *
+   * Abwaegung: Faellt der Sink aus (Datenbank weg, Rechte fehlen), gelingt
+   * die Anmeldung trotzdem, und es bleibt eine Luecke im Audit. Eine Luecke
+   * ist besser als ein Ausfall aller Anmeldungen. Die Kette selbst bleibt
+   * dabei intakt: Es wird schlicht nichts geschrieben, kein halber Eintrag.
+   * Geloggt werden nur Aktion und Fehlerklasse, keine Daten des Ereignisses.
+   */
+  private async recordAudit(event: ProjectAuthAuditEvent): Promise<void> {
+    const sink = this.dependencies.audit;
+    if (!sink) return;
+    try {
+      await sink.record(event);
+    } catch (error) {
+      console.error("Project Auth audit event was not recorded", {
+        action: event.action,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
+
+  private userEvent(
+    scope: ProjectAuthScope,
+    action: string,
+    userId: string,
+    status: ProjectAuthAuditEvent["status"],
+    metadata: NonNullable<ProjectAuthAuditEvent["metadata"]>,
+  ): ProjectAuthAuditEvent {
+    return {
+      scope, action, actorType: "app_user", actorRef: projectAuthUserRef(userId),
+      resourceRef: projectAuthUserRef(userId), status, metadata,
+    };
+  }
+
+  private adminEvent(
+    scope: ProjectAuthScope,
+    action: string,
+    userId: string,
+    admin: ProjectAuthAdminActor | undefined,
+    metadata: NonNullable<ProjectAuthAuditEvent["metadata"]>,
+  ): ProjectAuthAuditEvent {
+    return {
+      scope, action, actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: projectAuthUserRef(userId), status: "succeeded", metadata,
+    };
+  }
+
   private async beginAuthenticatedSession(
     scope: ProjectAuthScope,
     user: ProjectAuthUser,
     now: Date,
+    method: ProjectAuthSignInMethod,
+    provider?: string,
   ): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired> {
     const factor = await this.dependencies.repository.getMfaFactor(scope, user.id);
     if (factor?.verifiedAt) {
@@ -622,9 +767,14 @@ export class ProjectAuthService {
         tokenHash: hashProjectAuthToken(challengeToken), metadata: {}, createdAt: now,
         expiresAt, consumedAt: null,
       });
+      // Noch keine Anmeldung: die zaehlt erst, wenn der zweite Faktor stimmt.
       return { mfaRequired: true, challengeToken, expiresAt: expiresAt.toISOString() };
     }
-    return this.createSessionResult(scope, user, "aal1", now);
+    const result = await this.createSessionResult(scope, user, "aal1", now);
+    await this.recordAudit(this.userEvent(scope, "project_auth.login.succeeded", user.id, "succeeded", {
+      method, ...(provider ? { provider } : {}), assurance: "aal1",
+    }));
+    return result;
   }
 
   private async createSessionResult(
@@ -774,6 +924,7 @@ export class DisabledProjectAuthService {
   listSessions(): never { return this.disabled(); }
   revokeSession(): never { return this.disabled(); }
   revokeAllSessions(): never { return this.disabled(); }
+  listAuditEvents(): never { return this.disabled(); }
 }
 
 function canonicalEmail(email: string): string { return email.trim().toLowerCase(); }

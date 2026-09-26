@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "set-jwt", "storage-policies", "storage-settings", "set-api",
+  "db-migrations", "compute-invocations", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -56,7 +56,6 @@ export const PLACEHOLDERS = {
   "auth-hooks": { label: "Auth-Hooks", supabase: "Authentication → Hooks", backend: "fehlt", note: "Eigener Code bei Anmeldung, Token-Ausgabe oder Mailversand." },
   "auth-third-party": { label: "Fremde Anbieter", supabase: "Authentication → Third Party Auth", backend: "fehlt", note: "Token fremder Identitätsdienste akzeptieren, ohne eigene Nutzerkonten." },
   "auth-oauth-server": { label: "OAuth-Server", supabase: "Authentication → OAuth Server", backend: "fehlt", note: "QKERN selbst als OAuth-Anbieter für andere Apps. Für die AI Bridge vorgesehen, noch nicht gebaut." },
-  "auth-audit": { label: "Audit-Log", supabase: "Authentication → Audit Logs", backend: "teilweise", note: "Anmeldungen, Fehlversuche, Widerrufe. Die Audit-Kette der Plattform gibt es; ein Auth-Auszug je Projekt fehlt." },
   "auth-performance": { label: "Auth-Leistung", supabase: "Authentication → Performance", backend: "fehlt", note: "Antwortzeiten und Fehlerraten der Anmeldung." },
   // Storage
   "storage-s3": { label: "S3-Zugang", supabase: "Storage → S3", backend: "fehlt", note: "S3-kompatible Schlüssel für fremde Werkzeuge. Intern spricht QKERN S3; ein Zugang nach aussen fehlt." },
@@ -133,7 +132,7 @@ export const NAV: NavGroup[] = [
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
     { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, { id: "auth-sessions", label: "Sitzungen" }, ph("auth-rate-limits"),
     ph("auth-templates"), ph("auth-smtp"), ph("auth-mfa"), ph("auth-passkeys"), ph("auth-url"), ph("auth-protection"),
-    ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), ph("auth-audit"), ph("auth-performance"),
+    ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), { id: "auth-audit", label: "Audit-Log" }, ph("auth-performance"),
   ] },
   { id: "storage", label: "Storage", icon: Cloud, children: [
     { id: "storage", label: "Buckets" }, { id: "storage-policies", label: "Policies" }, { id: "storage-settings", label: "Einstellungen" }, ph("storage-s3"),

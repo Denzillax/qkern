@@ -16,12 +16,12 @@ export async function PATCH(request: NextRequest, routeContext: ProjectAuthRoute
   if (!hasTrustedOrigin(request)) return csrfRejected();
   try {
     const parsed = await parsedProjectAuthParams(routeContext);
-    const { scope } = await adminProjectAuthScope(request, routeContext);
+    const { scope, actor } = await adminProjectAuthScope(request, routeContext);
     const body = schema.safeParse(await safeJson(request));
     const userId = parsed?.raw.userId;
     if (!body.success || !userId || userId.length > 128) {
       return projectAuthNoStore({ error: "Invalid Project Auth request" }, 400);
     }
-    return projectAuthNoStore({ data: await getProjectAuthService().updateUser(scope, userId, body.data) });
+    return projectAuthNoStore({ data: await getProjectAuthService().updateUser(scope, userId, body.data, { id: actor.id }) });
   } catch (error) { return projectAuthRouteError(error); }
 }
