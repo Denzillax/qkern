@@ -26,13 +26,63 @@ describe("guide markdown parser", () => {
     expect(doc.headings).toEqual([{ level: 2, id: "schritte", text: "Schritte" }]);
   });
 
-  it("rejects what the guide does not use, with a line number", () => {
-    expect(() => parseGuide("#### Zu tief\n")).toThrow(GuideSyntaxError);
-    expect(() => parseGuide("Absatz\n\n<div>html</div>\n")).toThrow(/Zeile 3/);
-    expect(() => parseGuide("![Bild](x.png)\n")).toThrow(/Zeile 1/);
-    expect(() => parseGuide("- a\n  - verschachtelt\n")).toThrow(/Zeile 2/);
-    expect(() => parseGuide("```\nohne Sprache\n```\n")).toThrow(/Sprache/);
-    expect(() => parseGuide("```sh\nnie geschlossen\n")).toThrow(/Zeile 1/);
+  it.each([
+    ["heading level 4", "#### Zu tief\n", /Zeile 1: Ueberschriften nur bis Ebene 3/],
+    ["html block", "Absatz\n\n<div>html</div>\n", /Zeile 3/],
+    ["image", "![Bild](x.png)\n", /Zeile 1/],
+    ["nested list", "- a\n  - verschachtelt\n", /Zeile 2/],
+    ["fence without language", "```\nohne Sprache\n```\n", /Sprache/],
+    ["unclosed fence", "```sh\nnie geschlossen\n", /Zeile 1/],
+    ["closing fence with trailing text", "```sh\nls\n``` weiter\n", /Zeile 3: Schliessender Zaun/],
+    ["table without divider", "| a | b |\n| 1 | 2 |\n", /Zeile 2: Tabelle ohne Trennzeile/],
+    ["divider not matching header", "| a | b |\n| --- |\n", /Zeile 2: Trennzeile passt nicht/],
+    ["star bullet", "Text\n* eins\n", /Zeile 2: Aufzaehlung nur mit -/],
+    ["plus bullet", "+ eins\n", /Zeile 1: Aufzaehlung nur mit -/],
+    ["dash rule", "Text\n\n---\n", /Zeile 3: Trennlinien sind nicht vorgesehen/],
+    ["star rule", "***\n", /Zeile 1: Trennlinien/],
+    ["underscore rule", "___\n", /Zeile 1: Trennlinien/],
+    ["setext dash heading", "Titel\n---\n", /Zeile 2: Trennlinien/],
+    ["setext equals heading", "Titel\n===\n", /Zeile 2: Setext-Ueberschriften sind nicht vorgesehen/],
+    ["tilde fence", "~~~sh\nls\n~~~\n", /Zeile 1: Codeblock nur mit Backticks/],
+    ["quote without space", "Text\n>eng\n", /Zeile 2: Zitat braucht > mit Leerzeichen/],
+    ["quote line without space inside a quote", "> a\n>\n> b\n", /Zeile 2: Zitat braucht/],
+    ["heading without anchor", "## ???\n", /Zeile 1: Ueberschrift ergibt keinen Anker/],
+    ["closing hashes", "## Foo ##\n", /Zeile 1: Schliessende Rauten sind nicht vorgesehen/],
+    ["code in link text", "[`x`](y.md)\n", /Zeile 1: Auszeichnung im Linktext/],
+    ["emphasis in link text", "Siehe [*x*](y.md)\n", /Zeile 1: Auszeichnung im Linktext/],
+    ["parenthesis in href", "[x](a(b))\n", /Zeile 1: Klammer im Linkziel/],
+  ])("rejects %s with its line number", (_name, markdown, message) => {
+    expect(() => parseGuide(markdown)).toThrow(GuideSyntaxError);
+    expect(() => parseGuide(markdown)).toThrow(message);
+  });
+
+  it("starts every error message with a capital letter", () => {
+    const cases = ["- a\n  - b\n", "  eingerueckt\n", "# A\n\n# B\n", "```sh\nls\n``` x\n"];
+    for (const markdown of cases) {
+      try {
+        parseGuide(markdown);
+        throw new Error("no error");
+      } catch (error) {
+        expect(error).toBeInstanceOf(GuideSyntaxError);
+        expect((error as Error).message).toMatch(/^Zeile \d+: [A-ZÄÖÜ]/);
+      }
+    }
+  });
+
+  it("strips a leading byte order mark", () => {
+    const doc = parseGuide("﻿# Titel\n");
+    expect(doc.title).toBe("Titel");
+    expect(doc.blocks[0]).toMatchObject({ kind: "heading", level: 1, id: "titel" });
+  });
+
+  it("skips whitespace-only quote lines without a double space", () => {
+    const doc = parseGuide("> a\n>   \n> b\n");
+    expect(doc.blocks[0]).toEqual({ kind: "quote", text: [{ kind: "text", text: "a b" }] });
+  });
+
+  it("keeps a heading with a hash inside its text", () => {
+    const doc = parseGuide("## C# und F#\n");
+    expect(doc.headings).toEqual([{ level: 2, id: "c-und-f", text: "C# und F#" }]);
   });
 
   it("makes stable anchors from German headings", () => {
