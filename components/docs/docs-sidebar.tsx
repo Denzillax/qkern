@@ -7,12 +7,12 @@ import { ChevronDown } from "lucide-react";
 import styles from "@/app/docs/docs.module.css";
 
 /** Seitenliste und Abschnitte der aktuellen Seite; auf schmalen Schirmen zugeklappt. */
-export function DocsSidebar({ pages, headings, labels, titlesLang }: {
+export function DocsSidebar({ pages, headings, labels, headingsLang }: {
   pages: ReadonlyArray<{ slug: string; title: string }>;
   headings: ReadonlyArray<{ level: 2 | 3; id: string; text: string }>;
   labels: { pages: string; onThisPage: string; menu: string };
-  /** "de", solange die Seitentitel noch nicht uebersetzt sind. */
-  titlesLang?: "de";
+  /** "de", wenn die Seite auf Deutsch zurueckfiel; die Abschnittstitel kommen dann aus dem deutschen Text. Seitentitel stehen immer in der Sprache der Website. */
+  headingsLang?: "de";
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -27,11 +27,11 @@ export function DocsSidebar({ pages, headings, labels, titlesLang }: {
         {pages.map((page) => {
           const href = page.slug ? `/docs/${page.slug}` : "/docs";
           const current = pathname === href;
-          return <Link key={href} href={href} className={current ? styles.active : undefined} aria-current={current ? "page" : undefined} lang={titlesLang} onClick={() => setOpen(false)}>{page.title}</Link>;
+          return <Link key={href} href={href} className={current ? styles.active : undefined} aria-current={current ? "page" : undefined} onClick={() => setOpen(false)}>{page.title}</Link>;
         })}
         {sections.length > 0 && <>
           <span className={styles.sidebarLabel}>{labels.onThisPage}</span>
-          {sections.map((heading) => <a key={heading.id} href={`#${heading.id}`} className={styles.headingLink} lang={titlesLang} onClick={() => setOpen(false)}>{heading.text}</a>)}
+          {sections.map((heading) => <a key={heading.id} href={`#${heading.id}`} className={styles.headingLink} lang={headingsLang} onClick={() => setOpen(false)}>{heading.text}</a>)}
         </>}
       </div>
     </nav>

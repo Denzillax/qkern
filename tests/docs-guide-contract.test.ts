@@ -2,14 +2,30 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GUIDE_PAGES, guidePath, pageBySlug } from "@/lib/docs/pages";
+import { GUIDE_PAGES, availableGuideLocales, guidePath, guideTitle, pageBySlug } from "@/lib/docs/pages";
+import { GUIDE_LOCALE_TEXT } from "@/lib/docs/locales";
+import { LOCALES, type Locale } from "@/lib/i18n/locales";
 import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
 import { loadGuidePage } from "@/lib/docs/load";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
-import { parseGuide, plain, type Block, type Inline } from "@/lib/docs/markdown";
+import { parseGuide, plain, type Block, type GuideDocument, type Inline } from "@/lib/docs/markdown";
 import { isExternal } from "@/lib/docs/links";
 
-const BANNED = ["nahtlos", "robust", "leistungsstark", "revolutionär", "tauchen wir ein", "es ist wichtig zu beachten", "in der heutigen zeit", "spielt eine entscheidende rolle", "zusammenfassend", "\u2014", "\u2013"];
+/** Jede Sprache, deren fuenf Dateien schon da sind. Heute Deutsch; neue Ordner vergroessern die Abdeckung von selbst. */
+const LOCALES_ON_DISK = availableGuideLocales();
+
+async function readGuide(locale: Locale, file: string): Promise<GuideDocument> {
+  const page = GUIDE_PAGES.find((entry) => entry.file === file)!;
+  return parseGuide(await readFile(guidePath(locale, page), "utf8"));
+}
+
+function glossaryEntries(doc: GuideDocument) {
+  return doc.blocks.filter((b) => b.kind === "heading" && b.level === 2);
+}
+
+function codeBlocks(doc: GuideDocument) {
+  return doc.blocks.flatMap((b) => (b.kind === "code" ? [{ language: b.language, code: b.code }] : []));
+}
 
 function walk(blocks: readonly Block[], visit: (text: string, inlines: readonly Inline[]) => void) {
   for (const block of blocks) {
@@ -27,6 +43,13 @@ describe("docs guide contract", () => {
     expect(pageBySlug("glossar")?.file).toBe("GLOSSAR.md");
     expect(pageBySlug("nicht-da")).toBeUndefined();
     expect(guidePath("de", GUIDE_PAGES[0])).toBe(path.resolve(process.cwd(), "docs/guide/de/WAS_IST_QKERN.md"));
+  });
+
+  it("titles every page in every locale and knows German is on disk", () => {
+    for (const page of GUIDE_PAGES) for (const locale of LOCALES) expect(guideTitle(page, locale), `${page.file} ${locale}`).not.toBe("");
+    expect(guideTitle(pageBySlug("schnellstart")!, "en")).toBe("Quick start");
+    expect(LOCALES_ON_DISK).toContain("de");
+    for (const locale of LOCALES_ON_DISK) for (const page of GUIDE_PAGES) expect(existsSync(guidePath(locale, page))).toBe(true);
   });
 
   it("fills every placeholder from a real source and leaves none behind", async () => {
@@ -58,9 +81,14 @@ describe("docs guide contract", () => {
     })).rejects.toThrow("Kein gruener Nachweis fuer Control Plane und Data API in docs/evidence");
   });
 
-  it("links only to existing pages, anchors and glossary entries", async () => {
-    const docs = new Map<string, ReturnType<typeof parseGuide>>();
-    for (const page of GUIDE_PAGES) docs.set(page.file, parseGuide(await readFile(guidePath("de", page), "utf8")));
+});
+
+describe.each(LOCALES_ON_DISK.map((locale) => [locale]))("docs guide contract (%s)", (locale) => {
+  const text = GUIDE_LOCALE_TEXT[locale];
+
+  it(`${locale}: links only to existing pages, anchors and glossary entries`, async () => {
+    const docs = new Map<string, GuideDocument>();
+    for (const page of GUIDE_PAGES) docs.set(page.file, await readGuide(locale, page.file));
     const anchors = new Map([...docs].map(([file, doc]) => [file, new Set(doc.headings.map((h) => h.id))]));
     for (const [file, doc] of docs) {
       walk(doc.blocks, (_, inlines) => {
@@ -69,40 +97,60 @@ describe("docs guide contract", () => {
           if (isExternal(inline.href)) continue;
           const [target, hash] = inline.href.replace(/^\.\//, "").split("#");
           const targetFile = target === "" ? file : target;
-          expect(docs.has(targetFile), `${file}: Link auf ${inline.href} zeigt ins Leere`).toBe(true);
-          if (hash) expect(anchors.get(targetFile)?.has(hash), `${file}: Anker ${inline.href} gibt es nicht`).toBe(true);
+          expect(docs.has(targetFile), `${locale}/${file}: Link auf ${inline.href} zeigt ins Leere`).toBe(true);
+          if (hash) expect(anchors.get(targetFile)?.has(hash), `${locale}/${file}: Anker ${inline.href} gibt es nicht`).toBe(true);
         }
       });
     }
   });
 
-  it("gives every glossary entry exactly three lines with the three lead-ins, alphabetically", async () => {
-    const doc = parseGuide(await readFile(guidePath("de", pageBySlug("glossar")!), "utf8"));
-    const entries = doc.blocks.filter((b) => b.kind === "heading" && b.level === 2);
+  it(`${locale}: gives every glossary entry exactly three lines with the three lead-ins, alphabetically`, async () => {
+    const doc = await readGuide(locale, "GLOSSAR.md");
+    const entries = glossaryEntries(doc);
     expect(entries.length).toBeGreaterThanOrEqual(80);
     const titles = entries.map((b) => (b.kind === "heading" ? plain(b.text) : ""));
-    const collator = new Intl.Collator("de", { sensitivity: "base" });
+    const collator = new Intl.Collator(locale, { sensitivity: "base" });
     expect(titles).toEqual([...titles].sort(collator.compare));
     for (let i = 0; i < doc.blocks.length; i += 1) {
       const block = doc.blocks[i];
       if (block.kind !== "heading" || block.level !== 2) continue;
       const list = doc.blocks[i + 1];
-      expect(list?.kind, `${plain(block.text)}: nach der Ueberschrift muss die Liste kommen`).toBe("list");
+      expect(list?.kind, `${locale} ${plain(block.text)}: nach der Ueberschrift muss die Liste kommen`).toBe("list");
       if (list?.kind !== "list") continue;
-      expect(list.items.length, `${plain(block.text)}: genau drei Zeilen`).toBe(3);
-      expect(list.items.map((item) => (item[0]?.kind === "strong" ? item[0].text : ""))).toEqual(["Was es ist:", "In QKERN:", "Bei Supabase:"]);
+      expect(list.items.length, `${locale} ${plain(block.text)}: genau drei Zeilen`).toBe(3);
+      expect(list.items.map((item) => (item[0]?.kind === "strong" ? item[0].text : "")), `${locale} ${plain(block.text)}`).toEqual([...text.leadIns]);
       const next = doc.blocks[i + 2];
-      expect(next === undefined || (next.kind === "heading" && next.level === 2), `${plain(block.text)}: nach den drei Zeilen kommt nichts mehr`).toBe(true);
+      expect(next === undefined || (next.kind === "heading" && next.level === 2), `${locale} ${plain(block.text)}: nach den drei Zeilen kommt nichts mehr`).toBe(true);
     }
   });
 
-  it("reads like a person wrote it", async () => {
+  it(`${locale}: reads like a person wrote it`, async () => {
     for (const page of GUIDE_PAGES) {
-      const doc = parseGuide(await readFile(guidePath("de", page), "utf8"));
-      walk(doc.blocks, (text) => {
-        const lower = text.toLowerCase();
-        for (const word of BANNED) expect(lower, `${page.file}: "${word}" in "${text.slice(0, 60)}"`).not.toContain(word);
+      const doc = await readGuide(locale, page.file);
+      walk(doc.blocks, (value) => {
+        const lower = value.toLowerCase();
+        for (const word of text.banned) expect(lower, `${locale}/${page.file}: "${word}" in "${value.slice(0, 60)}"`).not.toContain(word);
       });
+    }
+  });
+});
+
+/** Eine Uebersetzung hat denselben Bau wie das Deutsche: gleich viele Abschnitte, Eintraege und dieselben Codebloecke. */
+describe("docs guide cross-locale contract", () => {
+  const translations = LOCALES_ON_DISK.filter((locale) => locale !== "de");
+
+  it("has German as the reference", () => {
+    expect(LOCALES_ON_DISK[0]).toBe("de");
+  });
+
+  it.each(translations.map((locale) => [locale]))("%s: same sections, glossary entries and code blocks as German", async (locale) => {
+    for (const page of GUIDE_PAGES) {
+      const de = await readGuide("de", page.file);
+      const other = await readGuide(locale, page.file);
+      const level2 = (doc: GuideDocument) => doc.blocks.filter((b) => b.kind === "heading" && b.level === 2).length;
+      expect(level2(other), `${locale}/${page.file}: Zahl der Abschnitte`).toBe(level2(de));
+      expect(codeBlocks(other), `${locale}/${page.file}: Codebloecke`).toEqual(codeBlocks(de));
+      if (page.file === "GLOSSAR.md") expect(glossaryEntries(other).length, `${locale}: Glossareintraege`).toBe(glossaryEntries(de).length);
     }
   });
 });

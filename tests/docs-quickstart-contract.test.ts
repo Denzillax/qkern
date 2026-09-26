@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseGuide } from "@/lib/docs/markdown";
-import { guidePath, pageBySlug } from "@/lib/docs/pages";
+import { availableGuideLocales, guidePath, pageBySlug } from "@/lib/docs/pages";
+import type { Locale } from "@/lib/i18n/locales";
 import { qkernOpenAPI } from "@/lib/openapi";
 import { USAGE } from "@/cli/src/commands";
 
@@ -22,15 +23,17 @@ function apiPaths(code: string): string[] {
  * Befehl abtippt, den es nicht gibt, verliert das Vertrauen an Schritt 3.
  */
 describe("docs quickstart contract", () => {
-  async function codeBlocks(slug: string) {
-    const doc = parseGuide(await readFile(guidePath("de", pageBySlug(slug)!), "utf8"));
+  const locales = availableGuideLocales().map((locale) => [locale] as const);
+
+  async function codeBlocks(slug: string, locale: Locale = "de") {
+    const doc = parseGuide(await readFile(guidePath(locale, pageBySlug(slug)!), "utf8"));
     return doc.blocks.flatMap((b) => (b.kind === "code" ? [b] : []));
   }
 
-  it("uses the same commands in Schnellstart and Erstes Backend", async () => {
-    const a = (await codeBlocks("schnellstart")).map((b) => b.code);
-    const b = (await codeBlocks("erstes-backend")).map((b) => b.code);
-    expect(b).toEqual(a);
+  it.each(locales)("%s: uses the same commands in Schnellstart and Erstes Backend", async (locale) => {
+    const a = (await codeBlocks("schnellstart", locale)).map((b) => b.code);
+    const b = (await codeBlocks("erstes-backend", locale)).map((b) => b.code);
+    expect(b, locale).toEqual(a);
   });
 
   it("names only npm scripts, files, CLI commands and API paths that exist", async () => {
@@ -71,14 +74,14 @@ describe("docs quickstart contract", () => {
     for (const name of installs) expect(sdk.name, `${name} ist nicht das SDK-Paket`).toBe(name);
   });
 
-  it("keeps versions as placeholders", async () => {
+  it.each(locales)("%s: keeps versions as placeholders", async (locale) => {
     for (const slug of ["schnellstart", "erstes-backend"]) {
-      const raw = await readFile(guidePath("de", pageBySlug(slug)!), "utf8");
-      expect(raw, `${slug}: {{node}} fehlt`).toContain("{{node}}");
-      expect(raw, `${slug}: Node-Version als Zahl`).not.toMatch(/Node\.js \d/);
-      expect(raw, `${slug}: Version als Zahl`).not.toMatch(/\bv\d+\.\d+\.\d+\b/);
-      expect(raw, `${slug}: QKERN-Version als Zahl`).not.toMatch(/\b2\.\d\d\.\d\b/);
-      expect(raw, `${slug}: QKERN-Version als Zahl`).not.toMatch(/\b2\.\d\d\b/);
+      const raw = await readFile(guidePath(locale, pageBySlug(slug)!), "utf8");
+      expect(raw, `${locale}/${slug}: {{node}} fehlt`).toContain("{{node}}");
+      expect(raw, `${locale}/${slug}: Node-Version als Zahl`).not.toMatch(/Node\.js \d/);
+      expect(raw, `${locale}/${slug}: Version als Zahl`).not.toMatch(/\bv\d+\.\d+\.\d+\b/);
+      expect(raw, `${locale}/${slug}: QKERN-Version als Zahl`).not.toMatch(/\b2\.\d\d\.\d\b/);
+      expect(raw, `${locale}/${slug}: QKERN-Version als Zahl`).not.toMatch(/\b2\.\d\d\b/);
     }
   });
 });
