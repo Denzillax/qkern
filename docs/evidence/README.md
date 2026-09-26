@@ -1432,3 +1432,14 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/billing-view-local-run1.log` | Vitest lokal (Windows) | 1302 bestanden, exit 0 |
 | `2026-09-26/billing-view-local-run2.log` | Vitest lokal (Windows) | 1302 bestanden, exit 0, Wiederholung |
 | `2026-09-26/billing-view-mutation.log` | Vitest lokal, Mutation (Anzeige rundet auf) | **2 fallen, exit 1 – absichtlich** |
+
+## Läufe zu Release 2.38 (26. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-26/function-secrets-vault-run1.log` | HashiCorp Vault 1.18 | 7 von 7, exit 0 |
+| `2026-09-26/function-secrets-vault-run2.log` | HashiCorp Vault 1.18 | 7 von 7, exit 0, Wiederholung |
+| `2026-09-26/function-secrets-vault-mutation.log` | HashiCorp Vault 1.18, Mutation (403 gilt als fehlend) | **6 von 7, exit 1 – absichtlich** |
+| `2026-09-26/function-secrets-local-mutation.log` | Vitest lokal, Mutation (403 gilt als fehlend), nur Inspektor-Tests | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-26/function-secrets-local-run1.log` | Vitest lokal (Windows) | 1319 bestanden, exit 0 |
+| `2026-09-26/function-secrets-local-run2.log` | Vitest lokal (Windows) | 1319 bestanden, exit 0, Wiederholung |

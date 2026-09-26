@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.37.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.38.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -49,8 +49,26 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Paketversion: `2.37.0`
-- Aktueller Slice: 2.37 Was es kostet – der Platzhalter "Abrechnung"
+- Paketversion: `2.38.0`
+- Aktueller Slice: 2.38 Secrets, ohne Werte – der Platzhalter "Secrets"
+  unter Functions & Jobs ist eine echte, nur lesende Ansicht
+  (`components/console/compute-secrets-view.tsx`): je Function jede
+  deklarierte Secret-Referenz und ob der Vault sie aufloest (vorhanden,
+  fehlt, kein Zugriff). Port `FunctionSecretInspector`
+  (`lib/server/compute/function-secret-inspector.ts`) fragt nur den
+  Metadaten-Endpunkt von KV v2, nie `data/`; 404 wird fehlt, 403 wird kein
+  Zugriff, alles andere ein typisierter Fehler ohne Pfad und ohne
+  Vault-Meldung. Die Pfadregel ist dieselbe wie beim Signatur-Resolver
+  (`vaultSecretPath`, jetzt exportiert); eine Referenz ausserhalb davon ist
+  kein Zugriff ohne Anfrage. Route
+  `GET .../compute/functions/{functionId}/secrets`, gleiche Berechtigung
+  wie die Definitionsrouten, `private, no-store`, 503 mit Code ohne Vault.
+  Vault-Fall "(2.38)" mit eingeschraenktem Token und Fetch-Spion: drei
+  Anfragen, alle an `metadata/`, keine an `data/`; Vault-Zertifizierung
+  6 auf 7 Faelle. Mutation (403 gilt als fehlend) faellt lokal in 1 Fall
+  und im Vault-Stack in 1 Fall. Anlegen und Aendern bleibt im Vault.
+  Im Browser nicht gesehen (Sitzung abgelaufen)
+- Vorheriger Slice: 2.37 Was es kostet – der Platzhalter "Abrechnung"
   unter Einstellungen ist eine echte, nur lesende Ansicht
   (`components/console/billing-settings-view.tsx`): Preisblatt (aus den
   bepreisten Zeilen der Abrechnungsprojektion `usage/billing`, Preise zum
@@ -65,7 +83,7 @@ Grossbuchstaben.
   Vertragstest: keine Schreibmethode, kein Betrag von Hand, jede
   Metrikbezeichnung uebersetzt. Mutation (Anzeige rundet auf) faellt in
   2 Faellen. Im Browser nur der Aus-Zustand gesehen (Metering lokal aus)
-- Vorheriger Slice: 2.36 Die Kette in Zeitreihenfolge – Befund aus dem
+- Davor: 2.36 Die Kette in Zeitreihenfolge – Befund aus dem
   Sicherheits-Review zu 2.35: `created_at` der Audit-Zeile ist `now()`
   der Transaktion, der Kettenlock kommt spaeter; zwei gleichzeitige
   Schreiber konnten die Kette in eine Reihenfolge bringen, die der

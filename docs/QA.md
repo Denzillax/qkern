@@ -4964,3 +4964,33 @@ Docker-Zertifizierung.
 Nicht erbracht: keine Zahlungsanbindung, kein Versand; im Browser nur der
 Aus-Zustand gesehen, weil Metering lokal aus ist; ein "gueltig ab" je Preis
 fehlt, weil kein Endpunkt es liefert.
+
+## Secrets, ohne Werte – Release 2.38
+
+Die Ansicht Functions & Jobs, Secrets zeigt je Function die
+Secret-Referenzen ihrer Definition und ob der Vault sie aufloest: vorhanden,
+fehlt oder kein Zugriff. Einen Wert liefert weder die Route noch die
+Ansicht, und die Frage "gibt es ihn" stellt der Inspektor nur an den
+Metadaten-Endpunkt von KV Version 2. Der Datenendpunkt wird nie angefragt;
+der Vault-Fall beweist das mit einem Fetch-Spion, der nach sechs Referenzen
+genau drei Anfragen sieht, alle unter `metadata/`.
+
+Die Pfadregel ist die des Signatur-Resolvers, jetzt als eine exportierte
+Funktion, die beide benutzen. `vault:../sys/policies/acl/root`,
+`STRIPE_KEY` und `vault:/sys/health` sind kein Zugriff, ohne dass eine
+Anfrage den Prozess verlaesst. Ein echter 403 vom Vault, geprueft mit einem
+Token, dessen Policy nur zwei Metadatenpfade lesen darf, ist ebenfalls kein
+Zugriff. Der typisierte Fehler traegt weder Pfad noch Vault-Meldung.
+
+Mutation: 403 gilt als fehlend. Lokal faellt 1 von 10 Faellen der
+Inspektor-Tests, im Vault-Stack 1 von 7, exit 1 beide Male.
+
+Checkpoint `2.38.0` am 26. September 2026: Vault-Stack 7 von 7, exit 0,
+zweimal reproduziert; Lokal 1319 bestanden, 0 fehlgeschlagen, zweimal
+reproduziert; `next build` gruen.
+
+Nicht erbracht: Anlegen und Aendern von Secrets bleibt im Vault. Eine
+Referenz ohne `vault:` ist in einer Definition erlaubt und erscheint hier
+als kein Zugriff; die Ansicht sagt das in einem Satz. Die Metadaten laufen
+durch den Serverprozess, auch wenn sie ihn nie verlassen. Im Browser nicht
+gesehen.

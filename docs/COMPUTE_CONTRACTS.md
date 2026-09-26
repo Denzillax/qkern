@@ -17,7 +17,9 @@ Liste exakter öffentlicher HTTPS-Origins. Localhost, IP-Literale, `.local`,
 `.internal`, Credentials, andere Ports und ungenaue Origins werden abgewiesen.
 
 Secrets erscheinen nur als Referenzen. Der Sandbox-Port erhält keine von QKERN
-aufgelösten Secret-Werte. Input ist auf 64 KiB, Output auf 256 KiB sowie Tiefe und
+aufgelösten Secret-Werte. Seit `2.38.0` prüft die Console je Referenz nur, ob
+der Vault sie auflöst, über den Metadaten-Endpunkt von KV Version 2 und nie
+über den Datenendpunkt; die Antwort trägt genau eines von drei Wörtern. Input ist auf 64 KiB, Output auf 256 KiB sowie Tiefe und
 Knoten begrenzt. Response-Header sind klein, CRLF-frei und schließen Cookie- und
 Hop-by-Hop-Header aus. Timeout und Abort werden außerhalb der Sandbox erzwungen.
 
