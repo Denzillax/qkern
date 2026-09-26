@@ -263,12 +263,24 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
       if (index % 10 === 9) await new Promise((resolve) => setTimeout(resolve, 40));
     }
 
-    const deadline = Date.now() + 30_000;
+    // Wartebudget fuer die Zustellung, ausdruecklich und gross: auf einem
+    // geteilten CI-Runner kamen 112 von 120 Aenderungen in 30 s an (2.32),
+    // der Rest war unterwegs. Die harten Zusicherungen bleiben dieselben:
+    // Vollstaendigkeit, Reihenfolge und die Latenzschranken je Ereignis.
+    // Faellt das Budget, nennt die Meldung, wie viele fehlten und wie lange
+    // gewartet wurde, statt nur zwei ungleiche Listen zu zeigen.
+    const waitStartedAt = Date.now();
+    const deadline = waitStartedAt + 75_000;
     while (sink.order.length < written.length && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
+    const waitedMs = Date.now() - waitStartedAt;
     runtime.stop();
     await loop;
+    expect(
+      sink.order.length,
+      `soak: ${sink.order.length} von ${written.length} Aenderungen nach ${waitedMs} ms angekommen`,
+    ).toBe(written.length);
 
     const latencies = written
       .filter((label) => sink.arrivals.has(label))
@@ -309,5 +321,5 @@ describe.runIf(enabled)("Realtime change soak PostgreSQL certification", () => {
     // Gebündelt heisst gebündelt: deutlich weniger Buchungen als Nachrichten.
     console.error(`soak: ${bookings.rows[0].count} Buchungen fuer ${sink.order.length} Nachrichten`);
     expect(Number(bookings.rows[0].count)).toBeLessThan(sink.order.length / 5);
-  }, 90_000);
+  }, 150_000);
 });
