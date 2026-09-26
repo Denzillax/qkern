@@ -1,10 +1,23 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { GUIDE_PAGES, guidePath, pageBySlug } from "@/lib/docs/pages";
 import { fillPlaceholders, guidePlaceholders } from "@/lib/docs/placeholders";
 import { loadGuidePage } from "@/lib/docs/load";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
+import { parseGuide, plain, type Block, type Inline } from "@/lib/docs/markdown";
+
+const BANNED = ["nahtlos", "robust", "leistungsstark", "revolutionär", "tauchen wir ein", "es ist wichtig zu beachten", "in der heutigen zeit", "spielt eine entscheidende rolle", "zusammenfassend", "—", "–"];
+
+function walk(blocks: readonly Block[], visit: (text: string, inlines: readonly Inline[]) => void) {
+  for (const block of blocks) {
+    if (block.kind === "code") continue;
+    if (block.kind === "table") { for (const cell of [...block.header, ...block.rows.flat()]) visit(plain(cell), cell); continue; }
+    if (block.kind === "list" || block.kind === "ordered") { for (const item of block.items) visit(plain(item), item); continue; }
+    visit(plain(block.text), block.text);
+  }
+}
 
 describe("docs guide contract", () => {
   it("lists five pages whose files exist, with unique slugs", () => {
@@ -40,5 +53,51 @@ describe("docs guide contract", () => {
       readPackage: async () => ({ version: "9.9.9", engines: { node: ">=24.7.0" } }),
       summary: async () => ({ ...summary, rows: summary.rows.filter((row) => row.name !== "Control Plane und Data API") }),
     })).rejects.toThrow("Kein gruener Nachweis fuer Control Plane und Data API in docs/evidence");
+  });
+
+  it("links only to existing pages, anchors and glossary entries", async () => {
+    const docs = new Map<string, ReturnType<typeof parseGuide>>();
+    for (const page of GUIDE_PAGES) docs.set(page.file, parseGuide(await readFile(guidePath("de", page), "utf8")));
+    const anchors = new Map([...docs].map(([file, doc]) => [file, new Set(doc.headings.map((h) => h.id))]));
+    for (const [file, doc] of docs) {
+      walk(doc.blocks, (_, inlines) => {
+        for (const inline of inlines) {
+          if (inline.kind !== "link") continue;
+          if (/^https?:\/\//.test(inline.href) || inline.href.startsWith("mailto:")) continue;
+          const [target, hash] = inline.href.replace(/^\.\//, "").split("#");
+          const targetFile = target === "" ? file : target;
+          expect(docs.has(targetFile), `${file}: Link auf ${inline.href} zeigt ins Leere`).toBe(true);
+          if (hash) expect(anchors.get(targetFile)?.has(hash), `${file}: Anker ${inline.href} gibt es nicht`).toBe(true);
+        }
+      });
+    }
+  });
+
+  it("gives every glossary entry exactly three lines with the three lead-ins, alphabetically", async () => {
+    const doc = parseGuide(await readFile(guidePath("de", pageBySlug("glossar")!), "utf8"));
+    const entries = doc.blocks.filter((b) => b.kind === "heading" && b.level === 2);
+    expect(entries.length).toBeGreaterThanOrEqual(80);
+    const titles = entries.map((b) => (b.kind === "heading" ? plain(b.text) : ""));
+    const collator = new Intl.Collator("de", { sensitivity: "base" });
+    expect(titles).toEqual([...titles].sort(collator.compare));
+    for (let i = 0; i < doc.blocks.length; i += 1) {
+      const block = doc.blocks[i];
+      if (block.kind !== "heading" || block.level !== 2) continue;
+      const list = doc.blocks[i + 1];
+      expect(list?.kind, `${plain(block.text)}: nach der Ueberschrift muss die Liste kommen`).toBe("list");
+      if (list?.kind !== "list") continue;
+      expect(list.items.length, `${plain(block.text)}: genau drei Zeilen`).toBe(3);
+      expect(list.items.map((item) => (item[0]?.kind === "strong" ? item[0].text : ""))).toEqual(["Was es ist:", "In QKERN:", "Bei Supabase:"]);
+    }
+  });
+
+  it("reads like a person wrote it", async () => {
+    for (const page of GUIDE_PAGES) {
+      const doc = parseGuide(await readFile(guidePath("de", page), "utf8"));
+      walk(doc.blocks, (text) => {
+        const lower = text.toLowerCase();
+        for (const word of BANNED) expect(lower, `${page.file}: "${word}" in "${text.slice(0, 60)}"`).not.toContain(word);
+      });
+    }
   });
 });
