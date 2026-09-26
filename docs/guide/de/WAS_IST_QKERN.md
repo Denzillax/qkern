@@ -50,4 +50,4 @@ Begriffe, die dir unterwegs begegnen, erklärt das [Glossar](GLOSSAR.md), je in 
 - Es gibt keinen Anbieter, bei dem du QKERN mit einem Klick bekommst. Du betreibst es selbst oder lässt es betreiben.
 - Eine neue Tabelle legst du heute per SQL an, nicht über einen Assistenten in der Konsole.
 - Die Bindung eines Projekts an seine Datenbank macht in Produktion ein Provisionierer. Lokal macht das ein kleines Skript, das der Schnellstart zeigt.
-- Diese Seiten gibt es bisher auf Deutsch. Englisch, Französisch und Italienisch folgen.
+- Diese Seiten gibt es auf Deutsch, Englisch, Französisch und Italienisch. Die deutsche Fassung ist das Original; wo die Übersetzungen abweichen, gilt sie.

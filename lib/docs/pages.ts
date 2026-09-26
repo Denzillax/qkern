@@ -26,19 +26,19 @@ export const GUIDE_PAGES: readonly GuidePage[] = [
   {
     slug: "schnellstart",
     file: "SCHNELLSTART.md",
-    titles: { de: "Schnellstart", en: "Quick start", fr: "Démarrage rapide", it: "Avvio rapido" },
+    titles: { de: "Schnellstart", en: "Quickstart", fr: "Démarrage rapide", it: "Avvio rapido" },
     audience: "A",
   },
   {
     slug: "erstes-backend",
     file: "ERSTES_BACKEND.md",
-    titles: { de: "Erstes Backend", en: "First backend", fr: "Premier backend", it: "Primo backend" },
+    titles: { de: "Erstes Backend", en: "First backend", fr: "Premier backend", it: "Il primo backend" },
     audience: "B",
   },
   {
     slug: "gruender",
     file: "FUER_GRUENDER.md",
-    titles: { de: "Für Gründer", en: "For founders", fr: "Pour les fondateurs", it: "Per i fondatori" },
+    titles: { de: "Für Gründer", en: "For founders", fr: "Pour les fondateurs", it: "Per chi fonda" },
     audience: "C",
   },
   {

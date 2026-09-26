@@ -45,9 +45,14 @@ describe("docs guide contract", () => {
     expect(guidePath("de", GUIDE_PAGES[0])).toBe(path.resolve(process.cwd(), "docs/guide/de/WAS_IST_QKERN.md"));
   });
 
-  it("titles every page in every locale and knows German is on disk", () => {
+  it("titles every page in every locale and knows German is on disk", async () => {
     for (const page of GUIDE_PAGES) for (const locale of LOCALES) expect(guideTitle(page, locale), `${page.file} ${locale}`).not.toBe("");
-    expect(guideTitle(pageBySlug("schnellstart")!, "en")).toBe("Quick start");
+    expect(guideTitle(pageBySlug("schnellstart")!, "en")).toBe("Quickstart");
+    // Der Seitentitel in der Seitenleiste ist die Ueberschrift der Seite selbst, je Sprache.
+    for (const locale of availableGuideLocales()) for (const page of GUIDE_PAGES) {
+      const doc = parseGuide(await readFile(guidePath(locale, page), "utf8"));
+      expect(doc.title, `${locale}/${page.file}: Titel in pages.ts weicht von der Ueberschrift ab`).toBe(guideTitle(page, locale));
+    }
     expect(LOCALES_ON_DISK).toContain("de");
   });
 
