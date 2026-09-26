@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "auth-provider-2.52.log",
+  "commit": "aed209019e5374b32580395539ecb0d07b5988a8",
+  "commitSubject": "release: 2.52.0 Grenzen, Geheimnisse, alte Versprechen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "7 passed (7)",
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

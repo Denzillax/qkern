@@ -346,14 +346,24 @@ describe.runIf(enabled)("Project Auth provider certification", () => {
    * dieses Releases reicht stattdessen die vollen Provider-Objekte durch —
    * dann faellt genau dieser Fall, am Geheimnis-Muster und an der Form.
    */
-  it("lists exactly the configured providers as a two-field projection", () => {
+  it("lists exactly the configured providers as a three-field projection", () => {
+    // Seit 2.52 traegt die Projektion ein drittes Feld: einen Wahrheitswert,
+    // den der Sicherheitsberater braucht. Er ist ein Vergleichsergebnis und
+    // hat keine Stelle, an der eine Kennung oder ein Geheimnis stehen koennte.
+    // Die oeffentliche Route verengt weiterhin auf zwei Felder; das prueft der
+    // zweite Teil, sonst waere die Verengung nur eine Behauptung.
     const service = createService();
     const listed = service.listOidcProviders();
     expect(listed).toEqual([
-      { id: "certification", issuer: ISSUER },
-      { id: "partner", issuer: PARTNER_ISSUER },
+      { id: "certification", issuer: ISSUER, requiresVerifiedEmail: true },
+      { id: "partner", issuer: PARTNER_ISSUER, requiresVerifiedEmail: true },
     ]);
     expect(JSON.stringify(listed)).not.toMatch(/client|secret|endpoint|jwks/i);
+
+    const publicProjection = listed.map((provider) => ({ id: provider.id, issuer: provider.issuer }));
+    for (const entry of publicProjection) {
+      expect(Object.keys(entry).sort()).toEqual(["id", "issuer"]);
+    }
   });
 
 });

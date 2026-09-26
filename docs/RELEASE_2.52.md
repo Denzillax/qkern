@@ -32,6 +32,18 @@ einen einzigen Wert, und vier alte offene Punkte eingelöst.
 
 `next build` grün.
 
+## Nachtrag zum Verfahren
+
+Die Zertifizierung der Anmeldeanbieter fiel in der CI, nicht lokal: Der
+Berater-Slice erweiterte die Dienstmethode `listOidcProviders` um ein Feld,
+und ein Fall im Mailpit-und-Dex-Stack prüft genau die Form dieser
+Projektion. Vor dem Release hatte ich nur den PostgreSQL- und den
+Vault-Stack gefahren, obwohl die Änderung einen dritten berührte. Das
+dritte Feld ist **nicht** in die öffentliche Route gerutscht; die verengt
+weiterhin auf zwei. Der Fall ist nachgezogen und prüft die Verengung jetzt
+ausdrücklich, statt sie nur zu behaupten: `docs/evidence/2026-09-26/auth-provider-2.52.log`,
+7 von 7, exit 0.
+
 ## Ehrlich offen
 
 - **Eine Grenze je Identität hält keinen verteilten Angriff auf.**
