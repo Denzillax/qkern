@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.60.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.61.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -2819,7 +2819,12 @@ und die Antwort der Route tut es auch:
   keinen Zeitpunkt, an dem etwas passiert wäre.
 - **Cron-Vorkommen**: kein gespeichertes Log, sondern je Anfrage rekonstruiert.
 - **Ausgabe eines Function-Containers**: wird nicht gespeichert (`0045`).
-- **Postgres-, Pooler-, Realtime- und API-Gateway-Log**: kein Backend.
+- **Postgres-Serverlog**: liegt in Dateien neben dem Datenverzeichnis, auf die
+  QKERN keinen Zugriff hat.
+- **Pooler- und API-Gateway-Log**: gibt es nicht, weil es weder einen Pooler
+  noch einen protokollierenden Rand gibt (siehe „Drei Logs, die es nicht
+  gibt“).
+- **Realtime-Log**: kein Backend.
 
 **Gespeicherte Suchen** halten den strukturierten Filter — Zeitraum, Quellen,
 getypte Filter —, nie eine Abfrage. Sie liegen in der Ablage des Browsers, je
@@ -2931,8 +2936,9 @@ oder einen festen Fehlercode wie `FUNCTION_TIMEOUT`. Mehr nicht.
 - **Keine Ausgabe des Containers.** stdout und stderr werden nicht
   gespeichert. Sie stammen aus fremdem Code und könnten alles enthalten, was
   die Function gesehen hat; das ist die Haltung aus `1.22.0` und sie gilt
-  weiter. Die Platzhalterseite **Functions → Function-Logs** bleibt deshalb
-  ein Platzhalter.
+  weiter. Seit `2.61.0` ist **Functions → Function-Logs** trotzdem kein
+  Platzhalter mehr, sondern die Seite, die sagt, warum es diese Ausgabe nicht
+  gibt (siehe „Drei Logs, die es nicht gibt“).
 - **Keine Ausgangsverbindungen.** Jede Verbindung einer Function wird gegen
   ihre Allowlist geprüft, aber die Prüfung hinterlässt keine Zeile. Eine
   Liste der Ziele je Aufruf gibt es nicht, und diese Seite erfindet keine.
@@ -3200,9 +3206,15 @@ Die Seite zeigt deshalb genau zwei Dinge, jedes mit seinem Namen:
 
 1. **Die Stundenreihe der Metrik `api_requests`** aus `2.45.0`. Sie ist
    ausdrücklich **keine** Zahl der Data-API-Anfragen: Unter derselben Metrik
-   zählen auch Control Plane, Auth, Storage, Queues, Realtime und MCP mit. Das
-   Ereignis trägt seine Quelle zwar in der Spalte `source`, die Aggregation
-   gruppiert aber nur nach Metrik. Die Kurve ist eine Obergrenze.
+   zählen auch Project Storage und die Queues mit. Das Ereignis trägt seine
+   Quelle zwar in der Spalte `source`, die Aggregation gruppiert aber nur nach
+   Metrik. Die Kurve ist eine Obergrenze.
+
+   `2.61.0` hat diesen Satz berichtigt. Bis dahin nannte er zusätzlich Control
+   Plane, Auth, Realtime und MCP. Nachgezählt an den Aufrufstellen von
+   `admitApiRequest` zählen diese unter `api_requests` gar nicht mit; die
+   Messung kennt sie als Quelle, aber keine von ihnen legt ein solches
+   Ereignis an. Der Satz war damit in die beruhigende Richtung falsch.
 2. **Die Freigabe der Data API** aus `2.32.0`: welche Tabellen im erzeugten
    OpenAPI-Dokument stehen. Das sagt, was möglich ist, nicht was geschehen
    ist.
@@ -3395,6 +3407,116 @@ Query-Parameter, `private, no-store`. Eine Datenbankreferenz trägt die Antwort
 nicht; wer sie braucht, nimmt `/v1/projects/{projectId}/environments`, und auch
 dort ist sie keine Adresse. Worauf eine Umgebung läuft, steht unter
 Einstellungen → Infrastruktur und wird hier nicht wiederholt.
+
+### Drei Logs, die es nicht gibt
+
+Seit `2.61.0` sind **Functions → Function-Logs**, **Logs → API-Gateway** und
+**Logs → Pooler** keine Platzhalterseiten mehr. Alle drei versprachen ein Log,
+und bei allen dreien war die Prüfung wichtiger als die Formulierung: Gibt es
+doch eine echte Lesung, die die Frage wenigstens teilweise beantwortet? Einmal
+ja, zweimal nein. Der Unterschied zu `2.51.0` ist, dass hier zweimal nicht das
+Backend fehlt, sondern die Sache selbst.
+
+**Function-Logs: die Ausgabe gibt es nicht, das Image schon.** Der Platzhalter
+versprach „Ausgaben aus dem Container“. Migration `0045` hält `stdout` und
+`stderr` bewusst nicht und schreibt den Grund selbst hin: Beides stammt aus
+fremdem Code und könnte alles enthalten, was die Function gesehen hat. Die
+Sandbox macht daraus mehr als eine Haltung. `stdout` ist dort gar kein
+Ausgabekanal, sondern die Leitung: Host und Container sprechen darüber
+zeilenweise JSON, und eine Zeile, die kein JSON ist, beendet den Aufruf mit
+einem festen Fehlercode. Eine Function kann darauf also nicht protokollieren,
+ohne sich selbst abzubrechen. `stderr` wird gelesen, aber nur gezählt und bei
+8 KiB gekappt, damit ein geschwätziger Container nicht den Speicher des Hosts
+frisst; zu einer Zeichenkette wird es nie. Und der Container läuft mit `--rm`
+und wird danach mit `docker rm --force` entfernt, also findet auch ein
+späteres `docker logs` nichts mehr.
+
+Die echte Lesung, die dieser Platzhalter hergibt, ist eine andere Frage als
+die gestellte: Was der Container *sagte*, ist weg, welcher Container es *war*,
+steht fest. Die Seite zeigt deshalb die Einsatzhistorie aus Migration `0042`,
+`GET .../compute/functions/{functionId}/deployments`: Revision, Image mit
+seinem `sha256`-Digest, wer eingesetzt hat und wann, neueste Revision zuerst.
+Die Historie ist append-only, und eine Image-Änderung ohne ihre Zeile ist auf
+Datenbankebene nicht ausdrückbar. Bis `2.61.0` hat keine Ansicht der Console
+diese Historie gelesen. Daneben steht die Zahl der protokollierten Aufrufe mit
+dem Verweis auf Logs → Functions, ausdrücklich nicht als Ersatz: Ein
+Fehlercode sagt, dass es schiefging, nicht warum.
+
+**API-Gateway: es fehlt nicht das Log, sondern der Rand.** Der Platzhalter
+versprach „jede Anfrage am Rand mit Status und Dauer“. Es gibt keinen Rand. Es
+gibt keine `middleware.ts`, an keiner Stelle, an der Next eine suchen würde,
+und damit keinen Ort, durch den jede Anfrage läuft; jeder Routenhandler steht
+für sich. Das Einzige, was für alle Pfade gilt, sind feste Sicherheits-Header
+aus `next.config.ts`, und die schreiben nichts mit. Eine Zeile je Anfrage
+entsteht deshalb nirgends.
+
+Was es gibt, ist der Zähler, und seine Reichweite ist nachgezählt statt
+angenommen: `admitApiRequest` wird aus genau drei Modulen gerufen, der
+generierten Data API, Project Storage und den Queues. Control Plane, Project
+Auth, Realtime, Compute und MCP zählen unter `api_requests` nicht mit, obwohl
+die Messung sie als Quelle kennt. Gezählt wird ausserdem am **Ende** des
+Kontext-Resolvers, also erst, wenn die Anfrage einen Scope hat: Eine Anfrage,
+die schon an der Anmeldung scheitert, wird nie gezählt, weil es keinen Scope
+gibt, den man belasten könnte, und einen fremden zu belasten wäre schlimmer.
+Abgewiesene Zugriffe stehen also in keiner dieser Zahlen. Und „abgelehnt“
+heisst ausschliesslich, dass eine Quota gegriffen hat; `0028` kennt genau einen
+Ablehnungsgrund. Eine Anfrage, die mit 400 oder 500 endete, gilt als
+angenommen. Eine Aufteilung je Quelle gibt es über HTTP nicht: Die Reihe
+gruppiert nur nach Metrik, und ein `?source=` ist an dieser Route ein 400.
+
+**Pooler: QKERN hat keinen.** Der Platzhalter versprach „Warteschlange,
+abgewiesene Verbindungen, Grenzen“. Zwischen Anwendung und Datenbank steht
+nichts: kein PgBouncer, kein Supavisor, kein zweiter Port neben 5432. Jeder
+Prozess hält seinen eigenen Pool je Rechtegrenze und verbindet sich direkt. Es
+gibt keine gemeinsame Stelle, die ein Log schreiben könnte.
+
+Überraschender ist der zweite Teil: Auch die Auslastung des Pools der
+Anwendung ist nicht lesbar. Der Treiber kennt offene, freie und wartende
+Verbindungen, aber QKERN legt den Pool hinter eine Schnittstelle, die genau
+drei Dinge kann, nämlich abfragen, verbinden und schliessen; die Zähler liegen
+dahinter und werden nirgends gelesen. `DATABASE_POOL_MAX` (Vorgabe zehn)
+erreicht keine Route. Eine Warteschlange auf dieser Seite wäre geschätzt, und
+geschätzt wird nichts. Ein Wartelog gäbe es ohnehin nicht: Niemand schreibt
+eine Zeile, wenn eine Anfrage auf einen Platz wartet, und eine abgelaufene
+Wartezeit wird ein Fehler auf dem Weg dieser einen Anfrage und sonst nichts.
+
+Was es gibt, weiss der Server selbst. Aus `GET .../database/activity` kommen
+die Verbindungen aus `pg_stat_activity`, gefiltert auf diese Datenbank und
+gruppiert nach Rolle und Zustand: je Gruppe eine Anzahl und das Alter der
+ältesten Sitzung, nie eine Zeile je Sitzung. Dazu die offenen Verbindungen,
+die der Server meldet, und `max_connections`. Aus `GET .../database/settings`
+kommen die vier Grenzen, die über eine Abweisung entscheiden:
+`max_connections`, die für Superuser zurückgelegten Plätze, `datconnlimit` und
+`rolconnlimit`. **Nach Rolle, nicht nach Prozess:** Anwendungsname und
+Client-Adresse werden ausdrücklich nicht gelesen, obwohl jeder Pool einen
+Anwendungsnamen setzt. Welcher Pool welche Verbindung hält, ist von hier aus
+deshalb nicht zu sehen. Und alle diese Zahlen sind ein Stand von jetzt, kein
+Verlauf.
+
+**Was ein Betreiber tun kann.** Für die Ausgabe einer Function: Während der
+Aufruf läuft, existiert der Container unter einem Namen, der mit `qkern-fn-`
+beginnt; dauerhaft hinausschreiben kann nur ein Log-Treiber des
+Docker-Dämons, der vor dem Lauf eingerichtet ist. Für Anfragen am Rand: ein
+Reverse Proxy vor Node, der ein Zugriffsprotokoll führt. Für Verbindungen:
+`log_connections` und `log_disconnections` im Serverlog, das neben dem
+Datenverzeichnis liegt und auf das QKERN keinen Zugriff hat. Und ein
+Log-Drain aus `2.54.0` trägt nach draussen, was es gibt: `function_invocations`
+für die Aufrufzeile, `usage_series` für abgeschlossene Stunden des Zählers,
+`auth_audit` für das Auth-Protokoll. Eine Quelle für die Ausgabe des
+Containers, für Anfragen am Rand oder für Verbindungen hat er nicht, weil es
+keine davon gibt.
+
+**Kein Fall gegen die echte Datenbank.** Die drei Seiten führen weder neues SQL
+noch eine neue Route ein; sie lesen `compute/functions`,
+`compute/functions/{id}/deployments`, `compute/invocations`, `usage/series`,
+`database/activity` und `database/settings`, und jede dieser Lesungen ist
+schon belegt. Geprüft werden die Seiten von
+`tests/console-missing-log-views-contract`, und der Vertrag prüft nicht bloss,
+dass die Sätze dastehen, sondern dass sie stimmen: Er liest Migration `0045`,
+die Sandbox, die Compose-Dateien, `lib/server/db/pool`, `lib/server/db/sql`
+und alle Aufrufstellen von `admitApiRequest`. Ein Pooler in einer
+Compose-Datei, eine neue `middleware.ts` oder ein viertes zählendes Modul
+lässt den Lauf scheitern, statt eine Seite stillschweigend zur Lüge zu machen.
 
 ## 10. MCP für KI-Agenten
 

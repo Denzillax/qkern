@@ -76,6 +76,9 @@ import { AuthLogView } from "@/components/console/auth-log-view";
 import { StorageLogView } from "@/components/console/storage-log-view";
 import { FunctionLogView } from "@/components/console/function-log-view";
 import { DataApiLogView } from "@/components/console/data-api-log-view";
+import { FunctionContainerLogView } from "@/components/console/function-container-log-view";
+import { ApiGatewayLogView } from "@/components/console/api-gateway-log-view";
+import { PoolerLogView } from "@/components/console/pooler-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
@@ -395,6 +398,13 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // sagt, dass es fuer die Data API kein Anfrageprotokoll gibt (2.51).
     case "logs-functions": return <FunctionLogView projectId={props.project.id} environment={props.environment}/>;
     case "logs-postgrest": return <DataApiLogView projectId={props.project.id} environment={props.environment}/>;
+    // Drei Platzhalter, die Logs versprachen, die es nicht gibt (2.84). Jede
+    // Seite sagt zuerst, was fehlt und warum, und zeigt dann eine echte
+    // Lesung: die Einsatzhistorie, den Zaehler der Anfragen, die Verbindungen
+    // aus pg_stat_activity.
+    case "compute-logs": return <FunctionContainerLogView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-api": return <ApiGatewayLogView projectId={props.project.id} environment={props.environment}/>;
+    case "logs-pooler": return <PoolerLogView projectId={props.project.id} environment={props.environment}/>;
     // Drei Seiten, eine Ansicht: Berichte -> API, Storage und Functions zeigen
     // dieselbe Zeitreihe ueber verschiedene Metriken (2.45).
     case "obs-api": return <UsageSeriesView key="obs-api" view="api" projectId={props.project.id} environment={props.environment}/>;
