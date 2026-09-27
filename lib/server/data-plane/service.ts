@@ -1,6 +1,7 @@
 import { DATA_IDENTIFIER, isDataSchemaName } from "@/lib/server/data-plane/identifiers";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { isReadOnlySql, redactSensitive } from "@/lib/security";
+import { readQueryPlan, type QueryPlanReading } from "@/lib/console/query-insights";
 import type { Environment } from "@/lib/types";
 import type { SqlPoolClient } from "@/lib/server/db/sql";
 import type {
@@ -432,6 +433,20 @@ export type ProjectReadQueryResult = {
   maxRows: number;
 };
 
+/**
+ * Der Plan einer lesenden Abfrage (2.67).
+ *
+ * `analyzed` ist absichtlich ein Literal und kein Schalter: Diese Lesung
+ * benutzt `EXPLAIN` ohne `ANALYZE`, die Abfrage wird nicht ausgefuehrt, und
+ * die Antwort traegt diese Zusage mit, statt sie nur im Kommentar zu haben.
+ * Wollte jemand spaeter `ANALYZE` einbauen, muesste er hier vorbei.
+ */
+export type ProjectQueryPlanResult = {
+  source: "postgres";
+  analyzed: false;
+  plan: QueryPlanReading;
+};
+
 export interface ProjectDataPlanePort {
   inspectSchema(
     context: ProjectDataPlaneContext,
@@ -444,6 +459,11 @@ export interface ProjectDataPlanePort {
     statement: string,
     limit: number,
   ): Promise<ProjectReadQueryResult>;
+  explainReadQuery(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    statement: string,
+  ): Promise<ProjectQueryPlanResult>;
   inspectTriggers(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -516,7 +536,9 @@ export type ProjectDataPlaneErrorCode =
   | "DATA_PLANE_NOT_READY"
   | "DATA_PLANE_UNAVAILABLE"
   | "DATA_PLANE_BOUNDARY_REJECTED"
-  | "READ_ONLY_QUERY_REQUIRED";
+  | "READ_ONLY_QUERY_REQUIRED"
+  /** Die Datenbank hat geantwortet, aber die Abfrage laesst sich nicht planen (2.67). */
+  | "QUERY_PLAN_REJECTED";
 
 /** Cause-free by design: connection, role, SQL and catalog details never leave the boundary. */
 export class ProjectDataPlaneError extends Error {
@@ -1831,6 +1853,65 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Der Plan einer lesenden Abfrage (2.67), ohne sie auszufuehren.
+   *
+   * Drei Entscheidungen stecken in den drei Zeilen darunter:
+   *
+   * 1. **Kein `ANALYZE`.** `EXPLAIN` stellt den Plan auf und gibt ihn zurueck;
+   *    `EXPLAIN ANALYZE` liesse die Abfrage wirklich laufen. Das waere ueber
+   *    eine Konsolenflaeche eine andere Zusage, und der SQL-Editor gibt es
+   *    schon fuer den, der ausfuehren will.
+   * 2. **Derselbe Weg wie `queryReadOnly`.** Es gibt keine eigene Verbindung
+   *    und keine eigene Rolle: `this.run` loest dasselbe Ziel auf, prueft
+   *    dieselbe Grenze und oeffnet dieselbe `BEGIN READ ONLY`-Transaktion mit
+   *    denselben Zeitlimits.
+   * 3. **`isReadOnlySql` vor dem Praefix.** `EXPLAIN` selbst waere kein
+   *    Schutz: `EXPLAIN ANALYZE DELETE ...` loescht. Der Waechter laesst genau
+   *    ein SELECT durch, also kann davor nur ein Plan stehen.
+   *
+   * Was die Datenbank an Bedingungstexten mitschickt, wird hier nicht
+   * durchgereicht: `readQueryPlan` nimmt nur Knotenart, Relation, Indexnamen
+   * und Zahlen, und `Filter` oder `Index Cond` bleiben liegen.
+   */
+  async explainReadQuery(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    statement: string,
+  ): Promise<ProjectQueryPlanResult> {
+    assertContextAndScope(context, scope);
+    if (!isReadOnlySql(statement)) throw new ProjectDataPlaneError("READ_ONLY_QUERY_REQUIRED");
+    const normalized = statement.trim().replace(/;\s*$/, "");
+    return this.run(context, scope, async (client) => {
+      // COSTS ON liefert die Schaetzungen, SUMMARY ON die gemessene
+      // Planungszeit. VERBOSE bliebe aus: es haengt Ausgabespalten und
+      // Schemapfade an jeden Knoten, die diese Seite nicht zeigt.
+      let result;
+      try {
+        result = await client.query<{ "QUERY PLAN": unknown }>(
+          `EXPLAIN (FORMAT JSON, COSTS ON, VERBOSE OFF, SUMMARY ON) ${normalized}`,
+        );
+      } catch {
+        // Eine Abfrage, die sich nicht planen laesst, ist etwas anderes als
+        // eine Datenbank, die nicht antwortet. Ohne eigenen Code wuerde die
+        // Ansicht "nicht erreichbar" sagen, obwohl die Datenbank sehr wohl
+        // geantwortet hat, und das waere schlicht falsch. Der Grund selbst
+        // bleibt drinnen: er nennt Relationen und Spalten.
+        throw new ProjectDataPlaneError("QUERY_PLAN_REJECTED");
+      }
+      const raw = result.rows[0]?.["QUERY PLAN"];
+      // Der Treiber gibt JSON je nach Typ als Objekt oder als Text zurueck.
+      try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) as unknown : raw;
+        return { source: "postgres" as const, analyzed: false as const, plan: readQueryPlan(parsed) };
+      } catch {
+        // Antwort da, aber nicht in der Form, die EXPLAIN (FORMAT JSON)
+        // zusagt. Das ist ein Befund ueber die Grenze, nicht ueber die Abfrage.
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+    });
+  }
+
   private async run<T>(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -2023,6 +2104,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _statement: string,
     _limit: number,
   ): Promise<ProjectReadQueryResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async explainReadQuery(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _statement: string,
+  ): Promise<ProjectQueryPlanResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 }

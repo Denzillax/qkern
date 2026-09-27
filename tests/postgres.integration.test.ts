@@ -9,7 +9,10 @@ import { PostgresComputeDefinitionRepository } from "@/lib/server/compute/defini
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
-import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+import { isProjectDataPlaneError, ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+// Abfrage-Einblicke (2.67): der Plan laeuft durch den echten Dienst, das
+// reine Modul flacht ihn ab.
+import { hottestQueryPlanNode, QUERY_PLAN_HOT_SHARE } from "@/lib/console/query-insights";
 // Was ein angemeldeter Nutzer darf (2.62): dasselbe reine Regelmodul, das die
 // Route benutzt, und die echte generierte Data API als Gegenprobe.
 import { evaluateAuthAccess } from "@/lib/server/data-plane/auth-access-rules";
@@ -4470,6 +4473,248 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu drei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+
+  it("(2.67) explains a real query plan without executing the query", async () => {
+    // Berichte -> Abfrage-Einblicke (2.67) gegen die echte Datenbank.
+    //
+    // Der Unit-Test prueft, dass aus einer JSON-Antwort eine flache Liste
+    // wird. Das ist die halbe Zusage. Die andere Haelfte kann nur eine echte
+    // Datenbank belegen, und sie ist die, auf der dieser Schnitt steht:
+    //
+    // 1. **EXPLAIN liest wirklich nichts.** Die Zusage der Seite lautet, dass
+    //    sie die Abfrage nicht ausfuehrt. Ein Kommentar kann das behaupten,
+    //    ein Mock auch. Beweisen kann es nur PostgreSQL selbst, und zwar am
+    //    eigenen Zaehler: `pg_stat_user_tables.seq_scan` steigt bei jedem
+    //    sequenziellen Lesen der Tabelle. Nach fuenf Plaenen steht er still.
+    //    Danach laeuft dieselbe Abfrage durch `queryReadOnly`, und **dann**
+    //    steigt er um genau eins. Ohne diese Gegenprobe hiesse "der Zaehler
+    //    stand still" nur, dass niemand hinsieht.
+    //    Wuerde jemand `ANALYZE` in den Dienst schreiben, stiege der Zaehler
+    //    schon in der ersten Haelfte, und dieser Fall faellt.
+    // 2. **Der Planer nennt den Index, der greift.** Ein Nachbau kann eine
+    //    Zeichenkette "vorlagen_pkey" zurueckgeben; nur PostgreSQL kann
+    //    entscheiden, dass der Primaerschluessel fuer diese Abfrage wirklich
+    //    der Weg ist.
+    // 3. **Der Eigenanteil stimmt gegen echte Schaetzungen.** Die Kosten eines
+    //    Knotens enthalten die seiner Kinder; die Rechnung dahinter wird hier
+    //    an einem echten Plan geprueft, nicht an erfundenen Zahlen.
+    // 4. **Die Literale der Abfrage bleiben drinnen.** Der Plan von
+    //    PostgreSQL traegt `Filter` und `Index Cond` mit dem Wert woertlich.
+    //    Hier steht ein Wert im Statement, der sonst nirgends vorkommt, und
+    //    die Antwort darf ihn nicht tragen.
+    //
+    // Gelesen wird durch denselben Dienst, den die Query-Route benutzt. Es
+    // gibt keinen Nachbau: `ProjectDataPlaneService` loest auf, prueft die
+    // Grenze und oeffnet `BEGIN READ ONLY`.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.61 und 2.65: Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden, und
+    // eine Organisation mit Auditzeilen laesst sich nicht loeschen. Dieser
+    // Fall laesst Organisation, Projekt und Umgebung stehen und raeumt nur
+    // sein eigenes Schema weg.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const planOwner = randomUUID();
+    const planOrganization = randomUUID();
+    const planProject = randomUUID();
+    const planActor = `query-insights-2-67-owner-${planOwner}@qkern.test`;
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [planOwner, planActor]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Query Insights 2.67', $2, $3)`,
+    [planOrganization, `query-insights-2-67-${planOrganization}`, planOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Query Insights 2.67', $3, 'test', 'ready', $4)`,
+    [planProject, planOrganization, `query-insights-2-67-${planProject}`, planOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [planOrganization, planProject, `managed:${planProject}`]);
+
+    const schema = `plaene_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".vorlagen (
+        id integer PRIMARY KEY,
+        notiz text NOT NULL)`);
+      // Autovacuum aus, und zwar fuer diesen Fall zwingend: Ein Autoanalyze
+      // liest die Tabelle sequenziell und bewegt denselben Zaehler, an dem
+      // gleich gemessen wird, ob EXPLAIN gelesen hat. Ohne diese Zeile
+      // pruefte der Fall Zufall statt Verhalten.
+      await owner.query(`ALTER TABLE "${schema}".vorlagen SET (autovacuum_enabled = false)`);
+      // Genug Zeilen, damit der Planer eine echte Wahl hat: Bei drei Zeilen
+      // gewaenne der sequenzielle Scan jede Abfrage, und "welcher Index
+      // greift" waere nicht pruefbar.
+      await owner.query(`INSERT INTO "${schema}".vorlagen (id, notiz)
+        SELECT reihe, 'notiz-' || reihe FROM generate_series(1, 5000) AS reihe`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`ANALYZE "${schema}".vorlagen`);
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${planProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const planContext = { organizationId: planOrganization, actorRef: planActor };
+      const planScope = { projectId: planProject, environment: "development" as const };
+
+      /** Wie oft PostgreSQL diese Tabelle sequenziell gelesen hat. */
+      const sequentialReads = async (): Promise<number> => {
+        const row = await owner.query<{ seq_scan: string | null }>(
+          `SELECT COALESCE(seq_scan, 0)::text AS seq_scan
+           FROM pg_catalog.pg_stat_user_tables
+           WHERE schemaname = $1 AND relname = 'vorlagen'`, [schema]);
+        return Number(row.rows[0]?.seq_scan ?? 0);
+      };
+
+      /**
+       * Der Zaehler, nachdem er sich beruhigt hat.
+       *
+       * Der Statistiksammler von PostgreSQL schreibt verzoegert. Das ANALYZE
+       * aus dem Aufbau liest die Tabelle ebenfalls sequenziell, und sein
+       * Zaehlerstand kann erst ankommen, nachdem hier schon gemessen wurde.
+       * Gewartet wird darum, bis zwei Sekunden lang nichts mehr passiert.
+       */
+      const settled = async (): Promise<number> => {
+        let last = await sequentialReads();
+        let quietSince = Date.now();
+        const patience = Date.now() + 30_000;
+        while (Date.now() - quietSince < 2_000 && Date.now() < patience) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          const current = await sequentialReads();
+          if (current !== last) { last = current; quietSince = Date.now(); }
+        }
+        return last;
+      };
+
+      // --- Zusage 1: der Plan liest nicht ---------------------------------
+      const statement = `SELECT id, notiz FROM "${schema}".vorlagen ORDER BY notiz`;
+      const before = await settled();
+      for (let round = 0; round < 5; round += 1) {
+        const explained = await service.explainReadQuery(planContext, planScope, statement);
+        expect(explained.source).toBe("postgres");
+        // Die Zusage steht in der Antwort selbst, nicht nur im Kommentar.
+        expect(explained.analyzed).toBe(false);
+        expect(explained.plan.nodes.length).toBeGreaterThan(0);
+      }
+      // Der Statistiksammler schreibt verzoegert. Es wird also nicht einmal
+      // hingesehen, sondern ueber drei Sekunden hinweg immer wieder.
+      const deadline = Date.now() + 3_000;
+      while (Date.now() < deadline) {
+        expect(await sequentialReads(),
+          "EXPLAIN hat die Tabelle gelesen; ohne ANALYZE darf das nicht passieren").toBe(before);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      // Und danach noch einmal, bis Ruhe eingekehrt ist: Ein verspaeteter
+      // Zaehlerstand aus den fuenf Plaenen soll hier auffallen und nicht
+      // erst weiter unten, wo er nach einem ganz anderen Fehler aussaehe.
+      expect(await settled(),
+        "EXPLAIN hat die Tabelle gelesen; ohne ANALYZE darf das nicht passieren").toBe(before);
+
+      // Die Gegenprobe: Dieselbe Abfrage, diesmal wirklich ausgefuehrt. Erst
+      // jetzt bewegt sich der Zaehler, und damit ist bewiesen, dass er sich
+      // ueberhaupt bewegen kann.
+      const rows = await service.queryReadOnly(planContext, planScope, statement, 10);
+      expect(rows.rowCount).toBe(10);
+      let afterRun = before;
+      const runDeadline = Date.now() + 30_000;
+      while (afterRun === before && Date.now() < runDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        afterRun = await sequentialReads();
+      }
+      expect(afterRun,
+        "der Zaehler hat sich auch nach einer echten Abfrage nicht bewegt").toBe(before + 1);
+
+      // --- Zusage 2: der Planer nennt den Index, der greift ----------------
+      const withoutIndex = await service.explainReadQuery(planContext, planScope, statement);
+      expect(withoutIndex.plan.indexes).toEqual([]);
+      expect(withoutIndex.plan.sequentialScans).toEqual(["vorlagen"]);
+
+      const byKey = await service.explainReadQuery(planContext, planScope,
+        `SELECT notiz FROM "${schema}".vorlagen WHERE id = 4242`);
+      expect(byKey.plan.indexes).toEqual(["vorlagen_pkey"]);
+      expect(byKey.plan.sequentialScans).toEqual([]);
+      expect(byKey.plan.nodes[0].operation).toContain("Index");
+      expect(byKey.plan.nodes[0].relation).toBe("vorlagen");
+      // Der Plan ueber den Schluessel ist billiger als der ueber die ganze
+      // Tabelle. Das ist die Aussage, wegen der die Seite existiert.
+      expect(byKey.plan.totalCost).toBeLessThan(withoutIndex.plan.totalCost);
+
+      // --- Zusage 3: der Eigenanteil stimmt gegen echte Schaetzungen -------
+      // Der Plan ueber die ganze Tabelle sortiert; die Wurzel ist ein Sort
+      // ueber einem sequenziellen Scan.
+      expect(withoutIndex.plan.nodes.length).toBeGreaterThanOrEqual(2);
+      const [root, child] = withoutIndex.plan.nodes;
+      expect(root.depth).toBe(0);
+      expect(child.depth).toBe(1);
+      // Die Gesamtkosten eines Knotens enthalten die seiner Kinder.
+      expect(root.totalCost).toBeGreaterThan(child.totalCost);
+      expect(root.ownCost).toBeCloseTo(root.totalCost - child.totalCost, 6);
+      // Die Eigenanteile eines Plans summieren sich auf die Gesamtkosten.
+      const own = withoutIndex.plan.nodes.reduce((sum, entry) => sum + entry.ownCost, 0);
+      expect(own).toBeCloseTo(withoutIndex.plan.totalCost, 6);
+      const shares = withoutIndex.plan.nodes.reduce((sum, entry) => sum + entry.costShare, 0);
+      expect(shares).toBeCloseTo(1, 6);
+      // Und der teuerste Knoten ist einer aus diesem Plan, kein erfundener.
+      const hottest = hottestQueryPlanNode(withoutIndex.plan);
+      expect(hottest).not.toBeNull();
+      expect(hottest!.costShare).toBeGreaterThanOrEqual(QUERY_PLAN_HOT_SHARE);
+      expect(withoutIndex.plan.nodes).toContain(hottest);
+
+      // Die Planungszeit ist gemessen, nicht geschaetzt, und sie ist da.
+      expect(withoutIndex.plan.planningTimeMs).not.toBeNull();
+      expect(withoutIndex.plan.planningTimeMs!).toBeGreaterThan(0);
+
+      // --- Zusage 4: kein Literal der Abfrage verlaesst die Datenbank ------
+      const marker = `marke-${randomUUID()}`;
+      const withLiteral = await service.explainReadQuery(planContext, planScope,
+        `SELECT id FROM "${schema}".vorlagen WHERE notiz = '${marker}'`);
+      const serialised = JSON.stringify(withLiteral);
+      expect(serialised, "der Plan traegt ein Literal der Abfrage").not.toContain(marker);
+      expect(serialised).not.toContain("Filter");
+      expect(serialised).not.toContain("Index Cond");
+      // Die Gegenprobe: PostgreSQL schickt das Literal sehr wohl mit. Ohne
+      // sie pruefte der Satz darueber nichts.
+      const rawPlan = await owner.query<{ plan: unknown }>(
+        `EXPLAIN (FORMAT JSON) SELECT id FROM "${schema}".vorlagen WHERE notiz = '${marker}'`);
+      expect(JSON.stringify(rawPlan.rows), "PostgreSQL nennt das Literal gar nicht")
+        .toContain(marker);
+
+      // --- Was die Flaeche ablehnt -----------------------------------------
+      // Ein Schreibbefehl kommt gar nicht bis zur Datenbank: Der Waechter
+      // steht vor dem EXPLAIN, sonst waere `EXPLAIN ANALYZE DELETE` moeglich.
+      for (const rejected of [
+        `DELETE FROM "${schema}".vorlagen`,
+        `UPDATE "${schema}".vorlagen SET notiz = 'x'`,
+        `SELECT 1; DROP TABLE "${schema}".vorlagen`,
+        `EXPLAIN ANALYZE SELECT id FROM "${schema}".vorlagen`,
+      ]) {
+        const failure = await service.explainReadQuery(planContext, planScope, rejected)
+          .catch((cause: unknown) => cause);
+        expect(isProjectDataPlaneError(failure, "READ_ONLY_QUERY_REQUIRED"), rejected).toBe(true);
+      }
+      // Und die Tabelle steht noch, mit allen Zeilen.
+      const intact = await owner.query<{ anzahl: string }>(
+        `SELECT count(*)::text AS anzahl FROM "${schema}".vorlagen`);
+      expect(intact.rows[0].anzahl).toBe("5000");
+
+      // Eine lesende Abfrage, die sich nicht planen laesst, ist etwas anderes
+      // als ein Ausfall: Die Datenbank hat geantwortet.
+      const unplannable = await service.explainReadQuery(planContext, planScope,
+        `SELECT id FROM "${schema}".gibt_es_nicht`).catch((cause: unknown) => cause);
+      expect(isProjectDataPlaneError(unplannable, "QUERY_PLAN_REJECTED")).toBe(true);
+      // Und der Grund nennt die Relation nicht weiter.
+      expect(String(unplannable)).not.toContain("gibt_es_nicht");
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
 });
 
 /**

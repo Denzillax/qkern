@@ -27,6 +27,7 @@ import { sqlTemplateTexts } from "@/lib/console/sql-templates";
 import { logDrainTexts } from "@/lib/console/log-drains";
 import { displaySettingsTexts } from "@/lib/console/display-settings-texts";
 import { logExplorerTexts } from "@/lib/console/log-explorer";
+import { queryInsightsTexts } from "@/lib/console/query-insights";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -120,6 +121,9 @@ async function consoleKeys(): Promise<string[]> {
   // Quelle, die Gruende einer Ablehnung, was er nicht erreicht und seine
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of logExplorerTexts()) keys.add(text);
+  // Berichte -> Abfrage-Einblicke (2.67) zeigt Knotenarten, ihre Bedeutung,
+  // die Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of queryInsightsTexts()) keys.add(text);
   return [...keys];
 }
 
