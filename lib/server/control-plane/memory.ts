@@ -6,15 +6,19 @@ import {
   listProjects,
   store,
 } from "@/lib/server/store";
+import { FIXED_ENVIRONMENTS } from "@/lib/server/control-plane/model";
 import type {
+  ApprovalTallyStatus,
+  ChangeFlowTally,
   ControlPlaneContext,
   ControlPlaneService,
   ControlPlaneSnapshot,
   CreateChangeSetInput,
   DecideApprovalInput,
+  ProjectChangeFlow,
   SetAutomationPolicyInput,
 } from "@/lib/server/control-plane/model";
-import type { Approval, AuditEvent, ChangeSet, Project, ProjectAutomationPolicy } from "@/lib/types";
+import type { Approval, AuditEvent, ChangeSet, ChangeStatus, Project, ProjectAutomationPolicy } from "@/lib/types";
 import {
   defaultAutomationPolicy,
   policyAllowsAutomaticApproval,
@@ -26,6 +30,38 @@ function publicChangeSet(change: ChangeSet): ChangeSet {
     ...change,
     statement: "[REDACTED]",
     diff: ["Validated migration artifact", `Environment: ${change.environment}`, `Risk: ${change.risk}`],
+  };
+}
+
+const MEMORY_CHANGE_STATUSES: readonly ChangeStatus[] =
+  ["draft", "validating", "ready", "approved", "applied", "rejected", "failed", "rolled_back"];
+const MEMORY_APPROVAL_STATUSES: readonly ApprovalTallyStatus[] = ["pending", "approved", "rejected", "expired"];
+
+/**
+ * Dieselbe Zaehlung wie in der PostgreSQL-Kontrollebene (2.81), nur an einer
+ * Liste statt in der Datenbank. Ein Zustand ausserhalb der Liste wird nicht
+ * gezaehlt und auch nicht in die Summe geschoben, damit die Summe und die
+ * Einzelwerte hier dasselbe sagen wie dort.
+ */
+function memoryTally<Status extends string>(
+  entries: ReadonlyArray<{ status: string; createdAt: string }>,
+  statuses: readonly Status[],
+): ChangeFlowTally<Status> {
+  const known = new Set<string>(statuses);
+  const byStatus = Object.fromEntries(statuses.map((status) => [status, 0])) as Record<Status, number>;
+  let total = 0;
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const entry of entries) {
+    if (!known.has(entry.status)) continue;
+    byStatus[entry.status as Status] += 1;
+    total += 1;
+    const moment = Date.parse(entry.createdAt);
+    if (Number.isFinite(moment) && moment > latest) latest = moment;
+  }
+  return {
+    total,
+    byStatus,
+    latestCreatedAt: latest === Number.NEGATIVE_INFINITY ? null : new Date(latest).toISOString(),
   };
 }
 
@@ -76,6 +112,41 @@ export class MemoryControlPlaneService implements ControlPlaneService {
       bound: false,
       createdAt: null,
     }];
+  }
+
+  /**
+   * Was je Umgebung unterwegs und was angekommen ist (2.81), aus dem Speicher.
+   *
+   * Der Speicher fuehrt Change Sets und Freigaben, aber keine Warteschlange
+   * fuer Migrationen: Es gibt hier keinen Worker, der etwas anwenden koennte.
+   * Darum steht `migrations` auf null und nicht auf lauter Nullen. Null heisst
+   * "diese Installation fuehrt keine Warteschlange", lauter Nullen hiessen
+   * "die Warteschlange ist leer", und das sind zwei verschiedene Auskuenfte.
+   */
+  async summariseChangeFlow(context: ControlPlaneContext, projectId: string): Promise<ProjectChangeFlow> {
+    const project = getProject(context.organizationId, projectId);
+    const snapshot = consoleSnapshot(context.organizationId) as unknown as MemorySnapshot;
+    const changeSets = (snapshot.changeSets ?? snapshot.changes ?? []).filter((entry) => entry.projectId === projectId);
+    const approvals = snapshot.approvals.filter((entry) => entry.projectId === projectId);
+    return {
+      projectId,
+      environments: FIXED_ENVIRONMENTS.map((environment) => ({
+        environment,
+        // Der Speicher kennt je Projekt genau eine Umgebung; die anderen zwei
+        // gibt es als Begriff, aber nicht als Zeile.
+        present: project.environment === environment,
+        bound: false,
+        changeSets: memoryTally(
+          changeSets.filter((entry) => entry.environment === environment),
+          MEMORY_CHANGE_STATUSES,
+        ),
+        approvals: memoryTally(
+          approvals.filter((entry) => entry.environment === environment),
+          MEMORY_APPROVAL_STATUSES,
+        ),
+        migrations: null,
+      })),
+    };
   }
 
   async getProjectDatabaseTarget(context: ControlPlaneContext, projectId: string, environment: Project["environment"]) {

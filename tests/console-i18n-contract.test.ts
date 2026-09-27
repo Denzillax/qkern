@@ -37,6 +37,7 @@ import { wrappersTexts } from "@/lib/console/wrappers-texts";
 import { replicationTexts } from "@/lib/console/replication-texts";
 import { s3AccessTexts } from "@/lib/console/s3-access-texts";
 import { authHookTexts } from "@/lib/console/auth-hooks-texts";
+import { branchFlowTexts } from "@/lib/console/branch-flow-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -165,6 +166,10 @@ async function consoleKeys(): Promise<string[]> {
   // Ausfall gilt, die Gruende einer Ablehnung und seine Ehrlichkeitssaetze
   // ueber t(variable).
   for (const text of authHookTexts()) keys.add(text);
+  // Branches (2.81) zeigt die Zustaende der Change Sets, der Freigaben und der
+  // Auftraege, die Schritte des Pruefschritts, was es nicht gibt und seine
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of branchFlowTexts()) keys.add(text);
   return [...keys];
 }
 

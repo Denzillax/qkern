@@ -6865,6 +6865,256 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await owner.query(`DELETE FROM project_auth_users
       WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, hookProject]);
   }, 120_000);
+
+  it("(2.81) counts change sets, approvals and apply jobs per fixed environment under RLS", async () => {
+    // Branches (2.81) gegen die echte Datenbank. Die Seite behauptet dreierlei,
+    // und keine dieser Zusagen liesse sich gegen einen Nachbau pruefen:
+    //
+    // 1. Die Zahlen je Umgebung sind die Zahlen der Kontrollebene. Sie
+    //    entstehen aus echten Change Sets in mehreren Zustaenden und mehreren
+    //    Umgebungen, angelegt und entschieden ueber denselben Dienst, den die
+    //    Console ruft, und danach gegen `change_sets`, `approval_requests` und
+    //    `migration_jobs` nachgezaehlt. Gegen einen Fake waere das die Pruefung
+    //    des Fakes.
+    // 2. Die Menge der Umgebungen ist fest. Die Antwort traegt immer alle drei,
+    //    auch fuer ein Projekt, das nur eine Zeile in `project_environments`
+    //    hat. Genau das ist die Aussage der Seite: Es gibt keine frei benannten
+    //    Zweige, also kann diese Liste nicht wachsen.
+    // 3. Gelesen wird ueber die Laufzeitrolle, also unter RLS. Der Nachbar
+    //    bekommt dasselbe Projekt nicht zu sehen und auch keine leere Antwort
+    //    mit drei Nullreihen; eine leere Antwort waere die Behauptung, es liege
+    //    nichts vor.
+    //
+    // Geschrieben wird ebenfalls ueber die Laufzeitrolle: Anlegen, Freigeben
+    // und Einreihen laufen durch den echten Dienst, das echte Repository und
+    // dieselben Policies. Nur der letzte Schritt, das Anwenden, steht hier als
+    // Aktualisierung des Auftrags statt als Worker-Lauf: Der Worker mit echtem
+    // Executor, echter Zieldatenbank und echtem Ledger ist der Fall (2.49), und
+    // dieser Fall prueft die Zaehlung, nicht das Anwenden.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.49 und 2.68: Das Anlegen
+    // eines Change Sets schreibt Audit-Zeilen, und eine Organisation mit
+    // Audit-Zeilen laesst sich wegen audit_logs_organization_id_fkey nicht mehr
+    // loeschen. Das gemeinsame afterAll muss organizationA und organizationB
+    // loswerden; diese Organisation bleibt als erwarteter Rest im
+    // Wegwerf-Stack.
+    const flowOwner = randomUUID();
+    const flowOrganization = randomUUID();
+    const flowProject = randomUUID();
+    const bareProject = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [flowOwner, `branches-2-81-owner-${flowOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Branches 2.81', $2, $3)`,
+    [flowOrganization, `branches-2-81-${flowOrganization}`, flowOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [flowOrganization, flowOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Branches 2.81', $3, 'test', 'ready', $4),
+             ($5, $2, 'Branches 2.81 bare', $6, 'test', 'provisioning', $4)`,
+    [flowProject, flowOrganization, `branches-2-81-${flowProject}`, flowOwner,
+      bareProject, `branches-2-81-bare-${bareProject}`]);
+    // Zwei gebundene Umgebungen und eine wartende: Nur so kann der Fall zeigen,
+    // dass die Seite Zahlen je Umgebung trennt und dass eine wartende Umgebung
+    // mit lauter Nullen keine fehlende Umgebung ist.
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3), ($1, $2, 'staging', $4), ($1, $2, 'production', $5)`,
+    [flowOrganization, flowProject, `managed:${flowProject}-dev`, `managed:${flowProject}-stg`,
+      `pending:${flowProject}-prd`]);
+    // Das zweite Projekt hat genau eine Umgebung. Die Antwort muss trotzdem
+    // drei tragen.
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [flowOrganization, bareProject, `managed:${bareProject}-dev`]);
+
+    const cipher = new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex"));
+    // Schreiben und Lesen durch dieselbe Laufzeitrolle: keine Abkuerzung ueber
+    // den Eigentuemer, der RLS ohnehin nicht spuert.
+    const control = new PostgresControlPlane(runtime);
+    const service = new PostgresControlPlaneService(control, cipher);
+    const context = {
+      organizationId: flowOrganization,
+      actor: { id: flowOwner, ref: `branches-2-81-owner-${flowOwner}@qkern.test`, type: "user" as const },
+    };
+    const table = `branchflow_${randomUUID().replaceAll("-", "_")}`;
+
+    /** Ein Change Set ueber den echten Dienst, mit seiner Freigabe. */
+    const submit = async (environment: "development" | "staging", suffix: string) => {
+      const change = await service.createChangeSet(context, {
+        projectId: flowProject,
+        environment,
+        title: `Branches 2.81 ${suffix}`,
+        statement: `ALTER TABLE "public"."${table}" ADD COLUMN "${suffix}" text`,
+      });
+      expect(change.status, suffix).toBe("ready");
+      const approvals = await owner.query<{ id: string }>(
+        "SELECT id FROM approval_requests WHERE change_set_id = $1", [change.id]);
+      // Eine Schemaaenderung braucht eine Freigabe; ohne sie pruefte dieser
+      // Fall die Freigabezahlen gar nicht.
+      expect(approvals.rows, suffix).toHaveLength(1);
+      return { changeSetId: change.id, approvalId: approvals.rows[0].id };
+    };
+
+    // Development: eine angewandte, eine abgelehnte, eine wartende Aenderung.
+    const appliedChange = await submit("development", "angewandt");
+    const rejectedChange = await submit("development", "abgelehnt");
+    await submit("development", "wartet");
+    // Staging: eine freigegebene Aenderung, die in der Warteschlange steht.
+    const queuedChange = await submit("staging", "eingereiht");
+
+    const approved = await service.decideApproval(context, { approvalId: appliedChange.approvalId, decision: "approved" });
+    expect(approved.status).toBe("approved");
+    const refused = await service.decideApproval(context, { approvalId: rejectedChange.approvalId, decision: "rejected" });
+    expect(refused.status).toBe("rejected");
+    await service.decideApproval(context, { approvalId: queuedChange.approvalId, decision: "approved" });
+
+    // Einreihen ueber den echten Apply-Dienst: Er rechnet den Aktionshash der
+    // Freigabe noch einmal nach, also kommt hier kein erfundener Auftrag durch.
+    const apply = new PostgresChangeSetApplyService(control);
+    const appliedJob = await apply.queueApprovedChangeSet(context, { changeSetId: appliedChange.changeSetId });
+    expect(appliedJob.outcome).toBe("queued");
+    const queuedJob = await apply.queueApprovedChangeSet(context, { changeSetId: queuedChange.changeSetId });
+    expect(queuedJob.outcome).toBe("queued");
+
+    // Der Schritt, den im Betrieb der Worker tut, und nur dieser: Auftrag und
+    // Change Set auf "angewandt". Der Worker selbst ist in (2.49) zertifiziert.
+    const finished = await owner.query<{ finished_at: string }>(
+      `UPDATE migration_jobs SET status = 'applied', finished_at = now(), updated_at = now()
+       WHERE organization_id = $1 AND change_set_id = $2
+       RETURNING to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at`,
+      [flowOrganization, appliedChange.changeSetId]);
+    expect(finished.rows, "der Auftrag der angewandten Aenderung fehlt").toHaveLength(1);
+    await owner.query(
+      "UPDATE change_sets SET status = 'applied', updated_at = now() WHERE organization_id = $1 AND id = $2",
+      [flowOrganization, appliedChange.changeSetId]);
+
+    // --- Zusage 1 und 3: die Zahlen, durch die Kontrollebene unter RLS ---
+    const flow = await service.summariseChangeFlow(context, flowProject);
+    expect(flow.projectId).toBe(flowProject);
+    expect(Object.keys(flow).sort()).toEqual(["environments", "projectId"]);
+    expect(flow.environments.map((entry) => entry.environment))
+      .toEqual(["development", "staging", "production"]);
+    for (const entry of flow.environments) {
+      expect(Object.keys(entry).sort(), entry.environment)
+        .toEqual(["approvals", "bound", "changeSets", "environment", "migrations", "present"]);
+      // Die Antwort traegt nirgends eine Datenbankreferenz; die Seite zeigt
+      // keine und koennte auch keine zeigen.
+      expect(JSON.stringify(entry), entry.environment).not.toContain("managed:");
+      expect(JSON.stringify(entry), entry.environment).not.toContain("pending:");
+    }
+
+    const development = flow.environments.find((entry) => entry.environment === "development")!;
+    const staging = flow.environments.find((entry) => entry.environment === "staging")!;
+    const production = flow.environments.find((entry) => entry.environment === "production")!;
+
+    expect(development.present).toBe(true);
+    expect(development.bound).toBe(true);
+    expect(development.changeSets.total).toBe(3);
+    expect(development.changeSets.byStatus).toEqual({
+      draft: 0, validating: 0, ready: 1, approved: 0, applied: 1, rejected: 1, failed: 0, rolled_back: 0,
+    });
+    expect(development.approvals.total).toBe(3);
+    expect(development.approvals.byStatus).toEqual({ pending: 1, approved: 1, rejected: 1, expired: 0 });
+    expect(development.migrations).not.toBeNull();
+    expect(development.migrations!.total).toBe(1);
+    expect(development.migrations!.byStatus).toEqual({
+      queued: 0, running: 0, applied: 1, failed: 0, review_required: 0,
+    });
+    // Der Zeitpunkt der Ankunft ist der, den die Datenbank geschrieben hat,
+    // nicht der, den der Fall gerade fuer plausibel haelt.
+    expect(development.migrations!.lastFinishedAt).toBe(finished.rows[0].finished_at);
+
+    expect(staging.present).toBe(true);
+    expect(staging.bound).toBe(true);
+    expect(staging.changeSets.total).toBe(1);
+    expect(staging.changeSets.byStatus.approved).toBe(1);
+    expect(staging.approvals.byStatus).toEqual({ pending: 0, approved: 1, rejected: 0, expired: 0 });
+    expect(staging.migrations!.byStatus).toEqual({
+      queued: 1, running: 0, applied: 0, failed: 0, review_required: 0,
+    });
+    // Eingereiht heisst nicht angekommen, und die Zahl darf das nicht
+    // verwischen: In Staging ist noch nichts angekommen.
+    expect(staging.migrations!.lastFinishedAt).toBeNull();
+
+    // Die wartende Umgebung traegt lauter Nullen, aber sie fehlt nicht.
+    expect(production.present).toBe(true);
+    expect(production.bound).toBe(false);
+    expect(production.changeSets.total).toBe(0);
+    expect(production.changeSets.latestCreatedAt).toBeNull();
+    expect(production.approvals.total).toBe(0);
+    expect(production.migrations!.total).toBe(0);
+    expect(production.migrations!.lastFinishedAt).toBeNull();
+
+    // --- Jede Zahl steht so in der Datenbank ---
+    const stored = await owner.query<{ environment: string; status: string; n: string }>(
+      `SELECT environment::text AS environment, status::text AS status, count(*)::text AS n
+       FROM change_sets WHERE organization_id = $1 AND project_id = $2
+       GROUP BY 1, 2 ORDER BY 1, 2`, [flowOrganization, flowProject]);
+    const counted = new Map(stored.rows.map((row) => [`${row.environment}:${row.status}`, Number(row.n)]));
+    for (const entry of flow.environments) {
+      for (const [status, count] of Object.entries(entry.changeSets.byStatus)) {
+        expect(count, `${entry.environment}:${status}`).toBe(counted.get(`${entry.environment}:${status}`) ?? 0);
+      }
+      // Die Summe ist die Summe der Einzelwerte und keine zweite Zahl daneben.
+      expect(Object.values(entry.changeSets.byStatus).reduce((sum, value) => sum + value, 0), entry.environment)
+        .toBe(entry.changeSets.total);
+    }
+    const storedTotal = stored.rows.reduce((sum, row) => sum + Number(row.n), 0);
+    expect(flow.environments.reduce((sum, entry) => sum + entry.changeSets.total, 0)).toBe(storedTotal);
+    expect(storedTotal).toBe(4);
+    // Der juengste Zeitpunkt ist der juengste und nicht irgendeiner.
+    const youngest = await owner.query<{ created_at: string }>(
+      `SELECT to_char(max(created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
+       FROM change_sets WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [flowOrganization, flowProject]);
+    expect(development.changeSets.latestCreatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(development.changeSets.latestCreatedAt).toBe(youngest.rows[0].created_at);
+
+    // --- Zusage 2: drei Umgebungen, auch wenn nur eine eingerichtet ist ---
+    const bare = await service.summariseChangeFlow(context, bareProject);
+    expect(bare.environments.map((entry) => entry.environment))
+      .toEqual(["development", "staging", "production"]);
+    expect(bare.environments.map((entry) => entry.present)).toEqual([true, false, false]);
+    for (const entry of bare.environments) {
+      expect(entry.changeSets.total, entry.environment).toBe(0);
+      expect(entry.approvals.total, entry.environment).toBe(0);
+      expect(entry.migrations!.total, entry.environment).toBe(0);
+    }
+    // Und die Datenbank fuehrt wirklich nur eine Zeile: Die zwei fehlenden
+    // Umgebungen sind nicht erfunden, sondern als fehlend gemeldet.
+    const bareRows = await owner.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM project_environments WHERE project_id = $1", [bareProject]);
+    expect(bareRows.rows[0].n).toBe("1");
+
+    // --- Zusage 3: der Nachbar sieht nichts davon ---
+    const neighbour = {
+      organizationId: organizationB,
+      actor: { id: secondUserId, ref: `integration-${secondUserId}@qkern.test`, type: "user" as const },
+    };
+    // Kein "nichts vorhanden" mit drei Nullreihen, sondern "nicht gefunden".
+    await expect(service.summariseChangeFlow(neighbour, flowProject)).rejects.toThrowError(/not found/i);
+    await expect(service.summariseChangeFlow(neighbour, bareProject)).rejects.toThrowError(/not found/i);
+    // Und auch unter der Laufzeitrolle mit dem Mandanten des Nachbarn steht
+    // keine einzige Zeile dieses Projekts zur Verfuegung.
+    const hidden = await withTenantTransaction(runtime, { organizationId: organizationB, readOnly: true },
+      async (transaction) => transaction.query<{ change_sets: string; approvals: string; jobs: string }>(
+        `SELECT (SELECT count(*)::text FROM change_sets WHERE project_id = $1) AS change_sets,
+                (SELECT count(*)::text FROM approval_requests WHERE project_id = $1) AS approvals,
+                (SELECT count(*)::text FROM migration_jobs WHERE project_id = $1) AS jobs`,
+        [flowProject]));
+    expect(hidden.rows[0]).toEqual({ change_sets: "0", approvals: "0", jobs: "0" });
+    // Gegenprobe, damit die drei Nullen nicht von einer leeren Tabelle kommen:
+    // Der Eigentuemer sieht dieselben Zeilen sehr wohl.
+    const visible = await owner.query<{ change_sets: string; approvals: string; jobs: string }>(
+      `SELECT (SELECT count(*)::text FROM change_sets WHERE project_id = $1) AS change_sets,
+              (SELECT count(*)::text FROM approval_requests WHERE project_id = $1) AS approvals,
+              (SELECT count(*)::text FROM migration_jobs WHERE project_id = $1) AS jobs`,
+      [flowProject]);
+    expect(visible.rows[0]).toEqual({ change_sets: "4", approvals: "4", jobs: "2" });
+  }, 120_000);
 });
 
 /**
