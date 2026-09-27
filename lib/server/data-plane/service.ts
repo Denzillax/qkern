@@ -423,6 +423,48 @@ export type ProjectDatabaseSettingsResult = {
   truncated: boolean;
 };
 
+/**
+ * Worauf diese Umgebung laeuft (2.67): die Angaben, die der Server ueber sich
+ * selbst macht, und die Groesse der einen Datenbank.
+ *
+ * Die Abgrenzung zu `inspectSettings` ist gewollt. Dort steht, wie die
+ * Datenbank eingestellt ist (Rollen, TLS, Grenzen); hier steht, worauf sie
+ * laeuft. Kein Feld wird gerechnet und keines geraten: `serverVersion` und
+ * `serverVersionNum` sind zwei Angaben desselben Servers, weil die eine
+ * lesbar ist und die andere vergleichbar, und QKERN aus der einen nicht die
+ * andere ableiten will.
+ *
+ * `inRecovery` ist die einzige Aussage, die QKERN zum Thema Replikation
+ * ueberhaupt treffen kann: ob die Verbindung gerade auf einem Standby liest.
+ * Es ist keine Liste von Lese-Replikaten, und die Ansicht sagt das so.
+ *
+ * Ausdruecklich nicht enthalten: Host, Port, Verbindungszeichenfolge,
+ * Datenpfad. Der Ort der Datenbank ist kein Betriebswert.
+ */
+export type ProjectDatabaseRuntimeResult = {
+  source: "postgres";
+  /** `server_version`, wie der Server ihn schreibt, etwa `17.2` */
+  serverVersion: string;
+  /** `server_version_num`, etwa 170002; danach laesst sich vergleichen */
+  serverVersionNum: number;
+  /** `server_encoding` dieser Datenbank, etwa `UTF8` */
+  encoding: string;
+  /** `datcollate` aus `pg_database` */
+  collate: string;
+  /** `datctype` aus `pg_database` */
+  ctype: string;
+  /**
+   * `pg_database_size(current_database())`. Postgres meldet `bigint`; die Zahl
+   * bleibt hier eine `number`, weil selbst 9 Petabyte noch in einen sicheren
+   * Integer passen. Ueber die Grenze geht sie trotzdem geprueft.
+   */
+  sizeBytes: number;
+  /** `pg_is_in_recovery()`: true heisst, diese Verbindung liest ein Standby */
+  inRecovery: boolean;
+  /** `pg_postmaster_start_time()`, UTC-Text: seit wann dieser Server laeuft */
+  startedAt: string;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -508,6 +550,10 @@ export interface ProjectDataPlanePort {
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
   ): Promise<ProjectDatabaseSettingsResult>;
+  inspectRuntime(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseRuntimeResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -1150,6 +1196,53 @@ const SETTINGS_SQL = `
   LEFT JOIN pg_catalog.pg_stat_ssl AS ssl ON ssl.pid = pg_catalog.pg_backend_pid()
   WHERE database.datname = current_database()`;
 
+type RuntimeRow = {
+  server_version: string;
+  server_version_num: number;
+  server_encoding: string;
+  collate: string;
+  ctype: string;
+  /** `bigint` kommt als Text aus dem Treiber; die Pruefung sieht ihn so */
+  size_bytes: string;
+  in_recovery: boolean;
+  started_at: string;
+};
+
+/**
+ * Worauf diese Umgebung laeuft (2.67), in einer Anweisung.
+ *
+ * Alles hier ist Auskunft des Servers ueber sich selbst. `current_setting`
+ * fuer Version und Kodierung, `pg_database` fuer Sortierung und
+ * Zeichenklassen der einen Datenbank, `pg_database_size` fuer ihre Groesse.
+ *
+ * `pg_is_in_recovery()` steht dabei, weil es die einzige belegbare Aussage zu
+ * Replikation ist, die diese Verbindung machen kann. Eine Liste von
+ * Lese-Replikaten gibt es nicht: die stuende in `pg_stat_replication` des
+ * Primaerservers und setzt ein Recht voraus, das die Leserolle eines Projekts
+ * nicht hat und nicht bekommen soll.
+ *
+ * Keine Adresse, kein Pfad: weder `inet_server_addr` noch `data_directory`.
+ */
+const RUNTIME_SQL = `
+  SELECT current_setting('server_version') AS server_version,
+         current_setting('server_version_num')::integer AS server_version_num,
+         current_setting('server_encoding') AS server_encoding,
+         database.datcollate AS collate,
+         database.datctype AS ctype,
+         pg_catalog.pg_database_size(database.oid)::text AS size_bytes,
+         pg_catalog.pg_is_in_recovery() AS in_recovery,
+         to_char(pg_catalog.pg_postmaster_start_time() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at
+  FROM pg_catalog.pg_database AS database
+  WHERE database.datname = current_database()`;
+
+/** Wie `server_version` aussehen darf: `17.2`, `16.4 (Debian 16.4-1)`, `18beta1`. */
+const SERVER_VERSION = /^[0-9][0-9A-Za-z.()+~ _-]{0,63}$/;
+/** Kodierung, Sortierung und Zeichenklasse sind Katalognamen, keine Prosa. */
+const ENCODING = /^[A-Za-z0-9_]{1,40}$/;
+const LOCALE_NAME = /^[A-Za-z0-9._@ -]{1,100}$/;
+const UNSIGNED_DECIMAL = /^[0-9]{1,20}$/;
+const UTC_MOMENT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
 /**
  * Publikationen (2.20), aus `pg_publication` und `pg_publication_rel`.
  * Abgeleitet aus `publications.sql` in postgres-meta (Apache 2.0); die
@@ -1733,6 +1826,55 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Worauf diese Umgebung laeuft (2.67), in einer Anweisung und ohne Rechnung.
+   *
+   * Jede Angabe wird an der Grenze geprueft, bevor sie den Dienst verlaesst.
+   * Das ist hier kein Formalismus: `server_version` ist ein freier Text, den
+   * der Packager setzt, und `datcollate` traegt einen Gebietsnamen aus dem
+   * Betriebssystem. Was nicht wie ein Katalogwert aussieht, faellt durch,
+   * statt in der Console zu landen.
+   */
+  async inspectRuntime(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseRuntimeResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const result = await client.query<RuntimeRow>(RUNTIME_SQL);
+      const row = result.rows[0];
+      // Ohne Zeile gibt es nichts zu sagen. Eine leere Antwort waere eine
+      // Behauptung ueber eine Datenbank, die der Katalog nicht kennt.
+      if (!row) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      if (typeof row.server_version !== "string" || !SERVER_VERSION.test(row.server_version) ||
+          !Number.isSafeInteger(row.server_version_num) ||
+          row.server_version_num < 80_000 || row.server_version_num > 99_999_999 ||
+          typeof row.server_encoding !== "string" || !ENCODING.test(row.server_encoding) ||
+          typeof row.collate !== "string" || !LOCALE_NAME.test(row.collate) ||
+          typeof row.ctype !== "string" || !LOCALE_NAME.test(row.ctype) ||
+          typeof row.size_bytes !== "string" || !UNSIGNED_DECIMAL.test(row.size_bytes) ||
+          typeof row.in_recovery !== "boolean" ||
+          typeof row.started_at !== "string" || !UTC_MOMENT.test(row.started_at)) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      const sizeBytes = Number(row.size_bytes);
+      // Eine Groesse jenseits des sicheren Integers waere still falsch. Lieber
+      // keine Antwort als eine gerundete.
+      if (!Number.isSafeInteger(sizeBytes)) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      return {
+        source: "postgres",
+        serverVersion: row.server_version,
+        serverVersionNum: row.server_version_num,
+        encoding: row.server_encoding,
+        collate: row.collate,
+        ctype: row.ctype,
+        sizeBytes,
+        inRecovery: row.in_recovery,
+        startedAt: row.started_at,
+      };
+    });
+  }
+
   async inspectPublications(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -2014,6 +2156,13 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _context: ProjectDataPlaneContext,
     _scope: ProjectDataPlaneScope,
   ): Promise<ProjectDatabaseSettingsResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectRuntime(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseRuntimeResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

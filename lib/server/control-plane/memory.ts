@@ -64,6 +64,20 @@ export class MemoryControlPlaneService implements ControlPlaneService {
     return project;
   }
 
+  /**
+   * Der Speicher kennt je Projekt genau eine Umgebung, und sie ist an keine
+   * Datenbank gebunden. Die Antwort sagt das, statt eine Bindung zu erfinden.
+   */
+  async listProjectEnvironments(context: ControlPlaneContext, projectId: string) {
+    const project = getProject(context.organizationId, projectId);
+    return [{
+      environment: project.environment,
+      databaseInstanceRef: "pending:memory-data-plane",
+      bound: false,
+      createdAt: null,
+    }];
+  }
+
   async getProjectDatabaseTarget(context: ControlPlaneContext, projectId: string, environment: Project["environment"]) {
     await this.getProjectEnvironment(context, projectId, environment);
     return { databaseInstanceRef: "pending:memory-data-plane" };

@@ -35,6 +35,7 @@ import {
   policyAllowsAutomaticApproval,
   policyCanAutoQueue,
 } from "@/lib/server/control-plane/automation-policy";
+import { isCatalogReference } from "@/lib/server/migrations/connection-catalog";
 import { randomUUID } from "node:crypto";
 
 type TenantRepositoryProvider = Pick<PostgresControlPlane, "withTenant">;
@@ -154,6 +155,33 @@ export class PostgresControlPlaneService implements ControlPlaneService {
         repositories.environments.get(projectId, environment),
       ]);
       return projectFromRecord(project, environment);
+    });
+  }
+
+  /**
+   * Die Umgebungen eines Projekts mit ihrer Datenbankreferenz (2.67).
+   *
+   * `projects.get` steht zuerst, damit ein fremdes oder geloeschtes Projekt
+   * ein "nicht gefunden" ergibt und nicht eine leere Liste; eine leere Liste
+   * waere die Behauptung, das Projekt habe keine Umgebung.
+   */
+  async listProjectEnvironments(context: ControlPlaneContext, projectId: string) {
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+      readOnly: true,
+    }, async (repositories) => {
+      await repositories.projects.get(projectId);
+      const records = await repositories.environments.list(projectId);
+      return records.map((record) => ({
+        environment: record.environment,
+        databaseInstanceRef: record.databaseInstanceRef,
+        // Gebunden heisst: Die Referenz hat die Form, die der Katalog der
+        // Verbindungen ueberhaupt annimmt. Ob dahinter eine erreichbare
+        // Datenbank steht, sagt diese Zeile nicht.
+        bound: isCatalogReference(record.databaseInstanceRef),
+        createdAt: record.createdAt,
+      }));
     });
   }
 

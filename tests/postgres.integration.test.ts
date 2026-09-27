@@ -4470,6 +4470,216 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu drei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+  it("(2.67) reads what this environment runs on from the real server and the real control plane", async () => {
+    // Einstellungen -> Infrastruktur (2.67) gegen die echte Datenbank. Der
+    // Fall hat drei Zusagen, und keine davon liesse sich gegen einen Nachbau
+    // pruefen:
+    //
+    // 1. Was die Seite ueber den Server sagt, sagt der Server selbst. Version,
+    //    Versionsnummer, Kodierung, Sortierung, Zeichenklassen und Startzeit
+    //    werden danach ein zweites Mal gelesen, als Eigentuemer, aus
+    //    `pg_database` und `current_setting`, und muessen uebereinstimmen.
+    //    Gegen einen Fake waere das die Pruefung des Fakes.
+    // 2. Die Groesse ist gemessen und nicht gemeldet. Der Fall misst, schreibt
+    //    dann rund vier Megabyte in ein eigenes Schema derselben Datenbank und
+    //    misst noch einmal. Waechst die gemeldete Zahl nicht mit, liest die
+    //    Ansicht nicht diese Datenbank. Ein Nachbau haette nichts, was waechst.
+    // 3. Die Umgebungen kommen aus `project_environments`, durch die echte
+    //    Kontrollebene und ueber die Laufzeitrolle, also unter RLS. Eine
+    //    gebundene und eine wartende Umgebung stehen nebeneinander, und die
+    //    Nachbarorganisation bekommt dasselbe Projekt nicht zu sehen. Ohne
+    //    echte Policies waere das keine Aussage.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.59, 2.62 und 2.63: Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden, und
+    // dieser Fall soll ihm dabei nicht im Weg stehen. Das eigene Schema faellt
+    // am Ende samt Inhalt weg; Organisation, Projekt und Umgebungen bleiben
+    // stehen wie in 2.59 und 2.62.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const infraOwner = randomUUID();
+    const infraOrganization = randomUUID();
+    const infraProject = randomUUID();
+    const schema = `infra_${randomUUID().replaceAll("-", "_")}`;
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [infraOwner, `infra-2-67-owner-${infraOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Infra 2.67', $2, $3)`,
+    [infraOrganization, `infra-2-67-${infraOrganization}`, infraOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [infraOrganization, infraOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Infra 2.67', $3, 'test', 'ready', $4)`,
+    [infraProject, infraOrganization, `infra-2-67-${infraProject}`, infraOwner]);
+    // Eine gebundene und eine wartende Umgebung: Die Ansicht unterscheidet
+    // beide, und nur mit beiden ist die Unterscheidung belegt.
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3), ($1, $2, 'staging', $4)`,
+    [infraOrganization, infraProject, `managed:${infraProject}`, `pending:${infraProject}`]);
+
+    const context = {
+      organizationId: infraOrganization,
+      actor: { id: infraOwner, ref: `infra-2-67-owner-${infraOwner}@qkern.test`, type: "user" as const },
+    };
+    // --- Zusage 3: die Umgebungen, durch die echte Kontrollebene unter RLS ---
+    const control = new PostgresControlPlaneService(
+      new PostgresControlPlane(runtime),
+      new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex")),
+    );
+    const bindings = await control.listProjectEnvironments(context, infraProject);
+    expect(bindings.map((entry) => entry.environment)).toEqual(["development", "staging"]);
+    for (const entry of bindings) {
+      expect(Object.keys(entry).sort()).toEqual(["bound", "createdAt", "databaseInstanceRef", "environment"]);
+      expect(entry.createdAt, entry.environment).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    }
+    const development = bindings.find((entry) => entry.environment === "development")!;
+    const staging = bindings.find((entry) => entry.environment === "staging")!;
+    expect(development.databaseInstanceRef).toBe(`managed:${infraProject}`);
+    expect(development.bound).toBe(true);
+    // Eine wartende Marke ist keine Bindung, und die Ansicht darf sie nicht
+    // fuer eine halten.
+    expect(staging.databaseInstanceRef).toBe(`pending:${infraProject}`);
+    expect(staging.bound).toBe(false);
+    // Die Referenzen stehen so in der Tabelle; keine traegt eine Adresse.
+    const storedRefs = await owner.query<{ environment: string; database_instance_ref: string }>(
+      `SELECT environment::text AS environment, database_instance_ref
+       FROM project_environments WHERE project_id = $1 ORDER BY environment`, [infraProject]);
+    expect(storedRefs.rows.map((row) => row.database_instance_ref).sort())
+      .toEqual(bindings.map((entry) => entry.databaseInstanceRef).sort());
+    // Der Nachbar sieht dieses Projekt nicht, und bekommt auch keine leere
+    // Liste: eine leere Liste waere die Behauptung, es habe keine Umgebung.
+    await expect(control.listProjectEnvironments({
+      organizationId: organizationB,
+      actor: { id: secondUserId, ref: `integration-${secondUserId}@qkern.test`, type: "user" as const },
+    }, infraProject)).rejects.toThrowError(/not found/i);
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${infraProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole,
+          expectedDatabase,
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const scope = { projectId: infraProject, environment: "development" as const };
+      const inspection = {
+        organizationId: infraOrganization,
+        actorRef: `infra-2-67-owner-${infraOwner}@qkern.test`,
+      };
+      const before = await service.inspectRuntime(inspection, scope);
+
+      // --- Die Form der Antwort ---
+      expect(before.source).toBe("postgres");
+      expect(Object.keys(before).sort()).toEqual([
+        "collate", "ctype", "encoding", "inRecovery", "serverVersion",
+        "serverVersionNum", "sizeBytes", "source", "startedAt",
+      ]);
+
+      // --- Zusage 1: jede Angabe steht so im Katalog ---
+      const catalog = await owner.query<{
+        server_version: string; server_version_num: string; encoding: string;
+        collate: string; ctype: string; in_recovery: boolean; started_at: string;
+      }>(`SELECT current_setting('server_version') AS server_version,
+                 current_setting('server_version_num') AS server_version_num,
+                 pg_catalog.pg_encoding_to_char(database.encoding) AS encoding,
+                 database.datcollate AS collate,
+                 database.datctype AS ctype,
+                 pg_catalog.pg_is_in_recovery() AS in_recovery,
+                 to_char(pg_catalog.pg_postmaster_start_time() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS started_at
+          FROM pg_catalog.pg_database AS database
+          WHERE database.datname = $1`, [expectedDatabase]);
+      const reference = catalog.rows[0];
+      expect(reference, "Die Datenbank steht nicht in pg_database; dann prueft dieser Fall nichts.").toBeDefined();
+      expect(before.serverVersion).toBe(reference!.server_version);
+      expect(before.serverVersionNum).toBe(Number(reference!.server_version_num));
+      expect(before.encoding).toBe(reference!.encoding);
+      expect(before.collate).toBe(reference!.collate);
+      expect(before.ctype).toBe(reference!.ctype);
+      expect(before.inRecovery).toBe(reference!.in_recovery);
+      expect(before.startedAt).toBe(reference!.started_at);
+      // Zahl und Text sind zwei Angaben desselben Servers; die Hauptversion
+      // muss in beiden dieselbe sein.
+      expect(Math.floor(before.serverVersionNum / 10_000))
+        .toBe(Number(/^[0-9]+/.exec(before.serverVersion)![0]));
+      // Der Stack faehrt PostgreSQL 17; eine aeltere Version waere ein Fund.
+      expect(before.serverVersionNum).toBeGreaterThanOrEqual(170_000);
+      expect(before.encoding).toBe("UTF8");
+      // Der Zertifizierungsstack hat kein Standby; die Ansicht darf daraus
+      // keine Replikation erfinden.
+      expect(before.inRecovery).toBe(false);
+      expect(Date.parse(before.startedAt)).toBeLessThanOrEqual(Date.now());
+
+      // --- Zusage 2: die Groesse ist gemessen und waechst mit ---
+      expect(before.sizeBytes).toBeGreaterThan(0);
+      const ownerSize = await owner.query<{ size: string }>(
+        "SELECT pg_catalog.pg_database_size($1)::text AS size", [expectedDatabase]);
+      // Beide Messungen liegen Sekunden auseinander, darum keine Gleichheit,
+      // aber auch keine Beliebigkeit: mehr als 64 MiB Unterschied waere eine
+      // andere Datenbank.
+      expect(Math.abs(before.sizeBytes - Number(ownerSize.rows[0]!.size))).toBeLessThan(64 * 1024 * 1024);
+
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      try {
+        await owner.query(`CREATE TABLE "${schema}"."ballast" (id integer PRIMARY KEY, payload text NOT NULL)`);
+        // Rund zehn Megabyte. Der Wert je Zeile bleibt unter der
+        // TOAST-Schwelle, liegt also wirklich in der Tabelle, und jede Zeile
+        // traegt einen eigenen Hash, damit die Seiten sich nicht wiederholen.
+        // `gen_random_bytes` steht nicht zur Verfuegung: pgcrypto ist in
+        // dieser Datenbank nicht installiert, und dieser Fall installiert
+        // nichts.
+        await owner.query(`INSERT INTO "${schema}"."ballast" (id, payload)
+          SELECT step, repeat(md5(random()::text || step::text), 16)
+          FROM generate_series(1, 20000) AS step`);
+        const after = await service.inspectRuntime(inspection, scope);
+        expect(after.sizeBytes - before.sizeBytes,
+          "die gemeldete Groesse waechst nicht mit den geschriebenen Daten").toBeGreaterThanOrEqual(4 * 1024 * 1024);
+        // Alles andere bleibt, wie es war: Ein Schreibvorgang aendert weder
+        // die Version noch die Kodierung.
+        expect(after.serverVersion).toBe(before.serverVersion);
+        expect(after.encoding).toBe(before.encoding);
+        expect(after.startedAt).toBe(before.startedAt);
+
+        // --- Kein Wert der Antwort verraet, wo die Datenbank liegt ---
+        const keys = new Set<string>();
+        const values: unknown[] = [];
+        const walk = (value: unknown): void => {
+          if (Array.isArray(value)) { for (const entry of value) walk(entry); return; }
+          if (value !== null && typeof value === "object") {
+            for (const [key, entry] of Object.entries(value)) { keys.add(key.toLowerCase()); walk(entry); }
+            return;
+          }
+          values.push(value);
+        };
+        walk(after);
+        for (const value of values) {
+          expect(String(value), "die volle Verbindungsadresse").not.toBe(projectApiUrl!);
+        }
+        for (const forbidden of ["host", "hostname", "port", "password", "user", "username", "dsn", "url", "uri", "path"]) {
+          expect([...keys], forbidden).not.toContain(forbidden);
+        }
+        const serialised = JSON.stringify(after);
+        expect(serialised).not.toContain(decodeURIComponent(target.password));
+        expect(serialised).not.toContain(`:${target.port || "5432"}`);
+        expect(serialised).not.toContain("://");
+        for (const word of ["sslmode", "connectionString", "data_directory", "client_addr"]) {
+          expect(serialised.toLowerCase(), word).not.toContain(word.toLowerCase());
+        }
+      } finally {
+        await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      }
+    } finally {
+      await projectApi.end();
+    }
+  });
+
 });
 
 /**

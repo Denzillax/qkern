@@ -24,7 +24,7 @@ describe("project data-plane routes", () => {
   it("binds schema inspection to the authenticated tenant and disables caching", async () => {
     const principal = await identity();
     const inspectSchema = vi.fn().mockResolvedValue({ source: "postgres", schema: "public", tables: [], truncated: false });
-    const dataPlane = { inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const response = await handleProjectSchema(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/schema", {
       headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
     }), { params: Promise.resolve({ projectId: "project", environment: "development" }) }, dataPlane);
@@ -40,7 +40,7 @@ describe("project data-plane routes", () => {
 
   it("allows a scope-bound project key to inspect schema for SDK and CLI generation", async () => {
     const inspectSchema = vi.fn().mockResolvedValue({ source: "postgres", schema: "public", tables: [], truncated: false });
-    const dataPlane = { inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const keys = {
       authenticate: vi.fn().mockResolvedValue({
         id: "key-cli", organizationId: "org-cli", projectId: "project-cli",
@@ -62,7 +62,7 @@ describe("project data-plane routes", () => {
 
   it("forwards schema names with capitals exactly and refuses names outside the grammar (2.33)", async () => {
     const inspectSchema = vi.fn().mockResolvedValue({ source: "postgres", schema: "Shop", tables: [], truncated: false });
-    const dataPlane = { inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema, inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const keys = {
       authenticate: vi.fn().mockResolvedValue({
         id: "key-cli", organizationId: "org-cli", projectId: "project-cli",
@@ -87,7 +87,7 @@ describe("project data-plane routes", () => {
     const queryReadOnly = vi.fn().mockResolvedValue({
       source: "postgres", columns: ["id"], rows: [{ id: "1" }], rowCount: 1, truncated: false, maxRows: 20,
     });
-    const dataPlane = { inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly, inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly, inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const route = { params: Promise.resolve({ projectId: "project", environment: "development" }) };
     const denied = await handleProjectReadQuery(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/query", {
       method: "POST",
