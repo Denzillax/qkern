@@ -50,9 +50,12 @@ describe("console log views contract", () => {
     ]) {
       expect(navigation, claim).not.toContain(claim);
     }
-    // Function-Logs aus dem Container bleiben ein Platzhalter: Die Ausgabe
-    // gibt es weiterhin nicht.
-    expect("compute-logs" in PLACEHOLDERS).toBe(true);
+    // Die Ausgabe des Containers gibt es weiterhin nicht. Seit 2.84 ist
+    // Function-Logs trotzdem kein Platzhalter mehr, sondern die Seite, die
+    // sagt, warum es sie nicht gibt; geprueft wird das im eigenen Vertrag
+    // `console-missing-log-views-contract`.
+    expect("compute-logs" in PLACEHOLDERS).toBe(false);
+    expect(REAL_VIEWS).toContain("compute-logs");
   });
 
   it("only reads, from the one invocation route, and never writes", async () => {

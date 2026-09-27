@@ -72,10 +72,20 @@ export const DATA_API_LOG_TEXTS = {
     "Ein Protokoll je Anfrage gibt es nicht. QKERN schreibt für die generierte Data API keine Zeile mit Rolle, Tabelle, Status und Antwortzeit — weder in der Datenbank noch irgendwo sonst. Diese Seite zeigt darum, was wirklich da ist, und erfindet den Rest nicht.",
   /** Was es gibt: der Zaehler. Mit seiner Grenze im selben Satz. */
   counterTitle: "Der Zähler der API-Anfragen",
+  /**
+   * Ebenfalls in 2.84 berichtigt: „jede Anfrage an eine QKERN-Schnittstelle"
+   * stand direkt ueber dem Satz, der die Reichweite einschraenkt, und hat ihm
+   * widersprochen.
+   */
   counterMeaning:
-    "Jede Anfrage an eine QKERN-Schnittstelle wird an ihrer HTTP-Grenze einmal gezählt und landet als Nutzungsereignis in der Messung. Daraus entsteht die Reihe unten, in Stundenschritten über die letzten 48 Stunden.",
+    "Anfragen an die generierte Data API, an Project Storage und an die Queues werden an ihrer HTTP-Grenze einmal gezählt und landen als Nutzungsereignis in der Messung. Daraus entsteht die Reihe unten, in Stundenschritten über die letzten 48 Stunden.",
+  /**
+   * Nachgezaehlt in 2.84 an den Aufrufstellen von `admitApiRequest`: Die Metrik
+   * wird von genau drei Modulen erhoeht. Der Satz nannte vorher sechs weitere
+   * und war damit in die falsche Richtung falsch, also zu beruhigend.
+   */
   counterLimit:
-    "Diese Zahl ist keine Zahl der Data-API-Anfragen: Gezählt wird unter derselben Metrik auch die Control Plane, Auth, Storage, die Queues, Realtime und MCP. Das Nutzungsereignis trägt seine Quelle zwar, die Reihe gruppiert aber nur nach Metrik. Nehmen Sie die Kurve als Obergrenze, nicht als Messwert der Data API.",
+    "Diese Zahl ist keine Zahl der Data-API-Anfragen: Gezählt wird unter derselben Metrik auch Project Storage und die Queues. Die Control Plane, Auth, Realtime, Compute und MCP zählen hier dagegen nicht mit, obwohl die Messung sie als Quelle kennt. Das Nutzungsereignis trägt seine Quelle zwar, die Reihe gruppiert aber nur nach Metrik. Nehmen Sie die Kurve als Obergrenze, nicht als Messwert der Data API.",
   /** Was es gibt: die Freigabe. */
   exposureTitle: "Was die Data API freigibt",
   exposureMeaning:

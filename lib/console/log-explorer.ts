@@ -113,7 +113,10 @@ export const LOG_EXPLORER_OUT_OF_REACH: ReadonlyArray<Readonly<{
   }),
   Object.freeze({
     label: "Postgres-, Pooler-, Realtime- und API-Gateway-Log",
-    reason: "Es gibt kein Backend dafür. Diese vier Seiten der Console sind weiterhin Platzhalter, und der Explorer tut nicht so, als hätte er ihre Zeilen.",
+    // Berichtigt in 2.84: Drei dieser vier Seiten sind keine Platzhalter mehr,
+    // und bei zweien fehlt nicht das Backend, sondern die Sache selbst. Der
+    // Grund musste deshalb je Quelle einzeln stimmen.
+    reason: "Für keine dieser vier Quellen gibt es eine Leseroute über die ganze Umgebung. Das Serverlog von Postgres liegt neben dem Datenverzeichnis, auf das QKERN keinen Zugriff hat; einen Pooler und einen protokollierenden Rand gibt es gar nicht; und für Realtime fehlt das Backend.",
   }),
 ]);
 
