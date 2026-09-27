@@ -183,6 +183,12 @@ export function projectAuthRouteError(error: unknown, request?: NextRequest): Ne
       case "INVALID_TOKEN":
       case "MFA_REQUIRED":
       case "INVALID_MFA":
+      // Eine abgewiesene WebAuthn-Antwort (2.79) bekommt denselben Satz wie
+      // jede andere fehlgeschlagene Anmeldung. Der Grund steht im Audit und
+      // nicht in der Antwort: Ein Aufrufer, der erfaehrt, dass es an `origin`
+      // lag, erfaehrt damit, dass die Kennung und die Unterschrift gestimmt
+      // haetten.
+      case "INVALID_PASSKEY":
         return respond(projectAuthNoStore({ error: "Authentication failed" }, 401));
     }
   }

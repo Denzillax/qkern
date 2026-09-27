@@ -61,7 +61,7 @@ import { authFailureRanking, authFailureShare } from "@/lib/console/auth-perform
 import { PROJECT_AUTH_AUDIT_ACTION_IDS } from "@/lib/console/auth-observability-texts";
 // Der erzwingbare zweite Faktor (2.52): echte Repository-, Audit- und
 // Token-Teile hinter dem echten Dienst.
-import { createHmac, generateKeyPairSync } from "node:crypto";
+import { createHash, createHmac, createSign, generateKeyPairSync, randomBytes, type KeyObject } from "node:crypto";
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
@@ -6865,6 +6865,344 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await owner.query(`DELETE FROM project_auth_users
       WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, hookProject]);
   }, 120_000);
+  it("(2.79) registers a real passkey, signs in with a real signature and refuses replay, wrong origin and a counter that runs backwards", async () => {
+    // Die ganze Kette der Anmeldung mit WebAuthn (2.79) an einem Stueck, gegen
+    // die echte Datenbank.
+    //
+    // Echt ist hier alles, was zaehlt: ein echtes Schluesselpaar aus
+    // `node:crypto`, ein echtes Attestation-Objekt in CBOR, echte
+    // `clientDataJSON`, eine echte ECDSA-Unterschrift ueber
+    // `authenticatorData || sha256(clientDataJSON)`, das PostgreSQL-Repository
+    // von Project Auth, der Audit-Sink in der Hash-Kette, der Argon2-Hasher und
+    // der Ed25519-Signierer der Access Token. Gestellt ist genau das, was in
+    // einem Test nicht laufen kann: der Browser und der Authenticator. Beides
+    // wird hier nachgebaut, und zwar mit demselben privaten Schluessel, den ein
+    // echter Authenticator nie hergeben wuerde.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.52, 2.56 und 2.77: Jede
+    // Anmeldung und jede Ablehnung schreiben eine Audit-Zeile, und eine
+    // Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen. Weggeraeumt wird
+    // darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const passkeyOwner = randomUUID();
+    const passkeyOrganization = randomUUID();
+    const passkeyProject = randomUUID();
+    const scope = {
+      organizationId: passkeyOrganization, projectId: passkeyProject,
+      environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [passkeyOwner, `passkeys-owner-${passkeyOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Passkeys', $2, $3)`, [passkeyOrganization, `passkeys-${passkeyOrganization}`, passkeyOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Passkeys', $3, 'test', 'ready', $4)`,
+    [passkeyProject, passkeyOrganization, `passkeys-${passkeyProject}`, passkeyOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [passkeyOrganization, passkeyProject, `managed:${passkeyProject}`]);
+
+    const { privateKey: signingKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-79", privateKey: signingKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 9)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      // Die erlaubte Herkunft dieser Umgebung, und damit `app.test` als rpId.
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    // Die Grenze je Zeitfenster wird hochgesetzt, und zwar durch das Produkt
+    // selbst. Der Fall probiert einen Schluessel absichtlich mehrfach, und die
+    // Vorgabe von zehn Versuchen je Viertelstunde waere sonst das, was ihn
+    // beendet — nicht eine Pruefung, sondern ein Zaehler.
+    await service.setRateLimits(scope, {
+      sign_in: { max: 100, windowSeconds: 900 },
+      mail: { max: 100, windowSeconds: 3_600 },
+      refresh: { max: 100, windowSeconds: 3_600 },
+    }, { id: passkeyOwner });
+
+    const password = "a sufficiently long certification password";
+    const email = `passkey-${randomUUID()}@example.test`;
+    const signUp = await service.signUp(scope, {
+      email, password, redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    const verified = await service.consumeEmailToken(scope, {
+      token: signUp.debugToken!, purpose: "email_verification",
+    });
+    if ("mfaRequired" in verified) throw new Error("unexpected MFA");
+    const appUser = verified.user.id;
+    // Der Nutzer kommt aus einem echten Access Token durch `verifyAccess`, so
+    // wie die Route ihn holt, und nicht aus einem selbst gebauten Objekt.
+    const principal = await service.verifyAccess(scope, verified.accessToken);
+
+    // --- Der Authenticator ------------------------------------------------
+    // Ein echtes P-256-Paar. Der oeffentliche Teil wandert als COSE-Schluessel
+    // in das Attestation-Objekt; der private bleibt hier und unterschreibt.
+    const keyPair = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = keyPair.publicKey.export({ format: "jwk" }) as { x: string; y: string };
+    const coseKey = certificationCoseKey(
+      Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url"),
+    );
+    const credentialId = randomBytes(32);
+    const rpIdHash = createHash("sha256").update("app.test", "utf8").digest();
+
+    // --- Zusage 1: eine echte Registrierung -------------------------------
+    const registration = await service.beginPasskeyRegistration(principal);
+    expect(registration.challengeToken).toMatch(/^qk_pkey_[A-Za-z0-9_-]{43}$/);
+    // Der Schein und die Herausforderung tragen denselben Zufall. Das ist keine
+    // Bequemlichkeit, sondern die Bindung: Der Browser unterschreibt den Wert,
+    // den der Server in der Datenbank einloest.
+    expect(registration.challenge).toBe(registration.challengeToken.slice("qk_pkey_".length));
+    expect(registration.existingCredentialIds).toEqual([]);
+    expect(registration.relyingParties).toEqual([{ origin: "https://app.test", rpId: "app.test" }]);
+    expect(registration.algorithms).toEqual([{ type: "public-key", alg: -7 }]);
+
+    const stored = await service.completePasskeyRegistration(principal, {
+      challengeToken: registration.challengeToken,
+      attestationObject: certificationAttestationObject({
+        rpIdHash, signCount: 7, credentialId, coseKey,
+      }).toString("base64url"),
+      clientDataJSON: certificationClientData({
+        type: "webauthn.create", challenge: registration.challenge, origin: "https://app.test",
+      }).toString("base64url"),
+      label: "Telefon der Zertifizierung",
+    });
+    expect(stored).toMatchObject({
+      credentialId: credentialId.toString("base64url"),
+      algorithm: -7, signCount: 7, userVerified: true, attestationFormat: "none",
+      label: "Telefon der Zertifizierung", lastUsedAt: null,
+    });
+
+    // Was wirklich in der Datenbank steht, mit der Laufzeitrolle gelesen. Der
+    // Punkt dieser Abfrage ist, was **nicht** darin steht: nichts Geheimes.
+    const row = await auth.query<{
+      credential_id: string; public_key: string; algorithm: number;
+      sign_count: string; attestation_format: string;
+    }>(`SELECT credential_id, public_key, algorithm, sign_count::text AS sign_count, attestation_format
+        FROM project_auth_passkeys
+        WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+    [passkeyOrganization, passkeyProject]);
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].algorithm).toBe(-7);
+    expect(row.rows[0].sign_count).toBe("7");
+    expect(row.rows[0].attestation_format).toBe("none");
+    // Der abgelegte Schluessel ist genau der oeffentliche Teil des Paares, in
+    // SPKI-DER. Nachgerechnet und nicht geglaubt.
+    expect(row.rows[0].public_key).toBe(
+      keyPair.publicKey.export({ format: "der", type: "spki" }).toString("base64url"),
+    );
+    // Und der private Teil steht nirgends in dieser Zeile. Geprueft wird gegen
+    // `d` aus dem privaten JWK, also gegen den Wert, der wirklich geheim ist,
+    // und gegen den Anfang des PKCS8-Textes.
+    //
+    // Gegen `x` wird hier ausdruecklich **nicht** geprueft: Ein SPKI-DER traegt
+    // die Koordinaten im Klartext, und sein Praefix ist 27 Byte lang, also ein
+    // Vielfaches von drei. Damit steht base64url(x) je nach erstem Byte von `y`
+    // woertlich im abgelegten Schluessel. Das ist kein Leck, sondern die Form
+    // eines oeffentlichen Schluessels; eine Behauptung, die in einem von vier
+    // Laeufen faellt, sagt darueber nichts.
+    const privateJwk = keyPair.privateKey.export({ format: "jwk" }) as { d: string };
+    const privatePem = keyPair.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const serialisedRow = JSON.stringify(row.rows[0]);
+    expect(serialisedRow).not.toContain(privatePem.split("\n")[1]);
+    expect(serialisedRow).not.toContain(privateJwk.d);
+
+    // Die Zeile traegt kein DELETE-Verbot, aber sie traegt eines auf dem
+    // Schluessel: Ein Passkey, dessen oeffentlicher Teil sich aendern laesst,
+    // ist kein Passkey. Die Laufzeitrolle hat auf dieser Spalte kein UPDATE.
+    await expect(auth.query(
+      `UPDATE project_auth_passkeys SET public_key = $1
+        WHERE organization_id = $2 AND project_id = $3`,
+      ["A".repeat(120), passkeyOrganization, passkeyProject])).rejects.toBeDefined();
+
+    // --- Zusage 2: eine echte Anmeldung mit echter Unterschrift -----------
+    const firstChallenge = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    const firstAssertion = certificationAssertion({
+      privateKey: keyPair.privateKey, rpIdHash, signCount: 8,
+      challenge: firstChallenge.challenge, origin: "https://app.test",
+    });
+    const session = await service.completePasskeySignIn(scope, {
+      challengeToken: firstChallenge.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...firstAssertion, rateLimitKey: randomUUID(),
+    });
+    if ("mfaRequired" in session) throw new Error("unexpected MFA");
+    expect(session.tokenType).toBe("Bearer");
+    expect(session.user.id).toBe(appUser);
+    // Das Token ist echt: derselbe Dienst nimmt es an, und die Sitzung steht in
+    // der Datenbank.
+    const usable = await service.verifyAccess(scope, session.accessToken);
+    expect(usable.user.id).toBe(appUser);
+    expect(usable.session.assurance).toBe("aal1");
+    expect(claimsOf(session.accessToken).aal).toBe("aal1");
+
+    // Der Zaehler ist mitgewandert, und zwar in der Datenbank.
+    const advanced = await auth.query<{ sign_count: string; last_used_at: string | null }>(
+      `SELECT sign_count::text AS sign_count, last_used_at FROM project_auth_passkeys
+        WHERE organization_id = $1 AND project_id = $2`, [passkeyOrganization, passkeyProject]);
+    expect(advanced.rows[0].sign_count).toBe("8");
+    expect(advanced.rows[0].last_used_at).not.toBeNull();
+
+    // --- Zusage 3: eine wiederverwendete Herausforderung ------------------
+    // Dieselbe Herausforderung, eine neue, gueltige Unterschrift darueber. Wer
+    // eine Antwort mitgeschnitten hat, soll sie nicht noch einmal einspielen
+    // koennen; wer den privaten Schluessel haette, braeuchte sie nicht.
+    const replay = certificationAssertion({
+      privateKey: keyPair.privateKey, rpIdHash, signCount: 9,
+      challenge: firstChallenge.challenge, origin: "https://app.test",
+    });
+    await expect(service.completePasskeySignIn(scope, {
+      challengeToken: firstChallenge.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...replay, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_PASSKEY" });
+    // Und der Zaehler ist dabei nicht gewandert: Eine abgewiesene Anmeldung
+    // hinterlaesst nichts.
+    const afterReplay = await auth.query<{ sign_count: string }>(
+      `SELECT sign_count::text AS sign_count FROM project_auth_passkeys
+        WHERE organization_id = $1 AND project_id = $2`, [passkeyOrganization, passkeyProject]);
+    expect(afterReplay.rows[0].sign_count).toBe("8");
+
+    // --- Zusage 4: ein falsches origin -----------------------------------
+    // Eine gueltige Unterschrift ueber Daten einer fremden Seite. Genau so
+    // sieht ein Phishing-Versuch aus, und genau darum ist ein falsches `origin`
+    // ein Angriff und kein Tippfehler.
+    const foreign = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    const foreignAssertion = certificationAssertion({
+      privateKey: keyPair.privateKey, rpIdHash, signCount: 9,
+      challenge: foreign.challenge, origin: "https://angreifer.test",
+    });
+    await expect(service.completePasskeySignIn(scope, {
+      challengeToken: foreign.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...foreignAssertion, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_PASSKEY" });
+
+    // --- Zusage 5: ein rueckwaerts laufender Zaehler ----------------------
+    // Der Stand steht auf 8. Eine Antwort mit 8 ist keine neue Benutzung,
+    // sondern eine zweite Kopie desselben Schluessels.
+    const cloned = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    const clonedAssertion = certificationAssertion({
+      privateKey: keyPair.privateKey, rpIdHash, signCount: 8,
+      challenge: cloned.challenge, origin: "https://app.test",
+    });
+    await expect(service.completePasskeySignIn(scope, {
+      challengeToken: cloned.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...clonedAssertion, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_PASSKEY" });
+
+    // --- Zusage 6: eine Unterschrift von einem fremden Schluessel ---------
+    const impostor = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const forged = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    const forgedAssertion = certificationAssertion({
+      privateKey: impostor.privateKey, rpIdHash, signCount: 20,
+      challenge: forged.challenge, origin: "https://app.test",
+    });
+    await expect(service.completePasskeySignIn(scope, {
+      challengeToken: forged.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...forgedAssertion, rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_PASSKEY" });
+
+    // --- Zusage 7: derselbe Weg zur Sitzung wie beim Passwort -------------
+    // Verlangt die Umgebung den zweiten Faktor, ergibt auch eine gueltige
+    // Anmeldung mit Passkey keine Sitzung, sondern einen Einrichtungsschein.
+    // Das ist der Beleg, dass die Anmeldung mit Passkey durch dieselbe Stelle
+    // laeuft wie die mit Passwort; laeufe sie daneben, waere sie ein Loch im
+    // Schalter aus 2.52.
+    await service.setMfaRequired(scope, true, { id: passkeyOwner });
+    const enforced = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    const enforcedAssertion = certificationAssertion({
+      privateKey: keyPair.privateKey, rpIdHash, signCount: 21,
+      challenge: enforced.challenge, origin: "https://app.test",
+    });
+    const gated = await service.completePasskeySignIn(scope, {
+      challengeToken: enforced.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...enforcedAssertion, rateLimitKey: randomUUID(),
+    });
+    expect(gated).toMatchObject({ mfaRequired: true, enrollmentRequired: true });
+    await service.setMfaRequired(scope, false, { id: passkeyOwner });
+
+    // --- Zusage 8: auflisten und entfernen --------------------------------
+    const list = await service.listPasskeys(principal);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ label: "Telefon der Zertifizierung", signCount: 21 });
+    // Kein oeffentlicher Schluessel in der Liste, und zwar nicht nur als
+    // fehlendes Feld: Der Wert steht nirgends darin.
+    expect(JSON.stringify(list)).not.toContain(row.rows[0].public_key);
+    // Ein fremder Passkey wird nicht getroffen.
+    await expect(service.removePasskey(principal, randomUUID()))
+      .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    await expect(service.removePasskey(principal, list[0].id)).resolves.toEqual({ removed: true });
+    const emptied = await auth.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM project_auth_passkeys
+        WHERE organization_id = $1 AND project_id = $2`, [passkeyOrganization, passkeyProject]);
+    // Entfernt heisst weg und nicht markiert.
+    expect(emptied.rows[0].n).toBe("0");
+    expect(await service.listPasskeys(principal)).toEqual([]);
+    // Und ein Schluessel, den es nicht mehr gibt, meldet niemanden mehr an.
+    const gone = await service.beginPasskeySignIn(scope, { rateLimitKey: randomUUID() });
+    await expect(service.completePasskeySignIn(scope, {
+      challengeToken: gone.challengeToken,
+      credentialId: credentialId.toString("base64url"),
+      ...certificationAssertion({
+        privateKey: keyPair.privateKey, rpIdHash, signCount: 30,
+        challenge: gone.challenge, origin: "https://app.test",
+      }),
+      rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "INVALID_PASSKEY" });
+
+    // --- Zusage 9: die Uebersicht der Console -----------------------------
+    const policy = await service.readPasskeyPolicy(scope);
+    expect(policy).toMatchObject({
+      users: 1, passkeys: 0, usersWithPasskey: 0, usersWithoutPasskey: 1,
+      relyingParties: [{ origin: "https://app.test", rpId: "app.test" }],
+    });
+
+    // --- Zusage 10: die Spur nennt den Grund und nichts sonst -------------
+    const page = await service.listAuditEvents(scope, 100);
+    const actions = page.events.map((event) => event.action);
+    expect(actions).toContain("project_auth.passkey.registered");
+    expect(actions).toContain("project_auth.passkey.verified");
+    expect(actions).toContain("project_auth.passkey.removed");
+    const refused = page.events.filter((event) => event.action === "project_auth.passkey.refused");
+    const reasons = refused.map((event) => event.metadata.reason);
+    // Genau die vier Ablehnungen, um die es in diesem Fall geht.
+    expect(reasons).toContain("challenge_spent");
+    expect(reasons).toContain("origin_not_allowed");
+    expect(reasons).toContain("sign_count_regressed");
+    expect(reasons).toContain("signature_invalid");
+    expect(reasons).toContain("credential_unknown");
+    // Eine erfolgreiche Anmeldung mit Passkey ist auch eine Anmeldung: Ein
+    // Filter auf Anmeldungen muss sie finden.
+    expect(page.events.some((event) => event.action === "project_auth.login.succeeded" &&
+      event.metadata.method === "passkey")).toBe(true);
+    // Und in der Kette steht kein Kennzeichen des Geraets und keine Adresse.
+    const serialisedTrail = JSON.stringify(page.events);
+    expect(serialisedTrail).not.toContain(credentialId.toString("base64url"));
+    expect(serialisedTrail).not.toContain(row.rows[0].public_key);
+    expect(serialisedTrail).not.toContain(email);
+    expect(serialisedTrail).not.toContain("angreifer.test");
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: der App-Nutzer samt seinen
+    // Sitzungen und Token. Die Einstellungen und die Audit-Zeilen bleiben
+    // stehen; audit_logs ist append-only, und der Wegwerf-Stack faellt nach dem
+    // Lauf ohnehin weg.
+    await owner.query(`DELETE FROM project_auth_users
+      WHERE organization_id = $1 AND project_id = $2`, [passkeyOrganization, passkeyProject]);
+  }, 120_000);
 });
 
 /**
@@ -6914,5 +7252,156 @@ function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInpu
     realtime: { configured: true },
     vault: { connected: true },
     ...overrides,
+  };
+}
+
+/**
+ * Der Authenticator und der Browser, nachgebaut (2.79).
+ *
+ * Diese vier Funktionen sind der einzige gestellte Teil des Falles: Ein echter
+ * Authenticator laesst sich in einem Container nicht anschliessen, und ein
+ * Browser auch nicht. Was sie erzeugen, ist trotzdem echt — CBOR nach der
+ * Spezifikation, eine echte ECDSA-Unterschrift ueber genau die Bytes, die
+ * WebAuthn vorschreibt. Sie sind bewusst hier und nicht im Produktcode: Der
+ * Produktcode liest nur, und ein Erzeuger im Produkt waere ein Erzeuger, den
+ * niemand braucht und der jede Pruefung von innen kennt.
+ */
+
+/** Eine CBOR-Karte mit fester Laenge, wie CTAP2 sie verlangt. */
+function certificationCborMap(entries: Array<[Buffer, Buffer]>): Buffer {
+  return Buffer.concat([
+    certificationCborHead(5, entries.length),
+    ...entries.flatMap(([key, value]) => [key, value]),
+  ]);
+}
+
+/** Der Kopf eines CBOR-Wertes: Haupttyp und Laenge oder Zahl. */
+function certificationCborHead(major: number, value: number): Buffer {
+  if (value < 24) return Buffer.from([(major << 5) | value]);
+  if (value < 256) return Buffer.from([(major << 5) | 24, value]);
+  const head = Buffer.alloc(3);
+  head[0] = (major << 5) | 25;
+  head.writeUInt16BE(value, 1);
+  return head;
+}
+
+function certificationCborUnsigned(value: number): Buffer {
+  return certificationCborHead(0, value);
+}
+
+function certificationCborNegative(value: number): Buffer {
+  return certificationCborHead(1, -1 - value);
+}
+
+function certificationCborBytes(value: Buffer): Buffer {
+  return Buffer.concat([certificationCborHead(2, value.length), value]);
+}
+
+function certificationCborText(value: string): Buffer {
+  const encoded = Buffer.from(value, "utf8");
+  return Buffer.concat([certificationCborHead(3, encoded.length), encoded]);
+}
+
+/**
+ * Der oeffentliche Schluessel als COSE-Karte: kty 2 (EC2), alg -7 (ES256),
+ * crv 1 (P-256) und die beiden Koordinaten zu je 32 Byte.
+ */
+function certificationCoseKey(x: Buffer, y: Buffer): Buffer {
+  return certificationCborMap([
+    [certificationCborUnsigned(1), certificationCborUnsigned(2)],
+    [certificationCborUnsigned(3), certificationCborNegative(-7)],
+    [certificationCborNegative(-1), certificationCborUnsigned(1)],
+    [certificationCborNegative(-2), certificationCborBytes(x)],
+    [certificationCborNegative(-3), certificationCborBytes(y)],
+  ]);
+}
+
+/**
+ * `authenticatorData` nach der Spezifikation. Mit `credentialId` und `coseKey`
+ * entsteht die Form der Registrierung (Bit 6 gesetzt, danach die Daten des
+ * Schluessels), ohne sie die der Anmeldung.
+ *
+ * Die Flags sind 0x01 (Nutzer anwesend) und 0x04 (Nutzer bestaetigt); bei der
+ * Registrierung kommt 0x40 dazu.
+ */
+function certificationAuthenticatorData(input: {
+  rpIdHash: Buffer;
+  signCount: number;
+  credentialId?: Buffer;
+  coseKey?: Buffer;
+}): Buffer {
+  const attested = Boolean(input.credentialId && input.coseKey);
+  const header = Buffer.alloc(5);
+  header[0] = 0x01 | 0x04 | (attested ? 0x40 : 0);
+  header.writeUInt32BE(input.signCount, 1);
+  if (!attested) return Buffer.concat([input.rpIdHash, header]);
+  const credentialIdLength = Buffer.alloc(2);
+  credentialIdLength.writeUInt16BE(input.credentialId!.length);
+  return Buffer.concat([
+    input.rpIdHash, header,
+    // Die AAGUID. Null heisst "kein Kennzeichen des Modells", und genau das
+    // schicken Plattform-Authenticatoren ohne Attestation.
+    Buffer.alloc(16, 0),
+    credentialIdLength, input.credentialId!, input.coseKey!,
+  ]);
+}
+
+/** Das Attestation-Objekt mit `fmt: "none"`, wie es eine Plattform schickt. */
+function certificationAttestationObject(input: {
+  rpIdHash: Buffer;
+  signCount: number;
+  credentialId: Buffer;
+  coseKey: Buffer;
+}): Buffer {
+  return certificationCborMap([
+    [certificationCborText("fmt"), certificationCborText("none")],
+    [certificationCborText("attStmt"), certificationCborMap([])],
+    [certificationCborText("authData"), certificationCborBytes(
+      certificationAuthenticatorData(input),
+    )],
+  ]);
+}
+
+/** Die `clientDataJSON`, wie der Browser sie zusammensetzt. */
+function certificationClientData(input: {
+  type: "webauthn.create" | "webauthn.get";
+  challenge: string;
+  origin: string;
+}): Buffer {
+  return Buffer.from(JSON.stringify({
+    type: input.type, challenge: input.challenge, origin: input.origin, crossOrigin: false,
+  }), "utf8");
+}
+
+/**
+ * Eine echte Anmeldeantwort: `authenticatorData`, `clientDataJSON` und die
+ * ECDSA-Unterschrift ueber `authenticatorData || sha256(clientDataJSON)`.
+ *
+ * Das ist genau die Rechnung, die die Spezifikation vorschreibt, und genau die,
+ * die der Dienst nachrechnet. Steht hier ein Byte anders, faellt die Pruefung —
+ * und das ist der Punkt: Der Fall belegt nicht, dass der Dienst irgendetwas
+ * annimmt, sondern dass er diese Rechnung annimmt und keine andere.
+ */
+function certificationAssertion(input: {
+  privateKey: KeyObject;
+  rpIdHash: Buffer;
+  signCount: number;
+  challenge: string;
+  origin: string;
+}): { authenticatorData: string; clientDataJSON: string; signature: string } {
+  const authenticatorData = certificationAuthenticatorData({
+    rpIdHash: input.rpIdHash, signCount: input.signCount,
+  });
+  const clientDataJSON = certificationClientData({
+    type: "webauthn.get", challenge: input.challenge, origin: input.origin,
+  });
+  const signed = Buffer.concat([
+    authenticatorData, createHash("sha256").update(clientDataJSON).digest(),
+  ]);
+  const signature = createSign("sha256").update(signed).sign(input.privateKey);
+  return {
+    authenticatorData: authenticatorData.toString("base64url"),
+    clientDataJSON: clientDataJSON.toString("base64url"),
+    signature: signature.toString("base64url"),
   };
 }

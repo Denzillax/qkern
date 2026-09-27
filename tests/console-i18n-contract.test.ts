@@ -37,6 +37,7 @@ import { wrappersTexts } from "@/lib/console/wrappers-texts";
 import { replicationTexts } from "@/lib/console/replication-texts";
 import { s3AccessTexts } from "@/lib/console/s3-access-texts";
 import { authHookTexts } from "@/lib/console/auth-hooks-texts";
+import { authPasskeysTexts } from "@/lib/console/auth-passkeys-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -165,6 +166,10 @@ async function consoleKeys(): Promise<string[]> {
   // Ausfall gilt, die Gruende einer Ablehnung und seine Ehrlichkeitssaetze
   // ueber t(variable).
   for (const text of authHookTexts()) keys.add(text);
+  // Auth -> Passkeys (2.79) zeigt die Pruefungen, die laufen, die, die nicht
+  // laufen, die Gruende einer Ablehnung, die Verfahren und seine
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authPasskeysTexts()) keys.add(text);
   return [...keys];
 }
 

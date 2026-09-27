@@ -6,6 +6,8 @@ import type {
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
   ProjectAuthOneTimeToken,
+  ProjectAuthPasskey,
+  ProjectAuthPasskeyCount,
   ProjectAuthScope,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
@@ -161,6 +163,34 @@ export interface ProjectAuthRepository {
   /** Zaehlt App-Nutzer und bestaetigte Faktoren dieser Umgebung. */
   countMfaEnrolment(scope: ProjectAuthScope): Promise<ProjectAuthMfaEnrolmentCount>;
 
+  /**
+   * Die Passkeys dieser Umgebung (2.79).
+   *
+   * `findPasskeyByCredentialId` sucht ohne Nutzer, weil die Anmeldung den
+   * Nutzer erst aus der Kennung erfaehrt: Der Browser sagt vorher nicht, wer
+   * kommt, und der Server soll es auch nicht raten muessen.
+   *
+   * `advancePasskeyCounter` schreibt den Zaehlerstand und den Zeitpunkt der
+   * letzten Benutzung, und nur nach vorn: Das `WHERE` verlangt den Stand, den
+   * der Aufrufer gelesen hat. Zwei gleichzeitige Anmeldungen mit derselben
+   * Unterschrift kommen damit genau einmal durch, und ein Zaehler kann nicht
+   * durch einen Nachzuegler zurueckfallen.
+   */
+  createPasskey(passkey: ProjectAuthPasskey): Promise<ProjectAuthPasskey>;
+  listPasskeys(scope: ProjectAuthScope, userId: string): Promise<ProjectAuthPasskey[]>;
+  findPasskeyByCredentialId(
+    scope: ProjectAuthScope,
+    credentialId: string,
+  ): Promise<ProjectAuthPasskey | null>;
+  advancePasskeyCounter(
+    scope: ProjectAuthScope,
+    passkeyId: string,
+    input: { fromSignCount: number; toSignCount: number; usedAt: Date },
+  ): Promise<boolean>;
+  deletePasskey(scope: ProjectAuthScope, userId: string, passkeyId: string): Promise<boolean>;
+  /** Zaehlt App-Nutzer, Passkeys und Nutzer mit mindestens einem Passkey (2.79). */
+  countPasskeys(scope: ProjectAuthScope): Promise<ProjectAuthPasskeyCount>;
+
   getMfaFactor(scope: ProjectAuthScope, userId: string): Promise<ProjectAuthMfaFactor | null>;
   upsertMfaFactor(factor: ProjectAuthMfaFactor): Promise<ProjectAuthMfaFactor>;
   consumeRecoveryCode(scope: ProjectAuthScope, userId: string, codeHash: string): Promise<boolean>;
@@ -186,6 +216,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly sessions = new Map<string, ProjectAuthSession>();
   private readonly oneTimeTokens = new Map<string, ProjectAuthOneTimeToken>();
   private readonly mfaFactors = new Map<string, ProjectAuthMfaFactor>();
+  private readonly passkeys = new Map<string, ProjectAuthPasskey>();
   private readonly oidcIdentities = new Map<string, ProjectAuthOidcIdentity>();
   private readonly settings = new Map<string, ProjectAuthSettings>();
   private readonly rateCounters = new Map<string, number>();
@@ -463,6 +494,62 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     return { users: users.length, enrolled: enrolled.length };
   }
 
+  async createPasskey(passkey: ProjectAuthPasskey) {
+    const existing = [...this.passkeys.values()].some((candidate) =>
+      sameScope(candidate, passkey) && candidate.credentialId === passkey.credentialId);
+    if (existing || this.passkeys.has(passkey.id)) throw new DuplicateProjectAuthIdentityError();
+    const stored = clonePasskey(passkey);
+    this.passkeys.set(stored.id, stored);
+    return clonePasskey(stored);
+  }
+
+  async listPasskeys(scope: ProjectAuthScope, userId: string) {
+    return [...this.passkeys.values()]
+      .filter((passkey) => sameScope(passkey, scope) && passkey.userId === userId)
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() ||
+        right.id.localeCompare(left.id))
+      .slice(0, 50)
+      .map(clonePasskey);
+  }
+
+  async findPasskeyByCredentialId(scope: ProjectAuthScope, credentialId: string) {
+    const passkey = [...this.passkeys.values()].find((candidate) =>
+      sameScope(candidate, scope) && candidate.credentialId === credentialId);
+    return passkey ? clonePasskey(passkey) : null;
+  }
+
+  async advancePasskeyCounter(
+    scope: ProjectAuthScope,
+    passkeyId: string,
+    input: { fromSignCount: number; toSignCount: number; usedAt: Date },
+  ) {
+    const passkey = this.passkeys.get(passkeyId);
+    // Dieselbe Bedingung wie das `WHERE` in PostgreSQL: der gelesene Stand muss
+    // noch stehen. Ohne sie waere der Speicherbetrieb nachsichtiger als der
+    // echte, und ein Fall gegen den Speicher sagte nichts ueber den Betrieb.
+    if (!passkey || !sameScope(passkey, scope) || passkey.signCount !== input.fromSignCount) return false;
+    passkey.signCount = input.toSignCount;
+    passkey.lastUsedAt = new Date(input.usedAt);
+    return true;
+  }
+
+  async deletePasskey(scope: ProjectAuthScope, userId: string, passkeyId: string) {
+    const passkey = this.passkeys.get(passkeyId);
+    if (!passkey || !sameScope(passkey, scope) || passkey.userId !== userId) return false;
+    this.passkeys.delete(passkeyId);
+    return true;
+  }
+
+  async countPasskeys(scope: ProjectAuthScope) {
+    const users = [...this.users.values()].filter((user) => sameScope(user, scope));
+    const passkeys = [...this.passkeys.values()].filter((passkey) => sameScope(passkey, scope));
+    return {
+      users: users.length,
+      passkeys: passkeys.length,
+      usersWithPasskey: new Set(passkeys.map((passkey) => passkey.userId)).size,
+    };
+  }
+
   async getMfaFactor(scope: ProjectAuthScope, userId: string) {
     const factor = this.mfaFactors.get(userId);
     return factor && sameScope(factor, scope) ? cloneMfaFactor(factor) : null;
@@ -580,6 +667,14 @@ function cloneMfaFactor(factor: ProjectAuthMfaFactor): ProjectAuthMfaFactor {
     recoveryCodeHashes: [...factor.recoveryCodeHashes],
     createdAt: new Date(factor.createdAt),
     verifiedAt: factor.verifiedAt ? new Date(factor.verifiedAt) : null,
+  };
+}
+
+function clonePasskey(passkey: ProjectAuthPasskey): ProjectAuthPasskey {
+  return {
+    ...passkey,
+    createdAt: new Date(passkey.createdAt),
+    lastUsedAt: passkey.lastUsedAt ? new Date(passkey.lastUsedAt) : null,
   };
 }
 
