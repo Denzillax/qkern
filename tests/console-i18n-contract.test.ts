@@ -43,6 +43,7 @@ import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
 import { missingLogTexts } from "@/lib/console/missing-log-texts";
 import { integrationsGraphqlTexts } from "@/lib/console/integrations-graphql-texts";
 import { authOAuthServerTexts } from "@/lib/console/auth-oauth-server-texts";
+import { restoreToNewProjectTexts } from "@/lib/console/restore-to-new-project-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -194,6 +195,10 @@ async function consoleKeys(): Promise<string[]> {
   // Auth → OAuth-Server (2.82) zeigt Bereiche, Auslässungen und die Gründe
   // einer Ablehnung über t(variable).
   for (const text of authOAuthServerTexts()) keys.add(text);
+  // Datenbank → In neues Projekt wiederherstellen (2.87) zeigt die vier
+  // Glieder der Kette, ihre Zustände und seine Ehrlichkeitssätze über
+  // t(variable).
+  for (const text of restoreToNewProjectTexts()) keys.add(text);
   return [...keys];
 }
 

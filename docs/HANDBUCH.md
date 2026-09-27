@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.61.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.62.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -425,6 +425,84 @@ Query-Parameter ist ein `400`. Von der Drill-Evidenz gehen nur Zeitpunkte und
 Dauern hinaus, nicht ihre ID, nicht ihre Key-ID und keiner ihrer Digests. Fehlt
 die Evidenz, ist sie abgeschaltet oder älter, als die Policy zulässt, dann fehlt
 der Drill in der Antwort; ein Fehler ist das nicht.
+### In neues Projekt wiederherstellen
+
+Seit `2.62.0` ist **Datenbank → In neues Projekt wiederherstellen** keine
+Platzhalterseite mehr. Der Platzhalter sagte „Kein Backend“. Das war zur Hälfte
+falsch, und die Hälfte, die falsch war, ist die interessantere.
+
+**Den Wiederherstellungslauf gibt es.** Der Drill aus `2.29.0` zieht ein
+verschlüsseltes Basisbackup über die Replikationsverbindung, stellt daraus und
+aus dem WAL-Archiv auf einen gewählten Zeitpunkt wieder her und belegt danach
+Schema, Zeilen, Audit-Kette und Datenmanifest. Er läuft gegen ein echtes
+PostgreSQL 17 mit TLS-Pflicht, gefahren von `npm run test:backup:docker`. Was
+fehlt, ist das neue Projekt.
+
+**Die Kette hat vier Glieder, und drei davon tragen nicht.**
+
+| Glied | Zustand | Wer müsste es tun |
+| --- | --- | --- |
+| Der Wiederherstellungslauf | zertifiziert, sobald gültige Evidenz vorliegt | der Drill, `tests/backup-restore-drill.integration.test.ts` |
+| Eine frische Datenbank anlegen | fehlt | der externe Broker hinter `SignedProjectProvisioningBrokerAdapter` |
+| Eine Umgebung, die sie trägt | fehlt | die Kontrollebene |
+| Die Umgebung auf sie zeigen lassen | genau einmal erlaubt | der Provisionierer, begrenzt durch einen Trigger |
+
+Den Broker-Client gibt es, und er ist gehärtet: HMAC-signiert, Host-Allowlist,
+HTTPS erzwungen, begrenzte Antwort. Den Dienst dahinter gibt es nicht, in keiner
+Form. QKERN legt auch selbst keine Datenbank an: Migration `0020` erzeugt die
+Rolle `qkern_provisioner` mit `NOCREATEDB` und `NOCREATEROLE`, und im ganzen
+Produktquelltext steht kein `CREATE DATABASE`. Ohne erreichbaren Broker endet ein
+Provisionierungsauftrag mit `PROVIDER_UNAVAILABLE`.
+
+Eine zweite Umgebung entsteht heute nirgends. Es gibt genau eine Stelle im
+Quelltext, die in `project_environments` einfügt, und sie läuft einmal bei der
+Registrierung eines Projekts. Über HTTP führt kein Weg dorthin: Die Route über
+Projekte und die Route über Umgebungen kennen beide nur `GET`.
+
+Und die Bindung lässt sich nicht umlenken. Eine wartende Marke darf der
+Provisionierer genau einmal durch eine Referenz ersetzen; danach weist der
+Trigger `project_environments_database_ref_immutable` aus Migration `0005` jede
+Änderung ab, mit `a provisioned project database reference is immutable`. Der
+Trigger ist genau dafür da, denn ein bereits freigegebener Change Set soll nicht
+stillschweigend auf eine andere Datenbank gelenkt werden. Für eine
+Wiederherstellung heisst es, dass ein zweiter Server nicht an die Stelle eines
+laufenden treten kann.
+
+**Was QKERN über seine Backups weiss.** Wenig, und die Seite sagt es zuerst.
+Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder
+Wiederherstellungsläufe an; einen Katalog vergangener Läufe gibt es darum nicht.
+Grössen führt QKERN nirgends: Die Evidenz trägt einen SHA-256 über das
+Artefakt, aber keine Bytezahl, und der Hash verlässt die Route ohnehin nicht.
+Verschlüsselung ist keine Angabe, sondern eine Bedingung des Verifiers: Er nimmt
+nur Evidenz an, in der `encrypted`, `checksumVerified`, `schemaVerified`,
+`rowCountsVerified` und `auditChainVerified` alle wahr sind und das Ergebnis
+`passed` lautet. Der Geltungsbereich ist `control_plane`; über die
+Projektdatenbank sagt der Drill nichts.
+
+**Was heute wirklich geht.** Lokal bindet `npm run dev:bind-project-database`
+eine von Hand angelegte Datenbank an eine wartende Umgebung. Das Skript weigert
+sich gegen `production`, verlangt einen lokalen Host und schreibt weder einen
+Provisionierungsauftrag noch eine Zeile in `project_database_bindings`. Es ist
+eine Abkürzung für die Entwicklung. Den Wiederherstellungslauf selbst geht ein
+Mensch am Server; was dabei entsteht, ist ein zweiter, beförderter
+PostgreSQL-Server. Eine neue Umgebung provisionieren zu lassen und den Lauf von
+Hand darauf zeigen zu lassen, ist heute kein gangbarer Weg, weil beide Hälften
+fehlen. Die Seite behauptet darum auch keinen Notbehelf.
+
+Die Seite liest nichts Neues, und das ist selbst ein Befund: Weil die
+Kontrollebene über Backups nichts führt, gibt es nichts zu lesen ausser der
+signierten Drill-Evidenz, und die holt schon die Route
+`/database/backups/point-in-time`. Es gibt darum keine neue Route und keinen
+Fall gegen die echte Datenbank. Stattdessen prüft
+`tests/console-restore-to-new-project-contract.test.ts`, dass die Sätze der
+Seite stimmen: Er liest das Backup-Skript, den Stack, den Verifier, die
+Migrationen `0005` und `0020` und die Routen nach, über die die Seite eine
+Aussage macht. Wer den Broker baut, eine zweite Umgebung anlegt oder den Trigger
+entfernt, lässt dort einen Fall scheitern.
+
+Die Seite hat keinen Knopf ausser „Neu laden“. Es gibt nichts auszulösen, und
+ein abgeschalteter Knopf wäre ein Versprechen.
+
 ### Datenbank-Einstellungen
 
 Seit `2.53.0` ist **Datenbank → Datenbank-Einstellungen** keine Platzhalterseite

@@ -48,6 +48,7 @@ import { ColumnPrivilegesView } from "@/components/console/column-privileges-vie
 import { DatabaseSettingsView } from "@/components/console/database-settings-view";
 import { CronView } from "@/components/console/cron-view";
 import { PitrView } from "@/components/console/pitr-view";
+import { RestoreToNewProjectView } from "@/components/console/restore-to-new-project-view";
 import { DatabaseWebhooksView } from "@/components/console/database-webhooks-view";
 import { VaultOverviewView } from "@/components/console/vault-overview-view";
 import { WrappersView } from "@/components/console/wrappers-view";
@@ -340,6 +341,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "monitoring": return <UsageView projectId={props.project.id} environment={props.environment}/>;
     case "backups": return <BackupsView/>;
     case "db-backups-pitr": return <PitrView projectId={props.project.id} environment={props.environment}/>;
+    case "db-backups-restore": return <RestoreToNewProjectView projectId={props.project.id} environment={props.environment}/>;
     case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }} organizationId={props.snapshot.organization.id}/>;
     case "int-queues": return <QueuesView projectId={props.project.id} environment={props.environment}/>;
     case "db-migrations": return <MigrationsView projectId={props.project.id} environment={props.environment} changeSets={props.snapshot.changeSets}/>;
