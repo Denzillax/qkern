@@ -2256,7 +2256,7 @@ diese Angaben nicht, und die Seite erfindet sie nicht.
 
 ### Auth-Leistung: was scheitert, und seit wann
 
-**Authentication → Auth-Leistung** ist keine Platzhalterseite mehr. Der
+Seit `2.57.0` ist **Authentication → Auth-Leistung** keine Platzhalterseite mehr. Der
 Platzhalter versprach „Antwortzeiten und Fehlerraten der Anmeldung“. Die eine
 Hälfte davon gibt es, die andere nicht, und die Seite sagt das als Erstes.
 
