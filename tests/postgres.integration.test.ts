@@ -8352,12 +8352,24 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       ).join(" ");
       const accepted = await graphql.execute(contextFor(mine), scope, schema, `{ notizen { ${atBudget} } }`);
       expect(accepted.fieldCount).toBe(DATA_API_GRAPHQL_LIMITS.maxFields);
-      const firstRow = accepted.data.notizen?.[0];
       expect(accepted.data.notizen).toHaveLength(2);
-      expect(Object.keys(firstRow ?? {})).toHaveLength(DATA_API_GRAPHQL_LIMITS.maxFields - 1);
       // Gelesen wurde die Spalte trotzdem genau einmal, und jeder Alias traegt
       // denselben Wert.
-      expect(new Set(Object.values(firstRow ?? {}))).toEqual(new Set([7]));
+      //
+      // Geprueft wird das je Zeile und ohne eine Annahme darueber, welche Zeile
+      // zuerst kommt. Die erste Fassung verglich die Werte der ersten Zeile mit
+      // einer festen Zahl und hat damit eine Ordnung behauptet, die die Abfrage
+      // nicht verlangt; sie ist in einem Lauf mit der anderen Zeile gefallen.
+      // Die Aussage des Falls ist ohnehin eine andere: Alle Aliasse einer Zeile
+      // tragen denselben Wert, und ueber beide Zeilen kommen genau die zwei
+      // angelegten Mengen heraus.
+      for (const row of accepted.data.notizen ?? []) {
+        expect(Object.keys(row)).toHaveLength(DATA_API_GRAPHQL_LIMITS.maxFields - 1);
+        expect(new Set(Object.values(row)),
+          "zwei Aliasse derselben Spalte tragen verschiedene Werte").toHaveLength(1);
+      }
+      expect(new Set((accepted.data.notizen ?? []).map((row) => Object.values(row)[0])))
+        .toEqual(new Set([7, 9]));
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();
