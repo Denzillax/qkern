@@ -42,6 +42,7 @@ import { branchFlowTexts } from "@/lib/console/branch-flow-texts";
 import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
 import { missingLogTexts } from "@/lib/console/missing-log-texts";
 import { integrationsGraphqlTexts } from "@/lib/console/integrations-graphql-texts";
+import { authOAuthServerTexts } from "@/lib/console/auth-oauth-server-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -190,6 +191,9 @@ async function consoleKeys(): Promise<string[]> {
   // bewusst fehlt, die Argumente eines Tabellenfeldes, die Gruende einer
   // Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of integrationsGraphqlTexts()) keys.add(text);
+  // Auth → OAuth-Server (2.82) zeigt Bereiche, Auslässungen und die Gründe
+  // einer Ablehnung über t(variable).
+  for (const text of authOAuthServerTexts()) keys.add(text);
   return [...keys];
 }
 

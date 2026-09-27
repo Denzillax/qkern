@@ -41,6 +41,17 @@ import {
   type ProjectAuthThirdPartyDefinition,
   type ProjectAuthThirdPartyProvider,
 } from "@/lib/server/project-auth/third-party";
+import {
+  isProjectAuthOAuthScope,
+  PROJECT_AUTH_OAUTH_CHALLENGE,
+  PROJECT_AUTH_OAUTH_CHALLENGE_METHOD,
+  PROJECT_AUTH_OAUTH_CLIENT_NAME,
+  type ProjectAuthOAuthClient,
+  type ProjectAuthOAuthClientDefinition,
+  type ProjectAuthOAuthCode,
+  type ProjectAuthOAuthScope,
+  type ProjectAuthOAuthToken,
+} from "@/lib/server/project-auth/oauth";
 
 type Row = Record<string, unknown>;
 type PostgresError = Error & { code?: string; constraint?: string };
@@ -670,6 +681,153 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     [...scopeValues(scope), providerId]);
     return (result.rowCount ?? 0) > 0;
   }
+
+  /* ---------------------------------------------------------------- *
+   * OAuth-Server (2.82)
+   * ---------------------------------------------------------------- */
+
+  async listOAuthClients(scope: ProjectAuthScope): Promise<ProjectAuthOAuthClient[]> {
+    const result = await query(this.pool, `${OAUTH_CLIENT_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+      ORDER BY name ASC`, scopeValues(scope));
+    return result.rows.map(oauthClientFromRow);
+  }
+
+  async findOAuthClientByName(scope: ProjectAuthScope, name: string): Promise<ProjectAuthOAuthClient | null> {
+    const result = await query(this.pool, `${OAUTH_CLIENT_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND name = $4
+      LIMIT 1`, [...scopeValues(scope), name]);
+    return result.rows[0] ? oauthClientFromRow(result.rows[0]) : null;
+  }
+
+  async createOAuthClient(
+    scope: ProjectAuthScope,
+    client: ProjectAuthOAuthClientDefinition & { id: string },
+    now: Date,
+  ): Promise<ProjectAuthOAuthClient> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_oauth_clients
+        (id, organization_id, project_id, environment, name, redirect_uris, scopes, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6::text[],$7::text[],$8)
+        RETURNING ${OAUTH_CLIENT_COLUMNS}`, [
+        client.id, ...scopeValues(scope), client.name,
+        [...client.redirectUris], [...client.scopes], now,
+      ]);
+      return oauthClientFromRow(result.rows[0]);
+    } catch (error) {
+      const pg = error as PostgresError;
+      // Ein Name je Umgebung, und die eine UNIQUE-Bedingung aus 0062 bedeutet
+      // fuer den Aufrufer genau eines: Dieser Client steht hier schon.
+      if (pg.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw mapPostgresError(error);
+    }
+  }
+
+  async deleteOAuthClient(scope: ProjectAuthScope, clientId: string): Promise<boolean> {
+    const result = await query(this.pool, `DELETE FROM project_auth_oauth_clients
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND id = $4`,
+    [...scopeValues(scope), clientId]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async createOAuthCode(
+    scope: ProjectAuthScope,
+    code: {
+      id: string; clientId: string; userId: string; redirectUri: string;
+      scopes: ProjectAuthOAuthScope[]; codeHash: string; codeChallenge: string;
+      createdAt: Date; expiresAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthCode> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_oauth_codes
+        (id, organization_id, project_id, environment, client_id, auth_user_id, redirect_uri,
+         scopes, code_hash, code_challenge, code_challenge_method, created_at, expires_at, consumed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9,$10,$11,$12,$13,NULL)
+        RETURNING ${OAUTH_CODE_COLUMNS}`, [
+        code.id, ...scopeValues(scope), code.clientId, code.userId, code.redirectUri,
+        [...code.scopes], code.codeHash, code.codeChallenge,
+        PROJECT_AUTH_OAUTH_CHALLENGE_METHOD, code.createdAt, code.expiresAt,
+      ]);
+      return oauthCodeFromRow(result.rows[0]);
+    } catch (error) {
+      const pg = error as PostgresError;
+      if (pg.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw mapPostgresError(error);
+    }
+  }
+
+  /**
+   * Finden und verbrauchen in **einer** Anweisung.
+   *
+   * `consumed_at IS NULL` ist die Bedingung, die das zweite Einloesen abweist,
+   * und sie steht in derselben Anweisung wie das Setzen des Vermerks. Zwei
+   * gleichzeitige Anfragen mit demselben Code sehen darum nicht beide eine freie
+   * Zeile: Die zweite findet keine mehr, weil die erste dieselbe Zeile in
+   * derselben Anweisung gesperrt und veraendert hat.
+   *
+   * `expires_at > $5` gehoert dazu und nicht in den Dienst: Ein Code, der
+   * abgelaufen ist, soll nicht als verbraucht markiert werden, sonst waere im
+   * Nachhinein nicht mehr zu sehen, ob er benutzt oder nur alt wurde.
+   */
+  async consumeOAuthCode(
+    scope: ProjectAuthScope,
+    codeHash: string,
+    now: Date,
+  ): Promise<ProjectAuthOAuthCode | null> {
+    const result = await query(this.pool, `UPDATE project_auth_oauth_codes SET consumed_at = $5
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND code_hash = $4 AND consumed_at IS NULL AND expires_at > $5
+      RETURNING ${OAUTH_CODE_COLUMNS}`, [...scopeValues(scope), codeHash, now]);
+    return result.rows[0] ? oauthCodeFromRow(result.rows[0]) : null;
+  }
+
+  async createOAuthToken(
+    scope: ProjectAuthScope,
+    token: {
+      id: string; clientId: string; userId: string; codeId: string; tokenHash: string;
+      scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthToken> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_oauth_tokens
+        (id, organization_id, project_id, environment, client_id, auth_user_id, code_id,
+         token_hash, scopes, created_at, expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::text[],$10,$11)
+        RETURNING ${OAUTH_TOKEN_COLUMNS}`, [
+        token.id, ...scopeValues(scope), token.clientId, token.userId, token.codeId,
+        token.tokenHash, [...token.scopes], token.createdAt, token.expiresAt,
+      ]);
+      return oauthTokenFromRow(result.rows[0]);
+    } catch (error) {
+      const pg = error as PostgresError;
+      // Die Eindeutigkeit von `code_id`: Aus einem Code entsteht genau ein
+      // Token, auch dann, wenn ein zweiter Weg den Verbrauchsvermerk vergisst.
+      if (pg.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw mapPostgresError(error);
+    }
+  }
+
+  async findOAuthTokenByHash(
+    scope: ProjectAuthScope,
+    tokenHash: string,
+  ): Promise<{ token: ProjectAuthOAuthToken; clientName: string } | null> {
+    // Der Name des Clients kommt mitgelesen und nicht in einer zweiten Abfrage:
+    // Der heisse Weg soll eine Abfrage kosten und nicht zwei, und der INNER JOIN
+    // sagt zugleich die Zusage, dass ein Token ohne Client nichts ist.
+    const result = await query(this.pool, `SELECT ${OAUTH_TOKEN_COLUMNS.split(", ")
+      .map((column) => `t.${column}`).join(", ")}, c.name AS client_name
+      FROM project_auth_oauth_tokens t
+      JOIN project_auth_oauth_clients c ON c.id = t.client_id
+      WHERE t.organization_id = $1 AND t.project_id = $2 AND t.environment = $3 AND t.token_hash = $4
+      LIMIT 1`, [...scopeValues(scope), tokenHash]);
+    const row = result.rows[0];
+    if (!row) return null;
+    const clientName = String(row.client_name);
+    if (!PROJECT_AUTH_OAUTH_CLIENT_NAME.test(clientName)) {
+      throw new InvalidRecordError("Invalid project auth oauth client.");
+    }
+    return { token: oauthTokenFromRow(row), clientName };
+  }
 }
 
 const USER_COLUMNS = `id, organization_id, project_id, environment, email, password_hash, status,
@@ -709,6 +867,16 @@ const OIDC_SELECT = `SELECT ${OIDC_COLUMNS} FROM project_auth_oidc_identities`;
 const THIRD_PARTY_COLUMNS = `id, name, issuer, jwks_uri, audiences, subject_claim, role_claim,
   default_role, created_at`;
 const THIRD_PARTY_SELECT = `SELECT ${THIRD_PARTY_COLUMNS} FROM project_auth_third_party_providers`;
+
+const OAUTH_CLIENT_COLUMNS = `id, name, redirect_uris, scopes, created_at`;
+const OAUTH_CLIENT_SELECT = `SELECT ${OAUTH_CLIENT_COLUMNS} FROM project_auth_oauth_clients`;
+// Die Pruefsumme des Codes steht absichtlich nicht in der Liste: Wer die Zeile
+// schon hat, braucht sie nicht, und was nicht gelesen wird, kann nicht in ein
+// Protokoll geraten.
+const OAUTH_CODE_COLUMNS = `id, client_id, auth_user_id, redirect_uri, scopes, code_challenge,
+  code_challenge_method, created_at, expires_at, consumed_at`;
+// Dasselbe hier, und aus demselben Grund: kein `token_hash`.
+const OAUTH_TOKEN_COLUMNS = `id, client_id, auth_user_id, scopes, created_at, expires_at`;
 
 function sessionValues(session: ProjectAuthSession): SqlValue[] {
   return [session.id, session.organizationId, session.projectId, session.environment, session.userId,
@@ -935,6 +1103,66 @@ function thirdPartyFromRow(row: Row): ProjectAuthThirdPartyProvider {
     id: String(row.id), name, issuer: String(row.issuer), jwksUri: String(row.jwks_uri),
     audiences, subjectClaim, roleClaim, defaultRole: row.default_role,
     createdAt: timestamp(row.created_at, "third party provider creation"),
+  };
+}
+
+/**
+ * Ein OAuth-Client aus der Zeile (2.82).
+ *
+ * Geprueft wird hier noch einmal, was die CHECK-Bedingungen aus 0062 schon
+ * pruefen: der Name, die Ruecksprungziele, die Bereiche. Dieselbe Regel wie bei
+ * den fremden Anbietern: Eine Zeile aus einem Handeingriff soll hier als
+ * unbrauchbare Zeile auffallen und nicht als Client weiterlaufen.
+ *
+ * Der wichtigste Teil sind die Bereiche. Ein Wert, der nicht in
+ * `PROJECT_AUTH_OAUTH_SCOPES` steht, waere eine Erlaubnis, die niemand
+ * beschrieben hat, und sie soll nicht stillschweigend mitlaufen.
+ */
+function oauthClientFromRow(row: Row): ProjectAuthOAuthClient {
+  const name = String(row.name);
+  const redirectUris = stringArray(row.redirect_uris, "oauth redirect uris");
+  const scopes = stringArray(row.scopes, "oauth scopes");
+  if (!PROJECT_AUTH_OAUTH_CLIENT_NAME.test(name) || redirectUris.length < 1 || scopes.length < 1 ||
+      !scopes.every(isProjectAuthOAuthScope)) {
+    throw new InvalidRecordError("Invalid project auth oauth client.");
+  }
+  return {
+    id: String(row.id), name, redirectUris, scopes,
+    createdAt: timestamp(row.created_at, "oauth client creation"),
+  };
+}
+
+function oauthCodeFromRow(row: Row): ProjectAuthOAuthCode {
+  const scopes = stringArray(row.scopes, "oauth code scopes");
+  const codeChallenge = String(row.code_challenge);
+  // Das Verfahren wird gelesen und geprueft, obwohl die Spalte nur einen Wert
+  // zulaesst. Genau darum: Eine Zeile, die trotzdem etwas anderes traegt, ist
+  // eine Zeile aus einer Datenbank, die nicht die ist, fuer die dieser Code
+  // geschrieben wurde, und dann ist Abbrechen richtig.
+  if (!scopes.every(isProjectAuthOAuthScope) || scopes.length < 1 ||
+      !PROJECT_AUTH_OAUTH_CHALLENGE.test(codeChallenge) ||
+      String(row.code_challenge_method) !== PROJECT_AUTH_OAUTH_CHALLENGE_METHOD) {
+    throw new InvalidRecordError("Invalid project auth oauth code.");
+  }
+  return {
+    id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id),
+    redirectUri: String(row.redirect_uri), scopes, codeChallenge,
+    createdAt: timestamp(row.created_at, "oauth code creation"),
+    expiresAt: timestamp(row.expires_at, "oauth code expiry"),
+    consumedAt: row.consumed_at === null || row.consumed_at === undefined
+      ? null : timestamp(row.consumed_at, "oauth code consumption"),
+  };
+}
+
+function oauthTokenFromRow(row: Row): ProjectAuthOAuthToken {
+  const scopes = stringArray(row.scopes, "oauth token scopes");
+  if (!scopes.every(isProjectAuthOAuthScope) || scopes.length < 1) {
+    throw new InvalidRecordError("Invalid project auth oauth token.");
+  }
+  return {
+    id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id), scopes,
+    createdAt: timestamp(row.created_at, "oauth token creation"),
+    expiresAt: timestamp(row.expires_at, "oauth token expiry"),
   };
 }
 
