@@ -73,9 +73,32 @@ export class ProjectAuthTokenService {
     }
   }
 
-  issue(scope: ProjectAuthScope, user: ProjectAuthUser, session: ProjectAuthSession, now = new Date()): ProjectAuthIssuedAccess {
+  /**
+   * Gibt ein Access Token aus, wahlweise mit zusaetzlichen Anspruechen (2.77).
+   *
+   * Die zusaetzlichen Ansprueche kommen von einem Auth-Hook, also von fremdem
+   * Code. Zwei Dinge halten sie hier auf ihrem Platz, und beide sind Absicht:
+   *
+   * 1. **Sie werden zuerst gesetzt**, die eigenen Ansprueche von QKERN danach.
+   *    Selbst wenn ein reservierter Name bis hierher kaeme, gewaenne er nicht.
+   * 2. **Ein reservierter Name ist trotzdem ein Fehler.** Geprueft hat das
+   *    schon der Dienst, und dort ist die Pruefung die Regel, die dem Betreiber
+   *    gemeldet wird. Diese hier ist die Absicherung dagegen, dass jemand einen
+   *    zweiten Aufrufweg baut, der die Regel nicht kennt. Sie wirft, statt
+   *    stillschweigend zu uebergehen: Ein Token, das anders aussieht als
+   *    bestellt, soll nicht entstehen.
+   */
+  issue(
+    scope: ProjectAuthScope,
+    user: ProjectAuthUser,
+    session: ProjectAuthSession,
+    now = new Date(),
+    additionalClaims: Readonly<Record<string, string | number | boolean | null>> = {},
+  ): ProjectAuthIssuedAccess {
     const issuedAt = Math.floor(now.getTime() / 1000);
+    const extra = safeAdditionalClaims(additionalClaims);
     const claims: ProjectAuthAccessClaims = {
+      ...extra,
       iss: issuer(scope, this.issuerBaseUrl), aud: audience(scope), sub: user.id,
       exp: issuedAt + this.accessTtlSeconds, iat: issuedAt, nbf: issuedAt - 5,
       jti: randomUUID(), token_use: "access", project_id: scope.projectId,
@@ -199,6 +222,37 @@ function isClaims(value: Record<string, unknown>): value is ProjectAuthAccessCla
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Prueft die zusaetzlichen Ansprueche eines Auth-Hooks (2.77), bevor sie in ein
+ * signiertes Token wandern.
+ *
+ * Die Namensliste ist dieselbe wie in `lib/server/project-auth/hooks.ts` und
+ * steht hier noch einmal, weil dieses Modul nichts importiert ausser
+ * `node:crypto` und seinen eigenen Typen: Der Signierer soll auch dann richtig
+ * sein, wenn er allein benutzt wird.
+ */
+function safeAdditionalClaims(
+  claims: Readonly<Record<string, string | number | boolean | null>>,
+): Record<string, string | number | boolean | null> {
+  const reserved = [
+    "sub", "iss", "aud", "exp", "iat", "role",
+    "nbf", "jti", "token_use", "project_id", "environment",
+    "email", "email_verified", "aal", "session_id",
+    "user_metadata", "app_metadata",
+  ];
+  const safe: Record<string, string | number | boolean | null> = {};
+  for (const [name, value] of Object.entries(claims)) {
+    if (reserved.includes(name)) throw new ProjectAuthTokenError();
+    if (value !== null && !["string", "number", "boolean"].includes(typeof value)) {
+      throw new ProjectAuthTokenError();
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) throw new ProjectAuthTokenError();
+    safe[name] = value;
+  }
+  if (Buffer.byteLength(JSON.stringify(safe), "utf8") > 512) throw new ProjectAuthTokenError();
+  return safe;
 }
 
 function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown> {

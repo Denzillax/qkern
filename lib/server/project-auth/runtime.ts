@@ -22,6 +22,9 @@ import { smtpProjectAuthDeliveryFromEnv } from "@/lib/server/project-auth/smtp-d
 import { projectAuthTokenServiceFromEnv, type ProjectAuthTokenService } from
   "@/lib/server/project-auth/tokens";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import { createFunctionInvocationServiceFromEnv } from "@/lib/server/compute/definitions-runtime";
+import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functions";
+import type { ProjectAuthHookPort } from "@/lib/server/project-auth/hooks";
 import {
   parseProjectAuthLeakList,
   projectAuthBuiltInLeakList,
@@ -39,7 +42,34 @@ export type ProjectAuthRuntimeDependencies = {
   oidcCatalog?: ProjectAuthOidcCatalog;
   oidcClient?: ProjectAuthOidcClient;
   audit?: ProjectAuthAuditSink;
+  hooks?: ProjectAuthHookPort;
 };
+
+/**
+ * Der Weg zu den hinterlegten Functions fuer die Auth-Hooks (2.77).
+ *
+ * Es gibt ihn nur, wenn es Functions gibt: `QKERN_FUNCTIONS_ENABLED=true` und
+ * PostgreSQL-Betrieb. Fremden Code auszufuehren ist eine eigene Freischaltung,
+ * und Project Auth darf sie nicht nebenbei mitbringen.
+ *
+ * Ohne diesen Weg bleibt der Port leer. Ein Punkt ohne eingetragene Function
+ * merkt davon nichts; ein Punkt **mit** eingetragener Function faellt dann
+ * geschlossen, weil ein Hook, den niemand rufen kann, nicht geantwortet hat.
+ * Wer Project Auth ohne Functions betreibt, traegt keinen Hook ein.
+ */
+function projectAuthHookPortFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): ProjectAuthHookPort | undefined {
+  if (env.QKERN_FUNCTIONS_ENABLED !== "true" || runtimeModeFromEnv(env) !== "postgres") return undefined;
+  return new ProjectAuthFunctionHooks({
+    functions: createFunctionInvocationServiceFromEnv(env),
+    // Geloggt werden Punkt und Fehlerklasse, nie eine Nutzlast und nie eine
+    // Adresse. Die Entscheidung selbst faellt im Dienst und steht im Audit.
+    onFailure: ({ point, error }) => {
+      console.error("Project Auth hook did not answer", { point, error });
+    },
+  });
+}
 
 export function createProjectAuthServiceFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -81,6 +111,7 @@ export function createProjectAuthServiceFromEnv(
     oidcCatalog: dependencies.oidcCatalog ?? projectAuthOidcCatalogFromEnv(env),
     oidcClient: dependencies.oidcClient ?? new ProjectAuthOidcClient(env),
     audit,
+    hooks: dependencies.hooks ?? projectAuthHookPortFromEnv(env),
     callbackBaseUrl,
     allowedRedirectOrigins,
     exposeDeliveryTokens: exposeTokens,

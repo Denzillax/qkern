@@ -35,6 +35,7 @@ import { authPerformanceTexts } from "@/lib/console/auth-performance-texts";
 import { databaseHealthTexts } from "@/lib/console/database-health-texts";
 import { wrappersTexts } from "@/lib/console/wrappers-texts";
 import { replicationTexts } from "@/lib/console/replication-texts";
+import { authHookTexts } from "@/lib/console/auth-hooks-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -156,6 +157,10 @@ async function consoleKeys(): Promise<string[]> {
   // wal_level erlaubt, die Schritte zum Einrichten, was es nicht kann und
   // seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of replicationTexts()) keys.add(text);
+  // Auth -> Auth-Hooks (2.77) zeigt die Punkte, was sie duerfen, was bei einem
+  // Ausfall gilt, die Gruende einer Ablehnung und seine Ehrlichkeitssaetze
+  // ueber t(variable).
+  for (const text of authHookTexts()) keys.add(text);
   return [...keys];
 }
 

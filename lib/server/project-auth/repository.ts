@@ -24,6 +24,11 @@ import {
   type ProjectAuthPasswordProtection,
 } from "@/lib/server/project-auth/password-leaks";
 
+import {
+  DEFAULT_PROJECT_AUTH_HOOKS,
+  type ProjectAuthHooks,
+} from "@/lib/server/project-auth/hooks";
+
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
   "passwordHash" | "status" | "emailVerifiedAt" | "userMetadata" | "appMetadata" | "updatedAt">>;
 
@@ -116,6 +121,17 @@ export interface ProjectAuthRepository {
   writePasswordProtection(
     scope: ProjectAuthScope,
     protection: ProjectAuthPasswordProtection,
+    now: Date,
+  ): Promise<ProjectAuthSettings>;
+  /**
+   * Setzt beide Auth-Hooks (2.77) und legt die Zeile an, falls es noch keine
+   * gibt. Beide Punkte zusammen, aus demselben Grund wie bei den Grenzen und
+   * beim Passwortschutz: Ein Koerper mit nur einem Punkt liesse offen, was mit
+   * dem anderen geschehen soll.
+   */
+  writeAuthHooks(
+    scope: ProjectAuthScope,
+    hooks: ProjectAuthHooks,
     now: Date,
   ): Promise<ProjectAuthSettings>;
   /**
@@ -344,6 +360,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       returnTargets: [...(previous?.returnTargets ?? [])],
       rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
       passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
+      hooks: cloneHooks(previous?.hooks ?? DEFAULT_PROJECT_AUTH_HOOKS),
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -357,6 +374,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       returnTargets: [...targets],
       rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
       passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
+      hooks: cloneHooks(previous?.hooks ?? DEFAULT_PROJECT_AUTH_HOOKS),
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -370,6 +388,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       returnTargets: [...(previous?.returnTargets ?? [])],
       rateLimits: cloneRateLimits(limits),
       passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
+      hooks: cloneHooks(previous?.hooks ?? DEFAULT_PROJECT_AUTH_HOOKS),
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -387,6 +406,21 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       returnTargets: [...(previous?.returnTargets ?? [])],
       rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
       passwordProtection: { ...protection },
+      hooks: cloneHooks(previous?.hooks ?? DEFAULT_PROJECT_AUTH_HOOKS),
+      updatedAt: new Date(now),
+    };
+    this.settings.set(scopeKey(scope), stored);
+    return cloneProjectAuthSettings(stored);
+  }
+
+  async writeAuthHooks(scope: ProjectAuthScope, hooks: ProjectAuthHooks, now: Date) {
+    const previous = this.settings.get(scopeKey(scope));
+    const stored: ProjectAuthSettings = {
+      ...scope, mfaRequired: previous?.mfaRequired ?? false,
+      returnTargets: [...(previous?.returnTargets ?? [])],
+      rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
+      passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
+      hooks: cloneHooks(hooks),
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -511,7 +545,15 @@ function cloneProjectAuthSettings(settings: ProjectAuthSettings): ProjectAuthSet
     returnTargets: [...settings.returnTargets],
     rateLimits: cloneRateLimits(settings.rateLimits),
     passwordProtection: { ...settings.passwordProtection },
+    hooks: cloneHooks(settings.hooks),
     updatedAt: new Date(settings.updatedAt),
+  };
+}
+
+function cloneHooks(hooks: ProjectAuthHooks): ProjectAuthHooks {
+  return {
+    signIn: { ...hooks.signIn },
+    accessTokenClaims: { ...hooks.accessTokenClaims, claims: [...hooks.accessTokenClaims.claims] },
   };
 }
 

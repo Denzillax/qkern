@@ -60,6 +60,10 @@ import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/projec
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
 import { NoopDevelopmentProjectAuthDelivery, ProjectAuthService } from "@/lib/server/project-auth/service";
 import { ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
+// Auth-Hooks (2.77): der echte Adapter, der einen Hook auf den vorhandenen
+// Aufrufdienst legt. Es gibt keinen zweiten Aufrufweg, und der Fall benutzt
+// darum auch keinen.
+import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functions";
 // Grenzen je Zeitfenster (2.56): dieselbe reine Formel, die der Dienst
 // benutzt, damit der Fall den Hash nachrechnen kann statt ihn zu glauben.
 import { projectAuthRateSubjectHash } from "@/lib/server/project-auth/rate-limits";
@@ -6338,6 +6342,350 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect((await audit()).filter(
       (record) => record.action === "approval.automatically_approved")).toHaveLength(2);
   }, 120_000);
+
+  it("(2.77) calls the auth hooks of a real sign-in and refuses one that wants a reserved claim", async () => {
+    // Die ganze Kette der Auth-Hooks (2.77) an einem Stueck, gegen die echte
+    // Datenbank: echte Anmeldung, echte Hook-Definition, echter Aufruf ueber
+    // den vorhandenen Aufrufdienst, echtes Ergebnis im signierten Token.
+    //
+    // Echt ist alles, worauf es ankommt: das PostgreSQL-Repository von Project
+    // Auth, der Audit-Sink in der Hash-Kette, der Argon2-Hasher, der
+    // Ed25519-Signierer, die Function-Definitionen in der Control Plane, der
+    // `FunctionInvocationService` samt Aufrufprotokoll und der Adapter
+    // `ProjectAuthFunctionHooks`, der beide verbindet. Fest sind die Uhr, die
+    // Zustellung und der Container: Eine Docker-Sandbox laesst sich hier nicht
+    // starten, also steht an ihrer Stelle ein Aufrufer, der antwortet wie ein
+    // Container. Genau dieselbe Grenze zieht der Fall (2.55).
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.52, 2.54, 2.55 und 2.56:
+    // Jede Aenderung und jeder abgewiesene Aufruf schreiben eine Audit-Zeile,
+    // und eine Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen. Weggeraeumt wird
+    // darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const hookOwner = randomUUID();
+    const hookOrganization = randomUUID();
+    const hookProject = randomUUID();
+    const scope = {
+      organizationId: hookOrganization, projectId: hookProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [hookOwner, `auth-hooks-owner-${hookOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Hooks', $2, $3)`, [hookOrganization, `auth-hooks-${hookOrganization}`, hookOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Hooks', $3, 'test', 'ready', $4)`,
+    [hookProject, hookOrganization, `auth-hooks-${hookProject}`, hookOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [hookOrganization, hookProject, `managed:${hookProject}`]);
+
+    // Die Functions, die die Hooks sind. Echte Zeilen in `project_functions`
+    // durch den echten Definitionsdienst; der Aufrufdienst liest sie bei jedem
+    // Aufruf frisch, so wie im Betrieb.
+    const computeRepository = new PostgresComputeDefinitionRepository(new PostgresControlPlane(runtime));
+    const definitions = new ComputeDefinitionService({ repository: computeRepository });
+    const computeAdmin = {
+      organizationId: hookOrganization, actorRef: `auth-hooks-owner-${hookOwner}@qkern.test`,
+      role: "admin" as const, subject: hookOwner,
+    };
+    const image = `registry.example.com/qkern/hook@sha256:${"c".repeat(64)}`;
+    const suffix = randomUUID().slice(0, 8);
+    const names = {
+      allow: `hook-allow-${suffix}`,
+      deny: `hook-deny-${suffix}`,
+      claims: `hook-claims-${suffix}`,
+      reserved: `hook-reserved-${suffix}`,
+      slow: `hook-slow-${suffix}`,
+    };
+    for (const name of Object.values(names)) {
+      await definitions.createFunction(computeAdmin, scope, {
+        name, image, entrypoint: "handler.mjs", secretRefs: [], enabled: true,
+      });
+    }
+
+    // Der Container, und nur er ist gestellt. Jede Nutzlast wird mitgeschrieben,
+    // damit der Fall pruefen kann, was ein Hook wirklich zu sehen bekommt.
+    const seen: Array<{ name: string; payload: unknown }> = [];
+    const tenant = `tenant-${randomUUID().slice(0, 8)}`;
+    const invocations = new FunctionInvocationService({
+      repository: computeRepository,
+      invocationLog: computeRepository,
+      invoker: {
+        async invoke(definition, invocation) {
+          seen.push({ name: definition.name, payload: invocation.payload });
+          if (definition.name === names.allow) {
+            return Object.freeze({ statusCode: 200, headers: {}, body: { decision: "allow" } });
+          }
+          if (definition.name === names.deny) {
+            return Object.freeze({ statusCode: 200, headers: {}, body: { decision: "deny" } });
+          }
+          if (definition.name === names.claims) {
+            return Object.freeze({ statusCode: 200, headers: {}, body: { claims: { tenant, tier: 3 } } });
+          }
+          if (definition.name === names.reserved) {
+            // Der Hook, der zu viel will: `role` gibt QKERN selbst aus.
+            return Object.freeze({ statusCode: 200, headers: {}, body: { claims: { role: "service_role" } } });
+          }
+          // Der Container, der zu lange braucht. Echter Zeitgeber, echte Frist.
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return Object.freeze({ statusCode: 200, headers: {}, body: { decision: "allow" } });
+        },
+      },
+    });
+
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-77", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 7)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      hooks: new ProjectAuthFunctionHooks({ functions: invocations }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    // Ohne Zeile in project_auth_settings ruft nichts, und das ist etwas
+    // anderes als "jemand hat nichts eingetragen".
+    const untouched = await service.readAuthHooks(scope);
+    expect(untouched).toMatchObject({
+      hooks: {
+        signIn: { functionName: null, timeoutMs: 2_000 },
+        accessTokenClaims: { functionName: null, timeoutMs: 2_000, claims: [] },
+      },
+      failureMode: { sign_in: "deny", access_token_claims: "deny" },
+      configured: false,
+      updatedAt: null,
+    });
+    // Die reservierten Namen kommen aus dem Dienst und nicht aus der Ansicht.
+    for (const reserved of ["sub", "iss", "aud", "exp", "iat", "role"]) {
+      expect(untouched.reservedClaims).toContain(reserved);
+    }
+
+    const password = "a sufficiently long certification password";
+    const email = `app-${randomUUID()}@example.test`;
+    const signUp = await service.signUp(scope, {
+      email, password, redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    const verified = await service.consumeEmailToken(scope, {
+      token: signUp.debugToken!, purpose: "email_verification",
+    });
+    if ("mfaRequired" in verified) throw new Error("unexpected MFA");
+    // Ohne Hook stehen im Token nur die Ansprueche von QKERN.
+    expect(claimsOf(verified.accessToken).tenant).toBeUndefined();
+    const appUser = verified.user.id;
+
+    // Die Definition, durch den echten Dienst in die echten Spalten.
+    const stored = await service.setAuthHooks(scope, {
+      signIn: { functionName: names.allow, timeoutMs: 1_500 },
+      accessTokenClaims: { functionName: names.claims, timeoutMs: 1_500, claims: ["tenant", "tier"] },
+    }, { id: hookOwner });
+    expect(stored).toMatchObject({
+      hooks: {
+        signIn: { functionName: names.allow, timeoutMs: 1_500 },
+        accessTokenClaims: { functionName: names.claims, timeoutMs: 1_500, claims: ["tenant", "tier"] },
+      },
+      configured: true,
+    });
+    const columns = await auth.query<{
+      sign_in_hook_function: string;
+      sign_in_hook_timeout_ms: number;
+      access_token_hook_function: string;
+      access_token_hook_claims: string[];
+    }>(`SELECT sign_in_hook_function, sign_in_hook_timeout_ms,
+          access_token_hook_function, access_token_hook_claims
+        FROM project_auth_settings
+        WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+    [hookOrganization, hookProject]);
+    expect(columns.rows).toEqual([{
+      sign_in_hook_function: names.allow,
+      sign_in_hook_timeout_ms: 1_500,
+      access_token_hook_function: names.claims,
+      access_token_hook_claims: ["tenant", "tier"],
+    }]);
+
+    // Und jetzt der Satz, um den es geht: eine echte Anmeldung, zwei echte
+    // Aufrufe, und die Ansprueche des Hooks stehen im signierten Token.
+    const session = await service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() });
+    if ("mfaRequired" in session) throw new Error("unexpected MFA");
+    const issued = claimsOf(session.accessToken);
+    expect(issued.tenant).toBe(tenant);
+    expect(issued.tier).toBe(3);
+    // Die eigenen Ansprueche von QKERN stehen unveraendert daneben.
+    expect(issued.sub).toBe(appUser);
+    expect(issued.role).toBe("authenticated");
+    expect(issued.aud).toBe(`qkern:${hookProject}:development`);
+    // Das Token ist echt unterschrieben: derselbe Dienst nimmt es wieder an.
+    const principal = await service.verifyAccess(scope, session.accessToken);
+    expect(principal.user.id).toBe(appUser);
+
+    // Was die Hooks gesehen haben, und vor allem, was nicht.
+    const payloads = JSON.stringify(seen);
+    expect(seen.map((entry) => entry.name)).toContain(names.allow);
+    expect(seen.map((entry) => entry.name)).toContain(names.claims);
+    expect(payloads).toContain(email);
+    expect(payloads).not.toContain(password);
+    expect(payloads).not.toContain(session.refreshToken);
+    expect(payloads).not.toContain(session.accessToken);
+    // Kein Feld fuer Herkunft oder Sitzung, auch kein leeres.
+    for (const absent of ["ipAddress", "userAgent", "sessionId", "passwordHash", "user_metadata"]) {
+      expect(payloads).not.toContain(absent);
+    }
+    const signInPayload = seen.find((entry) => entry.name === names.allow)?.payload as Record<string, unknown>;
+    expect(signInPayload).toMatchObject({
+      point: "sign_in", projectId: hookProject, environment: "development",
+      userId: appUser, email, emailVerified: true, method: "password", assurance: "aal1",
+    });
+    const claimsPayload = seen.find((entry) => entry.name === names.claims)?.payload as Record<string, unknown>;
+    expect(claimsPayload).toMatchObject({ point: "access_token_claims", reason: "sign_in" });
+
+    // Der Punkt laeuft auch bei der Erneuerung. Ohne das verschwaenden die
+    // Ansprueche nach einer Viertelstunde stillschweigend.
+    const refreshed = await service.refresh(scope, session.refreshToken);
+    expect(claimsOf(refreshed.accessToken).tenant).toBe(tenant);
+    expect(seen.filter((entry) => entry.name === names.claims)).toHaveLength(2);
+    expect(seen.filter((entry) => entry.name === names.allow)).toHaveLength(1);
+    const onRefresh = seen.filter((entry) => entry.name === names.claims).at(-1)?.payload as Record<string, unknown>;
+    expect(onRefresh.reason).toBe("refresh");
+
+    // **Der Kern dieses Falls.** Ein Hook, der einen reservierten Anspruch
+    // setzen will, wird abgewiesen, und zwar mit genau diesem Grund. Die
+    // Unterscheidung traegt: Ohne die Pruefung auf reservierte Namen faenge die
+    // Pruefung auf nicht erklaerte Namen den Fall auch auf, nur mit einer
+    // harmlos aussehenden Begruendung. Der Fall prueft darum den Grund und
+    // nicht bloss das Scheitern.
+    await service.setAuthHooks(scope, {
+      signIn: { functionName: null, timeoutMs: 2_000 },
+      accessTokenClaims: { functionName: names.reserved, timeoutMs: 1_500, claims: ["tenant", "tier"] },
+    }, { id: hookOwner });
+    const sessionsBefore = await sessionCount();
+    await expect(service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() }))
+      .rejects.toMatchObject({ code: "HOOK_REJECTED" });
+    // Kein Token, und auch keine Sitzung: Ein Token, das anders aussieht als
+    // bestellt, soll nicht entstehen, und eine Sitzung ohne Token ist ein Rest.
+    expect(await sessionCount()).toBe(sessionsBefore);
+
+    // Der Hook, der die Anmeldung abweist. Dieselbe Wirkung fuer den Nutzer,
+    // ein anderer Grund fuer den Betreiber.
+    await service.setAuthHooks(scope, {
+      signIn: { functionName: names.deny, timeoutMs: 1_500 },
+      accessTokenClaims: { functionName: null, timeoutMs: 2_000, claims: [] },
+    }, { id: hookOwner });
+    await expect(service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() }))
+      .rejects.toMatchObject({ code: "HOOK_DENIED" });
+    expect(await sessionCount()).toBe(sessionsBefore);
+
+    // Der Hook, der nicht rechtzeitig antwortet. Echte Frist, echter
+    // Zeitgeber, echter Container, der 400 Millisekunden braucht.
+    await service.setAuthHooks(scope, {
+      signIn: { functionName: names.slow, timeoutMs: 100 },
+      accessTokenClaims: { functionName: null, timeoutMs: 2_000, claims: [] },
+    }, { id: hookOwner });
+    await expect(service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() }))
+      .rejects.toMatchObject({ code: "HOOK_UNAVAILABLE" });
+    expect(await sessionCount()).toBe(sessionsBefore);
+
+    // Kein Hook mehr: Dieselbe Anmeldung kommt wieder durch, und im Token
+    // stehen nur die Ansprueche von QKERN.
+    await service.setAuthHooks(scope, {
+      signIn: { functionName: null, timeoutMs: 2_000 },
+      accessTokenClaims: { functionName: null, timeoutMs: 2_000, claims: [] },
+    }, { id: hookOwner });
+    const plain = await service.passwordSignIn(scope, { email, password, rateLimitKey: randomUUID() });
+    if ("mfaRequired" in plain) throw new Error("unexpected MFA");
+    expect(claimsOf(plain.accessToken).tenant).toBeUndefined();
+    expect(await sessionCount()).toBe(sessionsBefore + 1);
+
+    // Ein reservierter Name kommt nicht einmal in die Definition, und die
+    // Route erfaehrt den Grund.
+    await expect(service.setAuthHooks(scope, {
+      signIn: { functionName: null, timeoutMs: 2_000 },
+      accessTokenClaims: { functionName: names.claims, timeoutMs: 1_500, claims: ["role"] },
+    }, { id: hookOwner })).rejects.toMatchObject({ reason: "claim_reserved", field: "accessTokenClaims" });
+    // Eine Function ohne erklaerte Ansprueche waere ein Hook, dessen Antwort
+    // ganz verworfen wuerde.
+    await expect(service.setAuthHooks(scope, {
+      signIn: { functionName: null, timeoutMs: 2_000 },
+      accessTokenClaims: { functionName: names.claims, timeoutMs: 1_500, claims: [] },
+    }, { id: hookOwner })).rejects.toMatchObject({ reason: "claims_required" });
+
+    // Die Datenbank haelt die Raender selbst, nicht nur der Dienst. Alle drei
+    // Pruefungen aus 0058, an echten Zeilen.
+    const where = `WHERE organization_id = '${hookOrganization}' AND project_id = '${hookProject}'
+      AND environment = 'development'`;
+    await expect(auth.query(
+      `UPDATE project_auth_settings SET access_token_hook_function = $1, access_token_hook_claims = ARRAY['role']::text[] ${where}`,
+      [names.claims],
+    )).rejects.toBeInstanceOf(Error);
+    await expect(auth.query(`UPDATE project_auth_settings SET sign_in_hook_timeout_ms = 0 ${where}`))
+      .rejects.toBeInstanceOf(Error);
+    await expect(auth.query(`UPDATE project_auth_settings SET sign_in_hook_function = 'Nope!' ${where}`))
+      .rejects.toBeInstanceOf(Error);
+    await expect(auth.query(
+      `UPDATE project_auth_settings SET access_token_hook_function = NULL, access_token_hook_claims = ARRAY['tenant']::text[] ${where}`,
+    )).rejects.toBeInstanceOf(Error);
+
+    // Gerufen wurde ueber den vorhandenen Aufrufdienst, und das steht im
+    // Aufrufprotokoll: der Aktor sagt, dass der Aufruf von der Anmeldung kam
+    // und von welchem Punkt. Die Nutzlast steht dort nicht.
+    const log = await definitions.readFunctionInvocationLog(computeAdmin, scope, { limit: 50, offset: 0 });
+    const actors = [...new Set(log.rows.map((row) => row.invokedBy))];
+    expect(actors).toContain("project_auth_hook:sign_in");
+    expect(actors).toContain("project_auth_hook:access_token_claims");
+    expect(JSON.stringify(log)).not.toContain(email);
+    expect(JSON.stringify(log)).not.toContain(tenant);
+
+    // Jede Aenderung und jeder abgewiesene Aufruf stehen in der Hash-Kette,
+    // ohne Adresse und ohne Anspruchswert.
+    const page = await service.listAuditEvents(scope, 100);
+    const changed = page.events.filter((event) => event.action === "project_auth.hooks.changed");
+    expect(changed.length).toBeGreaterThanOrEqual(5);
+    expect(changed.some((event) => event.actorType === "admin" && event.actorRef === hookOwner &&
+      // Ein Punkt und kein Komma: Die Bereinigung der Kette laesst ein Komma
+      // in einem Metadatenwert nicht durch und wuerfe den ganzen Wert still
+      // weg. Dieser Fall hat das gefunden.
+      event.metadata.claimsAllowed === "tenant.tier")).toBe(true);
+    const refused = page.events.filter((event) => event.action === "project_auth.hook.refused");
+    // Der Beleg, auf den die Mutationsprobe zeigt: der Grund heisst
+    // `claim_reserved` und nicht `claim_not_declared`.
+    const reservedRefusal = refused.find((event) => event.metadata.reason === "claim_reserved");
+    expect(reservedRefusal).toBeDefined();
+    expect(reservedRefusal).toMatchObject({
+      status: "failed",
+      metadata: { point: "access_token_claims", function: names.reserved, claim: "role" },
+    });
+    expect(refused.some((event) => event.metadata.reason === "denied" &&
+      event.metadata.point === "sign_in")).toBe(true);
+    expect(refused.some((event) => event.metadata.reason === "no_answer")).toBe(true);
+    const serialised = JSON.stringify(refused);
+    expect(serialised).not.toContain("@");
+    expect(serialised).not.toContain("example.test");
+    expect(serialised).not.toContain(tenant);
+    expect(serialised).not.toContain("service_role");
+
+    async function sessionCount(): Promise<number> {
+      const result = await auth.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM project_auth_sessions
+         WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+        [hookOrganization, hookProject],
+      );
+      return Number(result.rows[0]?.n);
+    }
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: der App-Nutzer samt seinen
+    // Sitzungen und Token. Die Function-Definitionen, die Einstellungen und die
+    // Audit-Zeilen bleiben stehen; audit_logs ist append-only, und der
+    // Wegwerf-Stack faellt nach dem Lauf ohnehin weg.
+    await owner.query(`DELETE FROM project_auth_users
+      WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, hookProject]);
+  }, 120_000);
 });
 
 /**
@@ -6362,6 +6710,17 @@ function certificationTotp(secret: string, now: Date): string {
   return ((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).toString().padStart(6, "0");
 }
 
+
+/**
+ * Die Ansprueche eines echten Access Token, von aussen gelesen (2.77).
+ *
+ * Der Fall darf nicht bloss glauben, dass ein Hook gewirkt hat: Er schaut in
+ * das signierte Token. Geprueft wird die Unterschrift dabei nicht hier, sondern
+ * eine Zeile weiter durch `verifyAccess` desselben Dienstes.
+ */
+function claimsOf(accessToken: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8")) as Record<string, unknown>;
+}
 
 /** Alle Teile ausser dem genannten erreichbar; nur die Datenbank wird echt geprobt. */
 function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInput {

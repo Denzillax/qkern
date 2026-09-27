@@ -152,6 +152,25 @@ export function projectAuthRouteError(error: unknown, request?: NextRequest): Ne
         return respond(projectAuthNoStore({ error: "Password appears in a known credential leak" }, 400));
       case "WEAK_PASSWORD":
         return respond(projectAuthNoStore({ error: "Password does not meet the policy of this project" }, 400));
+      // Die drei Ausgaenge eines Auth-Hooks (2.77), und sie sind bewusst
+      // auseinandergehalten: Ein Aufrufer soll lesen koennen, ob das Projekt
+      // ihn abgelehnt hat, ob die Umgebung gerade ein Betriebsproblem hat oder
+      // ob der hinterlegte Code eines hat.
+      //
+      // 403 fuer die Ablehnung: Die Anmeldedaten stimmten, die Regel des
+      // Projekts nicht. Ein 401 hiesse "melde dich an", und genau das hat er
+      // eben getan. Der Grund steht nicht dabei: Den kennt der hinterlegte
+      // Code, nicht QKERN.
+      case "HOOK_DENIED":
+        return respond(projectAuthNoStore({ error: "Sign-in refused by the auth hook of this project" }, 403));
+      // 503 und wiederholbar: Der Hook hat nicht geantwortet. Das ist ein
+      // Zustand der Umgebung, der sich ohne Zutun des Aufrufers aendern kann.
+      case "HOOK_UNAVAILABLE":
+        return respond(projectAuthNoStore({ error: "Project Auth hook did not answer" }, 503));
+      // 502: Der Hook hat geantwortet, und die Antwort war keine. Ein Wiederholen
+      // hilft nicht, solange der hinterlegte Code derselbe bleibt.
+      case "HOOK_REJECTED":
+        return respond(projectAuthNoStore({ error: "Project Auth hook returned an answer that was refused" }, 502));
       case "RESOURCE_NOT_FOUND": return respond(projectAuthNoStore({ error: "Resource not found" }, 404));
       case "PROJECT_AUTH_DISABLED": return respond(projectAuthNoStore({ error: "Project Auth is disabled" }, 503));
       // Der Dienst laeuft, nur das Audit fehlt. 503 und ein eigener Text:

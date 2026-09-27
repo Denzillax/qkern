@@ -49,7 +49,33 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Neu in diesem Zweig: 2.75 (Zweig `slice/dashhooks`) **Dashboard-Webhooks
+- Neu in diesem Zweig: 2.77 (Zweig `slice/authhooks`) **Auth-Hooks an genau den
+  Punkten, an denen sie wirken.** Der Platzhalter `auth-hooks` („Eigener Code
+  bei Anmeldung, Token-Ausgabe oder Mailversand") ist echt, und zwar zu zwei
+  Dritteln: Gebaut sind `sign_in` (darf die Anmeldung abweisen, laeuft in
+  `createSessionResult` und damit auf jedem Anmeldeweg, vor `createSession`) und
+  `access_token_claims` (darf Ansprueche aus einer erklaerten Liste setzen,
+  laeuft in `sessionResult` und damit auch bei jeder Erneuerung). Der dritte
+  Punkt, Mailversand, kommt nicht: Der Link einer Aktionsmail traegt das
+  einmalige Token im Klartext, ein Mail-Hook bekaeme damit einen Anmeldeschein.
+  **Beide Punkte fallen geschlossen** (keine Antwort in der Frist heisst keine
+  Sitzung und kein Token), und die Seite sagt das woertlich samt Preis: Ein
+  haengender Hook sperrt die Umgebung aus. Die Frist steht in der Definition
+  (100 bis 5000 ms) und beendet das Warten, nicht den Container. Reservierte
+  Ansprueche (`sub`, `iss`, `aud`, `exp`, `iat`, `role` und die uebrigen, die
+  QKERN selbst ausgibt) weist der Dienst ab, statt sie zu uebergehen; die Liste
+  steht in `lib/server/project-auth/hooks.ts`, noch einmal in `tokens.ts` als
+  Absicherung und ein drittes Mal als CHECK in
+  `0058_project_auth_hooks.sql` (fuenf Spalten auf `project_auth_settings`, wie
+  0051 bis 0053, kein `enabled`, weil ein Punkt ohne Function schon aus ist).
+  Gerufen wird ueber den **vorhandenen** `FunctionInvocationService`
+  (`lib/server/project-auth/hooks-functions.ts`), also mit Kapazitaetsgrenze,
+  Kontingent, Egress-Grenzen und Aufrufprotokoll. Der Zertifizierungsfall
+  `(2.77)` belegt die ganze Kette gegen die echte Datenbank samt der Abweisung
+  eines Hooks, der `role` setzen will, und prueft dabei den **Grund**
+  `claim_reserved`, nicht bloss das Scheitern; die Mutationsprobe laesst den
+  reservierten Anspruch durch.
+- Davor: 2.75 (Zweig `slice/dashhooks`) **Dashboard-Webhooks
   tragen nur, was die Console zeigt.** Der Platzhalter `set-webhooks`
   („Benachrichtigungen bei Ereignissen des Projekts selbst") ist echt. Die
   Quelle ist die **Audit-Kette** der Control Plane (`audit_logs` aus 0001/0002),
