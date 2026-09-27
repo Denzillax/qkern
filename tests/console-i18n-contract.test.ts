@@ -23,6 +23,7 @@ import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
 import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
 import { authProtectionTexts } from "@/lib/console/auth-protection-texts";
 import { authPoliciesTexts } from "@/lib/console/auth-policies-texts";
+import { sqlTemplateTexts } from "@/lib/console/sql-templates";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -102,6 +103,9 @@ async function consoleKeys(): Promise<string[]> {
   // Auth -> Policies (2.62) zeigt Urteile, Befehle, Bedingungen, die Abbildung
   // auf PostgreSQL und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authPoliciesTexts()) keys.add(text);
+  // Die Vorlagen des SQL-Editors (2.61) zeigen Titel, Fragen und die Gruende
+  // einer Ablehnung ueber t(variable).
+  for (const text of sqlTemplateTexts()) keys.add(text);
   return [...keys];
 }
 

@@ -1122,3 +1122,18 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .usage-series-tick { fill: var(--qkern-text-muted); font: 500 9px var(--qkern-font-mono); }
 .usage-series-label { fill: var(--qkern-text-muted); font: 500 9px var(--qkern-font-sans); }
 .usage-series-table .log-row { grid-template-columns: 1.2fr 1fr 1fr 70px; min-width: 420px; }
+
+/* Vorlagen des SQL-Editors (2.61): eine Liste unter Editor und Ergebnis. */
+.sql-template-card { grid-column: 1 / -1; }
+.sql-template-note { margin: 0; padding: 0 16px 12px; color: var(--qkern-text-muted); font-size: 11px; line-height: 1.6; }
+.sql-template-target { display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px 12px; }
+.sql-template-target label { display: grid; gap: 4px; font-size: 10px; color: var(--qkern-text-muted); }
+.sql-template-target input { min-width: 180px; padding: 7px 9px; border: 1px solid var(--qkern-border); border-radius: 8px; background: var(--qkern-surface); color: var(--qkern-text); font: 500 12px var(--qkern-font-mono); }
+.sql-template-reason { margin: 0; padding: 0 16px 12px; color: var(--qkern-danger); font-size: 11px; line-height: 1.6; }
+.sql-template-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--qkern-border); }
+.sql-template-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--qkern-border); }
+.sql-template-list li.inserted { background: var(--qkern-surface-2); }
+.sql-template-list li > div { display: grid; gap: 3px; }
+.sql-template-list strong { font-size: 12px; color: var(--qkern-text); }
+.sql-template-list span { font-size: 11px; line-height: 1.6; color: var(--qkern-text-muted); }
+.sql-template-list em { font-size: 10px; line-height: 1.6; color: var(--qkern-text-muted); font-style: normal; }
