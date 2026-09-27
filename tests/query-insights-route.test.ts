@@ -29,7 +29,7 @@ async function identity() {
 
 function port(explainReadQuery: ProjectDataPlanePort["explainReadQuery"]): ProjectDataPlanePort {
   return {
-    inspectRuntime: vi.fn(), inspectDatabaseHealth: vi.fn(),
+    inspectRuntime: vi.fn(), inspectDatabaseHealth: vi.fn(), inspectForeignDataWrappers: vi.fn(),
     inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(),
     inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(),
     inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(),

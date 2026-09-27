@@ -5544,6 +5544,176 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // verzoegerte Fortschreibung der Statistik, dazu die Sortierung selbst.
     // Jede einzelne Frist hat trotzdem ihre eigene, engere Grenze.
   }, 180_000);
+  it("(2.72) reads foreign data wrappers without carrying a foreign password out", async () => {
+    // Integrationen -> Wrappers (2.72) gegen die echte Datenbank.
+    //
+    // Der Unit-Test prueft die Abbildung an einem Fake-Client. Das ist die
+    // halbe Zusage. Die andere Haelfte kann nur ein echter Server belegen,
+    // und sie ist die, auf der dieser Schnitt steht:
+    //
+    // 1. **Das Passwort ist wirklich da.** Der Fall legt einen echten Wrapper
+    //    an (`postgres_fdw`), einen Fremdserver darauf, eine Benutzerzuordnung
+    //    mit einem Passwort und eine Fremdtabelle. Dass das Geheimnis im
+    //    Katalog steht, liest der Fall als Eigentuemer nach; ohne diese
+    //    Gegenprobe prueft die Zusage darunter nichts.
+    // 2. **Die Leserolle koennte es sehen, und QKERN zeigt es trotzdem
+    //    nicht.** Bei der Serveroption ist das keine Theorie: Der Fall liest
+    //    `srvoptions` mit derselben Rolle, mit der auch die Ansicht liest, und
+    //    bekommt das Passwort im Klartext. In der Antwort des Produktcodes
+    //    steht es nicht. Die Grenze ist also QKERNs Entscheidung und nicht
+    //    ein Zufall der Rechtevergabe.
+    // 3. **Die Zuordnung wird gar nicht erst gefragt.** `pg_user_mapping` ist
+    //    fuer die Leserolle gesperrt; der Fall zeigt die Ablehnung und zeigt
+    //    daneben, dass die Lesung trotzdem durchgeht, weil sie die Sicht
+    //    nimmt und `umoptions` nicht auswaehlt.
+    //
+    // Ein zweiter Wrapper ohne Validator steht daneben, und zwar mit Grund:
+    // `postgres_fdw` weist ein Passwort auf Serverebene selbst zurueck. Ohne
+    // einen Wrapper, der jede Option annimmt, gaebe es keinen Fremdserver mit
+    // einem Geheimnis in `srvoptions`, und die Liste des Erlaubten haette
+    // nichts zu tun.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const suffix = randomUUID().replaceAll("-", "_").slice(0, 12);
+    const bareWrapper = `fdw_2_72_bare_${suffix}`;
+    const shopServer = `fdw_2_72_shop_${suffix}`;
+    const legacyServer = `fdw_2_72_legacy_${suffix}`;
+    const schema = `fdw_2_72_${suffix}`;
+    const mappingSecret = `mapping_secret_${suffix}`;
+    const serverSecret = `server_secret_${suffix}`;
+    const serverKey = `server_key_${suffix}`;
+
+    // Der Aufbau laeuft als Eigentuemer. Einen Wrapper anzulegen verlangt
+    // Superuser-Rechte, und genau darum kann die Seite es nicht.
+    await owner.query("CREATE EXTENSION IF NOT EXISTS postgres_fdw");
+    try {
+      await owner.query(`CREATE SERVER "${shopServer}" FOREIGN DATA WRAPPER postgres_fdw
+        OPTIONS (host 'fdw-remote.invalid', port '5432', dbname 'shop')`);
+      // Das Passwort des fremden Systems, dort wo es hingehoert: in der
+      // Benutzerzuordnung.
+      await owner.query(`CREATE USER MAPPING FOR "${expectedRole}" SERVER "${shopServer}"
+        OPTIONS (user 'remote_reader', password '${mappingSecret}')`);
+      await owner.query(`CREATE FOREIGN DATA WRAPPER "${bareWrapper}"`);
+      // Und ein Geheimnis dort, wo es nicht hingehoert, aber landen kann.
+      await owner.query(`CREATE SERVER "${legacyServer}" FOREIGN DATA WRAPPER "${bareWrapper}"
+        OPTIONS (host 'fdw-legacy.invalid', password '${serverSecret}', api_key '${serverKey}')`);
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE FOREIGN TABLE "${schema}"."bestellungen" (id integer, betrag numeric)
+        SERVER "${shopServer}" OPTIONS (schema_name 'public', table_name 'orders')`);
+
+      // --- Zusage 1: das Geheimnis steht wirklich im Katalog ---------------
+      const stored = await owner.query<{ umoptions: string[] }>(
+        `SELECT mapping.umoptions AS umoptions
+         FROM pg_catalog.pg_user_mapping AS mapping
+         JOIN pg_catalog.pg_foreign_server AS server ON server.oid = mapping.umserver
+         WHERE server.srvname = $1`, [shopServer]);
+      expect(stored.rows[0]?.umoptions, "die Zuordnung traegt das Passwort nicht; dann prueft dieser Fall nichts")
+        .toContain(`password=${mappingSecret}`);
+
+      const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+      try {
+        // --- Zusage 2: dieselbe Rolle kaeme an das Geheimnis heran ---------
+        const exposed = await projectApi.query<{ srvoptions: string[] }>(
+          "SELECT srvoptions FROM pg_catalog.pg_foreign_server WHERE srvname = $1", [legacyServer]);
+        expect(exposed.rows[0]?.srvoptions,
+          "die Leserolle sieht srvoptions nicht; dann belegt dieser Fall keine Entscheidung von QKERN")
+          .toContain(`password=${serverSecret}`);
+        // --- Zusage 3: die Katalogtabelle der Zuordnungen ist gesperrt -----
+        await expect(projectApi.query("SELECT umoptions FROM pg_catalog.pg_user_mapping"))
+          .rejects.toThrowError(/permission denied/i);
+
+        const service = new ProjectDataPlaneService(
+          { resolveTarget: async () => ({ databaseInstanceRef: "managed:fdw-2-72" }) },
+          { resolve: async () => ({
+            pool: projectApi,
+            expectedRole,
+            expectedDatabase,
+            expectedLedgerOwner: "qkern",
+          }) },
+        );
+        const inspection = { organizationId: organizationA, actorRef: `integration-${userId}@qkern.test` };
+        const result = await service.inspectForeignDataWrappers(inspection,
+          { projectId: randomUUID(), environment: "development" });
+
+        // --- Die Form der Antwort ------------------------------------------
+        expect(result.source).toBe("postgres");
+        expect(Object.keys(result).sort())
+          .toEqual(["servers", "source", "tables", "truncated", "userMappings", "wrappers"]);
+        expect(result.truncated).toBe(false);
+
+        // --- Der echte Wrapper, wie der Katalog ihn fuehrt -------------------
+        const postgresFdw = result.wrappers.find((entry) => entry.name === "postgres_fdw");
+        expect(postgresFdw, "der angelegte Wrapper fehlt in der Antwort").toBeDefined();
+        expect(postgresFdw!.handler).toBe("postgres_fdw_handler");
+        expect(postgresFdw!.validator).toBe("postgres_fdw_validator");
+        expect(postgresFdw!.owner).toBe("qkern");
+        // Der Wrapper ohne Validator steht mit zwei Nullen da, und die Ansicht
+        // macht daraus die Warnung.
+        const bare = result.wrappers.find((entry) => entry.name === bareWrapper);
+        expect(bare, "der Wrapper ohne Validator fehlt in der Antwort").toBeDefined();
+        expect(bare!.handler).toBeNull();
+        expect(bare!.validator).toBeNull();
+
+        // --- Die Serveroptionen: gezeigt wird, wohin, nicht als wer ---------
+        const shop = result.servers.find((entry) => entry.name === shopServer);
+        expect(shop, "der Fremdserver fehlt in der Antwort").toBeDefined();
+        expect(shop!.wrapper).toBe("postgres_fdw");
+        expect(shop!.options).toEqual([
+          { key: "dbname", value: "shop" },
+          { key: "host", value: "fdw-remote.invalid" },
+          { key: "port", value: "5432" },
+        ]);
+        const legacy = result.servers.find((entry) => entry.name === legacyServer);
+        expect(legacy, "der Fremdserver ohne Validator fehlt in der Antwort").toBeDefined();
+        // Der Schluessel steht da, der Wert nicht. Dass eine Option gesetzt
+        // ist, darf man sehen; was drinsteht nicht.
+        expect(legacy!.options).toEqual([
+          { key: "api_key", value: null },
+          { key: "host", value: "fdw-legacy.invalid" },
+          { key: "password", value: null },
+        ]);
+
+        // --- Die Zuordnung: Server und Rolle, sonst nichts ------------------
+        const mapping = result.userMappings.find((entry) => entry.server === shopServer);
+        expect(mapping, "die Benutzerzuordnung fehlt in der Antwort").toBeDefined();
+        expect(mapping!.user).toBe(expectedRole);
+        expect(Object.keys(mapping!).sort()).toEqual(["server", "user"]);
+
+        // --- Die Fremdtabelle ----------------------------------------------
+        const table = result.tables.find((entry) => entry.schema === schema);
+        expect(table, "die Fremdtabelle fehlt in der Antwort").toBeDefined();
+        expect(table!.name).toBe("bestellungen");
+        expect(table!.server).toBe(shopServer);
+
+        // --- Kein Geheimnis in der ganzen Antwort ---------------------------
+        const serialised = JSON.stringify(result);
+        expect(serialised, "das Passwort der Benutzerzuordnung").not.toContain(mappingSecret);
+        expect(serialised, "das Passwort in der Serveroption").not.toContain(serverSecret);
+        expect(serialised, "der Schluessel in der Serveroption").not.toContain(serverKey);
+        expect(serialised, "der Kontoname im fremden System").not.toContain("remote_reader");
+        // Und auch nicht das Passwort der eigenen Verbindung.
+        expect(serialised).not.toContain(decodeURIComponent(target.password));
+        for (const forbidden of ["umoptions", "ftoptions", "fdwoptions"]) {
+          expect(serialised.toLowerCase(), forbidden).not.toContain(forbidden);
+        }
+        // Die Gegenprobe zur Gegenprobe: Die Namen stehen sehr wohl drin. Ein
+        // leerer String bestuende jede Pruefung darueber.
+        expect(serialised).toContain(shopServer);
+        expect(serialised).toContain(legacyServer);
+      } finally {
+        await projectApi.end();
+      }
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await owner.query(`DROP SERVER IF EXISTS "${shopServer}" CASCADE`);
+      await owner.query(`DROP SERVER IF EXISTS "${legacyServer}" CASCADE`);
+      await owner.query(`DROP FOREIGN DATA WRAPPER IF EXISTS "${bareWrapper}" CASCADE`);
+      await owner.query("DROP EXTENSION IF EXISTS postgres_fdw CASCADE");
+    }
+  }, 120_000);
 });
 
 /**

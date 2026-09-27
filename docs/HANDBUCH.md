@@ -2336,6 +2336,44 @@ unter Abfrage-Leistung, und auch dort ohne ihren Text), keine einzelne
 Verbindung (die Gruppen stehen unter Berichte → Verbindungen) und kein Knopf,
 der die Statistik zurücksetzt: `pg_stat_reset()` ist ein Schreibaufruf, und
 diese Seite liest.
+### Wrappers: fremde Datenquellen, lesend und ohne Zugangsdaten
+
+Seit `2.57.0` ist **Integrationen → Wrappers** keine Platzhalterseite mehr.
+Die Seite liest den Katalog Ihrer Projektdatenbank und zeigt vier Listen: die
+installierten Foreign Data Wrapper mit Eigentümer, Handler und Validator, die
+Fremdserver darauf, die Benutzerzuordnungen und die Fremdtabellen mit Schema,
+Name und Server.
+
+**Optionen sind der heikle Teil.** In `pg_foreign_server.srvoptions` und
+`pg_user_mapping.umoptions` stehen die Zugangsdaten zu fremden Systemen im
+Klartext. Die beiden Spalten sind nicht gleich geschützt, und die Seite
+behandelt sie deshalb verschieden.
+
+`srvoptions` darf jede Rolle lesen, die den Katalog lesen darf, also auch die
+Leserolle eines Projekts. QKERN zeigt von diesen Optionen nur die, deren
+Schlüssel auf einer Liste im Code steht: `host`, `port`, `dbname`, `sslmode`
+und die Schalter, die das Lesen steuern, etwa `fetch_size` oder
+`use_remote_estimate`. Jede andere Option steht mit ihrem Namen da, ihr Wert
+bleibt zurückgehalten. Eine Liste des Erlaubten und keine Sperrliste: Ein
+Wrapper ohne Validator nimmt jede Option an, die jemand hinschreibt, und eine
+Sperrliste mit `password` darin wäre schon bei `pwd` oder `api_key` blind.
+
+`umoptions` liest QKERN gar nicht. PostgreSQL sperrt die Katalogtabelle
+`pg_user_mapping` zwar für nicht privilegierte Rollen, aber die Lesung
+verlässt sich nicht darauf: Sie nimmt die Sicht `pg_user_mappings` und wählt
+die Spalte nicht aus. Eine Zuordnung erscheint mit Servername und Rollenname,
+sonst nichts, auch keine Zählung.
+
+**Anlegen kann die Seite nicht**, und das steht mit Grund da. `CREATE FOREIGN
+DATA WRAPPER` verlangt Superuser-Rechte, die die Leserolle eines Projekts nicht
+hat, und ein Formular für eine Benutzerzuordnung nähme ein fremdes Passwort
+entgegen und trüge es durch Browser, Route und Protokoll. Die Seite zeigt
+stattdessen die vier Befehle, die ein Mensch an der Datenbank ausführt:
+Erweiterung, Server, Zuordnung, Fremdtabelle.
+
+Was die Seite auch nicht sagt: ob der Server drüben erreichbar ist, ob das
+Konto dort gilt und welche Tabellen es dort gibt. Sie liest den Katalog hier
+und öffnet keine Verbindung nach aussen.
 
 ### Data API: kein Anfrageprotokoll
 

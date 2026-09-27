@@ -32,6 +32,7 @@ import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 import { queryInsightsTexts } from "@/lib/console/query-insights";
 import { authPerformanceTexts } from "@/lib/console/auth-performance-texts";
 import { databaseHealthTexts } from "@/lib/console/database-health-texts";
+import { wrappersTexts } from "@/lib/console/wrappers-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -141,10 +142,15 @@ async function consoleKeys(): Promise<string[]> {
   // der Pruefsummen, was es nicht gibt und seine Ehrlichkeitssaetze ueber
   // t(variable).
   for (const text of databaseHealthTexts()) keys.add(text);
+  // Integrationen -> Wrappers (2.72) zeigt den Zustand eines Wrappers, die
+  // Schritte zum Anlegen, was es nicht kann und seine Ehrlichkeitssaetze
+  // ueber t(variable).
+  for (const text of wrappersTexts()) keys.add(text);
   return [...keys];
 }
 
 describe("console i18n contract", () => {
+
   it("translates every console text into en, fr and it", async () => {
     const keys = await consoleKeys();
     expect(keys.length).toBeGreaterThan(400);

@@ -389,6 +389,99 @@ export type ProjectColumnPrivilegeResult = {
 };
 
 /**
+ * Ein installierter Foreign Data Wrapper (2.72), aus
+ * `pg_catalog.pg_foreign_data_wrapper`.
+ *
+ * `handler` und `validator` sind Funktionsnamen, wie `regproc` sie schreibt;
+ * `null` heisst, die Spalte steht auf 0, der Wrapper hat also keine. Ein
+ * Wrapper ohne Validator nimmt jede Option an, die jemand hinschreibt, und
+ * genau darum steht er hier: Die Ansicht kann daran zeigen, warum sie
+ * Optionswerte nicht ungeprueft weitergibt.
+ *
+ * `fdwoptions` liest QKERN nicht. Die Optionen des Wrappers selbst tragen bei
+ * manchen Erweiterungen Voreinstellungen fuer alle Server darunter, und was
+ * darin steht, entscheidet die Erweiterung und nicht PostgreSQL.
+ */
+export type ProjectForeignDataWrapper = {
+  name: string;
+  owner: string;
+  handler: string | null;
+  validator: string | null;
+};
+
+/**
+ * Eine Option eines Fremdservers (2.72).
+ *
+ * `value` ist `null`, wenn der Schluessel nicht auf der Liste steht, die ihren
+ * Wert zeigen darf (`SHOWN_SERVER_OPTION_KEYS`). Zurueckgehalten und leer sind
+ * damit unterscheidbar: ein leerer Wert ist `""`.
+ */
+export type ProjectForeignServerOption = {
+  key: string;
+  value: string | null;
+};
+
+/**
+ * Ein Fremdserver (2.72), aus `pg_catalog.pg_foreign_server`.
+ *
+ * `type` und `version` sind zwei freie Textfelder, die beim Anlegen gesetzt
+ * werden koennen und die PostgreSQL nicht auswertet; meist sind sie leer.
+ */
+export type ProjectForeignServer = {
+  name: string;
+  /** Der Wrapper, unter dem dieser Server haengt */
+  wrapper: string;
+  owner: string;
+  type: string | null;
+  version: string | null;
+  options: ProjectForeignServerOption[];
+};
+
+/**
+ * Eine Benutzerzuordnung (2.72), aus der Sicht `pg_catalog.pg_user_mappings`.
+ *
+ * **Ohne Optionen, und zwar ohne sie auch nur zu lesen.** In `umoptions`
+ * stehen die Zugangsdaten zum fremden System, beim `postgres_fdw` woertlich
+ * als `user` und `password`. PostgreSQL schuetzt die Spalte selbst: Die
+ * Katalogtabelle `pg_user_mapping` ist fuer `public` gesperrt, und die Sicht
+ * `pg_user_mappings` liefert `umoptions` nur dem Eigentuemer oder einem
+ * Superuser. QKERN verlaesst sich darauf nicht, sondern waehlt die Spalte
+ * nicht aus: Die Leserolle eines Projekts kann morgen eine andere sein, die
+ * Zusage dieser Antwort soll es nicht.
+ *
+ * `user` ist der Rollenname, oder `public` fuer eine Zuordnung, die fuer alle
+ * gilt.
+ */
+export type ProjectUserMapping = {
+  server: string;
+  user: string;
+};
+
+/** Eine Fremdtabelle (2.72), aus `pg_foreign_table` verbunden mit `pg_class`. */
+export type ProjectForeignTable = {
+  schema: string;
+  name: string;
+  /** Der Fremdserver, ueber den diese Tabelle gelesen wird */
+  server: string;
+};
+
+/**
+ * Fremde Datenquellen (2.72), lesend und an einem Stueck: Wrapper, Server,
+ * Zuordnungen und Fremdtabellen aus einer Transaktion.
+ *
+ * `truncated` gilt fuer die Antwort, nicht fuer eine einzelne Liste: Sobald
+ * eine der vier Grenzen greift, steht das Feld auf `true`.
+ */
+export type ProjectForeignDataWrapperResult = {
+  source: "postgres";
+  wrappers: ProjectForeignDataWrapper[];
+  servers: ProjectForeignServer[];
+  userMappings: ProjectUserMapping[];
+  tables: ProjectForeignTable[];
+  truncated: boolean;
+};
+
+/**
  * Der TLS-Zustand dieser einen Verbindung (2.53).
  *
  * Zwei verschiedene Aussagen, darum zwei Felder. `encrypted` gilt fuer das
@@ -667,6 +760,10 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectColumnPrivilegeResult>;
+  inspectForeignDataWrappers(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectForeignDataWrapperResult>;
   inspectSettings(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1367,6 +1464,13 @@ type PublicationRow = {
   publish_truncate: boolean; all_tables: boolean; tables: string[];
 };
 type ColumnPrivilegeRow = { table_name: string; column_name: string; grantee: string; privilege_type: string; is_grantable: boolean };
+type ForeignDataWrapperRow = { wrapper_name: string; owner: string; handler: string | null; validator: string | null };
+type ForeignServerRow = {
+  server_name: string; wrapper_name: string; owner: string;
+  server_type: string | null; server_version: string | null; options: string[];
+};
+type UserMappingRow = { server_name: string; user_name: string };
+type ForeignTableRow = { schema_name: string; table_name: string; server_name: string };
 
 const MAX_EXTENSIONS = 400;
 const MAX_ROLES = 200;
@@ -1588,6 +1692,148 @@ const COLUMN_PRIVILEGES_SQL = `
     AND relation.relkind IN ('r', 'v', 'm', 'p', 'f')
   ORDER BY relation.relname ASC, attribute.attnum ASC, grantee ASC, acl.privilege_type ASC
   LIMIT $2`;
+
+/**
+ * Fremde Datenquellen (2.72), vier Lesungen in einer Transaktion.
+ *
+ * Die Wrapper mit Eigentuemer, Handler und Validator. `regproc` schreibt einen
+ * Funktionsnamen; steht die Spalte auf 0, hat der Wrapper keine solche
+ * Funktion, und `NULLIF` macht daraus ein `null` statt des Textes `-`.
+ */
+const FOREIGN_DATA_WRAPPERS_SQL = `
+  SELECT wrapper.fdwname AS wrapper_name,
+         wrapper.fdwowner::regrole::text AS owner,
+         NULLIF(wrapper.fdwhandler, 0)::regproc::text AS handler,
+         NULLIF(wrapper.fdwvalidator, 0)::regproc::text AS validator
+  FROM pg_catalog.pg_foreign_data_wrapper AS wrapper
+  ORDER BY wrapper.fdwname ASC
+  LIMIT $1`;
+
+/**
+ * Die Fremdserver (2.72), mit ihrem Wrapper und ihren Optionen.
+ *
+ * `srvoptions` kommt roh heraus, als `name=wert` je Eintrag, und wird erst in
+ * TypeScript getrennt und gefiltert. Der Optionsname ist ein Bezeichner und
+ * traegt kein `=`, also ist das erste `=` die Trennstelle und keine Schaetzung.
+ *
+ * Die Spalte ist fuer jede Rolle lesbar, die `pg_foreign_server` lesen darf,
+ * und das ist `public`. Wer ein Geheimnis in eine Serveroption schreibt, legt
+ * es damit offen; `SHOWN_SERVER_OPTION_KEYS` entscheidet danach, was QKERN
+ * davon weitergibt.
+ */
+const FOREIGN_SERVERS_SQL = `
+  SELECT server.srvname AS server_name,
+         wrapper.fdwname AS wrapper_name,
+         server.srvowner::regrole::text AS owner,
+         server.srvtype AS server_type,
+         server.srvversion AS server_version,
+         COALESCE(server.srvoptions, ARRAY[]::text[]) AS options
+  FROM pg_catalog.pg_foreign_server AS server
+  JOIN pg_catalog.pg_foreign_data_wrapper AS wrapper ON wrapper.oid = server.srvfdw
+  ORDER BY server.srvname ASC
+  LIMIT $1`;
+
+/**
+ * Die Benutzerzuordnungen (2.72), aus der Sicht und ohne `umoptions`.
+ *
+ * Die Sicht statt der Katalogtabelle, weil `pg_user_mapping` fuer `public`
+ * gesperrt ist: Eine nicht privilegierte Leserolle bekaeme dort „permission
+ * denied for table pg_user_mapping" und die ganze Seite faellt aus, obwohl
+ * QKERN nur zwei harmlose Spalten will. Die Sicht gibt Servername und
+ * Rollenname jeder Zuordnung heraus.
+ *
+ * `umoptions` steht nicht in der Liste, und das ist der Punkt dieser Lesung.
+ */
+const USER_MAPPINGS_SQL = `
+  SELECT mapping.srvname AS server_name,
+         mapping.usename AS user_name
+  FROM pg_catalog.pg_user_mappings AS mapping
+  ORDER BY mapping.srvname ASC, mapping.usename ASC
+  LIMIT $1`;
+
+/**
+ * Die Fremdtabellen (2.72), mit Schema, Name und Server.
+ *
+ * `ftoptions` bleibt ungelesen. Dort steht, wie die Tabelle drueben heisst;
+ * das ist eine Angabe ueber das fremde System, und diese Seite beschreibt das
+ * eigene.
+ */
+const FOREIGN_TABLES_SQL = `
+  SELECT namespace.nspname AS schema_name,
+         relation.relname AS table_name,
+         server.srvname AS server_name
+  FROM pg_catalog.pg_foreign_table AS foreign_table
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = foreign_table.ftrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN pg_catalog.pg_foreign_server AS server ON server.oid = foreign_table.ftserver
+  ORDER BY namespace.nspname ASC, relation.relname ASC
+  LIMIT $1`;
+
+/**
+ * Welche Optionsschluessel eines Fremdservers ihren **Wert** zeigen duerfen
+ * (2.72). Die Entscheidung steht hier und nicht in der Ansicht: Sie gilt fuer
+ * jeden, der die Lesung aufruft, also auch fuer die MCP-Bruecke.
+ *
+ * Eine Liste des Erlaubten, keine Liste des Verbotenen. Ein Fremdserver kann
+ * unter einem Wrapper ohne Validator jede Option tragen, die jemand
+ * hinschreibt; eine Sperrliste mit `password` und `secret` darin waere schon
+ * bei `passwd`, `pwd`, `token` oder `api_key` blind. Auf der Liste stehen
+ * darum nur Schluessel, die beschreiben, **wohin** verbunden wird und **wie**
+ * gelesen wird, und keiner, der beschreibt, **als wer**.
+ *
+ * `user`, `password` und `sslpassword` fehlen hier nicht aus Versehen. Der
+ * `postgres_fdw` weist sie auf Serverebene selbst zurueck, aber er ist nicht
+ * der einzige Wrapper, und diese Antwort soll nicht davon abhaengen, welcher
+ * Wrapper installiert ist. `sslcert`, `sslkey` und `passfile` fehlen ebenso:
+ * Ein Pfad auf dem Server ist keine Betriebsangabe, die in eine Weboberflaeche
+ * gehoert.
+ *
+ * Jeder andere Schluessel steht trotzdem in der Antwort, aber mit `value:
+ * null`. Der Name einer Option kommt aus dem Wortschatz des Wrappers, der
+ * Wert vom Menschen, der ihn gesetzt hat; dass eine Option gesetzt ist, darf
+ * man sehen, was drinsteht nicht.
+ */
+const SHOWN_SERVER_OPTION_KEYS: ReadonlySet<string> = new Set([
+  "host", "port", "dbname", "sslmode",
+  "fetch_size", "batch_size", "use_remote_estimate", "fdw_startup_cost", "fdw_tuple_cost",
+  "updatable", "truncatable", "async_capable", "keep_connections", "parallel_commit", "parallel_abort",
+  "analyze_sampling", "extensions",
+]);
+
+/**
+ * Der Name einer Serveroption (2.72). PostgreSQL legt Optionsnamen als
+ * Bezeichner an; was dieser Form nicht entspricht, faellt an der Grenze durch,
+ * statt als Text in die Ansicht zu wandern.
+ */
+const SERVER_OPTION_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
+
+const MAX_FOREIGN_DATA_WRAPPERS = 50;
+const MAX_FOREIGN_SERVERS = 200;
+const MAX_FOREIGN_SERVER_OPTIONS = 50;
+const MAX_USER_MAPPINGS = 500;
+const MAX_FOREIGN_TABLES = 1000;
+
+/**
+ * Ein Eintrag aus `srvoptions` in Schluessel und Wert (2.72), und der
+ * Schluessel entscheidet, ob der Wert mitkommt.
+ *
+ * Wirft, statt `null` zurueckzugeben: Ein Eintrag ohne `=` oder mit einem
+ * Namen ausserhalb der Bezeichner-Grammatik ist kein Grund zum Raten. Dann
+ * meldet der Katalog etwas, das QKERN nicht versteht, und die Seite sagt das,
+ * statt die Haelfte zu zeigen.
+ */
+function foreignServerOption(entry: unknown): ProjectForeignServerOption {
+  if (typeof entry !== "string" || entry.length > 2048) {
+    throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+  const separator = entry.indexOf("=");
+  const key = separator > 0 ? entry.slice(0, separator) : "";
+  const value = entry.slice(separator + 1);
+  if (!SERVER_OPTION_KEY.test(key) || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+  return { key, value: SHOWN_SERVER_OPTION_KEYS.has(key) ? value : null };
+}
 
 function assertInspectableSchema(schema: string): void {
   if (!isDataSchemaName(schema)) {
@@ -2319,6 +2565,85 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Fremde Datenquellen (2.72), lesend.
+   *
+   * Vier Anweisungen in derselben Transaktion, damit Wrapper, Server,
+   * Zuordnungen und Fremdtabellen zueinander passen: Ein Server, der zwischen
+   * zwei Lesungen verschwindet, wuerde sonst eine Fremdtabelle ohne Server
+   * hinterlassen.
+   *
+   * Die Grenze ist hier enger als bei den anderen Katalog-Lesungen, und das
+   * hat einen Grund. `srvoptions` traegt in der Praxis Zugangsdaten zu fremden
+   * Systemen, `umoptions` traegt sie fast immer. Was in dieser Antwort landet,
+   * entscheidet `SHOWN_SERVER_OPTION_KEYS`, und die Zuordnungen kommen ganz
+   * ohne Optionen heraus.
+   */
+  async inspectForeignDataWrappers(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectForeignDataWrapperResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const wrapperResult = await client.query<ForeignDataWrapperRow>(FOREIGN_DATA_WRAPPERS_SQL, [MAX_FOREIGN_DATA_WRAPPERS + 1]);
+      const serverResult = await client.query<ForeignServerRow>(FOREIGN_SERVERS_SQL, [MAX_FOREIGN_SERVERS + 1]);
+      const mappingResult = await client.query<UserMappingRow>(USER_MAPPINGS_SQL, [MAX_USER_MAPPINGS + 1]);
+      const tableResult = await client.query<ForeignTableRow>(FOREIGN_TABLES_SQL, [MAX_FOREIGN_TABLES + 1]);
+
+      const wrapperRows = wrapperResult.rows.slice(0, MAX_FOREIGN_DATA_WRAPPERS);
+      const serverRows = serverResult.rows.slice(0, MAX_FOREIGN_SERVERS);
+      const mappingRows = mappingResult.rows.slice(0, MAX_USER_MAPPINGS);
+      const tableRows = tableResult.rows.slice(0, MAX_FOREIGN_TABLES);
+
+      const wrappers: ProjectForeignDataWrapper[] = wrapperRows.map((row) => {
+        // Handler und Validator koennen schema-qualifiziert ankommen, darum
+        // 130 Zeichen statt der 63 eines blossen Namens.
+        if (!catalogName(row.wrapper_name) || !catalogName(row.owner) ||
+            !boundedText(row.handler, 130) || !boundedText(row.validator, 130)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { name: row.wrapper_name, owner: row.owner, handler: row.handler, validator: row.validator };
+      });
+
+      let truncated = wrapperResult.rows.length > wrapperRows.length ||
+        serverResult.rows.length > serverRows.length ||
+        mappingResult.rows.length > mappingRows.length ||
+        tableResult.rows.length > tableRows.length;
+
+      const servers: ProjectForeignServer[] = serverRows.map((row) => {
+        if (!catalogName(row.server_name) || !catalogName(row.wrapper_name) || !catalogName(row.owner) ||
+            !boundedText(row.server_type, 130) || !boundedText(row.server_version, 130) ||
+            !Array.isArray(row.options)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        if (row.options.length > MAX_FOREIGN_SERVER_OPTIONS) truncated = true;
+        const options = row.options.slice(0, MAX_FOREIGN_SERVER_OPTIONS)
+          .map(foreignServerOption)
+          .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
+        return {
+          name: row.server_name, wrapper: row.wrapper_name, owner: row.owner,
+          type: row.server_type, version: row.server_version, options,
+        };
+      });
+
+      const userMappings: ProjectUserMapping[] = mappingRows.map((row) => {
+        if (!catalogName(row.server_name) || !catalogName(row.user_name)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { server: row.server_name, user: row.user_name };
+      });
+
+      const tables: ProjectForeignTable[] = tableRows.map((row) => {
+        if (!catalogName(row.schema_name) || !catalogName(row.table_name) || !catalogName(row.server_name)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return { schema: row.schema_name, name: row.table_name, server: row.server_name };
+      });
+
+      return { source: "postgres", wrappers, servers, userMappings, tables, truncated };
+    });
+  }
+
   async queryReadOnly(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -2597,6 +2922,13 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectColumnPrivilegeResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectForeignDataWrappers(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+  ): Promise<ProjectForeignDataWrapperResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 
