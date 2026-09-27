@@ -13,6 +13,7 @@ import { routeError as apiKeyRouteError } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/api-keys/route";
 import { routeError as automationPolicyRouteError } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/automation-policy/route";
+import { realtimeLogRouteError } from "@/app/api/v1/projects/[projectId]/environments/[environment]/realtime/log/route";
 import { dataPlaneRouteError } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/schema/route";
 
@@ -79,6 +80,7 @@ const CHECKED: ReadonlyArray<readonly [string, (error: unknown) => Response | Pr
   [`${ROUTES}/api-keys/route.ts:routeError`, apiKeyRouteError],
   [`${ROUTES}/automation-policy/route.ts:routeError`, automationPolicyRouteError],
   [`${ROUTES}/schema/route.ts:dataPlaneRouteError`, dataPlaneRouteError],
+  [`${ROUTES}/realtime/log/route.ts:realtimeLogRouteError`, realtimeLogRouteError],
 ];
 
 describe("route unavailable contract", () => {

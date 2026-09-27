@@ -3854,6 +3854,106 @@ und alle Aufrufstellen von `admitApiRequest`. Ein Pooler in einer
 Compose-Datei, eine neue `middleware.ts` oder ein viertes zählendes Modul
 lässt den Lauf scheitern, statt eine Seite stillschweigend zur Lüge zu machen.
 
+### Realtime: zwei von drei Versprechen
+
+Seit `2.62.0` ist **Logs → Realtime** keine Platzhalterseite mehr, und damit
+steht unter Logs kein Platzhalter mehr. Der Platzhalter versprach
+„Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit“.
+Nachgesehen wurde jedes der drei Dinge einzeln, und das Ergebnis ist zweimal ja
+und einmal nein.
+
+**Verbindungen schreibt niemand auf.** Der Realtime-Dienst kennt seine offenen
+Verbindungen genau: `lib/server/realtime/service.ts` führt sie in einer `Map`
+im Prozessspeicher, mit Abonnements und Presence je Verbindung, und `stats()`
+kann sie zählen. Nur verlässt diese Map den Prozess nie. Es gibt keine Tabelle,
+in der eine Verbindung stünde, keine Route, die danach fragt, und nach einem
+Neustart ist die Zahl weg. Console und Realtime-Server sind zwei Prozesse; eine
+Leseroute der Console käme an die Zahl nur heran, indem sie den anderen Prozess
+über das Netz fragt, und das wäre eine Wirkung nach aussen und keine Lesung.
+Die Route zu den Realtime-Grenzen sagt denselben Satz seit `2.48.0` und meldet
+aus demselben Grund keine Betriebszahlen. Auf der Seite steht dafür deshalb ein
+Absatz und keine Kachel. Ein Verlauf wäre selbst mit der Zahl nicht da: Niemand
+schreibt eine Zeile, wenn eine Verbindung auf- oder zugeht.
+
+**Kanäle und Nachrichten gibt es wirklich.** Migration `0030` hat den
+Event-Log dauerhaft gemacht. `realtime_channel_sequences` führt je Kanal den
+Zähler, aus dem die Sequenz einer Nachricht kommt, `realtime_events` je
+Broadcast eine Zeile mit Kanal, Sequenz, Ereignisnamen, Rolle des Absenders und
+Zeitpunkt. Beide Tabellen tragen RLS auf `organization_id`. Die Seite zeigt je
+Kanal, wie viele Nachrichten noch im Log liegen und wie viele Sequenzen je
+vergeben wurden. Die Differenz ist kein Verlust, sondern die Aufbewahrung bei
+der Arbeit: Sie entfernt alte Ereignisse und lässt den Zähler stehen, damit
+eine Sequenz nie zweimal vergeben wird. Ein Kanal ohne eine einzige verbliebene
+Nachricht ist deshalb ein Kanal mit Vergangenheit und kein leerer.
+
+Zwei Grenzen stehen dabei auf der Seite selbst. Erstens liegt im Log nur, was
+ein Client als **Broadcast** geschickt hat: Zugestellte Datenbankänderungen
+werden je Abonnent einzeln mit dessen Claims gelesen und nie gemeinsam
+gespeichert, und Presence wird gar nicht gespeichert. Die Zahlen messen also
+die Broadcasts auf einem Kanal und nicht den Verkehr darauf. Zweitens wird die
+**Nutzlast** nicht gelesen, sondern nur ihre Grösse in Bytes: Sie stammt von
+einem Client des Projekts und kann alles enthalten, was dieser Client geschickt
+hat.
+
+**Der Rückstand ist die Zahl, die im Betrieb zählt.** Sie stand im Platzhalter
+nicht und ist trotzdem die wichtigste auf der Seite. Eine Änderung an einer
+erfassten Tabelle schreibt über den Trigger aus `db/project/0003` eine Zeile in
+`qkern_internal.change_feed` der Projektdatenbank, und die Zeile bleibt liegen,
+bis ein Leser sie geholt hat. Wie weit gelesen wurde, steht seit Migration
+`0050` in `project_database_webhook_cursors` der Control Plane, je Umgebung eine
+Zeile. Die Seite liest beide Seiten: die Position aus der Control Plane und die
+wartenden Zeilen aus der Projektdatenbank, dazu die Zahl der Tabellen mit einem
+Trigger auf `qkern_internal.capture_change`. Ohne einen solchen Trigger bleibt
+der Feed leer, und das ist keine Störung, sondern eine Einrichtung, die
+aussteht.
+
+Gezählt wird der Rückstand in der Datenbank, mit
+`count(*) FILTER (WHERE position > $1)`, und ausdrücklich nicht als
+`max(position) - Position`. Der Unterschied ist nicht theoretisch: Sobald die
+Aufbewahrung eine Zeile zwischen der Position und dem Ende entfernt hat, sagen
+die beiden Zahlen Verschiedenes, und nur die gezählte stimmt.
+
+Diese Position gehört der **Webhook-Brücke** und nicht dem Realtime-Transport.
+Realtime liest denselben Feed, führt seine Position aber je Instanz im Prozess:
+`RealtimeChangePoller` beginnt bei `startPosition ?? 0`, und die Position
+überlebt keinen Neustart und steht in keiner Tabelle. Einen Rückstand für
+Realtime gibt die Seite darum nicht an, und sie sagt auch warum.
+
+**Abgegrenzt gegen Berichte → Realtime.** Die Berichtsseite liest die Metrik
+`realtime_messages`: je dauerhaft gespeichertem Broadcast eine Einheit,
+gebündelt geschrieben, abfragbar in Stundenschritten über 48 Stunden oder in
+Tagesschritten über 90 Tage. Das ist die Frage nach der Menge über die Zeit. Die
+Logseite beantwortet die andere: welche Kanäle es gibt, wie viel auf jedem
+liegt, wann dort zuletzt etwas ankam und mit welcher Rolle. Die Nutzungsreihe
+gruppiert nur nach Metrik und kennt keinen Kanal, könnte das also gar nicht
+sagen; umgekehrt hält das Log keine abgeschlossenen Stunden vor und taugt nicht
+für eine Kurve.
+
+**Die Route.** `GET /v1/projects/{projectId}/environments/{environment}/realtime/log`,
+nur lesend, `private, no-store`, kein Query-Parameter. Die Tür ist eine
+Console-Sitzung mit Leserecht auf der Organisation und ausdrücklich kein
+Projekt-Key: Es ist eine Betriebsansicht und kein Datenweg. Die drei Lesungen
+der Control Plane laufen in **einer** Transaktion, damit die Antwort nicht drei
+Augenblicke nebeneinanderstellt. Die Projektdatenbank ist die zweite Hälfte und
+reisst die erste nicht mit: Antwortet sie nicht, trägt die Antwort in
+`feedState` den Grund (`disabled`, `not_ready`, `unavailable`), und die Kanäle
+stehen trotzdem da. `present: false` unterscheidet dabei eine Projektdatenbank
+ohne Änderungs-Feed von einem Feed ohne wartende Zeile; eine Null könnte das
+nicht.
+
+**Der Fall (2.86)** läuft gegen die echte Datenbank. Er legt eine echte
+Wegwerf-Projektdatenbank an, spielt `db/project/0001` bis `0003` ein, hängt den
+echten Trigger an eine Kundentabelle und lässt eine zweite ohne Trigger daneben
+stehen. Drei echte Änderungen, je eine Sorte, erzeugen drei Feed-Zeilen. Die
+Nachrichten schreibt der echte `PostgresRealtimeEventLog` unter der
+Laufzeitrolle, die Position schreibt der echte Cursor-Schreibweg der Brücke.
+Danach entfernt der Fall eine echte Ereigniszeile und belegt, dass der Kanal
+mit einer Nachricht weniger und derselben Zahl vergebener Sequenzen stehen
+bleibt, und er reisst ein Loch in den Feed und belegt, dass der gemeldete
+Rückstand die gezählte und nicht die gerechnete Zahl ist. Zum Schluss liest ein
+Nachbarmandant dieselbe Umgebung und bekommt leere Listen und gar keine
+Position, während der Eigentümer dieselben Zeilen sehr wohl sieht.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:
