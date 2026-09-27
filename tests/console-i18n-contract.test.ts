@@ -22,6 +22,7 @@ import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
 import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
 import { authProtectionTexts } from "@/lib/console/auth-protection-texts";
+import { sqlTemplateTexts } from "@/lib/console/sql-templates";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -98,6 +99,9 @@ async function consoleKeys(): Promise<string[]> {
   // Auth -> Passwortschutz (2.53) zeigt Wortlaute, Listenherkuenfte, Gruende
   // einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authProtectionTexts()) keys.add(text);
+  // Die Vorlagen des SQL-Editors (2.61) zeigen Titel, Fragen und die Gruende
+  // einer Ablehnung ueber t(variable).
+  for (const text of sqlTemplateTexts()) keys.add(text);
   return [...keys];
 }
 

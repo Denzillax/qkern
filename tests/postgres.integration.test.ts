@@ -28,6 +28,9 @@ import { PostgresMigrationQueue } from "@/lib/server/migrations/postgres-queue";
 import { PostgresProjectDatabaseExecutor } from "@/lib/server/migrations/postgres-executor";
 import { MigrationWorker } from "@/lib/server/migrations/worker";
 import { createTableStatement, TableChangeSetError } from "@/lib/console/table-change-sets";
+// Die Vorlagen des SQL-Editors (2.61): dieselbe reine Liste, die die Console
+// anzeigt, durch denselben Lesepfad, den die Query-Route benutzt.
+import { SQL_TEMPLATES, sqlTemplateStatement } from "@/lib/console/sql-templates";
 import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
 // Der erzwingbare zweite Faktor (2.52): echte Repository-, Audit- und
 // Token-Teile hinter dem echten Dienst.
@@ -2334,6 +2337,195 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   });
+
+  it("(2.61) runs every prepared template against a real catalog without writing", async () => {
+    // Die Vorlagen des SQL-Editors (2.61) gegen die echte Datenbank.
+    //
+    // Der Unit-Test prueft, dass jede Vorlage den Waechter `isReadOnlySql`
+    // besteht. Das ist die halbe Zusage. Die andere Haelfte kann nur eine
+    // echte Datenbank belegen: dass PostgreSQL die Abfrage auch versteht. Ein
+    // Statement kann den Parser dieses Projekts passieren und in der
+    // Zieldatenbank trotzdem an einem Spaltennamen, einem Cast oder einer
+    // fehlenden Sicht scheitern -- dann waere die Vorlage eine Attrappe mit
+    // gruenem Test. Darum laeuft hier jede Vorlage durch `queryReadOnly`, also
+    // durch denselben Weg, den die Query-Route nimmt: Waechter,
+    // BEGIN READ ONLY, Zeilenlimit, Redaktion.
+    //
+    // Zwei Zusagen:
+    //
+    // 1. Jede Vorlage antwortet mit Zeilen oder mit einer leeren Menge, nie
+    //    mit einem Fehler. Eine leere Menge ist in Ordnung -- ein frischer
+    //    Cluster hat keinen ungenutzten Index -- ein Fehler nicht.
+    // 2. Danach ist die Datenbank unveraendert: dieselben Zeilen, dieselben
+    //    Relationen, kein geaendertes und kein geloeschtes Tuple.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.45, 2.52, 2.57 und 2.59:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und eine Organisation mit Auditzeilen laesst sich nicht loeschen. Dieser
+    // Fall laesst darum Organisation, Projekt und Umgebung stehen und raeumt
+    // nur sein eigenes Schema weg, das er selbst mit rohem SQL angelegt hat.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const templateOwner = randomUUID();
+    const templateOrganization = randomUUID();
+    const templateProject = randomUUID();
+    const templateActor = `templates-2-61-owner-${templateOwner}@qkern.test`;
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [templateOwner, templateActor]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Templates 2.61', $2, $3)`,
+    [templateOrganization, `templates-2-61-${templateOrganization}`, templateOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Templates 2.61', $3, 'test', 'ready', $4)`,
+    [templateProject, templateOrganization, `templates-2-61-${templateProject}`, templateOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [templateOrganization, templateProject, `managed:${templateProject}`]);
+
+    // Das Ziel der beiden Vorlagen mit Tabelle. Der Schemaname erfuellt die
+    // Grammatik der Data API -- sonst lehnte das reine Modul ihn ab. Das ist
+    // hier kein Zufall, sondern die Probe darauf, dass ein echter Name durch
+    // dieselbe Grenze geht wie ein feindlicher.
+    const schema = `templates_${randomUUID().replaceAll("-", "_")}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".vorlagen (
+        id integer PRIMARY KEY,
+        notiz text NOT NULL)`);
+      await owner.query(`CREATE INDEX vorlagen_notiz_idx ON "${schema}".vorlagen (notiz)`);
+      await owner.query(`CREATE TABLE "${schema}".ohne_schluessel (notiz text NOT NULL)`);
+      await owner.query(`INSERT INTO "${schema}".vorlagen (id, notiz)
+        VALUES (1, 'eins'), (2, 'zwei'), (3, 'drei')`);
+      await owner.query(`INSERT INTO "${schema}".ohne_schluessel (notiz) VALUES ('eins')`);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO qkern_project_api_app`);
+      await owner.query(`ANALYZE "${schema}".vorlagen`);
+
+      // Eine Vorlage braucht `pg_stat_statements`. Der Stack laedt die
+      // Erweiterung; fehlte sie, antwortete PostgreSQL mit
+      // "relation does not exist" statt mit einer leeren Menge, und dann
+      // pruefte dieser Fall an dieser Stelle nichts. Also wird gefragt.
+      const installed = await owner.query<{ present: boolean }>(
+        "SELECT to_regclass('pg_stat_statements') IS NOT NULL AS present");
+      expect(installed.rows[0]?.present,
+        "pg_stat_statements fehlt; der Stack laedt sie ueber shared_preload_libraries").toBe(true);
+
+      /**
+       * Der Fingerabdruck: Zeilen, Relationen und Schreibzaehler dieses Falls.
+       *
+       * Eingegrenzt auf das eigene Schema, weil der PostgreSQL-Stack mehrere
+       * Testdateien gleichzeitig laufen laesst. Ein clusterweiter Vergleich
+       * wuerde die Nachbarn messen statt die Vorlagen.
+       */
+      const fingerprint = async () => {
+        const rows = await owner.query<{ id: number; notiz: string }>(
+          `SELECT id, notiz FROM "${schema}".vorlagen ORDER BY id`);
+        const relations = await owner.query<{ nspname: string; relname: string; relkind: string }>(
+          `SELECT ns.nspname, rel.relname, rel.relkind::text
+           FROM pg_catalog.pg_class AS rel
+           JOIN pg_catalog.pg_namespace AS ns ON ns.oid = rel.relnamespace
+           WHERE ns.nspname = $1
+           ORDER BY ns.nspname, rel.relname`, [schema]);
+        const counters = await owner.query<{ updated: string; deleted: string }>(
+          `SELECT COALESCE(sum(stat.n_tup_upd), 0)::text AS updated,
+                  COALESCE(sum(stat.n_tup_del), 0)::text AS deleted
+           FROM pg_catalog.pg_stat_all_tables AS stat
+           WHERE stat.schemaname = $1`, [schema]);
+        return JSON.stringify({
+          rows: rows.rows,
+          relations: relations.rows,
+          counters: counters.rows[0],
+        });
+      };
+      const before = await fingerprint();
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${templateProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const templateContext = { organizationId: templateOrganization, actorRef: templateActor };
+      const templateScope = { projectId: templateProject, environment: "development" as const };
+
+      // --- Zusage 1: jede Vorlage laeuft ---
+      expect(SQL_TEMPLATES.length).toBeGreaterThanOrEqual(10);
+      const ran: string[] = [];
+      const answers = new Map<string, Array<Record<string, unknown>>>();
+      for (const template of SQL_TEMPLATES) {
+        const statement = sqlTemplateStatement(template.id, template.parameters.length === 0
+          ? {}
+          : { schema, table: "vorlagen" });
+        // Kein try/catch: ein Fehler soll diesen Fall rot machen und den Namen
+        // der Vorlage nennen, nicht stillschweigend gezaehlt werden.
+        const result = await service.queryReadOnly(templateContext, templateScope, statement, 25);
+        expect(result.source, template.id).toBe("postgres");
+        expect(result.maxRows, template.id).toBe(25);
+        expect(result.rowCount, template.id).toBe(result.rows.length);
+        expect(result.rowCount, template.id).toBeLessThanOrEqual(25);
+        // Eine leere Menge hat keine Spalten; jede Zeile bringt welche mit.
+        if (result.rows.length > 0) expect(result.columns.length, template.id).toBeGreaterThan(0);
+        for (const row of result.rows) {
+          expect(Object.keys(row).sort(), template.id).toEqual([...result.columns].sort());
+        }
+        ran.push(template.id);
+        answers.set(template.id, result.rows);
+      }
+      expect(ran).toEqual(SQL_TEMPLATES.map((template) => template.id));
+
+      // --- Die Antworten stehen wirklich im Katalog ---
+      // Sonst waere "laeuft ohne Fehler" auch mit einer Vorlage zu haben, die
+      // `SELECT 1 WHERE false` heisst.
+      const countRows = answers.get("table-row-count") ?? [];
+      expect(countRows).toHaveLength(1);
+      expect(Number(countRows[0]?.exact_rows)).toBe(3);
+
+      const indexRows = answers.get("table-index-usage") ?? [];
+      const reportedIndexes = indexRows.map((row) => String(row.index_name)).sort();
+      const realIndexes = await owner.query<{ relname: string }>(
+        `SELECT idx.relname
+         FROM pg_catalog.pg_index AS ind
+         JOIN pg_catalog.pg_class AS idx ON idx.oid = ind.indexrelid
+         WHERE ind.indrelid = ($1 || '.vorlagen')::regclass`, [`"${schema}"`]);
+      expect(realIndexes.rows.length, "die Fixture-Tabelle hat keine Indizes").toBeGreaterThan(0);
+      expect(reportedIndexes).toEqual(realIndexes.rows.map((row) => row.relname).sort());
+
+      // Die Vorlage zur Statement-Statistik antwortet immer, und ihre Antwort
+      // stimmt mit dem Katalog ueberein.
+      const availability = answers.get("statement-statistics-available") ?? [];
+      expect(availability).toHaveLength(1);
+      expect(availability[0]?.statements_installed).toBe(true);
+      expect(availability[0]?.database_name).toBe(new URL(projectApiUrl!).pathname.slice(1));
+
+      // Die grossen Tabellen und die Schaetzungen des Planers kommen sortiert;
+      // eine Vorlage, die das nicht einhielte, waere in der Ansicht irrefuehrend.
+      const sizes = (answers.get("largest-tables") ?? []).map((row) => Number(row.total_bytes));
+      expect([...sizes].sort((left, right) => right - left)).toEqual(sizes);
+      const estimates = (answers.get("planner-row-estimates") ?? [])
+        .map((row) => Number(row.estimated_rows));
+      expect([...estimates].sort((left, right) => right - left)).toEqual(estimates);
+
+      // Keine Antwort traegt einen Abfragetext. Die Vorlagen lesen die Spalte
+      // `query` nicht, und genau das ist hier die Probe darauf.
+      const serialised = JSON.stringify([...answers.values()]);
+      expect(serialised).not.toContain("SELECT ");
+      expect(serialised).not.toContain("GRANT ");
+
+      // --- Zusage 2: die Datenbank ist unveraendert ---
+      const after = await fingerprint();
+      expect(after).toBe(before);
+      const counters = (JSON.parse(after) as { counters: { updated: string; deleted: string } }).counters;
+      expect(counters.updated).toBe("0");
+      expect(counters.deleted).toBe("0");
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
 
   it("(2.57) proves the advisor rules that used to be unreachable", async () => {
     // Zwei Regeln, die es seit 2.39 und 2.40 gibt und die bis 2.56 nie liefen,

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, ArchiveRestore, Bell, Blocks, Bot, Braces, Check, ChevronDown, ChevronLeft,
+  Activity, ArchiveRestore, Bell, Blocks, BookOpen, Bot, Braces, Check, ChevronDown, ChevronLeft,
   ChevronRight, CircleGauge, Cloud, Code2, Command, Database, Fingerprint, HardDrive, Copy,
   ListFilter, LogOut, Menu, Pencil, Play, Plus, RefreshCw, Search, Settings, ShieldCheck, Table2,
   Terminal, Trash2, Users, Webhook, X, Zap,
@@ -81,6 +81,10 @@ import type {
   Risk,
 } from "@/lib/types";
 import { classifySqlRisk, isReadOnlySql } from "@/lib/security";
+// Die Vorlagen des SQL-Editors (2.61): reines Modul, kein Schreibweg.
+import {
+  SQL_TEMPLATES, SQL_TEMPLATE_DEFAULT_SCHEMA, SqlTemplateError, sqlTemplateStatement,
+} from "@/lib/console/sql-templates";
 
 type Snapshot = { user: { id: string; email: string }; organization: { id: string; name: string; slug: string }; projects: Project[]; changeSets: ChangeSet[]; approvals: Approval[]; audit: AuditEvent[] };
 
@@ -239,7 +243,11 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "overview": return <ProductPreview service="Der Metrik-Dienst"><Overview snapshot={props.snapshot} project={props.project} navigate={props.navigate}/></ProductPreview>;
     case "database": return <DatabaseView project={props.project} navigate={props.navigate}/>;
     case "table": return <TableView projectId={props.project.id} environment={props.environment}/>;
-    case "sql": return <SqlView projectId={props.project.id} environment={props.environment} reload={props.reload} navigate={props.navigate}/>;
+    // Die Vorlagen (2.61) leben in der Editoransicht selbst: Einfuegen heisst,
+    // das Editorfeld zu fuellen, und das geht nur dort, wo dieses Feld steht.
+    // Der Menuepunkt oeffnet dieselbe Ansicht mit aufgeklappter Liste.
+    case "sql": case "sql-templates":
+      return <SqlView projectId={props.project.id} environment={props.environment} reload={props.reload} navigate={props.navigate} templatesOpen={props.view === "sql-templates"}/>;
     case "auth": return <AuthView projectId={props.project.id} environment={props.environment}/>;
     case "storage": return <StorageView projectId={props.project.id} environment={props.environment}/>;
     case "compute": return <ComputeView projectId={props.project.id} environment={props.environment}/>;
@@ -460,7 +468,7 @@ function TableView({ projectId, environment }: { projectId: string; environment:
   return <div className="console-card table-editor live-table-editor"><div className="table-toolbar"><label className="table-select"><Table2 size={15}/><select value={selected} onChange={event=>{setSelected(event.target.value);void loadRows(event.target.value);}} aria-label={t("Tabelle")}>{tables.map(table=><option key={table} value={table}>public.{table}</option>)}</select><ChevronDown size={14}/></label><div className="toolbar-search"><Search size={14}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder={t("Geladene Zeilen durchsuchen…")}/></div><button className="secondary-button" onClick={()=>void loadRows(selected)} disabled={!selected}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="button small" onClick={()=>setInsertOpen(!insertOpen)} disabled={!selected||state!=="ready"}><Plus size={14}/> {t("Zeile einfügen")}</button></div>{insertOpen&&<div className="inline-row-editor"><textarea value={insertDraft} onChange={event=>setInsertDraft(event.target.value)} aria-label={t("Neue Zeile als JSON")}/><div><button className="ghost-button" onClick={()=>setInsertOpen(false)}>{t("Abbrechen")}</button><button className="button small" onClick={()=>void insert()}>{t("Mit RLS einfügen")}</button></div></div>}{state==="loading"&&<div className="live-module-state"><RefreshCw size={24}/><h3>{t("Schema und Zeilen werden geladen…")}</h3></div>}{(state==="unavailable"||state==="error")&&<div className="live-module-state"><Database size={26}/><h3>{state==="unavailable"?t("Generated Data API nicht bereit"):t("Zeilen konnten nicht geladen werden")}</h3><p>{message}</p></div>}{state==="ready"&&<div className="records-grid live-records"><table><thead><tr>{columns.map(column=><th key={column}>{column}</th>)}<th>{t("Aktionen")}</th></tr></thead><tbody>{rows.map((row,index)=><tr key={data?.table.primaryKey.map(key=>String(row[key])).join(":")||index}>{columns.map(column=><td key={column}><code>{formatCell(row[column])}</code></td>)}<td className="row-actions"><button onClick={()=>void edit(row)} aria-label={t("Zeile bearbeiten")}><Pencil size={13}/></button><button onClick={()=>void remove(row)} aria-label={t("Zeile löschen")}><Trash2 size={13}/></button></td></tr>)}{rows.length===0&&<tr><td colSpan={columns.length+1}>{t("Keine Zeilen, die RLS dir zeigt.")}</td></tr>}</tbody></table></div>}<div className="table-footer"><span>{rows.length} Zeilen geladen{data?.hasMore?t(" · weitere per Cursor"):""}</span><span className="secure"><ShieldCheck size={12}/> {t("Live-Schema · RLS gilt · sensible Spalten ausgeblendet")}</span></div></div>;
 }
 
-function SqlView({ projectId, environment, reload, navigate }: { projectId: string; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void }) {
+function SqlView({ projectId, environment, reload, navigate, templatesOpen }: { projectId: string; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; templatesOpen: boolean }) {
   const [sql, setSql] = useState("SELECT table_name, table_type\nFROM information_schema.tables\nWHERE table_schema = 'public'\nORDER BY table_name\nLIMIT 20");
   const [result, setResult] = useState<"idle"|"rows"|"approval"|"error">("idle");
   const [rows, setRows] = useState<Array<Record<string, unknown>>>([]);
@@ -470,6 +478,36 @@ function SqlView({ projectId, environment, reload, navigate }: { projectId: stri
   const [running, setRunning] = useState(false);
   const risk = useMemo(() => classifySqlRisk(sql, environment), [sql, environment]);
   const readOnly = isReadOnlySql(sql.replace(/\n/g, " "));
+  // Die Vorlagen (2.61): eine feste Liste aus `lib/console/sql-templates.ts`.
+  // Diese Ansicht setzt keinen Namen selbst in SQL zusammen; sie gibt Schema
+  // und Tabelle an das Modul und schreibt zurueck, was es erzeugt. Lehnt das
+  // Modul ab, steht hier der Grund und im Editorfeld bleibt alles, wie es war.
+  const [showTemplates, setShowTemplates] = useState(templatesOpen);
+  const [templateSchema, setTemplateSchema] = useState(SQL_TEMPLATE_DEFAULT_SCHEMA);
+  const [templateTable, setTemplateTable] = useState("");
+  const [templateReason, setTemplateReason] = useState("");
+  const [insertedTemplate, setInsertedTemplate] = useState("");
+  function insertTemplate(id: string, needsTarget: boolean) {
+    try {
+      const statement = sqlTemplateStatement(id, needsTarget
+        ? { schema: templateSchema, table: templateTable }
+        : {});
+      // Nur einfuegen. Kein fetch, kein run(): den Knopf drueckt der Mensch.
+      setSql(statement);
+      setResult("idle");
+      setRows([]);
+      setColumns([]);
+      setTruncated(false);
+      setMessage("");
+      setTemplateReason("");
+      setInsertedTemplate(id);
+    } catch (cause) {
+      setInsertedTemplate("");
+      setTemplateReason(cause instanceof SqlTemplateError
+        ? t(cause.reason)
+        : t("Diese Vorlage ließ sich nicht einfügen."));
+    }
+  }
   // Bis Release 1.75 zeigte diese Ansicht vorbereitete Beispielzeilen und rief
   // die Query-Route nie — die Flaeche sah vorhanden aus, ohne es zu sein.
   // Jetzt laeuft ein Read-only-Statement wirklich: durch den Parser-Waechter,
@@ -506,7 +544,7 @@ function SqlView({ projectId, environment, reload, navigate }: { projectId: stri
       setRunning(false);
     }
   }
-  return <div className="sql-layout"><article className="console-card sql-editor"><div className="editor-tabs"><span className="active">{t("Abfrage 1")} <X size={12}/></span><button><Plus size={13}/></button><div className={`risk ${risk}`}>Risiko {risk}</div></div><div className="editor-body"><div className="line-numbers">1<br/>2<br/>3<br/>4<br/>5</div><textarea value={sql} onChange={(event)=>setSql(event.target.value)} aria-label={t("SQL-Abfrage")} spellCheck={false}/></div><div className="editor-footer"><span>{t("Lesende SQL läuft gegen die Projektdatenbank, begrenzt und redigiert. Aus schreibender SQL wird ein Change Set zur Freigabe.")}</span><button className="button small" onClick={()=>void run()} disabled={running}><Play size={13}/> <StableLabel current={running ? t("Läuft…") : readOnly ? t("Abfrage ausführen") : t("Vorschau erstellen")} variants={tAll("Läuft…", "Abfrage ausführen", "Vorschau erstellen")}/></button></div></article><article className="console-card result-panel"><div className="card-head"><div><span>{t("ERGEBNIS")}</span><h3>{result === "rows" ? `${rows.length} Zeilen${truncated ? t(" · gekürzt") : ""}` : result === "approval" ? t("Change Set erstellt") : result === "error" ? t("Abfrage fehlgeschlagen") : "Bereit"}</h3></div></div>{result === "idle" && <EmptyState icon={Terminal} title={t("Abfrage ausführen")} text="SELECT läuft lesend gegen die Projektdatenbank."/>}{result === "rows" && rows.length === 0 && <EmptyState icon={Terminal} title={t("Keine Zeilen")} text="Die Abfrage lief und lieferte nichts zurück."/>}{result === "rows" && rows.length > 0 && <div className="query-result">{rows.slice(0, 50).map((row, index) => <code key={index}>{columns.map((column) => String(row[column] ?? "∅")).join(" · ")}</code>)}</div>}{result === "approval" && <div className="success-state"><ShieldCheck size={34}/><h3>{t("Vorschau bereit")}</h3><p>{t("Nichts wurde angewendet. Diff und Risiko stehen in der Freigabezentrale.")}</p><button className="button small" onClick={()=>navigate("approvals")}>{t("Freigabezentrale öffnen")}</button></div>}{result === "error" && <EmptyState icon={X} title={t("Nicht ausgeführt")} text={message || t("Prüfe das Statement und versuch es noch einmal.")}/>}</article></div>;
+  return <div className="sql-layout"><article className="console-card sql-editor"><div className="editor-tabs"><span className="active">{t("Abfrage 1")} <X size={12}/></span><button><Plus size={13}/></button><div className={`risk ${risk}`}>Risiko {risk}</div></div><div className="editor-body"><div className="line-numbers">1<br/>2<br/>3<br/>4<br/>5</div><textarea value={sql} onChange={(event)=>setSql(event.target.value)} aria-label={t("SQL-Abfrage")} spellCheck={false}/></div><div className="editor-footer"><span>{t("Lesende SQL läuft gegen die Projektdatenbank, begrenzt und redigiert. Aus schreibender SQL wird ein Change Set zur Freigabe.")}</span><button className="button small" onClick={()=>void run()} disabled={running}><Play size={13}/> <StableLabel current={running ? t("Läuft…") : readOnly ? t("Abfrage ausführen") : t("Vorschau erstellen")} variants={tAll("Läuft…", "Abfrage ausführen", "Vorschau erstellen")}/></button></div></article><article className="console-card result-panel"><div className="card-head"><div><span>{t("ERGEBNIS")}</span><h3>{result === "rows" ? `${rows.length} Zeilen${truncated ? t(" · gekürzt") : ""}` : result === "approval" ? t("Change Set erstellt") : result === "error" ? t("Abfrage fehlgeschlagen") : "Bereit"}</h3></div></div>{result === "idle" && <EmptyState icon={Terminal} title={t("Abfrage ausführen")} text="SELECT läuft lesend gegen die Projektdatenbank."/>}{result === "rows" && rows.length === 0 && <EmptyState icon={Terminal} title={t("Keine Zeilen")} text="Die Abfrage lief und lieferte nichts zurück."/>}{result === "rows" && rows.length > 0 && <div className="query-result">{rows.slice(0, 50).map((row, index) => <code key={index}>{columns.map((column) => String(row[column] ?? "∅")).join(" · ")}</code>)}</div>}{result === "approval" && <div className="success-state"><ShieldCheck size={34}/><h3>{t("Vorschau bereit")}</h3><p>{t("Nichts wurde angewendet. Diff und Risiko stehen in der Freigabezentrale.")}</p><button className="button small" onClick={()=>navigate("approvals")}>{t("Freigabezentrale öffnen")}</button></div>}{result === "error" && <EmptyState icon={X} title={t("Nicht ausgeführt")} text={message || t("Prüfe das Statement und versuch es noch einmal.")}/>}</article><article className="console-card sql-template-card"><div className="card-head"><div><span>{t("VORLAGEN")}</span><h3>{t("Fertige Abfragen zum Einfügen")}</h3></div><button className="secondary-button" type="button" onClick={()=>setShowTemplates(!showTemplates)}><BookOpen size={14}/> <StableLabel current={showTemplates ? t("Liste verbergen") : t("Liste zeigen")} variants={tAll("Liste verbergen", "Liste zeigen")}/></button></div><p className="sql-template-note">{t("Eine Vorlage ist ein Anfang, keine Antwort. Sie landet im Editorfeld, und nichts läuft: QKERN führt von sich aus keine Abfrage aus, den Knopf drückst du.")}</p>{showTemplates && <><div className="sql-template-target"><label>{t("Schema")}<input value={templateSchema} onChange={(event)=>{setTemplateSchema(event.target.value);setTemplateReason("");}} spellCheck={false} aria-label={t("Schema für eine Vorlage mit Tabelle")}/></label><label>{t("Tabelle")}<input value={templateTable} onChange={(event)=>{setTemplateTable(event.target.value);setTemplateReason("");}} spellCheck={false} aria-label={t("Tabelle für eine Vorlage mit Tabelle")}/></label></div>{templateReason && <p className="sql-template-reason">{templateReason}</p>}<ul className="sql-template-list">{SQL_TEMPLATES.map((template) => <li key={template.id} className={insertedTemplate === template.id ? "inserted" : ""}><div><strong>{t(template.title)}</strong><span>{t(template.question)}</span>{template.requiresExtension !== null && <em>{t("Braucht eine Erweiterung:")} {template.requiresExtension}. {t("Fehlt sie, antwortet die Datenbank mit einem Fehler statt mit Zeilen. Die Vorlage darüber sagt dir, ob sie da ist.")}</em>}{template.parameters.length > 0 && <em>{t("Braucht Schema und Tabelle aus den Feldern oben.")}</em>}</div><button className="secondary-button" type="button" onClick={()=>insertTemplate(template.id, template.parameters.length > 0)}><StableLabel current={insertedTemplate === template.id ? t("Eingefügt") : t("Einfügen")} variants={tAll("Eingefügt", "Einfügen")}/></button></li>)}</ul></>}</article></div>;
 }
 
 type ProjectAuthUserItem={id:string;email:string;status:"active"|"disabled";emailVerifiedAt:string|null;createdAt:string;appMetadata:Record<string,unknown>};
