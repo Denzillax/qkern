@@ -52,7 +52,11 @@ describe("console display settings", () => {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }
     // Ein Platzhalter ist keine Startseite: Er zeigt keine Daten.
-    expect(() => validateConsoleDisplaySettings({ startView: "branches" })).toThrow(ConsoleDisplayError);
+    expect(() => validateConsoleDisplaySettings({ startView: "int-graphql" })).toThrow(ConsoleDisplayError);
+    // "branches" war bis 2.81 ein Platzhalter und ist jetzt eine echte Seite;
+    // als Startseite ist sie darum erlaubt.
+    expect(validateConsoleDisplaySettings({ startView: "branches" }))
+      .toEqual({ ...CONSOLE_DISPLAY_DEFAULTS, startView: "branches" });
   });
 
   it("formats a moment in every offered locale exactly as Intl does there", () => {

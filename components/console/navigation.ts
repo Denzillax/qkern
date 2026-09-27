@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -53,9 +53,7 @@ export const PLACEHOLDERS = {
   "logs-pooler": { label: "Pooler", supabase: "Logs → Pooler", backend: "fehlt", note: "Log des Verbindungspools: Warteschlange, abgewiesene Verbindungen, Grenzen." },
   // Integrationen
   "int-graphql": { label: "GraphQL", supabase: "Integrations → GraphiQL", backend: "fehlt", note: "GraphQL-Schnittstelle über dem Schema. Die Data API ist REST." },
-  // Branches
-  "branches": { label: "Branches", supabase: "Branches", backend: "teilweise", note: "Ein Zweig je Feature mit eigener Datenbank. QKERN hat Development, Staging und Production je Projekt; freie Zweige fehlen." },
-  "branches-merge": { label: "Merge-Anfragen", supabase: "Branches → Merge Requests", backend: "fehlt", note: "Änderungen eines Zweigs prüfen und übernehmen. Change Sets und Freigaben decken den Prüfschritt schon ab." },
+  // Branches: beide Platzhalter sind seit 2.81 eine echte Seite.
   // Einstellungen
   "set-compute": { label: "Compute und Disk", supabase: "Project Settings → Compute and Disk", backend: "fehlt", note: "Grösse der Instanz und der Platte. Die Provisionierung ist noch nicht verbunden." },
   "set-integrations": { label: "Integrationen", supabase: "Project Settings → Integrations", backend: "fehlt", note: "Verknüpfte Dienste wie Git-Hosting oder Deploy-Plattformen." },
@@ -110,7 +108,7 @@ export const NAV: NavGroup[] = [
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [
     { id: "int-queues", label: "Queues" }, { id: "int-cron", label: "Cron" }, { id: "int-vault", label: "Vault" }, { id: "int-wrappers", label: "Wrappers" }, ph("int-graphql"), { id: "int-database-webhooks", label: "Datenbank-Webhooks" },
   ] },
-  { id: "branches", label: "Branches", icon: GitBranch, children: [ph("branches"), ph("branches-merge")] },
+  { id: "branches", label: "Branches", icon: GitBranch },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [
     { id: "settings", label: "Allgemein" }, ph("set-compute"), { id: "set-infrastructure", label: "Infrastruktur" }, ph("set-integrations"), ph("set-addons"),
     { id: "set-api", label: "Data API" }, { id: "set-api-keys", label: "API-Keys" }, { id: "set-jwt", label: "JWT-Schlüssel" }, { id: "set-log-drains", label: "Log-Drains" }, { id: "set-webhooks", label: "Dashboard-Webhooks" }, { id: "set-billing", label: "Abrechnung" }, { id: "set-dashboard", label: "Dashboard" },

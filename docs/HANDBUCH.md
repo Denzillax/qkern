@@ -3136,6 +3136,67 @@ Die Console zeigt daraufhin je Drain, wann er zuletzt weitergeleitet hat und
 bis zu welcher Position — und „noch nie", solange nichts hinausgegangen ist.
 Der Prozess nennt den Sammler in seiner Startzeile.
 
+### Branches: Umgebungen sind keine Zweige
+
+Seit `2.60.0` sind **Branches** und **Branches → Merge-Anfragen** keine
+Platzhalterseiten mehr. Aus zwei Platzhaltern ist eine Seite geworden, und sie
+sagt als Erstes, was QKERN nicht hat.
+
+**Es gibt keine frei benannten Zweige.** Jedes Projekt hat genau drei
+Umgebungen, Development, Staging und Production, und diese drei stehen fest.
+Eine Umgebung ist kein Zweig: Sie entsteht nicht auf Zuruf, sie verschwindet
+nicht nach dem Zusammenführen, und keine stammt von einer anderen ab. Die
+Reihenfolge auf der Seite ist die, in der Menschen üblicherweise vorgehen, und
+keine Herkunft.
+
+**Den Prüfschritt gibt es wirklich, nur anders gebaut.** Ein Change Set trägt
+genau eine SQL-Anweisung, verschlüsselt, mit ihrem Prüfwert und mit einer
+Risikoeinschätzung aus Anweisung und Zielumgebung. Eine Freigabe prüft sie; sie
+hängt an einem Prüfwert über Change Set, Projekt, Umgebung, Datenbankreferenz
+und Frist, und ändert sich eines davon, gilt sie nicht mehr. Erst danach kommt
+die Anweisung in die Warteschlange, und ein Worker führt sie in einer
+Transaktion aus und schreibt den Ledger-Eintrag.
+
+Gezeigt werden je Umgebung drei Zählungen, alle aus der Kontrollebene:
+
+1. **Change Sets** aus `change_sets`, aufgeteilt auf die acht Zustände von
+   Entwurf bis zurückgerollt, dazu der Zeitpunkt der letzten Einreichung.
+2. **Freigaben** aus `approval_requests`, offen, freigegeben, abgelehnt und
+   abgelaufen. Wer entschieden hat, steht nicht hier, sondern unter Freigaben
+   und in der Audit-Kette.
+3. **Der Migrationsstand** aus `migration_jobs`, also die Warteschlange, aus
+   der der Worker holt, dazu der Zeitpunkt, an dem hier zuletzt etwas
+   angekommen ist.
+
+**Gezählt wird in der Datenbank**, gruppiert nach Umgebung und Zustand, über
+eine Abfrage mit drei Quellen. Die Repositories geben ihre Listen nur bis 250
+Zeilen her; eine Zahl daraus wäre ab der 251. Zeile zu klein, und niemand sähe
+es. Ein Zustand, den die Zählung nicht kennt, lässt sie scheitern statt die
+Summe stillschweigend zu verkleinern.
+
+**Alle drei Umgebungen stehen immer da**, auch die ohne eine einzige Zeile.
+Wären nur die gezeigt, zu denen etwas vorliegt, sähe die Seite wie eine Liste
+von Zweigen aus, die wächst und schrumpft. `present` sagt, ob die Kontrollebene
+für eine Umgebung schon eine Zeile führt; ein `false` ist eine unfertige
+Einrichtung und kein fehlender Zweig.
+
+**Null ist nicht dasselbe wie keine Warteschlange.** Läuft QKERN im
+Speichermodus, gibt es keinen Worker, der etwas anwenden könnte; dann steht dort
+ein Satz und keine Null.
+
+**Was es an dieser Stelle nicht gibt**, steht als Zeile mit Grund und nicht als
+leere Kachel: keine Datenbank je Zweig auf Zuruf (die Provisionierung legt drei
+an, und es gäbe keinen Weg, eine vierte wieder wegzuräumen), keine Abstammung
+zwischen Umgebungen, kein automatisches Zusammenführen von Schemaänderungen
+(wer eine Änderung in Staging will, reicht sie dort als eigenes Change Set ein),
+kein Vergleich zweier Umgebungen und keine Merge-Anfrage als eigenes Objekt.
+
+Die Seite liest `GET /v1/projects/{projectId}/change-flow`, ein GET ohne
+Query-Parameter, `private, no-store`. Eine Datenbankreferenz trägt die Antwort
+nicht; wer sie braucht, nimmt `/v1/projects/{projectId}/environments`, und auch
+dort ist sie keine Adresse. Worauf eine Umgebung läuft, steht unter
+Einstellungen → Infrastruktur und wird hier nicht wiederholt.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

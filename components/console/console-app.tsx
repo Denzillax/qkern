@@ -81,6 +81,7 @@ import { StorageSettingsView } from "@/components/console/storage-settings-view"
 import { S3AccessView } from "@/components/console/s3-access-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import { InfrastructureView } from "@/components/console/infrastructure-view";
+import { BranchFlowView } from "@/components/console/branch-flow-view";
 import { DatabaseHealthView } from "@/components/console/database-health-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LOCALE_COOKIE } from "@/lib/i18n/locales";
@@ -379,6 +380,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-s3": return <S3AccessView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-infrastructure": return <InfrastructureView projectId={props.project.id} environment={props.environment} region={props.project.region} status={props.project.status}/>;
+    // Branches ersetzt zwei Platzhalter mit einer Seite: Die Umgebungen sind
+    // fest, und der Pruefschritt ist gebaut, nur anders (2.81).
+    case "branches": return <BranchFlowView projectId={props.project.id} environment={props.environment}/>;
     case "logs-postgres": return <DatabaseHealthView projectId={props.project.id} environment={props.environment}/>;
     case "set-billing": return <BillingSettingsView projectId={props.project.id} environment={props.environment} navigate={props.navigate}/>;
     case "advisors-security": return <SecurityAdvisorView projectId={props.project.id} environment={props.environment}/>;

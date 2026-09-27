@@ -4,6 +4,7 @@ import type {
   AuditEvent,
   AutomationMode,
   ChangeSet,
+  ChangeStatus,
   Environment,
   Project,
   ProjectAutomationPolicy,
@@ -60,6 +61,66 @@ export type ProjectEnvironmentBinding = {
   createdAt: string | null;
 };
 
+/**
+ * Die drei Umgebungen, die ein Projekt hat, in der Reihenfolge, in der eine
+ * Aenderung sie durchlaeuft (2.81).
+ *
+ * Die Liste ist eine Konstante und kein Ergebnis einer Abfrage, weil genau
+ * das die Aussage der Seite ist: Eine Umgebung entsteht nicht auf Zuruf. Wer
+ * sie aus `project_environments` lesen wuerde, bekaeme je Projekt die Zeilen,
+ * die dort stehen, und koennte eine fehlende Zeile mit einer fehlenden
+ * Umgebung verwechseln.
+ */
+export const FIXED_ENVIRONMENTS: readonly Environment[] = ["development", "staging", "production"];
+
+/** Die Zustaende, die `approval_requests.status` fuehrt. */
+export type ApprovalTallyStatus = "pending" | "approved" | "rejected" | "expired";
+
+/** Die Zustaende, die `migration_jobs.status` fuehrt. */
+export type MigrationTallyStatus = "queued" | "running" | "applied" | "failed" | "review_required";
+
+/**
+ * Eine Zaehlung je Zustand, dazu die Summe und der jeweils juengste Zeitpunkt.
+ *
+ * Gezaehlt wird in der Datenbank und nicht an einer Liste, die bei 250 Zeilen
+ * endet: Eine abgeschnittene Liste ergaebe eine Zahl, die kleiner ist als die
+ * Wahrheit, und nichts auf der Seite wuerde das sagen.
+ */
+export type ChangeFlowTally<Status extends string> = {
+  total: number;
+  byStatus: Record<Status, number>;
+  /** Der juengste `created_at` dieser Umgebung, oder null ohne eine Zeile. */
+  latestCreatedAt: string | null;
+};
+
+export type ProjectEnvironmentChangeFlow = {
+  environment: Environment;
+  /**
+   * false heisst: Die Kontrollebene fuehrt fuer diese feste Umgebung keine
+   * Zeile in `project_environments`. Das ist kein Zweig, der noch fehlt,
+   * sondern eine Einrichtung, die noch nicht fertig ist.
+   */
+  present: boolean;
+  /** Die Referenz hat die Form, die der Katalog der Verbindungen annimmt. */
+  bound: boolean;
+  changeSets: ChangeFlowTally<ChangeStatus>;
+  approvals: ChangeFlowTally<ApprovalTallyStatus>;
+  /**
+   * null heisst: Diese Installation fuehrt keine Warteschlange fuer
+   * Migrationen. Lauter Nullen waeren die andere Auskunft, naemlich eine
+   * leere Warteschlange, und die beiden sind nicht dasselbe.
+   */
+  migrations: (ChangeFlowTally<MigrationTallyStatus> & {
+    /** Der juengste `finished_at`, also wann hier zuletzt etwas ankam. */
+    lastFinishedAt: string | null;
+  }) | null;
+};
+
+export type ProjectChangeFlow = {
+  projectId: string;
+  environments: ProjectEnvironmentChangeFlow[];
+};
+
 export type ControlPlaneSnapshot = {
   projects: Project[];
   changeSets: ChangeSet[];
@@ -77,6 +138,17 @@ export interface ControlPlaneService {
     context: ControlPlaneContext,
     projectId: string,
   ): Promise<ProjectEnvironmentBinding[]>;
+  /**
+   * Was je Umgebung unterwegs und was angekommen ist (2.81), nur lesend.
+   *
+   * Immer alle drei Umgebungen, auch die ohne eine einzige Zeile: Die Seite
+   * soll zeigen, dass die Menge der Umgebungen fest ist, und nicht die Menge
+   * der Umgebungen, zu denen zufaellig etwas vorliegt.
+   */
+  summariseChangeFlow(
+    context: ControlPlaneContext,
+    projectId: string,
+  ): Promise<ProjectChangeFlow>;
   /** Internal opaque target lookup. Connection strings never cross this boundary. */
   getProjectDatabaseTarget(
     context: ControlPlaneContext,

@@ -6,6 +6,7 @@ import {
   ResourceNotFoundError,
 } from "@/lib/server/db/errors";
 import type { ApprovalRequestRecord, ChangeSetRecord } from "@/lib/server/db/models";
+import type { ChangeStatus } from "@/lib/types";
 import { PostgresControlPlane, type ControlPlaneRepositories } from "@/lib/server/db/repositories";
 import { classifySqlRisk, requiresApproval, validateSingleSqlStatement } from "@/lib/security";
 import {
@@ -21,13 +22,18 @@ import {
   projectFromRecord,
 } from "@/lib/server/control-plane/mappers";
 import {
+  FIXED_ENVIRONMENTS,
   InvalidApprovalArtifactError,
   MissingDecisionActorError,
   MissingPolicyActorError,
+  type ApprovalTallyStatus,
+  type ChangeFlowTally,
   type ControlPlaneContext,
   type ControlPlaneService,
   type CreateChangeSetInput,
   type DecideApprovalInput,
+  type MigrationTallyStatus,
+  type ProjectChangeFlow,
   type SetAutomationPolicyInput,
 } from "@/lib/server/control-plane/model";
 import {
@@ -64,6 +70,74 @@ function verificationRecord(row: ApprovalVerificationRow): ApprovalRequestRecord
     expiresAt: new Date(row.expires_at).toISOString(),
     createdAt: new Date(row.created_at).toISOString(),
   };
+}
+
+/**
+ * Eine Zeile der Zaehlung (2.81): eine Quelle, eine Umgebung, ein Zustand.
+ *
+ * Die Zahl kommt als Text, weil `count(*)` in PostgreSQL ein `bigint` ist und
+ * der Treiber `bigint` als Zeichenkette liefert. Umgerechnet wird erst hier,
+ * mit `Number`, denn eine Zahl von Change Sets bleibt weit unter der Grenze,
+ * ab der eine Gleitkommazahl ungenau wird.
+ */
+type ChangeFlowTallyRow = {
+  source: "change_set" | "approval" | "migration";
+  environment: string;
+  status: string;
+  total: string;
+  latest_created_at: string | Date | null;
+  latest_finished_at: string | Date | null;
+};
+
+/**
+ * Die Zustandslisten stehen hier als Konstante, damit jede Umgebung dieselben
+ * Felder traegt, auch die mit einer Null darin. Eine Kachel, die nur bei
+ * Bedarf erscheint, liesse die Seite je Projekt anders aussehen.
+ */
+const CHANGE_STATUSES: readonly ChangeStatus[] =
+  ["draft", "validating", "ready", "approved", "applied", "rejected", "failed", "rolled_back"];
+const APPROVAL_STATUSES: readonly ApprovalTallyStatus[] = ["pending", "approved", "rejected", "expired"];
+const MIGRATION_STATUSES: readonly MigrationTallyStatus[] =
+  ["queued", "running", "applied", "failed", "review_required"];
+
+/** Der juengste der uebergebenen Zeitpunkte, oder null, wenn keiner da ist. */
+function latestMoment(values: ReadonlyArray<string | Date | null>): string | null {
+  const moments = values.flatMap((value) => {
+    if (value === null) return [];
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? [parsed] : [];
+  });
+  return moments.length ? new Date(Math.max(...moments)).toISOString() : null;
+}
+
+/**
+ * Die Zeilen einer Quelle zu einer Zaehlung, mit einer Null fuer jeden
+ * Zustand, der nicht vorkam.
+ *
+ * Ein Zustand, den diese Liste nicht kennt, laesst die Zaehlung scheitern, und
+ * das ist Absicht. Die drei Listen sind die Enums und Check-Bedingungen aus
+ * `db/migrations`; kommt dort ein Wert dazu, ohne dass er hier ankommt, waere
+ * die Alternative eine Zahl, die zu klein ist, auf einer Seite, deren ganzer
+ * Zweck die richtige Zahl ist. Ein Fehler faellt auf, eine falsche Zahl nicht.
+ */
+function collectTally<Status extends string>(
+  rows: ReadonlyArray<ChangeFlowTallyRow>,
+  source: ChangeFlowTallyRow["source"],
+  statuses: readonly Status[],
+): ChangeFlowTally<Status> {
+  const mine = rows.filter((row) => row.source === source);
+  const known = new Set<string>(statuses);
+  const byStatus = Object.fromEntries(statuses.map((status) => [status, 0])) as Record<Status, number>;
+  let total = 0;
+  for (const row of mine) {
+    if (!known.has(row.status)) {
+      throw new InvalidRecordError(`Unknown ${source} status in the change flow tally: ${row.status}`);
+    }
+    const count = Number(row.total);
+    byStatus[row.status as Status] += count;
+    total += count;
+  }
+  return { total, byStatus, latestCreatedAt: latestMoment(mine.map((row) => row.latest_created_at)) };
 }
 
 function expectedActionHash(changeSet: ChangeSetRecord, expiresAt: string, databaseInstanceRef: string): string {
@@ -182,6 +256,73 @@ export class PostgresControlPlaneService implements ControlPlaneService {
         bound: isCatalogReference(record.databaseInstanceRef),
         createdAt: record.createdAt,
       }));
+    });
+  }
+
+  /**
+   * Was je Umgebung unterwegs und was angekommen ist (2.81).
+   *
+   * Eine Abfrage, drei Quellen, gezaehlt in der Datenbank. Die Repositories
+   * haben nur `list` mit einer Obergrenze von 250 Zeilen; eine Zahl daraus
+   * waere ab der 251. Zeile falsch, und niemand saehe es. Darum die Zaehlung
+   * hier, ueber `repositories.transaction`, also in derselben Transaktion,
+   * unter derselben Laufzeitrolle und damit unter denselben Policies wie jede
+   * andere Leseabfrage der Kontrollebene.
+   *
+   * `projects.get` steht zuerst, damit ein fremdes Projekt ein "nicht
+   * gefunden" ergibt und nicht drei Umgebungen mit lauter Nullen. Lauter
+   * Nullen waeren die Behauptung, es liege nichts vor.
+   */
+  async summariseChangeFlow(context: ControlPlaneContext, projectId: string): Promise<ProjectChangeFlow> {
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+      readOnly: true,
+    }, async (repositories) => {
+      await repositories.projects.get(projectId);
+      const bindings = await repositories.environments.list(projectId);
+      const tally = await repositories.transaction.query<ChangeFlowTallyRow>(
+        `SELECT 'change_set' AS source, environment::text AS environment, status::text AS status,
+                count(*)::text AS total, max(created_at) AS latest_created_at,
+                NULL::timestamptz AS latest_finished_at
+         FROM change_sets
+         WHERE organization_id = $1 AND project_id = $2
+         GROUP BY 2, 3
+         UNION ALL
+         SELECT 'approval', environment::text, status::text,
+                count(*)::text, max(created_at), NULL::timestamptz
+         FROM approval_requests
+         WHERE organization_id = $1 AND project_id = $2
+         GROUP BY 2, 3
+         UNION ALL
+         SELECT 'migration', environment::text, status::text,
+                count(*)::text, max(created_at), max(finished_at)
+         FROM migration_jobs
+         WHERE organization_id = $1 AND project_id = $2
+         GROUP BY 2, 3`,
+        [context.organizationId, projectId],
+      );
+      const bindingByEnvironment = new Map(bindings.map((record) => [record.environment, record]));
+      return {
+        projectId,
+        environments: FIXED_ENVIRONMENTS.map((environment) => {
+          const binding = bindingByEnvironment.get(environment);
+          const rows = tally.rows.filter((row) => row.environment === environment);
+          return {
+            environment,
+            present: Boolean(binding),
+            bound: binding ? isCatalogReference(binding.databaseInstanceRef) : false,
+            changeSets: collectTally(rows, "change_set", CHANGE_STATUSES),
+            approvals: collectTally(rows, "approval", APPROVAL_STATUSES),
+            // Die Warteschlange ist Teil dieser Kontrollebene, darum nie null.
+            migrations: {
+              ...collectTally(rows, "migration", MIGRATION_STATUSES),
+              lastFinishedAt: latestMoment(rows.filter((row) => row.source === "migration")
+                .map((row) => row.latest_finished_at)),
+            },
+          };
+        }),
+      };
     });
   }
 
