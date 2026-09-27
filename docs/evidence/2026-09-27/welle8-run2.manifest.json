@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle8-run2.log",
+  "commit": "223fe492ff9562904cc50b37362bba05b0b6140b",
+  "commitSubject": "merge: Abfrage-Einblicke aus slice/queryinsights, Fall auf 2.69 umnummeriert",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 56,
+  "testFiles": "31 passed (31)",
+  "tests": "204 passed (204)",
+  "passed": 204,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

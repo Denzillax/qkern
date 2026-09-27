@@ -1632,3 +1632,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle7-local-run1.log` | Vitest lokal (Windows) | 2088 bestanden, exit 0 |
 | `2026-09-27/welle7-local-run2.log` | Vitest lokal (Windows) | 2088 bestanden, exit 0, Wiederholung |
 
+## Läufe zu Release 2.56 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle8-run1.log` | PostgreSQL 17 | 204 von 204, exit 0 |
+| `2026-09-27/welle8-run2.log` | PostgreSQL 17 | 204 von 204, exit 0, Wiederholung |
+| `2026-09-27/welle8-mutation-perf.log` | Mutation: die teuersten Abfragen stehen unten | **203 von 204, exit 1 – absichtlich** |
+| `2026-09-27/welle8-mutation-insights.log` | Mutation: der Plan führt die Abfrage aus | **203 von 204, exit 1 – absichtlich** |
+| `2026-09-27/welle8-mutation-infra.log` | Mutation: die gemeldete Grösse ist eine Konstante | **203 von 204, exit 1 – absichtlich** |
+| `2026-09-27/welle8-local-run1.log` | Vitest lokal (Windows) | 2130 bestanden, exit 0 |
+| `2026-09-27/welle8-local-run2.log` | Vitest lokal (Windows) | 2130 bestanden, exit 0, Wiederholung |
+

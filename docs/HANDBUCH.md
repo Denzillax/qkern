@@ -2198,6 +2198,62 @@ Zählung je Ausgang ignoriert den Ausgangsfilter, damit die Seite neben
 gab. Die ältere Route `.../compute/functions/{functionId}/invocations` aus
 `1.89.0` bleibt daneben bestehen; sie liest eine einzelne Function.
 
+### Abfrage-Leistung: was eine Abfrage kostet, ohne die Abfrage
+
+Seit `2.56.0` ist **Observability → Abfrage-Leistung** keine Platzhalterseite
+mehr. Die Seite liest `pg_stat_statements` in Ihrer Projektdatenbank und zeigt
+je Kennung: Aufrufe, Gesamtzeit, mittlere Zeit, gelesene oder geschriebene
+Zeilen und den Anteil an der Gesamtzeit aller gezeigten Statements. Sortiert
+wird nach Gesamtzeit, absteigend.
+
+**Den Abfragetext zeigt sie nicht**, auch nicht den normalisierten, und das
+ist eine Entscheidung mit Grund. PostgreSQL ersetzt die Literale nur in
+Abfragen. Ein Utility-Befehl wird nicht normalisiert: `CREATE ROLE … PASSWORD
+'…'` steht mit seinem Passwort in der Sicht. Dazu trägt auch eine
+normalisierte Abfrage noch Tabellen- und Spaltennamen, und die Eingrenzung auf
+die eigene Datenbank ist eine Zeile SQL, die jemand entfernen kann.
+
+Der Ersatz steht auf der Seite: Wer wissen will, warum eine bestimmte Abfrage
+teuer ist, führt sie im SQL-Editor als Plan aus. Wer `pg_stat_statements` in
+der Projektdatenbank nicht installiert hat, bekommt diesen Satz und keine
+leere Liste.
+
+### Abfrage-Einblicke: der Plan, ohne die Abfrage auszuführen
+
+Seit `2.56.0` ist **Observability → Abfrage-Einblicke** keine Platzhalterseite
+mehr. Sie holt den Plan einer lesenden Abfrage mit `EXPLAIN (FORMAT JSON,
+COSTS ON, VERBOSE OFF, SUMMARY ON)` und zeigt je Knoten die Art, die
+geschätzten Kosten, den Eigenanteil an den Gesamtkosten und eine Erklärung,
+was dieser Knotentyp tut.
+
+**`ANALYZE` wird nicht benutzt.** Mit `ANALYZE` würde ein Knopf in der Console
+die Abfrage wirklich ausführen, und das ist eine andere Zusage als „zeig mir
+den Plan“. Die Prüfung, dass die Abfrage nur liest, steht **vor** dem Präfix;
+sonst käme `EXPLAIN ANALYZE DELETE FROM …` durch. Gelesen wird über dieselbe
+Verbindung, dieselbe Rolle und dieselbe Transaktion `BEGIN READ ONLY` wie im
+SQL-Editor.
+
+**Die Bedingungstexte der Knoten bleiben in der Datenbank.** `Filter` und
+`Index Cond` tragen die Literale Ihrer Abfrage; die Seite zeigt sie nicht und
+sagt das. Die einzige wirklich gemessene Zahl ist die Planungszeit. Alles
+andere ist die Schätzung des Planers, nicht die Wirklichkeit.
+
+### Infrastruktur: worauf diese Umgebung läuft
+
+Seit `2.56.0` ist **Einstellungen → Infrastruktur** keine Platzhalterseite
+mehr. Die Seite beantwortet „worauf läuft das hier“ und nicht „wie ist es
+eingestellt“; das Zweite steht unter Datenbank-Einstellungen.
+
+Vom Server selbst kommen Version, Versionsnummer, Kodierung, Sortierung,
+Zeichenklassen, Startzeit, Grösse der Datenbank und ob er gerade eine
+Wiederherstellung fährt. Aus der Control Plane kommen die Region, der Zustand
+des Projekts und die Umgebungen mit ihrer Datenbankreferenz. Die
+Erweiterungen liest die Seite über die Route, die es dafür schon gibt.
+
+**Lese-Replikate, Instanzgrösse und Platte gibt es nicht.** Das steht als
+Zeile mit Grund da und nicht als leere Kachel: Die Provisionierung meldet
+diese Angaben nicht, und die Seite erfindet sie nicht.
+
 ### Data API: kein Anfrageprotokoll
 
 Seit `2.51.0` ist auch **Logs → Data API** keine Platzhalterseite mehr — und

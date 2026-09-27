@@ -5823,3 +5823,48 @@ Puffer wird bei SIGTERM nicht geleert. Ein Objektname kann persoenliche
 Angaben enthalten und geht trotzdem hinaus. Gespeicherte Suchen des
 Explorers liegen nur im Browser. Vier Log-Seiten haben weiterhin kein
 Backend. Im Browser nicht gesehen.
+
+## Welle acht (2.56): was die Datenbank ueber sich sagt
+
+Drei Schnitte, drei Platzhalter weniger, und alle drei lesen nur. Der rote
+Faden ist diesmal nicht eine neue Faehigkeit, sondern eine Grenze, die jede
+der drei Seiten selbst ausspricht.
+
+Die Abfrage-Leistung zeigt, was eine Abfrage kostet, und nicht, welche es
+ist. `pg_stat_statements` normalisiert nur Abfragen; ein Utility-Befehl steht
+mit seinem Literal in der Sicht, und damit auch das Passwort aus einem
+`CREATE ROLE`. Dazu traegt auch eine normalisierte Abfrage noch Bezeichner.
+Die Entscheidung steht ausgeschrieben ueber der Anweisung, und die Seite
+nennt den Ersatz: wer einen einzelnen Plan sehen will, bekommt ihn in den
+Abfrage-Einblicken.
+
+Die Abfrage-Einblicke planen, ohne auszufuehren: `EXPLAIN` ohne `ANALYZE`.
+Die Pruefung auf eine lesende Abfrage steht vor dem Praefix, sonst waere ein
+`EXPLAIN ANALYZE DELETE` moeglich. Die Mutationsprobe setzt genau dieses
+`ANALYZE` ein, und der Fall faellt am Zaehler `pg_stat_user_tables.seq_scan`:
+Er belegt an einer echten Tabelle, dass fuenf Plaene sie nicht gelesen haben,
+und weist mit einer Gegenprobe nach, dass sich der Zaehler ueberhaupt bewegen
+kann.
+
+Die Infrastruktur beantwortet "worauf laeuft das hier". Jede Angabe wird im
+Fall ein zweites Mal als Eigentuemer nachgelesen und verglichen, und die
+gemeldete Groesse muss mit zehn Megabyte mitwachsen, die wirklich geschrieben
+und danach wieder geloescht werden. Lese-Replikate gibt es nicht; das steht
+als Zeile mit Grund da und nicht als leere Kachel.
+
+Zwei Befunde aus dem Parallelbetrieb, beide im Verfahren und nicht im
+Produkt. Alle drei Agenten haben dieselbe freie Fallnummer gegriffen. Und der
+Stash gehoert dem Repository, nicht dem Arbeitsbaum: Ein `git stash pop` hat
+die Arbeit eines anderen Arbeitsbaums erwischt. Sie ist sofort zurueckgelegt
+worden, nichts ist verloren, und in parallelen Arbeitsbaeumen wird kein Stash
+mehr benutzt.
+
+Checkpoint `2.56.0` am 27. September 2026: PostgreSQL 17 mit 204 von 204,
+exit 0, zweimal reproduziert; Lokal 2130 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert.
+
+Nicht erbracht: Die Abfrage-Leistung zeigt keinen Text, auch keinen
+normalisierten. Die Planungszeit ist die einzige gemessene Zahl der
+Abfrage-Einblicke; alles andere ist die Schaetzung des Planers. Die
+Infrastruktur kennt keine Instanzgroesse und keine Platte. Im Browser nicht
+gesehen.

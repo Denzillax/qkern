@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle8-local-run2.log",
+  "commit": "223fe492ff9562904cc50b37362bba05b0b6140b",
+  "commitSubject": "merge: Abfrage-Einblicke aus slice/queryinsights, Fall auf 2.69 umnummeriert",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "307 passed | 38 skipped (345)",
+  "tests": "2130 passed | 288 skipped (2418)",
+  "passed": 2130,
+  "failed": 0,
+  "skipped": 288,
+  "images": []
+}

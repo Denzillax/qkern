@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.55.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.56.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,29 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.55.0`
-- Neuester Slice: 2.55 Log-Explorer und Drain-Sammler, dazu zwei Befunde.
+- Paketversion: `2.56.0`
+- Neuester Slice: 2.56 Drei Leseflächen, drei ausgesprochene Grenzen.
+  `obs-query-performance` liest `pg_stat_statements` über
+  `inspectStatements` und zeigt **keinen Abfragetext**, auch keinen
+  normalisierten: Ein Utility-Befehl steht mit seinem Literal in der Sicht,
+  also auch das Passwort aus einem `CREATE ROLE`, und auch eine normalisierte
+  Abfrage trägt noch Bezeichner. `obs-query-insights` plant über
+  `explainReadQuery` mit `EXPLAIN (FORMAT JSON, COSTS ON, VERBOSE OFF,
+  SUMMARY ON)` und **ohne `ANALYZE`**; die Prüfung auf eine lesende Abfrage
+  steht **vor** dem Präfix, sonst wäre `EXPLAIN ANALYZE DELETE` möglich, und
+  die Bedingungstexte der Knoten bleiben draußen, weil sie die Literale
+  tragen. `set-infrastructure` liest über `inspectRuntime` und
+  `listProjectEnvironments`, was der Server über sich sagt; Lese-Replikate
+  gibt es nicht, und das steht als Zeile mit Grund da.
+
+  Zwei Dinge für den nächsten Agenten, beide aus dem Parallelbetrieb. Erstens:
+  Die **Fallnummer** in `tests/postgres.integration.test.ts` vergeben drei
+  Agenten gleichzeitig gleich; sie ist beim Zusammenführen zu prüfen, hier
+  wurde auf 2.67, 2.68 und 2.69 verteilt. Zweitens: **`git stash` gehört dem
+  Repository, nicht dem Arbeitsbaum.** Ein `git stash pop` in einem
+  Arbeitsbaum greift den Stash eines anderen. In parallelen Arbeitsbäumen
+  wird kein Stash benutzt, sondern eine Dateikopie. Im Browser nicht gesehen
+- Davor: 2.55 Log-Explorer und Drain-Sammler, dazu zwei Befunde.
   `logs-explorer` ist echt: eine **strukturierte** Suche ueber die drei
   Quellen mit einer Leseroute ueber die ganze Umgebung (Auth-Protokoll,
   Aufrufprotokoll, Stand der Speicherobjekte), gemischt zu einer Liste,

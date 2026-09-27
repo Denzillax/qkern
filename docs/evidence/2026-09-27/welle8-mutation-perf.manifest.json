@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: die teuersten Abfragen stehen unten",
+  "log": "welle8-mutation-perf.log",
+  "commit": "223fe492ff9562904cc50b37362bba05b0b6140b",
+  "commitSubject": "merge: Abfrage-Einblicke aus slice/queryinsights, Fall auf 2.69 umnummeriert",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 56,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 203 passed (204)",
+  "passed": 203,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

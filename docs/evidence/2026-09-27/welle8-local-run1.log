@@ -1,0 +1,15 @@
+
+> qkern-platform@2.55.0 test
+> vitest run
+
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+
+ Test Files  307 passed | 38 skipped (345)
+      Tests  2130 passed | 288 skipped (2418)
+   Start at  11:16:44
+   Duration  18.62s (transform 37.76s, setup 0ms, import 118.70s, tests 102.99s, environment 73ms)
+
+EXIT=0
+EXIT=0
