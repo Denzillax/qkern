@@ -1,17 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
-import { handleProjectRoles } from "@/app/api/v1/projects/[projectId]/environments/[environment]/schema/roles/route";
+import { handleProjectForeignDataWrappers } from "@/app/api/v1/projects/[projectId]/environments/[environment]/schema/foreign-data-wrappers/route";
 import { SESSION_COOKIE_NAME } from "@/lib/server/auth/http";
 import { authRuntime } from "@/lib/server/auth/runtime";
 import type { ProjectDataPlanePort } from "@/lib/server/data-plane/service";
 import { tenancyService } from "@/lib/server/tenancy-service";
 
-/** Die roles-Route (2.20) ist datenbankweit und geht durch dieselbe Tuer wie `/schema`. */
+/**
+ * Die Route fuer fremde Datenquellen (2.72) ist datenbankweit und geht durch
+ * dieselbe Tuer wie `/schema`.
+ */
 async function identity() {
   const nonce = randomUUID();
   const result = await authRuntime.service.register({
-    email: `roles-${nonce}@qkern.test`,
+    email: `wrappers-${nonce}@qkern.test`,
     password: "a sufficiently long catalog route test password",
     rateLimitKey: nonce,
   });
@@ -20,14 +23,14 @@ async function identity() {
 }
 
 function port(method: ReturnType<typeof vi.fn>): ProjectDataPlanePort {
-  return { inspectRuntime: vi.fn(), inspectForeignDataWrappers: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectRoles: method } as ProjectDataPlanePort;
+  return { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectForeignDataWrappers: method } as ProjectDataPlanePort;
 }
 
-describe("project roles route", () => {
+describe("project foreign data wrapper route", () => {
   it("binds the inspection to the authenticated tenant and disables caching", async () => {
     const principal = await identity();
-    const method = vi.fn().mockResolvedValue({ source: "postgres", roles: [], truncated: false });
-    const response = await handleProjectRoles(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/schema/roles", {
+    const method = vi.fn().mockResolvedValue({ source: "postgres", wrappers: [], servers: [], userMappings: [], tables: [], truncated: false });
+    const response = await handleProjectForeignDataWrappers(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/schema/foreign-data-wrappers", {
       headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
     }), { params: Promise.resolve({ projectId: "project", environment: "development" }) }, port(method));
     expect(response.status).toBe(200);
@@ -41,9 +44,9 @@ describe("project roles route", () => {
   it("rejects any query parameter and anonymous callers without touching the data plane", async () => {
     const method = vi.fn();
     const params = { params: Promise.resolve({ projectId: "project", environment: "development" }) };
-    const bad = await handleProjectRoles(new NextRequest("https://qkern.test/x/schema/roles?schema=public"), params, port(method));
+    const bad = await handleProjectForeignDataWrappers(new NextRequest("https://qkern.test/x/schema/foreign-data-wrappers?schema=public"), params, port(method));
     expect(bad.status).toBe(400);
-    const anonymous = await handleProjectRoles(new NextRequest("https://qkern.test/x/schema/roles"), params, port(method));
+    const anonymous = await handleProjectForeignDataWrappers(new NextRequest("https://qkern.test/x/schema/foreign-data-wrappers"), params, port(method));
     expect(anonymous.status).toBe(401);
     expect(method).not.toHaveBeenCalled();
   });

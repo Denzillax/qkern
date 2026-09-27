@@ -30,6 +30,7 @@ import { logExplorerTexts } from "@/lib/console/log-explorer";
 import { queryPerformanceTexts } from "@/lib/console/query-performance-texts";
 import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 import { queryInsightsTexts } from "@/lib/console/query-insights";
+import { wrappersTexts } from "@/lib/console/wrappers-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -132,10 +133,15 @@ async function consoleKeys(): Promise<string[]> {
   // Berichte -> Abfrage-Einblicke (2.67) zeigt Knotenarten, ihre Bedeutung,
   // die Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of queryInsightsTexts()) keys.add(text);
+  // Integrationen -> Wrappers (2.72) zeigt den Zustand eines Wrappers, die
+  // Schritte zum Anlegen, was es nicht kann und seine Ehrlichkeitssaetze
+  // ueber t(variable).
+  for (const text of wrappersTexts()) keys.add(text);
   return [...keys];
 }
 
 describe("console i18n contract", () => {
+
   it("translates every console text into en, fr and it", async () => {
     const keys = await consoleKeys();
     expect(keys.length).toBeGreaterThan(400);

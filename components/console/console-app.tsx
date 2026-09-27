@@ -49,6 +49,7 @@ import { CronView } from "@/components/console/cron-view";
 import { PitrView } from "@/components/console/pitr-view";
 import { DatabaseWebhooksView } from "@/components/console/database-webhooks-view";
 import { VaultOverviewView } from "@/components/console/vault-overview-view";
+import { WrappersView } from "@/components/console/wrappers-view";
 import { ApiKeysView } from "@/components/console/api-keys-view";
 import { AuthProvidersView } from "@/components/console/auth-providers-view";
 import { AuthSessionsView } from "@/components/console/auth-sessions-view";
@@ -398,6 +399,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Integrationen -> Vault zeigt jede bekannte Secret-Referenz und ihren
     // Stand, aber keinen Wert und kein Eingabefeld (2.58).
     case "int-vault": return <VaultOverviewView projectId={props.project.id} environment={props.environment}/>;
+    // Integrationen -> Wrappers liest die fremden Datenquellen dieser
+    // Datenbank, ohne die Zugangsdaten dahinter (2.72).
+    case "int-wrappers": return <WrappersView projectId={props.project.id} environment={props.environment}/>;
     // Einstellungen -> Dashboard (2.55): die Darstellung der Console selbst.
     case "set-dashboard": return <DashboardSettingsView settings={props.display} onSaved={props.onDisplayChange}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
