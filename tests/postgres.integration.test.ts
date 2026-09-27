@@ -37,6 +37,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto";
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
+import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
+// S3-Zugang (2.78): echte Buckets ueber das Produkt-Repository, echte Ausgabe,
+// echter Widerruf. Der Hash wird nachgerechnet, damit der Fall sagen kann, dass
+// die Liste ihn nicht kennt.
+import {
+  hashS3AccessKeySecret,
+  PostgresProjectStorageS3AccessKeyStore,
+  ProjectStorageS3AccessKeyService,
+} from "@/lib/server/project-storage/s3-access-keys";
 import { PostgresChangeSetApplyService } from "@/lib/server/migrations/services";
 import { PostgresMigrationQueue } from "@/lib/server/migrations/postgres-queue";
 import { PostgresProjectDatabaseExecutor } from "@/lib/server/migrations/postgres-executor";
@@ -6337,6 +6346,177 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(afterDisable.rows[0]?.n).toBe("2");
     expect((await audit()).filter(
       (record) => record.action === "approval.automatically_approved")).toHaveLength(2);
+  }, 120_000);
+  it("(2.78) issues an S3 access key pair once, never again, and revokes without deleting", async () => {
+    // Der S3-Zugang (2.78) gegen die echte Datenbank.
+    //
+    // Der Slice gibt Schluesselpaare aus und verwaltet sie; er prueft keine
+    // Signatur, weil er das Geheimnis nicht behaelt. Genau darum haengt alles
+    // an der Frage, ob das Geheimnis wirklich nur einmal vorkommt. Ein
+    // Vertrag am Quelltext kann das nicht sagen: Er sieht nicht, was in der
+    // Tabelle steht, welche Spalten es ueberhaupt gibt, was die Liste aus der
+    // Datenbank zurueckbringt und was die Laufzeitrolle auf der Tabelle darf.
+    //
+    // Gelaufen wird der Produktweg: `PostgresProjectStorageRepository` legt
+    // zwei echte Buckets an, `PostgresProjectStorageS3AccessKeyStore` schreibt
+    // ueber `withTenant` mit der Laufzeitrolle, und
+    // `ProjectStorageS3AccessKeyService` ist derselbe Dienst, den die Route
+    // benutzt.
+    //
+    // Sieben Zusagen:
+    //   1. Gespeichert ist der Hash, und es gibt keine Spalte fuer den Wert.
+    //   2. Die Liste traegt weder das Geheimnis noch seinen Hash, und ihre
+    //      Felder sind genau die neun erlaubten.
+    //   3. Widerruf wirkt sofort, ein zweiter verschiebt den Zeitpunkt nicht,
+    //      und die Zeile bleibt stehen.
+    //   4. Die Laufzeitrolle darf lesen, schreiben und widerrufen, aber nicht
+    //      loeschen und den Hash nicht ueberschreiben.
+    //   5. Der Waechter in der Datenbank laesst den Widerruf nur einmal setzen.
+    //   6. Ein fremder Bucket bekommt eine 404 und keine Constraint-Meldung.
+    //   7. Die Audit-Eintraege tragen keinen Wert und keinen Hash.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.75: Das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden, und
+    // `audit_logs` haengt mit ON DELETE RESTRICT an `organizations`. Diese
+    // Organisation bleibt deshalb absichtlich stehen; die Flaeche dieses Slices
+    // loescht ohnehin nichts.
+    const keyOwner = randomUUID();
+    const keyOrganization = randomUUID();
+    const keyProject = randomUUID();
+    const actorRef = `s3-keys-${keyOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [keyOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'S3 Access Keys', $2, $3)`,
+    [keyOrganization, `s3-keys-${keyOrganization}`, keyOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [keyOrganization, keyOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'S3 Access Keys', $3, 'test', 'ready', $4)`,
+    [keyProject, keyOrganization, `s3-keys-${keyProject}`, keyOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [keyOrganization, keyProject, `managed:${keyProject}`]);
+
+    const scope = {
+      organizationId: keyOrganization, projectId: keyProject, environment: "development" as const,
+    };
+    const principal = {
+      organizationId: keyOrganization, actorRef, role: "admin" as const, subject: keyOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+    const buckets = new PostgresProjectStorageRepository(control);
+    const service = new ProjectStorageS3AccessKeyService({
+      store: new PostgresProjectStorageS3AccessKeyStore(control),
+      buckets,
+    });
+
+    // Zwei echte Buckets, damit der Bucket-Satz mehr als eine Zeile hat und die
+    // Kopplungstabelle wirklich geprueft wird.
+    const bucketAt = new Date();
+    const bucketOf = async (suffix: string) => buckets.createBucket(principal, {
+      ...scope, id: randomUUID(), name: `s3keys-${suffix}-${randomUUID().slice(0, 8)}`,
+      readPolicy: "private", writePolicy: "private", allowedMimeTypes: ["text/plain"],
+      maxObjectBytes: 1_024, quotaBytes: 8_192, usedBytes: 0, reservedBytes: 0,
+      retentionDays: null, createdAt: bucketAt, updatedAt: bucketAt,
+    });
+    const bucketA = await bucketOf("a");
+    const bucketB = await bucketOf("b");
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000).toISOString();
+    const issued = await service.create(principal, scope, {
+      name: "Fremdes Werkzeug", bucketIds: [bucketB.id, bucketA.id], expiresAt,
+    });
+    expect(issued.secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(issued.key.accessKeyId).toMatch(/^QKERNS3[A-Z2-7]{16}$/);
+    expect(issued.key.bucketIds).toEqual([bucketA.id, bucketB.id].sort());
+    expect(issued.key.revokedAt).toBeNull();
+    const secretHash = hashS3AccessKeySecret(issued.secret);
+
+    // --- Zusage 1: der Hash steht da, der Wert hat keine Spalte -------------
+    const stored = await owner.query<{ secret_hash: string }>(
+      `SELECT secret_hash FROM project_storage_s3_access_keys WHERE id = $1`, [issued.key.id]);
+    expect(stored.rows[0]?.secret_hash).toBe(secretHash);
+    expect(stored.rows[0]?.secret_hash).not.toBe(issued.secret);
+    const columns = await owner.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'project_storage_s3_access_keys'`);
+    const columnNames = columns.rows.map((row) => String(row.column_name));
+    // Genau eine Spalte trifft das Muster, und sie traegt den Hash. Kaeme je
+    // eine zweite hinzu, die den Wert aufnehmen koennte, faellt dieser Fall.
+    expect(columnNames.filter((name) => /secret|token|password|key_material/.test(name)))
+      .toEqual(["secret_hash"]);
+
+    // --- Zusage 2: die Liste kennt es nicht --------------------------------
+    const listed = await service.list(principal, scope);
+    expect(listed).toHaveLength(1);
+    expect(Object.keys(listed[0]).sort()).toEqual([
+      "accessKeyId", "bucketIds", "createdAt", "environment", "expiresAt",
+      "id", "name", "projectId", "revokedAt",
+    ]);
+    const listedJson = JSON.stringify(listed);
+    expect(listedJson).not.toContain(issued.secret);
+    expect(listedJson).not.toContain(secretHash);
+    expect(listed[0].accessKeyId).toBe(issued.key.accessKeyId);
+    expect(listed[0].bucketIds).toEqual([bucketA.id, bucketB.id].sort());
+
+    // --- Zusage 3: Widerruf wirkt sofort und loescht nicht -----------------
+    const revoked = await service.revoke(principal, scope, issued.key.id);
+    expect(revoked.revokedAt).not.toBeNull();
+    const revokedAgain = await service.revoke(principal, scope, issued.key.id);
+    expect(revokedAgain.revokedAt).toBe(revoked.revokedAt);
+    const afterRevoke = await service.list(principal, scope);
+    expect(afterRevoke).toHaveLength(1);
+    expect(afterRevoke[0].revokedAt).toBe(revoked.revokedAt);
+    const afterRevokeJson = JSON.stringify(afterRevoke);
+    expect(afterRevokeJson).not.toContain(issued.secret);
+    expect(afterRevokeJson).not.toContain(secretHash);
+
+    // --- Zusage 4: die Rechte der Laufzeitrolle ----------------------------
+    await expect(runtime.query(
+      `DELETE FROM project_storage_s3_access_keys WHERE id = $1`, [issued.key.id]))
+      .rejects.toThrowError(/permission denied/i);
+    await expect(runtime.query(
+      `UPDATE project_storage_s3_access_keys SET name = 'anders' WHERE id = $1`, [issued.key.id]))
+      .rejects.toThrowError(/permission denied/i);
+    const privileges = await owner.query<Record<string, boolean>>(
+      `SELECT has_table_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'SELECT') AS may_select,
+              has_table_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'INSERT') AS may_insert,
+              has_table_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'DELETE') AS may_delete,
+              has_column_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'revoked_at', 'UPDATE') AS may_revoke,
+              has_column_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'secret_hash', 'UPDATE') AS may_rewrite_hash,
+              has_table_privilege('qkern_runtime', 'project_storage_s3_access_key_buckets', 'SELECT') AS may_read_buckets,
+              has_table_privilege('qkern_runtime', 'project_storage_s3_access_key_buckets', 'DELETE') AS may_unlink_buckets`);
+    expect(privileges.rows[0]).toMatchObject({
+      may_select: true, may_insert: true, may_delete: false,
+      may_revoke: true, may_rewrite_hash: false,
+      may_read_buckets: true, may_unlink_buckets: true,
+    });
+
+    // --- Zusage 5: der Widerruf geht nur in eine Richtung ------------------
+    await expect(owner.query(
+      `UPDATE project_storage_s3_access_keys SET revoked_at = now() + interval '1 hour' WHERE id = $1`,
+      [issued.key.id])).rejects.toMatchObject({ code: "55000" });
+
+    // --- Zusage 6: ein fremder Bucket ist eine 404 ------------------------
+    await expect(service.create(principal, scope, {
+      name: "Fremder Bucket", bucketIds: [randomUUID()], expiresAt,
+    })).rejects.toMatchObject({ code: "STORAGE_RESOURCE_NOT_FOUND" });
+
+    // --- Zusage 7: die Spur traegt keinen Wert ----------------------------
+    const auditRows = await owner.query<{ action: string; metadata: string }>(
+      `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+        WHERE organization_id = $1`, [keyOrganization]);
+    const actions = auditRows.rows.map((row) => String(row.action));
+    expect(actions).toContain("project.storage.s3_access_key.created");
+    expect(actions).toContain("project.storage.s3_access_key.revoked");
+    for (const row of auditRows.rows) {
+      expect(String(row.metadata)).not.toContain(issued.secret);
+      expect(String(row.metadata)).not.toContain(secretHash);
+    }
   }, 120_000);
 });
 

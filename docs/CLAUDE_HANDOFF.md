@@ -49,7 +49,28 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Neu in diesem Zweig: 2.75 (Zweig `slice/dashhooks`) **Dashboard-Webhooks
+- Neu in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
+  aus und sagt, dass sie noch nichts öffnen.** Der Platzhalter `storage-s3` ist
+  echt, Migration `0059_project_storage_s3_access_keys.sql` (0058 bleibt dem
+  parallelen Slice). Von den zwei möglichen Wegen ist **keiner der beiden
+  Zugangswege gebaut**, und beide Gründe stehen im Code. Ein Paar beim Provider
+  anzulegen geht nicht: `ProjectStorageProvider` kennt keine Operation für
+  Zugangsdaten, und der Dienst legt jedes Objekt jedes Mandanten in **einen**
+  Provider-Bucket, getrennt nur über das Präfix. Ein QKERN-Bucket ist eine Zeile
+  in `project_storage_buckets`, kein Bucket des Anbieters. Eine SigV4-Prüfung
+  gegen QKERN selbst geht nicht, solange nur ein Hash gespeichert wird: Die
+  Signatur ist eine HMAC-Kette aus dem Geheimnis, und aus einem SHA-256-Hash
+  lässt sie sich nicht rechnen. Gebaut ist deshalb die Ausgabe samt Verwaltung
+  (einmal gezeigt, Hash gespeichert, Umgebung plus Bucket-Satz über eine
+  Kopplungstabelle mit echtem Fremdschlüssel, widerrufbar), und die Seite sagt
+  als ersten Absatz: kein Endpunkt nimmt ein solches Paar heute an. Der
+  öffentliche Teil trägt bewusst `QKERNS3…` und nicht die Form eines
+  Provider-Schlüssels. Widerruf ist **nicht** löschen: Die Laufzeitrolle hat auf
+  `project_storage_s3_access_keys` kein DELETE, nur `UPDATE (revoked_at)`, und
+  ein Trigger lässt den Zeitpunkt nur einmal setzen. Wer hier weiterbaut, muss
+  **zuerst** entscheiden, wo das Geheimnis liegen soll; ohne diese Entscheidung
+  gibt es keinen Pruefweg.
+- Davor: 2.75 (Zweig `slice/dashhooks`) **Dashboard-Webhooks
   tragen nur, was die Console zeigt.** Der Platzhalter `set-webhooks`
   („Benachrichtigungen bei Ereignissen des Projekts selbst") ist echt. Die
   Quelle ist die **Audit-Kette** der Control Plane (`audit_logs` aus 0001/0002),
