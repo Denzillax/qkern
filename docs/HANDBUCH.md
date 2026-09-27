@@ -2254,6 +2254,49 @@ Erweiterungen liest die Seite über die Route, die es dafür schon gibt.
 Zeile mit Grund da und nicht als leere Kachel: Die Provisionierung meldet
 diese Angaben nicht, und die Seite erfindet sie nicht.
 
+### Auth-Leistung: was scheitert, und seit wann
+
+**Authentication → Auth-Leistung** ist keine Platzhalterseite mehr. Der
+Platzhalter versprach „Antwortzeiten und Fehlerraten der Anmeldung“. Die eine
+Hälfte davon gibt es, die andere nicht, und die Seite sagt das als Erstes.
+
+**Antwortzeiten misst QKERN nicht.** Ein Eintrag der Audit-Kette hält den
+Zeitpunkt einer Handlung fest, ihre Art, ihren Ausgang und eine Referenz. Eine
+Dauer bräuchte einen zweiten Zeitpunkt derselben Handlung, und den schreibt
+niemand. Es steht darum keine Millisekunde auf der Seite, auch keine
+geschätzte.
+
+**Die Fehlerrate je Handlungsart gibt es wirklich.** Die Seite liest dieselbe
+Route wie Berichte → Auth (`admin/audit/series`, ein GET, kein Schreibverb)
+und stellt eine andere Frage an dieselbe Antwort: nicht „wie viel wann“,
+sondern „was scheitert, wie oft, und seit wann“. Gezeigt werden drei Dinge:
+
+1. **Handlungen, Fehlschläge und ihr Anteil im Fenster**, 48 Stunden in
+   Stundenschritten oder 90 Tage in Tagesschritten.
+2. **Die Handlungsarten, die scheitern**, die häufigsten zuerst, jede mit
+   ihrem Anteil und mit dem Abschnitt, seit dem sie scheitert. Sortiert wird
+   nach der Zahl der Fehlschläge und nicht nach dem Anteil: Eine Art, die
+   einmal vorkam und einmal scheiterte, hätte sonst den ersten Platz.
+3. **Handlungen und Fehlschläge je Abschnitt.** Abschnitte ohne jede Handlung
+   bleiben aus der Tabelle, und wie viele das sind, steht daneben.
+
+Die Aufteilung nach Handlung ist neu, die Abfrage ist es nicht: Die Datenbank
+gruppiert seit `2.47.0` nach Abschnitt **und** Handlung und zählt dabei die
+gescheiterten je Gruppe mit. Bisher wurde diese Zahl beim Aufbau der Reihe zu
+einer einzigen Summe je Abschnitt gefaltet und war danach weg; „die Anmeldung
+scheitert“ und „der zweite Faktor scheitert“ waren darin nicht zu
+unterscheiden. Es kommt für diese Seite keine Abfrage dazu.
+
+**Ein Fehlschlag ist kein Angriff**, und das steht auf der Seite. Ein
+vertipptes Passwort, ein abgelaufener Code, eine Uhr, die falsch geht, oder
+eine App, die es nach dem Abmelden noch einmal versucht: All das erscheint
+hier gleich. Was die Seite über die Ursache sagen kann, ist nichts. In keinem
+Eintrag steht ein Grund, ein Fehlercode, eine Adresse, ein Gerät oder ein Ort,
+und nachträglich lässt sich das auch nicht erfahren. Das „seit wann“ ist der
+Beginn des Abschnitts, in dem der erste Fehlschlag liegt, nicht seine Minute;
+feiner löst die Reihe nicht auf. Fällt es auf den ersten Abschnitt des
+Fensters, kann es früher angefangen haben.
+
 ### Data API: kein Anfrageprotokoll
 
 Seit `2.51.0` ist auch **Logs → Data API** keine Platzhalterseite mehr — und
