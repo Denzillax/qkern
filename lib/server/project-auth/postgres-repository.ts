@@ -34,6 +34,13 @@ import {
   PROJECT_AUTH_HOOK_FUNCTION_NAME,
   type ProjectAuthHooks,
 } from "@/lib/server/project-auth/hooks";
+import {
+  isProjectAuthThirdPartyRole,
+  PROJECT_AUTH_THIRD_PARTY_CLAIM_NAME,
+  PROJECT_AUTH_THIRD_PARTY_NAME,
+  type ProjectAuthThirdPartyDefinition,
+  type ProjectAuthThirdPartyProvider,
+} from "@/lib/server/project-auth/third-party";
 
 type Row = Record<string, unknown>;
 type PostgresError = Error & { code?: string; constraint?: string };
@@ -607,6 +614,62 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
       throw mapPostgresError(error);
     }
   }
+
+  async listThirdPartyProviders(scope: ProjectAuthScope): Promise<ProjectAuthThirdPartyProvider[]> {
+    const result = await query(this.pool, `${THIRD_PARTY_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+      ORDER BY name ASC`, scopeValues(scope));
+    return result.rows.map(thirdPartyFromRow);
+  }
+
+  async findThirdPartyProviderByIssuer(
+    scope: ProjectAuthScope,
+    issuer: string,
+  ): Promise<ProjectAuthThirdPartyProvider | null> {
+    const result = await query(this.pool, `${THIRD_PARTY_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND issuer = $4
+      LIMIT 1`, [...scopeValues(scope), issuer]);
+    return result.rows[0] ? thirdPartyFromRow(result.rows[0]) : null;
+  }
+
+  async createThirdPartyProvider(
+    scope: ProjectAuthScope,
+    provider: ProjectAuthThirdPartyDefinition & { id: string },
+    now: Date,
+  ): Promise<ProjectAuthThirdPartyProvider> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_third_party_providers
+        (id, organization_id, project_id, environment, name, issuer, jwks_uri, audiences,
+         subject_claim, role_claim, default_role, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9,$10,$11,$12)
+        RETURNING ${THIRD_PARTY_COLUMNS}`, [
+        provider.id, ...scopeValues(scope), provider.name, provider.issuer, provider.jwksUri,
+        [...provider.audiences], provider.subjectClaim, provider.roleClaim, provider.defaultRole, now,
+      ]);
+      return thirdPartyFromRow(result.rows[0]);
+    } catch (error) {
+      const pg = error as PostgresError;
+      // Beide UNIQUE-Bedingungen aus 0061 bedeuten dasselbe fuer den Aufrufer:
+      // Dieser Anbieter steht in dieser Umgebung schon. Der Name der Bedingung
+      // sagte ihm, welche der beiden es war, und das ist eine Auskunft ueber die
+      // Tabelle und nicht ueber seine Eingabe.
+      if (pg.code === "23505" && [
+        "project_auth_third_party_providers_organization_id_project_id_e_key",
+        "project_auth_third_party_providers_organization_id_project_i_key1",
+      ].includes(pg.constraint ?? "")) {
+        throw new DuplicateProjectAuthIdentityError();
+      }
+      if (pg.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw mapPostgresError(error);
+    }
+  }
+
+  async deleteThirdPartyProvider(scope: ProjectAuthScope, providerId: string): Promise<boolean> {
+    const result = await query(this.pool, `DELETE FROM project_auth_third_party_providers
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND id = $4`,
+    [...scopeValues(scope), providerId]);
+    return (result.rowCount ?? 0) > 0;
+  }
 }
 
 const USER_COLUMNS = `id, organization_id, project_id, environment, email, password_hash, status,
@@ -643,6 +706,9 @@ const PASSKEY_SELECT = `SELECT ${PASSKEY_COLUMNS} FROM project_auth_passkeys`;
 const OIDC_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, provider, subject,
   created_at, last_sign_in_at`;
 const OIDC_SELECT = `SELECT ${OIDC_COLUMNS} FROM project_auth_oidc_identities`;
+const THIRD_PARTY_COLUMNS = `id, name, issuer, jwks_uri, audiences, subject_claim, role_claim,
+  default_role, created_at`;
+const THIRD_PARTY_SELECT = `SELECT ${THIRD_PARTY_COLUMNS} FROM project_auth_third_party_providers`;
 
 function sessionValues(session: ProjectAuthSession): SqlValue[] {
   return [session.id, session.organizationId, session.projectId, session.environment, session.userId,
@@ -837,6 +903,39 @@ function hookFunctionName(value: unknown, label: string): string | null {
     throw new InvalidRecordError(`Invalid project auth ${label}.`);
   }
   return value;
+}
+
+/**
+ * Ein fremder Anbieter aus der Zeile (2.80).
+ *
+ * Geprueft wird hier noch einmal, was die CHECK-Bedingungen aus 0061 schon
+ * pruefen: Name, Anspruchsnamen, Rolle. Das ist kein Misstrauen gegen die
+ * Datenbank, sondern die Regel dieses Moduls: Eine Zeile, die aus einer
+ * aelteren Migration oder aus einem Handeingriff kommt, soll hier als
+ * unbrauchbare Zeile auffallen und nicht als Anbieter weiterlaufen.
+ *
+ * Der wichtigste Teil ist die Rolle. Eine Zeile mit `default_role =
+ * 'service_role'` waere ein Anbieter, dessen Token jede Policy umgeht. Sie
+ * kaeme durch den CHECK nicht herein, und wenn sie doch je hereinkaeme, ist sie
+ * hier ein Fehler und keine stille Hochstufung.
+ */
+function thirdPartyFromRow(row: Row): ProjectAuthThirdPartyProvider {
+  const name = String(row.name);
+  const subjectClaim = String(row.subject_claim);
+  const roleClaim = row.role_claim === null || row.role_claim === undefined ? null : String(row.role_claim);
+  if (!PROJECT_AUTH_THIRD_PARTY_NAME.test(name) ||
+      !PROJECT_AUTH_THIRD_PARTY_CLAIM_NAME.test(subjectClaim) ||
+      (roleClaim !== null && !PROJECT_AUTH_THIRD_PARTY_CLAIM_NAME.test(roleClaim)) ||
+      !isProjectAuthThirdPartyRole(row.default_role)) {
+    throw new InvalidRecordError("Invalid project auth third party provider.");
+  }
+  const audiences = stringArray(row.audiences, "third party audiences");
+  if (audiences.length < 1) throw new InvalidRecordError("Invalid project auth third party provider.");
+  return {
+    id: String(row.id), name, issuer: String(row.issuer), jwksUri: String(row.jwks_uri),
+    audiences, subjectClaim, roleClaim, defaultRole: row.default_role,
+    createdAt: timestamp(row.created_at, "third party provider creation"),
+  };
 }
 
 function rateCountFromRow(row: Row): ProjectAuthRateCount {

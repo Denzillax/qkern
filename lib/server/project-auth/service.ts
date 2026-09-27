@@ -100,6 +100,20 @@ import {
   type ProjectAuthHooks,
 } from "@/lib/server/project-auth/hooks";
 import {
+  parseProjectAuthThirdPartyProvider,
+  verifyProjectAuthThirdPartyToken,
+  PROJECT_AUTH_THIRD_PARTY_ALGORITHM_IDS,
+  PROJECT_AUTH_THIRD_PARTY_BOUNDS,
+  PROJECT_AUTH_THIRD_PARTY_FORBIDDEN_ROLE,
+  PROJECT_AUTH_THIRD_PARTY_OWN_CLAIMS,
+  PROJECT_AUTH_THIRD_PARTY_ROLES,
+  type ProjectAuthThirdPartyIdentity,
+  type ProjectAuthThirdPartyProvider,
+  type ProjectAuthThirdPartyRefusal,
+  type ProjectAuthThirdPartyRejection,
+} from "@/lib/server/project-auth/third-party";
+import type { ProjectAuthThirdPartyKeyPort } from "@/lib/server/project-auth/third-party-keys";
+import {
   hashProjectAuthToken,
   ProjectAuthTokenError,
   ProjectAuthTokenService,
@@ -328,6 +342,48 @@ export type PublicProjectAuthHooks = {
   updatedAt: string | null;
 };
 
+/**
+ * Die fremden Anbieter einer Umgebung, wie die Console sie sieht (2.80).
+ *
+ * Mitgeliefert werden die Liste, die erlaubten Rollen, die verbotene Rolle, die
+ * Positivliste der Verfahren und die Raender. Die Console soll nichts davon aus
+ * eigenem Wissen behaupten muessen: Welche Verfahren geprueft werden und welche
+ * Rolle ein fremdes Token hoechstens bekommt, entscheidet der Dienst.
+ */
+export type PublicProjectAuthThirdParty = {
+  providers: Array<{
+    id: string;
+    name: string;
+    issuer: string;
+    jwksUri: string;
+    audiences: string[];
+    subjectClaim: string;
+    roleClaim: string | null;
+    defaultRole: string;
+    createdAt: string;
+  }>;
+  roles: readonly string[];
+  /** Die Rolle, die ein fremdes Token nie bekommt. Ausdruecklich genannt, nicht bloss weggelassen. */
+  forbiddenRole: string;
+  algorithms: readonly string[];
+  /** Die Ansprueche, die QKERN selbst setzt und darum nicht aus einem fremden Token uebernimmt. */
+  ownClaims: readonly string[];
+  bounds: typeof PROJECT_AUTH_THIRD_PARTY_BOUNDS;
+  /** Ob in dieser Umgebung ueberhaupt ein fremder Anbieter hinterlegt ist. */
+  configured: boolean;
+};
+
+export class ProjectAuthThirdPartyError extends Error {
+  constructor(
+    readonly reason: ProjectAuthThirdPartyRejection | "duplicate",
+    readonly field: string,
+  ) {
+    super("Invalid Project Auth third party provider");
+    this.name = "ProjectAuthThirdPartyError";
+  }
+}
+recognisedByName(ProjectAuthThirdPartyError, "ProjectAuthThirdPartyError");
+
 export class ProjectAuthHookError extends Error {
   constructor(
     readonly reason: ProjectAuthHookRejection,
@@ -477,6 +533,15 @@ export type ProjectAuthServiceDependencies = {
    * Compute betreibt, traegt keinen Hook ein.
    */
   hooks?: ProjectAuthHookPort;
+  /**
+   * Der Weg zum Schluesselsatz eines fremden Ausstellers (2.80).
+   *
+   * Ohne Port prueft der Dienst kein fremdes Token: Eine Signatur, die niemand
+   * nachrechnen kann, ist keine geprufte Signatur, und "ungeprueft annehmen"
+   * ist keine Betriebsart. Ein Projekt ohne hinterlegten Anbieter merkt davon
+   * nichts.
+   */
+  thirdPartyKeys?: ProjectAuthThirdPartyKeyPort;
   callbackBaseUrl: string;
   allowedRedirectOrigins: ReadonlySet<string>;
   exposeDeliveryTokens?: boolean;
@@ -1054,6 +1119,166 @@ export class ProjectAuthService {
       },
     });
     return publicHooks(settings.hooks, settings.updatedAt, true);
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Fremde Anbieter (2.80)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Die hinterlegten fremden Anbieter dieser Umgebung, samt den Grenzen und der
+   * Entscheidung, welche Rolle ein fremdes Token hoechstens bekommt.
+   */
+  async listThirdPartyProviders(scope: ProjectAuthScope): Promise<PublicProjectAuthThirdParty> {
+    assertScope(scope);
+    const providers = await this.dependencies.repository.listThirdPartyProviders(scope);
+    return publicThirdParty(providers);
+  }
+
+  /**
+   * Legt einen fremden Anbieter an.
+   *
+   * Eine Grenze steht hier und nicht in der Datenbank, weil die Datenbank sie
+   * nicht kennen kann: die Zahl der Anbieter je Umgebung. Jeder zusaetzliche
+   * Eintrag ist eine zusaetzliche Vertrauensbeziehung, und die Liste soll
+   * ueberschaubar bleiben; zehn ist dieselbe Zahl, die der OIDC-Katalog seit
+   * 2.29 zulaesst.
+   *
+   * Was hier **nicht** geprueft wird, und warum das nicht fehlt: Ein Eintrag
+   * darf denselben Aussteller nennen, den QKERN selbst benutzt. Er wuerde damit
+   * nichts gewinnen. Die Data API prueft ein vorgelegtes Token zuerst als
+   * eigenes; erst wenn das scheitert, kommt dieser Weg. Und selbst dann bleibt
+   * die Obergrenze `authenticated`, denn die haengt am Eintrag und nicht am
+   * Token. Ein Verbot waere hier eine Regel, die nichts verhindert, und eine
+   * solche Regel verdeckt, wo der Schutz wirklich sitzt.
+   *
+   * Der Audit-Eintrag traegt Name, Aussteller, Schluesselsatz, Publikum und die
+   * Rollenabbildung. Nichts davon ist ein Geheimnis: Der Aussteller steht in
+   * jedem Token, der Schluesselsatz ist eine oeffentliche Adresse, und die Rolle
+   * ist die Entscheidung, die dieser Eintrag trifft. Genau darum steht sie dort.
+   */
+  async createThirdPartyProvider(
+    scope: ProjectAuthScope,
+    input: unknown,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthThirdParty> {
+    assertScope(scope);
+    const parsed = parseProjectAuthThirdPartyProvider(input);
+    if (!parsed.ok) throw new ProjectAuthThirdPartyError(parsed.reason, parsed.field);
+    const existing = await this.dependencies.repository.listThirdPartyProviders(scope);
+    if (existing.length >= PROJECT_AUTH_THIRD_PARTY_BOUNDS.providers.max) {
+      throw new ProjectAuthThirdPartyError("too_many_providers", "providers");
+    }
+    const now = this.now();
+    let created: ProjectAuthThirdPartyProvider;
+    try {
+      created = await this.dependencies.repository.createThirdPartyProvider(
+        scope, { ...parsed.provider, id: this.id() }, now,
+      );
+    } catch (error) {
+      if (error instanceof DuplicateProjectAuthIdentityError) {
+        throw new ProjectAuthThirdPartyError("duplicate", "issuer");
+      }
+      throw error;
+    }
+    await this.recordAudit({
+      scope, action: "project_auth.third_party_provider.created",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_third_party:${created.id}`,
+      status: "succeeded",
+      metadata: {
+        provider: created.name,
+        issuer: created.issuer,
+        jwks: created.jwksUri,
+        // Getrennt mit einem Leerzeichen statt mit einem Komma: Die Bereinigung
+        // der Audit-Kette laesst in einem Metadatenwert nur `[A-Za-z0-9_:.-]`
+        // durch, und ein Wert mit einem Komma faellt dort **still** weg. Ein
+        // ungewohntes Trennzeichen ist besser als eine Zeile, in der das
+        // erwartete Publikum unbemerkt fehlt.
+        audiences: created.audiences.join(" "),
+        subjectClaim: created.subjectClaim,
+        roleClaim: created.roleClaim ?? "none",
+        defaultRole: created.defaultRole,
+      },
+    });
+    return publicThirdParty(await this.dependencies.repository.listThirdPartyProviders(scope));
+  }
+
+  /**
+   * Entfernt einen fremden Anbieter.
+   *
+   * Das ist der einzige Widerruf, den es hier gibt, und er ist grob: Er nimmt
+   * nicht ein Token zurueck, sondern alle. Ab dem naechsten Aufruf findet die
+   * Pruefung keinen Eintrag mehr zu diesem Aussteller, und jedes Token dieses
+   * Dienstes faellt, auch die noch gueltigen. Feiner geht es nicht, weil QKERN
+   * kein Token widerrufen kann, das es nicht ausgegeben hat.
+   */
+  async deleteThirdPartyProvider(
+    scope: ProjectAuthScope,
+    providerId: string,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthThirdParty> {
+    assertScope(scope);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providerId)) {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+    const removed = await this.dependencies.repository.deleteThirdPartyProvider(scope, providerId);
+    if (!removed) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.recordAudit({
+      scope, action: "project_auth.third_party_provider.removed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_third_party:${providerId}`,
+      status: "succeeded",
+      metadata: { provider: providerId },
+    });
+    return publicThirdParty(await this.dependencies.repository.listThirdPartyProviders(scope));
+  }
+
+  /**
+   * Prueft ein fremdes Token und gibt Identitaet und Rolle zurueck (2.80).
+   *
+   * **Warum der Aussteller aus dem ungeprueften Token gelesen wird:** Um die
+   * Unterschrift zu pruefen, braucht QKERN den Schluesselsatz, und um den zu
+   * kennen, braucht es den Anbieter. Die einzige Angabe, mit der ein Token
+   * seinen Anbieter nennt, ist `iss`. Gelesen wird er darum vor der Pruefung,
+   * und er wird dabei als das behandelt, was er ist: eine Behauptung. Er dient
+   * nur dem Nachschlagen. Danach prueft `verifyProjectAuthThirdPartyToken`
+   * denselben Anspruch noch einmal gegen den gefundenen Eintrag, und zwar nach
+   * der Signatur. Ein Token mit einem erfundenen `iss` findet keinen Eintrag;
+   * ein Token, das einen fremden Eintrag nennt, faellt an dessen Schluesselsatz.
+   *
+   * **Was bei fehlendem Schluesselsatz gilt:** Ablehnung. Ein Aussteller, dessen
+   * Satz nicht zu holen ist, ist ein Aussteller, dessen Token heute nicht
+   * geprueft werden kann, und ungeprueft annehmen ist keine Betriebsart. Das
+   * heisst auch: Ein Ausfall beim Anbieter sperrt die Nutzer dieses Anbieters
+   * aus, und die Console sagt diesen Satz.
+   *
+   * **Der zweite Versuch:** Findet die Pruefung im gehaltenen Schluesselsatz
+   * keinen passenden Schluessel, wird einmal auf einen frischen bestanden. Ohne
+   * das waere ein gedrehter Schluessel bis zum Ablauf der Frist ein Ausfall. Der
+   * Mindestabstand dafuer steckt im Port, nicht hier: Er soll auch fuer einen
+   * zweiten Aufrufer gelten.
+   */
+  async verifyThirdPartyToken(
+    scope: ProjectAuthScope,
+    token: string,
+  ): Promise<{ ok: true; identity: ProjectAuthThirdPartyIdentity }
+    | { ok: false; reason: ProjectAuthThirdPartyRefusal | "no_provider" | "no_key_set" }> {
+    assertScope(scope);
+    const keys = this.dependencies.thirdPartyKeys;
+    if (!keys) return { ok: false, reason: "no_key_set" };
+    const issuer = unverifiedIssuer(token);
+    if (!issuer) return { ok: false, reason: "no_provider" };
+    const provider = await this.dependencies.repository.findThirdPartyProviderByIssuer(scope, issuer);
+    if (!provider) return { ok: false, reason: "no_provider" };
+    const held = await keys.keys(provider.jwksUri);
+    if (!held) return { ok: false, reason: "no_key_set" };
+    const first = verifyProjectAuthThirdPartyToken(token, provider, held, this.now());
+    if (first.ok) return first;
+    if (first.reason !== "no_matching_key" && first.reason !== "key_type_mismatch") return first;
+    const fresh = await keys.refresh(provider.jwksUri);
+    if (!fresh || fresh === held) return first;
+    return verifyProjectAuthThirdPartyToken(token, provider, fresh, this.now());
   }
 
   /**
@@ -2351,6 +2576,10 @@ export class DisabledProjectAuthService {
   setPasswordProtection(): never { return this.disabled(); }
   readAuthHooks(): never { return this.disabled(); }
   setAuthHooks(): never { return this.disabled(); }
+  listThirdPartyProviders(): never { return this.disabled(); }
+  createThirdPartyProvider(): never { return this.disabled(); }
+  deleteThirdPartyProvider(): never { return this.disabled(); }
+  verifyThirdPartyToken(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   beginPasskeyRegistration(): never { return this.disabled(); }
   completePasskeyRegistration(): never { return this.disabled(); }
@@ -2380,6 +2609,54 @@ export class DisabledProjectAuthService {
  * behaupten. Heute steht an beiden Punkten `deny`, und wenn das einmal nicht
  * mehr stimmt, aendert sich diese Zeile und nicht ein Satz in einer Ansicht.
  */
+/**
+ * Die Auskunft ueber die fremden Anbieter (2.80).
+ *
+ * Mitgeliefert werden die Rollen, die verbotene Rolle, die Verfahren und die
+ * Raender. Nichts davon ist eine Kopie fuer die Bequemlichkeit: Die Console soll
+ * nicht behaupten muessen, dass `service_role` ausgeschlossen ist oder dass
+ * `HS256` nicht geprueft wird. Beides entscheidet dieses Modul, und beides sagt
+ * es hier.
+ */
+function publicThirdParty(providers: readonly ProjectAuthThirdPartyProvider[]): PublicProjectAuthThirdParty {
+  return {
+    providers: providers.map((provider) => ({
+      id: provider.id, name: provider.name, issuer: provider.issuer, jwksUri: provider.jwksUri,
+      audiences: [...provider.audiences], subjectClaim: provider.subjectClaim,
+      roleClaim: provider.roleClaim, defaultRole: provider.defaultRole,
+      createdAt: provider.createdAt.toISOString(),
+    })),
+    roles: [...PROJECT_AUTH_THIRD_PARTY_ROLES],
+    forbiddenRole: PROJECT_AUTH_THIRD_PARTY_FORBIDDEN_ROLE,
+    algorithms: [...PROJECT_AUTH_THIRD_PARTY_ALGORITHM_IDS],
+    ownClaims: [...PROJECT_AUTH_THIRD_PARTY_OWN_CLAIMS],
+    bounds: PROJECT_AUTH_THIRD_PARTY_BOUNDS,
+    configured: providers.length > 0,
+  };
+}
+
+/**
+ * Der behauptete Aussteller eines Tokens, nur zum Nachschlagen.
+ *
+ * Die Funktion heisst so, wie sie ist. Was sie liefert, ist ungeprueft: ein
+ * Stueck base64url, das jeder schreiben kann. Es taugt, um eine Zeile zu
+ * finden, und zu nichts sonst. Die Pruefung vergleicht denselben Anspruch noch
+ * einmal, nach der Signatur.
+ */
+function unverifiedIssuer(token: string): string | null {
+  if (typeof token !== "string" || token.length > PROJECT_AUTH_THIRD_PARTY_BOUNDS.tokenLength) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1])) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
+    if (!claims || typeof claims !== "object" || Array.isArray(claims)) return null;
+    const issuer = (claims as { iss?: unknown }).iss;
+    return typeof issuer === "string" && issuer.length > 0 && issuer.length <= 512 ? issuer : null;
+  } catch {
+    return null;
+  }
+}
+
 function publicHooks(
   hooks: ProjectAuthHooks | undefined,
   updatedAt: Date | null,

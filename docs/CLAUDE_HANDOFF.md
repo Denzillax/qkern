@@ -73,6 +73,30 @@ Grossbuchstaben.
   entfernt wird in der Anwendung des Nutzers (`auth/passkeys`).
 
 - Neu in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
+- Neu in diesem Zweig: 2.80 (Zweig `slice/thirdparty`) **Fremde Token, gegen
+  den Schluesselsatz des Ausstellers geprueft.** Der Platzhalter
+  `auth-third-party` ist echt, Migration
+  `0061_project_auth_third_party_providers.sql` (0060 bleibt dem parallelen
+  Slice). Der Unterschied zum OIDC-Weg ist der ganze Punkt: Dort entsteht ein
+  eigener Nutzer und ein eigenes Token; hier nimmt die Data API das Token des
+  fremden Dienstes direkt an, und es entsteht **kein** Konto, keine Sitzung, kein
+  Refresh Token und damit auch kein Widerruf. **Ein fremdes Token bekommt
+  hoechstens `authenticated`, nie `service_role`**, und diese Grenze steht
+  dreimal: im reinen Modul
+  (`lib/server/project-auth/third-party.ts`), als `CHECK` in 0061 und in
+  `assertRequest` der generierten Data API. Das Signaturverfahren kommt aus
+  einer Positivliste **und aus dem Schluesseltyp**, nie aus dem Header des
+  Tokens; damit fallen `alg: none` und die HS256-Faelschung mit dem
+  oeffentlichen Schluessel als Geheimnis. Der Schluesselsatz wird ueber
+  `createGuardedFetch` geholt, also ueber dieselbe Adresspruefung wie der Egress
+  einer Function, und fuenf Minuten im Prozessspeicher gehalten. Die Ansprueche
+  gehen ueber genau denselben Weg in die Zeilensicherheit wie die eines eigenen
+  Tokens (`request.jwt.claims`, `request.jwt.claim.role`,
+  `request.jwt.claim.sub`), dazu `iss`, damit eine Policy ein fremdes Konto von
+  einem eigenen unterscheiden kann. Offen: Die Zahl der Real-DB-Faelle in
+  `STATUS.md` steht noch auf 49 und muss beim Release auf 50 gehen; dieser Slice
+  darf `STATUS.md` nicht anfassen. Im Browser nicht gesehen
+- Frueher in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
   aus und sagt, dass sie noch nichts öffnen.** Der Platzhalter `storage-s3` ist
   echt, Migration `0059_project_storage_s3_access_keys.sql` (0058 bleibt dem
   parallelen Slice). Von den zwei möglichen Wegen ist **keiner der beiden
