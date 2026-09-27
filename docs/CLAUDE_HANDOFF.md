@@ -212,11 +212,22 @@ Grossbuchstaben.
   IMMUTABLE-Funktion statt 31 ausgeschriebener Arrays fuer die Quellenliste.
   Gebuendelt nach Anzahl oder Alter, mit `schemaVersion` an der Definition.
   `webhook_deliveries` ueberspringt die Zustellungen der Drains selbst, sonst
-  speiste sich die Quelle aus ihrer eigenen Wirkung. **Ehrlich offen**: Der
-  Sammler fuehrt seinen Stand im Prozess (wie die Webhook-Bruecke vor `0050`)
-  und hat noch keinen dauerhaften Aufrufer; das Cron-Log ist keine Quelle, weil
-  es rekonstruiert und nicht gespeichert wird. PostgreSQL-Fall "(2.63) forwards
-  only the fields the console already shows". Im Browser nicht gesehen
+  speiste sich die Quelle aus ihrer eigenen Wirkung. Seit Slice 2.64 (Zweig
+  `slice/draindaemon`) betreibt der Compute-Prozess den Sammler:
+  `lib/server/compute/log-drain-collector-runtime.ts` entdeckt die Umgebungen
+  mit mindestens einem Drain, sammelt je Drain einzeln mit eigenem Backoff und
+  haelt die Position dauerhaft je Drain **und** Quelle in
+  `0055_project_log_drain_cursors.sql` (nach 0054 frei, `GREATEST` in der
+  Anweisung, kein DELETE, `COLLATE "C"`, `forwarded_at` getrennt von
+  `updated_at`). Angeschaltet mit `QKERN_COMPUTE_LOG_DRAINS_ENABLED=true`; die
+  Ansicht zeigt daraufhin je Drain, wann er zuletzt weitergeleitet hat.
+  **Ehrlich offen**: at-least-once bleibt -- zwischen dem Einreihen einer
+  Ladung und dem Festhalten ihrer Position liegt ein Augenblick, und ein
+  offener Puffer geht beim Anhalten nicht hinaus, sondern wird neu gelesen; das
+  Cron-Log ist keine Quelle, weil es rekonstruiert und nicht gespeichert wird.
+  PostgreSQL-Faelle "(2.63) forwards only the fields the console already shows"
+  und "(2.64) forwards through the running collector process and continues
+  after a restart". Im Browser nicht gesehen
 - Slice 2.60 (Zweig `slice/protection`): **Passwoerter gegen bekannte Lecks,
   ohne fremden Dienst.** Der Platzhalter `auth-protection`
   („Angriffsschutz": Captcha, Passwortpruefung gegen bekannte Lecks,

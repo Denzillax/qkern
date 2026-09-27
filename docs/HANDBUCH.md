@@ -2151,6 +2151,63 @@ Der Prozess nennt die Brücke in seiner Startzeile. Ein Prozess, der sie stumm
 laufen ließe, wäre von einem ohne sie nicht zu unterscheiden — und genau diese
 Verwechslung war zwischen `2.50.0` und `2.52.0` der Zustand.
 
+#### Den Log-Drain-Sammler laufen lassen
+
+`2.54.0` hat die Log-Drains gebaut und zertifiziert — und denselben Fehler
+wiederholt: Niemand rief den Sammler auf. Seit `2.64.0` betreibt ihn derselbe
+Compute-Prozess, der Cron auslöst, Webhooks zustellt und den Änderungs-Feed
+liest.
+
+Anschalten ist ausdrücklich, aus demselben Grund wie bei der Brücke: Der
+Prozess schickt damit Protokollzeilen an ein Ziel im Internet. Eine Verbindung
+zu einer Projektdatenbank braucht er dafür **nicht** — alle fünf Quellen liegen
+in der Control Plane:
+
+```powershell
+$env:QKERN_COMPUTE_LOG_DRAINS_ENABLED="true"
+npm run worker:compute
+```
+
+**Welche Umgebungen gelesen werden, steht nicht in der Konfiguration.** In
+`QKERN_COMPUTE_SCOPES_JSON` stehen die Umgebungen, die dieser Prozess bedient;
+welche davon der Sammler anfasst, fragt er alle
+`QKERN_COMPUTE_LOG_DRAIN_DISCOVERY_MS` in der Control Plane nach. Eine Umgebung
+ohne jeden Drain sieht von ihm keine einzige Abfrage auf ihre Logs.
+
+**Die Position liegt in der Datenbank**, je Drain **und** je Quelle eine Zeile
+in `0055_project_log_drain_cursors.sql`. Je Drain, weil zwei Drains derselben
+Umgebung verschiedene Quellen beliefern dürfen; eine gemeinsame Position hieße
+für einen der beiden überspringen oder wiederholen. Sie wird erst
+fortgeschrieben, nachdem eine Ladung eingereiht ist, und sie kann nur vorwärts.
+Damit wiederholt ein Neustart höchstens eine Ladung; er überspringt nichts.
+
+Ein **neuer** Drain beginnt an der Spitze seiner Quelle — er schickt dem
+Empfänger nicht als erste Handlung das ganze bisherige Protokoll. Dieser
+Anfangsstand wird sofort festgehalten, sonst spränge ein Neustart vor der
+ersten Ladung auf die inzwischen gewachsene Spitze. Lässt sich die Position
+eines Drains nicht lesen, **startet er nicht**: An der Spitze zu beginnen hieße
+überspringen, am Anfang zu beginnen hieße das ganze Protokoll zu wiederholen.
+
+**Ein gescheiterter Drain nimmt die anderen nicht mit.** Er bekommt eine
+Wartezeit, die sich mit jedem Fehlschlag verdoppelt (Grundwert
+`QKERN_COMPUTE_LOG_DRAIN_ERROR_MS`, Obergrenze fünf Minuten); die übrigen
+Drains derselben Umgebung laufen weiter. Der Prozess meldet dabei
+`compute.log_drain_failed` mit einem festen Code und dem Index der Umgebung in
+Ihrer Scope-Liste — keine Datenbankmeldung, keine Id, kein Endpunkt. Ein
+unerreichbares Ziel merkt der Sammler übrigens gar nicht: Er reiht ein, und die
+Zustellung mit Backoff und Dead Letter ist Sache der vorhandenen Outbox.
+
+Gebündelt wird nach Anzahl **oder** Alter
+(`QKERN_COMPUTE_LOG_DRAIN_BATCH_ENTRIES`, `QKERN_COMPUTE_LOG_DRAIN_BATCH_AGE_MS`):
+Die Anzahl hält die Last klein, das Alter verhindert, dass eine ruhige Umgebung
+ihre letzten Einträge stundenlang liegen lässt. Beim Anhalten geht ein offener
+Puffer **nicht** hinaus — er ist noch nicht eingereiht, seine Position ist noch
+nicht festgehalten, und der nächste Start liest denselben Bereich erneut.
+
+Die Console zeigt daraufhin je Drain, wann er zuletzt weitergeleitet hat und
+bis zu welcher Position — und „noch nie", solange nichts hinausgegangen ist.
+Der Prozess nennt den Sammler in seiner Startzeile.
+
 ## 10. MCP für KI-Agenten
 
 STDIO starten:

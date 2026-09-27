@@ -67,6 +67,10 @@ try {
     // laufen laesst, ist von einem ohne sie nicht zu unterscheiden — und genau
     // diese Verwechslung war 2.50 bis 2.52 der Zustand.
     + (runtime.databaseWebhookBridge ? " and the database webhook bridge" : "")
+    // Und derselbe Satz fuer den Log-Drain-Sammler (2.64). Zwischen 2.54 und
+    // 2.63 war er gebaut, zertifiziert und untaetig; ein Prozess, der ihn
+    // stumm laufen liesse, waere von einem ohne ihn nicht zu unterscheiden.
+    + (runtime.logDrainCollector ? " and the log drain collector" : "")
     + (bound ? ` (probe on http://${bound.host}:${bound.port}/ready)` : ""),
   );
   runtime.scopes.length > 0 && probe?.observer.runtimeStarted();

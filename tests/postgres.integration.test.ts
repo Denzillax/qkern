@@ -3880,6 +3880,293 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu zwei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+
+  /**
+   * Der Sammler als **Prozess** (2.64).
+   *
+   * Der Fall (2.63) daneben belegt die Kette und ruft den Sammler dabei selbst
+   * auf: `await collector.poll()`. Genau das ist der Unterschied, den dieser
+   * Fall schliesst. Niemand ruft hier irgendetwas auf. Es laeuft `npm run
+   * worker:compute` -- derselbe Prozess, den der Betrieb startet -- und die
+   * Ladung entsteht, weil er sie erzeugt.
+   *
+   * Belegt werden vier Dinge, die eine Bibliothek nicht belegen kann:
+   *
+   * 1. Der Prozess findet die Umgebung und den Drain selbst. In der
+   *    Konfiguration steht eine Scope-Liste, kein Drain; was gesammelt wird,
+   *    entscheidet er aus der Control Plane.
+   * 2. Er haelt seine Position dauerhaft, je Drain und Quelle. Nach dem
+   *    zweiten Start entsteht **keine** zweite Ladung fuer denselben Aufruf,
+   *    und der Aufruf aus der Pause geht nicht verloren -- kein Wiederholen,
+   *    kein Ueberspringen.
+   * 3. Er hoert auf dasselbe Signal wie die anderen Worker und endet sauber.
+   * 4. Er ist danach wirklich aus: Ein Aufruf waehrend der Pause erzeugt
+   *    nichts. Ein Fall, der nur das Ende des Kindprozesses prueft, koennte
+   *    einen Prozess uebersehen, der weiterarbeitet.
+   *
+   * Eigene Organisation mit eigenem Besitzer, wie 2.53, 2.59 und 2.63: Das
+   * gemeinsame afterAll muss organizationA und organizationB loswerden, und
+   * eine Organisation mit Audit-Zeilen laesst sich wegen
+   * audit_logs_organization_id_fkey nicht mehr loeschen. Abgeraeumt wird nur,
+   * was das Produkt hergibt -- und das ist hier nichts:
+   * `project_function_invocations` ist append-only, und die Drain-Flaeche
+   * loescht ausdruecklich nicht.
+   *
+   * Das Zeitbudget ist ausdruecklich gross: Der Fall startet zweimal einen
+   * echten Node-Prozess mit `tsx`, und jeder Start uebersetzt die Module neu.
+   * Gewartet wird trotzdem nie blind -- jede Wartezeit hat eine Bedingung,
+   * eine Frist und eine Meldung, die sagt, was stattdessen dastand.
+   */
+  it("(2.64) forwards through the running collector process and continues after a restart", async () => {
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const collectorOwner = randomUUID();
+    const collectorOrganization = randomUUID();
+    const collectorProject = randomUUID();
+    // Die Adresse steht in `project_function_invocations.invoked_by`, die
+    // Console zeigt sie, und weder die Ladung noch das Log des Prozesses darf
+    // sie tragen.
+    const actorRef = `drain-process-${collectorOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [collectorOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Drain Process', $2, $3)`,
+    [collectorOrganization, `drain-process-${collectorOrganization}`, collectorOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [collectorOrganization, collectorOwner]);
+    await owner.query(`INSERT INTO projects
+      (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Drain Process', $3, 'test', 'ready', $4)`,
+    [collectorProject, collectorOrganization, `drain-process-${collectorProject}`, collectorOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [collectorOrganization, collectorProject, `managed:${collectorProject}`]);
+
+    const scope = {
+      organizationId: collectorOrganization, projectId: collectorProject,
+      environment: "development" as const,
+    };
+    const admin = {
+      organizationId: collectorOrganization, actorRef, role: "admin" as const,
+      subject: collectorOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+
+    // Der Drain ueber den echten Dienst. Er ist das Einzige, was dieser Fall
+    // dem Prozess mitgibt -- seine Konfiguration nennt ihn nicht.
+    const drains = new PostgresLogDrainRepository(control);
+    const drain = await new LogDrainService({ repository: drains }).create(admin, scope, {
+      name: "prozess-logs-an-siem",
+      url: "https://siem.example.com/qkern/prozess-logs",
+      sources: ["function_invocations"],
+      signingSecretRef: databaseWebhookSecretRef!,
+    });
+    expect(drain.enabled).toBe(true);
+
+    // Die Function, deren Aufrufe der Drain traegt. Nur die Sandbox ist
+    // ersetzt; sie ist im Functions-Stack eigens zertifiziert.
+    const definitions = new ComputeDefinitionService({
+      repository: new PostgresComputeDefinitionRepository(control),
+    });
+    const image = `registry.example.com/qkern/probe@sha256:${"d".repeat(64)}`;
+    const probe = await definitions.createFunction(admin, scope, {
+      name: `drain-process-probe-${randomUUID().slice(0, 8)}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+    // Was ein Container drucken wuerde. 0045 speichert es nicht, der Drain
+    // kann es darum nicht tragen -- geprueft wird es trotzdem.
+    const containerOutput = `stdout-${randomUUID()}`;
+    const repository = new PostgresComputeDefinitionRepository(control);
+    const invoker = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      invoker: {
+        async invoke() {
+          return Object.freeze({ statusCode: 201, headers: {}, body: { printed: containerOutput } });
+        },
+      },
+    });
+
+    const children: ReturnType<typeof spawn>[] = [];
+    try {
+      /** Der ausgelieferte Prozess, nichts daneben. */
+      const start = () => {
+        const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+            // Cron aus: Dieser Fall misst den Sammler, und ein Cron-Lauf
+            // braeuchte eine Warteschlange, die hier nichts zu suchen hat.
+            QKERN_COMPUTE_CRON_ENABLED: "false",
+            QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
+            // Die Bruecke aus: Sie braeuchte eine Projektdatenbank, der
+            // Sammler nicht. Alle fuenf Quellen liegen in der Control Plane.
+            QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED: "false",
+            QKERN_COMPUTE_LOG_DRAINS_ENABLED: "true",
+            // Eine Zeile ist eine Ladung. Sonst wartete dieser Fall auf das
+            // Altersfenster der Buendelung, und das misst er gar nicht.
+            QKERN_COMPUTE_LOG_DRAIN_BATCH_ENTRIES: "1",
+            QKERN_COMPUTE_LOG_DRAIN_POLL_MS: "200",
+            QKERN_COMPUTE_LOG_DRAIN_DISCOVERY_MS: "1000",
+            QKERN_COMPUTE_WORKER_ID: "certification-drains-1",
+            // Die Scope-Liste nennt die Umgebung, nicht den Drain. Was
+            // ueberhaupt gesammelt wird, entscheidet der Prozess.
+            QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+            QKERN_RUNTIME_MODE: "postgres",
+            QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+            QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            QKERN_WEBHOOK_VAULT_KV_URL: vaultKvUrl!,
+            QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
+          },
+        });
+        let noise = "";
+        child.stderr?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        child.stdout?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        children.push(child);
+        return { child, output: () => noise };
+      };
+
+      const batches = async () => {
+        const result = await owner.query<{
+          event_type: string; payload: { entries: Array<Record<string, unknown>> };
+        }>(`SELECT event_type, payload FROM project_webhook_deliveries
+             WHERE organization_id = $1 AND project_id = $2
+             ORDER BY occurred_at, id`, [collectorOrganization, collectorProject]);
+        return result.rows;
+      };
+
+      const cursors = async () => {
+        const result = await owner.query<{ position: string; forwarded: boolean }>(
+          `SELECT position, forwarded_at IS NOT NULL AS forwarded
+             FROM project_log_drain_cursors
+            WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+          [collectorOrganization, collectorProject]);
+        return result.rows;
+      };
+
+      /** Wartet auf eine Bedingung mit Frist und Diagnose, nie blind. */
+      const until = async (
+        what: string, budgetMs: number, condition: () => Promise<boolean>, diagnose: () => string,
+      ) => {
+        const deadline = Date.now() + budgetMs;
+        while (Date.now() < deadline) {
+          if (await condition()) return;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        expect.fail(`${what} blieb ${budgetMs} ms aus. ${diagnose()}`);
+      };
+
+      /** Beendet den Prozess ueber **das** Signal und wartet auf sein Ende. */
+      const stop = async (runner: { child: ReturnType<typeof spawn>; output: () => string }) => {
+        runner.child.kill("SIGTERM");
+        const exit = await Promise.race([
+          new Promise<number | null>((resolve) => runner.child.once("exit", resolve)),
+          new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 30_000)),
+        ]);
+        expect(exit, `Der Prozess endete nicht auf SIGTERM: ${runner.output().slice(-800)}`)
+          .not.toBe("timeout");
+        return exit;
+      };
+
+      const invocationIds = (rows: Awaited<ReturnType<typeof batches>>) =>
+        rows.flatMap((row) => row.payload.entries.map((entry) => entry.invocationId as string));
+
+      // --- Erster Lauf -------------------------------------------------------
+      const first = start();
+      await until("Die Startzeile des Prozesses", 120_000,
+        async () => first.output().includes("log drain collector"),
+        () => `Ausgabe: ${first.output().slice(-800)}`);
+
+      // Erst, wenn der Prozess seinen Anfangsstand festgehalten hat, ist der
+      // naechste Aufruf sicher **nach** der Spitze. Ohne diese Bedingung waere
+      // der Fall ein Wettlauf zwischen Testprozess und Sammler.
+      await until("Der Anfangsstand des Drains", 90_000,
+        async () => (await cursors()).length === 1,
+        () => `Ausgabe: ${first.output().slice(-800)}`);
+      expect((await cursors())[0], "der Anfangsstand behauptet eine Weiterleitung")
+        .toMatchObject({ position: "", forwarded: false });
+
+      /** Die Kennung des juengsten Aufrufs -- der Dienst vergibt sie, nicht dieser Fall. */
+      const newestInvocation = async () => (await definitions.readFunctionInvocationLog(
+        admin, scope, { limit: 1 })).rows[0].invocationId;
+
+      await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+      const firstCall = await newestInvocation();
+      await until("Die Ladung aus dem laufenden Prozess", 90_000,
+        async () => (await batches()).length >= 1,
+        () => `Ausgabe: ${first.output().slice(-800)}`);
+
+      const afterFirst = await batches();
+      expect(afterFirst).toHaveLength(1);
+      expect(afterFirst[0].event_type).toBe("log.function_invocations");
+      expect(invocationIds(afterFirst)).toEqual([firstCall]);
+      expect(JSON.stringify(afterFirst[0].payload),
+        "die Ladung traegt die Adresse des Aufrufers").not.toContain(actorRef);
+      expect(JSON.stringify(afterFirst[0].payload),
+        "die Ladung traegt die Ausgabe des Containers").not.toContain(containerOutput);
+      // Die Position liegt dauerhaft in der Control Plane, nicht im Prozess.
+      expect((await cursors())[0], "der Prozess hat seine Position nicht festgehalten")
+        .toMatchObject({ forwarded: true });
+
+      // --- Anhalten ----------------------------------------------------------
+      expect(await stop(first)).toBe(0);
+
+      // Und er ist wirklich aus: Ein Aufruf waehrend der Pause erzeugt nichts.
+      // Ohne diese Probe pruefte der Fall nur das Ende eines Kindprozesses,
+      // nicht das Ende seiner Arbeit.
+      await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+      const pausedCall = await newestInvocation();
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(await batches(), "der angehaltene Prozess hat weitergearbeitet").toHaveLength(1);
+
+      // --- Zweiter Lauf: kein Wiederholen, kein Ueberspringen ----------------
+      const second = start();
+      await until("Die Startzeile des zweiten Prozesses", 120_000,
+        async () => second.output().includes("log drain collector"),
+        () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      await until("Die Ladung aus der Pause", 90_000,
+        async () => (await batches()).length >= 2,
+        () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+      const thirdCall = await newestInvocation();
+      await until("Die Ladung nach dem Neustart", 90_000,
+        async () => (await batches()).length >= 3,
+        () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      const afterSecond = await batches();
+      // Genau drei: die erste aus dem ersten Lauf, die aus der Pause und die
+      // nach dem Neustart. Eine vierte waere eine Wiederholung, zwei waeren
+      // ein verlorener Aufruf.
+      expect(afterSecond, `Ausgabe: ${second.output().slice(-800)}`).toHaveLength(3);
+      expect(invocationIds(afterSecond))
+        .toEqual([firstCall, pausedCall, thirdCall]);
+
+      expect(await stop(second)).toBe(0);
+
+      // Was der Prozess ueber sich meldet, ist redigiert: kein Ziel, keine
+      // Geheimnisreferenz, keine Adresse, keine Container-Ausgabe.
+      for (const runner of [first, second]) {
+        expect(runner.output()).not.toContain(actorRef);
+        expect(runner.output()).not.toContain(containerOutput);
+        expect(runner.output()).not.toContain("siem.example.com");
+        expect(runner.output()).not.toContain(databaseWebhookSecretRef!);
+      }
+    } finally {
+      for (const child of children) child.kill("SIGKILL");
+    }
+    // 600 Sekunden: zwei echte Node-Starts mit `tsx`, jeder mit eigener
+    // Uebersetzung der Module, dazu drei bewusst grosszuegige Wartefristen.
+    // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
+  }, 600_000);
 });
 
 /**
