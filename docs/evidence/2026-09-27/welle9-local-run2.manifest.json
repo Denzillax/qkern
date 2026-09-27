@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle9-local-run2.log",
+  "commit": "466be5353072cb7287c140825ad8331ffc4a8055",
+  "commitSubject": "merge: Fremde Datenquellen aus slice/wrappers",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "310 passed | 38 skipped (348)",
+  "tests": "2141 passed | 291 skipped (2432)",
+  "passed": 2141,
+  "failed": 0,
+  "skipped": 291,
+  "images": []
+}

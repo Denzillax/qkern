@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.56.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.57.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,31 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.56.0`
-- Neuester Slice: 2.56 Drei Leseflächen, drei ausgesprochene Grenzen.
+- Paketversion: `2.57.0`
+- Neuester Slice: 2.57 Drei Seiten, die mit dem beginnen, was sie nicht haben.
+  `logs-postgres` heißt jetzt **Postgres-Zustand**: Ein Serverlog gibt es
+  nicht, QKERN hat keinen Dateizugriff auf die Projektdatenbank. Gelesen wird
+  über `inspectDatabaseHealth` aus `pg_stat_database` und, je nach
+  Serverversion, `pg_stat_checkpointer` oder `pg_stat_bgwriter`; welche Sicht
+  es gibt, fragt der Dienst mit `to_regclass` nach, weil ein unbekannter Name
+  schon beim Parsen scheitert. Ohne Datenprüfsummen meldet die Antwort
+  `null` und nicht `0`. `auth-performance` zeigt, **was** scheitert, je
+  Handlungsart und seit wann, und sagt, dass es **keine** Antwortzeit gibt:
+  Die Audit-Kette hält einen Zeitpunkt je Eintrag, keine Dauer.
+  `int-wrappers` liest fremde Datenquellen über `inspectForeignDataWrappers`;
+  `srvoptions` darf jede Rolle lesen, die den Katalog liest, und darum zeigt
+  QKERN den Wert nur bei Schlüsseln auf einer **Positivliste**
+  (`SHOWN_SERVER_OPTION_KEYS`), `umoptions` gar nicht.
+
+  Drei Dinge für den nächsten Agenten. **`docs/RELEASE_2.57.md` gab es schon
+  einmal** als Datei, mit den Fallnummern eines Schnitts als Versionsnummer;
+  sie heißt jetzt `docs/SLICE_BERATERREGELN.md`. **Das Scratchpad ist zwischen
+  parallelen Agenten geteilt**: Sicherungsdateien brauchen eindeutige Namen.
+  Und **zwei Zweige hängen ihren Fall an dieselbe Stelle** von
+  `tests/postgres.integration.test.ts`; beide Seiten des Konflikts zu behalten
+  schiebt die Fälle ineinander, der neue Fall gehört als ganzer Block
+  eingesetzt. Im Browser nicht gesehen
+- Davor: 2.56 Drei Leseflächen, drei ausgesprochene Grenzen.
   `obs-query-performance` liest `pg_stat_statements` über
   `inspectStatements` und zeigt **keinen Abfragetext**, auch keinen
   normalisierten: Ein Utility-Befehl steht mit seinem Literal in der Sicht,

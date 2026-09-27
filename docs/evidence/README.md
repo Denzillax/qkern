@@ -1644,3 +1644,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle8-local-run1.log` | Vitest lokal (Windows) | 2130 bestanden, exit 0 |
 | `2026-09-27/welle8-local-run2.log` | Vitest lokal (Windows) | 2130 bestanden, exit 0, Wiederholung |
 
+## Läufe zu Release 2.57 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle9-run1.log` | PostgreSQL 17 | 207 von 207, exit 0 |
+| `2026-09-27/welle9-run2.log` | PostgreSQL 17 | 207 von 207, exit 0, Wiederholung |
+| `2026-09-27/welle9-mutation-pglog.log` | Mutation: fehlende Prüfsumme wird Null | **206 von 207, exit 1 – absichtlich** |
+| `2026-09-27/welle9-mutation-authperf.log` | Mutation: alle Handlungen gelten als gescheitert | **206 von 207, exit 1 – absichtlich** |
+| `2026-09-27/welle9-mutation-wrappers.log` | Mutation: jede Serveroption zeigt ihren Wert | **206 von 207, exit 1 – absichtlich** |
+| `2026-09-27/welle9-local-run1.log` | Vitest lokal (Windows) | 2141 bestanden, exit 0 |
+| `2026-09-27/welle9-local-run2.log` | Vitest lokal (Windows) | 2141 bestanden, exit 0, Wiederholung |
+

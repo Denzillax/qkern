@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle9-run1.log",
+  "commit": "466be5353072cb7287c140825ad8331ffc4a8055",
+  "commitSubject": "merge: Fremde Datenquellen aus slice/wrappers",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 56,
+  "testFiles": "31 passed (31)",
+  "tests": "207 passed (207)",
+  "passed": 207,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

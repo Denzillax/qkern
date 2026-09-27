@@ -5868,3 +5868,55 @@ normalisierten. Die Planungszeit ist die einzige gemessene Zahl der
 Abfrage-Einblicke; alles andere ist die Schaetzung des Planers. Die
 Infrastruktur kennt keine Instanzgroesse und keine Platte. Im Browser nicht
 gesehen.
+
+## Welle neun (2.57): was nicht da ist, steht auch da
+
+Drei Schnitte, drei Platzhalter weniger, und diesmal beginnt jede der drei
+Seiten mit dem, was sie **nicht** hat.
+
+Logs -> Postgres versprach ein Serverlog. Es gibt keines: QKERN hat keinen
+Dateizugriff auf die Projektdatenbank, und eine Flaeche, die so taete, waere
+eine Luege. Gebaut ist stattdessen der Zustand aus den Statistiksichten,
+ehrlich benannt. Dabei hat der Schnitt zwei Dinge richtig gemacht, die man
+leicht falsch macht. Erstens fragt der Dienst mit `to_regclass` nach, welche
+Sicht ein Server hat, statt es anzunehmen: PostgreSQL 17 hat die
+Checkpoint-Zaehler nach `pg_stat_checkpointer` verschoben, und ein
+unbekannter Name scheitert schon beim Parsen. Zweitens meldet die Antwort
+`null` statt `0`, wenn eine Datenbank keine Pruefsummen hat. Eine Null waere
+die Behauptung, es sei nachgesehen worden; die Mutationsprobe dreht genau das
+um.
+
+Auth-Leistung versprach Antwortzeiten. Die gibt es nicht, und zwar aus einem
+Grund, der in der Ablage steht: Ein Eintrag der Audit-Kette traegt einen
+Zeitpunkt, keine Dauer, und den zweiten Zeitpunkt derselben Handlung
+schreibt kein Code. Dafuer war die Fehlerrate je Handlungsart laengst da und
+wurde weggeworfen: Die Aggregation zaehlt seit 2.47 `COUNT(*) FILTER (WHERE
+status = 'failed')` je Eimer **und** je Handlung, und beim Aufbau der Reihe
+fiel das zu einer Summe je Eimer zusammen. Die Seite zeigt es jetzt, ohne
+eine einzige zusaetzliche Abfrage.
+
+Wrappers liest fremde Datenquellen, und der heikle Teil sind die Optionen.
+`srvoptions` darf jede Rolle lesen, die den Katalog liest, und dort kann ein
+Passwort stehen. Gezeigt wird der Wert nur bei Schluesseln auf einer
+Positivliste; jede andere Option steht mit Namen da und ohne Wert. Eine
+Sperrliste waere bei `pwd` oder `api_key` blind gewesen. Die Entscheidung
+steht im Dienst und nicht in der Ansicht, damit sie auch fuer die
+MCP-Bruecke gilt, und der Zertifizierungsfall legt ein echtes Geheimnis an
+und liest als Gegenprobe nach, dass es im Katalog wirklich steht.
+
+Drei Befunde im Verfahren. Eine Datei `RELEASE_2.57.md` trug die Fallnummern
+eines Schnitts als Versionsnummer, fuer ein Release, das es nie gab; sie
+heisst jetzt `SLICE_BERATERREGELN.md`. Das Scratchpad ist zwischen den
+Agenten geteilt, und zwei haben dieselbe Datei unter demselben Namen
+gesichert. Und beim Zusammenfuehren haengen zwei Zweige ihren neuen Fall an
+dieselbe Stelle der Testdatei: Beide Seiten zu behalten schiebt die Faelle
+ineinander.
+
+Checkpoint `2.57.0` am 27. September 2026: PostgreSQL 17 mit 207 von 207,
+exit 0, zweimal reproduziert; Lokal 2141 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert.
+
+Nicht erbracht: Vier neue Routen stehen nicht in der OpenAPI-Beschreibung.
+Postgres-Zustand und Berichte -> Datenbank ueberschneiden sich. Die Zaehler
+haben keinen Zeitpunkt. Eine gescheiterte Anmeldung ist kein Angriff. Im
+Browser nicht gesehen.

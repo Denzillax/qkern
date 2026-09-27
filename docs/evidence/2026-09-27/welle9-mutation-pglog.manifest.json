@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: fehlende Pruefsumme wird Null",
+  "log": "welle9-mutation-pglog.log",
+  "commit": "466be5353072cb7287c140825ad8331ffc4a8055",
+  "commitSubject": "merge: Fremde Datenquellen aus slice/wrappers",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 56,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 206 passed (207)",
+  "passed": 206,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
