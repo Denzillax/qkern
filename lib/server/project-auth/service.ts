@@ -75,6 +75,24 @@ import {
   type ProjectAuthReturnTargetRejection,
 } from "@/lib/server/project-auth/return-targets";
 import {
+  DEFAULT_PROJECT_AUTH_HOOKS,
+  parseProjectAuthHooks,
+  projectAuthClaimsHookPayload,
+  projectAuthClaimsHookVerdict,
+  projectAuthSignInHookPayload,
+  projectAuthSignInHookVerdict,
+  PROJECT_AUTH_HOOK_BOUNDS,
+  PROJECT_AUTH_HOOK_POINTS,
+  PROJECT_AUTH_RESERVED_CLAIMS,
+  type ProjectAuthClaimValue,
+  type ProjectAuthHookMethod,
+  type ProjectAuthHookPort,
+  type ProjectAuthHookReason,
+  type ProjectAuthHookRefusal,
+  type ProjectAuthHookRejection,
+  type ProjectAuthHooks,
+} from "@/lib/server/project-auth/hooks";
+import {
   hashProjectAuthToken,
   ProjectAuthTokenError,
   ProjectAuthTokenService,
@@ -235,6 +253,36 @@ export type PublicProjectAuthPasswordProtection = {
 };
 
 /** Die Ablehnung einer Einstellung des Passwortschutzes, mit Grund und Feld. */
+/**
+ * Die Auth-Hooks einer Umgebung, wie die Console sie sieht (2.77).
+ *
+ * Mitgeliefert werden die Raender, die Punkte, die reservierten Namen und der
+ * Satz, was bei einem Ausfall gilt. Die Console soll das nicht aus eigenem
+ * Wissen behaupten muessen: Was reserviert ist, entscheidet der Dienst.
+ */
+export type PublicProjectAuthHooks = {
+  hooks: ProjectAuthHooks;
+  defaults: ProjectAuthHooks;
+  bounds: typeof PROJECT_AUTH_HOOK_BOUNDS;
+  points: readonly string[];
+  reservedClaims: readonly string[];
+  /** Was bei einem Ausfall gilt, je Punkt. Heute an beiden `deny`. */
+  failureMode: Record<"sign_in" | "access_token_claims", "deny">;
+  configured: boolean;
+  updatedAt: string | null;
+};
+
+export class ProjectAuthHookError extends Error {
+  constructor(
+    readonly reason: ProjectAuthHookRejection,
+    readonly field: string,
+  ) {
+    super("Invalid Project Auth hook");
+    this.name = "ProjectAuthHookError";
+  }
+}
+recognisedByName(ProjectAuthHookError, "ProjectAuthHookError");
+
 export class ProjectAuthPasswordProtectionError extends Error {
   constructor(
     readonly reason: ProjectAuthPasswordProtectionRejection,
@@ -303,6 +351,21 @@ export type ProjectAuthErrorCode =
   | "WEAK_PASSWORD"
   | "DELIVERY_UNAVAILABLE"
   | "RESOURCE_NOT_FOUND"
+  // Ein Auth-Hook (2.77) hat die Anmeldung abgewiesen. Der Hook hat
+  // geantwortet, und er hat `deny` gesagt; das ist eine Entscheidung des
+  // Projekts und keine Stoerung. Warum, sagt diese Antwort nicht: Den Grund
+  // kennt der hinterlegte Code, nicht QKERN.
+  | "HOOK_DENIED"
+  // Ein Auth-Hook hat nicht geantwortet, nicht rechtzeitig geantwortet oder
+  // etwas geantwortet, das keine Antwort ist. Beide Punkte fallen geschlossen:
+  // Es entsteht keine Sitzung und kein Token. Das ist die unbequeme Haelfte
+  // dieses Schnitts, und sie steht woertlich auf der Seite Auth-Hooks.
+  | "HOOK_UNAVAILABLE"
+  // Ein Auth-Hook hat etwas verlangt, das er nicht verlangen darf: einen
+  // reservierten Anspruch, einen nicht erklaerten Anspruch oder einen Wert
+  // ausserhalb der Grenzen. Auch hier entsteht kein Token; der Anspruch wird
+  // nicht stillschweigend uebergangen.
+  | "HOOK_REJECTED"
   | "AUDIT_UNAVAILABLE";
 
 export class ProjectAuthError extends Error {
@@ -340,6 +403,18 @@ export type ProjectAuthServiceDependencies = {
   oidcClient: ProjectAuthOidcClient;
   /** Optional: ohne Sink schreibt der Dienst keine Audit-Ereignisse. */
   audit?: ProjectAuthAuditSink;
+  /**
+   * Der Weg zu den hinterlegten Functions (2.77).
+   *
+   * Ohne Port gibt es keinen Weg zu einem Container. Ein Punkt **ohne**
+   * eingetragene Function merkt davon nichts und ruft weiterhin nichts. Ein
+   * Punkt **mit** eingetragener Function faellt dann geschlossen, genau wie bei
+   * jeder anderen fehlenden Antwort: Ein Hook, den niemand rufen kann, hat
+   * nicht geantwortet, und ein fehlender Aufrufweg ist kein Grund, eine
+   * eingetragene Regel stillschweigend zu uebergehen. Wer Project Auth ohne
+   * Compute betreibt, traegt keinen Hook ein.
+   */
+  hooks?: ProjectAuthHookPort;
   callbackBaseUrl: string;
   allowedRedirectOrigins: ReadonlySet<string>;
   exposeDeliveryTokens?: boolean;
@@ -580,13 +655,24 @@ export class ProjectAuthService {
       await this.dependencies.repository.revokeSessionFamily(scope, current.familyId, now, false);
       throw new ProjectAuthError("MFA_REQUIRED");
     }
+    // Die Erneuerung ist keine Anmeldung: Der Punkt `sign_in` laeuft hier
+    // absichtlich nicht, der Punkt `access_token_claims` aber schon, mit
+    // `reason: "refresh"`.
+    //
+    // Er laeuft **vor** `rotateSession`, und das ist keine Feinheit. Nach der
+    // Rotation ist das alte Refresh Token widerrufen; ein Hook, der danach
+    // faellt, haette die Sitzungsfamilie erledigt, weil es kein neues Token
+    // gibt und das alte nie wieder gilt. So faellt bloss dieser eine Versuch,
+    // die Familie bleibt stehen, und der naechste Versuch nach einem Neustart
+    // des Containers kommt durch. Ein Neustart soll keine Sitzung kosten.
+    const claims = await this.hookClaims(scope, user, current.assurance, "refresh", now);
     const nextToken = this.opaqueToken("refresh");
     if (!REFRESH_TOKEN.test(nextToken)) throw new ProjectAuthError("INVALID_INPUT");
     const next = this.session(scope, user.id, current.assurance, now, nextToken, current.familyId);
     const rotation = await this.dependencies.repository.rotateSession(scope, current.id, next, now);
     if (rotation === "replayed") throw new ProjectAuthError("TOKEN_REPLAYED");
     if (rotation !== "rotated") throw new ProjectAuthError("INVALID_TOKEN");
-    return this.sessionResult(scope, user, next, nextToken, now);
+    return this.sessionResult(scope, user, next, nextToken, now, claims);
   }
 
   async verifyAccess(scope: ProjectAuthScope, accessToken: string): Promise<VerifiedProjectAuthPrincipal> {
@@ -849,6 +935,194 @@ export class ProjectAuthService {
     );
   }
 
+  /**
+   * Die Auth-Hooks dieser Umgebung (2.77), zusammen mit den Vorgaben, den
+   * Raendern, den reservierten Namen und dem, was bei einem Ausfall gilt. Ohne
+   * Zeile in `project_auth_settings` ruft nichts, und `configured` ist falsch.
+   */
+  async readAuthHooks(scope: ProjectAuthScope): Promise<PublicProjectAuthHooks> {
+    assertScope(scope);
+    const settings = await this.dependencies.repository.readSettings(scope);
+    return publicHooks(settings?.hooks, settings?.updatedAt ?? null, Boolean(settings));
+  }
+
+  /**
+   * Setzt beide Punkte. Beide zusammen, weil ein Koerper mit nur einem offen
+   * liesse, was mit dem anderen geschehen soll.
+   *
+   * Jede Aenderung schreibt einen Audit-Eintrag, und zwar mit dem, was zaehlt:
+   * je Punkt der Name der Function (oder dass keine eingetragen ist), die Frist
+   * und, beim Anspruchs-Hook, die erklaerten Namen. Die Namen sind keine
+   * Geheimnisse, sie stehen danach in jedem Token. Was **nicht** darin steht,
+   * ist eine Nutzlast, ein Anspruchswert oder eine Adresse: Diese Zeile sagt,
+   * wer gerufen werden darf, nicht was dabei herauskam.
+   */
+  async setAuthHooks(
+    scope: ProjectAuthScope,
+    hooks: unknown,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthHooks> {
+    assertScope(scope);
+    const parsed = parseProjectAuthHooks(hooks);
+    if (!parsed.ok) throw new ProjectAuthHookError(parsed.reason, parsed.field);
+    const settings = await this.dependencies.repository.writeAuthHooks(scope, parsed.hooks, this.now());
+    await this.recordAudit({
+      scope, action: "project_auth.hooks.changed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "succeeded",
+      // `claimsFunction` und nicht `accessTokenFunction`: Die Schwaerzung in
+      // `redactSensitive` trifft jeden Schluessel, der "token" enthaelt, und
+      // machte aus dem Namen ein "[REDACTED]". Die Regel bleibt grob und
+      // richtig; der Eintrag bekommt Namen, die nichts verbergen, was kein
+      // Geheimnis ist. Ein Funktionsname und eine Anspruchsliste sind keine:
+      // Die Liste steht danach in jedem Token.
+      metadata: {
+        signInFunction: parsed.hooks.signIn.functionName ?? "none",
+        signInTimeoutMs: parsed.hooks.signIn.timeoutMs,
+        claimsFunction: parsed.hooks.accessTokenClaims.functionName ?? "none",
+        claimsTimeoutMs: parsed.hooks.accessTokenClaims.timeoutMs,
+        // Getrennt mit einem Punkt und nicht mit einem Komma: Die Bereinigung
+        // der Audit-Kette laesst in einem Metadatenwert nur `[A-Za-z0-9_:.-]`
+        // durch, und ein Wert mit einem Komma faellt dort **still** weg. Ein
+        // ungewohntes Trennzeichen ist besser als eine Zeile, in der die
+        // erklaerten Ansprueche unbemerkt fehlen. Eine leere Liste ist ein
+        // leerer Wert und kein fehlender Schluessel.
+        claimsAllowed: parsed.hooks.accessTokenClaims.claims.join("."),
+      },
+    });
+    return publicHooks(settings.hooks, settings.updatedAt, true);
+  }
+
+  /**
+   * Der Punkt `sign_in` (2.77), und er steht genau dort, wo er wirken kann:
+   * vor `createSession`, also bevor eine Sitzung in der Datenbank existiert.
+   *
+   * **Wo er nicht steht, und warum das gesagt werden muss:** nicht in `refresh`.
+   * Eine Erneuerung ist keine Anmeldung. Wer diesen Hook einschaltet oder seine
+   * Regel verschaerft, aendert damit, wer sich **das naechste Mal** anmelden
+   * darf, und beendet keine laufende Sitzung. Wer eine laufende Sitzung beenden
+   * will, widerruft sie unter Auth → Sitzungen.
+   *
+   * **Was bei keiner Antwort gilt:** Es entsteht keine Sitzung. Geschlossen,
+   * ohne Ausnahme. Ein Gatter, das im Zweifel durchlaesst, ist Zierde, und wer
+   * es offen wollte, braeuchte den Punkt nicht.
+   *
+   * Im Audit landen beide Faelle getrennt: `denied` heisst, der hinterlegte
+   * Code hat entschieden; alles andere heisst, er hat es nicht getan. Fuer den
+   * Nutzer ist das Ergebnis dasselbe, fuer den Betreiber nicht.
+   */
+  private async assertSignInHook(
+    scope: ProjectAuthScope,
+    user: ProjectAuthUser,
+    assurance: ProjectAuthAssurance,
+    method: ProjectAuthHookMethod,
+    now: Date,
+  ): Promise<void> {
+    const binding = await this.hookBinding(scope, "signIn");
+    if (!binding) return;
+    const answer = await this.callHook(scope, "sign_in", binding, projectAuthSignInHookPayload({
+      projectId: scope.projectId, environment: scope.environment, userId: user.id,
+      email: user.email, emailVerified: Boolean(user.emailVerifiedAt),
+      method, assurance, attemptedAt: now,
+    }));
+    const verdict = projectAuthSignInHookVerdict(answer);
+    if (verdict.allowed) return;
+    await this.recordAudit(this.userEvent(scope, "project_auth.hook.refused", user.id, "failed", {
+      point: "sign_in", function: binding.functionName, reason: verdict.reason,
+    }));
+    throw new ProjectAuthError(verdict.reason === "denied" ? "HOOK_DENIED" : "HOOK_UNAVAILABLE");
+  }
+
+  /**
+   * Der Punkt `access_token_claims` (2.77), gerufen bei **jeder** Ausgabe eines
+   * Access Token.
+   *
+   * Dass er auch bei der Erneuerung laeuft, ist keine Bequemlichkeit, sondern
+   * der Unterschied zwischen einem Anspruch und einer Begruessung: Ein Access
+   * Token lebt 15 Minuten. Ein Hook, der nur bei der Anmeldung laeuft, liesse
+   * die Ansprueche nach einer Viertelstunde stillschweigend verschwinden, und
+   * die Policies dahinter lesen den Unterschied nicht.
+   *
+   * Abgewiesen wird geschlossen und **laut**: Ein Hook, der einen reservierten
+   * Anspruch setzen will, bekommt kein Token, und der Versuch steht im Audit.
+   * Der Anspruch wird nicht uebergangen. Ein uebergangener Anspruch waere eine
+   * Meinungsverschiedenheit darueber, wer dieser Nutzer ist, die niemand
+   * bemerkt.
+   */
+  private async hookClaims(
+    scope: ProjectAuthScope,
+    user: ProjectAuthUser,
+    assurance: ProjectAuthAssurance,
+    reason: ProjectAuthHookReason,
+    now: Date,
+  ): Promise<Record<string, ProjectAuthClaimValue>> {
+    const binding = await this.hookBinding(scope, "accessTokenClaims");
+    if (!binding) return {};
+    const answer = await this.callHook(scope, "access_token_claims", binding, projectAuthClaimsHookPayload({
+      projectId: scope.projectId, environment: scope.environment, userId: user.id,
+      email: user.email, emailVerified: Boolean(user.emailVerifiedAt),
+      assurance, reason, issuedAt: now,
+    }));
+    const verdict = projectAuthClaimsHookVerdict(answer, binding.claims);
+    if (verdict.ok) return verdict.claims;
+    await this.recordAudit(this.userEvent(scope, "project_auth.hook.refused", user.id, "failed", {
+      point: "access_token_claims", function: binding.functionName, reason: verdict.reason,
+      // Der Name des beanstandeten Anspruchs, nie sein Wert: Der Name ist die
+      // Aussage (`role` ist reserviert), der Wert waere die Nutzlast.
+      ...(verdict.claim ? { claim: verdict.claim } : {}),
+    }));
+    throw new ProjectAuthError(hookRefusalCode(verdict.reason));
+  }
+
+  /**
+   * Die geltende Bindung eines Punktes, oder `null`, wenn dieser Punkt nichts
+   * ruft.
+   *
+   * Gelesen wird bei jedem Aufruf frisch, wie beim Aufrufdienst auch: Ein
+   * zwischengespeichertes Bild liesse einen abgeschalteten Hook weiterlaufen,
+   * und ein Betreiber, der einen Hook abschaltet, will ihn abgeschaltet haben.
+   *
+   * Ein Lesefehler auf den Einstellungen faellt hier als Fehler nach oben und
+   * wird **nicht** zu "kein Hook". Anders als beim Zaehler (2.56), der bei
+   * eigenem Fehler oeffnet: Hier waere das Oeffnen das Gegenteil dessen, was
+   * eingestellt ist.
+   */
+  private async hookBinding(
+    scope: ProjectAuthScope,
+    point: "signIn" | "accessTokenClaims",
+  ): Promise<{ functionName: string; timeoutMs: number; claims: string[] } | null> {
+    const settings = await this.dependencies.repository.readSettings(scope);
+    const hooks = settings?.hooks ?? DEFAULT_PROJECT_AUTH_HOOKS;
+    const binding = point === "signIn" ? hooks.signIn : hooks.accessTokenClaims;
+    if (!binding.functionName) return null;
+    return {
+      functionName: binding.functionName,
+      timeoutMs: binding.timeoutMs,
+      claims: point === "accessTokenClaims" ? [...hooks.accessTokenClaims.claims] : [],
+    };
+  }
+
+  /**
+   * Der Aufruf selbst, ueber den Port und damit ueber den vorhandenen
+   * Aufrufdienst. Ohne Port gibt es keinen Weg zu einem Container; dann hat der
+   * eingetragene Hook nicht geantwortet, und mehr ist dazu nicht zu sagen.
+   */
+  private async callHook(
+    scope: ProjectAuthScope,
+    point: (typeof PROJECT_AUTH_HOOK_POINTS)[number],
+    binding: { functionName: string; timeoutMs: number },
+    payload: ReturnType<typeof projectAuthSignInHookPayload> | ReturnType<typeof projectAuthClaimsHookPayload>,
+  ) {
+    const port = this.dependencies.hooks;
+    if (!port) return { answered: false as const, error: "no_invocation_path" };
+    return port.call({
+      point, organizationId: scope.organizationId, projectId: scope.projectId,
+      environment: scope.environment, functionName: binding.functionName,
+      timeoutMs: binding.timeoutMs, payload,
+    });
+  }
+
   /** Die geltende Leckliste: die hinterlegte, sonst die eingebaute. */
   private leakList(): ProjectAuthLeakList {
     return this.dependencies.leakedPasswords ?? projectAuthBuiltInLeakList();
@@ -1069,7 +1343,7 @@ export class ProjectAuthService {
       }));
       throw new ProjectAuthError("INVALID_MFA");
     }
-    const result = await this.createSessionResult(scope, user, "aal2", now);
+    const result = await this.createSessionResult(scope, user, "aal2", now, "mfa");
     // Die Anmeldung mit zweitem Faktor endet hier: ein Ereignis fuer den
     // Faktor, eines fuer die Anmeldung, damit ein Filter auf Anmeldungen
     // auch diese findet.
@@ -1473,24 +1747,40 @@ export class ProjectAuthService {
         expiresAt: expiresAt.toISOString(),
       };
     }
-    const result = await this.createSessionResult(scope, user, "aal1", now);
+    const result = await this.createSessionResult(scope, user, "aal1", now, method);
     await this.recordAudit(this.userEvent(scope, "project_auth.login.succeeded", user.id, "succeeded", {
       method, ...(provider ? { provider } : {}), assurance: "aal1",
     }));
     return result;
   }
 
+  /**
+   * Die einzige Stelle, an der eine Sitzung aus einer Anmeldung entsteht: beide
+   * Wege dorthin (mit und ohne zweitem Faktor) laufen hier zusammen. Darum
+   * steht der Punkt `sign_in` (2.77) hier und nicht in jedem Anmeldeweg
+   * einzeln; eine Regel, die an einer Tuer haengt, ist keine Regel.
+   *
+   * Reihenfolge: **beide** Hooks, dann `createSession`. Ein abgewiesener
+   * Versuch soll keine Zeile in `project_auth_sessions` hinterlassen. Dass auch
+   * der Anspruchs-Hook davor steht, hat der Zertifizierungsfall (2.77)
+   * erzwungen: Stand er dahinter, blieb nach einem Hook, der einen reservierten
+   * Anspruch wollte, eine Sitzung ohne Token zurueck. Eine Sitzung, zu der es
+   * nie ein Token gab, ist ein Rest und keine Anmeldung.
+   */
   private async createSessionResult(
     scope: ProjectAuthScope,
     user: ProjectAuthUser,
     assurance: ProjectAuthAssurance,
     now: Date,
+    method: ProjectAuthHookMethod,
   ): Promise<ProjectAuthSessionResult> {
+    await this.assertSignInHook(scope, user, assurance, method, now);
+    const claims = await this.hookClaims(scope, user, assurance, "sign_in", now);
     const refreshToken = this.opaqueToken("refresh");
     if (!REFRESH_TOKEN.test(refreshToken)) throw new ProjectAuthError("INVALID_INPUT");
     const session = this.session(scope, user.id, assurance, now, refreshToken, this.id());
     await this.dependencies.repository.createSession(session);
-    return this.sessionResult(scope, user, session, refreshToken, now);
+    return this.sessionResult(scope, user, session, refreshToken, now, claims);
   }
 
   private session(
@@ -1509,14 +1799,26 @@ export class ProjectAuthService {
     };
   }
 
+  /**
+   * Die einzige Stelle, an der ein Access Token entsteht: die neue Anmeldung und
+   * die Erneuerung laufen beide hier durch.
+   *
+   * Die Ansprueche des Hooks (2.77) kommen als Argument herein und werden hier
+   * nicht geholt. Beide Aufrufer holen sie **vor** ihrem Schreibzugriff, weil
+   * ein Hook, der abweist, nichts kosten soll: keine Sitzungszeile bei der
+   * Anmeldung und keine widerrufene Familie bei der Erneuerung. Dass der Punkt
+   * beide Wege trifft und darum auch nach der fuenfzehnten Minute noch wirkt,
+   * bleibt davon unberuehrt.
+   */
   private sessionResult(
     scope: ProjectAuthScope,
     user: ProjectAuthUser,
     session: ProjectAuthSession,
     refreshToken: string,
     now: Date,
+    claims: Record<string, ProjectAuthClaimValue>,
   ): ProjectAuthSessionResult {
-    const access = this.dependencies.tokens.issue(scope, user, session, now);
+    const access = this.dependencies.tokens.issue(scope, user, session, now, claims);
     return {
       accessToken: access.accessToken,
       accessTokenExpiresAt: access.accessTokenExpiresAt.toISOString(),
@@ -1640,6 +1942,8 @@ export class DisabledProjectAuthService {
   setRateLimits(): never { return this.disabled(); }
   readPasswordProtection(): never { return this.disabled(); }
   setPasswordProtection(): never { return this.disabled(); }
+  readAuthHooks(): never { return this.disabled(); }
+  setAuthHooks(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
@@ -1652,6 +1956,58 @@ export class DisabledProjectAuthService {
   revokeAllSessions(): never { return this.disabled(); }
   listAuditEvents(): never { return this.disabled(); }
   readAuditSeries(): never { return this.disabled(); }
+}
+
+/**
+ * Die Auth-Hooks, wie sie nach aussen gehen (2.77).
+ *
+ * `failureMode` steht hier und nicht in der Console: Was bei einem Ausfall
+ * gilt, entscheidet der Dienst, und die Seite soll es nicht aus eigenem Wissen
+ * behaupten. Heute steht an beiden Punkten `deny`, und wenn das einmal nicht
+ * mehr stimmt, aendert sich diese Zeile und nicht ein Satz in einer Ansicht.
+ */
+function publicHooks(
+  hooks: ProjectAuthHooks | undefined,
+  updatedAt: Date | null,
+  configured: boolean,
+): PublicProjectAuthHooks {
+  const effective = hooks ?? DEFAULT_PROJECT_AUTH_HOOKS;
+  return {
+    hooks: {
+      signIn: { ...effective.signIn },
+      accessTokenClaims: {
+        ...effective.accessTokenClaims,
+        claims: [...effective.accessTokenClaims.claims],
+      },
+    },
+    defaults: {
+      signIn: { ...DEFAULT_PROJECT_AUTH_HOOKS.signIn },
+      accessTokenClaims: {
+        ...DEFAULT_PROJECT_AUTH_HOOKS.accessTokenClaims,
+        claims: [...DEFAULT_PROJECT_AUTH_HOOKS.accessTokenClaims.claims],
+      },
+    },
+    bounds: PROJECT_AUTH_HOOK_BOUNDS,
+    points: PROJECT_AUTH_HOOK_POINTS,
+    reservedClaims: PROJECT_AUTH_RESERVED_CLAIMS,
+    failureMode: { sign_in: "deny", access_token_claims: "deny" },
+    configured,
+    updatedAt: updatedAt ? updatedAt.toISOString() : null,
+  };
+}
+
+/**
+ * Welcher Fehlercode zu welcher Ablehnung gehoert.
+ *
+ * Unterschieden wird genau eines: Hat der Hook gegen den Vertrag gehandelt
+ * (`HOOK_REJECTED`), oder hat er nicht geantwortet (`HOOK_UNAVAILABLE`)? Der
+ * Aufrufer soll aus einem Fehlschlag lesen koennen, ob die Umgebung ein
+ * Betriebsproblem hat oder der hinterlegte Code eines.
+ */
+function hookRefusalCode(reason: ProjectAuthHookRefusal): ProjectAuthErrorCode {
+  return ["no_answer", "bad_status", "body_not_an_object"].includes(reason)
+    ? "HOOK_UNAVAILABLE"
+    : "HOOK_REJECTED";
 }
 
 function publicPasswordProtection(

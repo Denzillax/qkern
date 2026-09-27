@@ -4,6 +4,7 @@ import type {
   ProjectAuthRateLimits,
 } from "@/lib/server/project-auth/rate-limits";
 import type { ProjectAuthPasswordProtection } from "@/lib/server/project-auth/password-leaks";
+import type { ProjectAuthHooks } from "@/lib/server/project-auth/hooks";
 
 export type ProjectAuthScope = {
   organizationId: string;
@@ -111,6 +112,14 @@ export type ProjectAuthSettings = ProjectAuthScope & {
    * Die Liste selbst steht nie hier und nie in der Datenbank.
    */
   passwordProtection: ProjectAuthPasswordProtection;
+  /**
+   * Die Auth-Hooks (2.77). Eine fehlende Zeile heisst "kein Hook an keinem
+   * Punkt": Ohne Einstellung gilt `DEFAULT_PROJECT_AUTH_HOOKS`, und dann ruft
+   * die Anmeldung nichts und verhaelt sich wie vor 2.77. Ein Punkt ohne
+   * hinterlegte Function ist derselbe Zustand, darum gibt es keinen Schalter
+   * daneben.
+   */
+  hooks: ProjectAuthHooks;
   updatedAt: Date;
 };
 

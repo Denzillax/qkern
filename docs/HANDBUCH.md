@@ -1185,6 +1185,176 @@ Eingabefeld. Wer eine einzelne Regel im Wortlaut sucht, findet sie weiter unter
 **Datenbank → Policies**; diese Seite fasst zusammen, was aus allen Regeln
 zusammen folgt.
 
+### Auth-Hooks an den Punkten, an denen sie wirken
+
+Seit `2.59.0` ist **Auth → Auth-Hooks** keine Platzhalterseite mehr. Der
+Platzhalter nannte drei Punkte: „Eigener Code bei Anmeldung, Token-Ausgabe oder
+Mailversand." Gebaut sind zwei. Der dritte fehlt, und weiter unten steht, warum
+er nicht kommt.
+
+Ein Hook ist eine hinterlegte Function des Projekts, die QKERN an einem festen
+Punkt der Anmeldung aufruft. Was sie antwortet, wirkt. Das ist die ganze
+Auswahlregel für die Punkte: Ein Punkt, an dem das Ergebnis des Aufrufs
+verworfen würde, ist kein Hook, sondern eine Benachrichtigung, die aussieht wie
+eine Wirkung. Einen Punkt „nach der Anmeldung" gibt es deshalb nicht.
+
+**Die zwei Punkte.**
+
+- **`sign_in`** darf die Anmeldung abweisen. Er läuft in `createSessionResult`
+  (`lib/server/project-auth/service.ts`), also an der einen Stelle, an der eine
+  Sitzung aus einer Anmeldung entsteht, und damit auf jedem Weg: Passwort,
+  Magic Link, Mailbestätigung, OIDC und die Bestätigung des zweiten Faktors. Er
+  läuft **vor** `createSession`, sodass ein abgewiesener Versuch keine Zeile in
+  `project_auth_sessions` und kein Refresh Token hinterlässt. Bei einer
+  Erneuerung läuft er nicht: Eine Erneuerung ist keine Anmeldung. Wer diesen
+  Hook einschaltet, ändert damit, wer sich das nächste Mal anmelden darf, und
+  beendet keine laufende Sitzung.
+- **`access_token_claims`** darf Ansprüche aus einer vorher erklärten Liste
+  setzen. Er läuft in `sessionResult`, also bei **jeder** Ausgabe eines Access
+  Token, und damit auch bei jeder Erneuerung. Das ist kein Komfort: Ein Access
+  Token lebt 15 Minuten, und ein Hook, der nur bei der Anmeldung liefe, liesse
+  die Ansprüche nach einer Viertelstunde verschwinden. Die Policies dahinter
+  lesen diesen Unterschied nicht. Auch er läuft **vor** dem Schreibzugriff, also
+  vor `createSession` bei der Anmeldung und vor `rotateSession` bei der
+  Erneuerung. Das hat der Zertifizierungsfall erzwungen: Stand er dahinter, so
+  blieb nach einem abgewiesenen Hook eine Sitzung ohne Token zurück, und bei
+  einer Erneuerung wäre das alte Refresh Token schon widerrufen gewesen, also
+  die ganze Sitzungsfamilie erledigt.
+
+**Was bei keiner Antwort gilt, und das ist die Entscheidung dieses Schnitts.**
+Beide Punkte fallen **geschlossen**. Antwortet ein Hook nicht innerhalb seiner
+Frist, antwortet er mit einem anderen Status als 2xx oder antwortet er etwas,
+das keine Antwort ist, dann entsteht keine Sitzung und kein Token. Bei `sign_in`
+ist der Zweck des Punktes das Abweisen; ein Gatter, das im Zweifel durchlässt,
+ist Zierde, und wer es offen wollte, bräuchte den Punkt nicht. Bei
+`access_token_claims` ist der Zweck, dass das Token mehr sagt, als QKERN weiss;
+ein Token ohne diese Ansprüche sagt etwas anderes als das Token, das das Projekt
+bestellt hat, und ein falsches Token stillschweigend auszugeben ist schlimmer
+als keines. Das ist der Unterschied zu den Grenzen je Zeitfenster aus `2.52.0`,
+die bei einem Fehler des Zählers öffnen: Der Zähler ist eine Schicht vor der
+Tür, ein Hook ist die Tür.
+
+Der Preis steht dazu, auch auf der Seite selbst: **Ein Hook, der hängt, sperrt
+diese Projektumgebung aus.** Fällt der Anspruchs-Hook aus, scheitert auch die
+Erneuerung; die Sitzung bleibt dabei stehen und wird nicht widerrufen, aber nach
+dem Ablauf des Access Token stehen die Nutzer ohne Zugang da, bis der Hook
+wieder antwortet. Es gibt keinen Schalter „im Zweifel durchlassen". Wer das
+offen will, trägt keinen Hook ein.
+
+**Die Frist gehört in die Definition.** Sie steht je Punkt in
+`project_auth_settings` und liegt zwischen 100 und 5000 Millisekunden, geprüft
+von Route, Dienst und Datenbank. Nach unten 100, weil darunter auch ein gesunder
+Containerstart nicht antwortet und die Frist dann nur echte Anmeldungen bricht;
+nach oben 5000, weil beide Punkte geschlossen fallen und eine Frist von einer
+Minute aus jedem hängenden Hook eine Minute Wartezeit je Anmeldeversuch machte.
+Was die Frist **nicht** kann: Sie beendet das Warten und nicht den Container.
+Der läuft bis zu seinem eigenen `timeoutMs` weiter und darf in dieser Zeit noch
+wirken. Wer will, dass ein Hook nach 300 Millisekunden wirklich stirbt, setzt
+den Timeout der Function selbst so.
+
+**Was ein Hook sieht.** Den Punkt, das Projekt, die Umgebung, die ID des
+Nutzers, seine E-Mail-Adresse, ob diese bestätigt ist, den Weg der Anmeldung
+(beim Anspruchs-Hook stattdessen den Grund der Ausgabe) und den Zeitpunkt. Jede
+Auslassung hat einen Grund:
+
+- **Kein Passwort**, auch nicht gehasht. Ein Hash ist derselbe Wert in anderer
+  Schreibweise: Wer ihn hat, kann damit raten, und wer ihn mitschreibt, hat ein
+  Passwortleck angelegt. Es gibt keine Einstellung, die das erlaubt.
+- **Kein Token**, weder Access noch Refresh noch der Schein des zweiten Faktors.
+  Ein Hook mit Token wäre keine Regel über die Anmeldung mehr, sondern ein
+  weiterer Anmelder.
+- **Keine IP-Adresse und kein User Agent.** Der Dienst sieht sie an dieser
+  Stelle gar nicht: Für die Anmeldung bekommt er nur einen undurchsichtigen
+  `rateLimitKey`, und seine Grenzen zählt er seit `2.52.0` nach Identität und
+  ausdrücklich nie nach IP. Sie weiterzugeben wäre ein neuer Datenfluss,
+  Verkehrsdaten in fremden Code, dessen Logzeilen QKERN nicht kennt. Wer nach
+  Herkunft filtern will, tut das vor QKERN.
+- **Kein `user_metadata` und kein `app_metadata`.** Das sind die eigenen Daten
+  des Projekts, und der Hook läuft im Projekt: Er kann sie lesen, wenn er sie
+  braucht.
+- **Keine `session_id`** beim Anspruchs-Hook. Er soll Ansprüche liefern und
+  keine Sitzung wiedererkennen; mit der ID könnte er nichts tun, was er tun
+  darf, und sie stünde danach in fremden Logzeilen.
+
+**Was ein Hook ändern darf.** Der Anmelde-Hook antwortet mit 2xx und
+`{"decision":"allow"}` oder `{"decision":"deny"}`; alles andere gilt als keine
+Antwort, ein leeres Objekt eingeschlossen, denn ein Container, dessen Code
+vorher abgebrochen ist, hat nichts entschieden. Der Anspruchs-Hook antwortet mit
+2xx und `{"claims": { … }}`. Erlaubt sind nur die höchstens acht Namen, die in
+der Definition stehen, mit Zeichenketten, Zahlen, Wahrheitswerten oder `null`
+als Wert, je Wert höchstens 256 Zeichen und zusammen höchstens 512 Byte, also
+dieselbe Grenze wie bei `user_metadata`. Kein Objekt und keine Liste: Struktur
+in einem Token ist ein Ort, an dem etwas unbemerkt wächst, und ein Access Token
+wandert bei jeder Anfrage mit.
+
+**Reservierte Ansprüche.** `sub`, `iss`, `aud`, `exp`, `iat` und `role` sowie
+die übrigen Ansprüche, die QKERN selbst ausgibt, kann ein Hook nicht setzen. Wer
+`sub` setzen könnte, wäre jemand anderes; wer `exp` setzen könnte, hätte ein
+Token ohne Ende; wer `role` setzen könnte, wäre in der Projektdatenbank eine
+andere Rolle. Versucht ein Hook es trotzdem, **fällt die ganze Ausgabe** und der
+Versuch steht mit dem Grund `claim_reserved` im Audit-Log. Der Anspruch wird
+nicht stillschweigend übergangen: Ein übergangener Anspruch wäre eine
+Meinungsverschiedenheit darüber, wer dieser Nutzer ist, die niemand bemerkt. Die
+Liste steht dreimal und ist einmal gemeint, in
+`lib/server/project-auth/hooks.ts` als Regel, in
+`lib/server/project-auth/tokens.ts` als Absicherung gegen einen zweiten
+Aufrufweg, der die Regel nicht kennt, und als `CHECK` in Migration
+`0058_project_auth_hooks.sql`, damit die Datenbank nicht darauf vertrauen muss,
+dass jeder Schreiber durch den Dienst kommt.
+
+**Wo die Definition steht.** Fünf Spalten auf `project_auth_settings`
+(Migration `0058`), aus derselben Begründung wie `0051` bis `0053`: Die Tabelle
+ist genau eine Zeile je Projektumgebung, mit Kaskade, Trigger und Rechten, und
+eine zweite Tabelle hätte einen zweiten Ort geschaffen, an dem eine Umgebung
+„Einstellungen" hat. Es gibt bewusst **keine** `enabled`-Spalte: Ein Punkt ohne
+hinterlegte Function ruft nichts, und das ist derselbe Zustand wie
+„ausgeschaltet". Zwei Wege dorthin erlaubten die Stellung „Function eingetragen,
+aber aus", und die sähe in einer Übersicht aus wie ein Hook, der läuft. Die
+Datenbank weist ausserdem eine Liste ohne Function und eine Function ohne Liste
+ab: Beides wäre ein Punkt, der nichts tut und so aussieht, als täte er etwas.
+
+**Wie gerufen wird.** Über den vorhandenen `FunctionInvocationService`
+(`lib/server/project-auth/hooks-functions.ts`). Damit gelten die
+Kapazitätsgrenze je Function, das monatliche Kontingent, die Egress-Grenzen der
+Definition und das Aufrufprotokoll aus `1.89`. Ein zweiter Aufrufweg hätte all
+das umgehen müssen, um kürzer zu sein. Der Aufruf läuft mit der Service-Rolle
+des Projekts und dem Aktor `project_auth_hook:<punkt>`, nicht mit der des
+Nutzers, der sich gerade anmeldet: Der hat in diesem Moment keine Sitzung und
+kein Token. Im Aufrufprotokoll unter **Functions → Aufrufe** ist dadurch
+ablesbar, dass ein Aufruf von der Anmeldung kam und von welchem Punkt. Ohne
+`QKERN_FUNCTIONS_ENABLED=true` und PostgreSQL-Betrieb gibt es keinen Weg zu
+einem Container; ein Punkt ohne Function merkt davon nichts, ein Punkt mit
+Function scheitert dann bei jeder Anmeldung, denn ein Hook, den niemand rufen
+kann, hat nicht geantwortet.
+
+**Was diese Seite nicht baut**, und das steht auch auf ihr selbst:
+
+- **Keinen Punkt beim Mailversand.** Der Link einer Aktionsmail trägt das
+  einmalige Token im Klartext. Ein Mail-Hook bekäme es zu sehen und damit einen
+  Anmeldeschein; fremder Code mit Anmeldeschein ist kein erweiterter Mailweg,
+  sondern ein zweiter Weg zur Anmeldung. Der Mailweg bleibt unter
+  **Auth → SMTP** und zeigt dort, was er tut.
+- **Keinen Punkt bei der Registrierung.** Wer steuern will, wer ein Konto
+  bekommt, hat mit dem Anmelde-Hook denselben Effekt eine Stufe später: Ein
+  Konto ohne mögliche Anmeldung nützt niemandem.
+- **Keinen Testknopf.** Ein Testaufruf mit erfundener Nutzlast belegt, dass ein
+  Container antwortet, und nicht, dass eine Anmeldung durchkommt.
+- **Keinen Blick in die Ausgabe des Containers.** QKERN speichert `stdout` und
+  `stderr` einer Function nicht, hier so wenig wie sonst.
+
+**Route und Audit.** `GET` und `PUT` auf
+`/api/v1/projects/{projectId}/environments/{environment}/auth/admin/hooks`,
+dieselbe Tür wie die übrigen `admin/*`-Routen: Console-Session mit
+`project_auth_admin`, kein Projekt-Key, `Cache-Control: private, no-store`, für
+`PUT` ein vertrauenswürdiger Origin. Der Körper nennt beide Punkte auf einmal.
+Jede Änderung schreibt `project_auth.hooks.changed` mit Funktionsname, Frist und
+erklärten Ansprüchen je Punkt; ein abgewiesener Aufruf schreibt
+`project_auth.hook.refused` mit Punkt, Function, Grund und, wo es einen gibt,
+dem Namen des beanstandeten Anspruchs, nie seinem Wert. Nach aussen gibt es drei
+unterschiedene Ausgänge: `403` für eine Ablehnung durch den Hook, `503` für
+einen Hook, der nicht geantwortet hat, und `502` für eine Antwort, die keine
+war.
+
 ## 7. Project Storage
 
 Project Storage ist unabhängig opt-in. Für einen vollständigen lokalen Upload-

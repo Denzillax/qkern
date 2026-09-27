@@ -28,6 +28,10 @@ import {
   isProjectAuthPasswordNotice,
   type ProjectAuthPasswordProtection,
 } from "@/lib/server/project-auth/password-leaks";
+import {
+  PROJECT_AUTH_HOOK_FUNCTION_NAME,
+  type ProjectAuthHooks,
+} from "@/lib/server/project-auth/hooks";
 
 type Row = Record<string, unknown>;
 type PostgresError = Error & { code?: string; constraint?: string };
@@ -349,6 +353,46 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
   }
 
   /**
+   * Setzt beide Auth-Hooks (2.77), wieder als INSERT mit ON CONFLICT: Die Zeile
+   * entsteht erst, wenn jemand etwas einstellt, und alles, was vorher in ihr
+   * stand, bleibt unberuehrt, weil das UPDATE genau die sechs Spalten nennt,
+   * um die es geht.
+   *
+   * `null` als Name ist hier eine Angabe und kein fehlender Wert: Sie heisst
+   * "dieser Punkt ruft nichts". Darum wird sie geschrieben und nicht
+   * uebersprungen, und darum kann ein Betreiber einen Hook durch dieselbe
+   * Route wieder los werden, durch die er ihn eingetragen hat.
+   */
+  async writeAuthHooks(
+    scope: ProjectAuthScope,
+    hooks: ProjectAuthHooks,
+    now: Date,
+  ): Promise<ProjectAuthSettings> {
+    const result = await query(this.pool, `INSERT INTO project_auth_settings
+      (organization_id, project_id, environment,
+       sign_in_hook_function, sign_in_hook_timeout_ms,
+       access_token_hook_function, access_token_hook_timeout_ms, access_token_hook_claims,
+       updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9)
+      ON CONFLICT (organization_id, project_id, environment)
+      DO UPDATE SET
+        sign_in_hook_function = EXCLUDED.sign_in_hook_function,
+        sign_in_hook_timeout_ms = EXCLUDED.sign_in_hook_timeout_ms,
+        access_token_hook_function = EXCLUDED.access_token_hook_function,
+        access_token_hook_timeout_ms = EXCLUDED.access_token_hook_timeout_ms,
+        access_token_hook_claims = EXCLUDED.access_token_hook_claims,
+        updated_at = EXCLUDED.updated_at
+      RETURNING ${SETTINGS_COLUMNS}`, [
+      ...scopeValues(scope),
+      hooks.signIn.functionName, hooks.signIn.timeoutMs,
+      hooks.accessTokenClaims.functionName, hooks.accessTokenClaims.timeoutMs,
+      [...hooks.accessTokenClaims.claims],
+      now,
+    ]);
+    return settingsFromRow(result.rows[0]);
+  }
+
+  /**
    * Der Zaehler (2.56), und er ist mit Absicht eine einzige Anweisung.
    *
    * Der DELETE im CTE raeumt die abgelaufenen Fenster **desselben**
@@ -499,7 +543,9 @@ const ONE_TIME_COLUMNS = `id, organization_id, project_id, environment, auth_use
 const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, redirect_allow_list,
   sign_in_max, sign_in_window_seconds, mail_max, mail_window_seconds,
   refresh_max, refresh_window_seconds,
-  leaked_password_check, password_min_length, leaked_password_notice, updated_at`;
+  leaked_password_check, password_min_length, leaked_password_notice,
+  sign_in_hook_function, sign_in_hook_timeout_ms,
+  access_token_hook_function, access_token_hook_timeout_ms, access_token_hook_claims, updated_at`;
 const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
@@ -648,6 +694,17 @@ function settingsFromRow(row: Row): ProjectAuthSettings {
       minLength: boundedInteger(row.password_min_length, "password minimum length"),
       notice: row.leaked_password_notice,
     },
+    hooks: {
+      signIn: {
+        functionName: hookFunctionName(row.sign_in_hook_function, "sign-in hook"),
+        timeoutMs: boundedInteger(row.sign_in_hook_timeout_ms, "sign-in hook timeout"),
+      },
+      accessTokenClaims: {
+        functionName: hookFunctionName(row.access_token_hook_function, "access token hook"),
+        timeoutMs: boundedInteger(row.access_token_hook_timeout_ms, "access token hook timeout"),
+        claims: stringArray(row.access_token_hook_claims, "access token hook claims"),
+      },
+    },
     updatedAt: timestamp(row.updated_at, "settings update"),
   };
 }
@@ -664,6 +721,25 @@ function boundedInteger(value: unknown, label: string): number {
     throw new InvalidRecordError(`Invalid project auth ${label}.`);
   }
   return parsed;
+}
+
+/**
+ * Der Name einer Hook-Function aus der Zeile, oder `null`.
+ *
+ * `null` ist hier eine Angabe ("dieser Punkt ruft nichts") und kein Fehler.
+ * Alles andere muss ein Name sein, den der Aufrufdienst kennen koennte; eine
+ * leere Zeichenkette oder ein Name mit einem Zeichen, das der Aufrufdienst
+ * abweisen wuerde, ist eine unbrauchbare Zeile und kein aufrufbarer Hook. Sie
+ * faellt als Fehler auf, statt bei jeder Anmeldung still zu einem
+ * `COMPUTE_NOT_FOUND` zu fuehren, das die Anmeldung geschlossen scheitern
+ * laesst, ohne zu sagen, warum.
+ */
+function hookFunctionName(value: unknown, label: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !PROJECT_AUTH_HOOK_FUNCTION_NAME.test(value)) {
+    throw new InvalidRecordError(`Invalid project auth ${label}.`);
+  }
+  return value;
 }
 
 function rateCountFromRow(row: Row): ProjectAuthRateCount {
