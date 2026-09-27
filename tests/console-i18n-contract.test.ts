@@ -29,6 +29,7 @@ import { displaySettingsTexts } from "@/lib/console/display-settings-texts";
 import { logExplorerTexts } from "@/lib/console/log-explorer";
 import { queryPerformanceTexts } from "@/lib/console/query-performance-texts";
 import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
+import { queryInsightsTexts } from "@/lib/console/query-insights";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -128,6 +129,9 @@ async function consoleKeys(): Promise<string[]> {
   // Einstellungen -> Infrastruktur (2.67) zeigt Zustaende, Bindungen, was es
   // nicht gibt und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of infrastructureTexts()) keys.add(text);
+  // Berichte -> Abfrage-Einblicke (2.67) zeigt Knotenarten, ihre Bedeutung,
+  // die Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of queryInsightsTexts()) keys.add(text);
   return [...keys];
 }
 

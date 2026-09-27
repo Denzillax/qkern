@@ -23,7 +23,7 @@ describe("project function route", () => {
   it("binds function inspection to the authenticated tenant and disables caching", async () => {
     const principal = await identity();
     const inspectFunctions = vi.fn().mockResolvedValue({ source: "postgres", schema: "public", functions: [], truncated: false });
-    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions, inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions, inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const response = await handleProjectFunctions(new NextRequest("https://qkern.test/api/v1/projects/project/environments/development/schema/functions?schema=public", {
       headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` },
     }), { params: Promise.resolve({ projectId: "project", environment: "development" }) }, dataPlane);
@@ -38,7 +38,7 @@ describe("project function route", () => {
 
   it("rejects unknown parameters and anonymous callers without touching the data plane", async () => {
     const inspectFunctions = vi.fn();
-    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions, inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
+    const dataPlane = { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions, inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn() } as ProjectDataPlanePort;
     const params = { params: Promise.resolve({ projectId: "project", environment: "development" }) };
     const bad = await handleProjectFunctions(new NextRequest("https://qkern.test/x/schema/functions?schema=public&name=touch"), params, dataPlane);
     expect(bad.status).toBe(400);

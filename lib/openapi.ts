@@ -374,6 +374,25 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/query/explain": {
+      post: {
+        tags: ["Project Data"], operationId: "explainProjectReadQuery",
+        summary: "Return the query plan of one read-only statement without executing it",
+        description: "Since `2.56.0`. The statement is checked by the same AST guard as the read query route and then prefixed with `EXPLAIN (FORMAT JSON, COSTS ON, VERBOSE OFF, SUMMARY ON)`. Deliberately **without** `ANALYZE`: `EXPLAIN` builds the plan and returns it, `EXPLAIN ANALYZE` would really run the query, take locks, churn the cache and move the counters of `pg_stat_statements`, which is a different promise for a console button. Whoever wants to execute uses the SQL editor. The read path is the existing one: the same resolved connection, the same read role, the same boundary check, `BEGIN READ ONLY` with the same timeouts. No new connection and no new role. Every number except the planning time is an estimate of the planner, not a measurement. Node conditions (`Filter`, `Index Cond`, `Hash Cond`) are not transported: they carry the literals of the query verbatim. A statement that cannot be planned answers 400, not 503, because the database did answer.",
+        security: [{ sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectExplainQuery" } } } },
+        responses: {
+          "200": { description: "The flattened plan; `analyzed` is always false", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectQueryPlanResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "Project data plane is not ready" }, "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/api-keys": {
       get: {
         tags: ["Project API Keys"], operationId: "listProjectApiKeys",
@@ -1663,6 +1682,11 @@ export const qkernOpenAPI = {
       ProjectReadQuery: { type: "object", additionalProperties: false, required: ["statement"], properties: { statement: { type: "string", minLength: 1, maxLength: 4000 }, limit: { type: "integer", minimum: 1, maximum: 100, default: 20 } } },
       ProjectReadQueryResult: { type: "object", additionalProperties: false, required: ["source", "columns", "rows", "rowCount", "truncated", "maxRows"], properties: { source: { const: "postgres" }, columns: { type: "array", maxItems: 128, items: { type: "string" } }, rows: { type: "array", maxItems: 100, items: { type: "object" } }, rowCount: { type: "integer", minimum: 0, maximum: 100 }, truncated: { type: "boolean" }, maxRows: { type: "integer", minimum: 1, maximum: 100 } } },
       ProjectReadQueryResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectReadQueryResult" } } },
+      ProjectExplainQuery: { type: "object", additionalProperties: false, required: ["statement"], properties: { statement: { type: "string", minLength: 1, maxLength: 4000 } } },
+      ProjectQueryPlanNode: { type: "object", additionalProperties: false, required: ["id", "depth", "operation", "relation", "indexName", "startupCost", "totalCost", "ownCost", "costShare", "planRows", "planWidth"], properties: { id: { type: "integer", minimum: 0 }, depth: { type: "integer", minimum: 0 }, operation: { type: "string", maxLength: 128 }, relation: { type: ["string", "null"], maxLength: 128 }, indexName: { type: ["string", "null"], maxLength: 128 }, startupCost: { type: "number" }, totalCost: { type: "number" }, ownCost: { type: "number" }, costShare: { type: "number", minimum: 0 }, planRows: { type: "number" }, planWidth: { type: "number" } } },
+      ProjectQueryPlan: { type: "object", additionalProperties: false, required: ["nodes", "totalCost", "planRows", "planningTimeMs", "indexes", "sequentialScans", "truncated"], properties: { nodes: { type: "array", maxItems: 60, items: { $ref: "#/components/schemas/ProjectQueryPlanNode" } }, totalCost: { type: "number" }, planRows: { type: "number" }, planningTimeMs: { type: ["number", "null"], description: "The only measured number; it arises while planning, not while executing" }, indexes: { type: "array", items: { type: "string", maxLength: 128 } }, sequentialScans: { type: "array", items: { type: "string", maxLength: 128 } }, truncated: { type: "boolean" } } },
+      ProjectQueryPlanResult: { type: "object", additionalProperties: false, required: ["source", "analyzed", "plan"], properties: { source: { const: "postgres" }, analyzed: { const: false, description: "The query was not executed" }, plan: { $ref: "#/components/schemas/ProjectQueryPlan" } } },
+      ProjectQueryPlanResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectQueryPlanResult" } } },
       ProjectApiKey: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "name", "kind", "prefix", "expiresAt", "revokedAt", "createdAt"], properties: { id: { type: "string" }, organizationId: { type: "string" }, projectId: { type: "string" }, environment: { type: "string", enum: ["development", "staging", "production"] }, name: { type: "string", maxLength: 80 }, kind: { type: "string", enum: ["public", "service"] }, prefix: { type: "string", maxLength: 32 }, expiresAt: { type: "string", format: "date-time" }, revokedAt: { type: ["string", "null"], format: "date-time" }, createdAt: { type: "string", format: "date-time" } } },
       ProjectApiKeyResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectApiKey" } } },
       ProjectApiKeyListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectApiKey" } } } },
