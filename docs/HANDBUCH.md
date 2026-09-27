@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.55.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.60.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -1354,6 +1354,171 @@ dem Namen des beanstandeten Anspruchs, nie seinem Wert. Nach aussen gibt es drei
 unterschiedene Ausgänge: `403` für eine Ablehnung durch den Hook, `503` für
 einen Hook, der nicht geantwortet hat, und `502` für eine Antwort, die keine
 war.
+
+### Anmeldung mit Passkeys
+
+Seit `2.60.0` ist **Auth → Passkeys** keine Platzhalterseite mehr. Der
+Platzhalter versprach „Anmeldung mit WebAuthn statt Passwort, etwa per
+Fingerabdruck oder Sicherheitsschlüssel". Gebaut ist genau das, und zwar für die
+Projekt-Anmeldung, nicht für die Console selbst: Wer sich in der Console
+anmeldet, geht weiter über QKERN, und daran ändert dieser Schnitt nichts.
+
+Ein Passkey ist ein Schlüsselpaar, dessen privater Teil den Authenticator nie
+verlässt. In der Datenbank liegt der öffentliche Teil, und damit liegt dort
+nichts Geheimes: Ein Leck der Tabelle `project_auth_passkeys` gibt niemandem eine
+Anmeldung, es verrät, welche Nutzer wie viele Passkeys haben. Darum hat diese
+Tabelle, anders als der zweite Faktor aus `2.49.0`, keine verschlüsselte Spalte
+und keinen Schlüssel aus der Prozessumgebung.
+
+**Fremde Bibliothek: keine.** Node bringt SHA-256 und ECDSA mit, und der einzige
+Teil, den `lib/server/project-auth/passkeys.ts` selbst schreibt, ist ein Leser
+für die Teilmenge von CBOR, die WebAuthn benutzt. CTAP2 verlangt kanonisches
+CBOR mit festen Längen; ein Leser dafür ist kürzer als die Einbindung einer
+Abhängigkeit und lässt sich an einem Stück lesen. Er nimmt bewusst weniger an,
+als CBOR erlaubt: keine unbestimmten Längen, keine Tags, keine
+Gleitkommazahlen, Tiefe höchstens acht.
+
+**Welche Verfahren zugelassen sind.** Genau eines: **ES256**, also ECDSA über
+P-256 mit SHA-256, COSE `alg` −7. Das bieten Windows Hello, Touch ID, Face ID,
+Android und jeder YubiKey ab Serie 5. RS256 (−257) und EdDSA (−8) sind
+abgewiesen, und das ist eine Entscheidung und kein Versehen: Beide wären in Node
+in zwei Zeilen eingebunden, aber jedes weitere Verfahren ist ein zweiter
+Unterschriftenweg, den kein Zertifizierungsfall mit einem echten Schlüssel
+abfährt. Ein Weg, der nur so aussieht, als würde er prüfen, ist schlechter als
+einer, den es nicht gibt. Die Liste geht auch nach aussen, als
+`pubKeyCredParams`, damit der Browser gar nicht erst einen Schlüssel erzeugt, den
+dieser Server nicht prüfen kann; wer mit einem anderen bei der Registrierung
+ankommt, bekommt `unsupported_algorithm` und meldet sich weiter mit Passwort
+oder TOTP an. Auch die Datenbank hält das fest: `CHECK (algorithm = -7)`.
+
+**Was bei jeder Anmeldung wirklich läuft.**
+
+1. **Die Herausforderung wird verbraucht.** 32 zufällige Byte, fünf Minuten
+   gültig, eingelöst mit einem einzigen `UPDATE`, das `consumed_at` nur setzt,
+   wenn es noch `NULL` ist, und nur dann eine Zeile zurückgibt. Die Einmaligkeit
+   sitzt damit in der Datenbank und nicht im Dienst: Zwei gleichzeitige Anfragen
+   mit derselben Herausforderung bekommen genau einmal eine Zeile. Verbraucht
+   wird **vor** jeder weiteren Prüfung; umgekehrt liesse sich dieselbe
+   Herausforderung beliebig oft mit einer falschen Antwort probieren.
+   Registrierung und Anmeldung haben eigene Zwecke
+   (`passkey_registration`, `passkey_authentication`), sonst wäre eine
+   Herausforderung, die ein angemeldeter Nutzer für ein neues Gerät geholt hat,
+   an der Anmeldung einlösbar.
+2. **Die Signatur.** ECDSA über `authenticatorData || sha256(clientDataJSON)`,
+   gegen den abgelegten öffentlichen Schlüssel, in der DER-Form, in der WebAuthn
+   sie liefert.
+3. **`type`, `challenge`, `origin` und `crossOrigin`** aus den Client-Daten.
+   `challenge` wird zeitgleichlang verglichen, `origin` muss **genau** in der
+   erlaubten Liste stehen, und `crossOrigin` muss fehlen oder `false` sein. Ein
+   falsches `origin` ist ein Angriff und kein Tippfehler: Es heisst, dass die
+   Unterschrift auf einer fremden Seite entstanden ist.
+4. **Der `rpIdHash`** gegen die Domäne genau jener Herkunft, die die Client-Daten
+   genannt haben und die schon in der Liste stand.
+5. **Das Bit für die Anwesenheit des Nutzers.** Ohne es hat niemand das Gerät
+   berührt.
+6. **Der Zähler.** Er muss gewachsen sein; ein Stand, der nicht gewachsen ist,
+   heisst geklonter Schlüssel. Geschrieben wird er, **bevor** es eine Sitzung
+   gibt, und das Schreiben ist selbst eine Bedingung: Das `WHERE` verlangt den
+   Stand, den die Prüfung gelesen hat.
+
+**Was bewusst nicht läuft, und das ist der wichtigere Teil.**
+
+- **Die Attestation wird nicht geprüft.** Plattform-Authenticatoren schicken
+  `fmt: "none"`, und darin steht keine Aussage über die Herkunft des Geräts, die
+  man prüfen könnte; eine Kette gegen die FIDO-Metadaten wäre eine eigene
+  Ablage mit eigener Pflege. Bei der Registrierung glaubt QKERN also, dass der
+  Schlüssel aus dem Gerät kommt, das der Nutzer gerade in der Hand hat. Ab der
+  ersten Anmeldung glaubt es nichts mehr und rechnet nach. Das Format wird
+  abgelegt, damit man später sehen kann, was ein Gerät geschickt hat.
+- **Der Zähler sagt nichts, wenn beide Stände auf 0 stehen.** Dann führt dieser
+  Authenticator keinen Zähler; Apple tut das nicht. Es gibt dann nichts zu
+  vergleichen, und diese Prüfung lässt durch. Das ist die einzige Stelle, an der
+  sie das tut.
+- **Keine registrierbare Oberdomäne als `rpId`.** WebAuthn erlaubt
+  `app.example.com` mit `rpId: example.com`; dieser Server nimmt das nicht an,
+  weil er dafür wissen müsste, wo eine registrierbare Domäne anfängt, und diese
+  Liste ist eine eigene Ablage. Passkeys über mehrere Unterdomänen hinweg gehen
+  hier nicht.
+- **Eine Anmeldung mit Passkey bleibt `aal1`**, auch wenn der Authenticator den
+  Nutzer per Fingerabdruck erkannt hat. `aal2` heisst in QKERN „ein bestätigter
+  zweiter Faktor liegt vor", und das ist eine andere Aussage; sie hier zu
+  vergeben hiesse, den erzwungenen zweiten Faktor aus `2.49.0` still zu umgehen.
+  Verlangt die Umgebung den zweiten Faktor, endet auch eine gültige Anmeldung mit
+  Passkey bei einer TOTP-Challenge oder einem Einrichtungsschein.
+- **Die Anmeldung nennt keine Liste erlaubter Schlüssel**, weil sie vorher nicht
+  weiss, wer kommt. Der Browser muss den Passkey selbst finden können; ein
+  Schlüssel, der nur auf einem Sicherheitsschlüssel ohne eigenen Speicher liegt,
+  wird so nicht gefunden.
+- **Die Console richtet keinen Passkey ein und entfernt keinen.** Die
+  Admin-Route hat nur ein `GET`.
+
+**Derselbe Weg zur Sitzung.** Die Anmeldung mit Passkey endet in
+`beginAuthenticatedSession` und damit in `createSessionResult`
+(`lib/server/project-auth/service.ts`), also an derselben Stelle wie die
+Anmeldung mit Passwort. Daraus folgt dreierlei ohne eine einzige zusätzliche
+Zeile: Der Auth-Hook `sign_in` aus `2.59.0` läuft auch hier, der Schalter für den
+erzwungenen zweiten Faktor greift auch hier, und die Grenzen je Zeitfenster
+zählen auch hier. Eine Anmeldung, die an dieser Stelle einen eigenen Weg nimmt,
+ist eine Anmeldung, an der die Regeln der Umgebung nicht gelten. Der Weg heisst
+im Hook `passkey`; ein Hook, der `password` abweist und `passkey` nicht kennte,
+hätte ein Loch, das genau wie eine Anmeldung aussieht.
+
+**Die erlaubten Herkünfte** sind die der Installation, aus
+`QKERN_PROJECT_AUTH_REDIRECT_ORIGINS`, also dieselbe Liste, die auch die
+Rücksprungziele begrenzt. Eine zweite Liste mit derselben Bedeutung geht
+auseinander, und dann prüft die eine etwas anderes als die andere. Eine Umgebung,
+die ihre Rücksprungziele nach `2.51.0` weiter verengt, verengt damit die Passkeys
+**nicht**: Diese Liste ist die äussere Grenze, und eine Herkunft, die dort nicht
+steht, kommt hier nicht durch. Nennt eine Installation keine Herkunft, kommt
+keine Antwort durch, und die Seite sagt das.
+
+**Die Routen.**
+
+- `POST` und `PUT` auf
+  `…/auth/passkeys/register` — Herausforderung holen, Antwort des Browsers
+  bringen. Beide brauchen ein Access Token einer brauchbaren Sitzung: Ein Passkey
+  legt kein Konto an, er kommt zu einem bestehenden dazu. Einen zweiten Weg
+  herein, wie ihn `auth/mfa/enroll` für den Einrichtungsschein hat, gibt es hier
+  nicht. `POST` gibt die Kennungen der vorhandenen Passkeys mit, für
+  `excludeCredentials`. Eine Kennung, die es in dieser Umgebung schon gibt, ist
+  eine `409`.
+- `POST` und `PUT` auf
+  `…/auth/passkeys/signin` — Herausforderung holen, Unterschrift bringen. Nur
+  mit dem Projekt-Key, ohne Access Token: Das ist eine Anmeldung. `POST` nennt
+  keine Adresse und verrät darum nicht, welche es gibt.
+- `GET` und `DELETE` auf `…/auth/passkeys` — die Liste des angemeldeten Nutzers
+  und das Entfernen eines Eintrags. Der Nutzer kommt aus dem geprüften Token und
+  nie aus dem Pfad. `DELETE` löscht die Zeile wirklich; eine widerrufene Zeile
+  hätte den öffentlichen Schlüssel behalten und in jeder Liste erklärt werden
+  müssen. Den letzten Passkey zu entfernen ist erlaubt: Passwort und Magic Link
+  gelten weiter, und ein Server, der es verhindert, hält jemanden an einem Gerät
+  fest, das er nicht mehr hat.
+- `GET` auf `…/auth/admin/passkeys` — drei Zahlen, die geprüften Herkünfte und
+  die zugelassenen Verfahren, hinter der Console-Session mit
+  `project_auth_admin`. Keine Kennung, kein Schlüssel, kein Nutzer: Die Übersicht
+  soll sagen, ob Passkeys benutzt werden, und nicht, von wem.
+
+**Audit.** Eine Registrierung schreibt `project_auth.passkey.registered` mit
+Verfahren, Attestationsformat und der Auskunft, ob der Nutzer bestätigt wurde;
+eine Anmeldung `project_auth.passkey.verified` und daneben
+`project_auth.login.succeeded` mit `method: passkey`, damit ein Filter auf
+Anmeldungen sie findet; ein Entfernen `project_auth.passkey.removed`. Jede
+abgewiesene Antwort schreibt `project_auth.passkey.refused` mit dem Grund im
+Klartext: `challenge_spent` ist ein Wiedereinspielversuch,
+`origin_not_allowed` ein Angriff, `sign_count_regressed` ein geklonter
+Schlüssel. Was **nicht** in der Kette steht: die Kennung des Schlüssels, der
+öffentliche Schlüssel und die Herkunft, die ein Angreifer genannt hat. Nach
+aussen bekommt jede Ablehnung dieselbe `401` mit demselben Satz; wer erfährt,
+dass es am `origin` lag, erfährt damit, dass Kennung und Unterschrift gestimmt
+hätten.
+
+**Migration.** `db/migrations/0060_project_auth_passkeys.sql`. Die Laufzeitrolle
+`qkern_auth` bekommt `SELECT`, `INSERT`, `DELETE` und ein `UPDATE` auf genau zwei
+Spalten: `sign_count` und `last_used_at`. Der öffentliche Schlüssel, die Kennung
+und das Verfahren sind nach dem Anlegen fest; ein Passkey, dessen Schlüssel sich
+ändern lässt, ist kein Passkey. `DELETE` ist der Unterschied zu den übrigen
+`project_auth_*`-Tabellen und steht hier, weil „entfernt" bei einem verlorenen
+Gerät weg heissen muss.
 
 ## 7. Project Storage
 

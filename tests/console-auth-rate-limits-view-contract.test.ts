@@ -138,9 +138,10 @@ describe("console auth rate limits view contract", () => {
     expect(service).toContain("projectAuthRateAllowed(");
     expect(service).toContain("projectAuthRateWindowStart(");
     expect(service).toContain("projectAuthRateSubjectHash(");
-    // Alle fuenf Stellen, an denen eine Grenze wirklich greift: Registrierung,
-    // Magic Link, Passwort zuruecksetzen, Anmeldung und Erneuerung.
-    expect([...service.matchAll(/this\.assertStoredRateLimit\(/g)]).toHaveLength(5);
+    // Alle sechs Stellen, an denen eine Grenze wirklich greift: Registrierung,
+    // Magic Link, Passwort zuruecksetzen, Anmeldung mit Passwort, Anmeldung mit
+    // Passkey (2.79, nach Kennung gezaehlt) und Erneuerung.
+    expect([...service.matchAll(/this\.assertStoredRateLimit\(/g)]).toHaveLength(6);
     expect(service).toContain('throw new ProjectAuthError("RATE_LIMITED", retryAfterSeconds)');
     // Die Zaehlung geht durch das Repository und nicht an einem Zaehler im
     // Prozessspeicher vorbei.

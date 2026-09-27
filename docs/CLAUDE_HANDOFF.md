@@ -49,6 +49,29 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
+- Neu in diesem Zweig: 2.79 (Zweig `slice/passkeys`) **Anmeldung mit Passkeys
+  fuer Project Auth, mit jeder Pruefung, die wirklich laeuft.** Der Platzhalter
+  `auth-passkeys` ist echt, Migration
+  `0060_project_auth_passkeys.sql`. Reine Kryptografie in
+  `lib/server/project-auth/passkeys.ts`, ohne fremde Bibliothek: ein Leser fuer
+  die CBOR-Teilmenge von CTAP2, COSE nach JWK nach SPKI, ECDSA ueber
+  `authenticatorData || sha256(clientDataJSON)`. **Was laeuft:** die
+  Herausforderung wird in der Datenbank verbraucht (ein `UPDATE`, das nur eine
+  Zeile zurueckgibt, wenn es sie selbst markiert hat), die Signatur gegen den
+  abgelegten oeffentlichen Schluessel, `type`, `challenge`, `origin` und
+  `crossOrigin` aus den Client-Daten, der `rpIdHash` gegen die Domaene genau
+  jener Herkunft, das Bit fuer die Anwesenheit, und der Zaehler, der wachsen
+  muss (geschrieben mit dem gelesenen Stand im `WHERE`). **Was nicht laeuft, und
+  steht als Satz auf der Seite:** die Attestation (bei `fmt: none` gibt es
+  nichts zu pruefen), andere Verfahren als ES256 (RS256 und EdDSA sind
+  abgewiesen, `CHECK (algorithm = -7)`), der Zaehler, wenn beide Staende 0 sind,
+  eine registrierbare Oberdomaene als `rpId`, und die Benutzerbestaetigung als
+  zweiter Faktor (eine Anmeldung mit Passkey bleibt `aal1`). Die Sitzung entsteht
+  in `beginAuthenticatedSession`, also an derselben Stelle wie beim Passwort;
+  darum laeuft der Hook `sign_in` (Weg `passkey`) und darum greift der Schalter
+  aus 2.52 auch hier. Die Console-Seite hat nur ein `GET`: eingerichtet und
+  entfernt wird in der Anwendung des Nutzers (`auth/passkeys`).
+
 - Neu in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
   aus und sagt, dass sie noch nichts öffnen.** Der Platzhalter `storage-s3` ist
   echt, Migration `0059_project_storage_s3_access_keys.sql` (0058 bleibt dem

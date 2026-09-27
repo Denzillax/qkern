@@ -77,7 +77,11 @@ export type ProjectAuthHookPoint = (typeof PROJECT_AUTH_HOOK_POINTS)[number];
  * darum ein eigener Wert.
  */
 export const PROJECT_AUTH_HOOK_METHODS = [
-  "password", "magic_link", "email_verification", "oidc", "mfa",
+  // `passkey` kam mit 2.79 dazu. Er steht hier, weil die Anmeldung mit einem
+  // Passkey durch dieselbe Stelle laeuft wie die mit Passwort und darum
+  // denselben Hook ruft. Ein Hook, der `password` abweist und `passkey` nicht
+  // kennte, haette ein Loch, das genau so aussieht wie eine Anmeldung.
+  "password", "magic_link", "email_verification", "oidc", "mfa", "passkey",
 ] as const;
 export type ProjectAuthHookMethod = (typeof PROJECT_AUTH_HOOK_METHODS)[number];
 

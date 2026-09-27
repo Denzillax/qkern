@@ -64,7 +64,16 @@ export type ProjectAuthOneTimePurpose =
   | "password_reset"
   | "oidc_state"
   | "mfa_challenge"
-  | "mfa_enrollment";
+  | "mfa_enrollment"
+  /**
+   * Die Herausforderung fuer einen neuen Passkey (2.79). Getrennt von der
+   * Herausforderung der Anmeldung, weil sonst eine Herausforderung, die ein
+   * angemeldeter Nutzer fuer ein neues Geraet geholt hat, an der Anmeldung
+   * einloesbar waere.
+   */
+  | "passkey_registration"
+  /** Die Herausforderung fuer eine Anmeldung mit Passkey (2.79), ohne Nutzer. */
+  | "passkey_authentication";
 
 export type ProjectAuthOneTimeToken = ProjectAuthScope & {
   id: string;
@@ -84,6 +93,71 @@ export type ProjectAuthMfaFactor = ProjectAuthScope & {
   recoveryCodeHashes: string[];
   createdAt: Date;
   verifiedAt: Date | null;
+};
+
+/**
+ * Ein abgelegter Passkey (2.79).
+ *
+ * Es gibt kein Gegenstueck zu `encryptedSecret` des zweiten Faktors, und das
+ * ist der Punkt: Hier liegt ein **oeffentlicher** Schluessel. Der private Teil
+ * verlaesst den Authenticator nie, auch nicht auf dem Weg hierher.
+ *
+ * `signCount` ist der Stand, den der Authenticator bei der letzten Benutzung
+ * genannt hat. Er wandert bei jeder Anmeldung mit, weil die naechste Anmeldung
+ * ihn braucht: Ein Stand, der nicht gewachsen ist, heisst geklonter Schluessel.
+ * Ein Authenticator, der keinen Zaehler fuehrt, laesst ihn auf 0.
+ */
+export type ProjectAuthPasskey = ProjectAuthScope & {
+  id: string;
+  userId: string;
+  credentialId: string;
+  publicKey: string;
+  algorithm: number;
+  signCount: number;
+  userVerified: boolean;
+  attestationFormat: string;
+  label: string;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+};
+
+/**
+ * Was die Liste eines Nutzers und die Uebersicht der Console von einem Passkey
+ * zeigen. Ohne Scope-Spalten und **ohne den oeffentlichen Schluessel**: Er ist
+ * kein Geheimnis, aber er hat in einer Liste nichts zu suchen, die nur sagen
+ * soll, welche Geraete es gibt.
+ */
+export type PublicProjectAuthPasskey = {
+  id: string;
+  credentialId: string;
+  algorithm: number;
+  signCount: number;
+  userVerified: boolean;
+  attestationFormat: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
+
+export function publicProjectAuthPasskey(passkey: ProjectAuthPasskey): PublicProjectAuthPasskey {
+  return {
+    id: passkey.id,
+    credentialId: passkey.credentialId,
+    algorithm: passkey.algorithm,
+    signCount: passkey.signCount,
+    userVerified: passkey.userVerified,
+    attestationFormat: passkey.attestationFormat,
+    label: passkey.label,
+    createdAt: new Date(passkey.createdAt).toISOString(),
+    lastUsedAt: passkey.lastUsedAt ? new Date(passkey.lastUsedAt).toISOString() : null,
+  };
+}
+
+/** Wie viele App-Nutzer einen Passkey haben und wie viele Passkeys es gibt (2.79). */
+export type ProjectAuthPasskeyCount = {
+  users: number;
+  passkeys: number;
+  usersWithPasskey: number;
 };
 
 /**

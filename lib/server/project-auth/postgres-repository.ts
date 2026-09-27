@@ -6,6 +6,8 @@ import type {
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
   ProjectAuthOneTimeToken,
+  ProjectAuthPasskey,
+  ProjectAuthPasskeyCount,
   ProjectAuthRateCount,
   ProjectAuthScope,
   ProjectAuthSession,
@@ -435,6 +437,91 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     return { users: count(row.users, "user count"), enrolled: count(row.enrolled, "enrolment count") };
   }
 
+  async createPasskey(passkey: ProjectAuthPasskey) {
+    try {
+      const result = await query(this.pool, `INSERT INTO project_auth_passkeys
+        (id, organization_id, project_id, environment, auth_user_id, credential_id, public_key,
+         algorithm, sign_count, user_verified, attestation_format, label, created_at, last_used_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        RETURNING ${PASSKEY_COLUMNS}`, [
+        passkey.id, passkey.organizationId, passkey.projectId, passkey.environment, passkey.userId,
+        passkey.credentialId, passkey.publicKey, passkey.algorithm, passkey.signCount,
+        passkey.userVerified, passkey.attestationFormat, passkey.label,
+        passkey.createdAt, passkey.lastUsedAt,
+      ]);
+      return passkeyFromRow(result.rows[0]);
+    } catch (error) {
+      // Dieselbe Kennung zweimal in derselben Umgebung: Das ist kein Fehler des
+      // Servers, sondern ein Geraet, das schon registriert ist.
+      const postgres = error as PostgresError;
+      if (postgres.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw error;
+    }
+  }
+
+  async listPasskeys(scope: ProjectAuthScope, userId: string) {
+    const result = await query(this.pool, `${PASSKEY_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4
+      ORDER BY created_at DESC, id DESC
+      LIMIT 50`, [...scopeValues(scope), userId]);
+    return result.rows.map(passkeyFromRow);
+  }
+
+  async findPasskeyByCredentialId(scope: ProjectAuthScope, credentialId: string) {
+    const result = await query(this.pool, `${PASSKEY_SELECT}
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND credential_id = $4
+      LIMIT 1`, [...scopeValues(scope), credentialId]);
+    return result.rows[0] ? passkeyFromRow(result.rows[0]) : null;
+  }
+
+  async advancePasskeyCounter(
+    scope: ProjectAuthScope,
+    passkeyId: string,
+    input: { fromSignCount: number; toSignCount: number; usedAt: Date },
+  ) {
+    // Der gelesene Stand steht im `WHERE`, und darum ist das hier eine
+    // Bedingung und nicht bloss ein Schreibzugriff: Zwei gleichzeitige
+    // Anmeldungen mit derselben Unterschrift treffen dieselbe Zeile, und genau
+    // eine von beiden trifft sie mit dem Stand, den sie gelesen hat. Die andere
+    // bekommt keine Zeile zurueck und wird abgewiesen.
+    const result = await query(this.pool, `UPDATE project_auth_passkeys
+      SET sign_count = $6, last_used_at = $7
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND id = $4 AND sign_count = $5
+      RETURNING id`, [
+      ...scopeValues(scope), passkeyId, input.fromSignCount, input.toSignCount, input.usedAt,
+    ]);
+    return result.rows.length === 1;
+  }
+
+  async deletePasskey(scope: ProjectAuthScope, userId: string, passkeyId: string) {
+    // Der Nutzer steht im `WHERE` und nicht in einer Pruefung davor: Ein
+    // Passkey eines fremden Nutzers soll nicht erst gelesen und dann abgelehnt
+    // werden, sondern gar nicht getroffen.
+    const result = await query(this.pool, `DELETE FROM project_auth_passkeys
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND auth_user_id = $4 AND id = $5
+      RETURNING id`, [...scopeValues(scope), userId, passkeyId]);
+    return result.rows.length === 1;
+  }
+
+  async countPasskeys(scope: ProjectAuthScope): Promise<ProjectAuthPasskeyCount> {
+    const result = await query(this.pool, `SELECT
+        (SELECT COUNT(*) FROM project_auth_users
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3) AS users,
+        (SELECT COUNT(*) FROM project_auth_passkeys
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3) AS passkeys,
+        (SELECT COUNT(DISTINCT auth_user_id) FROM project_auth_passkeys
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3) AS users_with_passkey`,
+    scopeValues(scope));
+    const row = result.rows[0] ?? {};
+    return {
+      users: count(row.users, "user count"),
+      passkeys: count(row.passkeys, "passkey count"),
+      usersWithPasskey: count(row.users_with_passkey, "passkey user count"),
+    };
+  }
+
   async getMfaFactor(scope: ProjectAuthScope, userId: string) {
     const result = await query(this.pool, `${MFA_SELECT}
       WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND auth_user_id = $4
@@ -550,6 +637,9 @@ const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
 const MFA_SELECT = `SELECT ${MFA_COLUMNS} FROM project_auth_mfa_factors`;
+const PASSKEY_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, credential_id,
+  public_key, algorithm, sign_count, user_verified, attestation_format, label, created_at, last_used_at`;
+const PASSKEY_SELECT = `SELECT ${PASSKEY_COLUMNS} FROM project_auth_passkeys`;
 const OIDC_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, provider, subject,
   created_at, last_sign_in_at`;
 const OIDC_SELECT = `SELECT ${OIDC_COLUMNS} FROM project_auth_oidc_identities`;
@@ -589,6 +679,13 @@ function count(value: unknown, name: string): number {
   // unerwarteten Wert stillschweigend NaN.
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) throw new InvalidRecordError(`Invalid project auth ${name}.`);
+  return parsed;
+}
+
+/** Eine ganze Zahl, die auch negativ sein darf. `count` verlangt sie positiv. */
+function integerValue(value: unknown, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) throw new InvalidRecordError(`Invalid project auth ${name}.`);
   return parsed;
 }
 
@@ -759,6 +856,24 @@ function mfaFromRow(row: Row): ProjectAuthMfaFactor {
     environment: row.environment as ProjectAuthScope["environment"], userId: String(row.auth_user_id),
     encryptedSecret: String(row.encrypted_secret), recoveryCodeHashes: stringArray(row.recovery_code_hashes, "recovery codes"),
     createdAt: timestamp(row.created_at, "MFA creation"), verifiedAt: optionalTimestamp(row.verified_at, "MFA verification"),
+  };
+}
+
+function passkeyFromRow(row: Row): ProjectAuthPasskey {
+  return {
+    id: String(row.id), organizationId: String(row.organization_id), projectId: String(row.project_id),
+    environment: row.environment as ProjectAuthScope["environment"], userId: String(row.auth_user_id),
+    credentialId: String(row.credential_id), publicKey: String(row.public_key),
+    // `algorithm` ist eine negative ganze Zahl (die Zaehlung von COSE), und
+    // `sign_count` ist bigint und kommt darum als Zeichenkette aus dem Treiber.
+    // Beide werden geprueft und nicht geglaubt: Ein NaN in einem Zaehler faellt
+    // sonst erst beim Vergleich auf, und dann faellt er nach oben offen.
+    algorithm: integerValue(row.algorithm, "passkey algorithm"),
+    signCount: count(row.sign_count, "passkey sign count"),
+    userVerified: row.user_verified === true,
+    attestationFormat: String(row.attestation_format), label: String(row.label),
+    createdAt: timestamp(row.created_at, "passkey creation"),
+    lastUsedAt: optionalTimestamp(row.last_used_at, "passkey usage"),
   };
 }
 

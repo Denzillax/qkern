@@ -32,14 +32,21 @@ import type {
   ProjectAuthAssurance,
   ProjectAuthOidcIdentity,
   ProjectAuthOneTimePurpose,
+  ProjectAuthPasskey,
   ProjectAuthScope,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
   ProjectAuthUser,
   ProjectAuthUserStatus,
+  PublicProjectAuthPasskey,
   PublicProjectAuthUser,
 } from "@/lib/server/project-auth/model";
-import { publicProjectAuthUser } from "@/lib/server/project-auth/model";
+import { publicProjectAuthPasskey, publicProjectAuthUser } from "@/lib/server/project-auth/model";
+import {
+  PASSKEY_ALGORITHMS,
+  verifyPasskeyAssertion,
+  verifyPasskeyRegistration,
+} from "@/lib/server/project-auth/passkeys";
 import {
   projectAuthUserRef,
   type ProjectAuthAuditEvent,
@@ -101,6 +108,22 @@ import {
 
 const REFRESH_TOKEN = /^qk_refresh_[A-Za-z0-9_-]{43}$/;
 const CHALLENGE_TOKEN = /^qk_challenge_[A-Za-z0-9_-]{43}$/;
+/**
+ * Der Schein fuer eine WebAuthn-Herausforderung (2.79).
+ *
+ * Die 43 Zeichen hinter dem Praefix **sind** die Herausforderung: base64url von
+ * 32 zufaelligen Byte, genau der Wert, den der Browser in die Client-Daten
+ * schreibt und mitunterschreibt. Der Aufrufer bekommt beides in einem Feld,
+ * damit er nichts zusammensetzen muss; der Server verbraucht den Schein in der
+ * Datenbank und vergleicht die Herausforderung daneben noch einmal gegen die
+ * Client-Daten. Zwei Pruefungen aus einem Wert, und beide sind noetig: Die
+ * erste macht die Einmaligkeit, die zweite bindet die Unterschrift daran.
+ */
+const PASSKEY_TOKEN = /^qk_pkey_[A-Za-z0-9_-]{43}$/;
+const PASSKEY_TOKEN_PREFIX = "qk_pkey_";
+/** Wie lange eine Herausforderung gilt. Kurz, weil sie einen Handgriff traegt. */
+const PASSKEY_CHALLENGE_TTL_MS = 5 * 60 * 1_000;
+const PASSKEY_RATE = { limit: 20, windowMs: 15 * 60 * 1_000 };
 const ENROLLMENT_TOKEN = /^qk_enroll_[A-Za-z0-9_-]{43}$/;
 const ONE_TIME_TOKEN = /^qk_(verify|magic|reset)_[A-Za-z0-9_-]{43}$/;
 const OIDC_STATE_TOKEN = /^qk_oidc_[A-Za-z0-9_-]{43}$/;
@@ -108,6 +131,8 @@ const PASSWORD_RATE = { limit: 10, windowMs: 15 * 60 * 1_000 };
 const EMAIL_RATE = { limit: 5, windowMs: 60 * 60 * 1_000 };
 const MFA_RATE = { limit: 8, windowMs: 15 * 60 * 1_000 };
 const AUDIT_CURSOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Die Form einer UUID, fuer IDs, die aus einer Anfrage kommen (2.79). */
+const UUID_VALUE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ProjectAuthDeliveryPurpose = "email_verification" | "magic_link" | "password_reset";
 export type ProjectAuthDelivery = {
@@ -140,6 +165,37 @@ export type ProjectAuthSessionResult = {
   refreshTokenExpiresAt: string;
   tokenType: "Bearer";
   user: PublicProjectAuthUser;
+};
+
+/**
+ * Eine ausgegebene WebAuthn-Herausforderung (2.79).
+ *
+ * `challenge` und `challengeToken` tragen denselben Zufall: Der Browser
+ * unterschreibt `challenge`, der Server loest `challengeToken` in der Datenbank
+ * ein. Beides steht hier, damit der Aufrufer nichts ableiten muss.
+ *
+ * `relyingParties` ist die Liste der erlaubten Herkuenfte samt der Domaene, die
+ * je Herkunft als `rp.id` gilt. Eine Liste und kein einzelner Wert, weil der
+ * Server nicht weiss, von welcher der erlaubten Herkuenfte der Aufrufer kommt;
+ * der Browser weiss es und nimmt den Eintrag, der zu ihm passt. Schickt er
+ * danach eine andere Herkunft zurueck, faellt sie bei der Pruefung durch.
+ */
+export type PublicProjectAuthPasskeyChallenge = {
+  challengeToken: string;
+  challenge: string;
+  relyingParties: Array<{ origin: string; rpId: string }>;
+  algorithms: ReadonlyArray<{ type: "public-key"; alg: number }>;
+  expiresAt: string;
+};
+
+/** Was die Console ueber die Passkeys einer Umgebung sieht (2.79). */
+export type PublicProjectAuthPasskeyPolicy = {
+  users: number;
+  passkeys: number;
+  usersWithPasskey: number;
+  usersWithoutPasskey: number;
+  relyingParties: Array<{ origin: string; rpId: string }>;
+  algorithms: ReadonlyArray<{ type: "public-key"; alg: number }>;
 };
 
 export type ProjectAuthMfaRequired = {
@@ -321,7 +377,7 @@ recognisedByName(ProjectAuthReturnTargetError, "ProjectAuthReturnTargetError");
 /** Wer in der Console handelt: die ID des Console-Nutzers, nie seine E-Mail. */
 export type ProjectAuthAdminActor = { id: string };
 
-type ProjectAuthSignInMethod = "password" | "magic_link" | "email_verification" | "oidc";
+type ProjectAuthSignInMethod = "password" | "magic_link" | "email_verification" | "oidc" | "passkey";
 
 export type ProjectAuthAdminContext = {
   organizationId: string;
@@ -338,6 +394,12 @@ export type ProjectAuthErrorCode =
   | "TOKEN_REPLAYED"
   | "MFA_REQUIRED"
   | "INVALID_MFA"
+  // Eine Antwort des Browsers auf eine WebAuthn-Herausforderung ist nicht
+  // durchgekommen (2.79). Ein eigener Code und nicht INVALID_MFA, weil ein
+  // Passkey hier ein **erster** Faktor ist: Wer ihn abgewiesen bekommt, ist
+  // nicht halb angemeldet, sondern gar nicht. Warum genau, sagt die Antwort
+  // nicht; der Grund steht im Audit.
+  | "INVALID_PASSKEY"
   | "RATE_LIMITED"
   // Das gewaehlte Passwort steht in der Leckliste dieser Installation (2.53).
   // Dass es das tut, ist handelbar und kein Geheimnis: Wer es eingibt, kennt
@@ -1356,6 +1418,351 @@ export class ProjectAuthService {
   }
 
   /**
+   * Eine Herausforderung fuer einen neuen Passkey (2.79).
+   *
+   * Nur fuer einen Nutzer, der schon da ist: Wer hier ankommt, hat eine
+   * brauchbare Sitzung, also ein Access Token, das `verifyAccess` angenommen
+   * hat. Ein Passkey ist damit nichts, womit man ein Konto anlegt, sondern
+   * etwas, das ein bestehendes Konto dazubekommt. Das ist die kleinere Flaeche:
+   * Eine Registrierung ohne vorherige Anmeldung waere ein zweiter Weg, ein
+   * Konto zu erzeugen, und der erste (`signUp`) prueft die Adresse.
+   *
+   * Die Kennungen der vorhandenen Passkeys gehen mit hinaus, damit der Browser
+   * sie in `excludeCredentials` legen kann und derselbe Authenticator nicht
+   * zweimal registriert wird. Sie sind keine Geheimnisse, und der Aufrufer ist
+   * der Nutzer, dem sie gehoeren.
+   */
+  async beginPasskeyRegistration(
+    principal: ProjectAuthEnrollmentPrincipal,
+  ): Promise<PublicProjectAuthPasskeyChallenge & { existingCredentialIds: string[] }> {
+    assertScope(principal.scope);
+    const now = this.now();
+    const challenge = await this.issuePasskeyChallenge(
+      principal.scope, "passkey_registration", principal.user.id, now,
+    );
+    const existing = await this.dependencies.repository.listPasskeys(principal.scope, principal.user.id);
+    return { ...challenge, existingCredentialIds: existing.map((passkey) => passkey.credentialId) };
+  }
+
+  /**
+   * Die Antwort des Browsers auf eine Registrierung, geprueft und abgelegt.
+   *
+   * Die Herausforderung wird **zuerst** verbraucht und danach geprueft. Diese
+   * Reihenfolge ist der Kern: Waere es umgekehrt, liesse sich dieselbe
+   * Herausforderung beliebig oft mit einer falschen Antwort probieren, und der
+   * Angreifer bekaeme so viele Versuche, wie er will. So bekommt er genau einen.
+   */
+  async completePasskeyRegistration(principal: ProjectAuthEnrollmentPrincipal, input: {
+    challengeToken: string;
+    attestationObject: string;
+    clientDataJSON: string;
+    label: string;
+  }): Promise<PublicProjectAuthPasskey> {
+    assertScope(principal.scope);
+    const now = this.now();
+    const label = typeof input.label === "string" ? input.label.trim() : "";
+    if (label.length < 1 || label.length > 64) throw new ProjectAuthError("INVALID_INPUT");
+    const challenge = await this.consumePasskeyChallenge(
+      principal.scope, input.challengeToken, "passkey_registration", now,
+    );
+    // Die Herausforderung gehoerte diesem Nutzer. Ohne diese Zeile koennte ein
+    // Nutzer eine Herausforderung eines anderen einloesen und sich damit einen
+    // Passkey in dessen Konto legen.
+    if (challenge.userId !== principal.user.id) {
+      await this.recordPasskeyRefusal(principal.scope, principal.user.id, "registration", "challenge_mismatch");
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    const verdict = verifyPasskeyRegistration({
+      attestationObject: input.attestationObject,
+      clientDataJSON: input.clientDataJSON,
+      challenge: challenge.challenge,
+      allowedOrigins: this.dependencies.allowedRedirectOrigins,
+    });
+    if (!verdict.ok) {
+      await this.recordPasskeyRefusal(principal.scope, principal.user.id, "registration", verdict.reason);
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    let stored: ProjectAuthPasskey;
+    try {
+      stored = await this.dependencies.repository.createPasskey({
+        ...principal.scope, id: this.id(), userId: principal.user.id,
+        credentialId: verdict.value.credentialId, publicKey: verdict.value.publicKey,
+        algorithm: verdict.value.algorithm, signCount: verdict.value.signCount,
+        userVerified: verdict.value.userVerified, attestationFormat: verdict.value.attestationFormat,
+        label, createdAt: now, lastUsedAt: null,
+      });
+    } catch (error) {
+      // Dasselbe Geraet zweimal. Kein 500, sondern die Auskunft, dass es diesen
+      // Passkey schon gibt.
+      if (error instanceof DuplicateProjectAuthIdentityError) throw new ProjectAuthError("ACCOUNT_EXISTS");
+      throw error;
+    }
+    await this.recordAudit(this.userEvent(principal.scope, "project_auth.passkey.registered", principal.user.id, "succeeded", {
+      // Kein oeffentlicher Schluessel und keine Kennung in der Spur: Beides ist
+      // kein Geheimnis, aber beides ist ein Kennzeichen eines Geraets, und die
+      // Kette soll Geraete nicht wiedererkennbar machen. Was hier steht, ist
+      // genug, um zu sehen, was registriert wurde.
+      algorithm: verdict.value.algorithm, attestation: verdict.value.attestationFormat,
+      userVerified: verdict.value.userVerified,
+    }));
+    return publicProjectAuthPasskey(stored);
+  }
+
+  /**
+   * Eine Herausforderung fuer eine Anmeldung mit Passkey (2.79).
+   *
+   * Ohne Nutzer und ohne Adresse: Wer sich mit einem Passkey anmeldet, sagt
+   * vorher nicht, wer er ist; der Server erfaehrt es aus der Kennung, die die
+   * Antwort mitbringt. Darum gibt es hier auch nichts nachzuschlagen, und darum
+   * verraet diese Route nicht, welche Adressen es gibt.
+   */
+  async beginPasskeySignIn(scope: ProjectAuthScope, input: {
+    rateLimitKey: string;
+  }): Promise<PublicProjectAuthPasskeyChallenge> {
+    const now = this.now();
+    await this.assertRateLimit(`project-passkey:${scopeKey(scope)}:${input.rateLimitKey}`, PASSKEY_RATE, now);
+    assertScope(scope);
+    return this.issuePasskeyChallenge(scope, "passkey_authentication", null, now);
+  }
+
+  /**
+   * Die Anmeldung mit einem Passkey.
+   *
+   * Der Weg zur Sitzung ist **derselbe** wie bei der Anmeldung mit Passwort:
+   * `beginAuthenticatedSession`, und damit `createSessionResult` und damit der
+   * Punkt `sign_in` (2.77). Eine Anmeldung, die an dieser Stelle einen eigenen
+   * Weg nimmt, ist eine Anmeldung, an der die Regeln der Umgebung nicht gelten;
+   * der erzwungene zweite Faktor (2.52) greift hier genauso, und ein Nutzer mit
+   * bestaetigtem TOTP bekommt auch nach einem Passkey erst eine Challenge.
+   *
+   * Warum aal1 und nicht aal2: Ein Passkey mit Benutzerbestaetigung ist zwar
+   * praktisch zwei Faktoren, aber `aal2` heisst in QKERN "ein bestaetigter
+   * zweiter Faktor liegt vor", und das ist eine andere Aussage. Sie hier zu
+   * vergeben hiesse, den erzwungenen zweiten Faktor still zu umgehen.
+   */
+  async completePasskeySignIn(scope: ProjectAuthScope, input: {
+    challengeToken: string;
+    credentialId: string;
+    authenticatorData: string;
+    clientDataJSON: string;
+    signature: string;
+    rateLimitKey: string;
+  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
+    const now = this.now();
+    await this.assertRateLimit(`project-passkey:${scopeKey(scope)}:${input.rateLimitKey}`, PASSKEY_RATE, now);
+    assertScope(scope);
+    if (typeof input.credentialId !== "string" || !/^[A-Za-z0-9_-]{16,1364}$/.test(input.credentialId)) {
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    // Die Grenze aus der Datenbank, nach Kennung gezaehlt (2.56), und zwar vor
+    // dem Nachschlagen: Aus einer 429 soll niemand lesen koennen, ob es diesen
+    // Passkey gibt.
+    await this.assertStoredRateLimit(scope, "sign_in", `passkey:${input.credentialId}`, now);
+    const challenge = await this.consumePasskeyChallenge(
+      scope, input.challengeToken, "passkey_authentication", now,
+    );
+    const passkey = await this.dependencies.repository.findPasskeyByCredentialId(scope, input.credentialId);
+    if (!passkey) {
+      await this.recordPasskeyRefusal(scope, null, "authentication", "credential_unknown");
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    const verdict = verifyPasskeyAssertion({
+      authenticatorData: input.authenticatorData,
+      clientDataJSON: input.clientDataJSON,
+      signature: input.signature,
+      challenge: challenge.challenge,
+      allowedOrigins: this.dependencies.allowedRedirectOrigins,
+      credential: {
+        publicKey: passkey.publicKey, algorithm: passkey.algorithm, signCount: passkey.signCount,
+      },
+    });
+    if (!verdict.ok) {
+      await this.recordPasskeyRefusal(scope, passkey.userId, "authentication", verdict.reason);
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    // Der Zaehler wird geschrieben, **bevor** es eine Sitzung gibt, und das
+    // Schreiben ist selbst eine Bedingung: Es gelingt nur, wenn der Stand noch
+    // der ist, den die Pruefung gelesen hat. Zwei gleichzeitige Anmeldungen mit
+    // derselben Unterschrift kommen so genau einmal durch, auch wenn beide
+    // dieselbe Zeile gelesen haben.
+    const advanced = await this.dependencies.repository.advancePasskeyCounter(scope, passkey.id, {
+      fromSignCount: passkey.signCount, toSignCount: verdict.value.signCount, usedAt: now,
+    });
+    if (!advanced) {
+      await this.recordPasskeyRefusal(scope, passkey.userId, "authentication", "sign_count_regressed");
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    const user = await this.dependencies.repository.findUserById(scope, passkey.userId);
+    if (!user || user.status !== "active") {
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", passkey.userId, "failed", {
+        method: "passkey", reason: "user_disabled",
+      }));
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    // Kein Blick auf `emailVerifiedAt` an dieser Stelle, und das ist Absicht:
+    // Der Passkey ist der Beweis, und er haengt nicht an einer Adresse. Ein
+    // Nutzer konnte diesen Passkey nur registrieren, wenn er eine brauchbare
+    // Sitzung hatte, und die bekam er nur mit bestaetigter Adresse.
+    await this.recordAudit(this.userEvent(scope, "project_auth.passkey.verified", user.id, "succeeded", {
+      userVerified: verdict.value.userVerified, signCount: verdict.value.signCount,
+    }));
+    return this.beginAuthenticatedSession(scope, user, now, "passkey");
+  }
+
+  /** Die Passkeys des angemeldeten Nutzers, ohne oeffentliche Schluessel. */
+  async listPasskeys(principal: ProjectAuthEnrollmentPrincipal): Promise<PublicProjectAuthPasskey[]> {
+    assertScope(principal.scope);
+    const passkeys = await this.dependencies.repository.listPasskeys(principal.scope, principal.user.id);
+    return passkeys.map(publicProjectAuthPasskey);
+  }
+
+  /**
+   * Einen Passkey entfernen, und zwar wirklich: Die Zeile ist danach weg.
+   *
+   * Der Nutzer steht im Loeschbefehl selbst; ein Passkey eines anderen Nutzers
+   * wird nicht getroffen und ergibt eine 404. Was hier **nicht** geprueft wird:
+   * ob es der letzte ist. Ein Nutzer darf sich seinen letzten Passkey nehmen,
+   * denn er hat weiterhin Passwort oder Magic Link; ein Server, der das
+   * verhindert, haelt jemanden an einem Geraet fest, das er nicht mehr hat.
+   */
+  async removePasskey(
+    principal: ProjectAuthEnrollmentPrincipal,
+    passkeyId: string,
+  ): Promise<{ removed: true }> {
+    assertScope(principal.scope);
+    // Die Form der ID steht hier und nicht nur in der Route: Die Spalte ist
+    // `uuid`, und eine Zeichenkette, die keine ist, waere in PostgreSQL ein
+    // Umwandlungsfehler und damit eine 500 auf einer Anfrage, die nur eine 404
+    // verdient. Eine Regel, die an einer Tuer haengt, ist keine Regel.
+    if (!UUID_VALUE.test(passkeyId)) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    const removed = await this.dependencies.repository.deletePasskey(
+      principal.scope, principal.user.id, passkeyId,
+    );
+    if (!removed) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.recordAudit(this.userEvent(principal.scope, "project_auth.passkey.removed", principal.user.id, "succeeded", {
+      passkey: passkeyId,
+    }));
+    return { removed: true };
+  }
+
+  /**
+   * Was die Console ueber die Passkeys dieser Umgebung sieht (2.79): drei Zahlen
+   * und die Liste der Herkuenfte, gegen die geprueft wird. Keine Kennung, kein
+   * Schluessel, kein Nutzer: Die Uebersicht soll sagen, ob Passkeys benutzt
+   * werden, und nicht, von wem.
+   */
+  async readPasskeyPolicy(scope: ProjectAuthScope): Promise<PublicProjectAuthPasskeyPolicy> {
+    assertScope(scope);
+    const counts = await this.dependencies.repository.countPasskeys(scope);
+    return {
+      users: counts.users,
+      passkeys: counts.passkeys,
+      usersWithPasskey: counts.usersWithPasskey,
+      usersWithoutPasskey: Math.max(0, counts.users - counts.usersWithPasskey),
+      relyingParties: this.passkeyRelyingParties(),
+      algorithms: PASSKEY_ALGORITHMS,
+    };
+  }
+
+  /**
+   * Die erlaubten Herkuenfte und die Domaene, die je Herkunft als `rp.id` gilt.
+   *
+   * Es ist dieselbe Liste, die auch die Ruecksprungziele begrenzt
+   * (`QKERN_PROJECT_AUTH_REDIRECT_ORIGINS`), und das mit Absicht: Zwei Listen
+   * mit derselben Bedeutung gehen auseinander, und dann prueft die eine etwas
+   * anderes als die andere. Eine Umgebung, die ihre Ruecksprungziele weiter
+   * verengt (2.54), verengt damit die Passkeys **nicht**: Diese Liste ist die
+   * aeussere Grenze der Installation, und eine Herkunft, die dort nicht steht,
+   * kommt hier nicht durch.
+   */
+  private passkeyRelyingParties(): Array<{ origin: string; rpId: string }> {
+    return [...this.dependencies.allowedRedirectOrigins].map((origin) => ({
+      origin, rpId: new URL(origin).hostname,
+    }));
+  }
+
+  /** Gibt eine Herausforderung aus und legt ihren Verifier in die Datenbank. */
+  private async issuePasskeyChallenge(
+    scope: ProjectAuthScope,
+    purpose: "passkey_registration" | "passkey_authentication",
+    userId: string | null,
+    now: Date,
+  ): Promise<PublicProjectAuthPasskeyChallenge> {
+    const token = this.opaqueToken("pkey");
+    if (!PASSKEY_TOKEN.test(token)) throw new ProjectAuthError("INVALID_INPUT");
+    const expiresAt = new Date(now.getTime() + PASSKEY_CHALLENGE_TTL_MS);
+    await this.dependencies.repository.createOneTimeToken({
+      ...scope, id: this.id(), userId, purpose,
+      tokenHash: hashProjectAuthToken(token), metadata: {}, createdAt: now,
+      expiresAt, consumedAt: null,
+    });
+    return {
+      challengeToken: token,
+      challenge: token.slice(PASSKEY_TOKEN_PREFIX.length),
+      relyingParties: this.passkeyRelyingParties(),
+      algorithms: PASSKEY_ALGORITHMS,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Loest eine Herausforderung ein und verbraucht sie dabei.
+   *
+   * Verbraucht wird in der Datenbank, mit einem UPDATE, das `consumed_at` nur
+   * setzt, wenn es noch NULL ist, und nur dann eine Zeile zurueckgibt. Das ist
+   * die Stelle, die eine wiederverwendete Herausforderung abweist, und sie tut
+   * es auch dann, wenn zwei Anfragen gleichzeitig kommen: Genau eine bekommt
+   * die Zeile.
+   *
+   * Der `purpose` steht im WHERE und nicht in einer Pruefung danach: Eine
+   * Herausforderung fuer eine Registrierung hat an der Anmeldung nichts zu
+   * suchen, und ein Nachschlagen, das sie erst findet, waere ein Nachschlagen,
+   * das sie verbraucht.
+   */
+  private async consumePasskeyChallenge(
+    scope: ProjectAuthScope,
+    token: string,
+    purpose: "passkey_registration" | "passkey_authentication",
+    now: Date,
+  ): Promise<{ challenge: string; userId: string | null }> {
+    if (typeof token !== "string" || !PASSKEY_TOKEN.test(token)) {
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    const consumed = await this.dependencies.repository.consumeOneTimeToken(
+      scope, hashProjectAuthToken(token), purpose, now,
+    );
+    if (!consumed) {
+      await this.recordPasskeyRefusal(
+        scope, null, purpose === "passkey_registration" ? "registration" : "authentication", "challenge_spent",
+      );
+      throw new ProjectAuthError("INVALID_PASSKEY");
+    }
+    return { challenge: token.slice(PASSKEY_TOKEN_PREFIX.length), userId: consumed.userId };
+  }
+
+  /**
+   * Eine abgewiesene Antwort in der Kette. Der Grund steht im Klartext, weil er
+   * genau das ist, was hinterher niemand mehr rekonstruieren kann:
+   * `origin_not_allowed` ist ein Angriff, `sign_count_regressed` ein geklonter
+   * Schluessel und `challenge_spent` ein Wiedereinspielversuch. Was nicht
+   * dabeisteht, ist die Herkunft, die der Angreifer genannt hat, und die
+   * Kennung des Schluessels.
+   */
+  private async recordPasskeyRefusal(
+    scope: ProjectAuthScope,
+    userId: string | null,
+    stage: "registration" | "authentication",
+    reason: string,
+  ): Promise<void> {
+    await this.recordAudit(userId
+      ? this.userEvent(scope, "project_auth.passkey.refused", userId, "failed", { stage, reason })
+      : {
+        scope, action: "project_auth.passkey.refused", actorType: "app_user", actorRef: "anonymous",
+        resourceRef: "project_auth_user:unknown", status: "failed", metadata: { stage, reason },
+      });
+  }
+
+  /**
    * Die konfigurierten OIDC-Provider — als Projektion, nie als Durchreichung.
    *
    * Der Katalog kannte `list()` seit 1.76; gerufen hat es bis 1.83 niemand —
@@ -1945,6 +2352,13 @@ export class DisabledProjectAuthService {
   readAuthHooks(): never { return this.disabled(); }
   setAuthHooks(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
+  beginPasskeyRegistration(): never { return this.disabled(); }
+  completePasskeyRegistration(): never { return this.disabled(); }
+  beginPasskeySignIn(): never { return this.disabled(); }
+  completePasskeySignIn(): never { return this.disabled(); }
+  listPasskeys(): never { return this.disabled(); }
+  removePasskey(): never { return this.disabled(); }
+  readPasskeyPolicy(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
   resolveOidcScope(): never { return this.disabled(); }
