@@ -144,7 +144,7 @@ FROM pg_catalog.pg_class AS rel
 JOIN pg_catalog.pg_namespace AS ns ON ns.oid = rel.relnamespace
 WHERE rel.relkind IN ('r', 'p', 'm')
   AND ns.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-ORDER BY pg_catalog.pg_total_relation_size(rel.oid) DESC, rel.relname ASC
+ORDER BY pg_catalog.pg_total_relation_size(rel.oid) DESC NULLS LAST, rel.relname ASC
 LIMIT 25`,
   },
   {
@@ -167,7 +167,7 @@ JOIN pg_catalog.pg_index AS idx ON idx.indexrelid = stat.indexrelid
 WHERE stat.idx_scan = 0
   AND idx.indisunique = false
   AND idx.indisprimary = false
-ORDER BY pg_catalog.pg_relation_size(stat.indexrelid) DESC, stat.indexrelname ASC
+ORDER BY pg_catalog.pg_relation_size(stat.indexrelid) DESC NULLS LAST, stat.indexrelname ASC
 LIMIT 50`,
   },
   {

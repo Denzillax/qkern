@@ -2707,6 +2707,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // Die grossen Tabellen und die Schaetzungen des Planers kommen sortiert;
       // eine Vorlage, die das nicht einhielte, waere in der Ansicht irrefuehrend.
       const sizes = (answers.get("largest-tables") ?? []).map((row) => Number(row.total_bytes));
+      // Absteigend, und NULL zaehlt als 0 am Ende: In der CI hat eine frisch
+      // angelegte Tabelle Groesse NULL, und PostgreSQL sortiert NULL bei DESC
+      // ohne `NULLS LAST` nach vorn. Die Vorlage sagt das jetzt ausdruecklich.
       expect([...sizes].sort((left, right) => right - left)).toEqual(sizes);
       const estimates = (answers.get("planner-row-estimates") ?? [])
         .map((row) => Number(row.estimated_rows));
