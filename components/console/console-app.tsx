@@ -61,6 +61,7 @@ import { AuthReturnTargetsView } from "@/components/console/auth-return-targets-
 import { AuthRateLimitsView } from "@/components/console/auth-rate-limits-view";
 import { AuthHooksView } from "@/components/console/auth-hooks-view";
 import { AuthThirdPartyView } from "@/components/console/auth-third-party-view";
+import { IntegrationsGraphqlView } from "@/components/console/integrations-graphql-view";
 import { AuthProtectionView } from "@/components/console/auth-protection-view";
 import { AuthPoliciesView } from "@/components/console/auth-policies-view";
 import { DashboardWebhooksView } from "@/components/console/dashboard-webhooks-view";
@@ -372,6 +373,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "auth-protection": return <AuthProtectionView projectId={props.project.id} environment={props.environment}/>;
     case "auth-hooks": return <AuthHooksView projectId={props.project.id} environment={props.environment}/>;
     case "auth-third-party": return <AuthThirdPartyView projectId={props.project.id} environment={props.environment}/>;
+    case "int-graphql": return <IntegrationsGraphqlView projectId={props.project.id} environment={props.environment}/>;
     case "auth-policies": return <AuthPoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "set-log-drains": return <LogDrainsView projectId={props.project.id} environment={props.environment}/>;
     case "set-webhooks": return <DashboardWebhooksView projectId={props.project.id} environment={props.environment}/>;

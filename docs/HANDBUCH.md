@@ -3136,6 +3136,121 @@ Was die Seite auch nicht sagt: ob der Server drüben erreichbar ist, ob das
 Konto dort gilt und welche Tabellen es dort gibt. Sie liest den Katalog hier
 und öffnet keine Verbindung nach aussen.
 
+### GraphQL: lesend über dem Schema, mit harten Grenzen
+
+Seit `2.61.0` ist **Integrationen → GraphQL** keine Platzhalterseite mehr. Der
+alte Platzhalter sagte: „GraphQL-Schnittstelle über dem Schema. Die Data API
+ist REST.“ Gebaut ist jetzt ein **lesender Ausschnitt** davon, und der
+Ausschnitt ist klein mit Absicht.
+
+**Nur Abfragen.** Es gibt keine Mutationen und keine Subscriptions. Geschrieben
+wird über die Data API, und zwar dort allein. Ein zweiter Schreibweg wäre eine
+zweite Rechteprüfung, und die zweite ist immer die, die jemand vergisst.
+
+**Das Schema entsteht aus dem Katalog.** Es gibt keine gepflegte Schemadatei.
+Bei jeder Anfrage liest die Fläche denselben Katalog, aus dem auch das
+generierte OpenAPI-Dokument entsteht, und nimmt daraus die Tabellen mit
+Zeilensicherheit, Primärschlüssel und Leserecht der Projektrolle. Das Prädikat
+dafür steht einmal im Code und wird von beiden Flächen benutzt. Nicht im
+Schema: Tabellen ohne Zeilensicherheit, Tabellen ohne Primärschlüssel, Views,
+Spalten ohne Leserecht und Spalten, deren Name auf Passwort, Secret, Token,
+Cookie, Key oder Authorization deutet.
+
+**Jede Abfrage läuft unter der Zeilensicherheit des Aufrufers**, über genau
+denselben Weg wie die Data API: dieselbe Projektrolle ohne `BYPASSRLS`,
+dieselbe Lese-Transaktion, dieselben Ansprüche in `request.jwt.claims`. Jedes
+Feld der obersten Ebene wird auf genau eine Zeilenlesung der Data API
+abgebildet. Es gibt hier keine zweite Stelle, an der Ansprüche gesetzt werden.
+
+Zwei Endpunkte:
+
+- `GET /api/v1/projects/{projectId}/environments/{environment}/graphql`
+- `POST /api/v1/projects/{projectId}/environments/{environment}/graphql`
+
+`GET` gibt das Schema: Typen, SDL, Grenzen und den Ausschnitt der Sprache.
+`POST` nimmt `{ "query": "…", "schema": "public" }` und führt genau eine
+Abfrage aus. Ohne `schema=` gilt `public`, wie bei der Data API.
+
+Beispiel mit einem bereits einmalig kopierten Key:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:QKERN_PUBLIC_KEY"; "Content-Type" = "application/json" }
+$uri = "http://localhost:3000/api/v1/projects/<project-id>/environments/development/graphql"
+$body = @{ query = '{ orders(limit: 5, orderBy: "created_at", direction: "desc", where: ["status:eq:paid"]) { id total } }' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Body $body
+```
+
+**Der Ausschnitt, den der Parser kennt.** Die Kurzform `{ tabelle { spalte } }`
+und die benannte Form `query Name { … }`. Felder der obersten Ebene sind
+Tabellen, Felder der zweiten Ebene sind Spalten. Aliasse auf beiden Ebenen.
+Argumente mit Zahl, Zeichenkette, `true`, `false` und `null`, dazu Listen von
+Zeichenketten. Kommentare mit `#`.
+
+Ein Tabellenfeld nimmt fünf Argumente: `limit`, `orderBy`, `direction`, `where`
+und `after`. `where` ist eine Liste von Filtern in derselben Form wie der
+Parameter `filter` der Data API, also `spalte:operator:wert` mit `eq`, `neq`,
+`gt`, `gte`, `lt`, `lte` oder `in`. Ein `where`-Objekt gibt es nicht: Ein
+Eingabeobjekt wäre ein Eingabetyp, und Eingabetypen sind genau die Ecke der
+Sprache, die dieser Ausschnitt nicht verantworten will. `after` nimmt den
+Cursor aus einer vorigen Antwort; ein `offset` gibt es nicht, weil eine Seite
+über `offset` Zeilen überspringt, sobald sich darunter etwas ändert.
+
+**Was bewusst fehlt**, jedes mit eigenem Ablehnungsgrund: Mutationen,
+Subscriptions, Fragmente (benannt wie inline), Variablen, Direktiven,
+Introspektion, Enum-Werte, Eingabeobjekte, Block-Zeichenketten, mehrere
+Operationen in einem Dokument, Beziehungen zwischen Tabellen, Views und
+Aggregate. Fragmente fehlen nicht aus Bequemlichkeit: Ohne sie gibt es auch
+keine Fragment-Rekursion zu begrenzen, und eine Begrenzung, die es nicht
+braucht, kann auch nicht danebenliegen.
+
+**Die Grenzen sind hart und greifen vor der Datenbank.** GraphQL lässt den
+Aufrufer die Form der Antwort bestimmen; ohne Grenzen ist eine einzige Anfrage
+genug, um die Datenbank beliebig lange zu beschäftigen.
+
+| Grenze | Wert | Warum |
+| --- | --- | --- |
+| Tiefe | 2 | Tabelle und Spalten, mehr gibt es nicht zu holen |
+| Felder je Abfrage | 60 | jedes Vorkommen einzeln, **Aliasse zählen mit** |
+| Tabellen je Abfrage | 5 | jedes Vorkommen ist eine eigene Lesung |
+| Zeilen je Feld | 100 | dieselbe Obergrenze wie die Data API |
+| Zeilen je Abfrage | 200 | Summe über alle Felder der obersten Ebene |
+| Zeilen ohne `limit` | 20 | Vorgabe wie bei der Data API |
+| Filter je Feld | 10 | dieselbe Zahl wie bei der Data API |
+| Zeichen der Abfrage | 8192 | vor dem ersten Token geprüft |
+
+Ohne die Regel, dass Aliasse mitzählen, wäre `a: id b: id c: id` ein Weg, die
+Feldgrenze zu umgehen, ohne sie zu verletzen. Aliasse bleiben
+erlaubt, weil dieselbe Tabelle sonst nicht zweimal abfragbar wäre; sie kosten
+nur, was sie kosten. Der Zertifizierungsfall `(2.83)` fährt genau das ab, und
+die Mutationsprobe dieses Releases nimmt das Mitzählen heraus.
+
+Die Felder der obersten Ebene werden **nacheinander** gelesen und nicht
+gleichzeitig. Fünf gleichzeitige Lesungen aus einer Anfrage wären fünf
+Verbindungen aus dem Pool des Projekts, und eine einzelne Anfrage soll den Pool
+nicht für alle anderen leeren.
+
+**Keine Introspektion über GraphQL.** `__schema`, `__type` und `__typename`
+werden abgewiesen. Das Schema steht stattdessen an `GET`, und dort verlangt es
+dieselbe Berechtigung wie eine Lesung. So gibt es keinen Weg, der mehr verrät
+als die Tabellen, die der Aufrufer ohnehin lesen darf.
+
+**Keine GraphQL-Bibliothek.** Der Parser ist für diesen Ausschnitt geschrieben
+und passt in eine Datei. Eine Bibliothek brächte die ganze Sprache mit, und
+jede ihrer Ecken wäre dann eine Zusage, für die jemand einstehen muss; mehrere
+dieser Ecken sind genau die Stellen, an denen eine Grenze umgangen wird.
+
+**Was die Ablehnung nicht sagt.** Eine Tabelle ohne Zeilensicherheit wird als
+*unbekannt* abgewiesen und nicht als *ohne Zeilensicherheit*. Der Unterschied
+verriete die Existenz einer Tabelle, die dieser Aufrufer nicht lesen darf. Wer
+den echten Grund braucht, liest ihn an der Data API, die ihn mit
+`GENERATED_DATA_API_RLS_REQUIRED` nennt, oder in der Console.
+
+Die Console-Seite führt Abfragen aus und sonst nichts. Sie legt nichts an,
+ändert nichts und kann die Fläche auch nicht ein- oder ausschalten: Sie hängt
+an derselben Freigabe wie die Data API
+(`QKERN_GENERATED_DATA_API_ENABLED=true`). Abfragen werden nicht gespeichert,
+es gibt keine Historie und keine Freigabe an andere.
+
 ### Replikation: der Rückstand eines Slots
 
 Seit `2.58.0` ist **Datenbank → Replikation** keine Platzhalterseite mehr. Die

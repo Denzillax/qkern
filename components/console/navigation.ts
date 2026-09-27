@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler", "int-graphql",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -53,7 +53,6 @@ export const PLACEHOLDERS = {
   // kein Pooler zwischen Anwendung und Datenbank.
   "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
   // Integrationen
-  "int-graphql": { label: "GraphQL", supabase: "Integrations → GraphiQL", backend: "fehlt", note: "GraphQL-Schnittstelle über dem Schema. Die Data API ist REST." },
   // Branches: beide Platzhalter sind seit 2.81 eine echte Seite.
   // Einstellungen
   "set-compute": { label: "Compute und Disk", supabase: "Project Settings → Compute and Disk", backend: "fehlt", note: "Grösse der Instanz und der Platte. Die Provisionierung ist noch nicht verbunden." },
@@ -107,7 +106,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [
-    { id: "int-queues", label: "Queues" }, { id: "int-cron", label: "Cron" }, { id: "int-vault", label: "Vault" }, { id: "int-wrappers", label: "Wrappers" }, ph("int-graphql"), { id: "int-database-webhooks", label: "Datenbank-Webhooks" },
+    { id: "int-queues", label: "Queues" }, { id: "int-cron", label: "Cron" }, { id: "int-vault", label: "Vault" }, { id: "int-wrappers", label: "Wrappers" }, { id: "int-graphql", label: "GraphQL" }, { id: "int-database-webhooks", label: "Datenbank-Webhooks" },
   ] },
   { id: "branches", label: "Branches", icon: GitBranch },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [

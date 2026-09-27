@@ -41,6 +41,7 @@ import { authPasskeysTexts } from "@/lib/console/auth-passkeys-texts";
 import { branchFlowTexts } from "@/lib/console/branch-flow-texts";
 import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
 import { missingLogTexts } from "@/lib/console/missing-log-texts";
+import { integrationsGraphqlTexts } from "@/lib/console/integrations-graphql-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -185,6 +186,10 @@ async function consoleKeys(): Promise<string[]> {
   // was fehlt, warum es fehlt, was es stattdessen gibt und was ein Betreiber
   // tun kann, alles ueber t(variable).
   for (const text of missingLogTexts()) keys.add(text);
+  // Integrationen -> GraphQL (2.83) zeigt den Ausschnitt der Sprache, was
+  // bewusst fehlt, die Argumente eines Tabellenfeldes, die Gruende einer
+  // Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of integrationsGraphqlTexts()) keys.add(text);
   return [...keys];
 }
 

@@ -1806,6 +1806,47 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/graphql": {
+      get: {
+        tags: ["Project Data"], operationId: "describeProjectGraphqlSchema",
+        summary: "Read the GraphQL schema derived from the live project catalog",
+        description: "The schema is not maintained by hand: it is built on every request from the catalog, from the tables that carry row security, have a primary key and may be read by the project role, with their non-sensitive columns. Views, tables without row security and tables without a primary key are absent, and so are columns whose name matches the sensitive-name pattern. The answer carries the types, the SDL, the limits and the part of the language the parser serves. This route is the only introspection there is: `__schema`, `__type` and `__typename` are refused inside a query, and this route requires the same authorization as a read. The schema states what the project role may read, not which rows the caller will see; that is decided by the policy at read time, exactly as for the generated OpenAPI document next to it.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          ...projectAuthScopeParameters,
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
+        ],
+        responses: {
+          "200": { description: "Catalog-derived GraphQL schema, SDL and limits" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project target not ready" },
+          "429": { description: "The usage quota for row reads is exhausted" },
+          "503": { description: "Generated Data API unavailable" },
+        },
+      },
+      post: {
+        tags: ["Project Data"], operationId: "executeProjectGraphqlQuery",
+        summary: "Run one read-only GraphQL query under the row security of the caller",
+        description: "Queries only. There are no mutations and no subscriptions, because writing goes through the table surface and a second write path would be a second permission check. Every top-level field is mapped onto exactly one row listing of the generated data API, so the claims are set in one place and nowhere else. The accepted part of the language is small and its parser is written for it: the shorthand and named query forms, table fields, column fields, aliases, scalar arguments, string lists and comments. Refused, each with its own reason: mutations, subscriptions, fragments (named and inline), variables, directives, introspection, enum values, input objects, block strings and more than one operation per document. A table field takes limit, orderBy, direction, where and after; where repeats a filter written as column:operator:value, the same form the row listing takes. The limits are hard and checked before the database is touched: at most two levels of depth, at most 60 fields counting every alias separately, at most 5 top-level fields, at most 100 rows per field and 200 rows over the whole query, at most 8192 bytes of query text. A refused query answers 400 with the reason as a stable identifier. Without a project key the same origin boundary applies as for a mutation, although this route only reads: a request carrying the console session cookie should not come about from a foreign page.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", additionalProperties: false, required: ["query"], properties: {
+            query: { type: "string", maxLength: 8192 },
+            schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" },
+          } } } },
+        },
+        responses: {
+          "200": { description: "RLS-filtered result per top-level field" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "RLS or primary key requirement not met" },
+          "429": { description: "The usage quota for row reads is exhausted" },
+          "503": { description: "Generated Data API unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/tables/{table}/rows": {
       get: {
         tags: ["Project Data"], operationId: "listGeneratedTableRows",

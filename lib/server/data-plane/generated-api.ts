@@ -159,6 +159,23 @@ export interface GeneratedDataApiPort {
     scope: ProjectDataPlaneScope,
     input: GeneratedListInput,
   ): Promise<GeneratedListResult>;
+  /**
+   * Die Tabellen eines Schemas, die diese Fläche lesend bedient (2.83).
+   *
+   * Genau die Bedingung, die `generateOpenApi` für eine Tabelle anlegt, und sie
+   * steht als `listableTable` an einer Stelle. Die GraphQL-Fläche baut ihr
+   * Schema daraus, statt eine eigene Liste zu pflegen: Zwei Listen würden
+   * irgendwann Verschiedenes behaupten, und dann wäre eine davon falsch.
+   *
+   * Views bleiben draussen. Sie haben keinen Primärschlüssel, also auch keine
+   * Ordnung, auf der ein Cursor stehen könnte, und ein Feld mit erzwungenem
+   * `orderBy` wäre eine Sonderform im Schema, die niemand erwartet.
+   */
+  listReadableTables(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<GeneratedTable[]>;
   insertRows(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
@@ -832,11 +849,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     assertRequest(context, scope, schema);
     return this.run(context, scope, false, async (client) => {
       const relations = await this.loadTables(client, schema);
-      const tables = relations
-        .filter((table) => table.kind === "table" &&
-          table.rowSecurityEnabled && (!table.ownedByCurrentRole || table.forceRowSecurity) &&
-          table.primaryKey.length > 0 && table.canSelect &&
-          table.columns.some((column) => column.selectable && !column.sensitive));
+      const tables = relations.filter(listableTable);
       // Views nur mit `security_invoker` — dieselbe Grenze wie beim Bedienen:
       // Ein View ohne sie wird von der Flaeche abgewiesen und gehoert deshalb
       // auch nicht ins Dokument. Die Mutationsprobe dieses Releases nimmt
@@ -954,6 +967,18 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
           schemas,
         },
       };
+    });
+  }
+
+  async listReadableTables(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+  ): Promise<GeneratedTable[]> {
+    assertRequest(context, scope, schema);
+    return this.run(context, scope, false, async (client) => {
+      const relations = await this.loadTables(client, schema);
+      return relations.filter(listableTable).map(publicTable);
     });
   }
 
@@ -1131,6 +1156,9 @@ export class DisabledGeneratedDataApi implements GeneratedDataApiPort {
   async listRows(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedListInput,
   ): Promise<GeneratedListResult> { return this.disabled(); }
+  async listReadableTables(
+    _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _schema: string,
+  ): Promise<GeneratedTable[]> { return this.disabled(); }
   async insertRows(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope,
     _input: { schema: string; table: string; rows: Array<Record<string, unknown>> },
@@ -1197,6 +1225,25 @@ function assertResolvedBoundary(resolved: ResolvedProjectDatabaseConnection): vo
       !resolved.pool || typeof resolved.pool.connect !== "function") {
     throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
   }
+}
+
+/**
+ * Eine Tabelle, die diese Flaeche als Liste anbietet.
+ *
+ * Bis 2.82 stand diese Bedingung nur im generierten OpenAPI-Dokument. Seit 2.83
+ * liest die GraphQL-Flaeche dasselbe Praedikat, statt es abzuschreiben: Sonst
+ * koennte ein Dokument eine Tabelle nennen, die die andere Flaeche nicht
+ * bedient, und umgekehrt.
+ *
+ * Views stehen absichtlich nicht hier. Sie haben ihre eigene Bedingung
+ * (`security_invoker`) und ihre eigene Einschraenkung (keine Ordnung, kein
+ * Cursor), und das OpenAPI-Dokument filtert sie darum getrennt.
+ */
+function listableTable(table: InternalTable): boolean {
+  return table.kind === "table" &&
+    table.rowSecurityEnabled && (!table.ownedByCurrentRole || table.forceRowSecurity) &&
+    table.primaryKey.length > 0 && table.canSelect &&
+    table.columns.some((column) => column.selectable && !column.sensitive);
 }
 
 function assertTableBoundary(table: InternalTable, action: "select" | "insert" | "update" | "delete"): void {

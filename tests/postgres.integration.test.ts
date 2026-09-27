@@ -143,6 +143,11 @@ import { auditEventFromRecord } from "@/lib/server/control-plane/mappers";
 // Aufrufdienst legt. Es gibt keinen zweiten Aufrufweg, und der Fall benutzt
 // darum auch keinen.
 import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functions";
+// Integrationen -> GraphQL (2.83): die lesende Flaeche liegt auf genau dieser
+// Data API und hat keinen eigenen Weg in die Datenbank. Die Grenzen kommen aus
+// derselben Tabelle, die die Console anzeigt.
+import { ProjectGraphqlService } from "@/lib/server/data-plane/graphql";
+import { DATA_API_GRAPHQL_LIMITS } from "@/lib/data-api-graphql-limits";
 import { searchLogSources } from "@/lib/server/logs/log-explorer-search";
 import {
   authAuditFetcher,
@@ -8151,6 +8156,214 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // eigener Uebersetzung der Module. Jede einzelne Wartezeit hat trotzdem
     // ihre eigene, engere Frist.
   }, 600_000);
+  it("(2.83) answers a real GraphQL query under row security and refuses depth, a table without RLS and an alias trick", async () => {
+    // Integrationen -> GraphQL (2.83) gegen die echte Datenbank.
+    //
+    // Echt ist alles, worauf es ankommt: das Schema und die beiden Tabellen in
+    // der echten Projektdatenbank, die echte Policy, die echte Leserolle des
+    // Projekts mit ihren echten Rechten, die echte `GeneratedDataApiService`
+    // und darueber `ProjectGraphqlService`. Gestellt ist nichts am Lesepfad:
+    // Nur die Aufloesung des Ziels und die Verbindung kommen als Stub, weil
+    // Katalog und Control Plane eigens zertifiziert sind und dieser Fall nicht
+    // von ihnen abhaengen soll.
+    //
+    // Der Fall prueft sechs Zusagen an einem Stueck:
+    //
+    // 1. Das Schema entsteht aus dem Katalog.
+    // 2. Eine echte Abfrage ueber echte Tabellen liefert genau die Zeilen des
+    //    Aufrufers, und zwar dieselben wie der REST-Weg.
+    // 3. Der Nachbarmandant sieht mit derselben Abfrage nichts.
+    // 4. Eine zu tiefe Abfrage wird abgewiesen.
+    // 5. Eine Abfrage auf eine Tabelle ohne Zeilensicherheit wird abgewiesen,
+    //    obwohl die Tabelle da ist und die Leserolle sie lesen darf.
+    // 6. Eine Abfrage, die ueber Aliasse mehr Felder holt als erlaubt, wird
+    //    abgewiesen.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const schema = `graphql_${randomUUID().replaceAll("-", "_")}`;
+    const graphqlProject = randomUUID();
+    const graphqlOrganization = randomUUID();
+    const scope = { projectId: graphqlProject, environment: "development" as const };
+    const mine = randomUUID();
+    const neighbour = randomUUID();
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // Eine Tabelle mit Zeilensicherheit, eine ohne. Die zweite ist der
+      // Gegenbeweis: Sie existiert, die Leserolle darf sie lesen, und die
+      // GraphQL-Flaeche kennt sie trotzdem nicht.
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".notizen (
+        id uuid PRIMARY KEY,
+        besitzer text NOT NULL,
+        inhalt text NOT NULL,
+        menge integer NOT NULL,
+        api_token text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".notizen ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY eigene_zeilen ON "${schema}".notizen
+        FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE TABLE "${schema}".ohne_rls (
+        id uuid PRIMARY KEY, inhalt text NOT NULL)`);
+      await owner.query(`INSERT INTO "${schema}".notizen (id, besitzer, inhalt, menge, api_token) VALUES
+        ($1, $2, 'meine erste', 7, 'geheim-1'),
+        ($3, $2, 'meine zweite', 9, 'geheim-2'),
+        ($4, $5, 'die des Nachbarn', 11, 'geheim-3')`,
+      [randomUUID(), mine, randomUUID(), randomUUID(), neighbour]);
+      await owner.query(`INSERT INTO "${schema}".ohne_rls (id, inhalt) VALUES ($1, 'jeder sieht das')`,
+        [randomUUID()]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${graphqlProject}` }) };
+      const generated = new GeneratedDataApiService(targets, connections);
+      const graphql = new ProjectGraphqlService(generated);
+      const contextFor = (subject: string) => ({
+        organizationId: graphqlOrganization,
+        actorRef: `project-api-key:${subject}`,
+        claims: { role: "authenticated" as const, subject },
+      });
+
+      // --- Zusage 1: das Schema kommt aus dem Katalog ---------------------
+      //
+      // Nicht aus einer gepflegten Datei: Die Tabelle steht im Schema, weil sie
+      // Zeilensicherheit fuehrt, einen Primaerschluessel hat und die Leserolle
+      // sie lesen darf. Die Tabelle ohne Zeilensicherheit steht nicht darin,
+      // und die Spalte mit dem Token-Namen auch nicht.
+      const described = await graphql.describe(contextFor(mine), scope, schema);
+      expect(described.types.map((type) => type.name)).toEqual(["notizen"]);
+      expect(described.types[0]!.fields.map((field) => field.name))
+        .toEqual(["id", "besitzer", "inhalt", "menge"]);
+      expect(described.sdl).toContain(
+        "  notizen(limit: Int, orderBy: String, direction: String, where: [String!], after: String): [notizen!]!");
+      expect(described.sdl).toContain("  id: ID!");
+      expect(described.sdl).toContain("  menge: Int!");
+      expect(described.sdl).not.toContain("api_token");
+      expect(described.sdl).not.toContain("ohne_rls");
+      // Kein Schreibweg im Schema. Was nicht im Schema steht, wird nicht
+      // versprochen, und es gibt dahinter auch nichts.
+      expect(described.sdl).not.toContain("type Mutation");
+      expect(described.sdl).not.toContain("type Subscription");
+
+      // --- Zusage 2: die echte Abfrage unter der Zeilensicherheit ---------
+      const query = `query Meine {
+        aufsteigend: notizen(orderBy: "menge", direction: "asc", limit: 10) {
+          inhalt
+          menge
+          zweimal: menge
+        }
+        gefiltert: notizen(where: ["menge:gte:9"]) { inhalt }
+      }`;
+      const answer = await graphql.execute(contextFor(mine), scope, schema, query);
+      expect(answer.operationName).toBe("Meine");
+      // Genau die eigenen zwei Zeilen, in der genannten Ordnung. Die Zeile des
+      // Nachbarn liegt in derselben Tabelle und kommt nicht mit.
+      expect(answer.data.aufsteigend).toEqual([
+        { inhalt: "meine erste", menge: 7, zweimal: 7 },
+        { inhalt: "meine zweite", menge: 9, zweimal: 9 },
+      ]);
+      expect(answer.data.gefiltert).toEqual([{ inhalt: "meine zweite" }]);
+      expect(answer.fields.map((field) => ({ key: field.responseKey, rows: field.rowCount }))).toEqual([
+        { key: "aufsteigend", rows: 2 },
+        { key: "gefiltert", rows: 1 },
+      ]);
+      // Zwei Felder oben, vier Spaltenfelder: der Alias `zweimal` zaehlt mit.
+      expect(answer.fieldCount).toBe(6);
+      expect(answer.rowBudget).toBe(30);
+
+      // Dieselben Zeilen wie der REST-Weg, mit denselben Anspruechen. Das ist
+      // die Zusage "es gibt keinen zweiten Weg": Waere hier ein zweiter, koennte
+      // er ein anderes Ergebnis liefern.
+      const rest = await generated.listRows(contextFor(mine), scope, {
+        schema, table: "notizen", select: ["inhalt", "menge"],
+        order: { column: "menge", direction: "asc" }, limit: 10,
+      });
+      expect(rest.rows).toEqual([
+        { inhalt: "meine erste", menge: 7 },
+        { inhalt: "meine zweite", menge: 9 },
+      ]);
+
+      // --- Zusage 3: der Nachbarmandant sieht nichts ----------------------
+      //
+      // Dieselbe Abfrage, ein anderes Subjekt. Es gibt keine Zeile fuer dieses
+      // Subjekt, also sind beide Listen leer und nicht bloss kuerzer.
+      const stranger = await graphql.execute(contextFor(randomUUID()), scope, schema, query);
+      expect(stranger.data.aufsteigend).toEqual([]);
+      expect(stranger.data.gefiltert).toEqual([]);
+      // Und der Nachbar, dem eine Zeile gehoert, sieht genau seine. Ohne diese
+      // Gegenprobe koennte die leere Liste oben auch aus einer kaputten Abfrage
+      // kommen, die fuer niemanden etwas findet.
+      const neighbourAnswer = await graphql.execute(contextFor(neighbour), scope, schema, query);
+      expect(neighbourAnswer.data.aufsteigend).toEqual([
+        { inhalt: "die des Nachbarn", menge: 11, zweimal: 11 },
+      ]);
+
+      // --- Zusage 4: die zu tiefe Abfrage ---------------------------------
+      //
+      // Zwei Ebenen gibt es: die Tabelle und ihre Spalten. Eine dritte waere
+      // eine Beziehung, und Beziehungen gibt es an dieser Flaeche nicht.
+      await expect(graphql.execute(contextFor(mine), scope, schema,
+        "{ notizen { inhalt { laenge } } }"))
+        .rejects.toMatchObject({ name: "ProjectGraphqlError", reason: "depth_exceeded" });
+
+      // --- Zusage 5: die Tabelle ohne Zeilensicherheit --------------------
+      //
+      // Zuerst der Beweis, dass sie wirklich da ist und die Leserolle sie
+      // wirklich lesen darf: Sonst pruefte die Ablehnung gleich danach nur,
+      // dass ein Name nicht existiert.
+      const direct = await projectApi.query<{ inhalt: string }>(
+        `SELECT inhalt FROM "${schema}".ohne_rls`);
+      expect(direct.rows.map((row) => row.inhalt)).toEqual(["jeder sieht das"]);
+      // Die Data API weist sie mit ihrem eigenen Grund ab.
+      await expect(generated.listRows(contextFor(mine), scope, { schema, table: "ohne_rls" }))
+        .rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+      // Die GraphQL-Flaeche kennt den Namen gar nicht. Sie sagt bewusst nicht,
+      // dass die Tabelle ohne Zeilensicherheit existiert: Der Unterschied
+      // verriete eine Tabelle, die dieser Aufrufer nicht lesen darf.
+      await expect(graphql.execute(contextFor(mine), scope, schema, "{ ohne_rls { inhalt } }"))
+        .rejects.toMatchObject({ name: "ProjectGraphqlError", reason: "unknown_table", at: "ohne_rls" });
+      // Und die sensible Spalte ist auch ueber GraphQL kein Feld.
+      await expect(graphql.execute(contextFor(mine), scope, schema, "{ notizen { api_token } }"))
+        .rejects.toMatchObject({ reason: "unknown_field", at: "notizen.api_token" });
+
+      // --- Zusage 6: der Aliasstreich -------------------------------------
+      //
+      // Aliasse sind erlaubt, sonst waere dieselbe Tabelle nicht zweimal
+      // abfragbar. Sie zaehlen aber einzeln: Ein Alias erzeugt ein Feld in der
+      // Antwort, und die Grenze gilt fuer Felder und nicht fuer Namen.
+      const overBudget = Array.from(
+        { length: DATA_API_GRAPHQL_LIMITS.maxFields },
+        (_, index) => `a${index}: menge`,
+      ).join(" ");
+      await expect(graphql.execute(contextFor(mine), scope, schema, `{ notizen { ${overBudget} } }`))
+        .rejects.toMatchObject({ name: "ProjectGraphqlError", reason: "fields_exceeded" });
+      // Einer weniger, und genau derselbe Streich geht durch: Die Grenze liegt
+      // an der Zahl und nicht daran, dass Aliasse verboten waeren. Ohne diese
+      // Gegenprobe koennte die Ablehnung oben auch aus einem Verbot kommen.
+      const atBudget = Array.from(
+        { length: DATA_API_GRAPHQL_LIMITS.maxFields - 1 },
+        (_, index) => `a${index}: menge`,
+      ).join(" ");
+      const accepted = await graphql.execute(contextFor(mine), scope, schema, `{ notizen { ${atBudget} } }`);
+      expect(accepted.fieldCount).toBe(DATA_API_GRAPHQL_LIMITS.maxFields);
+      const firstRow = accepted.data.notizen?.[0];
+      expect(accepted.data.notizen).toHaveLength(2);
+      expect(Object.keys(firstRow ?? {})).toHaveLength(DATA_API_GRAPHQL_LIMITS.maxFields - 1);
+      // Gelesen wurde die Spalte trotzdem genau einmal, und jeder Alias traegt
+      // denselben Wert.
+      expect(new Set(Object.values(firstRow ?? {}))).toEqual(new Set([7]));
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
 });
 
 /**
