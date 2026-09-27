@@ -43,6 +43,7 @@ import { EnumTypesView } from "@/components/console/enum-types-view";
 import { ExtensionsView } from "@/components/console/extensions-view";
 import { RolesView } from "@/components/console/roles-view";
 import { PublicationsView } from "@/components/console/publications-view";
+import { ReplicationView } from "@/components/console/replication-view";
 import { ColumnPrivilegesView } from "@/components/console/column-privileges-view";
 import { DatabaseSettingsView } from "@/components/console/database-settings-view";
 import { CronView } from "@/components/console/cron-view";
@@ -342,6 +343,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "db-extensions": return <ExtensionsView projectId={props.project.id} environment={props.environment}/>;
     case "db-roles": return <RolesView projectId={props.project.id} environment={props.environment}/>;
     case "db-publications": return <PublicationsView projectId={props.project.id} environment={props.environment}/>;
+    // Datenbank -> Replikation liest die Publikationen, die Abonnements und
+    // die Slots mit ihrem Rueckstand; einrichten kann die Seite nichts (2.74).
+    case "db-pipelines": return <ReplicationView projectId={props.project.id} environment={props.environment}/>;
     case "db-column-privileges": return <ColumnPrivilegesView projectId={props.project.id} environment={props.environment}/>;
     case "db-schemas": return <SchemaVisualizerView projectId={props.project.id} environment={props.environment}/>;
     case "db-settings": return <DatabaseSettingsView projectId={props.project.id} environment={props.environment}/>;

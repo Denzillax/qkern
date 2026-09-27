@@ -42,7 +42,7 @@ function port(overrides: Partial<ProjectDataPlanePort> = {}): ProjectDataPlanePo
     }),
     inspectSchema: vi.fn(), inspectPolicies: vi.fn(), queryReadOnly: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(),
     inspectIndexes: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectRoles: vi.fn(), inspectForeignKeys: vi.fn(),
-    inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectActivity: vi.fn(),
+    inspectPublications: vi.fn(), inspectReplication: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectActivity: vi.fn(),
     // Seit 2.57 liest die Route auch pg_stat_statements — hier ohne die
     // Erweiterung, damit die bestehenden Faelle ihre Aussage behalten.
     inspectStatements: vi.fn().mockResolvedValue({ source: "postgres", installed: false, statements: [], truncated: false }),

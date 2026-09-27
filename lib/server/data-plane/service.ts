@@ -373,6 +373,100 @@ export type ProjectPublicationResult = {
   truncated: boolean;
 };
 
+/**
+ * Ein Replikations-Slot (2.74), aus `pg_catalog.pg_replication_slots`.
+ *
+ * Der Slot ist die Stelle, an der Replikation im Betrieb weh tut. Er merkt
+ * sich, bis wohin ein Konsument gelesen hat, und PostgreSQL haelt dafuer jedes
+ * WAL-Segment ab `restart_lsn` fest. Liest niemand mehr, waechst der Rueckstand
+ * weiter, bis die Platte voll ist; das ist kein Fehlerfall, sondern die
+ * zugesagte Arbeitsweise eines Slots.
+ *
+ * `retainedBytes` ist darum die Zahl dieser Antwort. Sie ist der Abstand
+ * zwischen der Schreibposition des Servers und `restart_lsn`, gemessen in
+ * Bytes WAL. `null` heisst, der Slot hat noch keine Position reserviert; dann
+ * haelt er auch nichts fest.
+ *
+ * `safeBytes` kommt aus `safe_wal_size` und sagt, wie viel WAL noch
+ * geschrieben werden darf, bevor dieser Slot ungueltig wird. `null` heisst
+ * nicht „sicher", sondern `max_slot_wal_keep_size = -1`: Es gibt keine Grenze,
+ * bei der PostgreSQL den Slot fallen laesst, statt weiter WAL zu halten.
+ *
+ * `restart_lsn` selbst steht nicht in der Antwort. Eine LSN ist eine Position
+ * im WAL und keine Betriebsangabe, die eine Weboberflaeche jemandem erklaeren
+ * kann; die Zahl, auf die es ankommt, ist der Abstand.
+ */
+export type ProjectReplicationSlot = {
+  name: string;
+  /** `physical` gehoert zu einem Standby, `logical` zu einem Dekodier-Plugin */
+  slotType: "physical" | "logical";
+  /** Das Ausgabe-Plugin eines logischen Slots; bei einem physischen `null` */
+  plugin: string | null;
+  /** Die Datenbank, an die ein logischer Slot gebunden ist; bei einem physischen `null` */
+  database: string | null;
+  /** Ein temporaerer Slot verschwindet mit der Sitzung, die ihn angelegt hat */
+  temporary: boolean;
+  /** Ob gerade ein Konsument daran haengt. `false` und ein wachsender Rueckstand ist der schlechte Fall */
+  active: boolean;
+  /** `reserved`, `extended`, `unreserved` oder `lost`; `null`, wenn der Slot keine Position hat */
+  walStatus: "reserved" | "extended" | "unreserved" | "lost" | null;
+  /** WAL in Bytes, das dieser Slot festhaelt; `null` bei einem Slot ohne Position */
+  retainedBytes: number | null;
+  /** WAL in Bytes bis zur Ungueltigkeit; `null` heisst: keine Grenze gesetzt */
+  safeBytes: number | null;
+};
+
+/**
+ * Ein Abonnement dieser Datenbank (2.74), aus `pg_catalog.pg_subscription`.
+ *
+ * **Ohne `subconninfo`, und zwar ohne sie auch nur auszuwaehlen.** Dort steht
+ * die Verbindungszeichenfolge zum Herausgeber, und in ihr steht im Regelfall
+ * ein Passwort. PostgreSQL entzieht `public` das Recht auf genau diese Spalte
+ * und laesst den Rest der Tabelle lesbar; QKERN verlaesst sich darauf nicht,
+ * sondern fragt die Spalte nicht. Die Leserolle eines Projekts kann morgen eine
+ * andere sein, die Zusage dieser Antwort soll es nicht.
+ *
+ * Aus demselben Grund fehlt `suborigin`: Der Wert ist zwar kein Geheimnis,
+ * beschreibt aber den Herausgeber und nicht diese Datenbank.
+ */
+export type ProjectReplicationSubscription = {
+  name: string;
+  owner: string;
+  /** Ein abgeschaltetes Abonnement holt nichts und haelt drueben trotzdem einen Slot */
+  enabled: boolean;
+  /** Der Slot beim Herausgeber, den dieses Abonnement benutzt; `null` bei `slot_name = NONE` */
+  slotName: string | null;
+  /** Die Publikationen, die dieses Abonnement drueben liest */
+  publications: string[];
+};
+
+/**
+ * Was PostgreSQL ueber die Replikation dieser Datenbank hergibt (2.74).
+ *
+ * Vier Auskuenfte an einem Stueck, weil sie nur zusammen etwas bedeuten: Ohne
+ * `walLevel = logical` gibt es keine logische Replikation, und ein Slot ohne
+ * Konsument ist nur an seinem Rueckstand zu erkennen.
+ *
+ * Die Publikationen kommen aus derselben Lesung wie auf der Seite
+ * Publikationen (2.20); es gibt dafuer genau eine Stelle im Code.
+ *
+ * Ausdruecklich nicht enthalten: jede Verbindungsangabe. Kein Host, kein Port,
+ * keine Zeichenfolge, kein Passwort, weder zum Herausgeber eines Abonnements
+ * noch zu dieser Datenbank selbst.
+ */
+export type ProjectReplicationResult = {
+  source: "postgres";
+  /** `wal_level` des Servers: unter `logical` gibt es keine logische Replikation */
+  walLevel: "minimal" | "replica" | "logical";
+  /** `pg_is_in_recovery()`: true heisst, diese Verbindung liest ein Standby */
+  inRecovery: boolean;
+  publications: ProjectPublication[];
+  subscriptions: ProjectReplicationSubscription[];
+  slots: ProjectReplicationSlot[];
+  /** Gilt fuer die Antwort, nicht fuer eine einzelne Liste */
+  truncated: boolean;
+};
+
 export type ProjectColumnPrivilege = {
   table: string;
   column: string;
@@ -548,9 +642,10 @@ export type ProjectDatabaseSettingsResult = {
  * lesbar ist und die andere vergleichbar, und QKERN aus der einen nicht die
  * andere ableiten will.
  *
- * `inRecovery` ist die einzige Aussage, die QKERN zum Thema Replikation
- * ueberhaupt treffen kann: ob die Verbindung gerade auf einem Standby liest.
- * Es ist keine Liste von Lese-Replikaten, und die Ansicht sagt das so.
+ * `inRecovery` sagt, ob die Verbindung gerade auf einem Standby liest. Es ist
+ * keine Liste von Lese-Replikaten, und die Ansicht sagt das so. Was die
+ * Datenbank sonst ueber Replikation hergibt, liest `inspectReplication` (2.74):
+ * die Publikationen, die Abonnements und die Slots mit ihrem Rueckstand.
  *
  * Ausdruecklich nicht enthalten: Host, Port, Verbindungszeichenfolge,
  * Datenpfad. Der Ort der Datenbank ist kein Betriebswert.
@@ -755,6 +850,10 @@ export interface ProjectDataPlanePort {
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
   ): Promise<ProjectPublicationResult>;
+  inspectReplication(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectReplicationResult>;
   inspectColumnPrivileges(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1464,6 +1563,16 @@ type PublicationRow = {
   publish_truncate: boolean; all_tables: boolean; tables: string[];
 };
 type ColumnPrivilegeRow = { table_name: string; column_name: string; grantee: string; privilege_type: string; is_grantable: boolean };
+/** Der Rueckstand und die Restfrist kommen als `numeric` und `bigint`, also als Text (2.74). */
+type ReplicationSlotRow = {
+  slot_name: string; slot_type: string; plugin: string | null; database_name: string | null;
+  temporary: boolean; active: boolean; wal_status: string | null;
+  retained_bytes: string | null; safe_bytes: string | null;
+};
+type ReplicationSubscriptionRow = {
+  subscription_name: string; owner: string; enabled: boolean; slot_name: string | null; publications: string[];
+};
+type ReplicationStateRow = { wal_level: string; in_recovery: boolean };
 type ForeignDataWrapperRow = { wrapper_name: string; owner: string; handler: string | null; validator: string | null };
 type ForeignServerRow = {
   server_name: string; wrapper_name: string; owner: string;
@@ -1611,8 +1720,9 @@ type RuntimeRow = {
  * fuer Version und Kodierung, `pg_database` fuer Sortierung und
  * Zeichenklassen der einen Datenbank, `pg_database_size` fuer ihre Groesse.
  *
- * `pg_is_in_recovery()` steht dabei, weil es die einzige belegbare Aussage zu
- * Replikation ist, die diese Verbindung machen kann. Eine Liste von
+ * `pg_is_in_recovery()` steht dabei, weil es die Auskunft ueber Replikation
+ * ist, die zu dieser Verbindung gehoert; den Rest liest `inspectReplication`
+ * (2.74) aus dem Katalog. Eine Liste von
  * Lese-Replikaten gibt es nicht: die stuende in `pg_stat_replication` des
  * Primaerservers und setzt ein Recht voraus, das die Leserolle eines Projekts
  * nicht hat und nicht bekommen soll.
@@ -1666,6 +1776,92 @@ const PUBLICATIONS_SQL = `
   FROM pg_catalog.pg_publication AS publication
   ORDER BY publication.pubname ASC
   LIMIT $1`;
+
+/**
+ * Die Replikations-Slots (2.74), mit Zustand und Rueckstand.
+ *
+ * Der Rueckstand wird in der Datenbank gerechnet und nicht in TypeScript, weil
+ * nur die Datenbank beide Positionen im selben Moment kennt. Der Bezugspunkt
+ * haengt davon ab, wo diese Verbindung liest: Auf einem Primaerserver ist es
+ * die Schreibposition (`pg_current_wal_lsn`), auf einem Standby die Position,
+ * bis zu der WAL empfangen wurde (`pg_last_wal_receive_lsn`). Beide sind nie
+ * hinter `restart_lsn`, darum ist die Differenz nie negativ, und ein negativer
+ * Wert faellt an der Grenze durch statt zu null gebogen zu werden.
+ *
+ * `restart_lsn` selbst wird nicht ausgewaehlt. Ausgewaehlt wird auch keine der
+ * Transaktionsnummern (`xmin`, `catalog_xmin`): Sie sagen etwas ueber das
+ * Aufraeumen und nichts ueber die Replikation, und die Seite soll keine Spalte
+ * zeigen, die sie nicht erklaeren kann.
+ *
+ * `pg_replication_slots` ist eine Sicht auf eine Funktion und fuer jede Rolle
+ * lesbar; sie traegt keine Verbindungsangabe.
+ */
+const REPLICATION_SLOTS_SQL = `
+  SELECT slot.slot_name AS slot_name,
+         slot.slot_type AS slot_type,
+         slot.plugin AS plugin,
+         slot.database AS database_name,
+         slot.temporary AS temporary,
+         slot.active AS active,
+         slot.wal_status AS wal_status,
+         CASE WHEN slot.restart_lsn IS NULL THEN NULL ELSE
+           pg_catalog.pg_wal_lsn_diff(
+             CASE WHEN pg_catalog.pg_is_in_recovery()
+                  THEN pg_catalog.pg_last_wal_receive_lsn()
+                  ELSE pg_catalog.pg_current_wal_lsn() END,
+             slot.restart_lsn)::bigint::text END AS retained_bytes,
+         slot.safe_wal_size::text AS safe_bytes
+  FROM pg_catalog.pg_replication_slots AS slot
+  ORDER BY slot.slot_name ASC
+  LIMIT $1`;
+
+/**
+ * Die Abonnements dieser Datenbank (2.74), ohne `subconninfo`.
+ *
+ * Die fehlende Spalte ist der Punkt dieser Lesung. In `subconninfo` steht die
+ * Verbindungszeichenfolge zum Herausgeber, und darin steht ueblicherweise ein
+ * Passwort; PostgreSQL entzieht `public` das Recht auf diese eine Spalte und
+ * laesst die uebrigen lesbar. QKERN fragt sie nicht, und damit kann sie auch
+ * dann nicht herauskommen, wenn die Lesung morgen mit mehr Rechten laeuft.
+ *
+ * `pg_subscription` ist clusterweit. Die Einschraenkung auf `subdbid` ist
+ * darum keine Bequemlichkeit: Eine Antwort dieser Seite beschreibt genau die
+ * eine Datenbank dieser Umgebung, und ein Abonnement einer fremden Datenbank
+ * desselben Servers gehoert nicht dazu.
+ *
+ * `subslotname` ist ein Slotname beim Herausgeber, kein Geheimnis; er steht
+ * dabei, weil er die einzige Bruecke zwischen dem Abonnement hier und dem Slot
+ * drueben ist.
+ */
+const REPLICATION_SUBSCRIPTIONS_SQL = `
+  SELECT subscription.subname AS subscription_name,
+         subscription.subowner::regrole::text AS owner,
+         subscription.subenabled AS enabled,
+         subscription.subslotname AS slot_name,
+         COALESCE(subscription.subpublications, ARRAY[]::text[]) AS publications
+  FROM pg_catalog.pg_subscription AS subscription
+  WHERE subscription.subdbid = (
+    SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
+  ORDER BY subscription.subname ASC
+  LIMIT $1`;
+
+/**
+ * Die zwei Schalter, ohne die der Rest nichts bedeutet (2.74).
+ *
+ * `wal_level` entscheidet, ob logische Replikation ueberhaupt moeglich ist.
+ * `pg_is_in_recovery()` sagt, ob diese Verbindung ein Standby liest; dieselbe
+ * Auskunft steht in `inspectRuntime` (2.68), und sie steht hier ein zweites
+ * Mal, weil die Seite sonst den Rueckstand ohne seinen Bezugspunkt zeigte.
+ */
+const REPLICATION_STATE_SQL = `
+  SELECT current_setting('wal_level') AS wal_level,
+         pg_catalog.pg_is_in_recovery() AS in_recovery`;
+
+const MAX_REPLICATION_SLOTS = 200;
+const MAX_REPLICATION_SUBSCRIPTIONS = 100;
+const MAX_SUBSCRIPTION_PUBLICATIONS = 100;
+const WAL_LEVELS: readonly string[] = ["minimal", "replica", "logical"];
+const WAL_STATUSES: readonly string[] = ["reserved", "extended", "unreserved", "lost"];
 
 /**
  * Spaltenrechte eines Schemas (2.20), aus `pg_attribute.attacl` ueber
@@ -1870,6 +2066,58 @@ function counter(value: unknown): number | null {
     return Number.isSafeInteger(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
   }
   return null;
+}
+
+/**
+ * Die Publikationen aus `PUBLICATIONS_SQL` (2.20), an einer Stelle abgebildet.
+ *
+ * Zwei Lesungen zeigen sie: die Seite Publikationen und die Seite Replikation
+ * (2.74). Die Abbildung steht darum hier und nicht in einer Methode, damit die
+ * Grenze fuer beide dieselbe ist.
+ *
+ * Erwartet die Zeilen einschliesslich der einen ueberzaehligen, die
+ * `LIMIT MAX_PUBLICATIONS + 1` holt; daran erkennt sie, dass abgeschnitten
+ * wurde.
+ */
+function projectPublications(rows: readonly PublicationRow[]): { publications: ProjectPublication[]; truncated: boolean } {
+  const kept = rows.slice(0, MAX_PUBLICATIONS);
+  const publications: ProjectPublication[] = kept.map((row) => {
+    const flags = [row.publish_insert, row.publish_update, row.publish_delete, row.publish_truncate, row.all_tables];
+    if (!catalogName(row.publication_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
+        flags.some((flag) => typeof flag !== "boolean") || !Array.isArray(row.tables) || row.tables.length > MAX_PUBLICATION_TABLES ||
+        row.tables.some((table) => typeof table !== "string" || table.length === 0 || table.length > 130)) {
+      throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+    }
+    return {
+      name: row.publication_name, owner: row.owner, publishInsert: row.publish_insert, publishUpdate: row.publish_update,
+      publishDelete: row.publish_delete, publishTruncate: row.publish_truncate, allTables: row.all_tables, tables: row.tables,
+    };
+  });
+  return { publications, truncated: rows.length > kept.length };
+}
+
+/**
+ * Eine Byte-Angabe aus dem WAL (2.74): Rueckstand oder Restfrist.
+ *
+ * `null` bleibt `null` und heisst nicht null Bytes: Ein Slot ohne reservierte
+ * Position haelt nichts fest, und eine fehlende Restfrist heisst, dass es keine
+ * Grenze gibt. Beides ist etwas anderes als die Zahl 0, und die Ansicht sagt
+ * beides verschieden.
+ *
+ * Alles andere wird geprueft und nicht zurechtgelegt. `numeric` und `bigint`
+ * kommen als Text; ein negativer Rueckstand oder eine Zahl jenseits des
+ * sicheren Integers ist keine Angabe, die QKERN versteht, und faellt an der
+ * Grenze durch. Gerundet wird nichts: Eine gerundete Byte-Zahl ueber einem
+ * Betriebsrisiko waere eine stille Falschaussage.
+ */
+function walBytes(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !UNSIGNED_DECIMAL.test(value)) {
+    throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  return parsed;
 }
 
 function identifierList(value: unknown, max: number): value is string[] {
@@ -2517,20 +2765,94 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     assertContextAndScope(context, scope);
     return this.run(context, scope, async (client) => {
       const result = await client.query<PublicationRow>(PUBLICATIONS_SQL, [MAX_PUBLICATIONS + 1]);
-      const rows = result.rows.slice(0, MAX_PUBLICATIONS);
-      const publications: ProjectPublication[] = rows.map((row) => {
-        const flags = [row.publish_insert, row.publish_update, row.publish_delete, row.publish_truncate, row.all_tables];
-        if (!catalogName(row.publication_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
-            flags.some((flag) => typeof flag !== "boolean") || !Array.isArray(row.tables) || row.tables.length > MAX_PUBLICATION_TABLES ||
-            row.tables.some((table) => typeof table !== "string" || table.length === 0 || table.length > 130)) {
+      const read = projectPublications(result.rows);
+      return { source: "postgres", publications: read.publications, truncated: read.truncated };
+    });
+  }
+
+  /**
+   * Replikation (2.74), lesend.
+   *
+   * Vier Anweisungen in derselben Transaktion, damit die Teile zueinander
+   * passen: Ein Slot, der zwischen zwei Lesungen verschwindet, liesse ein
+   * Abonnement ohne Slot stehen, und ein `wal_level` aus einem anderen Moment
+   * wuerde einen logischen Slot erklaeren, den es dann nicht gibt.
+   *
+   * Die Publikationen kommen aus `PUBLICATIONS_SQL`, derselben Anweisung, die
+   * `inspectPublications` (2.20) benutzt, und werden von derselben Funktion
+   * abgebildet. Zwei Lesestellen fuer dieselbe Sache waeren zwei Orte, an denen
+   * eine Grenze anders gezogen werden kann.
+   *
+   * Die Grenze dieser Lesung ist `subconninfo`, und sie wird nicht gefiltert,
+   * sondern nicht gefragt: Die Spalte steht in keiner der vier Anweisungen.
+   */
+  async inspectReplication(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectReplicationResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const stateResult = await client.query<ReplicationStateRow>(REPLICATION_STATE_SQL);
+      const publicationResult = await client.query<PublicationRow>(PUBLICATIONS_SQL, [MAX_PUBLICATIONS + 1]);
+      const subscriptionResult = await client.query<ReplicationSubscriptionRow>(
+        REPLICATION_SUBSCRIPTIONS_SQL, [MAX_REPLICATION_SUBSCRIPTIONS + 1]);
+      const slotResult = await client.query<ReplicationSlotRow>(REPLICATION_SLOTS_SQL, [MAX_REPLICATION_SLOTS + 1]);
+
+      const state = stateResult.rows[0];
+      // Ohne Zeile gibt es nichts zu sagen. Eine Vorgabe waere eine Behauptung
+      // ueber die Einstellung eines Servers, der sie nicht gemeldet hat.
+      if (!state || !WAL_LEVELS.includes(state.wal_level) || typeof state.in_recovery !== "boolean") {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+
+      const read = projectPublications(publicationResult.rows);
+      const subscriptionRows = subscriptionResult.rows.slice(0, MAX_REPLICATION_SUBSCRIPTIONS);
+      const slotRows = slotResult.rows.slice(0, MAX_REPLICATION_SLOTS);
+      const truncated = read.truncated ||
+        subscriptionResult.rows.length > subscriptionRows.length ||
+        slotResult.rows.length > slotRows.length;
+
+      const subscriptions: ProjectReplicationSubscription[] = subscriptionRows.map((row) => {
+        if (!catalogName(row.subscription_name) || typeof row.owner !== "string" || row.owner.length === 0 || row.owner.length > 130 ||
+            typeof row.enabled !== "boolean" || !boundedText(row.slot_name, 63) ||
+            !identifierList(row.publications, MAX_SUBSCRIPTION_PUBLICATIONS)) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }
         return {
-          name: row.publication_name, owner: row.owner, publishInsert: row.publish_insert, publishUpdate: row.publish_update,
-          publishDelete: row.publish_delete, publishTruncate: row.publish_truncate, allTables: row.all_tables, tables: row.tables,
+          name: row.subscription_name, owner: row.owner, enabled: row.enabled,
+          slotName: row.slot_name, publications: row.publications,
         };
       });
-      return { source: "postgres", publications, truncated: result.rows.length > rows.length };
+
+      const slots: ProjectReplicationSlot[] = slotRows.map((row) => {
+        if (!catalogName(row.slot_name) || (row.slot_type !== "physical" && row.slot_type !== "logical") ||
+            !boundedText(row.plugin, 63) || !boundedText(row.database_name, 63) ||
+            typeof row.temporary !== "boolean" || typeof row.active !== "boolean" ||
+            !(row.wal_status === null || (typeof row.wal_status === "string" && WAL_STATUSES.includes(row.wal_status)))) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: row.slot_name,
+          slotType: row.slot_type,
+          plugin: row.plugin,
+          database: row.database_name,
+          temporary: row.temporary,
+          active: row.active,
+          walStatus: row.wal_status as ProjectReplicationSlot["walStatus"],
+          retainedBytes: walBytes(row.retained_bytes),
+          safeBytes: walBytes(row.safe_bytes),
+        };
+      });
+
+      return {
+        source: "postgres",
+        walLevel: state.wal_level as ProjectReplicationResult["walLevel"],
+        inRecovery: state.in_recovery,
+        publications: read.publications,
+        subscriptions,
+        slots,
+        truncated,
+      };
     });
   }
 
@@ -2914,6 +3236,10 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
   }
 
   async inspectPublications(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectPublicationResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectReplication(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectReplicationResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

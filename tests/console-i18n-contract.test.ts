@@ -33,6 +33,7 @@ import { queryInsightsTexts } from "@/lib/console/query-insights";
 import { authPerformanceTexts } from "@/lib/console/auth-performance-texts";
 import { databaseHealthTexts } from "@/lib/console/database-health-texts";
 import { wrappersTexts } from "@/lib/console/wrappers-texts";
+import { replicationTexts } from "@/lib/console/replication-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -146,6 +147,10 @@ async function consoleKeys(): Promise<string[]> {
   // Schritte zum Anlegen, was es nicht kann und seine Ehrlichkeitssaetze
   // ueber t(variable).
   for (const text of wrappersTexts()) keys.add(text);
+  // Datenbank -> Replikation (2.74) zeigt den Zustand eines Slots, was
+  // wal_level erlaubt, die Schritte zum Einrichten, was es nicht kann und
+  // seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of replicationTexts()) keys.add(text);
   return [...keys];
 }
 
