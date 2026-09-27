@@ -173,6 +173,13 @@ export type ProjectStatisticsResult = {
  * jeder Zeile nur die normalisierte Kennung und zwei Zaehler. Die Kennung
  * ist ein Hash ueber den Abfragebaum; sie traegt kein Literal, und aus ihr
  * laesst sich der Text nicht zurueckrechnen.
+ *
+ * 2.67 haelt an dieser Entscheidung fest und legt zwei weitere Zahlen dazu,
+ * damit die Seite Abfrage-Leistung ohne Text auskommt: den Mittelwert je
+ * Aufruf und die Summe der beruehrten Zeilen. Beide sind Zaehler der Sicht,
+ * beide tragen kein Literal. Die Entscheidung gegen `query` steht
+ * ausgeschrieben in `STATEMENT_DIGESTS_SQL`, weil sie die Seite spuerbar
+ * aermer macht und darum nicht stillschweigend getroffen werden darf.
  */
 export type ProjectStatementDigest = {
   /** `queryid` als Dezimaltext; `bigint` passt nicht verlustfrei in `number` */
@@ -180,6 +187,19 @@ export type ProjectStatementDigest = {
   calls: number;
   /** Gesamte Ausfuehrungszeit in Millisekunden, abgerundet */
   totalTimeMs: number;
+  /**
+   * Mittlere Ausfuehrungszeit je Aufruf in Mikrosekunden, abgerundet (2.67).
+   *
+   * Nicht in Millisekunden: Die meisten Statements einer gesunden Datenbank
+   * liegen unter einer Millisekunde, und ein abgerundeter Millisekundenwert
+   * waere fuer sie durchgehend 0. Eine Spalte voller Nullen sagt weniger als
+   * gar keine Spalte. Gelesen wird `mean_exec_time` der Sicht, nicht
+   * `totalTimeMs / calls`: Die Sicht rechnet den Mittelwert ungerundet, die
+   * Division aus zwei gerundeten Zahlen waere ungenauer.
+   */
+  meanTimeUs: number;
+  /** Summe der von diesem Statement gelieferten oder geaenderten Zeilen */
+  rows: number;
 };
 
 export type ProjectStatementResult = {
@@ -814,6 +834,8 @@ type StatementDigestRow = {
   statement_id: string;
   calls: string | number;
   total_time_ms: string | number;
+  mean_time_us: string | number;
+  rows: string | number;
 };
 
 /** Mehr als das braucht keine Regel; der Berater nimmt ohnehin nur die teuersten fuenf. */
@@ -847,12 +869,40 @@ const STATEMENTS_INSTALLED_SQL = `
  *   Befund nicht benennbar; sie faellt hier heraus.
  *
  * `total_exec_time` ist `double precision`; `floor(...)::bigint` macht daraus
- * einen Zaehler, den `counter` pruefen kann.
+ * einen Zaehler, den `counter` pruefen kann. Dasselbe gilt fuer
+ * `mean_exec_time`, nur in Mikrosekunden (2.67), weil ein abgerundeter
+ * Millisekundenwert fuer die meisten Statements 0 waere.
+ *
+ * **Die Entscheidung gegen den Abfragetext, ausgeschrieben (2.67).** Die
+ * Seite Abfrage-Leistung koennte `query` zeigen; `pg_stat_statements` ersetzt
+ * die Literale einer Abfrage durch `$1`, `$2` und so weiter, der Text waere
+ * also im Normalfall harmlos und fuer den Leser weit nuetzlicher als ein
+ * Hash. QKERN zeigt ihn trotzdem nicht, aus drei Gruenden, die alle bleiben:
+ *
+ * 1. "Im Normalfall" reicht hier nicht. Normalisiert wird nur, was der
+ *    Parser als Abfrage sieht. Ein Utility-Befehl (`CREATE ROLE … PASSWORD
+ *    '…'`, `ALTER ROLE … PASSWORD '…'`) steht mit seinem Literal in der
+ *    Sicht. Wer den Text zeigt, zeigt frueher oder spaeter ein Passwort.
+ * 2. Auch eine normalisierte Abfrage traegt noch Bezeichner: Schema-,
+ *    Tabellen- und Spaltennamen. `pg_stat_statements` gilt fuer den ganzen
+ *    Cluster, und die Eingrenzung auf `dbid` ist eine Zeile SQL, die jemand
+ *    im naechsten Umbau entfernen kann. Ein Feld, das keinen Text traegt,
+ *    kann auch keinen fremden Text tragen.
+ * 3. Die Seite bleibt ohne Text benutzbar. Aufrufe, Gesamtzeit, Mittelwert,
+ *    Zeilen und der Anteil an der Gesamtzeit sagen, welches Statement Zeit
+ *    kostet. Welches Statement das ist, sagt der Abfrageplan im SQL-Editor,
+ *    wo der Text vom Menschen kommt und nicht aus fremden Sitzungen.
+ *
+ * Der Preis ist echt: Die Seite nennt eine Kennung, keine Abfrage, und muss
+ * das wortwoertlich sagen. Das ist die Ehrlichkeit, die hier billiger ist
+ * als die Bequemlichkeit.
  */
 const STATEMENT_DIGESTS_SQL = `
   SELECT stat.queryid::text AS statement_id,
          stat.calls AS calls,
-         floor(stat.total_exec_time)::bigint AS total_time_ms
+         floor(stat.total_exec_time)::bigint AS total_time_ms,
+         floor(stat.mean_exec_time * 1000)::bigint AS mean_time_us,
+         stat.rows AS rows
   FROM pg_stat_statements AS stat
   WHERE stat.dbid = (SELECT database.oid FROM pg_catalog.pg_database AS database
                      WHERE database.datname = current_database())
@@ -1532,9 +1582,9 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
    * Der Gegenentwurf zu "gar nicht lesen" aus 2.40: Statt die Sicht ganz
    * liegen zu lassen, wird sie so eng gelesen, dass ihr gefaehrlicher Teil
    * gar nicht erst mitkommt. `STATEMENT_DIGESTS_SQL` waehlt `query` nicht
-   * aus, und dieser Rumpf baut die Antwort aus drei Feldern, die alle die
-   * Grenze passieren muessen: eine Kennung aus Ziffern, zwei Zaehler. Was
-   * die Grenze nicht als solches erkennt, laesst den Aufruf scheitern,
+   * aus, und dieser Rumpf baut die Antwort aus fuenf Feldern, die alle die
+   * Grenze passieren muessen: eine Kennung aus Ziffern, vier Zaehler (2.67).
+   * Was die Grenze nicht als solches erkennt, laesst den Aufruf scheitern,
    * statt in die Console zu laufen.
    *
    * Fehlt die Erweiterung, ist das kein Fehler: `installed: false` ist die
@@ -1555,14 +1605,16 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
       const statements: ProjectStatementDigest[] = rows.map((row) => {
         const calls = counter(row.calls);
         const totalTimeMs = counter(row.total_time_ms);
+        const meanTimeUs = counter(row.mean_time_us);
+        const rows = counter(row.rows);
         // Eine `queryid` ist ein `bigint`, also hoechstens 20 Zeichen aus
         // Ziffern und einem moeglichen Minus. Alles andere waere kein
         // Statement-Hash, und was hier nicht hineinpasst, geht nicht hinaus.
         if (typeof row.statement_id !== "string" || !/^-?[0-9]{1,20}$/.test(row.statement_id) ||
-            calls === null || totalTimeMs === null) {
+            calls === null || totalTimeMs === null || meanTimeUs === null || rows === null) {
           throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
         }
-        return { id: row.statement_id, calls, totalTimeMs };
+        return { id: row.statement_id, calls, totalTimeMs, meanTimeUs, rows };
       });
       return {
         source: "postgres", installed: true, statements,

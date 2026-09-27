@@ -19,6 +19,9 @@ import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rule
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
 import { probeDatabaseHealth } from "@/app/api/v1/projects/[projectId]/environments/[environment]/advisors/health/route";
 import { PERFORMANCE_THRESHOLDS } from "@/lib/console/performance-advisor-texts";
+// Die Seite Abfrage-Leistung (2.67): dieselben reinen Funktionen, mit denen
+// die Ansicht aus den Zaehlern Anteil, Mittelwert und Zeilen je Aufruf macht.
+import { duration, durationFromMilliseconds, rowsPerCall, timeShare } from "@/lib/console/query-performance-texts";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { UsageService } from "@/lib/server/usage/service";
 // Der Tabellen-Designer (2.49): Generator, Control Plane, Apply-Dienst,
@@ -2919,12 +2922,14 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(digests.installed).toBe(true);
       expect(digests.statements.length).toBeGreaterThan(0);
       for (const digest of digests.statements) {
-        // Drei Felder, und keines davon ist ein Text: eine Kennung aus
-        // Ziffern und zwei Zaehler. Ein Abfragetext hat hier keine Stelle.
-        expect(Object.keys(digest).sort()).toEqual(["calls", "id", "totalTimeMs"]);
+        // Fuenf Felder seit 2.67, und keines davon ist ein Text: eine Kennung
+        // aus Ziffern und vier Zaehler. Ein Abfragetext hat hier keine Stelle.
+        expect(Object.keys(digest).sort()).toEqual(["calls", "id", "meanTimeUs", "rows", "totalTimeMs"]);
         expect(digest.id).toMatch(/^-?[0-9]{1,20}$/);
         expect(Number.isInteger(digest.calls) && digest.calls > 0).toBe(true);
         expect(Number.isInteger(digest.totalTimeMs) && digest.totalTimeMs >= 0).toBe(true);
+        expect(Number.isInteger(digest.meanTimeUs) && digest.meanTimeUs >= 0).toBe(true);
+        expect(Number.isInteger(digest.rows) && digest.rows >= 0).toBe(true);
       }
 
       // Der Kern des Falls: kein Feld der ganzen Antwort traegt den Text
@@ -2969,6 +2974,164 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   });
+
+  it("(2.67) shows what a query costs in the console without showing the query", async () => {
+    // Die Seite Berichte -> Abfrage-Leistung (2.67) gegen die echte Datenbank.
+    //
+    // Gelesen wird durch die Tuer des Produkts: `inspectStatements` mit
+    // Organisation, Akteur und Scope, dieselbe Methode, die die Route
+    // `database/statements` aufruft. Der Fall baut weder eine eigene Abfrage
+    // noch eine eigene Projektion noch einen eigenen Filter; er stellt eine
+    // Last her, liest durch das Produkt und rechnet mit denselben reinen
+    // Funktionen nach, die die Ansicht benutzt.
+    //
+    // Die Gegenprobe kommt aus der Sicht selbst: Ein Statement mit einer
+    // eindeutigen Form wird mehrfach ausgefuehrt, danach steht in
+    // `pg_stat_statements`, was es gekostet hat, und die Antwort des Produkts
+    // muss genau diese Zahlen tragen. Damit faellt der Fall, wenn jemand die
+    // Sortierung dreht, die Grenze verschiebt oder eine Spalte vertauscht.
+    //
+    // Was der Fall ausserdem festhaelt: Die Antwort traegt weiterhin keinen
+    // Abfragetext. 2.57 hat das fuer drei Felder belegt, 2.67 fuegt zwei
+    // hinzu, und die Zusage gilt fuer alle fuenf.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const perfOwner = randomUUID();
+    const perfOrganization = randomUUID();
+    const perfProject = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [perfOwner, `queryperf-2-67-owner-${perfOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Query performance 2.67', $2, $3)`,
+    [perfOrganization, `queryperf-2-67-${perfOrganization}`, perfOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Query performance 2.67', $3, 'test', 'ready', $4)`,
+    [perfProject, perfOrganization, `queryperf-2-67-${perfProject}`, perfOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [perfOrganization, perfProject, `managed:${perfProject}`]);
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    const projectDatabase = new URL(projectApiUrl!).pathname.slice(1);
+    try {
+      const installed = await owner.query<{ present: boolean }>(
+        "SELECT to_regclass('pg_stat_statements') IS NOT NULL AS present");
+      expect(installed.rows[0]?.present,
+        "pg_stat_statements fehlt; der Stack laedt sie ueber shared_preload_libraries").toBe(true);
+
+      // Eine Last mit eindeutiger Form, ausgefuehrt von der Leserolle selbst,
+      // damit PostgreSQL die Zeile mit `queryid` zeigt. Der Schlaf ist die
+      // Zeit, die dieses Statement nachweislich kostet: ohne messbare Zeit
+      // gaebe es keinen Mittelwert und keinen Anteil zu pruefen. Vier Aufrufe
+      // zu 0,3 Sekunden liegen deutlich ueber einer Millisekunde und deutlich
+      // unter einer Sekunde, und genau das prueft die Einheit unten.
+      const CALLS = 4;
+      for (let round = 0; round < CALLS; round += 1) {
+        await projectApi.query(
+          "SELECT pg_sleep($1), count(*) FROM pg_catalog.pg_class WHERE oid > $2 AND relkind <> $3",
+          [0.3, round, "x"]);
+      }
+
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: projectDatabase,
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const result = await service.inspectStatements(
+        { organizationId: perfOrganization, actorRef: "queryperf-2-67@qkern.test" },
+        { projectId: perfProject, environment: "development" },
+      );
+
+      expect(result.source).toBe("postgres");
+      expect(result.installed).toBe(true);
+      expect(result.statements.length).toBeGreaterThan(0);
+      // Die Grenze des Dienstes: hoechstens 50 Zeilen, und `truncated` sagt,
+      // ob es mehr gab.
+      expect(result.statements.length).toBeLessThanOrEqual(50);
+
+      // Die Gegenprobe: dieselben Zeilen, direkt aus der Sicht gelesen, mit
+      // demselben Mandantenfilter, den der Produktcode fahren muss. Gefragt
+      // wird mit Parametern, damit dieser Text nicht selbst zum Marker wird.
+      const truth = await owner.query<{
+        statement_id: string; calls: string; total_exec_time: number;
+        mean_exec_time: number; rows: string; visible: string;
+      }>(`SELECT stat.queryid::text AS statement_id, stat.calls::text AS calls,
+                 stat.total_exec_time AS total_exec_time, stat.mean_exec_time AS mean_exec_time,
+                 stat.rows::text AS rows,
+                 (SELECT count(*)::text FROM pg_stat_statements AS all_rows
+                  WHERE all_rows.dbid = stat.dbid AND all_rows.queryid IS NOT NULL) AS visible
+          FROM pg_stat_statements AS stat
+          WHERE stat.dbid = (SELECT database.oid FROM pg_catalog.pg_database AS database
+                             WHERE database.datname = $1)
+            AND stat.query LIKE $2`, [projectDatabase, "%pg_sleep%relkind%"]);
+      expect(truth.rows.length,
+        "Das erzeugte Statement steht nicht in der Sicht; dann prueft dieser Fall nichts.").toBe(1);
+      const mirror = truth.rows[0];
+      const visible = Number(mirror.visible);
+
+      // `truncated` ist keine Vermutung: Es stimmt mit der Zahl der Zeilen
+      // ueberein, die die Sicht fuer diese Datenbank haelt.
+      expect(result.truncated).toBe(visible > result.statements.length);
+
+      // Absteigend nach Gesamtzeit, wie der Dienst bestellt. Eine gedrehte
+      // Sortierung faellt hier auf.
+      for (let index = 1; index < result.statements.length; index += 1) {
+        expect(result.statements[index - 1].totalTimeMs,
+          `Zeile ${index} steht vor einer teureren`)
+          .toBeGreaterThanOrEqual(result.statements[index].totalTimeMs);
+      }
+
+      // Das teure Statement steht in der Liste, und zwar mit genau den Zahlen
+      // der Sicht. Es hat gut eine Sekunde gekostet; ueber der Grenze von 50
+      // Zeilen faellt es in dieser Datenbank nicht heraus.
+      const mine = result.statements.find((entry) => entry.id === mirror.statement_id);
+      expect(mine, "Das teure Statement fehlt in der Antwort").toBeDefined();
+      expect(mine!.calls).toBe(CALLS);
+      expect(mine!.calls).toBe(Number(mirror.calls));
+      expect(mine!.totalTimeMs).toBe(Math.floor(mirror.total_exec_time));
+      expect(mine!.meanTimeUs).toBe(Math.floor(mirror.mean_exec_time * 1000));
+      expect(mine!.rows).toBe(Number(mirror.rows));
+
+      // Und dieselben reinen Funktionen, mit denen die Ansicht rechnet, ueber
+      // der unveraenderten Antwort.
+      const sumTotalMs = result.statements.reduce((sum, entry) => sum + entry.totalTimeMs, 0);
+      const share = timeShare(mine!.totalTimeMs, sumTotalMs);
+      expect(share).not.toBeNull();
+      expect(share!).toBeGreaterThan(0);
+      expect(share!).toBeLessThanOrEqual(1);
+      // Jeder Aufruf liefert genau eine Zeile; die Spalte `rows` ist die
+      // Summe darueber. Eine vertauschte Projektion faellt hier auf.
+      expect(rowsPerCall(mine!.rows, mine!.calls)).toBe(1);
+      // 0,3 Sekunden je Aufruf: mehr als eine Millisekunde, weniger als eine
+      // Sekunde. Die Ansicht zeigt das darum in Millisekunden.
+      const mean = duration(mine!.meanTimeUs);
+      expect(mean.unit).toBe("Millisekunden");
+      expect(mean.value).toBeGreaterThan(300);
+      const total = durationFromMilliseconds(mine!.totalTimeMs);
+      expect(total.unit).toBe("Sekunden");
+      expect(total.value).toBeGreaterThan(1.2);
+
+      // Die Zusage aus 2.57, jetzt ueber fuenf Felder: kein Feld der Antwort
+      // traegt den Text irgendeines Statements.
+      const serialised = JSON.stringify(result);
+      expect(serialised.toLowerCase()).not.toContain("select");
+      expect(serialised.toLowerCase()).not.toContain("pg_");
+      expect(serialised.toLowerCase()).not.toContain("relkind");
+      for (const digest of result.statements) {
+        expect(Object.keys(digest).sort()).toEqual(["calls", "id", "meanTimeUs", "rows", "totalTimeMs"]);
+        expect(digest.id).toMatch(/^-?[0-9]{1,20}$/);
+      }
+    } finally {
+      await projectApi.end();
+    }
+    // Budget: vier Aufrufe zu 0,3 Sekunden plus Verbindungsaufbau gegen eine
+    // echte Datenbank. 120 Sekunden lassen Luft fuer einen langsamen Stack,
+    // ohne dass eine Erwartung weicher wird.
+  }, 120_000);
 
   it("(2.50) turns a real table change into a signed webhook delivery", async () => {
     // Der ganze Weg der Datenbank-Webhooks (2.50) an einem Stueck, und zwar an

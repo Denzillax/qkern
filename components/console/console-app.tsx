@@ -35,6 +35,7 @@ import { CronLogView } from "@/components/console/cron-log-view";
 import { UsageSeriesView } from "@/components/console/usage-series-view";
 import { DatabaseReportView } from "@/components/console/database-report-view";
 import { ConnectionsReportView } from "@/components/console/connections-report-view";
+import { QueryPerformanceView } from "@/components/console/query-performance-view";
 import { SchemaVisualizerView } from "@/components/console/schema-visualizer-view";
 import { TableDesignerView } from "@/components/console/table-designer-view";
 import { PoliciesView } from "@/components/console/policies-view";
@@ -376,6 +377,9 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Berichte -> Verbindungen die Gruppen je Rolle und Zustand (2.46).
     case "obs-database": return <DatabaseReportView projectId={props.project.id} environment={props.environment}/>;
     case "obs-connections": return <ConnectionsReportView projectId={props.project.id} environment={props.environment}/>;
+    // Berichte -> Abfrage-Leistung liest pg_stat_statements ueber dieselbe
+    // Methode wie der Leistungsberater, und sie traegt keinen Abfragetext (2.67).
+    case "obs-query-performance": return <QueryPerformanceView projectId={props.project.id} environment={props.environment}/>;
     // Realtime -> Einstellungen liest die wirksamen Grenzen; Realtime -> Rechte
     // zeigt die feste Praefixregel aus dem Code und braucht darum keine Route (2.48).
     case "realtime-settings": return <RealtimeSettingsView projectId={props.project.id} environment={props.environment}/>;
