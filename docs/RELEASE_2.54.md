@@ -29,6 +29,15 @@ Frage, was ein angemeldeter Nutzer wirklich darf.
 
 `next build` grün.
 
+## Nachtrag zum Verfahren
+
+Die CI fand einen Fehler, den diese Maschine nicht zeigen konnte. Zwei
+Vorlagen sortieren nach Grösse absteigend, und PostgreSQL stellt dabei NULL
+ohne ausdrückliche Anweisung nach vorn. In der CI hat eine frisch angelegte
+Tabelle die Grösse NULL, hier hatten alle Tabellen Daten. Eine Übersicht der
+grössten Tabellen, die leere Tabellen oben zeigt, ist schlicht falsch; beide
+Vorlagen sagen jetzt `NULLS LAST`.
+
 ## Ehrlich offen
 
 - **Der Sammler der Drains hat noch keinen dauerhaften Aufrufer.**
