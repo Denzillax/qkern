@@ -2003,6 +2003,94 @@ Datenbank: Migration `0055_user_console_settings.sql` legt `user_console_setting
 neben `users` — nicht hinein. `users` ist die Tabelle der Anmeldung, und eine
 Vorliebe dort abzulegen hiesse, der Anmelderolle ein `UPDATE` auf der Tabelle
 mit den Passworthashes zu geben, damit jemand seine Zeitzone wechseln kann.
+### Log-Explorer: suchen, ohne eine Abfragefläche zu öffnen
+
+Seit `2.55.0` ist **Logs → Explorer** keine Platzhalterseite mehr. Der
+Platzhalter versprach „Logs mit SQL durchsuchen, speichern, als Vorlage
+ablegen". Eingelöst werden das Durchsuchen und das Speichern. **Das SQL nicht**,
+und das ist die Zusage der Seite, nicht ihre Lücke.
+
+**Warum kein SQL über die Logs.** Jede log-artige Quelle von QKERN liegt in der
+**Control Plane**: das Auth-Protokoll in `audit_logs`, das Aufrufprotokoll in
+`project_function_invocations` (`0045`), der Stand der Speicherobjekte in
+`project_storage_objects` (`0025`), die Zustellungen in
+`project_webhook_deliveries` (`0032`), die Nutzung in `usage_events` (`0028`).
+Dort stehen die Zeilen **aller** Organisationen in denselben Tabellen, getrennt
+allein durch `organization_id` und die Policies darüber.
+
+Der SQL-Editor der Console läuft nicht dort. Er läuft über
+`environments/{environment}/query` gegen die **Projektdatenbank** — eine eigene
+Datenbank je Projekt. Ein freier SQL-Weg dorthin ist vertretbar, weil das
+Schlimmste, was eine falsche Abfrage sieht, die eigenen Daten sind. Dieselbe
+Fläche über die Control Plane zu öffnen wäre etwas anderes: Sie hänge mit jeder
+Zeile an einer einzigen Policy, und fällt die aus, gibt die Seite fremde Zeilen
+heraus, ohne dass es der Abfrage anzusehen wäre. Die Ansicht sagt diesen Satz
+wörtlich, statt ihn dem Betrieb zu überlassen.
+
+**Was stattdessen gebaut ist.** Eine strukturierte Suche über Zeitraum, Quellen
+und ein paar getypte Filter je Quelle. Beantwortet wird sie, indem der Server
+die Lesewege fächert, die es für jede Quelle ohnehin gibt — dieselbe Tür,
+derselbe Dienst, dieselbe Projektion — und die Ergebnisse zu **einer**
+geordneten Liste zusammenführt. Es entsteht keine neue Lesestelle.
+
+| Quelle | Vorhandene Route | Rolle |
+| --- | --- | --- |
+| `auth_audit` | `auth/admin/audit` | `project_auth_admin` |
+| `function_invocations` | `compute/invocations` | `project_compute_admin` |
+| `storage_objects` | `storage/objects` | `project_storage_admin` |
+
+Wer eine Quelle heute nicht lesen darf, bekommt sie auch hier nicht: Sie
+erscheint als **nicht lesbar**, und die übrigen bleiben nutzbar. Eine Quelle,
+die nicht antwortet, nimmt die anderen ebenfalls nicht mit — gefächert wird mit
+`allSettled`, nicht mit `all`.
+
+**Die Ordnung.** Neueste zuerst nach Zeitpunkt, danach nach Quelle, danach nach
+Kennung. Die beiden nachrangigen Kriterien sind kein Beiwerk: Ohne sie hänge die
+Reihenfolge zweier Einträge derselben Mikrosekunde an der Antwortzeit zweier
+Dienste, und Blättern zeigte einen Eintrag doppelt und einen nie. Jeder
+Zeitpunkt wird auf eine Schreibweise gebracht (`YYYY-MM-DDTHH:mm:ss.sssZ`),
+sonst wäre `…00.500Z` lexikografisch kleiner als `…00Z`.
+
+**Das Leserbudget.** Je Quelle liest der Explorer höchstens fünf Seiten. Reicht
+das für einen Zeitraum nicht, meldet die Quelle den Zustand `truncated`, statt
+eine vollständige Antwort vorzutäuschen.
+
+**Was der Explorer nicht erreicht**, und warum — die Seite zählt es selbst auf,
+und die Antwort der Route tut es auch:
+
+- **Webhook-Zustellungen**: lesbar nur je Webhook über dessen eigene Route. Eine
+  Leseroute über alle Webhooks einer Umgebung gibt es nicht.
+- **Nutzung je Zeitfenster**: aggregierte Eimer, keine Ereignisse. Ein Eimer hat
+  keinen Zeitpunkt, an dem etwas passiert wäre.
+- **Cron-Vorkommen**: kein gespeichertes Log, sondern je Anfrage rekonstruiert.
+- **Ausgabe eines Function-Containers**: wird nicht gespeichert (`0045`).
+- **Postgres-, Pooler-, Realtime- und API-Gateway-Log**: kein Backend.
+
+**Gespeicherte Suchen** halten den strukturierten Filter — Zeitraum, Quellen,
+getypte Filter —, nie eine Abfrage. Sie liegen in der Ablage des Browsers, je
+Projekt und Umgebung. Eine Tabelle in der Control Plane bekommen sie bewusst
+nicht: Eine Migration für eine Bequemlichkeit, die eine Person auf einem Gerät
+benutzt, wäre außer Verhältnis, und geteilt werden muss eine gespeicherte Suche
+nicht.
+
+**Die Route**, mit `Cache-Control: private, no-store`:
+
+- `GET /api/v1/projects/{projectId}/environments/{environment}/logs/search`
+- Parameter: `sources`, `from`, `to`, `limit` (1 bis 100), `before` und die
+  getypten Filter `authStatus`, `authActor`, `outcome`, `objectStatus`.
+- Jeder unbekannte Parameter, jede zweite Angabe desselben Parameters und jeder
+  Filter ohne seine Quelle sind ein **400 vor jedem Dienstaufruf**. Ein
+  Tippfehler wäre sonst eine Suche ohne diesen Filter, und die Antwort sähe
+  richtig aus.
+- Kein Schreibverb, kein Feld für einen Ausdruck.
+
+Eine gemischte Zeile trägt sechs Felder: Quelle, Kennung, Zeitpunkt, Handlung,
+Gegenstand, Ausgang und einen kurzen getypten Zusatz. Nicht dabei sind die
+Aufruferreferenz eines Function-Aufrufs und der Eigentümer eines
+Speicherobjekts — beide können eine E-Mail-Adresse sein, und in einer
+gemischten Liste haben sie nichts zu suchen.
+
+Keine Migration. Der Schnitt liest nur, und zwar durch vorhandene Türen.
 
 ### Vault: was QKERN kennt, und was es nicht kennt
 
