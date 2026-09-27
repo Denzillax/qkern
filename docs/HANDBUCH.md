@@ -1290,6 +1290,78 @@ benötigen zusätzlich das App-JWT in `Authorization` und den Projekt-Key in
 `X-QKERN-Key`. Provider-Key, persistierter Completion-Verifier und Object-Checksum
 werden nicht in öffentlichen Object-Antworten ausgegeben.
 
+### S3-Zugang: ausgegebene Schlüssel, die noch nichts öffnen
+
+Seit `2.59.0` ist **Storage → S3-Zugang** keine Platzhalterseite mehr. Die Seite
+gibt Schlüsselpaare aus, zeigt das Geheimnis genau einmal und widerruft sie.
+
+**Der erste Absatz der Seite ist die Grenze, und er steht dort mit Absicht:
+Kein Endpunkt von QKERN nimmt ein solches Paar heute an.** Wer es in `aws s3`
+oder ein anderes Werkzeug einträgt, bekommt keine Verbindung. Ein Paar ist eine
+Erklärung darüber, wer auf welche Buckets welcher Umgebung zugreifen soll und
+bis wann. Es ist noch kein Zugang.
+
+Für diesen Zustand gibt es zwei Gründe, und jeder von beiden schliesst einen der
+denkbaren Wege aus.
+
+**Beim Objektspeicher selbst lässt sich kein Paar anlegen.** Der Anschluss in
+`lib/server/project-storage/provider.ts` kennt signierte Zusagen, `HEAD`,
+`DELETE` und die Multipart-Verben, aber keine Operation für Zugangsdaten; IAM
+und STS gibt es dort nicht. Schwerer wiegt die Ablage: QKERN legt jedes Objekt
+jeder Organisation in **einen** Bucket des Anbieters, den aus
+`QKERN_PROJECT_STORAGE_S3_BUCKET`, und trennt allein über das Präfix
+`organisation/projekt/umgebung/bucket/upload/schlüssel`. Ein QKERN-Bucket ist
+eine Zeile in `project_storage_buckets` und kein Bucket des Anbieters. Ein Paar
+beim Anbieter wäre darum ein Zugang zum Speicher aller Kunden, und die Rechte
+liessen sich je Bucket gar nicht trennen. Der Zertifizierungsstack bestätigt das
+Bild: versitygw läuft mit genau einem Wurzelkonto auf einem posix-Backend.
+
+**Gegen QKERN selbst lässt sich das Paar nicht prüfen, solange nur der Hash
+gespeichert ist.** Eine SigV4-Signatur wird nachgerechnet, und die Rechnung ist
+eine HMAC-Kette aus dem Geheimnis. Wer prüfen will, braucht das Geheimnis oder
+einen daraus abgeleiteten Signierschlüssel, der nur einen Tag und eine Region
+gilt und für den nächsten Tag wieder das Geheimnis verlangt. Gespeichert wird
+hier ein SHA-256-Hash, und aus einem Hash kommt kein HMAC. Entweder QKERN behält
+das Geheimnis, oder es prüft keine Signatur. Dieser Stand behält es nicht, also
+gibt es keinen Prüfweg. Ein halb geprüfter Signaturweg wäre schlechter als kein
+Zugang.
+
+Was die Seite deshalb hält:
+
+- **Genau einmal gezeigt.** Die Antwort auf `POST` ist die einzige Stelle, an
+  der das Geheimnis vorkommt. Gespeichert wird `secret_hash`, und eine Spalte
+  für den Wert gibt es nicht. Die Liste kennt ihn nicht und kann ihn nicht
+  kennen; der Zertifizierungsfall `(2.78)` prüft das gegen die echte Datenbank.
+- **Umgebung und Bucket-Satz statt Projekt.** Ein Paar hängt an einer
+  Projektumgebung und an einem Satz Buckets, höchstens zwanzig. Der Satz steht
+  in `project_storage_s3_access_key_buckets` mit einem echten Fremdschlüssel,
+  also greift das Löschen eines Buckets durch, statt eine Nummer stehen zu
+  lassen, die auf nichts zeigt.
+- **Widerruf ist nicht löschen.** Er wirkt sofort und lässt die Zeile mit ihrem
+  Zeitpunkt in der Liste stehen, weil die Spur erhalten bleiben soll. Ausgedrückt
+  ist das über die Rechte: Die Laufzeitrolle hat auf
+  `project_storage_s3_access_keys` kein `DELETE`, nur `UPDATE (revoked_at)`, und
+  ein Trigger lässt den Zeitpunkt nur einmal setzen. Ein zweiter Widerruf
+  verschiebt ihn nicht.
+- **Kein Wert in Log, Audit oder Fehlermeldung.** Die Audit-Einträge
+  `project.storage.s3_access_key.created` und `.revoked` tragen den öffentlichen
+  Teil, die Zahl der Buckets und den Ablauf. Meldungen der Datenbank werden nicht
+  weitergetragen, weil sie Tabellen und Werte nennen.
+- **Der öffentliche Teil sieht nach QKERN aus.** Er beginnt mit `QKERNS3` und
+  nicht mit der Form eines Provider-Schlüssels. Ein Paar, das aussieht wie ein
+  Zugang zum Objektspeicher und keiner ist, wäre genau die Unehrlichkeit, die
+  diese Seite vermeidet.
+
+Die Routen, alle nur für Eigentümer oder Administratoren und alle am
+Storage-Schalter der Umgebung:
+
+- `GET|POST /api/v1/projects/{projectId}/environments/{environment}/storage/s3-keys`
+- `DELETE .../storage/s3-keys/{keyId}` als Widerruf
+
+Wer hier weiterbaut, entscheidet **zuerst**, wo das Geheimnis liegen soll. Ohne
+diese Entscheidung gibt es keinen Prüfweg, und ohne Prüfweg bleibt der Satz auf
+der Seite richtig.
+
 ## 8. Realtime lokal testen
 
 Realtime Alpha 1 benötigt die PostgreSQL-Control-Plane, weil Project API Keys und

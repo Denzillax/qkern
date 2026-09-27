@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -43,7 +43,6 @@ export const PLACEHOLDERS = {
   "auth-third-party": { label: "Fremde Anbieter", supabase: "Authentication → Third Party Auth", backend: "fehlt", note: "Token fremder Identitätsdienste akzeptieren, ohne eigene Nutzerkonten." },
   "auth-oauth-server": { label: "OAuth-Server", supabase: "Authentication → OAuth Server", backend: "fehlt", note: "QKERN selbst als OAuth-Anbieter für andere Apps. Für die AI Bridge vorgesehen, noch nicht gebaut." },
   // Storage
-  "storage-s3": { label: "S3-Zugang", supabase: "Storage → S3", backend: "fehlt", note: "S3-kompatible Schlüssel für fremde Werkzeuge. Intern spricht QKERN S3; ein Zugang nach aussen fehlt." },
   "storage-analytics": { label: "Analytics-Buckets", supabase: "Storage → Analytics", backend: "fehlt", note: "Spaltenorientierte Ablage für grosse Auswertungen (Iceberg)." },
   "storage-vectors": { label: "Vektor-Buckets", supabase: "Storage → Vectors", backend: "fehlt", note: "Ablage für Embeddings mit Ähnlichkeitssuche." },
   // Functions
@@ -89,7 +88,7 @@ export const NAV: NavGroup[] = [
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), { id: "auth-audit", label: "Audit-Log" }, { id: "auth-performance", label: "Auth-Leistung" },
   ] },
   { id: "storage", label: "Storage", icon: Cloud, children: [
-    { id: "storage", label: "Buckets" }, { id: "storage-policies", label: "Policies" }, { id: "storage-settings", label: "Einstellungen" }, ph("storage-s3"),
+    { id: "storage", label: "Buckets" }, { id: "storage-policies", label: "Policies" }, { id: "storage-settings", label: "Einstellungen" }, { id: "storage-s3", label: "S3-Zugang" },
     ph("storage-analytics"), ph("storage-vectors"),
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
