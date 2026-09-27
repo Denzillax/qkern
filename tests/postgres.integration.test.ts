@@ -7835,6 +7835,322 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   }, 120_000);
+  /**
+   * Derselbe Eintrag nur einmal, auch nach einem Neustart (2.64 mit der Lehre
+   * aus 2.75).
+   *
+   * Der Fall (2.64) darueber belegt, dass der Prozess seinen Stand dauerhaft
+   * haelt -- aber er belegt es an `function_invocations`, und genau dort kann
+   * er einen Fehler nicht sehen: Dessen Zeitpunkt schreibt ein
+   * JavaScript-`Date`, und dessen Mikrosekunden sind immer null. Eine auf
+   * Millisekunden gekuerzte Position ist dort zufaellig richtig.
+   *
+   * Dieser Fall nimmt darum `auth_audit`. Dort setzt die Datenbank `now()`, und
+   * `audit_logs.created_at` hat Mikrosekunden. Kuerzt der Leser seine Position
+   * auf Millisekunden, ist sie **kleiner** als die Zeile, aus der sie stammt,
+   * und der Zeilenvergleich `(zeit, id) > ($4::timestamptz, $5::uuid)` laesst
+   * dieselbe Zeile wieder durch. Der Stand im Speicher schuetzt davor nicht:
+   * Er ist dieselbe gekuerzte Zeichenkette, die der Leser zurueckgegeben hat.
+   * Mit dem Fehler eingebaut hat dieser Fall darum schon im ersten Lauf drei
+   * Ladungen derselben Zeile gesehen, und nach jedem Neustart kaeme sie aus
+   * `project_log_drain_cursors` erneut. Beides ist dieselbe Ursache.
+   *
+   * Belegt werden drei Dinge, und alle drei braucht es:
+   *
+   * 1. Ein laufender Prozess leitet jede Zeile einmal weiter. Das ist die
+   *    Stelle, an der ein gekuerzter Wert zuerst auffaellt.
+   * 2. Die festgehaltene Position **ist** die Position der Zeile: dieselben
+   *    sechs Stellen, die die Datenbank fuer diese Zeile ausgibt. Das ist die
+   *    Aussage am Wert.
+   * 3. Nach dem Neustart kommt genau eine neue Ladung, mit genau der einen
+   *    neuen Zeile. Das ist die Aussage ueber die dauerhafte Position, und die
+   *    ist die, um die es dem Empfaenger geht: Ein Fall, der nur den laufenden
+   *    Prozess prueft, laesst offen, was aus der Zeichenkette in der Datenbank
+   *    beim naechsten Start wird.
+   *
+   * Eigene Organisation mit eigenem Besitzer, wie (2.64): Das gemeinsame
+   * afterAll muss organizationA und organizationB loswerden, und eine
+   * Organisation mit Audit-Zeilen laesst sich wegen
+   * audit_logs_organization_id_fkey nicht mehr loeschen. Abgeraeumt wird nur,
+   * was das Produkt hergibt, und das ist hier nichts: `audit_logs` ist
+   * append-only, und die Drain-Flaeche loescht ausdruecklich nicht.
+   *
+   * Dass ein angehaltener Prozess wirklich nichts mehr tut, prueft (2.64)
+   * daneben; dieser Fall wiederholt es nicht.
+   */
+  it("(2.85) does not forward the same audit row again after a restart when the database sets the microseconds", async () => {
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const cursorOwner = randomUUID();
+    const cursorOrganization = randomUUID();
+    const cursorProject = randomUUID();
+    // Die Adresse des Administrators, der den Drain anlegt. Weder die Ladung
+    // noch das Log des Prozesses darf sie tragen.
+    const actorRef = `drain-cursor-${cursorOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [cursorOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Drain Cursor', $2, $3)`,
+    [cursorOrganization, `drain-cursor-${cursorOrganization}`, cursorOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [cursorOrganization, cursorOwner]);
+    await owner.query(`INSERT INTO projects
+      (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Drain Cursor', $3, 'test', 'ready', $4)`,
+    [cursorProject, cursorOrganization, `drain-cursor-${cursorProject}`, cursorOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [cursorOrganization, cursorProject, `managed:${cursorProject}`]);
+
+    const scope = {
+      organizationId: cursorOrganization, projectId: cursorProject,
+      environment: "development" as const,
+    };
+    const admin = {
+      organizationId: cursorOrganization, actorRef, role: "admin" as const,
+      subject: cursorOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+
+    const drains = new PostgresLogDrainRepository(control);
+    const drain = await new LogDrainService({ repository: drains }).create(admin, scope, {
+      name: "audit-logs-an-siem",
+      url: "https://siem.example.com/qkern/audit-logs",
+      sources: ["auth_audit"],
+      signingSecretRef: databaseWebhookSecretRef!,
+    });
+    expect(drain.enabled).toBe(true);
+
+    // Der echte Sink, nicht ein Einsatz in `audit_logs`: Der Zeitpunkt soll von
+    // derselben Anweisung kommen, die im Betrieb schreibt.
+    const auditSink = new PostgresProjectAuthAuditSink(auth);
+    const appUser = randomUUID();
+    const writeAudit = async () => {
+      await auditSink.record({
+        scope, action: "project_auth.login.succeeded", actorType: "app_user",
+        actorRef: `project_auth_user:${appUser}`,
+        resourceRef: `project_auth_user:${appUser}`, status: "succeeded",
+      });
+    };
+
+    const children: ReturnType<typeof spawn>[] = [];
+    try {
+      /** Der ausgelieferte Prozess, nichts daneben. Wie in (2.64). */
+      const start = () => {
+        const child = spawn(process.execPath, ["--import", "tsx", "workers/compute-runtime.mts"], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            NODE_ENV: "test",
+            QKERN_COMPUTE_RUNTIME_ENABLED: "true",
+            QKERN_COMPUTE_CRON_ENABLED: "false",
+            QKERN_COMPUTE_WEBHOOKS_ENABLED: "true",
+            // Die Bruecke aus: Sie braeuchte eine Projektdatenbank, der Sammler
+            // nicht. `audit_logs` liegt in der Control Plane.
+            QKERN_COMPUTE_DATABASE_WEBHOOKS_ENABLED: "false",
+            QKERN_COMPUTE_LOG_DRAINS_ENABLED: "true",
+            // Eine Zeile ist eine Ladung. Sonst wartete dieser Fall auf das
+            // Altersfenster der Buendelung, und das misst er gar nicht.
+            QKERN_COMPUTE_LOG_DRAIN_BATCH_ENTRIES: "1",
+            QKERN_COMPUTE_LOG_DRAIN_POLL_MS: "200",
+            QKERN_COMPUTE_LOG_DRAIN_DISCOVERY_MS: "1000",
+            QKERN_COMPUTE_WORKER_ID: "certification-drain-cursor-1",
+            QKERN_COMPUTE_SCOPES_JSON: JSON.stringify([scope]),
+            QKERN_RUNTIME_MODE: "postgres",
+            QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
+            QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            QKERN_WEBHOOK_VAULT_KV_URL: vaultKvUrl!,
+            QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
+          },
+        });
+        let noise = "";
+        child.stderr?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        child.stdout?.on("data", (chunk: Buffer) => { noise += chunk.toString(); });
+        children.push(child);
+        return { child, output: () => noise };
+      };
+
+      const batches = async () => {
+        const result = await owner.query<{
+          event_type: string; payload: { entries: Array<Record<string, unknown>> };
+        }>(`SELECT event_type, payload FROM project_webhook_deliveries
+             WHERE organization_id = $1 AND project_id = $2
+             ORDER BY occurred_at, id`, [cursorOrganization, cursorProject]);
+        return result.rows;
+      };
+
+      /** Die Kennungen aller weitergeleiteten Zeilen, in der Reihenfolge der Ladungen. */
+      const forwardedIds = async () => (await batches())
+        .flatMap((row) => row.payload.entries.map((entry) => entry.id as string));
+
+      const cursors = async () => {
+        const result = await owner.query<{ position: string; forwarded: boolean }>(
+          `SELECT position, forwarded_at IS NOT NULL AS forwarded
+             FROM project_log_drain_cursors
+            WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+          [cursorOrganization, cursorProject]);
+        return result.rows;
+      };
+
+      /**
+       * Die Audit-Zeilen, wie der Leser sie sieht, und zu jeder zwei Angaben
+       * der Datenbank: ihre Mikrosekunden und die Zeichenkette, die eine
+       * ungekuerzte Position tragen muss. Das `to_char` ist dasselbe, das im
+       * Leser steht -- es wird hier nicht nachgerechnet, sondern erfragt.
+       */
+      const auditRows = async () => {
+        const result = await owner.query<{ id: string; micros: string; exact: string }>(
+          `SELECT id, to_char(created_at, 'US') AS micros,
+                  to_char(created_at AT TIME ZONE 'UTC',
+                          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS exact
+             FROM audit_logs
+            WHERE organization_id = $1 AND project_id = $2
+              AND starts_with(action, 'project_auth.')
+            ORDER BY created_at, id`,
+          [cursorOrganization, cursorProject]);
+        return result.rows;
+      };
+
+      /** Wartet auf eine Bedingung mit Frist und Diagnose, nie blind. Wie in (2.64). */
+      const until = async (
+        what: string, budgetMs: number, condition: () => Promise<boolean>, diagnose: () => Promise<string>,
+      ) => {
+        const deadline = Date.now() + budgetMs;
+        while (Date.now() < deadline) {
+          if (await condition()) return;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        expect.fail(`${what} blieb ${budgetMs} ms aus. ${await diagnose()}`);
+      };
+
+      /** Beendet den Prozess ueber **das** Signal und wartet auf sein Ende. */
+      const stop = async (runner: { child: ReturnType<typeof spawn>; output: () => string }) => {
+        runner.child.kill("SIGTERM");
+        const exit = await Promise.race([
+          new Promise<number | null>((resolve) => runner.child.once("exit", resolve)),
+          new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 30_000)),
+        ]);
+        expect(exit, `Der Prozess endete nicht auf SIGTERM: ${runner.output().slice(-800)}`)
+          .not.toBe("timeout");
+        return exit;
+      };
+
+      // --- Erster Lauf -------------------------------------------------------
+      const first = start();
+      await until("Die Startzeile des Prozesses", 120_000,
+        async () => first.output().includes("log drain collector"),
+        async () => `Ausgabe: ${first.output().slice(-800)}`);
+
+      // Erst, wenn der Prozess seinen Anfangsstand festgehalten hat, liegt die
+      // naechste Zeile sicher **nach** der Spitze. Ohne diese Bedingung waere
+      // der Fall ein Wettlauf zwischen Testprozess und Sammler.
+      await until("Der Anfangsstand des Drains", 90_000,
+        async () => (await cursors()).length === 1,
+        async () => `Ausgabe: ${first.output().slice(-800)}`);
+      expect((await cursors())[0], "der Anfangsstand behauptet eine Weiterleitung")
+        .toMatchObject({ position: "", forwarded: false });
+
+      // Die Zeile, deren Position den Neustart ueberdauert, ist die **letzte**
+      // weitergeleitete. Nur wenn deren Mikrosekunden nicht null sind, sagt
+      // dieser Fall etwas ueber die Kuerzung aus. `now()` trifft eine glatte
+      // Millisekunde etwa in einem von tausend Faellen; dann wird eine weitere
+      // Zeile geschrieben. Das ist kein Nachgeben bei der Zusage, sondern die
+      // Herstellung der Lage, in der sie ueberhaupt etwas behauptet.
+      let rowsBefore: Awaited<ReturnType<typeof auditRows>> = [];
+      do {
+        await writeAudit();
+        rowsBefore = await auditRows();
+        expect(rowsBefore.length, "die Datenbank nimmt keine Audit-Zeile an").toBeGreaterThan(0);
+      } while (/000$/.test(rowsBefore[rowsBefore.length - 1].micros));
+      const lastBefore = rowsBefore[rowsBefore.length - 1];
+      const idsBefore = rowsBefore.map((row) => row.id);
+
+      await until("Die Ladungen aus dem laufenden Prozess", 90_000,
+        async () => (await forwardedIds()).length >= idsBefore.length,
+        async () => `Ausgabe: ${first.output().slice(-800)}`);
+      // Jede Zeile genau einmal, und keine andere. Hier faellt eine gekuerzte
+      // Position zuerst auf: Der Stand im Speicher ist dieselbe Zeichenkette,
+      // die der Leser zurueckgegeben hat, und jeder weitere Lauf holte die
+      // juengste Zeile noch einmal.
+      expect(await forwardedIds(),
+        "der laufende Prozess hat eine Zeile mehrfach oder eine fremde weitergeleitet")
+        .toEqual(idsBefore);
+      for (const row of await batches()) expect(row.event_type).toBe("log.auth_audit");
+
+      // Die erste der beiden Zusagen, und zwar am Wert: Die festgehaltene
+      // Position traegt die sechs Stellen der Datenbank. Gewartet wird, weil
+      // der Sammler absichtlich erst einreiht und danach die Position schreibt
+      // -- zwischen beiden liegt ein Fenster, und ein Fall, der sofort
+      // nachsieht, prueft nicht das Produkt, sondern wer schneller war.
+      const positionBefore = `${lastBefore.exact}#${lastBefore.id}`;
+      await until("Die festgehaltene Position der letzten Zeile", 90_000,
+        async () => (await cursors())[0]?.position === positionBefore,
+        async () => `Festgehalten: ${JSON.stringify(await cursors())}, erwartet: ${positionBefore}`);
+      expect((await cursors())[0], "der Prozess hat seine Position nicht festgehalten")
+        .toMatchObject({ position: positionBefore, forwarded: true });
+
+      // --- Anhalten, und eine Zeile dazu -------------------------------------
+      expect(await stop(first)).toBe(0);
+      expect(await forwardedIds(), "der angehaltene Prozess hat weitergearbeitet")
+        .toEqual(idsBefore);
+
+      await writeAudit();
+      const rowsAfter = await auditRows();
+      expect(rowsAfter.length, "die Zeile aus der Pause fehlt").toBe(rowsBefore.length + 1);
+      const lastAfter = rowsAfter[rowsAfter.length - 1];
+      const positionAfter = `${lastAfter.exact}#${lastAfter.id}`;
+
+      // --- Zweiter Lauf: die dauerhafte Position, und nur die neue Zeile -----
+      //
+      // Hier liest der Sammler erstmals aus `project_log_drain_cursors`: Sein
+      // Puffer und sein Stand im Speicher sind mit dem ersten Prozess
+      // verschwunden.
+      const second = start();
+      await until("Die Startzeile des zweiten Prozesses", 120_000,
+        async () => second.output().includes("log drain collector"),
+        async () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      await until("Die Ladung aus der Pause", 90_000,
+        async () => (await forwardedIds()).length > idsBefore.length,
+        async () => `Ausgabe: ${second.output().slice(-800)}`);
+
+      // Die zweite Zusage, am Verhalten: genau eine Zeile mehr, und es ist die
+      // neue. Eine gekuerzte Position brachte hier die letzte Zeile des ersten
+      // Laufs ein zweites Mal mit.
+      expect(await forwardedIds(), `Ausgabe: ${second.output().slice(-800)}`)
+        .toEqual([...idsBefore, lastAfter.id]);
+
+      expect(await stop(second)).toBe(0);
+      // Und dieselbe Liste noch einmal, nachdem der Prozess sauber geendet hat:
+      // Danach kann nichts mehr eingereiht werden, eine spaete Wiederholung
+      // waere also jetzt zu sehen. Ohne diese zweite Lesung haette die
+      // Erwartung darueber nur festgestellt, dass die Wiederholung noch nicht
+      // angekommen war.
+      expect(await forwardedIds(), "eine Wiederholung kam nach dem Ende des Prozesses an")
+        .toEqual([...idsBefore, lastAfter.id]);
+      expect((await cursors())[0], "die Position der neuen Zeile wurde nicht festgehalten")
+        .toMatchObject({ position: positionAfter, forwarded: true });
+
+      // Was der Prozess ueber sich meldet, ist redigiert: kein Ziel, keine
+      // Geheimnisreferenz, keine Adresse.
+      for (const runner of [first, second]) {
+        expect(runner.output()).not.toContain(actorRef);
+        expect(runner.output()).not.toContain("siem.example.com");
+        expect(runner.output()).not.toContain(databaseWebhookSecretRef!);
+      }
+    } finally {
+      for (const child of children) child.kill("SIGKILL");
+    }
+    // 600 Sekunden, wie (2.64): zwei echte Node-Starts mit `tsx`, jeder mit
+    // eigener Uebersetzung der Module. Jede einzelne Wartezeit hat trotzdem
+    // ihre eigene, engere Frist.
+  }, 600_000);
 });
 
 /**
