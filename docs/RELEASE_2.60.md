@@ -54,6 +54,20 @@ DER-Format trägt seinen einen Teil im Klartext, und je nach erstem Byte des
 anderen steht die gesuchte Zeichenkette wörtlich darin. Geprüft wird jetzt
 gegen den privaten Teil.
 
+## Nachtrag zum Verfahren
+
+Der zweite Lauf ist an einer eigenen Zusicherung gescheitert, nicht am
+Produkt. Ein Fall aus `2.53.0` sucht im serialisierten Audit nach der Zahl, die
+in der Leckliste steht, und verlangt, dass sie nirgends vorkommt. Sie kam vor,
+und zwar in einer zufälligen Kennung: Eine UUID hat 32 Hex-Stellen, und vier
+davon treffen irgendwann jede vierstellige Zahl.
+
+Die Erwartung ist dieselbe geblieben und schärfer geworden. Geprüft werden
+jetzt die Werte der Metadaten, rekursiv, gegen die Zahl und gegen ihre
+Schreibweise als Text. Das fällt auch dort, wo die Zahl als Zahl stünde. Es ist
+dieselbe Falle wie in `2.44.0`, wo eine Suche nach `at ` auf das deutsche
+"hat" angeschlagen hat: Eine Teilzeichenkette ist kein Beleg.
+
 ## Ehrlich offen
 
 - **Keine Obergrenze für die Laufzeit eines fremden Tokens.** Ein Anbieter, der für ein Jahr ausgibt, gibt Zugang für ein Jahr.

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle12-run2.log",
+  "commit": "21359727b1d9cef1f381715e99d5c296bef0dec2",
+  "commitSubject": "test: Der Fall (2.60) sucht die Haeufigkeit an den Werten, nicht im JSON",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 61,
+  "testFiles": "31 passed (31)",
+  "tests": "214 passed (214)",
+  "passed": 214,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

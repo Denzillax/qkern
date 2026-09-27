@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle12-local-run2.log",
+  "commit": "21359727b1d9cef1f381715e99d5c296bef0dec2",
+  "commitSubject": "test: Der Fall (2.60) sucht die Haeufigkeit an den Werten, nicht im JSON",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "320 passed | 38 skipped (358)",
+  "tests": "2213 passed | 298 skipped (2511)",
+  "passed": 2213,
+  "failed": 0,
+  "skipped": 298,
+  "images": []
+}
