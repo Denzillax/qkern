@@ -15,6 +15,19 @@ import {
   type ProjectAuthRateLimitRejection,
   type ProjectAuthRateLimits,
 } from "@/lib/server/project-auth/rate-limits";
+import {
+  DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION,
+  parseProjectAuthPasswordProtection,
+  projectAuthBuiltInLeakList,
+  projectAuthPasswordIsLeaked,
+  publicProjectAuthLeakList,
+  PROJECT_AUTH_PASSWORD_MIN_LENGTH_BOUNDS,
+  PROJECT_AUTH_PASSWORD_NOTICES,
+  type ProjectAuthLeakList,
+  type ProjectAuthPasswordProtection,
+  type ProjectAuthPasswordProtectionRejection,
+  type PublicProjectAuthLeakList,
+} from "@/lib/server/project-auth/password-leaks";
 import type {
   ProjectAuthAssurance,
   ProjectAuthOidcIdentity,
@@ -204,6 +217,35 @@ export type PublicProjectAuthRateLimits = {
   updatedAt: string | null;
 };
 
+/**
+ * Was die Console vom Passwortschutz dieser Umgebung sieht (2.53).
+ *
+ * `list` beschreibt die geladene Leckliste: woher sie stammt und wie viele
+ * Eintraege sie traegt. Nie ein Pfad und nie ein Eintrag — ein Dateipfad des
+ * Servers hat in der Console nichts zu suchen.
+ */
+export type PublicProjectAuthPasswordProtection = {
+  protection: ProjectAuthPasswordProtection;
+  defaults: ProjectAuthPasswordProtection;
+  bounds: { minLength: typeof PROJECT_AUTH_PASSWORD_MIN_LENGTH_BOUNDS };
+  notices: readonly string[];
+  list: PublicProjectAuthLeakList;
+  configured: boolean;
+  updatedAt: string | null;
+};
+
+/** Die Ablehnung einer Einstellung des Passwortschutzes, mit Grund und Feld. */
+export class ProjectAuthPasswordProtectionError extends Error {
+  constructor(
+    readonly reason: ProjectAuthPasswordProtectionRejection,
+    readonly field: string,
+  ) {
+    super("Invalid Project Auth password protection");
+    this.name = "ProjectAuthPasswordProtectionError";
+  }
+}
+recognisedByName(ProjectAuthPasswordProtectionError, "ProjectAuthPasswordProtectionError");
+
 /** Die Ablehnung einer Grenze, mit Grund und der Art, die sie ausgeloest hat. */
 export class ProjectAuthRateLimitError extends Error {
   constructor(
@@ -249,6 +291,16 @@ export type ProjectAuthErrorCode =
   | "MFA_REQUIRED"
   | "INVALID_MFA"
   | "RATE_LIMITED"
+  // Das gewaehlte Passwort steht in der Leckliste dieser Installation (2.53).
+  // Dass es das tut, ist handelbar und kein Geheimnis: Wer es eingibt, kennt
+  // es bereits. Wie oft und woher sagt dieser Code nicht — das weiss die
+  // Pruefung selbst nicht, weil sie nur Digests vergleicht.
+  | "LEAKED_PASSWORD"
+  // Dasselbe Ereignis, nur wortkarg: Das Passwort genuegt den Regeln dieses
+  // Projekts nicht. Diesen Code bekommt, wer die Mindestlaenge unterschreitet,
+  // und wer ein bekanntes Passwort waehlt, falls die Umgebung auf `generic`
+  // steht.
+  | "WEAK_PASSWORD"
   | "DELIVERY_UNAVAILABLE"
   | "RESOURCE_NOT_FOUND"
   | "AUDIT_UNAVAILABLE";
@@ -272,6 +324,13 @@ recognisedByName(ProjectAuthError, "ProjectAuthError");
 export type ProjectAuthServiceDependencies = {
   repository: ProjectAuthRepository;
   passwords: PasswordHasher;
+  /**
+   * Die Leckliste (2.53), einmal geladen und im Prozessspeicher gehalten.
+   * Ohne Angabe die eingebaute Liste; die ist klein und kuerzer als die 12
+   * Zeichen, die ohnehin verlangt werden — sie gibt dem Schalter ein
+   * definiertes Verhalten, keinen Schutz.
+   */
+  leakedPasswords?: ProjectAuthLeakList;
   rateLimiter: RateLimiter;
   tokens: ProjectAuthTokenService;
   mfa: ProjectAuthTotp;
@@ -323,6 +382,11 @@ export class ProjectAuthService {
     // Antwort fuer eine bekannte und eine unbekannte Adresse.
     await this.assertStoredRateLimit(scope, "mail", email, now);
     assertPassword(input.password);
+    // Der Passwortschutz dieser Umgebung (2.53), und zwar hier, im Dienst,
+    // bevor gehasht und bevor nachgeschlagen wird. Nicht in der Console und
+    // nicht in der Route: Es gibt mehr als eine Tuer zu dieser Stelle, und
+    // eine Regel, die an einer Tuer haengt, ist keine Regel.
+    await this.assertPasswordProtection(scope, input.password);
     const redirectTo = await this.returnTarget(scope, input.redirectTo);
     if (await this.dependencies.repository.findUserByEmail(scope, email)) {
       throw new ProjectAuthError("ACCOUNT_EXISTS");
@@ -402,6 +466,11 @@ export class ProjectAuthService {
   async resetPassword(scope: ProjectAuthScope, input: { token: string; password: string }): Promise<{ reset: true }> {
     assertScope(scope);
     assertPassword(input.password);
+    // Dieselbe Regel auf dem zweiten Weg, auf dem ein Passwort gesetzt wird.
+    // Sie steht vor dem Einloesen des Tokens: Ein abgelehntes Passwort soll
+    // den Zuruecksetz-Schein nicht verbrauchen, sonst muesste der Nutzer eine
+    // neue Mail anfordern, nur weil er ein bekanntes Passwort getippt hat.
+    await this.assertPasswordProtection(scope, input.password);
     if (!ONE_TIME_TOKEN.test(input.token) || !input.token.startsWith("qk_reset_")) {
       throw new ProjectAuthError("INVALID_TOKEN");
     }
@@ -715,6 +784,128 @@ export class ProjectAuthService {
       ),
       limit: PROJECT_AUTH_RETURN_TARGET_LIMIT,
       updatedAt: settings.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Der Passwortschutz dieser Umgebung (2.53), zusammen mit den Vorgaben, den
+   * Raendern und dem, was ueber die geladene Leckliste gesagt werden darf.
+   * Ohne Zeile in `project_auth_settings` gelten die Vorgaben und
+   * `configured` ist falsch.
+   */
+  async readPasswordProtection(scope: ProjectAuthScope): Promise<PublicProjectAuthPasswordProtection> {
+    assertScope(scope);
+    const settings = await this.dependencies.repository.readSettings(scope);
+    return publicPasswordProtection(
+      settings?.passwordProtection,
+      settings?.updatedAt ?? null,
+      Boolean(settings),
+      this.leakList(),
+    );
+  }
+
+  /**
+   * Setzt den Passwortschutz. Alle drei Werte zusammen, aus demselben Grund
+   * wie bei den Grenzen: Ein Koerper mit nur einem liesse offen, was mit den
+   * anderen geschehen soll.
+   *
+   * Jede Aenderung schreibt einen Audit-Eintrag. Darin stehen der Schalter,
+   * die Mindestlaenge und der Wortlaut — und, weil es zur Aussage gehoert,
+   * woher die geltende Liste stammt und wie viele Eintraege sie traegt. Nie
+   * ein Passwort, nie ein Digest, nie ein Pfad.
+   */
+  async setPasswordProtection(
+    scope: ProjectAuthScope,
+    protection: unknown,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthPasswordProtection> {
+    assertScope(scope);
+    const parsed = parseProjectAuthPasswordProtection(protection);
+    if (!parsed.ok) throw new ProjectAuthPasswordProtectionError(parsed.reason, parsed.field);
+    const list = this.leakList();
+    const settings = await this.dependencies.repository.writePasswordProtection(
+      scope, parsed.protection, this.now(),
+    );
+    await this.recordAudit({
+      scope, action: "project_auth.password_protection.changed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "succeeded",
+      metadata: {
+        leakedPasswordCheck: parsed.protection.leakedPasswordCheck,
+        minLength: parsed.protection.minLength,
+        notice: parsed.protection.notice,
+        listSource: list.source,
+        listEntries: list.entries,
+      },
+    });
+    return publicPasswordProtection(
+      settings.passwordProtection, settings.updatedAt, true, list,
+    );
+  }
+
+  /** Die geltende Leckliste: die hinterlegte, sonst die eingebaute. */
+  private leakList(): ProjectAuthLeakList {
+    return this.dependencies.leakedPasswords ?? projectAuthBuiltInLeakList();
+  }
+
+  /**
+   * Die Pruefung selbst (2.53), an genau einer Stelle und von beiden Wegen
+   * aufgerufen, an denen ein Passwort gesetzt wird.
+   *
+   * Reihenfolge: erst die Laenge, dann die Liste. Das ist nicht beliebig —
+   * die Laenge kostet nichts, und ein zu kurzes Passwort soll nicht erst
+   * durch einen Digest laufen.
+   *
+   * Was hier **nicht** passiert: Es wird nichts protokolliert, das das
+   * Passwort traegt. Der Audit-Eintrag nennt den Grund und die Herkunft der
+   * Liste; der geworfene Fehler traegt einen Code und sonst nichts. Das
+   * Passwort selbst verlaesst diese Methode nirgends.
+   *
+   * Und es wird **nicht** geoeffnet, wenn etwas schiefgeht. Anders als beim
+   * Zaehler aus 2.56: Der Zaehler ist eine Schicht vor der Tuer und darf bei
+   * einem Fehler durchlassen; diese Pruefung entscheidet, welches Passwort
+   * ein Konto bekommt, und ein Lesefehler auf den Einstellungen macht daraus
+   * keine Erlaubnis. Er faellt als Fehler nach oben durch, wie bei
+   * `returnTarget` auch.
+   */
+  private async assertPasswordProtection(scope: ProjectAuthScope, password: string): Promise<void> {
+    const settings = await this.dependencies.repository.readSettings(scope);
+    const protection = settings?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION;
+    if (password.length < protection.minLength) {
+      await this.recordAudit(this.passwordRefusal(scope, "too_short", protection.minLength));
+      throw new ProjectAuthError("WEAK_PASSWORD");
+    }
+    if (!protection.leakedPasswordCheck) return;
+    const list = this.leakList();
+    if (!projectAuthPasswordIsLeaked(list, password)) return;
+    await this.recordAudit({
+      scope, action: "project_auth.password.refused",
+      actorType: "app_user", actorRef: "anonymous",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "failed",
+      // Der Grund, die Herkunft der Liste und ihre Groesse. Kein Passwort,
+      // kein Digest, kein Praefix, keine Adresse: Wer diese Zeile liest,
+      // erfaehrt, dass eine Registrierung an der Leckpruefung scheiterte, und
+      // nicht, woran.
+      metadata: { reason: "known_leak", listSource: list.source, listEntries: list.entries },
+    });
+    // Der Wortlaut ist eine Einstellung der Umgebung. `named` nennt das Leck,
+    // weil das handelbar ist; `generic` sagt nur, dass die Regeln nicht
+    // erfuellt sind. Keiner der beiden sagt, wie oft oder woher.
+    throw new ProjectAuthError(protection.notice === "named" ? "LEAKED_PASSWORD" : "WEAK_PASSWORD");
+  }
+
+  private passwordRefusal(
+    scope: ProjectAuthScope,
+    reason: "too_short",
+    minLength: number,
+  ): ProjectAuthAuditEvent {
+    return {
+      scope, action: "project_auth.password.refused",
+      actorType: "app_user", actorRef: "anonymous",
+      resourceRef: `project_auth_environment:${scope.environment}`,
+      status: "failed", metadata: { reason, minLength },
     };
   }
 
@@ -1442,6 +1633,8 @@ export class DisabledProjectAuthService {
   setReturnTargets(): never { return this.disabled(); }
   readRateLimits(): never { return this.disabled(); }
   setRateLimits(): never { return this.disabled(); }
+  readPasswordProtection(): never { return this.disabled(); }
+  setPasswordProtection(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
@@ -1454,6 +1647,24 @@ export class DisabledProjectAuthService {
   revokeAllSessions(): never { return this.disabled(); }
   listAuditEvents(): never { return this.disabled(); }
   readAuditSeries(): never { return this.disabled(); }
+}
+
+function publicPasswordProtection(
+  protection: ProjectAuthPasswordProtection | undefined,
+  updatedAt: Date | null,
+  configured: boolean,
+  list: ProjectAuthLeakList,
+): PublicProjectAuthPasswordProtection {
+  const effective = protection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION;
+  return {
+    protection: { ...effective },
+    defaults: { ...DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION },
+    bounds: { minLength: PROJECT_AUTH_PASSWORD_MIN_LENGTH_BOUNDS },
+    notices: PROJECT_AUTH_PASSWORD_NOTICES,
+    list: publicProjectAuthLeakList(list),
+    configured,
+    updatedAt: updatedAt ? updatedAt.toISOString() : null,
+  };
 }
 
 function publicRateLimits(

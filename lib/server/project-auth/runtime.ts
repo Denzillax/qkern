@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from "node:fs";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { ConfigurationError } from "@/lib/server/db/errors";
@@ -21,6 +22,14 @@ import { smtpProjectAuthDeliveryFromEnv } from "@/lib/server/project-auth/smtp-d
 import { projectAuthTokenServiceFromEnv, type ProjectAuthTokenService } from
   "@/lib/server/project-auth/tokens";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
+import {
+  parseProjectAuthLeakList,
+  projectAuthBuiltInLeakList,
+  PROJECT_AUTH_LEAK_ALGORITHMS,
+  PROJECT_AUTH_LEAK_LIST_BOUNDS,
+  type ProjectAuthLeakAlgorithm,
+  type ProjectAuthLeakList,
+} from "@/lib/server/project-auth/password-leaks";
 
 export type ProjectAuthRuntimeDependencies = {
   repository?: ProjectAuthRepository;
@@ -63,6 +72,7 @@ export function createProjectAuthServiceFromEnv(
   return new ProjectAuthService({
     repository,
     passwords: new Argon2idPasswordHasher({ pepper: env.QKERN_PROJECT_AUTH_PASSWORD_PEPPER }),
+    leakedPasswords: leakedPasswordListFromEnv(env),
     rateLimiter: new InMemoryRateLimiter(),
     tokens: dependencies.tokens ?? projectAuthTokenServiceFromEnv(env),
     mfa: new ProjectAuthTotp(),
@@ -84,6 +94,56 @@ export function getProjectAuthService(): ProjectAuthService {
   const runtime = globalThis as GlobalProjectAuth;
   runtime.__qkernProjectAuthService ??= createProjectAuthServiceFromEnv();
   return runtime.__qkernProjectAuthService;
+}
+
+/**
+ * Die Leckliste (2.53), einmal beim Bau des Dienstes von der Platte gelesen.
+ *
+ * Ohne `QKERN_PROJECT_AUTH_LEAKED_PASSWORD_FILE` gilt die eingebaute Liste.
+ * Mit ihr gilt die Datei — und zwar entweder ganz oder gar nicht: Eine
+ * fehlende, zu grosse oder fehlerhafte Datei ist eine
+ * `ConfigurationError` und laesst Project Auth gar nicht erst starten. Das
+ * ist die unbequeme Variante und die richtige: Eine Installation, die auf
+ * eine Leckliste zeigt, will gegen sie pruefen. Stillschweigend auf die
+ * eingebaute Liste zurueckzufallen hiesse, eine eingeschaltete Pruefung
+ * weiterlaufen zu lassen, die nichts mehr prueft.
+ *
+ * Der Fehlertext nennt den Grund und die Zeilennummer, nie den Pfad und nie
+ * einen Eintrag.
+ */
+export function leakedPasswordListFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): ProjectAuthLeakList {
+  const file = env.QKERN_PROJECT_AUTH_LEAKED_PASSWORD_FILE?.trim();
+  if (!file) return projectAuthBuiltInLeakList();
+  const algorithmValue = env.QKERN_PROJECT_AUTH_LEAKED_PASSWORD_ALGORITHM?.trim() || "sha1";
+  if (!(PROJECT_AUTH_LEAK_ALGORITHMS as readonly string[]).includes(algorithmValue)) {
+    throw new ConfigurationError(
+      "QKERN_PROJECT_AUTH_LEAKED_PASSWORD_ALGORITHM must be sha1 or sha256.",
+    );
+  }
+  const algorithm = algorithmValue as ProjectAuthLeakAlgorithm;
+  let text: string;
+  try {
+    // Erst die Groesse, dann der Inhalt: Eine Datei jenseits der Grenze soll
+    // gar nicht erst in den Speicher kommen.
+    if (statSync(file).size > PROJECT_AUTH_LEAK_LIST_BOUNDS.bytes) {
+      throw new ConfigurationError(
+        "The Project Auth leaked password list is larger than the allowed 16 MiB.",
+      );
+    }
+    text = readFileSync(file, "utf8");
+  } catch (error) {
+    if (error instanceof ConfigurationError) throw error;
+    throw new ConfigurationError("The Project Auth leaked password list could not be read.");
+  }
+  const parsed = parseProjectAuthLeakList(text, algorithm);
+  if (!parsed.ok) {
+    throw new ConfigurationError(
+      `The Project Auth leaked password list is malformed (${parsed.reason}, line ${parsed.line}).`,
+    );
+  }
+  return parsed.list;
 }
 
 function redirectOriginsFromEnv(env: Readonly<Record<string, string | undefined>>): ReadonlySet<string> {

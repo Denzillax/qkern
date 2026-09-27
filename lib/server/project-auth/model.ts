@@ -3,6 +3,7 @@ import type {
   ProjectAuthRateLimitKind,
   ProjectAuthRateLimits,
 } from "@/lib/server/project-auth/rate-limits";
+import type { ProjectAuthPasswordProtection } from "@/lib/server/project-auth/password-leaks";
 
 export type ProjectAuthScope = {
   organizationId: string;
@@ -103,6 +104,13 @@ export type ProjectAuthSettings = ProjectAuthScope & {
    * Dienst vor 2.56 im Prozessspeicher hielt.
    */
   rateLimits: ProjectAuthRateLimits;
+  /**
+   * Der Passwortschutz (2.53). Eine fehlende Zeile heisst "aus": Ohne
+   * Einstellung gilt `DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION`, also keine
+   * Pruefung gegen Lecks und die 12 Zeichen, die der Dienst ohnehin verlangt.
+   * Die Liste selbst steht nie hier und nie in der Datenbank.
+   */
+  passwordProtection: ProjectAuthPasswordProtection;
   updatedAt: Date;
 };
 

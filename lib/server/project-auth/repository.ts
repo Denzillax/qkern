@@ -19,6 +19,11 @@ import {
   type ProjectAuthRateLimits,
 } from "@/lib/server/project-auth/rate-limits";
 
+import {
+  DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION,
+  type ProjectAuthPasswordProtection,
+} from "@/lib/server/project-auth/password-leaks";
+
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
   "passwordHash" | "status" | "emailVerifiedAt" | "userMetadata" | "appMetadata" | "updatedAt">>;
 
@@ -100,6 +105,17 @@ export interface ProjectAuthRepository {
   writeRateLimits(
     scope: ProjectAuthScope,
     limits: ProjectAuthRateLimits,
+    now: Date,
+  ): Promise<ProjectAuthSettings>;
+  /**
+   * Setzt den Passwortschutz (2.53) und legt die Zeile an, falls es noch
+   * keine gibt. Alle drei Werte zusammen, aus demselben Grund wie bei den
+   * Grenzen: Ein Koerper mit nur einem Wert liesse offen, was mit den
+   * anderen geschehen soll.
+   */
+  writePasswordProtection(
+    scope: ProjectAuthScope,
+    protection: ProjectAuthPasswordProtection,
     now: Date,
   ): Promise<ProjectAuthSettings>;
   /**
@@ -327,6 +343,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       // das ein UPDATE auf genau eine Spalte, hier der uebernommene Wert.
       returnTargets: [...(previous?.returnTargets ?? [])],
       rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
+      passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -339,6 +356,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       ...scope, mfaRequired: previous?.mfaRequired ?? false,
       returnTargets: [...targets],
       rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
+      passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
       updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
@@ -350,7 +368,26 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     const stored: ProjectAuthSettings = {
       ...scope, mfaRequired: previous?.mfaRequired ?? false,
       returnTargets: [...(previous?.returnTargets ?? [])],
-      rateLimits: cloneRateLimits(limits), updatedAt: new Date(now),
+      rateLimits: cloneRateLimits(limits),
+      passwordProtection: { ...(previous?.passwordProtection ?? DEFAULT_PROJECT_AUTH_PASSWORD_PROTECTION) },
+      updatedAt: new Date(now),
+    };
+    this.settings.set(scopeKey(scope), stored);
+    return cloneProjectAuthSettings(stored);
+  }
+
+  async writePasswordProtection(
+    scope: ProjectAuthScope,
+    protection: ProjectAuthPasswordProtection,
+    now: Date,
+  ) {
+    const previous = this.settings.get(scopeKey(scope));
+    const stored: ProjectAuthSettings = {
+      ...scope, mfaRequired: previous?.mfaRequired ?? false,
+      returnTargets: [...(previous?.returnTargets ?? [])],
+      rateLimits: cloneRateLimits(previous?.rateLimits ?? DEFAULT_PROJECT_AUTH_RATE_LIMITS),
+      passwordProtection: { ...protection },
+      updatedAt: new Date(now),
     };
     this.settings.set(scopeKey(scope), stored);
     return cloneProjectAuthSettings(stored);
@@ -473,6 +510,7 @@ function cloneProjectAuthSettings(settings: ProjectAuthSettings): ProjectAuthSet
     ...settings,
     returnTargets: [...settings.returnTargets],
     rateLimits: cloneRateLimits(settings.rateLimits),
+    passwordProtection: { ...settings.passwordProtection },
     updatedAt: new Date(settings.updatedAt),
   };
 }

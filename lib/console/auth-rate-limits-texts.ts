@@ -58,7 +58,7 @@ export const AUTH_RATE_LIMITS_FAILURE_MODE =
 
 /** Der ehrlichste Satz der Seite: verteilter Angriff. */
 export const AUTH_RATE_LIMITS_NOT_DISTRIBUTED =
-  "Eine Grenze je Identität schützt nicht gegen einen verteilten Angriff über viele Konten. Wer ein Passwort gegen zehntausend verschiedene Adressen probiert, bleibt bei jeder einzelnen unter der Grenze und wird von dieser Seite nicht aufgehalten. Dagegen hilft nur, was QKERN hier nicht hat: ein Captcha, eine Prüfung gegen bekannte Lecks oder eine Bot-Abwehr.";
+  "Eine Grenze je Identität schützt nicht gegen einen verteilten Angriff über viele Konten. Wer ein Passwort gegen zehntausend verschiedene Adressen probiert, bleibt bei jeder einzelnen unter der Grenze und wird von dieser Seite nicht aufgehalten. Dagegen hilft die Prüfung gegen bekannte Lecks unter Auth → Passwortschutz, und darüber hinaus ein Captcha oder eine Bot-Abwehr — zwei Dinge, die QKERN nicht hat.";
 
 /** Was eine Grenze sonst noch nicht ist. */
 export const AUTH_RATE_LIMITS_NOT_A_LOCKOUT =

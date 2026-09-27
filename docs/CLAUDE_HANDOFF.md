@@ -145,6 +145,40 @@ Grossbuchstaben.
   "(2.50)" und "(2.52)": 188 statt 186. Die Mutationsprobe entlarvte den
   Webhook-Fall: ohne eine zweite, nicht gekoppelte Tabelle bewies er nichts
   ueber den Tabellenfilter; seit `510be1c` tut er es. Im Browser nicht gesehen
+- Slice 2.60 (Zweig `slice/protection`): **Passwoerter gegen bekannte Lecks,
+  ohne fremden Dienst.** Der Platzhalter `auth-protection`
+  („Angriffsschutz": Captcha, Passwortpruefung gegen bekannte Lecks,
+  Bot-Abwehr) ist weg; `components/console/auth-protection-view.tsx` heisst
+  **Passwortschutz** und baut **eines** der drei Dinge. Drei Werte je
+  Projektumgebung in `project_auth_settings` (Migration
+  `0053_project_auth_password_protection.sql`: `leaked_password_check`,
+  `password_min_length` 12–128, `leaked_password_notice` `named`/`generic`;
+  keine neue Tabelle, die Liste steht **nie** in der Datenbank). Vorgabe:
+  aus. Kein fremder Dienst und ausdruecklich **kein** Have I Been Pwned —
+  auch kein Hashpraefix geht hinaus, weil das jede Registrierung jedes Kunden
+  an einen fremden Host schicken wuerde; `lib/server/project-auth/password-leaks.ts`
+  importiert nur `node:crypto`. Durchgesetzt im Dienst an den **beiden**
+  Stellen, die ein Passwort setzen (`signUp`, `resetPassword`), nie in Console
+  oder Route. Eine Installation zeigt mit
+  `QKERN_PROJECT_AUTH_LEAKED_PASSWORD_FILE` auf eine Datei mit SHA-1- oder
+  SHA-256-Digests oder Praefixen (Format der bekannten Listen, `:Anzahl` wird
+  verworfen; gleiche Laenge je Zeile, min. 16 Hexzeichen, max. 1 Mio.
+  Eintraege und 16 MiB); eine fehlende oder kaputte Datei laesst Project Auth
+  **nicht starten** statt still auf die eingebaute Liste zurueckzufallen.
+  **Ehrlich offen:** Die eingebaute Liste sind 25 Eintraege (SplashData,
+  „Worst Passwords of the Year 2019", Rang 1–25) und **alle sind kuerzer als
+  die 12 Zeichen, die der Dienst ohnehin verlangt** — ohne Datei lehnt die
+  Pruefung nichts ab, was die Laengenregel nicht schon ablehnt. Das steht auf
+  der Seite, im Handbuch und im Zertifizierungsfall. Ablehnung ist `400`:
+  `LEAKED_PASSWORD` nennt das Leck (handelbar, kein Geheimnis),
+  `WEAK_PASSWORD` nennt nur die Regeln; **nie** wie oft oder woher. **Fail
+  closed** auch auf einem Fehler, anders als der Zaehler aus 2.56. Bestehende
+  Konten werden nicht geprueft: Argon2id ist nicht lesbar.
+  PostgreSQL-Fall "(2.60) refuses a known leaked password at sign-up when the
+  project requires it": 32 statt 31 Faelle in
+  `tests/postgres.integration.test.ts`. Nicht gebaut und begruendet: kein
+  Captcha (braucht fremden Dienst und Browser-Herausforderung), keine
+  Bot-Abwehr ueber die Grenzen aus 2.56 hinaus. Im Browser nicht gesehen
 - Slice 2.56 (Zweig `slice/ratelimits`): **Grenzen je Zeitfenster, in der
   Datenbank gezaehlt.** Der Platzhalter `auth-rate-limits` ist weg;
   `components/console/auth-rate-limits-view.tsx` ist eine echte Ansicht mit
