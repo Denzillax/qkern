@@ -20,6 +20,7 @@ import { logViewTexts } from "@/lib/console/log-view-texts";
 import { vaultOverviewTexts } from "@/lib/console/vault-overview-texts";
 import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
+import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -90,6 +91,9 @@ async function consoleKeys(): Promise<string[]> {
   // Drills, die Schritte einer Wiederherstellung und seine Ehrlichkeitssaetze
   // ueber t(variable).
   for (const text of pointInTimeTexts()) keys.add(text);
+  // Datenbank -> Einstellungen (2.53) zeigt Rollenrechte, Urteile, den
+  // TLS-Zustand und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of databaseSettingsTexts()) keys.add(text);
   return [...keys];
 }
 

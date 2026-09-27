@@ -425,6 +425,82 @@ Query-Parameter ist ein `400`. Von der Drill-Evidenz gehen nur Zeitpunkte und
 Dauern hinaus, nicht ihre ID, nicht ihre Key-ID und keiner ihrer Digests. Fehlt
 die Evidenz, ist sie abgeschaltet oder älter, als die Policy zulässt, dann fehlt
 der Drill in der Antwort; ein Fehler ist das nicht.
+### Datenbank-Einstellungen
+
+Seit `2.53.0` ist **Datenbank → Datenbank-Einstellungen** keine Platzhalterseite
+mehr. Der Platzhalter versprach vier Dinge — Verbindungsdaten, Pooler,
+SSL-Zwang, Netzwerkbeschränkungen — und die Seite sagt jetzt zu jedem davon die
+Wahrheit, statt vier leere Kacheln zu zeigen. Sie liest eine Route:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/database/settings
+```
+
+Dieselbe Tür wie `/database/activity` (Session mit Leserecht oder
+scope-gebundener Projekt-Key), `Cache-Control: private, no-store`, und **kein
+einziger Query-Parameter**: Die Auskunft gilt für die eine Datenbank dieses
+Environments, darum ist jede Angabe ein 400.
+
+**Keine Verbindungsdaten.** Das ist die wichtigste Zusage dieser Seite, und sie
+steht in ihrer ersten Zeile. Weder Host noch Port, weder Benutzername einer
+fremden Rolle noch Passwort noch Verbindungszeichenfolge stehen in der Antwort.
+Sie sind dort nicht ausgelassen oder maskiert, sondern nie gelesen:
+`inet_server_addr`, `inet_server_port` und `client_addr` kommen hinter dieser
+Route nirgends vor. Die Adresse einer Projektdatenbank lebt im serverseitigen
+Verbindungskatalog (`TrustedProjectDatabaseConnectionCatalog`), und der gibt sie
+nicht heraus — eine Umgebung kennt von ihrer Datenbank nur die undurchsichtige
+Referenz `managed:…` in `project_environments.database_instance_ref`.
+
+Was die Seite zeigt, kommt aus dem Katalog des Servers:
+
+* **Datenbank und Eigentümerin** aus `pg_database` für `current_database()`,
+  dazu die Rolle, mit der die Data Plane gelesen hat.
+* **Die Rollen dieser Datenbank** aus `pg_roles`, genau die Liste, die auch
+  **Datenbank → Rollen** zeigt: die eigene Rolle, Eigentümer von Objekten in
+  Anwendungsschemata, Empfänger von Tabellen- oder Spaltenrechten dort und in
+  einer Policy genannte Rollen, ohne die vordefinierten `pg_*`-Rollen. Jede
+  Rolle steht mit ihren Rechten in Worten da: ob sie sich anmelden darf oder
+  eine Gruppenrolle ist, ob sie Datenbanken oder Rollen anlegen, replizieren
+  oder Row Level Security umgehen darf, ob sie nicht automatisch erbt, ob sie
+  eine eigene Verbindungsgrenze und ob sie ein befristetes Passwort hat.
+* **Der TLS-Zustand**, und zwar als zwei getrennte Aussagen. `encrypted` kommt
+  aus `pg_stat_ssl` für `pg_backend_pid()`, gilt also für genau die Verbindung,
+  mit der diese Antwort gelesen wurde, und nie für eine fremde Sitzung.
+  `serverEnabled` ist die Servereinstellung `ssl`. Sie sagt, dass der Server TLS
+  **anbietet**, nicht, dass er es **verlangt**; verlangt wird TLS in
+  `pg_hba.conf`, und die liest QKERN nicht. Chiffre, Schlüssellänge und
+  `client_dn` bleiben draussen: Ein Zertifikatsname ist eine Identität und keine
+  Betriebszahl.
+* **Die Verbindungsgrenzen** des Servers: `max_connections`,
+  `superuser_reserved_connections`, `datconnlimit` dieser Datenbank und
+  `rolconnlimit` der lesenden Rolle. `null` heisst unbegrenzt, so wie der
+  Katalog das mit `-1` ausdrückt.
+
+Was es **nicht** gibt, steht als eigener Block auf der Seite: QKERN hat
+**keinen Pooler** vor der Projektdatenbank — jeder Prozess hält seinen eigenen
+Pool, es gibt nichts einzustellen. Es gibt **keine Netzwerkbeschränkung**, die
+QKERN verwaltet; wer sich verbinden darf, entscheidet der Server in
+`pg_hba.conf`. Es gibt **keinen Wechsel der Verbindung**: Die Console kann kein
+Passwort drehen und keine Umgebung neu binden, denn die Bindung ist
+unveränderlich, sobald sie steht. Und **erzwingen** lässt sich TLS von hier aus
+nicht; die Seite zeigt den Zustand und ändert ihn nicht. Die Route hat kein
+Schreibverb, die Ansicht kein Eingabefeld.
+
+Gebunden wird eine Umgebung darum ausserhalb der Console. In Produktion trägt
+der Provisionierer nach dem Bootstrap die Referenz in
+`project_environments.database_instance_ref` ein; lokal tut dieselbe eine
+`UPDATE`-Anweisung das Skript
+
+```
+npm run dev:bind-project-database -- <projekt-uuid> <development|staging>
+```
+
+das nur aus `pending:` heraus bindet, `production` nie bindet und ohne
+`--allow-remote-host` nur gegen einen lokalen Host läuft. Ob die Verbindung
+dahinter TLS benutzt, entscheidet nicht die Console: In Produktion verlangt
+`lib/server/db/pool.ts` ohnehin `DATABASE_SSL=require`, und ein
+vault-gebundener Katalog prüft zusätzlich den Fingerabdruck des
+Serverzertifikats, wenn einer hinterlegt ist.
 
 ### Tabellen-Designer
 
