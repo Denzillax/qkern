@@ -20,7 +20,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
-| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 36 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
+| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 37 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
 | Generated Data API | ja | ja — 18 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) , die Trigger-Liste aus dem Katalog (`2.9.0`), die Funktionsliste (`2.18.0`) sowie Indizes, Policies und Enum-Typen (`2.19.0`) und Erweiterungen, Rollen, Publikationen und Spaltenrechte (`2.20.0`) sowie Namen mit Grossbuchstaben (`2.26.0`) und ein Pflichtargument namens `valueOf` (`2.28.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 8 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist) |

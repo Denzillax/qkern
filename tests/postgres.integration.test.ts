@@ -86,6 +86,17 @@ import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catal
 // Protokoll. Nur die Sandbox ist ersetzt, die ist im Functions-Stack eigens
 // zertifiziert.
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
+// Der Log-Explorer (2.65): dieselbe reine Ordnung, die die Console zeigt, und
+// derselbe Faecher, den die Route benutzt -- ueber echte Zeilen zweier Quellen.
+import {
+  LOG_EXPLORER_OUT_OF_REACH,
+  logExplorerMoment,
+  parseLogExplorerQuery,
+} from "@/lib/console/log-explorer";
+import {
+  LogExplorerSourceFailure,
+  searchLogSources,
+} from "@/lib/server/logs/log-explorer-search";
 import { FunctionInvocationError } from "@/lib/server/compute/functions";
 // Log-Drains (2.54): echte Definition, echte Quelle, echte Outbox, echter
 // Zusteller, echter Vault.
@@ -3880,6 +3891,200 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu zwei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+
+  it("(2.65) searches across the sources that have routes and says what it cannot reach", async () => {
+    // Der Log-Explorer (2.65) an echten Zeilen zweier Quellen.
+    //
+    // Die Unit-Tests mischen erfundene Eintraege; sie koennen nicht sagen, ob
+    // die Zeitpunkte, die **die Datenbank** setzt, dieselbe Ordnung ergeben.
+    // Genau daran haengt der ganze Schnitt: `audit_logs.created_at` und
+    // `project_function_invocations.started_at` kommen aus zwei Tabellen, mit
+    // zwei Genauigkeiten und zwei Schreibwegen, und `started_at` wird als
+    // `::text` gelesen. Liefen sie auseinander, saehe die gemischte Liste
+    // richtig aus und waere falsch sortiert -- und das Blaettern uebersprunge
+    // Eintraege, ohne dass es jemandem auffiele.
+    //
+    // Zweitens belegt der Fall die Eigenschaft, um die es diesem Schnitt geht:
+    // Eine Quelle, die der Aufrufer nicht lesen darf, nimmt die anderen nicht
+    // mit. Storage wird hier abgewiesen wie fuer eine Anmeldung ohne
+    // `project_storage_admin`; Auth und Functions liefern trotzdem.
+    //
+    // Was der Fall **nicht** tut, ist der Punkt des Slices: Er stellt keine
+    // Abfrage. Gelesen wird durch dieselben Dienste, die die vorhandenen
+    // Routen benutzen.
+    //
+    // Der Stack: PostgreSQL. Eigene Organisation mit eigenem Besitzer, wie
+    // 2.59, 2.62 und 2.63: Das gemeinsame afterAll muss organizationA und
+    // organizationB loswerden, und eine Organisation mit Audit-Zeilen laesst
+    // sich nicht loeschen. Abgeraeumt wird nichts -- `audit_logs` und
+    // `project_function_invocations` sind append-only, und das ist richtig so.
+    const explorerOwner = randomUUID();
+    const explorerOrganization = randomUUID();
+    const explorerProject = randomUUID();
+    const actorRef = `log-explorer-${explorerOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [explorerOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Log Explorer', $2, $3)`,
+    [explorerOrganization, `log-explorer-${explorerOrganization}`, explorerOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [explorerOrganization, explorerOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Log Explorer', $3, 'test', 'ready', $4)`,
+    [explorerProject, explorerOrganization, `log-explorer-${explorerProject}`, explorerOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [explorerOrganization, explorerProject, `managed:${explorerProject}`]);
+
+    const scope = {
+      organizationId: explorerOrganization, projectId: explorerProject,
+      environment: "development" as const,
+    };
+    const admin = {
+      organizationId: explorerOrganization, actorRef, role: "admin" as const, subject: explorerOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+
+    // Quelle eins: echte Eintraege der Audit-Kette, ueber den echten Sink.
+    // `created_at` setzt die Datenbank (DEFAULT now()); die Kette ist
+    // append-only, ein Zeitpunkt laesst sich nicht setzen.
+    const sink = new PostgresProjectAuthAuditSink(auth);
+    const appUser = randomUUID();
+    for (const event of [
+      { action: "project_auth.signup.succeeded", status: "succeeded" as const },
+      { action: "project_auth.login.failed", status: "failed" as const },
+    ]) {
+      await sink.record({
+        scope, action: event.action, actorType: "app_user",
+        actorRef: `project_auth_user:${appUser}`,
+        resourceRef: `project_auth_user:${appUser}`, status: event.status,
+      });
+    }
+
+    // Quelle zwei: echte Zeilen des Aufrufprotokolls, ueber den echten
+    // Aufrufdienst. Nur die Sandbox ist ersetzt; sie ist im Functions-Stack
+    // eigens zertifiziert.
+    const definitions = new ComputeDefinitionService({
+      repository: new PostgresComputeDefinitionRepository(control),
+    });
+    const image = `registry.example.com/qkern/probe@sha256:${"e".repeat(64)}`;
+    const probe = await definitions.createFunction(admin, scope, {
+      name: `explorer-probe-${randomUUID().slice(0, 8)}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+    // Was ein Container drucken wuerde. 0045 speichert es nicht, und die
+    // gemischte Liste kann es darum auch nicht zeigen -- geprueft wird es
+    // trotzdem.
+    const containerOutput = `stdout-${randomUUID()}`;
+    const invocations = new PostgresComputeDefinitionRepository(control);
+    const invoker = new FunctionInvocationService({
+      repository: invocations, invocationLog: invocations,
+      invoker: {
+        async invoke() {
+          return Object.freeze({ statusCode: 200, headers: {}, body: { printed: containerOutput } });
+        },
+      },
+    });
+    await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+    await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+
+    // Der Faecher, mit genau den Lesungen, die die vorhandenen Routen
+    // benutzen. Storage wird abgewiesen wie fuer eine Anmeldung ohne die
+    // Rolle.
+    const fetchers = {
+      auth_audit: async (input: { cursor: string | null; limit: number }) => {
+        const page = await sink.list(scope, {
+          limit: input.limit, ...(input.cursor ? { cursor: input.cursor } : {}),
+        });
+        return {
+          entries: page.events.map((event) => Object.freeze({
+            source: "auth_audit" as const, id: event.id, at: logExplorerMoment(event.createdAt),
+            action: event.action, subject: event.resourceRef,
+            outcome: event.status === "succeeded" ? "ok" as const : "failed" as const,
+            detail: event.actorType,
+          })),
+          nextCursor: page.nextCursor,
+        };
+      },
+      function_invocations: async (input: { cursor: string | null; limit: number }) => {
+        const offset = input.cursor === null ? 0 : Number(input.cursor);
+        const page = await definitions.readFunctionInvocationLog(admin, scope, {
+          limit: input.limit, offset,
+        });
+        return {
+          entries: page.rows.map((row) => Object.freeze({
+            source: "function_invocations" as const, id: row.invocationId,
+            at: logExplorerMoment(row.startedAt), action: "compute.function_invocation",
+            subject: row.functionName,
+            outcome: row.outcome === "completed" ? "ok" as const : "failed" as const,
+            detail: `${row.durationMs} ms · ${row.statusCode ?? row.errorCode ?? "–"}`,
+          })),
+          nextCursor: page.hasMore ? String(offset + input.limit) : null,
+        };
+      },
+      storage_objects: async () => { throw new LogExplorerSourceFailure("forbidden"); },
+    };
+
+    const result = await searchLogSources(fetchers, parseLogExplorerQuery({}));
+
+    // Vier echte Zeilen aus zwei Tabellen, in einer Liste.
+    expect(result.entries).toHaveLength(4);
+    expect(result.entries.filter((entry) => entry.source === "auth_audit")).toHaveLength(2);
+    expect(result.entries.filter((entry) => entry.source === "function_invocations")).toHaveLength(2);
+
+    // Der Kern: Die Ordnung stimmt ueber die Tabellengrenze hinweg. Verglichen
+    // wird gegen die Zeitpunkte, die die Datenbank selbst gesetzt hat.
+    const moments = result.entries.map((entry) => entry.at);
+    expect([...moments].sort().reverse()).toEqual(moments);
+    for (const moment of moments) {
+      expect(moment, "Zeitpunkt nicht in einer Schreibweise")
+        .toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+
+    // Die abgewiesene Quelle nimmt die anderen nicht mit, und sie wird
+    // benannt statt weggelassen.
+    expect(Object.fromEntries(result.sources.map((report) => [report.id, report.state])))
+      .toEqual({ auth_audit: "ok", function_invocations: "ok", storage_objects: "forbidden" });
+
+    // Die Zeilen tragen keine Ausgabe eines Containers und keine Adresse --
+    // `invoked_by` steht in 0045 und ist genau diese Adresse.
+    const shown = JSON.stringify(result.entries);
+    expect(shown, "die Liste traegt die Ausgabe des Containers").not.toContain(containerOutput);
+    expect(shown, "die Liste traegt die Adresse des Aufrufers").not.toContain(actorRef);
+    // Die Gegenprobe: Die Lesung selbst haette sie.
+    const raw = await definitions.readFunctionInvocationLog(admin, scope, { limit: 10 });
+    expect(raw.rows[0].invokedBy).toBe(actorRef);
+
+    // Blaettern ueber die Quellgrenze hinweg: jede Zeile genau einmal.
+    const seen: string[] = [];
+    let before: string | null = null;
+    for (let round = 0; round < 8; round += 1) {
+      const page = await searchLogSources(fetchers,
+        parseLogExplorerQuery({ limit: "1", ...(before ? { before } : {}) }));
+      seen.push(...page.entries.map((entry) => `${entry.source}:${entry.id}`));
+      if (!page.hasMore || page.nextCursor === null) break;
+      before = page.nextCursor;
+    }
+    expect(seen).toEqual(result.entries.map((entry) => `${entry.source}:${entry.id}`));
+    expect(new Set(seen).size).toBe(seen.length);
+
+    // Der getypte Filter wirkt an echten Zeilen.
+    const failedOnly = await searchLogSources(fetchers,
+      parseLogExplorerQuery({ sources: "auth_audit", authStatus: "failed" }));
+    expect(failedOnly.entries).toHaveLength(1);
+    expect(failedOnly.entries[0].action).toBe("project_auth.login.failed");
+
+    // Und was der Explorer nicht erreicht, steht mit Grund da -- die
+    // Webhook-Zustellungen, die Nutzung, die Cron-Vorkommen, die
+    // Container-Ausgabe und die vier Logs ohne Backend.
+    expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(5);
+    expect(LOG_EXPLORER_OUT_OF_REACH.map((entry) => entry.label))
+      .toEqual(expect.arrayContaining(["Webhook-Zustellungen", "Cron-Vorkommen"]));
+  });
+
 });
 
 /**
