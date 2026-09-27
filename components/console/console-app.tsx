@@ -74,6 +74,7 @@ import { StoragePoliciesView } from "@/components/console/storage-policies-view"
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import { InfrastructureView } from "@/components/console/infrastructure-view";
+import { DatabaseHealthView } from "@/components/console/database-health-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LOCALE_COOKIE } from "@/lib/i18n/locales";
 import {
@@ -363,6 +364,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-infrastructure": return <InfrastructureView projectId={props.project.id} environment={props.environment} region={props.project.region} status={props.project.status}/>;
+    case "logs-postgres": return <DatabaseHealthView projectId={props.project.id} environment={props.environment}/>;
     case "set-billing": return <BillingSettingsView projectId={props.project.id} environment={props.environment} navigate={props.navigate}/>;
     case "advisors-security": return <SecurityAdvisorView projectId={props.project.id} environment={props.environment}/>;
     case "advisors-performance": return <PerformanceAdvisorView projectId={props.project.id} environment={props.environment}/>;

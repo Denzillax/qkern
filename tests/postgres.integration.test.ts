@@ -10,6 +10,7 @@ import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/post
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { isProjectDataPlaneError, ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+import type { ProjectDatabaseHealthResult } from "@/lib/server/data-plane/service";
 // Abfrage-Einblicke (2.69): der Plan laeuft durch den echten Dienst, das
 // reine Modul flacht ihn ab.
 import { hottestQueryPlanNode, QUERY_PLAN_HOT_SHARE } from "@/lib/console/query-insights";
@@ -5100,6 +5101,245 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   }, 120_000);
+
+  it("(2.70) reports the state of the real database from counters that really move", async () => {
+    // Logs -> Postgres-Zustand (2.70) gegen die echte Datenbank.
+    //
+    // Die Seite ersetzt das Versprechen eines Serverlogs durch Zaehler aus
+    // den Statistiksichten. Ein Zaehler ist ohne Datenbank nicht pruefbar:
+    // Ein Nachbau gaebe eine Zahl zurueck, und die Zahl waere richtig, ohne
+    // dass irgendetwas gezaehlt haette. Darum hat der Fall vier Zusagen, die
+    // alle an PostgreSQL haengen:
+    //
+    // 1. **Die Zaehler bewegen sich mit dem, was wirklich passiert.** Der Fall
+    //    misst, verursacht dann etwas Bestimmtes in derselben Datenbank und
+    //    misst noch einmal: zehn gescheiterte Anweisungen muessen
+    //    `rollbacks` um mindestens zehn heben, eine Sortierung mit kleinem
+    //    `work_mem` muss `tempFiles` und `tempBytes` heben, und eine frisch
+    //    geoeffnete Verbindung muss `sessions` heben. Gegen einen Nachbau
+    //    waere das die Pruefung des Nachbaus.
+    // 2. **Der Dienst liest die Sicht, die dieser Server wirklich hat.**
+    //    PostgreSQL 17 hat die Checkpoint-Zaehler nach `pg_stat_checkpointer`
+    //    verschoben. Welche Sicht es gibt, fragt der Fall selbst im Katalog
+    //    nach, und die gemeldete Quelle muss dazu passen. Die Zahlen daneben
+    //    werden gegen dieselbe Sicht als Eigentuemer gegengelesen.
+    // 3. **Null ist nicht dasselbe wie nicht gemessen.** Laeuft der Server
+    //    ohne Datenpruefsummen, muss `checksumFailures` `null` sein und nicht
+    //    0. Ob er sie hat, liest der Fall aus `data_checksums`.
+    // 4. **Kein Wortlaut verlaesst die Datenbank.** Jeder Wert der Antwort
+    //    ist eine Zahl, ein Wahrheitswert, ein UTC-Zeitpunkt in fester Form
+    //    oder der Name einer Statistiksicht. Ein Abfragetext, eine
+    //    Fehlermeldung oder eine Adresse koennte darum gar nicht darin
+    //    stehen.
+    //
+    // Gelesen wird durch denselben Dienst, den die Route benutzt. Eingesetzt
+    // wird nur die Tuer: Scope und Principal. Es gibt keine eigene Projektion
+    // und keine eigene Grenzpruefung in diesem Fall.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.68 und 2.69: Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden, und
+    // dieser Fall soll ihm dabei nicht im Weg stehen.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const healthOwner = randomUUID();
+    const healthOrganization = randomUUID();
+    const healthProject = randomUUID();
+    const healthActor = `health-2-70-owner-${healthOwner}@qkern.test`;
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [healthOwner, healthActor]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Health 2.70', $2, $3)`,
+    [healthOrganization, `health-2-70-${healthOrganization}`, healthOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Health 2.70', $3, 'test', 'ready', $4)`,
+    [healthProject, healthOrganization, `health-2-70-${healthProject}`, healthOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [healthOrganization, healthProject, `managed:${healthProject}`]);
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${healthProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole,
+          expectedDatabase,
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const healthContext = { organizationId: healthOrganization, actorRef: healthActor };
+      const healthScope = { projectId: healthProject, environment: "development" as const };
+
+      const before = await service.inspectDatabaseHealth(healthContext, healthScope);
+
+      // --- Die Form der Antwort -------------------------------------------
+      expect(before.source).toBe("postgres");
+      expect(Object.keys(before).sort()).toEqual(["database", "source", "writeback"]);
+      expect(Object.keys(before.database).sort()).toEqual([
+        "backends", "blocksHit", "blocksRead", "checksumFailures", "checksumLastFailure",
+        "commits", "conflicts", "deadlocks", "rollbacks", "sessions", "sessionsAbandoned",
+        "sessionsFatal", "sessionsKilled", "statsReset", "tempBytes", "tempFiles",
+      ]);
+      expect(Object.keys(before.writeback).sort()).toEqual([
+        "bgwriterStatsReset", "buffersAlloc", "buffersCheckpoint", "buffersClean",
+        "checkpointSource", "checkpointSyncMs", "checkpointWriteMs", "checkpointerStatsReset",
+        "checkpointsRequested", "checkpointsTimed", "maxwrittenClean",
+      ]);
+
+      // --- Zusage 2: die Quelle ist die, die dieser Server wirklich hat ----
+      const catalog = await owner.query<{ has_checkpointer: boolean; checksums: string }>(
+        `SELECT to_regclass('pg_catalog.pg_stat_checkpointer') IS NOT NULL AS has_checkpointer,
+                current_setting('data_checksums') AS checksums`);
+      const hasCheckpointer = catalog.rows[0]!.has_checkpointer;
+      expect(before.writeback.checkpointSource)
+        .toBe(hasCheckpointer ? "pg_stat_checkpointer" : "pg_stat_bgwriter");
+      // Der Zertifizierungsstack faehrt PostgreSQL 17; dort gibt es die Sicht.
+      // Faende dieser Fall sie nicht, waere das ein Fund und keine Toleranz.
+      expect(hasCheckpointer, "PostgreSQL 17 kennt pg_stat_checkpointer").toBe(true);
+      const checkpointer = await owner.query<{ timed: string; requested: string; written: string }>(
+        `SELECT num_timed::text AS timed, num_requested::text AS requested,
+                buffers_written::text AS written
+         FROM pg_catalog.pg_stat_checkpointer`);
+      const reference = checkpointer.rows[0]!;
+      // Checkpoints laufen weiter, waehrend dieser Fall laeuft; darum keine
+      // Gleichheit, aber auch keine Beliebigkeit: Die gemeldete Zahl darf die
+      // des Katalogs nicht uebersteigen, denn sie wurde vorher gelesen.
+      expect(before.writeback.checkpointsTimed).toBeLessThanOrEqual(Number(reference.timed));
+      expect(before.writeback.checkpointsRequested).toBeLessThanOrEqual(Number(reference.requested));
+      expect(before.writeback.buffersCheckpoint).toBeLessThanOrEqual(Number(reference.written));
+      expect(before.writeback.checkpointsTimed + before.writeback.checkpointsRequested)
+        .toBeGreaterThan(0);
+      // Der Hintergrundschreiber hat Puffer angefordert, seit der Server laeuft.
+      expect(before.writeback.buffersAlloc).toBeGreaterThan(0);
+
+      // --- Zusage 3: null heisst nicht gemessen, nicht null Fehler --------
+      if (catalog.rows[0]!.checksums === "on") {
+        expect(before.database.checksumFailures).not.toBeNull();
+      } else {
+        expect(before.database.checksumFailures,
+          "ohne Datenpruefsummen ist 0 eine Behauptung und null die Wahrheit").toBeNull();
+        expect(before.database.checksumLastFailure).toBeNull();
+      }
+
+      /**
+       * Ein Zaehler, nachdem er die Schwelle erreicht hat.
+       *
+       * PostgreSQL 15 und neuer sammelt die Statistik im gemeinsamen Speicher
+       * und schreibt sie verzoegert fort; ein Backend meldet seine Zahlen
+       * fruehestens nach `PGSTAT_MIN_INTERVAL`. 90 Sekunden sind darum kein
+       * grosszuegiges Budget fuer eine schnelle Sache, sondern Raum fuer eine
+       * Fortschreibung, die von sich aus wartet. Die Erwartung selbst bleibt
+       * hart: Wird die Schwelle nie erreicht, faellt der Fall.
+       */
+      const until = async (
+        reached: (value: ProjectDatabaseHealthResult) => boolean,
+      ): Promise<ProjectDatabaseHealthResult> => {
+        const patience = Date.now() + 90_000;
+        let latest = await service.inspectDatabaseHealth(healthContext, healthScope);
+        while (!reached(latest) && Date.now() < patience) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          latest = await service.inspectDatabaseHealth(healthContext, healthScope);
+        }
+        return latest;
+      };
+
+      // --- Zusage 1a: abgebrochene Transaktionen steigen mit ---------------
+      // Zehn Anweisungen, die scheitern muessen. Jede laeuft in ihrer eigenen
+      // impliziten Transaktion, also zaehlt jede einmal in `xact_rollback`.
+      const failures = 10;
+      for (let attempt = 0; attempt < failures; attempt += 1) {
+        await owner.query("SELECT 1 / 0").catch(() => undefined);
+      }
+      const afterRollbacks = await until(
+        (value) => value.database.rollbacks >= before.database.rollbacks + failures);
+      expect(afterRollbacks.database.rollbacks,
+        "die gemeldeten Rollbacks wachsen nicht mit den gescheiterten Anweisungen")
+        .toBeGreaterThanOrEqual(before.database.rollbacks + failures);
+      // Und die beiden Spalten sind nicht vertauscht. Der Vergleich laeuft
+      // gegen dieselbe Sicht, als Eigentuemer gelesen: Beide gemeldeten Zahlen
+      // wurden vorher gelesen und duerfen die des Katalogs darum nicht
+      // uebersteigen. Die Reihenfolge belegt den Rest: In dieser Datenbank
+      // wird um Groessenordnungen mehr abgeschlossen als zurueckgerollt, ein
+      // Tausch der Spalten drehte das um.
+      const columns = await owner.query<{ commits: string; rollbacks: string }>(
+        `SELECT xact_commit::text AS commits, xact_rollback::text AS rollbacks
+         FROM pg_catalog.pg_stat_database WHERE datname = current_database()`);
+      expect(afterRollbacks.database.rollbacks).toBeLessThanOrEqual(Number(columns.rows[0]!.rollbacks));
+      expect(afterRollbacks.database.commits).toBeLessThanOrEqual(Number(columns.rows[0]!.commits));
+      expect(afterRollbacks.database.commits,
+        "abgeschlossene und zurueckgerollte Transaktionen stehen vertauscht")
+        .toBeGreaterThan(afterRollbacks.database.rollbacks);
+
+      // --- Zusage 1b: temporaere Dateien und eine neue Sitzung -------------
+      // Eine eigene Verbindung: Sie hebt `sessions`, und nur auf ihr laesst
+      // sich `work_mem` so klein setzen, dass die Sortierung auf die Platte
+      // ausweichen muss.
+      const sorter = createPostgresPool({ connectionString: projectApiUrl!, max: 1 });
+      try {
+        await sorter.query("SET work_mem = '64kB'");
+        await sorter.query(`SELECT count(*) FROM (
+          SELECT schritt FROM generate_series(1, 400000) AS schritt
+          ORDER BY md5(schritt::text)) AS sortiert`);
+      } finally {
+        await sorter.end();
+      }
+      const afterTemp = await until((value) =>
+        value.database.tempFiles > afterRollbacks.database.tempFiles &&
+        value.database.sessions > before.database.sessions);
+      expect(afterTemp.database.tempFiles,
+        "die gemeldete Zahl temporaerer Dateien waechst nicht mit einer Sortierung, die auf die Platte ging")
+        .toBeGreaterThan(afterRollbacks.database.tempFiles);
+      expect(afterTemp.database.tempBytes,
+        "temporaere Dateien ohne Bytes gibt es nicht")
+        .toBeGreaterThan(afterRollbacks.database.tempBytes);
+      expect(afterTemp.database.sessions,
+        "die gemeldete Zahl eroeffneter Sitzungen waechst nicht mit einer neuen Verbindung")
+        .toBeGreaterThan(before.database.sessions);
+      // Die Datenbank meldet offene Verbindungen; diese Messung laeuft ueber
+      // mindestens eine davon.
+      expect(afterTemp.database.backends).toBeGreaterThan(0);
+
+      // --- Zusage 4: kein Wortlaut, keine Adresse -------------------------
+      const allowed = new Set(["pg_stat_checkpointer", "pg_stat_bgwriter", "postgres"]);
+      const walk = (value: unknown, path: string): void => {
+        if (value === null || typeof value === "number" || typeof value === "boolean") {
+          if (typeof value === "number") expect(Number.isFinite(value), path).toBe(true);
+          return;
+        }
+        if (typeof value === "string") {
+          // Entweder ein fester Name oder ein UTC-Zeitpunkt in genau der Form,
+          // die der Dienst schreibt. Etwas anderes traegt kein Feld.
+          expect(allowed.has(value) || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value), `${path}: ${value}`)
+            .toBe(true);
+          return;
+        }
+        expect(value !== null && typeof value === "object", path).toBe(true);
+        for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+          walk(entry, `${path}.${key}`);
+        }
+      };
+      walk(afterTemp, "health");
+      const serialised = JSON.stringify(afterTemp);
+      expect(serialised).not.toContain(decodeURIComponent(target.password));
+      expect(serialised).not.toContain("://");
+      expect(serialised).not.toContain(expectedDatabase);
+      // Die Anweisung, die eben scheiterte, steht nirgends in der Antwort.
+      expect(serialised).not.toContain("1 / 0");
+      for (const word of ["division", "error", "query", "log_destination", "client_addr", "datname"]) {
+        expect(serialised.toLowerCase(), word).not.toContain(word.toLowerCase());
+      }
+    } finally {
+      await projectApi.end();
+    }
+    // 180 Sekunden: zwei Wartefristen von bis zu 90 Sekunden auf die
+    // verzoegerte Fortschreibung der Statistik, dazu die Sortierung selbst.
+    // Jede einzelne Frist hat trotzdem ihre eigene, engere Grenze.
+  }, 180_000);
 });
 
 /**

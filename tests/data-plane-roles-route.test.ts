@@ -20,7 +20,7 @@ async function identity() {
 }
 
 function port(method: ReturnType<typeof vi.fn>): ProjectDataPlanePort {
-  return { inspectRuntime: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectRoles: method } as ProjectDataPlanePort;
+  return { inspectRuntime: vi.fn(), inspectDatabaseHealth: vi.fn(), inspectSchema: vi.fn(), inspectStatements: vi.fn(), inspectSettings: vi.fn(), queryReadOnly: vi.fn(), explainReadQuery: vi.fn(), inspectStatistics: vi.fn(), inspectActivity: vi.fn(), inspectForeignKeys: vi.fn(), inspectTriggers: vi.fn(), inspectFunctions: vi.fn(), inspectIndexes: vi.fn(), inspectPolicies: vi.fn(), inspectEnumTypes: vi.fn(), inspectExtensions: vi.fn(), inspectPublications: vi.fn(), inspectColumnPrivileges: vi.fn(), inspectRoles: method } as ProjectDataPlanePort;
 }
 
 describe("project roles route", () => {

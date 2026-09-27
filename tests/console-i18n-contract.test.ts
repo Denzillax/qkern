@@ -30,6 +30,7 @@ import { logExplorerTexts } from "@/lib/console/log-explorer";
 import { queryPerformanceTexts } from "@/lib/console/query-performance-texts";
 import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 import { queryInsightsTexts } from "@/lib/console/query-insights";
+import { databaseHealthTexts } from "@/lib/console/database-health-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -132,6 +133,10 @@ async function consoleKeys(): Promise<string[]> {
   // Berichte -> Abfrage-Einblicke (2.67) zeigt Knotenarten, ihre Bedeutung,
   // die Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of queryInsightsTexts()) keys.add(text);
+  // Logs -> Postgres-Zustand (2.70) zeigt Quellen der Statistik, den Zustand
+  // der Pruefsummen, was es nicht gibt und seine Ehrlichkeitssaetze ueber
+  // t(variable).
+  for (const text of databaseHealthTexts()) keys.add(text);
   return [...keys];
 }
 
