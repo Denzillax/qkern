@@ -1102,6 +1102,89 @@ Art des Akteurs, Ausgang und die schon bereinigte Referenz. Adressen, Token und
 Schlüssel kommen dort ohnehin nie an, weil `sanitizeProjectAuthAuditEvent` sie
 gar nicht erst in die Kette lässt.
 
+### Was ein angemeldeter Nutzer darf
+
+Seit `2.54.0` ist **Auth → Policies** keine Platzhalterseite mehr. Der
+Platzhalter sagte, hier stehe die gleiche Lage wie unter Datenbank →
+Policies. Genau das tut die Seite nicht, denn eine Policy-Liste beantwortet die
+Frage nicht, die man von der Anmeldung aus stellt: **Was darf ein angemeldeter
+Nutzer dieses Projekts wirklich lesen und schreiben, und warum?** Sie liest eine
+Route:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/auth/access?schema=public
+```
+
+Dieselbe Tür wie `/schema/policies` (Session mit Leserecht oder scope-gebundener
+Projekt-Key), dieselbe Fehlerabbildung, dieselbe Prüfung des einen Parameters
+`schema`, `Cache-Control: private, no-store`. Nur lesend.
+
+**Die Abbildung steht oben, nicht im Kleingedruckten.** Ohne sie sagt eine
+Policy-Liste niemandem etwas: Eine Policy nennt Rollen, und welche Rolle eine
+angemeldete Anfrage ist, steht nicht in ihr.
+
+* **Die Datenbankrolle.** Eine angemeldete Anfrage wird *keine* eigene
+  Datenbankrolle. Jede Anfrage der Data API läuft über die eine Anwendungsrolle
+  dieser Umgebung, und die Seite nennt sie mit Namen. Es gibt kein `SET ROLE`,
+  und vor jeder Anweisung prüft der Server, dass diese Rolle kein Superuser ist,
+  Row Level Security nicht umgehen darf und in keiner Gruppenrolle steckt.
+* **Die Claims.** Wer angemeldet ist, steht nur im Access Token: `role` ist
+  immer `authenticated`, `sub` ist die Nutzer-ID, dazu `email`,
+  `email_verified`, `aal`, `session_id`, `user_metadata` und `app_metadata`.
+* **Die Einstellungen.** Vor der Anweisung setzt der Server vier Einstellungen,
+  jede nur für diese Transaktion: `request.jwt.claims` mit allen Claims als
+  JSON, `request.jwt.claim.role`, `request.jwt.claim.sub` und
+  `qkern.actor_ref`. Eine Policy liest sie mit `current_setting`; das ist der
+  einzige Weg, auf dem eine Bedingung von der Anmeldung erfahren kann.
+* **Row Level Security bleibt an.** Jede Transaktion setzt `row_security = on`,
+  eine Leseanfrage läuft als `BEGIN READ ONLY`. Ein Service Key ändert daran
+  nichts: Er trägt nur einen anderen `role`-Claim, nämlich `service_role`, und
+  umgeht keine Policy.
+* **Dieselben Claims an der Realtime-Tür.** Welchen Kanal jemand abonnieren
+  darf, entscheiden dieselben zwei Claims. `anon` darf nur `public:`-Kanäle,
+  `authenticated` dazu `private:`-Kanäle und genau den eigenen Kanal
+  `user:<sub>`; in `changes:`-Kanäle darf niemand senden, weil nur der Server
+  sie füllt.
+
+Darunter steht je Tabelle des Schemas ein Urteil in Worten, und je Befehl
+(SELECT, INSERT, UPDATE, DELETE) eine Antwort. Abgeleitet wird das in einem
+reinen Modul (`lib/server/data-plane/auth-access-rules.ts`), das ohne Datenbank
+prüfbar ist:
+
+| Urteil | wann |
+| --- | --- |
+| `refused` | Row Level Security ist aus. Die Data API **verweigert die Tabelle vollständig** (`GENERATED_DATA_API_RLS_REQUIRED`) — sie wird dadurch nicht offen, sondern unerreichbar. |
+| `locked` | Row Level Security ist an, aber keine Policy gilt für die Anwendungsrolle. Lesen gibt null Zeilen, Schreiben wird abgewiesen. |
+| `open` | Eine permissive Policy für PUBLIC erlaubt das Lesen ohne Bedingung. Dann sieht auch ein Public Key die Zeilen. |
+| `writable` | Mindestens eine Policy erlaubt INSERT, UPDATE oder DELETE. |
+| `readable` | Gelesen werden darf, geschrieben nicht. |
+
+Eine Policy gilt für eine angemeldete Anfrage nur, wenn sie `PUBLIC` oder die
+Anwendungsrolle nennt. Jede andere steht mit Namen da und trägt `applies: false`
+— sichtbar, aber folgenlos. Eine restriktive Policy erlaubt nie etwas; sie engt
+ein, was die permissiven zusammen erlauben.
+
+**Was das Urteil nicht wissen kann, sagt es in der Zeile, um die es geht.** Eine
+Bedingung, die `current_setting`, `current_user`, `session_user` oder irgendeine
+Funktion liest, heisst `request`: Sie kann bei einer Anfrage zutreffen und bei
+der nächsten nicht. Der Befehl heisst dann `sometimes` statt `always`, und die
+Tabelle trägt `uncertain: true`. Eine Bedingung, die nur Spalten vergleicht,
+heisst `constant` — welche Zeilen sie erfasst, entscheidet der Inhalt der
+Tabelle, und diese Seite liest keine Zeile. Es gibt dafür bewusst keine
+Fussnote am Seitenende.
+
+Views stehen nicht in der Liste. Sie tragen keine eigene Policy; die Data API
+nimmt eine View nur mit `security_invoker` an und liest sie dann unter den
+Policies der Tabellen darunter. Wie viele Views es gibt, sagt die Antwort als
+Zahl.
+
+Ändern lässt sich hier nichts: Eine Policy anzulegen, zu ändern oder zu löschen
+und Row Level Security einzuschalten sind Schemaänderungen und gehen über ein
+Change Set mit Freigabe. Die Route hat kein Schreibverb, die Ansicht kein
+Eingabefeld. Wer eine einzelne Regel im Wortlaut sucht, findet sie weiter unter
+**Datenbank → Policies**; diese Seite fasst zusammen, was aus allen Regeln
+zusammen folgt.
+
 ## 7. Project Storage
 
 Project Storage ist unabhängig opt-in. Für einen vollständigen lokalen Upload-

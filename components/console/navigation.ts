@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -41,7 +41,6 @@ export const PLACEHOLDERS = {
   "db-pipelines": { label: "Replikation", supabase: "Database → Replication", backend: "fehlt", note: "Daten in externe Ziele replizieren. Kein Backend, keine Ansicht." },
   "db-backups-restore": { label: "In neues Projekt wiederherstellen", supabase: "Database → Backups → Restore to new project", backend: "fehlt", note: "Ein Backup in ein frisches Projekt einspielen. Kein Backend." },
   // Auth
-  "auth-policies": { label: "Policies", supabase: "Authentication → Policies", backend: "teilweise", note: "RLS-Regeln aus Sicht der Anmeldung. Gleiche Lage wie unter Datenbank → Policies." },
       "auth-passkeys": { label: "Passkeys", supabase: "Authentication → Passkeys", backend: "fehlt", note: "Anmeldung mit WebAuthn statt Passwort, etwa per Fingerabdruck oder Sicherheitsschlüssel. Kein Backend." },
   "auth-hooks": { label: "Auth-Hooks", supabase: "Authentication → Hooks", backend: "fehlt", note: "Eigener Code bei Anmeldung, Token-Ausgabe oder Mailversand." },
   "auth-third-party": { label: "Fremde Anbieter", supabase: "Authentication → Third Party Auth", backend: "fehlt", note: "Token fremder Identitätsdienste akzeptieren, ohne eigene Nutzerkonten." },
@@ -98,7 +97,7 @@ export const NAV: NavGroup[] = [
     { id: "db-backups-pitr", label: "Point-in-time Recovery" }, ph("db-backups-restore"), { id: "db-settings", label: "Datenbank-Einstellungen" },
   ] },
   { id: "auth", label: "Auth", icon: Fingerprint, children: [
-    { id: "auth", label: "Nutzer" }, ph("auth-policies"), { id: "auth-providers", label: "Anmeldeverfahren" }, { id: "auth-sessions", label: "Sitzungen" }, { id: "auth-rate-limits", label: "Rate Limits" },
+    { id: "auth", label: "Nutzer" }, { id: "auth-policies", label: "Policies" }, { id: "auth-providers", label: "Anmeldeverfahren" }, { id: "auth-sessions", label: "Sitzungen" }, { id: "auth-rate-limits", label: "Rate Limits" },
     { id: "auth-templates", label: "E-Mail-Vorlagen" }, { id: "auth-smtp", label: "SMTP" }, { id: "auth-mfa", label: "Mehrfaktor" }, ph("auth-passkeys"), { id: "auth-url", label: "URL-Konfiguration" }, { id: "auth-protection", label: "Passwortschutz" },
     ph("auth-hooks"), ph("auth-third-party"), ph("auth-oauth-server"), { id: "auth-audit", label: "Audit-Log" }, ph("auth-performance"),
   ] },

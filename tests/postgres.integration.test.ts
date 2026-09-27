@@ -10,6 +10,10 @@ import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/post
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+// Was ein angemeldeter Nutzer darf (2.62): dasselbe reine Regelmodul, das die
+// Route benutzt, und die echte generierte Data API als Gegenprobe.
+import { evaluateAuthAccess } from "@/lib/server/data-plane/auth-access-rules";
+import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
@@ -2331,6 +2335,197 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         expect(serialised.toLowerCase(), word).not.toContain(word.toLowerCase());
       }
     } finally {
+      await projectApi.end();
+    }
+  });
+
+  it("(2.62) tells for a real table what a signed-in user may read and write", async () => {
+    // Auth -> Policies (2.62) gegen die echte Datenbank. Der Fall hat zwei
+    // Zusagen, und keine davon liesse sich gegen einen Nachbau pruefen:
+    //
+    // 1. Das Urteil steht so im Katalog. Fuenf Tabellen mit fuenf Lagen werden
+    //    angelegt, ueber die Leserolle der Data API gelesen und durch das reine
+    //    Regelmodul geschickt. Dass `refused`, `locked`, `open`, `readable` und
+    //    `writable` dabei herauskommen, sagt nichts, wenn die Eingabe erfunden
+    //    ist -- hier kommt sie aus pg_class und pg_policy.
+    // 2. Das Urteil stimmt auch. Dieselben fuenf Tabellen werden danach durch
+    //    die echte generierte Data API gelesen, mit den Claims eines
+    //    angemeldeten Nutzers. Die Tabelle ohne Row Level Security wird
+    //    wirklich verweigert, die offene gibt ihre Zeile her, die
+    //    verschlossene gibt null Zeilen, und die Tabelle, deren Policy den
+    //    Claim `sub` nennt, gibt genau die eigene Zeile. Ein Fake koennte das
+    //    eine oder das andere zeigen, aber nicht beides aus derselben
+    //    Datenbank.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.45, 2.52, 2.57 und 2.59:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und dieser Fall soll ihm dabei nicht im Weg stehen. Geloescht wird nur,
+    // was das Produkt loescht; das eigene Schema faellt samt Inhalt weg,
+    // Organisation, Projekt und Umgebung bleiben stehen wie in 2.57 und 2.59.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const accessOwner = randomUUID();
+    const accessOrganization = randomUUID();
+    const accessProject = randomUUID();
+    const schema = `access_${randomUUID().replaceAll("-", "_")}`;
+    // Die Nutzer-ID eines angemeldeten Nutzers; sie wird gleich der `sub`-Claim.
+    const signedInUser = randomUUID();
+    const strangerUser = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [accessOwner, `access-2-62-owner-${accessOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Access 2.62', $2, $3)`,
+    [accessOrganization, `access-2-62-${accessOrganization}`, accessOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Access 2.62', $3, 'test', 'ready', $4)`,
+    [accessProject, accessOrganization, `access-2-62-${accessProject}`, accessOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [accessOrganization, accessProject, `managed:${accessProject}`]);
+
+    // Eine Rolle, die es wirklich gibt und die nicht die Anwendungsrolle ist:
+    // die Rolle, mit der dieser Fall selbst schreibt. Eine Policy fuer sie
+    // muss fuer eine angemeldete Anfrage folgenlos bleiben.
+    const foreign = await owner.query<{ role: string }>("SELECT current_user AS role");
+    const foreignRole = foreign.rows[0]!.role;
+    expect(foreignRole, "Die fremde Rolle darf nicht die Anwendungsrolle sein.").not.toBe(expectedRole);
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      // 1. offen fuer alle: eine permissive Policy fuer PUBLIC ohne Bedingung.
+      await owner.query(`CREATE TABLE "${schema}".open_posts (id uuid PRIMARY KEY, body text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".open_posts ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY read_all ON "${schema}".open_posts FOR SELECT USING (true)`);
+      // 2. schreibbar, aber nur die eigenen Zeilen: die Policy nennt den Claim.
+      await owner.query(`CREATE TABLE "${schema}".own_notes (id uuid PRIMARY KEY, owner text NOT NULL, body text)`);
+      await owner.query(`ALTER TABLE "${schema}".own_notes ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY own_select ON "${schema}".own_notes FOR SELECT TO ${expectedRole}
+        USING (owner = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY own_insert ON "${schema}".own_notes FOR INSERT TO ${expectedRole}
+        WITH CHECK (owner = current_setting('request.jwt.claim.sub', true))`);
+      // 3. verschlossen: Row Level Security an, keine einzige Policy.
+      await owner.query(`CREATE TABLE "${schema}".locked_secrets (id uuid PRIMARY KEY, body text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".locked_secrets ENABLE ROW LEVEL SECURITY`);
+      // 4. verweigert: Row Level Security aus, obwohl eine weite Policy daneben steht.
+      await owner.query(`CREATE TABLE "${schema}".no_rls_audit (id uuid PRIMARY KEY, body text NOT NULL)`);
+      await owner.query(`CREATE POLICY read_all ON "${schema}".no_rls_audit FOR ALL USING (true)`);
+      // 5. verschlossen, obwohl eine Policy da ist: sie nennt nur eine fremde Rolle.
+      await owner.query(`CREATE TABLE "${schema}".foreign_reports (id uuid PRIMARY KEY, body text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".foreign_reports ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY analyst_read ON "${schema}".foreign_reports FOR SELECT TO ${foreignRole} USING (true)`);
+      // Eine View, damit der Fall auch die Zaehlung der Views trifft.
+      await owner.query(`CREATE VIEW "${schema}".open_overview AS SELECT id FROM "${schema}".open_posts`);
+
+      const mine = randomUUID();
+      const theirs = randomUUID();
+      await owner.query(`INSERT INTO "${schema}".open_posts (id, body) VALUES ($1, 'sichtbar')`, [mine]);
+      await owner.query(`INSERT INTO "${schema}".own_notes (id, owner, body) VALUES ($1, $2, 'meine'), ($3, $4, 'fremde')`,
+        [mine, signedInUser, theirs, strangerUser]);
+      await owner.query(`INSERT INTO "${schema}".locked_secrets (id, body) VALUES ($1, 'nie sichtbar')`, [mine]);
+      await owner.query(`INSERT INTO "${schema}".no_rls_audit (id, body) VALUES ($1, 'ohne rls')`, [mine]);
+      await owner.query(`INSERT INTO "${schema}".foreign_reports (id, body) VALUES ($1, 'nur analyst')`, [mine]);
+
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi,
+        expectedRole,
+        expectedDatabase,
+        expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${accessProject}` }) };
+      const dataPlane = new ProjectDataPlaneService(targets, connections);
+      const generated = new GeneratedDataApiService(targets, connections);
+      const context = {
+        organizationId: accessOrganization,
+        actorRef: `access-2-62-owner-${accessOwner}@qkern.test`,
+      };
+      const scope = { projectId: accessProject, environment: "development" as const };
+
+      // --- Zusage 1: dieselben drei Auskuenfte, die die Route liest ---
+      const [tables, policies, settings] = await Promise.all([
+        dataPlane.inspectSchema(context, scope, schema),
+        dataPlane.inspectPolicies(context, scope, schema),
+        dataPlane.inspectSettings(context, scope),
+      ]);
+      // Die Rolle kommt aus der Datenbank, nicht aus dem Test.
+      expect(settings.currentRole).toBe(expectedRole);
+      const access = evaluateAuthAccess({
+        schema, role: settings.currentRole, tables: tables.tables, policies: policies.policies,
+      });
+      expect(access.claimRole).toBe("authenticated");
+      expect(access.views).toBe(1);
+      const verdicts = Object.fromEntries(access.tables.map((entry) => [entry.table, entry.verdict]));
+      expect(verdicts).toEqual({
+        foreign_reports: "locked",
+        locked_secrets: "locked",
+        no_rls_audit: "refused",
+        open_posts: "open",
+        own_notes: "writable",
+      });
+      expect(access.counts).toEqual({ refused: 1, locked: 2, readable: 0, writable: 1, open: 1 });
+
+      const byName = (name: string) => access.tables.find((entry) => entry.table === name)!;
+      // Die Tabelle, deren Policy einen Claim nennt, traegt die Unsicherheit
+      // selbst -- und zwar als `request`, nicht als stilles Ja.
+      const notes = byName("own_notes");
+      expect(notes.uncertain).toBe(true);
+      expect(notes.commands.map((entry) => [entry.command, entry.allowed, entry.condition])).toEqual([
+        ["select", "sometimes", "request"],
+        ["insert", "sometimes", "request"],
+        ["update", "no", "none"],
+        ["delete", "no", "none"],
+      ]);
+      expect(notes.policies.map((entry) => entry.applies)).toEqual([true, true]);
+      expect(notes.foreignRolePolicies).toBe(0);
+      // Die offene Tabelle ist das Gegenteil: sicher und ohne Bedingung.
+      const open = byName("open_posts");
+      expect(open.uncertain).toBe(false);
+      expect(open.commands.find((entry) => entry.command === "select")).toMatchObject({ allowed: "always", condition: "none" });
+      // Die fremde Policy steht mit Namen da und zaehlt nicht.
+      const strange = byName("foreign_reports");
+      expect(strange.foreignRolePolicies).toBe(1);
+      expect(strange.policies.map((entry) => [entry.name, entry.applies, entry.roles])).toEqual([
+        ["analyst_read", false, [foreignRole]],
+      ]);
+      // Und die Tabelle ohne Row Level Security zeigt ihre weite Policy, damit
+      // niemand sie fuer wirksam haelt.
+      const audit = byName("no_rls_audit");
+      expect(audit.rowSecurityEnabled).toBe(false);
+      expect(audit.policies.map((entry) => [entry.name, entry.applies])).toEqual([["read_all", true]]);
+
+      // --- Zusage 2: genau so verhaelt sich die echte Data API ---
+      const signedIn = { ...context, claims: { role: "authenticated" as const, subject: signedInUser } };
+      const openRows = await generated.listRows(signedIn, scope, { schema, table: "open_posts" });
+      expect(openRows.rows).toHaveLength(1);
+      const noteRows = await generated.listRows(signedIn, scope, { schema, table: "own_notes" });
+      expect(noteRows.rows.map((row) => row.owner)).toEqual([signedInUser]);
+      const lockedRows = await generated.listRows(signedIn, scope, { schema, table: "locked_secrets" });
+      expect(lockedRows.rows).toEqual([]);
+      const strangeRows = await generated.listRows(signedIn, scope, { schema, table: "foreign_reports" });
+      expect(strangeRows.rows).toEqual([]);
+      // Die Tabelle ohne Row Level Security wird nicht offen, sondern verweigert.
+      await expect(generated.listRows(signedIn, scope, { schema, table: "no_rls_audit" }))
+        .rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+      // Und in SQL waere dieselbe Tabelle fuer dieselbe Rolle lesbar: Die
+      // Verweigerung ist eine Entscheidung von QKERN und kein Zufall der
+      // Datenbank.
+      const raw = await dataPlane.queryReadOnly(context, scope, `SELECT id FROM "${schema}".no_rls_audit`, 10);
+      expect(raw.rows).toHaveLength(1);
+
+      // Die Grenze des Urteils, ausdruecklich: Ohne den Claim sieht dieselbe
+      // Rolle keine Zeile von own_notes. Genau darum steht dort `sometimes` und
+      // nicht `always`.
+      const withoutClaim = await dataPlane.queryReadOnly(context, scope, `SELECT id FROM "${schema}".own_notes`, 10);
+      expect(withoutClaim.rows).toEqual([]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();
     }
   });
