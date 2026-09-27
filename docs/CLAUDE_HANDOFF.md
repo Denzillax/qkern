@@ -168,6 +168,28 @@ Grossbuchstaben.
   "(2.50)" und "(2.52)": 188 statt 186. Die Mutationsprobe entlarvte den
   Webhook-Fall: ohne eine zweite, nicht gekoppelte Tabelle bewies er nichts
   ueber den Tabellenfilter; seit `510be1c` tut er es. Im Browser nicht gesehen
+- Slice 2.63 (Zweig `slice/logdrains`): **Log-Drains tragen nur, was die
+  Console schon zeigt.** Der Platzhalter `set-log-drains` ist weg;
+  `components/console/log-drains-view.tsx` ist eine echte Seite. Fuenf Quellen
+  (`auth_audit`, `function_invocations`, `storage_objects`,
+  `webhook_deliveries`, `usage_series`), je mit einer festen Feldliste in
+  `lib/console/log-drains`, die an der Projektion der zugehoerigen
+  Console-Ansicht haengt: `tests/log-drain-field-boundary` liest die `.tsx` und
+  verlangt fuer jedes weitergeleitete Feld einen Eintrag in ihrem Zeilentyp.
+  Durchgesetzt zur Laufzeit von einer Whitelist (`projectLogDrainEntry`), nicht
+  vom SQL. **Zurueckgehalten**, obwohl die Console sie zeigt: `invokedBy` und
+  `ownerSubject` (Akteursreferenzen bis 320 Zeichen, eine E-Mail passt hinein)
+  und `bucketId`. **Kein zweiter Zustellweg**: dieselbe Outbox, derselbe
+  Vault-Signierer, dasselbe Backoff und Dead Letter aus `0032`; die Kopplung
+  steht in `0054_project_log_drains.sql` (nach 0053 frei), mit einer
+  IMMUTABLE-Funktion statt 31 ausgeschriebener Arrays fuer die Quellenliste.
+  Gebuendelt nach Anzahl oder Alter, mit `schemaVersion` an der Definition.
+  `webhook_deliveries` ueberspringt die Zustellungen der Drains selbst, sonst
+  speiste sich die Quelle aus ihrer eigenen Wirkung. **Ehrlich offen**: Der
+  Sammler fuehrt seinen Stand im Prozess (wie die Webhook-Bruecke vor `0050`)
+  und hat noch keinen dauerhaften Aufrufer; das Cron-Log ist keine Quelle, weil
+  es rekonstruiert und nicht gespeichert wird. PostgreSQL-Fall "(2.63) forwards
+  only the fields the console already shows". Im Browser nicht gesehen
 - Slice 2.60 (Zweig `slice/protection`): **Passwoerter gegen bekannte Lecks,
   ohne fremden Dienst.** Der Platzhalter `auth-protection`
   („Angriffsschutz": Captcha, Passwortpruefung gegen bekannte Lecks,

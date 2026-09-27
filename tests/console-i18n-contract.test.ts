@@ -24,6 +24,7 @@ import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
 import { authProtectionTexts } from "@/lib/console/auth-protection-texts";
 import { authPoliciesTexts } from "@/lib/console/auth-policies-texts";
 import { sqlTemplateTexts } from "@/lib/console/sql-templates";
+import { logDrainTexts } from "@/lib/console/log-drains";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -106,6 +107,9 @@ async function consoleKeys(): Promise<string[]> {
   // Die Vorlagen des SQL-Editors (2.61) zeigen Titel, Fragen und die Gruende
   // einer Ablehnung ueber t(variable).
   for (const text of sqlTemplateTexts()) keys.add(text);
+  // Einstellungen -> Log-Drains (2.54) zeigt Quellen, ihre Feldlisten, die
+  // Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of logDrainTexts()) keys.add(text);
   return [...keys];
 }
 

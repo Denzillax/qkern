@@ -14,6 +14,8 @@ import { PostgresDatabaseWebhookRepository } from
   "@/lib/server/compute/database-webhook-postgres-repository";
 import { PostgresDatabaseWebhookCursorRepository } from
   "@/lib/server/compute/database-webhook-cursor-postgres-repository";
+import { LogDrainService } from "@/lib/server/compute/log-drains";
+import { PostgresLogDrainRepository } from "@/lib/server/compute/log-drain-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
@@ -139,10 +141,33 @@ export function createDatabaseWebhookServiceFromEnv(
   });
 }
 
+/**
+ * Log-Drains (2.54).
+ *
+ * Dieselbe Freischaltung wie die uebrigen Definitionen, aus demselben Grund wie
+ * bei den Datenbank-Webhooks: Wer die Verwaltungsflaeche fuer Cron und Webhooks
+ * nicht hat, soll auch diese nicht haben. Ein eigener Schalter waere eine zweite
+ * Stelle, an der jemand eine Flaeche ohne Absicht aufmacht.
+ */
+export function createLogDrainServiceFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  if (env.QKERN_COMPUTE_DEFINITIONS_ENABLED !== "true") {
+    throw new ConfigurationError("Set QKERN_COMPUTE_DEFINITIONS_ENABLED=true explicitly.");
+  }
+  if (runtimeModeFromEnv(env) !== "postgres") {
+    throw new ConfigurationError("Log drains require the PostgreSQL runtime mode.");
+  }
+  return new LogDrainService({
+    repository: new PostgresLogDrainRepository(new PostgresControlPlane(getPostgresPool(env))),
+  });
+}
+
 type GlobalComputeDefinitions = typeof globalThis & {
   __qkernComputeDefinitionService?: ComputeDefinitionService;
   __qkernFunctionInvocationService?: FunctionInvocationService;
   __qkernDatabaseWebhookService?: DatabaseWebhookService;
+  __qkernLogDrainService?: LogDrainService;
 };
 
 export function getComputeDefinitionService() {
@@ -161,4 +186,10 @@ export function getDatabaseWebhookService() {
   const runtime = globalThis as GlobalComputeDefinitions;
   runtime.__qkernDatabaseWebhookService ??= createDatabaseWebhookServiceFromEnv();
   return runtime.__qkernDatabaseWebhookService;
+}
+
+export function getLogDrainService() {
+  const runtime = globalThis as GlobalComputeDefinitions;
+  runtime.__qkernLogDrainService ??= createLogDrainServiceFromEnv();
+  return runtime.__qkernLogDrainService;
 }

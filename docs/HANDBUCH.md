@@ -1837,6 +1837,119 @@ Datenbank: Migration `0049_project_database_webhooks.sql` hält die Kopplung.
 Die ausgehende Definition, die Outbox, die Lease, das Backoff und der Dead
 Letter bleiben in `0032`.
 
+### Log-Drains
+
+Seit `2.54.0` ist **Einstellungen → Log-Drains** keine Platzhalterseite mehr:
+QKERN leitet Logs an ein fremdes Ziel weiter, etwa an einen Log-Dienst oder ein
+SIEM.
+
+**Die eine harte Grenze.** Ein Drain trägt genau die Felder, die die Console
+für dieselbe Quelle schon zeigt, und kein einziges mehr. Ein Drain, der rohe
+Anwendungslogs an einen fremden Dienst schickt, ist ein Datenleck mit
+freundlichem Namen: Die Adresse eines Endnutzers, eine Nutzlast oder ein
+Geheimnis verlässt dabei die Plattform, und niemand bemerkt es, weil das Ziel ja
+bestellt war.
+
+Die Grenze steht als Feldliste je Quelle in `lib/console/log-drains` und hängt
+an einem Vertrag: `tests/log-drain-field-boundary` liest die Console-Ansicht
+jeder Quelle und verlangt für **jedes** weitergeleitete Feld einen Eintrag in
+ihrer Projektion. Ein Feld mehr lässt den Lauf scheitern. Durchgesetzt wird sie
+zur Laufzeit von einer Whitelist: `projectLogDrainEntry` geht die deklarierten
+Feldnamen durch und nimmt nur, was dort steht — ein Leser, der versehentlich
+eine Spalte mehr liest, kann sie nicht weiterleiten.
+
+**Die Quellen und ihre Felder.**
+
+| Quelle | Felder | Zurückgehalten |
+| --- | --- | --- |
+| `auth_audit` | `id`, `createdAt`, `action`, `actorType`, `resourceRef`, `status` | `actorRef`, `metadata` |
+| `function_invocations` | `functionId`, `functionName`, `invocationId`, `startedAt`, `durationMs`, `outcome`, `statusCode`, `errorCode` | `invokedBy` |
+| `storage_objects` | `id`, `bucketName`, `key`, `sizeBytes`, `contentType`, `status`, `createdAt`, `deleteAfter`, `deletedAt` | `bucketId`, `ownerSubject` |
+| `webhook_deliveries` | `id`, `eventType`, `status`, `attemptCount`, `lastFailureCode`, `occurredAt`, `settledAt` | Nutzlast, Ziel-Adresse |
+| `usage_series` | `metric`, `bucket`, `start`, `accepted`, `rejected`, `events` | Einzelereignisse |
+
+Drei Felder zeigt die Console und ein Drain trägt sie trotzdem nicht:
+`invokedBy` und `ownerSubject` sind Akteursreferenzen und dürfen nach `0045`
+und `0025` bis zu 320 Zeichen lang sein — eine E-Mail-Adresse passt hinein, und
+an ein fremdes Ziel gehört sie nicht. `bucketId` ist eine interne Kennung, die
+der Bucket-Name lesbar ersetzt. Das Auth-Protokoll hat dieses Problem nicht:
+Der Sanitizer aus `2.35.0` verbietet in jeder Referenz `@` und `qk_` und wirft,
+bevor irgendein Sink schreibt.
+
+**Warum das Cron-Log nicht auf der Liste steht.** Es ist kein gespeichertes Log.
+Es wird bei jeder Anfrage aus dem Ausdruck, dem Dedupe-Fenster und den
+vorhandenen Nachrichten rekonstruiert, und der Zustand eines Vorkommens ändert
+sich danach noch. Weiterleiten hieße, dasselbe Vorkommen mehrfach mit
+wechselndem Zustand zu senden und einem Empfänger einen Ereignisstrom zu
+versprechen, den es nicht gibt. Aus demselben Grund gehen von
+`webhook_deliveries` nur **abgeschlossene** Zustellungen und von `usage_series`
+nur **abgeschlossene** Stunden hinaus.
+
+**Was eine Ladung trägt.** Eine Hülle mit der Fassung des Vertrags, der Quelle,
+der Anzahl und den Einträgen — ohne Ziel, ohne Referenz, ohne Geheimnis:
+
+```json
+{
+  "schemaVersion": 1,
+  "source": "auth_audit",
+  "count": 2,
+  "entries": [
+    {
+      "id": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+      "createdAt": "2026-09-27T09:00:00.000Z",
+      "action": "project_auth.sign_in",
+      "actorType": "app_user",
+      "resourceRef": "project_auth_user:7b1c…",
+      "status": "succeeded"
+    }
+  ]
+}
+```
+
+**Zugestellt wird über den vorhandenen Webhook-Weg.** Es gibt keinen zweiten:
+dieselbe Outbox mit Lease aus `0032`, dieselbe serverberechnete Wartezeit,
+dieselbe Versuchsgrenze, dasselbe Dead Letter, derselbe `HmacWebhookSigner`
+über den Vault und dieselbe Zielregel `isDeliverableWebhookTarget`. Ein zweiter
+Zustellweg wäre eine zweite Stelle, an der die Regeln für ausgehende
+Verbindungen auseinanderfallen könnten — und die erste, an der es niemand
+merkt. Gebündelt wird nach Anzahl **oder** Alter: Die Anzahl hält die Last
+klein, das Alter verhindert, dass eine ruhige Umgebung ihre letzten Einträge
+stundenlang liegen lässt.
+
+**Die eigenen Zustellungen bleiben draußen.** Die Quelle `webhook_deliveries`
+überspringt jede Zustellung, die zu einem Log-Drain gehört. Ohne diese Bedingung
+erzeugte jede weitergeleitete Ladung eine neue Zustellzeile, die beim nächsten
+Lauf wieder weitergeleitet würde.
+
+**Keine Lückenlosigkeit.** Der Stand des Sammlers steht im Prozess, nicht in der
+Datenbank. Ein Neustart beginnt an der Gegenwart, statt die Vergangenheit
+nachzuschicken, und ein abgebrochener Lauf kann eine Ladung doppelt senden. Wer
+eine beweisbare Kette braucht, liest das Audit-Log, das sie hat.
+
+**Die Routen**, mit `project_compute_admin` und `Cache-Control: private,
+no-store` wie die benachbarten Definitionsrouten:
+
+- `GET /api/v1/projects/{projectId}/environments/{environment}/compute/log-drains`
+- `POST` auf dieselbe Route legt an. Ziel, Quellen und Referenz sind danach
+  unveränderlich; eine Änderung ist Neuanlegen.
+- `GET` und `PATCH` auf `.../compute/log-drains/{logDrainId}`; `PATCH` nimmt nur
+  `{ "enabled": true | false }`.
+
+Ein Feld für eine Feldauswahl, einen Filter oder eine Nutzlast gibt es in
+keinem dieser Körper. Wäre es wählbar, wäre die Grenze verhandelbar.
+
+**Kein DELETE**, aus demselben Grund wie bei den Datenbank-Webhooks: Löschen
+nähme über den Fremdschlüssel die wartenden Ladungen mit. Abschalten hält sie
+an, ohne etwas zu verlieren, und ist rücknehmbar.
+
+Das Signaturgeheimnis liegt im Vault; gespeichert wird ausschließlich die
+**Referenz**. Sie erscheint unter Integrationen → Vault als Benutzer der Sorte
+Webhook, weil ein Drain eine ausgehende Definition aus `0032` besitzt.
+
+Datenbank: Migration `0054_project_log_drains.sql` hält die Kopplung samt der
+festen Quellenliste. Die ausgehende Definition, die Outbox, die Lease, das
+Backoff und der Dead Letter bleiben in `0032`.
+
 ### Vault: was QKERN kennt, und was es nicht kennt
 
 Seit `2.52.0` ist **Integrationen → Vault** keine Platzhalterseite mehr. Der

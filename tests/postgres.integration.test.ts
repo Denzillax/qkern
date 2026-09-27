@@ -87,6 +87,14 @@ import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catal
 // zertifiziert.
 import { FunctionInvocationService } from "@/lib/server/compute/function-invocation";
 import { FunctionInvocationError } from "@/lib/server/compute/functions";
+// Log-Drains (2.54): echte Definition, echte Quelle, echte Outbox, echter
+// Zusteller, echter Vault.
+import { LogDrainCollector, LogDrainService } from "@/lib/server/compute/log-drains";
+import {
+  PostgresLogDrainRepository,
+  PostgresLogDrainSourceReader,
+} from "@/lib/server/compute/log-drain-postgres-repository";
+import { LOG_DRAIN_SOURCE_DEFINITIONS } from "@/lib/console/log-drains";
 // Die Bruecke als Prozess (2.53): derselbe Prozess, den der Betrieb startet.
 import { spawn } from "node:child_process";
 
@@ -3213,6 +3221,233 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
         .catch(() => undefined);
     }
+  });
+
+  it("(2.63) forwards only the fields the console already shows", async () => {
+    // Die Grenze des Log-Drain-Slices (2.54) an echten Zeilen: Was hinausgeht,
+    // muss genau die Projektion der Console-Ansicht sein.
+    //
+    // Der Vertrag `tests/log-drain-field-boundary` vergleicht Listen am
+    // Quelltext. Er kann nicht sagen, ob die Zeile aus der Datenbank wirklich
+    // so aussieht -- ob also `invoked_by` beim Lesen tatsaechlich wegfaellt,
+    // ob die Huelle wirklich ohne Ziel und ohne Referenz in der Outbox landet
+    // und ob der Zusteller sie mit dem Schluessel aus einem echten Vault
+    // signiert. Genau das laeuft hier, und zwar ueber die echte
+    // Produktkette: `FunctionInvocationService` schreibt das Protokoll aus
+    // 0045, `PostgresLogDrainSourceReader` liest es, `LogDrainCollector`
+    // buendelt, `WebhookOutbox` reiht ein, `WebhookDeliveryRuntime` stellt zu.
+    //
+    // Der Lackmustest ist `invokedBy`: Die Console **zeigt** dieses Feld, und
+    // es traegt hier die E-Mail-Adresse des Administrators. Im gesendeten
+    // Koerper darf sie nirgends stehen.
+    //
+    // Der Stack: PostgreSQL, weil der Fall eine echte Control Plane **und**
+    // einen echten Vault gleichzeitig braucht. Der Vault-Stack hat keine
+    // Datenbank; seit 2.50 laeuft im PostgreSQL-Stack ein Vault, genau aus
+    // diesem Grund.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.50, 2.53 und 2.59: Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden, und
+    // eine Organisation mit unloeschbaren Zeilen darunter blockiert das.
+    // Abgeraeumt wird nur, was das Produkt hergibt -- und das ist hier nichts:
+    // `project_function_invocations` ist append-only, und die Drain-Flaeche
+    // loescht ausdruecklich nicht.
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const drainOwner = randomUUID();
+    const drainOrganization = randomUUID();
+    const drainProject = randomUUID();
+    // Die Adresse ist der Lackmustest. `project_function_invocations.invoked_by`
+    // nimmt sie auf, die Console zeigt sie, und der Drain darf sie nicht tragen.
+    const actorRef = `log-drain-${drainOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [drainOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Log Drains', $2, $3)`,
+    [drainOrganization, `log-drains-${drainOrganization}`, drainOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [drainOrganization, drainOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Log Drains', $3, 'test', 'ready', $4)`,
+    [drainProject, drainOrganization, `log-drains-${drainProject}`, drainOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [drainOrganization, drainProject, `managed:${drainProject}`]);
+
+    const scope = {
+      organizationId: drainOrganization, projectId: drainProject, environment: "development" as const,
+    };
+    const admin = {
+      organizationId: drainOrganization, actorRef, role: "admin" as const, subject: drainOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+    const drains = new PostgresLogDrainRepository(control);
+
+    // Die Definition ueber den echten Dienst, mit der echten Pruefung. Zwei
+    // Quellen: eine mit Zeilen, eine ohne. Ohne die zweite bewiese der Fall
+    // nichts darueber, dass je Quelle gebuendelt wird.
+    const drain = await new LogDrainService({ repository: drains }).create(admin, scope, {
+      name: "logs-an-siem",
+      url: "https://siem.example.com/qkern/logs",
+      sources: ["auth_audit", "function_invocations"],
+      signingSecretRef: databaseWebhookSecretRef!,
+    });
+    expect(drain.sources).toEqual(["auth_audit", "function_invocations"]);
+    expect(drain.eventTypes).toEqual(["log.auth_audit", "log.function_invocations"]);
+    expect(drain.enabled).toBe(true);
+    // Kein Geheimniswert, nirgends -- nur die Referenz.
+    expect(JSON.stringify(drain)).not.toContain("secret\":\"");
+    expect(drain.signingSecretRef).toBe(databaseWebhookSecretRef);
+
+    const outboxRepository = new PostgresWebhookOutboxRepository(control);
+    const collector = new LogDrainCollector({
+      reader: new PostgresLogDrainSourceReader(control),
+      drains,
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      scope,
+      maxBatchEntries: 2,
+    });
+    // Der erste Lauf setzt den Stand auf die Spitze: Ein neu angelegter Drain
+    // schickt dem Empfaenger nicht als erste Handlung die Vergangenheit.
+    expect(await collector.poll()).toBe(0);
+
+    // Jetzt entstehen die Zeilen, ueber den echten Aufrufdienst. Nur die
+    // Sandbox ist ersetzt; sie ist im Functions-Stack eigens zertifiziert.
+    const definitions = new ComputeDefinitionService({
+      repository: new PostgresComputeDefinitionRepository(control),
+    });
+    const image = `registry.example.com/qkern/probe@sha256:${"c".repeat(64)}`;
+    const suffix = randomUUID().slice(0, 8);
+    const probe = await definitions.createFunction(admin, scope, {
+      name: `drain-probe-${suffix}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+    // Was ein Container drucken wuerde. 0045 speichert es nicht, und der Drain
+    // kann es darum auch nicht tragen -- geprueft wird es trotzdem.
+    const containerOutput = `stdout-${randomUUID()}`;
+    const invocations = new PostgresComputeDefinitionRepository(control);
+    const invoker = new FunctionInvocationService({
+      repository: invocations, invocationLog: invocations,
+      invoker: {
+        async invoke() {
+          return Object.freeze({ statusCode: 201, headers: {}, body: { printed: containerOutput } });
+        },
+      },
+    });
+    await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+    await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+
+    // Die Console zeigt beide Zeilen -- **mit** der Adresse des Aufrufers.
+    const shown = await definitions.readFunctionInvocationLog(admin, scope, { limit: 10 });
+    expect(shown.rows).toHaveLength(2);
+    expect(shown.rows[0].invokedBy).toBe(actorRef);
+
+    // Und jetzt der Drain.
+    expect(await collector.poll()).toBe(1);
+
+    const pending = await owner.query<{
+      event_type: string; status: string; payload: Record<string, unknown>;
+    }>(`SELECT event_type, status, payload FROM project_webhook_deliveries
+         WHERE organization_id = $1 AND project_id = $2`, [drainOrganization, drainProject]);
+    // Genau eine Ladung: Die zweite Quelle hat keine Zeilen, und eine leere
+    // Ladung waere eine Behauptung ueber nichts.
+    expect(pending.rows).toHaveLength(1);
+    expect(pending.rows[0].event_type).toBe("log.function_invocations");
+    expect(pending.rows[0].status).toBe("pending");
+    expect(Object.keys(pending.rows[0].payload).sort())
+      .toEqual(["count", "entries", "schemaVersion", "source"]);
+
+    const entries = pending.rows[0].payload.entries as Array<Record<string, unknown>>;
+    expect(entries).toHaveLength(2);
+    // Der Kern des Falls: Feld fuer Feld genau die Liste, die die Console zeigt.
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort())
+        .toEqual([...LOG_DRAIN_SOURCE_DEFINITIONS.function_invocations.fields].sort());
+      expect(entry.functionName).toBe(probe.name);
+      expect(entry.outcome).toBe("completed");
+      expect(entry.statusCode).toBe(201);
+      expect(entry.errorCode).toBeNull();
+    }
+    const stored = JSON.stringify(pending.rows[0].payload);
+    expect(stored, "die Ladung traegt die Adresse des Aufrufers").not.toContain(actorRef);
+    expect(stored, "die Ladung traegt die Ausgabe des Containers").not.toContain(containerOutput);
+    expect(stored, "die Ladung traegt das Ziel").not.toContain("siem.example.com");
+    expect(stored, "die Ladung traegt die Geheimnisreferenz")
+      .not.toContain(databaseWebhookSecretRef!);
+
+    // Der echte Zustellprozess mit dem echten Signierer und dem echten Vault.
+    const secrets = new VaultWebhookSecretProvider({
+      vaultKvUrl: new URL(vaultKvUrl!),
+      tokenProvider: new VaultTokenFileProvider(vaultTokenFile!),
+      cacheTtlMs: 0,
+    });
+    const sent: Array<{ headers: Record<string, string>; body: string; url: string }> = [];
+    const delivery = new WebhookDeliveryRuntime({
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      definitions: outboxRepository,
+      deliverer: new WebhookDeliverer(new HmacWebhookSigner(secrets), {
+        // Der Empfaenger ist die eine nachgebaute Stelle: Er bestaetigt die
+        // Zustellung so, wie der Vertrag es verlangt, und haelt fest, was
+        // wirklich gesendet wurde.
+        send: async (request) => {
+          sent.push({ headers: { ...request.headers }, body: request.body, url: request.url });
+          return { status: 200, acknowledgementId: request.headers["x-qkern-delivery-id"] ?? null };
+        },
+      }),
+      scope,
+      workerId: "certification-log-drains-1",
+    });
+    expect(await delivery.runOnce(), "der Zustellprozess hat nicht zugestellt")
+      .toMatchObject({ delivered: 1, failed: 0, skipped: 0 });
+    expect(sent).toHaveLength(1);
+
+    const delivered = sent[0];
+    expect(delivered.url).toBe("https://siem.example.com/qkern/logs");
+    expect(delivered.headers["x-qkern-event"]).toBe("log.function_invocations");
+    // Dieselbe Grenze noch einmal, aber am wirklich gesendeten Koerper: Was
+    // die Datenbank nicht traegt, koennte der Zusteller immer noch ergaenzt
+    // haben.
+    expect(delivered.body).not.toContain(actorRef);
+    expect(delivered.body).not.toContain(containerOutput);
+    expect(delivered.body).toContain(probe.name);
+    const body = JSON.parse(delivered.body) as { data: { entries: Array<Record<string, unknown>> } };
+    for (const entry of body.data.entries) {
+      expect(Object.keys(entry).sort())
+        .toEqual([...LOG_DRAIN_SOURCE_DEFINITIONS.function_invocations.fields].sort());
+    }
+
+    // Die Gegenrechnung: der Schluessel aus dem Vault, die Pruefung ohne den
+    // Signierer. Eine Signatur, die nur gegen sich selbst stimmt, waere keine.
+    const key = await secrets.resolve(databaseWebhookSecretRef!);
+    expect(key, "der Vault haelt den Schluessel nicht").not.toBeNull();
+    const signature = delivered.headers["x-qkern-signature"];
+    expect(signature).toMatch(/^v1=[A-Za-z0-9_-]{43,128};key=[A-Za-z0-9._:-]{1,64}$/);
+    const presented = signature.slice("v1=".length, signature.indexOf(";key="));
+    expect(signature.endsWith(`;key=${key!.keyId}`)).toBe(true);
+    expect(verifyWebhookSignature({
+      secret: key!.secret,
+      canonicalPayload: `${delivered.headers["x-qkern-timestamp"]}.${delivered.body}`,
+      signature: presented,
+    }), "die Signatur stimmt nicht mit dem Schluessel des Vaults").toBe(true);
+
+    // Abgeschaltet sammelt der Drain nichts Neues. Der dritte Aufruf steht im
+    // Protokoll und bleibt dort -- das ist der Unterschied zwischen pausieren
+    // und stauen.
+    await new LogDrainService({ repository: drains })
+      .setEnabled(admin, scope, drain.id, false);
+    await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
+    expect(await collector.poll()).toBe(0);
+    const afterDisable = await owner.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2`, [drainOrganization, drainProject]);
+    expect(afterDisable.rows[0]?.n).toBe("1");
+    const stillLogged = await definitions.readFunctionInvocationLog(admin, scope, { limit: 10 });
+    expect(stillLogged.rows).toHaveLength(3);
   });
 
   it("(2.55) lists function invocations with outcome and duration without the container output", async () => {
