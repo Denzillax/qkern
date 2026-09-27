@@ -7,6 +7,16 @@ const projectAuthScopeParameters = [
   { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
 ] as const;
 
+/**
+ * Die Katalog-Lesungen mit Schema-Wahl tragen alle denselben Parametersatz.
+ * Er steht hier einmal, weil ein abweichendes Muster in einer einzelnen Route
+ * eine Aussage waere, die keine ist.
+ */
+const projectCatalogSchemaParameters = [
+  ...projectAuthScopeParameters,
+  { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
+] as const;
+
 const projectComputeFunctionParameters = [
   ...projectAuthScopeParameters,
   { name: "functionId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
@@ -51,6 +61,14 @@ export const qkernOpenAPI = {
       get: {
         tags: ["System"], operationId: "getHealth", summary: "Control-plane health",
         responses: { "200": { description: "Healthy", content: { "application/json": { schema: { $ref: "#/components/schemas/Health" } } } } },
+      },
+    },
+    "/openapi": {
+      get: {
+        tags: ["System"], operationId: "getOpenApiDocument",
+        summary: "Read this OpenAPI description of the control plane",
+        description: "Unauthenticated and cacheable for five minutes (Cache-Control: public, max-age=300). The document is the static description of this deployment and carries no tenant data, which is why it needs no credential. The per-environment description of the generated data API is a different route, /v1/projects/{projectId}/environments/{environment}/generated-openapi, because that one depends on the project schema and therefore on an authorized scope.",
+        responses: { "200": { description: "The OpenAPI 3.1 document of this deployment", content: { "application/json": { schema: { description: "An OpenAPI 3.1 document." } } } } },
       },
     },
     "/internal/v1/projects/provisioning/metrics": {
@@ -156,6 +174,20 @@ export const qkernOpenAPI = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
           "503": { description: "Project provisioning service unavailable", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments": {
+      get: {
+        tags: ["Projects"], operationId: "listProjectEnvironments",
+        summary: "List the environments of one project with their database reference",
+        description: "Since `2.68`, read-only, with a session that has read access, private, no-store. The route takes no query parameter at all; a parameter and an unparseable project id both answer 404, so a rejected request does not disclose whether the project exists. databaseInstanceRef is the opaque identifier the provisioner assigns (managed:...) or a waiting marker (pending:...), and bound says whether it already points at a database. It is not an address: neither host nor port nor password is in it, and the server-side connection catalog does not hand those out. createdAt is null where the source keeps no timestamp.",
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Environments of this project with their opaque database reference", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectEnvironmentListResponse" } } } },
+          "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -267,6 +299,51 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/database/statements": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectDatabaseStatements",
+        summary: "Read the most expensive statement digests of the project database without any query text",
+        description: "Since `2.67`. Same access as /database/activity: a session with read access or a scope-bound project key, private, no-store. The route takes no query parameter at all; any parameter is a 400, because there is nothing to choose: the view applies to the one database of this environment and the service already sorts and bounds. There is deliberately no query text. pg_stat_statements normalizes queries, but a utility command keeps its literals, on a shared cluster even those of another tenant, so only the normalized identifier and counters leave the server. id is the queryid as a decimal string, because bigint does not fit losslessly into a JSON number, and the hash cannot be turned back into text. calls, totalTimeMs and rows are sums of the view; meanTimeUs is read from mean_exec_time and is in microseconds, not milliseconds, because a rounded millisecond value would be 0 for most statements of a healthy database. A missing extension is neither an error nor an empty result: installed is false. At most 50 digests, then truncated is true. Nothing is written, and there is no way to reset the view from here.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Statement digests of this environment's database, most expensive first", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectStatementsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/database/runtime": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectDatabaseRuntime",
+        summary: "Read what this environment's database runs on",
+        description: "Since `2.68`. Same access as /database/settings and /database/activity: a session with read access or a scope-bound project key, private, no-store. The route takes no query parameter at all; any parameter is a 400, because there is nothing to choose. The separation from /database/settings is deliberate and not redundant: there stands how the database is configured, here stands what it runs on. serverVersion and serverVersionNum are two statements of the same server, one readable and one comparable, and neither is derived from the other. encoding, collate and ctype are server_encoding, datcollate and datctype. sizeBytes is pg_database_size(current_database()). inRecovery is pg_is_in_recovery(), which says this connection reads a standby; it is the only statement QKERN can make about replication and it is not a list of read replicas. startedAt is pg_postmaster_start_time(). There is deliberately no connection string, no host, no port and no data path in this answer, and there is no write verb.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Server version, encoding, collation, size, recovery state and start time", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseRuntimeResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/database/health": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectDatabaseHealth",
+        summary: "Read the fault counters and the write path of the project database",
+        description: "Since `2.70`. Same access as /database/activity and /database/runtime: a session with read access or a scope-bound project key, private, no-store. The route takes no query parameter at all; any parameter is a 400. This is deliberately not a server log: QKERN has no file access to the project database, log_destination writes into files of the server, and this route reads none of them. What it reads are counters, that is sums since the last reset of the statistics; no field carries the wording of an event, and only checksumLastFailure carries the timestamp of one. checksumFailures is null when this server runs without data checksums, which is not the same as zero failures. The write path under writeback applies to the whole cluster and not only to this database, and checkpointSource names the view this server really has, pg_stat_checkpointer since PostgreSQL 17 and pg_stat_bgwriter before it. The delimitation from /database/activity is deliberate: throughput and the connection groups per role stay there and are not repeated here. There is no write verb.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Fault counters of this database and the write path of the server", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseHealthResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/auth/access": {
       get: {
         tags: ["Project Data"], operationId: "inspectProjectAuthAccess",
@@ -299,6 +376,156 @@ export const qkernOpenAPI = {
         ],
         responses: {
           "200": { description: "Foreign keys ordered by table and constraint name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectForeignKeysResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/triggers": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectTriggers",
+        summary: "List the triggers of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. timing is before, after or instead_of, orientation is row or statement, and enabled reports the catalog state origin, always, replica or disabled. functionSchema and functionName name the function the trigger calls; condition is the WHEN clause or null. The body of that function is not part of this answer. At most 200 triggers, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Triggers ordered by table and trigger name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectTriggersResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/functions": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectSchemaFunctions",
+        summary: "List the functions and procedures of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. kind is function or procedure; aggregates and window functions stay out. arguments is written like pg_get_function_arguments (names, types, modes, defaults), identityArguments like pg_get_function_identity_arguments (without defaults, with OUT parameters) and returnType like pg_get_function_result, which a procedure does not have. volatility and securityDefiner are the declared properties. The source text of a function is deliberately not part of this answer. At most 200 functions, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Functions and procedures ordered by name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectSchemaFunctionsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/indexes": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectIndexes",
+        summary: "List the indexes of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. valid is false while CREATE INDEX CONCURRENTLY runs or after it failed. columns holds the columns in index order; an expression is not listed there and stands in definition, which is written like pg_get_indexdef. predicate is the WHERE part of a partial index, otherwise null. At most 200 indexes, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Indexes ordered by table and index name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectIndexesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/policies": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectPolicies",
+        summary: "List the row-level security policies of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. command is select, insert, update, delete or all, and roles carries the role names the policy applies to, where public stands for all roles. usingExpression and checkExpression are the two expressions of the policy as the catalog renders them, or null where the policy has none. At most 200 policies, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Policies ordered by table and policy name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectPoliciesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/enum-types": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectEnumTypes",
+        summary: "List the enum types of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. labels keeps the sort order of the type, not alphabetical order. At most 200 types and at most 200 labels per type, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Enum types ordered by name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectEnumTypesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/column-privileges": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectColumnPrivileges",
+        summary: "List the per-column privileges of one schema through the dedicated read role",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. The schema query parameter defaults to public and is the only accepted parameter. One entry per table, column and grantee, where public stands for all roles, and inside it every granted privilege with its type (select, insert, update or references) and whether it is grantable. At most 2000 catalog rows are read and at most 500 entries are returned; either bound sets truncated to true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectCatalogSchemaParameters,
+        responses: {
+          "200": { description: "Column privileges grouped by table, column and grantee", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectColumnPrivilegesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/extensions": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectExtensions",
+        summary: "List the available and installed extensions of the project database",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. Database-wide, so there is no schema parameter and any query parameter is a 400. installedVersion is null for an extension that is available but not installed; schema and comment are null where the catalog has none. At most 400 extensions, then truncated is true. There is no writer behind this route: nothing is installed, upgraded or dropped from here.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Available and installed extensions", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectExtensionsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/roles": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectRoles",
+        summary: "List the roles of the project database with their attributes",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. Database-wide, so there is no schema parameter and any query parameter is a 400. These are the same rows /database/settings reports from pg_roles. connectionLimit is null for unlimited, as -1 means in the catalog, and validUntil is the end of the password validity or null. No password, no hash and no verifier is selected anywhere behind this route. At most 200 roles, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Roles ordered by name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectRolesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/publications": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectPublications",
+        summary: "List the logical replication publications of the project database",
+        description: "Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. Database-wide, so there is no schema parameter and any query parameter is a 400. The four publish flags say which commands the publication carries. tables holds schema.table entries, or schema.* for FOR TABLES IN SCHEMA, and stays empty for FOR ALL TABLES, where allTables is true instead. At most 100 publications and at most 500 table entries, then truncated is true.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Publications ordered by name", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectPublicationsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
+          "503": { description: "Project data plane unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/schema/foreign-data-wrappers": {
+      get: {
+        tags: ["Project Data"], operationId: "inspectProjectForeignDataWrappers",
+        summary: "List the foreign data wrappers, servers, user mappings and foreign tables of the project database",
+        description: "Since `2.72`. Same access as /schema: a session with read access or a scope-bound project key, private, no-store. Nothing is written; a catalog object is created like any schema change, through a Change Set. Database-wide, so there is no schema parameter and any query parameter is a 400. Four lists from one transaction, so that a server which disappears between two reads cannot leave a foreign table without its server; truncated applies to the answer as a whole and is true as soon as one of the four bounds takes effect. A wrapper reports handler and validator as regproc writes them, or null where the catalog holds 0, and fdwoptions is not read at all. A server option shows its value only for a fixed set of keys that describe where and how a connection reads: host, port, dbname, sslmode and the planner and behaviour options. Every other key still appears, but with value null, so a withheld value stays distinguishable from an empty string; user, password, sslpassword, sslcert, sslkey and passfile are deliberately not on that list. User mappings come without options at all, because umoptions is not selected: it carries the credentials for the foreign system. Bounds are 50 wrappers, 200 servers, 50 options per server, 500 user mappings and 1000 foreign tables. There is deliberately no POST and no DELETE on this path.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Foreign data wrappers, servers, user mappings and foreign tables", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectForeignDataWrappersResponse" } } } },
           "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Project data plane is not ready" },
           "503": { description: "Project data plane unavailable" },
@@ -542,6 +769,21 @@ export const qkernOpenAPI = {
         responses: { "202": { description: "Replay message created or returned idempotently", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectQueueReplayResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Source is not a dead letter in this exact queue scope" }, "503": { description: "Project Queues are disabled or unavailable" } },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/queues/metrics": {
+      get: {
+        tags: ["Project Queues"], operationId: "exportProjectQueueMetrics",
+        summary: "Export the queue counters of one project environment as Prometheus text",
+        description: "Owner or administrator only, the same admin boundary and the same error mapping as /queues/{queue}/status. The answer is text, not JSON: Content-Type text/plain; version=0.0.4; charset=utf-8, Cache-Control private, no-store, because every scrape wants the truth of the moment. Two gauges are exposed, qkern_queue_messages per queue and state and qkern_queue_oldest_available_age_seconds per queue, with the project and the environment as labels; every queue appears with all five states even when every counter is zero, so a scraper has the time series before it moves. No payload, no lease, no dedupe key and no worker identity is part of the exposition. Any query parameter is a 400 before anything is read. A queue literally named metrics loses only this one path to the export; its sub-routes stay reachable.",
+        security: [{ sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: {
+          "200": { description: "Prometheus text exposition over every queue of this scope", content: { "text/plain": { schema: { type: "string" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Project Queues are disabled or unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/compute/cron": {
       get: {
         tags: ["Project Compute"], operationId: "listProjectCronDefinitions",
@@ -780,6 +1022,33 @@ export const qkernOpenAPI = {
         responses: { "200": { description: "Secret reference status", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionSecretStatusResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "No Vault is connected (VAULT_NOT_CONFIGURED), its configuration is invalid (VAULT_MISCONFIGURED) or it did not answer (VAULT_UNAVAILABLE)" } },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/compute/functions/{functionId}/deployments": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectFunctionDeployments",
+        summary: "Read the image history of one function, newest revision first",
+        description: "Owner or administrator only, read-only. One row per deployment with the revision, the digest-pinned image, who deployed it and when.",
+        security: [{ sessionCookie: [] }], parameters: projectComputeFunctionParameters,
+        responses: { "200": { description: "Deployment history, newest revision first", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionDeploymentListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "deployProjectFunctionImage",
+        summary: "Roll out a new digest-pinned image for one function",
+        description: "Owner or administrator only with trusted same-origin validation. Only the image moves: name, limits and bindings of the definition stay as they are, and the history row is written in the same transaction, so an image change without history is not expressible at the database level. A rollback is a deployment onto the older digest and not a separate operation. The image must be digest-pinned; a tag is rejected.",
+        security: [{ sessionCookie: [] }], parameters: projectComputeFunctionParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/DeployProjectFunctionImage" } } } },
+        responses: { "201": { description: "New revision and the image it pins", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionDeploymentResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/functions/{functionId}/invocations": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectFunctionInvocations",
+        summary: "Read the invocation log of one function, newest first",
+        description: "Owner or administrator only, read-only. One row per invocation: start, duration, outcome and either an HTTP status or a fixed error code. Deliberately without stdout and stderr; what the container saw stays in the container, and no request payload is stored either. limit is the only accepted query parameter, at most 200 and 50 by default; any other or repeated parameter is a 400 before the service is called. The log across all functions of an environment is /compute/invocations.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectComputeFunctionParameters, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200, default: 50 } }],
+        responses: { "200": { description: "Invocations of this function, newest first", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectFunctionInvocationListResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/compute/secrets": {
       get: {
         tags: ["Project Compute"], operationId: "listProjectVaultSecretReferences",
@@ -855,6 +1124,26 @@ export const qkernOpenAPI = {
           schema: { type: "string", enum: ["hour", "day"], default: "hour" },
         }],
         responses: { "200": { description: "Read-only usage time series", content: { "application/json": { schema: { $ref: "#/components/schemas/UsageSeriesResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Usage Metering is disabled or unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/usage/billing": {
+      get: {
+        tags: ["Usage & Quotas"], operationId: "getProjectBillingProjection",
+        summary: "Read the monthly usage projection priced in money, read-only",
+        description: "Owner or administrator only, read-only. The answer carries kind: projection and says what it is by that: it is not an invoice, it has no number and no due date. The rate card is an internal authority, so no price can be set through this surface. A metric without an effective rate stays in the answer with priced false and null amounts and is additionally named in unpricedMetrics, instead of being silently counted as zero. Money is carried as decimal strings and micro units, never as a JavaScript number, and amounts are rounded down, never in favour of the provider. currency is null while no rate applies. The optional period selects one billing period; it is the only accepted query parameter.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "period", in: "query", required: false, description: "One billing period; the current one when absent.", schema: { type: "string" } }],
+        responses: { "200": { description: "Priced projection of the period", content: { "application/json": { schema: { $ref: "#/components/schemas/BillingProjectionResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Usage Metering is disabled or unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/usage/invoices": {
+      get: {
+        tags: ["Usage & Quotas"], operationId: "listProjectBillingInvoices",
+        summary: "List the issued invoices of one project environment, newest period first",
+        description: "Owner or administrator only, read-only. What comes back is the frozen document of the invoicing run: append-only, with its line items, newest period first. Nothing is written here; invoices come into existence only in the invoicing run, which also assigns the gap-free invoice number, and dueAt is a database default exactly thirty days after issuing that nobody can write. Money is carried as decimal strings and micro units, never as a JavaScript number. limit is the only accepted query parameter.",
+        security: [{ sessionCookie: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 } }],
+        responses: { "200": { description: "Issued invoices, newest period first", content: { "application/json": { schema: { $ref: "#/components/schemas/BillingInvoiceListResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Usage Metering is disabled or unavailable" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/storage/buckets": {
@@ -949,6 +1238,48 @@ export const qkernOpenAPI = {
         parameters: [...projectAuthScopeParameters, { name: "uploadId", in: "path", required: true, schema: { type: "string", maxLength: 128 } }],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CompleteProjectStorageUpload" } } } },
         responses: { "200": { description: "Object metadata committed or idempotently replayed" }, "401": { $ref: "#/components/responses/Unauthorized" }, "409": { description: "Provider object is missing or not ready" }, "422": { description: "Scanner rejected the object" }, "503": { description: "Object provider unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/storage/buckets/{bucketId}/uploads/multipart": {
+      post: {
+        tags: ["Project Storage"], operationId: "prepareProjectStorageMultipartUpload",
+        summary: "Begin a resumable upload: reserve exact quota and open a provider multipart upload",
+        description: "Requires the exact project key; authenticated and owner policies additionally require a valid active Project Auth access token. The declared checksum is the one of the whole file. The provider verifies each part against a signed per-part checksum, and the full sum is recomputed at completion; only that match makes the object clean. The one-time completion token is shown only here and only its SHA-256 verifier is persisted. Same-origin is checked as an allowed origin, and the route answers a CORS preflight.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "bucketId", in: "path", required: true, schema: { type: "string", maxLength: 128 } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PrepareProjectStorageMultipartUpload" } } } },
+        responses: { "201": { description: "Quota reserved and multipart upload opened", content: { "application/json": { schema: { $ref: "#/components/schemas/PreparedProjectStorageMultipartUploadResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Object key already exists" }, "413": { description: "Bucket quota exceeded" }, "503": { description: "Object provider unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/storage/uploads/{uploadId}/parts": {
+      post: {
+        tags: ["Project Storage"], operationId: "createProjectStoragePartGrant",
+        summary: "Issue one signed PUT grant for one part of a resumable upload",
+        description: "Requires the completion token: whoever cannot hold the reservation cannot upload into it either. The part checksum is inside the signature, so the provider rejects bytes that do not match it and a part without the checksum header as well. Only a living reservation issues part grants; an aborted, completed or expired upload has nothing left at the provider a signature could point at. The grant expires with the reservation at the latest. The returned headers must be sent unchanged.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "uploadId", in: "path", required: true, schema: { type: "string", maxLength: 128 } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectStoragePartGrant" } } } },
+        responses: { "200": { description: "Signed PUT grant for this part", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectStoragePartGrantResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { description: "Missing, wrong or no longer usable completion token" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Object provider unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/storage/uploads/{uploadId}/multipart": {
+      post: {
+        tags: ["Project Storage"], operationId: "completeProjectStorageMultipartUpload",
+        summary: "Complete a resumable upload with its part list and quarantine the object",
+        description: "Requires the completion token. The provider HEAD result must match exact size, MIME type and SHA-256 of the declaration. A replayed completion returns the already committed object instead of failing. Downloads stay unavailable until an injected scanner returns clean.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "uploadId", in: "path", required: true, schema: { type: "string", maxLength: 128 } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CompleteProjectStorageMultipartUpload" } } } },
+        responses: { "200": { description: "Object metadata committed or idempotently replayed", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectStorageObjectResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { description: "Missing, wrong or no longer usable completion token" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "Provider object is missing or not ready" }, "422": { description: "Scanner rejected the object" }, "503": { description: "Object provider unavailable" } },
+      },
+      delete: {
+        tags: ["Project Storage"], operationId: "abortProjectStorageMultipartUpload",
+        summary: "Abort a resumable upload and leave nothing behind",
+        description: "Requires the completion token, like the completion does. The provider multipart upload is aborted and the reserved quota is released; no object metadata is created.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "uploadId", in: "path", required: true, schema: { type: "string", maxLength: 128 } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AbortProjectStorageMultipartUpload" } } } },
+        responses: { "200": { description: "Upload aborted", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectStorageMultipartAbortResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { description: "Missing, wrong or no longer usable completion token" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Object provider unavailable" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/storage/buckets/{bucketId}/downloads": {
@@ -1100,6 +1431,26 @@ export const qkernOpenAPI = {
         description: "Accepts no caller-selected endpoint. Enforces exact issuer, audience, nonce, signature, verified email, HTTPS and no redirects.",
         security: [], responses: { "200": { description: "Application session or MFA challenge" }, "401": { $ref: "#/components/responses/Unauthorized" } },
         parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/oidc/providers": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthListOidcProviders",
+        summary: "List the configured OIDC providers before sign-in, so an app can name its login buttons",
+        description: "The same public boundary as authorize next to it: project key, origin gate, CORS, no-store. The answer is the two-field projection only, the slug and the issuer, never a client id and never the name of the secret environment variable. Whether a provider is allowed without email_verified is an operating statement for the console and stays behind the admin boundary at /auth/admin/providers; a caller who is not signed in does not learn it here. Any query parameter is a 400.",
+        security: [{ projectApiKey: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Configured providers with slug and issuer", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthOidcProviderListEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Origin is not allowed" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/admin/providers": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthAdminListOidcProviders",
+        summary: "List the configured OIDC providers for the console as owner or administrator",
+        description: "The admin boundary of the user list next to it: console session, no project key. Slug, issuer and requiresVerifiedEmail, which is the derived yes or no the security advisor computes its rule from; never a client id and never the name of the secret environment variable. Providers are configured on the server, not here: there is no writer behind this path. Any query parameter is a 400.",
+        security: [{ sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Configured providers with slug, issuer and email-verification requirement", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthAdminOidcProviderListEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/auth/admin/users": {
@@ -1303,6 +1654,50 @@ export const qkernOpenAPI = {
         security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/GeneratedDeleteRow" } } } },
         responses: { "200": { description: "Deleted row or empty RLS result", content: { "application/json": { schema: { $ref: "#/components/schemas/GeneratedMutationResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "RLS or primary key requirement not met" }, "503": { description: "Generated Data API unavailable" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/tables/{table}/aggregate": {
+      get: {
+        tags: ["Project Data"], operationId: "aggregateGeneratedTableRows",
+        summary: "Aggregate allowlisted table rows under the RLS of the caller",
+        description: "The same boundary, the same filters and the same error mapping as the row list next to it. Repeat fn for up to ten aggregates; each one is count, sum, avg, min or max, written as fn=sum:column, and count without a column is count(*). sum and avg require a numeric column, min and max a sortable one, and a sensitive or unreadable column is rejected. Repeat filter=column:operator:value for up to ten filters; values are parameterized. group accepts one sortable column and the result is then ordered by it. Counts and sums come back as decimal strings, because bigint and numeric would lose precision in JSON. At most 100 groups and at most 256 KiB of response; either bound sets truncated to true.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          ...projectAuthScopeParameters,
+          { name: "table", in: "path", required: true, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$` } },
+          { name: "schema", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" } },
+          { name: "fn", in: "query", required: true, schema: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", pattern: `^(count|sum|avg|min|max)(?::${DATA_IDENTIFIER_PATTERN})?$` } } },
+          { name: "group", in: "query", required: false, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$` } },
+          { name: "filter", in: "query", required: false, schema: { type: "array", maxItems: 10, items: { type: "string" } } },
+        ],
+        responses: {
+          "200": { description: "RLS-filtered aggregates", content: { "application/json": { schema: { $ref: "#/components/schemas/GeneratedAggregatesResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "RLS or primary key requirement not met" },
+          "429": { description: "The usage quota for row reads is exhausted" },
+          "503": { description: "Generated Data API unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/rpc/{function}": {
+      post: {
+        tags: ["Project Data"], operationId: "callGeneratedFunction",
+        summary: "Call one SECURITY INVOKER function of the project schema with named arguments",
+        description: "Only SECURITY INVOKER functions are served: their body runs as the caller, so the RLS of the touched tables applies. A SECURITY DEFINER function is refused, and so is an overloaded name, because which body would run would then be decided by type resolution. Whether the transaction may write follows from the declared volatility of the function, not from the caller. Arguments are named, at most 32 of them and bounded in size, and every argument must exist on the function while every argument without a default must be supplied. Without a project key the same CSRF boundary applies as for every mutation of the table surface. A set-returning function over the row limit is truncated, and truncated says so.",
+        security: [{ projectApiKey: [], projectAuthAccess: [] }, { projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          ...projectAuthScopeParameters,
+          { name: "function", in: "path", required: true, schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$` } },
+        ],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/GeneratedCall" } } } },
+        responses: {
+          "200": { description: "Rows the function returned, under the RLS of the caller", content: { "application/json": { schema: { $ref: "#/components/schemas/GeneratedCallResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "The function is SECURITY DEFINER or the data plane is not ready" },
+          "429": { description: "The usage quota for row reads is exhausted" },
+          "503": { description: "Generated Data API unavailable" },
+        },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/automation-policy": {
@@ -1859,6 +2254,80 @@ export const qkernOpenAPI = {
       ProjectRealtimeLimit: { type: "object", additionalProperties: false, required: ["id", "group", "unit", "value", "origin", "variable", "minimum", "maximum", "invalid"], properties: { id: { type: "string", maxLength: 64 }, group: { type: "string", enum: ["transport", "session", "changes", "retention", "usage"] }, unit: { type: "string", enum: ["connections", "subscriptions", "messages", "events", "bytes", "milliseconds", "levels", "nodes", "keys"] }, value: { type: ["integer", "null"] }, origin: { type: "string", enum: ["environment", "default", "code"], description: "environment: the variable is set. default: the variable exists but is unset. code: there is no variable for this limit. No limit is stored in a database, so there is no database origin" }, variable: { type: ["string", "null"], pattern: "^QKERN_REALTIME_[A-Z_]+$" }, minimum: { type: ["integer", "null"] }, maximum: { type: ["integer", "null"] }, invalid: { type: "boolean", description: "The variable carries something the runtime rejects; the realtime server would not start" } } },
       ProjectRealtimeSettings: { type: "object", additionalProperties: false, required: ["projectId", "environment", "limits", "features", "figures"], properties: { projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, limits: { type: "array", maxItems: 64, items: { $ref: "#/components/schemas/ProjectRealtimeLimit" } }, features: { type: "object", additionalProperties: false, required: ["enabled", "changes", "durableLog"], properties: { enabled: { type: "boolean" }, changes: { type: "boolean" }, durableLog: { type: "boolean" } } }, figures: { type: "object", additionalProperties: false, required: ["available", "reason"], properties: { available: { const: false }, reason: { const: "separate_process" } }, description: "Operating figures live in the realtime process and are not fetched from here" } } },
       ProjectRealtimeSettingsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectRealtimeSettings" } } },
+      ProjectSchemaTrigger: { type: "object", additionalProperties: false, required: ["name", "table", "timing", "events", "orientation", "enabled", "functionSchema", "functionName", "condition"], properties: { name: { type: "string", maxLength: 63 }, table: { type: "string", maxLength: 63 }, timing: { type: "string", enum: ["before", "after", "instead_of"] }, events: { type: "array", minItems: 1, maxItems: 4, items: { type: "string", enum: ["insert", "update", "delete", "truncate"] } }, orientation: { type: "string", enum: ["row", "statement"] }, enabled: { type: "string", enum: ["origin", "always", "replica", "disabled"] }, functionSchema: { type: "string", maxLength: 63 }, functionName: { type: "string", maxLength: 63 }, condition: { type: ["string", "null"], description: "The WHEN clause, or null." } } },
+      ProjectTriggers: { type: "object", additionalProperties: false, required: ["source", "schema", "triggers", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, triggers: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectSchemaTrigger" } }, truncated: { type: "boolean" } } },
+      ProjectTriggersResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectTriggers" } } },
+      ProjectSchemaFunction: { type: "object", additionalProperties: false, required: ["name", "kind", "language", "arguments", "identityArguments", "returnType", "returnsSet", "volatility", "securityDefiner"], properties: { name: { type: "string", maxLength: 63 }, kind: { type: "string", enum: ["function", "procedure"] }, language: { type: "string", maxLength: 63 }, arguments: { type: "string", description: "Like pg_get_function_arguments: names, types, modes, defaults." }, identityArguments: { type: "string", description: "Like pg_get_function_identity_arguments: without defaults, with OUT parameters." }, returnType: { type: ["string", "null"], description: "Like pg_get_function_result; a procedure has none." }, returnsSet: { type: "boolean" }, volatility: { type: "string", enum: ["immutable", "stable", "volatile"] }, securityDefiner: { type: "boolean" } } },
+      ProjectSchemaFunctions: { type: "object", additionalProperties: false, required: ["source", "schema", "functions", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, functions: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectSchemaFunction" } }, truncated: { type: "boolean" } } },
+      ProjectSchemaFunctionsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectSchemaFunctions" } } },
+      ProjectIndex: { type: "object", additionalProperties: false, required: ["name", "table", "accessMethod", "unique", "primary", "valid", "columns", "definition", "predicate"], properties: { name: { type: "string", maxLength: 63 }, table: { type: "string", maxLength: 63 }, accessMethod: { type: "string", maxLength: 63, description: "btree, hash, gin, gist, brin, spgist and so on." }, unique: { type: "boolean" }, primary: { type: "boolean" }, valid: { type: "boolean", description: "False while CREATE INDEX CONCURRENTLY runs or after it failed." }, columns: { type: "array", items: { type: "string", maxLength: 63 }, description: "Columns in index order; an expression is not listed here and stands in definition." }, definition: { type: "string", description: "Like pg_get_indexdef." }, predicate: { type: ["string", "null"], description: "The WHERE part of a partial index, otherwise null." } } },
+      ProjectIndexes: { type: "object", additionalProperties: false, required: ["source", "schema", "indexes", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, indexes: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectIndex" } }, truncated: { type: "boolean" } } },
+      ProjectIndexesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectIndexes" } } },
+      ProjectPolicy: { type: "object", additionalProperties: false, required: ["name", "table", "permissive", "command", "roles", "usingExpression", "checkExpression"], properties: { name: { type: "string", maxLength: 63 }, table: { type: "string", maxLength: 63 }, permissive: { type: "boolean" }, command: { type: "string", enum: ["select", "insert", "update", "delete", "all"] }, roles: { type: "array", items: { type: "string", maxLength: 63 }, description: "public stands for all roles." }, usingExpression: { type: ["string", "null"] }, checkExpression: { type: ["string", "null"] } } },
+      ProjectPolicies: { type: "object", additionalProperties: false, required: ["source", "schema", "policies", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, policies: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectPolicy" } }, truncated: { type: "boolean" } } },
+      ProjectPoliciesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectPolicies" } } },
+      ProjectEnumType: { type: "object", additionalProperties: false, required: ["name", "labels"], properties: { name: { type: "string", maxLength: 63 }, labels: { type: "array", maxItems: 200, items: { type: "string" }, description: "In the sort order of the type." } } },
+      ProjectEnumTypes: { type: "object", additionalProperties: false, required: ["source", "schema", "types", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, types: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectEnumType" } }, truncated: { type: "boolean" } } },
+      ProjectEnumTypesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectEnumTypes" } } },
+      ProjectExtension: { type: "object", additionalProperties: false, required: ["name", "defaultVersion", "installedVersion", "schema", "comment"], properties: { name: { type: "string", maxLength: 63 }, defaultVersion: { type: "string" }, installedVersion: { type: ["string", "null"], description: "Null when the extension is available but not installed." }, schema: { type: ["string", "null"] }, comment: { type: ["string", "null"] } } },
+      ProjectExtensions: { type: "object", additionalProperties: false, required: ["source", "extensions", "truncated"], properties: { source: { const: "postgres" }, extensions: { type: "array", maxItems: 400, items: { $ref: "#/components/schemas/ProjectExtension" } }, truncated: { type: "boolean" } } },
+      ProjectExtensionsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectExtensions" } } },
+      ProjectRoles: { type: "object", additionalProperties: false, required: ["source", "roles", "truncated"], properties: { source: { const: "postgres" }, roles: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectDatabaseRole" } }, truncated: { type: "boolean" } } },
+      ProjectRolesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectRoles" } } },
+      ProjectPublication: { type: "object", additionalProperties: false, required: ["name", "owner", "publishInsert", "publishUpdate", "publishDelete", "publishTruncate", "allTables", "tables"], properties: { name: { type: "string", maxLength: 63 }, owner: { type: "string", maxLength: 63 }, publishInsert: { type: "boolean" }, publishUpdate: { type: "boolean" }, publishDelete: { type: "boolean" }, publishTruncate: { type: "boolean" }, allTables: { type: "boolean" }, tables: { type: "array", maxItems: 500, items: { type: "string" }, description: "schema.table, or schema.* for FOR TABLES IN SCHEMA; empty for FOR ALL TABLES." } } },
+      ProjectPublications: { type: "object", additionalProperties: false, required: ["source", "publications", "truncated"], properties: { source: { const: "postgres" }, publications: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectPublication" } }, truncated: { type: "boolean" } } },
+      ProjectPublicationsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectPublications" } } },
+      ProjectColumnPrivilege: { type: "object", additionalProperties: false, required: ["table", "column", "grantee", "privileges"], properties: { table: { type: "string", maxLength: 63 }, column: { type: "string", maxLength: 63 }, grantee: { type: "string", maxLength: 63, description: "public stands for all roles." }, privileges: { type: "array", minItems: 1, maxItems: 4, items: { type: "object", additionalProperties: false, required: ["type", "grantable"], properties: { type: { type: "string", enum: ["select", "insert", "update", "references"] }, grantable: { type: "boolean" } } } } } },
+      ProjectColumnPrivileges: { type: "object", additionalProperties: false, required: ["source", "schema", "privileges", "truncated"], properties: { source: { const: "postgres" }, schema: { type: "string" }, privileges: { type: "array", maxItems: 500, items: { $ref: "#/components/schemas/ProjectColumnPrivilege" } }, truncated: { type: "boolean" } } },
+      ProjectColumnPrivilegesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectColumnPrivileges" } } },
+      ProjectForeignDataWrapper: { type: "object", additionalProperties: false, required: ["name", "owner", "handler", "validator"], properties: { name: { type: "string", maxLength: 63 }, owner: { type: "string", maxLength: 63 }, handler: { type: ["string", "null"], maxLength: 130, description: "A function name as regproc writes it; null when the wrapper has none." }, validator: { type: ["string", "null"], maxLength: 130, description: "A wrapper without a validator accepts any option anybody writes down." } } },
+      ProjectForeignServerOption: { type: "object", additionalProperties: false, required: ["key", "value"], properties: { key: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$" }, value: { type: ["string", "null"], description: "Null when the key is not on the list that may show its value; an empty value is the empty string." } } },
+      ProjectForeignServer: { type: "object", additionalProperties: false, required: ["name", "wrapper", "owner", "type", "version", "options"], properties: { name: { type: "string", maxLength: 63 }, wrapper: { type: "string", maxLength: 63 }, owner: { type: "string", maxLength: 63 }, type: { type: ["string", "null"], description: "Free text that PostgreSQL does not evaluate; usually absent." }, version: { type: ["string", "null"] }, options: { type: "array", maxItems: 50, items: { $ref: "#/components/schemas/ProjectForeignServerOption" } } } },
+      ProjectUserMapping: { type: "object", additionalProperties: false, required: ["server", "user"], properties: { server: { type: "string", maxLength: 63 }, user: { type: "string", maxLength: 63, description: "The role name, or public for a mapping that applies to everybody." } } },
+      ProjectForeignTable: { type: "object", additionalProperties: false, required: ["schema", "name", "server"], properties: { schema: { type: "string", maxLength: 63 }, name: { type: "string", maxLength: 63 }, server: { type: "string", maxLength: 63 } } },
+      ProjectForeignDataWrappers: { type: "object", additionalProperties: false, required: ["source", "wrappers", "servers", "userMappings", "tables", "truncated"], properties: { source: { const: "postgres" }, wrappers: { type: "array", maxItems: 50, items: { $ref: "#/components/schemas/ProjectForeignDataWrapper" } }, servers: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectForeignServer" } }, userMappings: { type: "array", maxItems: 500, items: { $ref: "#/components/schemas/ProjectUserMapping" } }, tables: { type: "array", maxItems: 1000, items: { $ref: "#/components/schemas/ProjectForeignTable" } }, truncated: { type: "boolean", description: "True as soon as one of the four bounds takes effect; it applies to the answer, not to one list." } } },
+      ProjectForeignDataWrappersResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectForeignDataWrappers" } } },
+      ProjectStatementDigest: { type: "object", additionalProperties: false, required: ["id", "calls", "totalTimeMs", "meanTimeUs", "rows"], properties: { id: { type: "string", pattern: "^-?[0-9]+$", description: "queryid as a decimal string; bigint does not fit losslessly into a JSON number. It is a hash over the query tree and carries no literal." }, calls: { type: "integer", minimum: 0 }, totalTimeMs: { type: "integer", minimum: 0, description: "Total execution time in milliseconds, rounded down." }, meanTimeUs: { type: "integer", minimum: 0, description: "Mean execution time per call in microseconds, read from mean_exec_time." }, rows: { type: "integer", minimum: 0, description: "Sum of the rows this statement returned or changed." } } },
+      ProjectStatements: { type: "object", additionalProperties: false, required: ["source", "installed", "statements", "truncated"], properties: { source: { const: "postgres" }, installed: { type: "boolean", description: "False when pg_stat_statements is not reachable in this database; that is not an error." }, statements: { type: "array", maxItems: 50, items: { $ref: "#/components/schemas/ProjectStatementDigest" } }, truncated: { type: "boolean" } } },
+      ProjectStatementsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectStatements" } } },
+      ProjectDatabaseRuntime: { type: "object", additionalProperties: false, required: ["source", "serverVersion", "serverVersionNum", "encoding", "collate", "ctype", "sizeBytes", "inRecovery", "startedAt"], properties: { source: { const: "postgres" }, serverVersion: { type: "string", description: "server_version as the server writes it, for example 17.2." }, serverVersionNum: { type: "integer", minimum: 0, description: "server_version_num, for example 170002; this one compares." }, encoding: { type: "string", description: "server_encoding of this database, for example UTF8." }, collate: { type: "string", description: "datcollate from pg_database." }, ctype: { type: "string", description: "datctype from pg_database." }, sizeBytes: { type: "integer", minimum: 0, description: "pg_database_size(current_database())." }, inRecovery: { type: "boolean", description: "pg_is_in_recovery(): true means this connection reads a standby. It is not a list of read replicas." }, startedAt: { type: "string", format: "date-time", description: "pg_postmaster_start_time()." } } },
+      ProjectDatabaseRuntimeResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseRuntime" } } },
+      ProjectDatabaseHealthFigures: { type: "object", additionalProperties: false, required: ["backends", "commits", "rollbacks", "blocksRead", "blocksHit", "deadlocks", "conflicts", "tempFiles", "tempBytes", "checksumFailures", "checksumLastFailure", "sessions", "sessionsAbandoned", "sessionsFatal", "sessionsKilled", "statsReset"], properties: { backends: { type: "integer", minimum: 0, description: "numbackends: a level, not a counter." }, commits: { type: "integer", minimum: 0 }, rollbacks: { type: "integer", minimum: 0 }, blocksRead: { type: "integer", minimum: 0 }, blocksHit: { type: "integer", minimum: 0 }, deadlocks: { type: "integer", minimum: 0 }, conflicts: { type: "integer", minimum: 0, description: "Cancellations caused by recovery on a standby." }, tempFiles: { type: "integer", minimum: 0 }, tempBytes: { type: "integer", minimum: 0 }, checksumFailures: { type: ["integer", "null"], minimum: 0, description: "Null means this server runs without data checksums and counts nothing, which is not zero failures." }, checksumLastFailure: { type: ["string", "null"], format: "date-time" }, sessions: { type: "integer", minimum: 0 }, sessionsAbandoned: { type: "integer", minimum: 0 }, sessionsFatal: { type: "integer", minimum: 0 }, sessionsKilled: { type: "integer", minimum: 0 }, statsReset: { type: ["string", "null"], format: "date-time", description: "Null means the statistics were never reset." } } },
+      ProjectDatabaseWriteback: { type: "object", additionalProperties: false, required: ["checkpointSource", "checkpointsTimed", "checkpointsRequested", "checkpointWriteMs", "checkpointSyncMs", "buffersCheckpoint", "buffersClean", "maxwrittenClean", "buffersAlloc", "checkpointerStatsReset", "bgwriterStatsReset"], properties: { checkpointSource: { type: "string", enum: ["pg_stat_checkpointer", "pg_stat_bgwriter"], description: "Which view this server really has; PostgreSQL 17 moved the checkpoint counters." }, checkpointsTimed: { type: "integer", minimum: 0 }, checkpointsRequested: { type: "integer", minimum: 0 }, checkpointWriteMs: { type: "integer", minimum: 0 }, checkpointSyncMs: { type: "integer", minimum: 0 }, buffersCheckpoint: { type: "integer", minimum: 0 }, buffersClean: { type: "integer", minimum: 0 }, maxwrittenClean: { type: "integer", minimum: 0 }, buffersAlloc: { type: "integer", minimum: 0 }, checkpointerStatsReset: { type: ["string", "null"], format: "date-time" }, bgwriterStatsReset: { type: ["string", "null"], format: "date-time" } } },
+      ProjectDatabaseHealth: { type: "object", additionalProperties: false, required: ["source", "database", "writeback"], properties: { source: { const: "postgres" }, database: { $ref: "#/components/schemas/ProjectDatabaseHealthFigures" }, writeback: { $ref: "#/components/schemas/ProjectDatabaseWriteback", description: "The write path of the server; it applies to the whole cluster, not only to this database." } } },
+      ProjectDatabaseHealthResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseHealth" } } },
+      ProjectEnvironmentBinding: { type: "object", additionalProperties: false, required: ["environment", "databaseInstanceRef", "bound", "createdAt"], properties: { environment: { type: "string", enum: ["development", "staging", "production"] }, databaseInstanceRef: { type: "string", description: "The opaque identifier the provisioner assigns (managed:...) or a waiting marker (pending:...). It is not an address: no host, no port, no password." }, bound: { type: "boolean", description: "False while the reference waits and points at no database." }, createdAt: { type: ["string", "null"], format: "date-time", description: "Null where the source keeps no timestamp." } } },
+      ProjectEnvironmentListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["environments"], properties: { environments: { type: "array", maxItems: 3, items: { $ref: "#/components/schemas/ProjectEnvironmentBinding" } } } } } },
+      GeneratedAggregates: { type: "object", additionalProperties: false, required: ["source", "table", "groups", "groupCount", "truncated"], properties: { source: { const: "postgres" }, table: { $ref: "#/components/schemas/GeneratedTable" }, groups: { type: "array", maxItems: 100, items: { type: "object" }, description: "Counts and sums come as decimal strings; bigint and numeric would lose precision in JSON." }, groupCount: { type: "integer", minimum: 0, maximum: 100 }, truncated: { type: "boolean" } } },
+      GeneratedAggregatesResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/GeneratedAggregates" } } },
+      GeneratedCall: { type: "object", additionalProperties: false, required: [], properties: { schema: { type: "string", pattern: `^${DATA_IDENTIFIER_PATTERN}$`, default: "public" }, args: { type: "object", maxProperties: 32, description: "Named arguments. Every name must exist on the function, and every argument without a default must be present." } } },
+      GeneratedCallFunction: { type: "object", additionalProperties: false, required: ["schema", "name", "returnType", "returnsSet", "volatile"], properties: { schema: { type: "string" }, name: { type: "string" }, returnType: { type: "string" }, returnsSet: { type: "boolean" }, volatile: { type: "boolean", description: "The declared volatility decided whether the transaction could write." } } },
+      GeneratedCallResult: { type: "object", additionalProperties: false, required: ["source", "function", "rows", "rowCount", "truncated"], properties: { source: { const: "postgres" }, function: { $ref: "#/components/schemas/GeneratedCallFunction" }, rows: { type: "array", maxItems: 100, items: { type: "object" } }, rowCount: { type: "integer", minimum: 0, maximum: 100 }, truncated: { type: "boolean", description: "A set-returning function over the row limit was cut; said, not hidden." } } },
+      GeneratedCallResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/GeneratedCallResult" } } },
+      DeployProjectFunctionImage: { type: "object", additionalProperties: false, required: ["image"], properties: { image: { type: "string", pattern: "^[a-z0-9][a-z0-9./_-]{2,255}@sha256:[0-9a-f]{64}$", description: "Digest-pinned; a tag is rejected." } } },
+      ProjectFunctionDeployment: { type: "object", additionalProperties: false, required: ["revision", "image", "deployedBy", "deployedAt"], properties: { revision: { type: "integer", minimum: 1 }, image: { type: "string" }, deployedBy: { type: "string" }, deployedAt: { type: "string", format: "date-time" } } },
+      ProjectFunctionDeploymentListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", items: { $ref: "#/components/schemas/ProjectFunctionDeployment" } } } },
+      ProjectFunctionDeploymentResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["revision", "image"], properties: { revision: { type: "integer", minimum: 1 }, image: { type: "string" } } } } },
+      ProjectFunctionInvocationRecord: { type: "object", additionalProperties: false, required: ["invocationId", "invokedBy", "startedAt", "durationMs", "outcome", "statusCode", "errorCode"], properties: { invocationId: { type: "string" }, invokedBy: { type: "string" }, startedAt: { type: "string", format: "date-time" }, durationMs: { type: "integer", minimum: 0 }, outcome: { type: "string", enum: ["completed", "failed"] }, statusCode: { type: ["integer", "null"], minimum: 100, maximum: 599 }, errorCode: { type: ["string", "null"], description: "A fixed code, never a message from the sandbox." } } },
+      ProjectFunctionInvocationListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectFunctionInvocationRecord" } } } },
+      BillingProjectionLine: { type: "object", additionalProperties: false, required: ["metric", "label", "unit", "used", "priced", "unitPriceMicros", "perUnits", "amountMicros", "amount"], properties: { metric: { type: "string", enum: ["api_requests", "database_row_reads", "storage_egress_bytes", "realtime_messages", "queue_operations", "function_invocations"] }, label: { type: "string" }, unit: { type: "string" }, used: { type: "string", pattern: "^[0-9]+$" }, priced: { type: "boolean", description: "False when no rate applies; the amounts are then null instead of zero." }, unitPriceMicros: { type: ["string", "null"], pattern: "^[0-9]+$" }, perUnits: { type: ["string", "null"], pattern: "^[0-9]+$" }, amountMicros: { type: ["string", "null"], pattern: "^[0-9]+$", description: "Micro units of the currency, rounded down, never in favour of the provider." }, amount: { type: ["string", "null"] } } },
+      BillingProjection: { type: "object", additionalProperties: false, required: ["kind", "projectId", "environment", "period", "currency", "lines", "totalMicros", "total", "unpricedMetrics"], properties: { kind: { const: "projection", description: "Not an invoice: no number, no due date." }, projectId: { type: "string" }, environment: { type: "string", enum: ["development", "staging", "production"] }, period: { type: "string" }, currency: { type: ["string", "null"], pattern: "^[A-Z]{3}$" }, lines: { type: "array", items: { $ref: "#/components/schemas/BillingProjectionLine" } }, totalMicros: { type: "string", pattern: "^[0-9]+$" }, total: { type: "string" }, unpricedMetrics: { type: "array", items: { type: "string" }, description: "Metrics without an effective rate, named instead of silently counted as zero." } } },
+      BillingProjectionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/BillingProjection" } } },
+      BillingInvoiceLine: { type: "object", additionalProperties: false, required: ["metric", "quantity", "unitPriceMicros", "perUnits", "amountMicros", "amount"], properties: { metric: { type: "string", enum: ["api_requests", "database_row_reads", "storage_egress_bytes", "realtime_messages", "queue_operations", "function_invocations"] }, quantity: { type: "string", pattern: "^[0-9]+$" }, unitPriceMicros: { type: "string", pattern: "^[0-9]+$" }, perUnits: { type: "string", pattern: "^[0-9]+$" }, amountMicros: { type: "string", pattern: "^[0-9]+$" }, amount: { type: "string" } } },
+      BillingInvoiceSummary: { type: "object", additionalProperties: false, required: ["id", "invoiceNumber", "dueAt", "projectId", "environment", "periodStart", "periodEnd", "currency", "totalMicros", "total", "unpricedMetrics", "issuedAt", "lines"], properties: { id: { type: "string" }, invoiceNumber: { type: "string", description: "Gap-free per organization, assigned in the invoicing run." }, dueAt: { type: "string", format: "date-time", description: "Exactly thirty days after issuing, assigned by a database default that nobody can write." }, projectId: { type: "string" }, environment: { type: "string", enum: ["development", "staging", "production"] }, periodStart: { type: "string" }, periodEnd: { type: "string" }, currency: { type: "string", pattern: "^[A-Z]{3}$" }, totalMicros: { type: "string", pattern: "^[0-9]+$" }, total: { type: "string" }, unpricedMetrics: { type: "array", items: { type: "string" } }, issuedAt: { type: "string", format: "date-time" }, lines: { type: "array", items: { $ref: "#/components/schemas/BillingInvoiceLine" } } } },
+      BillingInvoiceListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/BillingInvoiceSummary" } } } },
+      PrepareProjectStorageMultipartUpload: { type: "object", additionalProperties: false, required: ["key", "contentType", "sizeBytes", "checksumSha256"], properties: { key: { type: "string", minLength: 1, maxLength: 1024 }, contentType: { type: "string", minLength: 3, maxLength: 192 }, sizeBytes: { type: "integer", minimum: 1 }, checksumSha256: { type: "string", pattern: "^[A-Za-z0-9+/]{43}=$", description: "The checksum of the whole file, not of one part." } } },
+      PreparedProjectStorageMultipartUploadResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["uploadId", "completionToken", "key", "requiredSizeBytes", "requiredContentType", "requiredChecksumSha256", "expiresAt"], properties: { uploadId: { type: "string", format: "uuid" }, completionToken: { type: "string", writeOnly: true, description: "Shown once; only its SHA-256 verifier is persisted" }, key: { type: "string" }, requiredSizeBytes: { type: "integer" }, requiredContentType: { type: "string" }, requiredChecksumSha256: { type: "string" }, expiresAt: { type: "string", format: "date-time" } } } } },
+      CreateProjectStoragePartGrant: { type: "object", additionalProperties: false, required: ["completionToken", "partNumber", "checksumSha256"], properties: { completionToken: { type: "string", pattern: "^qk_upload_[A-Za-z0-9_-]{43}$", writeOnly: true }, partNumber: { type: "integer", minimum: 1, maximum: 10000 }, checksumSha256: { type: "string", pattern: "^[A-Za-z0-9+/]{43}=$", description: "The checksum of this part; it is inside the signature." } } },
+      ProjectStoragePartGrantResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["partNumber", "method", "url", "headers", "expiresAt"], properties: { partNumber: { type: "integer", minimum: 1, maximum: 10000 }, method: { const: "PUT" }, url: { type: "string", format: "uri" }, headers: { type: "object", additionalProperties: { type: "string" }, description: "Send unchanged; the checksum is signed." }, expiresAt: { type: "string", format: "date-time", description: "Never later than the expiry of the reservation." } } } } },
+      CompleteProjectStorageMultipartUpload: { type: "object", additionalProperties: false, required: ["completionToken", "parts"], properties: { completionToken: { type: "string", pattern: "^qk_upload_[A-Za-z0-9_-]{43}$", writeOnly: true }, parts: { type: "array", minItems: 1, maxItems: 10000, items: { type: "object", additionalProperties: false, required: ["partNumber", "etag"], properties: { partNumber: { type: "integer", minimum: 1, maximum: 10000 }, etag: { type: "string", minLength: 1, maxLength: 256 } } } } } },
+      AbortProjectStorageMultipartUpload: { type: "object", additionalProperties: false, required: ["completionToken"], properties: { completionToken: { type: "string", pattern: "^qk_upload_[A-Za-z0-9_-]{43}$", writeOnly: true } } },
+      ProjectStorageObjectResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectStorageObject" } } },
+      ProjectStorageMultipartAbortResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["aborted"], properties: { aborted: { const: true } } } } },
+      ProjectAuthOidcProvider: { type: "object", additionalProperties: false, required: ["id", "issuer"], properties: { id: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" }, issuer: { type: "string", format: "uri" } } },
+      ProjectAuthOidcProviderListEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", items: { $ref: "#/components/schemas/ProjectAuthOidcProvider" } } } },
+      ProjectAuthAdminOidcProvider: { type: "object", additionalProperties: false, required: ["id", "issuer", "requiresVerifiedEmail"], properties: { id: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" }, issuer: { type: "string", format: "uri" }, requiresVerifiedEmail: { type: "boolean", description: "Derived from the configured email verification of the provider; the public route deliberately does not show it." } } },
+      ProjectAuthAdminOidcProviderListEnvelope: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", items: { $ref: "#/components/schemas/ProjectAuthAdminOidcProvider" } } } },
       Error: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" }, requestId: { type: "string" } } },
     },
     responses: {
