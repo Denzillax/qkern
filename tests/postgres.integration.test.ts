@@ -1999,10 +1999,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
     // Die Regel, ueber den echten Dienst und in die echten Spalten.
     const stored = await service.setPasswordProtection(scope, {
-      leakedPasswordCheck: true, minLength: 14, notice: "named",
+      leakCheck: true, minLength: 14, notice: "named",
     }, { id: leakOwner });
     expect(stored).toMatchObject({
-      protection: { leakedPasswordCheck: true, minLength: 14, notice: "named" }, configured: true,
+      protection: { leakCheck: true, minLength: 14, notice: "named" }, configured: true,
     });
     const columns = await auth.query<{
       leaked_password_check: boolean; password_min_length: number; leaked_password_notice: string;
@@ -2064,7 +2064,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Der Wortlaut ist eine Einstellung, und er aendert den Code, nicht die
     // Entscheidung.
     await service.setPasswordProtection(scope, {
-      leakedPasswordCheck: true, minLength: 14, notice: "generic",
+      leakCheck: true, minLength: 14, notice: "generic",
     }, { id: leakOwner });
     await expect(service.signUp(scope, {
       email: `quiet-${randomUUID()}@example.test`, password: leaked,
@@ -2118,7 +2118,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       actorType: "admin", actorRef: leakOwner, status: "succeeded",
       resourceRef: "project_auth_environment:development",
       metadata: {
-        leakedPasswordCheck: true, minLength: 14, notice: "named",
+        leakCheck: true, minLength: 14, notice: "named",
         listSource: "file", listEntries: 2,
       },
     });
@@ -2297,7 +2297,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         values.push(value);
       };
       walk(settings);
-      const secrets = [target.hostname, target.port || "5432", decodeURIComponent(target.password), projectApiUrl!];
+      // Der Rechnername, der Port und die volle URL duerfen nirgends stehen.
+      // Das Passwort wird weiter unten im ganzen Text gesucht, aber nicht hier
+      // Wert fuer Wert: Im Zertifizierungsstack heisst der Zugang `postgres`,
+      // und so heisst auch der Eigentuemer der Datenbank. Ein Katalogname, der
+      // zufaellig wie ein Zugangsname klingt, ist kein Leck; die Gleichheit
+      // wuerde nur den Aufbau des Stacks pruefen, nicht die Antwort.
+      const secrets = [target.hostname, target.port || "5432", projectApiUrl!];
       for (const secret of secrets) {
         expect(secret, "Die Test-URL traegt diese Angabe nicht; dann prueft dieser Fall nichts.").toBeTruthy();
         for (const value of values) expect(String(value), secret).not.toBe(secret);

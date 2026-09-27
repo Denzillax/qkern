@@ -832,7 +832,12 @@ export class ProjectAuthService {
       resourceRef: `project_auth_environment:${scope.environment}`,
       status: "succeeded",
       metadata: {
-        leakedPasswordCheck: parsed.protection.leakedPasswordCheck,
+        // `leakCheck` und nicht `leakedPasswordCheck`: Die Schwaerzung in
+        // `redactSensitive` trifft jeden Schluessel, der "password" enthaelt,
+        // und machte aus dem Wahrheitswert ein "[REDACTED]". Die Regel bleibt
+        // grob und richtig; der Eintrag bekommt einen Namen, der nichts
+        // verspricht, was er nicht ist.
+        leakCheck: parsed.protection.leakedPasswordCheck,
         minLength: parsed.protection.minLength,
         notice: parsed.protection.notice,
         listSource: list.source,
