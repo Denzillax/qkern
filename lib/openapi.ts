@@ -202,6 +202,23 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/database/backups/point-in-time": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectPointInTimeRecovery",
+        summary: "Read what QKERN can say about a restore to a chosen point in time",
+        description: "Same access as /database/activity: a session with read access or a scope-bound project key, private, no-store. The route takes no query parameter at all; any parameter is a 400. The answer carries three things and no fourth: the state, a window as far as it follows from the operator's declaration, and the timestamps and durations of the last restore drill. QKERN does not manage a WAL archive, so whether one exists is a declaration by the operator, not a finding; the state says so. Exactly three environment variables are read, QKERN_BACKUP_WAL_ARCHIVE_DECLARED, QKERN_BACKUP_WAL_ARCHIVE_RETENTION_DAYS and QKERN_BACKUP_WAL_ARCHIVE_SINCE, and none of them carries a location, so no connection string, no bucket and no key can leave through this route; a variable set to something unusable is named by its name, never by its value. The oldest restorable point is the later of now minus the declared retention and the declared start of archiving, computed from the declaration and not measured at the archive. The newest restorable point is always null: it depends on how current the archive is, and QKERN does not read the archive. From the drill evidence only verifiedAt, backupSnapshotAt, the recovery-point lag and the restore duration go out, never its evidence id, its key id or its digests; absent, disabled, stale or invalid evidence is an absent drill and not an error. Nothing is written, and no restore is triggered from here.",
+        security: [{ projectApiKey: [] }, { sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", maxLength: 128 } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "State, window as far as it is known, and the last drill" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/schema/foreign-keys": {
       get: {
         tags: ["Project Data"], operationId: "inspectProjectForeignKeys",

@@ -365,6 +365,67 @@ kein Block gelesen, zeigt sie keine Quote statt null Prozent. Alle Zähler gelte
 seit `stats_reset`, nicht seit dem Start der Datenbank; auch dieser Satz steht
 über den Zahlen und nicht im Kleingedruckten.
 
+### Wiederherstellung auf einen Zeitpunkt
+
+Seit `2.53.0` ist **Datenbank → Point-in-time Recovery** keine Platzhalterseite
+mehr. Der Platzhalter sagte, es fehle ein WAL-Archiv ausserhalb des
+Wegwerf-Stacks. Das stimmt weiterhin, und genau das sagt jetzt die Seite selbst,
+statt es in der Navigation zu verstecken.
+
+**Was QKERN belegt.** Der Restore-Drill aus `2.29.0` stellt nicht bis zum Ende
+des Archivs wieder her, sondern auf einen gewählten Zeitpunkt. Er schreibt die
+Phasen A und B, merkt sich einen Zeitpunkt danach, schreibt Phase C, erzwingt
+einen Segmentwechsel und wartet, bis `pg_stat_archiver` das Segment bestätigt.
+Der zweite Server läuft mit `restore_command` aus dem Archiv und
+`recovery_target_time` auf diesem Zeitpunkt. Belegt wird: die Zeilen 1 bis 6
+sind da, keine Zeile aus Phase C ist da. Das ist die eine Aussage, die eine
+Wiederherstellung auf einen Zeitpunkt von einer gewöhnlichen Rücksicherung
+unterscheidet, und sie steht seit `2.29.0` im Drill. Der Drill wurde für diese
+Seite nicht erweitert, weil es nichts zu erweitern gab.
+
+Der Drill läuft aber gegen einen eigenen Stack mit eigenem WAL-Archiv. Er belegt
+das Verfahren und die Software, nicht das Archiv einer Installation.
+
+**Was die Seite zeigt.** Zuerst den Zustand, und im leeren Fall zuerst den
+leeren Satz: *Kein Archiv, keine Wiederherstellung auf einen Zeitpunkt.* Darunter
+das Fenster, soweit es bekannt ist, die Eckdaten des letzten Drills und die
+Schritte, die ein Betreiber am Server geht. Die Seite führt keinen davon aus.
+
+| Zustand | Wann |
+| --- | --- |
+| Kein Archiv | Es ist kein WAL-Archiv erklärt. Ohne Archiv gibt es keinen Zeitpunkt, auf den wiederhergestellt werden könnte. |
+| Archiv erklärt, nicht belegt | Ein Archiv ist erklärt, aber es liegt keine gültige, signierte Drill-Evidenz vor. |
+| Archiv erklärt, letzter Drill belegt | Ein Archiv ist erklärt, und die Evidenz liegt innerhalb der festen Policy. |
+
+**Erklärt, nicht gemessen.** QKERN verwaltet kein WAL-Archiv und liest keines.
+Die drei Angaben kommen darum aus der Umgebung und sind Angaben des Betreibers:
+
+| Variable | Bedeutung |
+| --- | --- |
+| `QKERN_BACKUP_WAL_ARCHIVE_DECLARED` | `true`, wenn ein WAL-Archiv geführt wird. Alles andere gilt als kein Archiv. |
+| `QKERN_BACKUP_WAL_ARCHIVE_RETENTION_DAYS` | Aufbewahrung in Tagen, 1 bis 730. |
+| `QKERN_BACKUP_WAL_ARCHIVE_SINCE` | Beginn der Archivierung als UTC-Zeitstempel mit Millisekunden. |
+
+Eine vierte Variable gibt es nicht, und insbesondere keine für den Ort des
+Archivs. So kann über diese Seite keine Verbindungszeile, kein Bucket und kein
+Schlüssel hinausgehen. Ein unbrauchbar gesetzter Wert wird nicht geraten: er
+fällt weg, und die Seite nennt den Variablennamen, nie seinen Inhalt.
+
+Der **älteste** wiederherstellbare Punkt ist der spätere von „jetzt minus
+Aufbewahrung“ und „Beginn der Archivierung“. Beides begrenzt nach unten, und die
+strengere Grenze gilt. Ist keines von beiden erklärt, sagt die Seite, dass der
+älteste Punkt nicht bekannt ist. Der **neueste** Punkt bleibt leer: er hängt
+davon ab, wie aktuell das Archiv ist, und das weiss nur, wer ins Archiv sieht.
+Eine Schätzung stünde dort als Zahl und wäre im Ernstfall die falsche.
+
+Die Route dahinter ist
+`GET /api/v1/projects/{projectId}/environments/{environment}/database/backups/point-in-time`,
+dieselbe Tür wie `/database/activity`, `private, no-store`, und jeder
+Query-Parameter ist ein `400`. Von der Drill-Evidenz gehen nur Zeitpunkte und
+Dauern hinaus, nicht ihre ID, nicht ihre Key-ID und keiner ihrer Digests. Fehlt
+die Evidenz, ist sie abgeschaltet oder älter, als die Policy zulässt, dann fehlt
+der Drill in der Antwort; ein Fehler ist das nicht.
+
 ### Tabellen-Designer
 
 Seit `2.49.0` ist **Datenbank → Tabellen** keine Platzhalterseite mehr. Die

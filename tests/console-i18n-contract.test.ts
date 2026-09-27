@@ -19,6 +19,7 @@ import { databaseWebhookTexts } from "@/lib/console/database-webhooks";
 import { logViewTexts } from "@/lib/console/log-view-texts";
 import { vaultOverviewTexts } from "@/lib/console/vault-overview-texts";
 import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
+import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -85,6 +86,10 @@ async function consoleKeys(): Promise<string[]> {
   // Auth -> Rate Limits (2.56) zeigt Arten, Gruende einer Ablehnung und seine
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of authRateLimitTexts()) keys.add(text);
+  // Datenbank -> Point-in-time Recovery (2.53) zeigt Zustaende, Belege des
+  // Drills, die Schritte einer Wiederherstellung und seine Ehrlichkeitssaetze
+  // ueber t(variable).
+  for (const text of pointInTimeTexts()) keys.add(text);
   return [...keys];
 }
 
