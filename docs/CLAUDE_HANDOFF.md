@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.52.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.53.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,31 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.52.0`
-- Aktueller Slice: 2.52 Grenzen, Geheimnisse, alte Versprechen – drei
+- Paketversion: `2.53.0`
+- Aktueller Slice: 2.53 Was das Passwort verraet – drei Implementierer
+  parallel. **Passwortschutz**: `auth-protection` ist echt, aber nur in dem
+  Teil, der ohne fremden Dienst auskommt. Ein Abgleich bei einem externen
+  Anbieter hiesse, dass jede Anmeldung jedes Kunden zu einem fremden Rechner
+  reist. Geprueft wird gegen eine lokale Liste
+  (`lib/server/project-auth/password-leaks.ts`), Migration `0053`, durchgesetzt
+  in `signUp` und `resetPassword`. Die eingebaute Liste hat 25 benannte
+  Eintraege, und alle sind kuerzer als die 12 Zeichen, die QKERN ohnehin
+  verlangt: ohne eigene Datei weist der Schalter nichts ab, was die
+  Laengenregel nicht schon abweist. Das steht in Modul, Ansicht, Handbuch und
+  zwei Tests. Anders als die Zaehlbremse faellt der Abgleich nicht offen: eine
+  kaputte Liste laesst den Dienst nicht starten. **Datenbank-Einstellungen**:
+  `db-settings` zeigt Rollen, TLS-Zustand und Grenzen. Pooler und
+  Netzbeschraenkung gibt es nicht, und die Ansicht sagt das, statt eine
+  Oberflaeche fuer nichts zu bauen. **Punkt-in-Zeit**: `db-backups-pitr` ist
+  echt, und die Uebung aus 2.29 beweist laengst eine Wiederherstellung auf
+  einen gewaehlten Zeitpunkt (Markierung davor da, danach weg); sie wurde
+  deshalb nicht angefasst, auch weil ihr Beleg signiert ist und ein
+  zusaetzliches Feld die Signatur ungueltig gemacht haette. Fuer echte
+  Installationen fehlt jede Archivkonfiguration, also sagt die Ansicht zuerst:
+  kein Archiv, keine Wiederherstellung auf einen Zeitpunkt.
+  PostgreSQL-Faelle "(2.59)" und "(2.60)": 195 statt 193. Zwei Mutationen
+  fallen. Im Browser nicht gesehen
+- Vorheriger Slice: 2.52 Grenzen, Geheimnisse, alte Versprechen – drei
   Implementierer parallel. **Grenzen je Zeitfenster**: `auth-rate-limits` ist
   echt, und die Bremse zaehlt jetzt in der Datenbank
   (`project_auth_rate_counters`, Migration `0052`) statt im Arbeitsspeicher
@@ -96,7 +119,7 @@ Grossbuchstaben.
   Zahl. Der Stack laedt dafuer `pg_stat_statements`.
   PostgreSQL-Faelle "(2.56)" und "(2.57)": 193 statt 191. Drei Mutationen
   fallen. Im Browser nicht gesehen
-- Vorheriger Slice: 2.51 Die Bruecke laeuft – drei Implementierer parallel.
+- Davor: 2.51 Die Bruecke laeuft – drei Implementierer parallel.
   **Webhook-Prozess**: Die Bruecke aus 2.50 war gebaut, zertifiziert und
   untaetig; jetzt laeuft sie im Compute-Worker
   (`lib/server/compute/database-webhook-bridge-runtime.ts`), eine Schleife

@@ -1595,3 +1595,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-26/vault-overview-mutation.log` | Mutation: Datenendpunkt statt Metadaten | **6 von 8, exit 1 – absichtlich** |
 | `2026-09-26/welle4-local-run1.log` | Vitest lokal (Windows) | 1774 bestanden, exit 0 |
 | `2026-09-26/welle4-local-run2.log` | Vitest lokal (Windows) | 1774 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.53 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle5-run1.log` | PostgreSQL 17 | 195 von 195, exit 0 |
+| `2026-09-27/welle5-run2.log` | PostgreSQL 17 | 195 von 195, exit 0, Wiederholung |
+| `2026-09-27/welle5-mutation-leak.log` | Mutation: Passwortprüfung entfernt | **194 von 195, exit 1 – absichtlich** |
+| `2026-09-27/welle5-mutation-tls.log` | Mutation: Verbindung gilt immer als verschlüsselt | **194 von 195, exit 1 – absichtlich** |
+| `2026-09-27/welle5-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-27/welle5-local-run1.log` | Vitest lokal (Windows) | 1844 bestanden, exit 0 |
+| `2026-09-27/welle5-local-run2.log` | Vitest lokal (Windows) | 1844 bestanden, exit 0, Wiederholung |

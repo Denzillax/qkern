@@ -1,0 +1,15 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "welle5-auth.log",
+  "commit": "35d71c3e573bb13411cb3d6b8d664c4efe8e3115",
+  "commitSubject": "tests: Auditerwartung nach dem umbenannten Schluessel",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "7 passed (7)",
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "images": []
+}

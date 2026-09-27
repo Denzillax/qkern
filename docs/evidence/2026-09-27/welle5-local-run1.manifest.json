@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle5-local-run1.log",
+  "commit": "35d71c3e573bb13411cb3d6b8d664c4efe8e3115",
+  "commitSubject": "tests: Auditerwartung nach dem umbenannten Schluessel",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "1844 passed | 279 skipped (2123)",
+  "passed": 1844,
+  "failed": 0,
+  "skipped": 279,
+  "images": []
+}

@@ -5676,3 +5676,59 @@ Identitaet feststeht. Der Zustand `configured` laesst jedes Projekt mit
 Realtime schlechter aussehen als vorher; das ist die Korrektur, nicht eine
 Verschlechterung. Ohne erweiterte Leserechte fallen fremde Zeilen ohne
 Kennung aus der Anweisungsstatistik. Im Browser nicht gesehen.
+
+## Was das Passwort verraet – Release 2.53
+
+Der Platzhalter "Angriffsschutz" versprach drei Dinge: Captcha, Pruefung
+gegen bekannte Lecks und Bot-Abwehr. Gebaut ist das eine, das ohne fremden
+Dienst auskommt. Ein Abgleich bei einem externen Anbieter hiesse, dass jede
+Anmeldung jedes Kunden zu einem fremden Rechner reist, und das ist keine
+Entscheidung, die ein Backend fuer seine Nutzer treffen sollte.
+
+Die unbequeme Haelfte steht ueberall dort, wo jemand sie lesen muss: Die
+eingebaute Liste hat 25 Eintraege aus einer benannten Quelle, und alle sind
+kuerzer als die zwoelf Zeichen, die QKERN ohnehin verlangt. Ohne eigene
+Listendatei weist der Schalter also nichts ab, was die Laengenregel nicht
+schon abweist. Er gibt dem Schalter ein definiertes Verhalten, keinen
+Schutz. Die Alternative waere gewesen, Eintraege zu erfinden und eine Quelle
+zu behaupten.
+
+Bei den Datenbank-Einstellungen hat sich die Untersuchung gelohnt. Von den
+vier versprochenen Dingen existieren zwei: Verbindungsdaten, die aber nie
+gezeigt werden duerfen, und TLS, das ausserhalb der Console entschieden
+wird. Pooler und Netzbeschraenkung gibt es ueberhaupt nicht. Die Ansicht
+zeigt Rollen, TLS-Zustand und Grenzen und sagt den Rest, statt eine
+Oberflaeche fuer etwas zu bauen, das nicht da ist.
+
+Beim Punkt-in-Zeit war die beste Arbeit, nichts zu tun. Die Uebung aus 2.29
+beweist laengst eine Wiederherstellung auf einen gewaehlten Zeitpunkt: Sie
+schreibt Markierungen, merkt sich einen Zeitpunkt dazwischen, stellt darauf
+wieder her und prueft, dass die fruehe Markierung da und die spaete weg ist.
+Die Grunddatensicherung wird ohne mitgeschriebene Protokolle genommen, der
+Rest kommt also wirklich aus dem Archiv. Ein zusaetzliches Feld im Beleg
+haette dessen Signatur ungueltig gemacht, fuer eine Tatsache, die ohnehin
+geprueft wird.
+
+Zwei Mutationen, zwei Treffer: ohne die Pruefung beim Anmelden kommt ein
+bekanntes Leck-Passwort durch, und eine Antwort, die jede Verbindung als
+verschluesselt ausgibt, faellt auf. Der zweite Fehler waere der gefaehrlichere,
+weil eine gruene Anzeige dazu fuehrt, dass niemand etwas unternimmt.
+
+Drei Korrekturen am eigenen Verfahren stehen dabei im Log. Die
+Schwaerzungsregel trifft jeden Schluessel, der "password" enthaelt, und
+machte aus einem Wahrheitswert ein geschwaerztes Feld; der Audit-Eintrag
+heisst jetzt anders, die Regel bleibt. Ein globales Umbenennen im Test traf
+auch die Eingaben an die Schnittstelle. Und eine Leckprobe verglich jeden
+Wert mit dem Zugangsnamen, obwohl im Stack Rechner, Zugang und Eigentuemer
+der Datenbank alle "postgres" heissen; sie prueft jetzt die Form der Antwort
+statt einzelner Woerter, was schaerfer ist.
+
+Checkpoint `2.53.0` am 27. September 2026: PostgreSQL 17 mit 195 von 195,
+exit 0, zweimal reproduziert; Mailpit und Dex mit 7 von 7, exit 0; Lokal
+1844 bestanden, 0 fehlgeschlagen, zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Kein Captcha und keine Bot-Abwehr ueber die Grenzen aus 2.52
+hinaus. Bestehende Passwoerter werden nie geprueft, weil ein Argon2-Hash
+nicht lesbar ist. Kein Pooler, keine Netzbeschraenkung. Fuer echte
+Installationen fehlt die Archivkonfiguration, also auch die Wiederherstellung
+auf einen Zeitpunkt. Im Browser nicht gesehen.

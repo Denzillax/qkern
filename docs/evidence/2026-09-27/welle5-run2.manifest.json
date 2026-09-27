@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle5-run2.log",
+  "commit": "35d71c3e573bb13411cb3d6b8d664c4efe8e3115",
+  "commitSubject": "tests: Auditerwartung nach dem umbenannten Schluessel",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 53,
+  "testFiles": "31 passed (31)",
+  "tests": "195 passed (195)",
+  "passed": 195,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
