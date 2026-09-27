@@ -367,6 +367,62 @@ export type ProjectColumnPrivilegeResult = {
   truncated: boolean;
 };
 
+/**
+ * Der TLS-Zustand dieser einen Verbindung (2.53).
+ *
+ * Zwei verschiedene Aussagen, darum zwei Felder. `encrypted` gilt fuer das
+ * Backend, das gerade liest: `pg_stat_ssl` fuer `pg_backend_pid()`, also die
+ * Sitzung selbst und nie eine fremde. `serverEnabled` ist die
+ * Servereinstellung `ssl`; sie sagt, ob der Server TLS ueberhaupt anbietet,
+ * und nicht, ob er es erzwingt. Erzwungen wird TLS in `pg_hba.conf`, und die
+ * liest QKERN nicht.
+ *
+ * `version` ist der Protokollname, den PostgreSQL meldet, oder null ohne TLS.
+ * Chiffre, Bits und `client_dn` stehen bewusst nicht hier: Ein Zertifikatsname
+ * ist eine Identitaet und keine Betriebszahl.
+ */
+export type ProjectDatabaseTls = {
+  encrypted: boolean;
+  version: string | null;
+  serverEnabled: boolean;
+};
+
+/**
+ * Die Verbindungsgrenzen, die der Server selbst haelt (2.53). `null` heisst
+ * jeweils unbegrenzt, so wie PostgreSQL das mit -1 ausdrueckt.
+ */
+export type ProjectDatabaseConnectionLimits = {
+  /** `max_connections` des Servers, nicht dieser Datenbank */
+  maxConnections: number;
+  /** `superuser_reserved_connections`; so viele Plaetze bleiben fuer Superuser frei */
+  superuserReserved: number;
+  /** `pg_database.datconnlimit` dieser Datenbank */
+  database: number | null;
+  /** `rolconnlimit` der Rolle, mit der die Data Plane liest */
+  role: number | null;
+};
+
+/**
+ * Was ueber die Projektdatenbank wirklich gilt (2.53): Name und Eigentuemer,
+ * der TLS-Zustand, die Verbindungsgrenzen und die Rollen aus demselben
+ * Katalog, den `inspectRoles` liest.
+ *
+ * Ausdruecklich nicht enthalten: Verbindungszeichenfolge, Passwort, Host,
+ * Port. Sie stehen im Katalog der Verbindungen, verlassen ihn nie und haben
+ * in dieser Antwort keinen Platz.
+ */
+export type ProjectDatabaseSettingsResult = {
+  source: "postgres";
+  databaseName: string;
+  databaseOwner: string;
+  /** Die Rolle, mit der diese Antwort gelesen wurde */
+  currentRole: string;
+  tls: ProjectDatabaseTls;
+  limits: ProjectDatabaseConnectionLimits;
+  roles: ProjectRole[];
+  truncated: boolean;
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -448,6 +504,10 @@ export interface ProjectDataPlanePort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<ProjectColumnPrivilegeResult>;
+  inspectSettings(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseSettingsResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -1045,6 +1105,51 @@ const ROLES_SQL = `
   ORDER BY account.rolname ASC
   LIMIT $1`;
 
+type SettingsRow = {
+  database_name: string;
+  database_owner: string;
+  current_role_name: string;
+  connection_encrypted: boolean;
+  tls_version: string | null;
+  server_tls_enabled: boolean;
+  max_connections: number;
+  superuser_reserved: number;
+  database_connection_limit: number;
+  role_connection_limit: number;
+};
+
+/**
+ * Was ueber die Projektdatenbank gilt (2.53): Name, Eigentuemer, TLS-Zustand
+ * und Verbindungsgrenzen, in einer Anweisung.
+ *
+ * Gelesen wird nur, was der Server ohnehin ueber sich selbst meldet. Aus
+ * `pg_stat_ssl` kommt ausschliesslich die Zeile des eigenen Backends
+ * (`pg_backend_pid()`); fremde Sitzungen werden nicht einmal betrachtet, und
+ * `client_dn` wird nicht ausgewaehlt. `current_setting('ssl', true)` kann auf
+ * einem Server ohne TLS-Unterstuetzung fehlen, darum die Vorgabe `off` statt
+ * eines Fehlers.
+ *
+ * Es gibt hier keine Adresse: weder `inet_server_addr` noch
+ * `inet_server_port`, weder `client_addr` noch ein Pfad. Der Ort der
+ * Datenbank ist kein Betriebswert und hat in einer Antwort an den Mandanten
+ * nichts verloren.
+ */
+const SETTINGS_SQL = `
+  SELECT current_database() AS database_name,
+         pg_catalog.pg_get_userbyid(database.datdba) AS database_owner,
+         current_user::text AS current_role_name,
+         COALESCE(ssl.ssl, false) AS connection_encrypted,
+         ssl.version AS tls_version,
+         COALESCE(current_setting('ssl', true), 'off') = 'on' AS server_tls_enabled,
+         current_setting('max_connections')::integer AS max_connections,
+         COALESCE(current_setting('superuser_reserved_connections', true), '0')::integer AS superuser_reserved,
+         database.datconnlimit::integer AS database_connection_limit,
+         account.rolconnlimit::integer AS role_connection_limit
+  FROM pg_catalog.pg_database AS database
+  JOIN pg_catalog.pg_roles AS account ON account.rolname = current_user
+  LEFT JOIN pg_catalog.pg_stat_ssl AS ssl ON ssl.pid = pg_catalog.pg_backend_pid()
+  WHERE database.datname = current_database()`;
+
 /**
  * Publikationen (2.20), aus `pg_publication` und `pg_publication_rel`.
  * Abgeleitet aus `publications.sql` in postgres-meta (Apache 2.0); die
@@ -1565,6 +1670,69 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Die Einstellungen der Projektdatenbank (2.53). Dieselbe Verbindung, zwei
+   * Anweisungen: die Rollen aus `ROLES_SQL`, also genau die Liste, die
+   * `inspectRoles` liefert, und daneben Name, Eigentuemer, TLS-Zustand und
+   * Grenzen. Nichts davon wird gerechnet oder geraten; was der Katalog nicht
+   * in der erwarteten Form meldet, faellt an der Grenze durch.
+   */
+  async inspectSettings(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseSettingsResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const settingsResult = await client.query<SettingsRow>(SETTINGS_SQL);
+      const roleResult = await client.query<RoleRow>(ROLES_SQL, [MAX_ROLES + 1]);
+      const row = settingsResult.rows[0];
+      // Ohne Zeile gibt es nichts zu sagen. Eine leere Antwort waere eine
+      // Behauptung ueber eine Datenbank, die der Katalog nicht kennt.
+      if (!row) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      const flags = [row.connection_encrypted, row.server_tls_enabled];
+      const numbers = [row.max_connections, row.superuser_reserved, row.database_connection_limit, row.role_connection_limit];
+      if (!catalogName(row.database_name) || !catalogName(row.database_owner) || !catalogName(row.current_role_name) ||
+          flags.some((flag) => typeof flag !== "boolean") ||
+          numbers.some((value) => !Number.isSafeInteger(value) || value < -1) ||
+          !boundedText(row.tls_version, 32) ||
+          (typeof row.tls_version === "string" && !/^[A-Za-z0-9. _-]{1,32}$/.test(row.tls_version))) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      const roleRows = roleResult.rows.slice(0, MAX_ROLES);
+      const roles: ProjectRole[] = roleRows.map((entry) => {
+        const roleFlags = [entry.superuser, entry.create_database, entry.create_role, entry.inherit, entry.login, entry.replication, entry.bypass_rls];
+        if (!catalogName(entry.role_name) || roleFlags.some((flag) => typeof flag !== "boolean") ||
+            !Number.isSafeInteger(entry.connection_limit) || entry.connection_limit < -1 || !boundedText(entry.valid_until, 40)) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+        return {
+          name: entry.role_name, superuser: entry.superuser, createDatabase: entry.create_database, createRole: entry.create_role,
+          inherit: entry.inherit, login: entry.login, replication: entry.replication, bypassRowSecurity: entry.bypass_rls,
+          connectionLimit: entry.connection_limit === -1 ? null : entry.connection_limit, validUntil: entry.valid_until,
+        };
+      });
+      return {
+        source: "postgres",
+        databaseName: row.database_name,
+        databaseOwner: row.database_owner,
+        currentRole: row.current_role_name,
+        tls: {
+          encrypted: row.connection_encrypted,
+          version: row.connection_encrypted ? row.tls_version : null,
+          serverEnabled: row.server_tls_enabled,
+        },
+        limits: {
+          maxConnections: row.max_connections,
+          superuserReserved: row.superuser_reserved,
+          database: row.database_connection_limit === -1 ? null : row.database_connection_limit,
+          role: row.role_connection_limit === -1 ? null : row.role_connection_limit,
+        },
+        roles,
+        truncated: roleResult.rows.length > roleRows.length,
+      };
+    });
+  }
+
   async inspectPublications(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1839,6 +2007,13 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _scope: ProjectDataPlaneScope,
     _schema: string,
   ): Promise<ProjectColumnPrivilegeResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectSettings(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseSettingsResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

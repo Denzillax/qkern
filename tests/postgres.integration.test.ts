@@ -1892,6 +1892,172 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
 
 
+  it("(2.59) reports the roles and the TLS state of the project database without a connection string", async () => {
+    // Datenbank-Einstellungen (2.53) gegen die echte Datenbank. Der Fall hat
+    // zwei Zusagen, und keine davon liesse sich gegen einen Nachbau pruefen:
+    //
+    // 1. Was die Seite zeigt, steht wirklich im Katalog. Jede gemeldete Rolle,
+    //    ihre Flags, Name und Eigentuemerin der Datenbank und die
+    //    Verbindungsgrenzen werden danach ein zweites Mal gelesen, als
+    //    Eigentuemer und mit Parametern, und muessen uebereinstimmen. Gegen
+    //    einen Fake waere das die Pruefung des Fakes.
+    // 2. Der Weg, auf dem die Auskunft entsteht, kennt die Adresse der
+    //    Datenbank -- der Pool ist aus QKERN_TEST_PROJECT_API_DATABASE_URL
+    //    gebaut, mit Benutzer, Passwort, Host und Port. Genau darum ist es
+    //    eine Aussage, dass kein Wert der Antwort einer dieser Angaben
+    //    gleicht. Ein Fake hat die URL gar nicht erst.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.45, 2.52, 2.54 und 2.57:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und dieser Fall soll ihm dabei nicht im Weg stehen. Geloescht wird nur,
+    // was das Produkt loescht; dieser Fall schreibt nichts in die
+    // Projektdatenbank und laesst Organisation, Projekt und Umgebung stehen
+    // wie 2.54 und 2.57.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const settingsOwner = randomUUID();
+    const settingsOrganization = randomUUID();
+    const settingsProject = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [settingsOwner, `settings-2-59-owner-${settingsOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Settings 2.59', $2, $3)`,
+    [settingsOrganization, `settings-2-59-${settingsOrganization}`, settingsOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Settings 2.59', $3, 'test', 'ready', $4)`,
+    [settingsProject, settingsOrganization, `settings-2-59-${settingsProject}`, settingsOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [settingsOrganization, settingsProject, `managed:${settingsProject}`]);
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${settingsProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole,
+          expectedDatabase,
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const settings = await service.inspectSettings(
+        { organizationId: settingsOrganization, actorRef: `settings-2-59-owner-${settingsOwner}@qkern.test` },
+        { projectId: settingsProject, environment: "development" },
+      );
+
+      // --- Die Form der Antwort ---
+      expect(settings.source).toBe("postgres");
+      expect(Object.keys(settings).sort()).toEqual([
+        "currentRole", "databaseName", "databaseOwner", "limits", "roles", "source", "tls", "truncated",
+      ]);
+      expect(settings.databaseName).toBe(expectedDatabase);
+      expect(settings.currentRole).toBe(expectedRole);
+      expect(settings.truncated).toBe(false);
+
+      // --- Zusage 1: Name, Eigentuemerin und Grenzen stehen so im Katalog ---
+      const catalog = await owner.query<{
+        database_owner: string; max_connections: string; superuser_reserved: string;
+        database_limit: string; server_ssl: string;
+      }>(`SELECT pg_catalog.pg_get_userbyid(database.datdba) AS database_owner,
+                 current_setting('max_connections') AS max_connections,
+                 current_setting('superuser_reserved_connections') AS superuser_reserved,
+                 database.datconnlimit::text AS database_limit,
+                 COALESCE(current_setting('ssl', true), 'off') AS server_ssl
+          FROM pg_catalog.pg_database AS database
+          WHERE database.datname = $1`, [expectedDatabase]);
+      const reference = catalog.rows[0];
+      expect(reference, "Die Datenbank steht nicht in pg_database; dann prueft dieser Fall nichts.").toBeDefined();
+      expect(settings.databaseOwner).toBe(reference!.database_owner);
+      expect(settings.limits.maxConnections).toBe(Number(reference!.max_connections));
+      expect(settings.limits.superuserReserved).toBe(Number(reference!.superuser_reserved));
+      // -1 heisst unbegrenzt und wird zu null; jede andere Zahl bleibt.
+      expect(settings.limits.database).toBe(Number(reference!.database_limit) === -1 ? null : Number(reference!.database_limit));
+      // Der Wegwerf-Stack startet Postgres mit max_connections=300.
+      expect(settings.limits.maxConnections).toBeGreaterThanOrEqual(300);
+
+      // --- Zusage 1: jede gemeldete Rolle gibt es wirklich, mit diesen Flags ---
+      expect(settings.roles.length).toBeGreaterThan(0);
+      const names = settings.roles.map((entry) => entry.name);
+      expect(names).toContain(expectedRole);
+      expect([...new Set(names)]).toHaveLength(names.length);
+      // Keine vordefinierte pg_-Rolle und kein Superuser in der Ansicht eines
+      // Projekts, auch nicht auf einem geteilten Cluster.
+      for (const entry of settings.roles) {
+        expect(entry.name.startsWith("pg_"), entry.name).toBe(false);
+        expect(entry.superuser, entry.name).toBe(false);
+        expect(Object.keys(entry).sort()).toEqual([
+          "bypassRowSecurity", "connectionLimit", "createDatabase", "createRole",
+          "inherit", "login", "name", "replication", "superuser", "validUntil",
+        ]);
+        if (entry.connectionLimit !== null) expect(entry.connectionLimit).toBeGreaterThanOrEqual(0);
+      }
+      const real = await owner.query<{
+        rolname: string; rolcanlogin: boolean; rolsuper: boolean; rolinherit: boolean;
+        rolcreatedb: boolean; rolcreaterole: boolean; rolreplication: boolean;
+        rolbypassrls: boolean; rolconnlimit: number;
+      }>(`SELECT rolname, rolcanlogin, rolsuper, rolinherit, rolcreatedb, rolcreaterole,
+                 rolreplication, rolbypassrls, rolconnlimit
+          FROM pg_catalog.pg_roles WHERE rolname = ANY ($1::text[])`, [names]);
+      expect(real.rows.length, "Eine gemeldete Rolle gibt es nicht.").toBe(names.length);
+      for (const entry of settings.roles) {
+        const actual = real.rows.find((candidate) => candidate.rolname === entry.name);
+        expect(actual, entry.name).toBeDefined();
+        expect({
+          login: entry.login, superuser: entry.superuser, inherit: entry.inherit,
+          createDatabase: entry.createDatabase, createRole: entry.createRole,
+          replication: entry.replication, bypassRowSecurity: entry.bypassRowSecurity,
+          connectionLimit: entry.connectionLimit,
+        }, entry.name).toEqual({
+          login: actual!.rolcanlogin, superuser: actual!.rolsuper, inherit: actual!.rolinherit,
+          createDatabase: actual!.rolcreatedb, createRole: actual!.rolcreaterole,
+          replication: actual!.rolreplication, bypassRowSecurity: actual!.rolbypassrls,
+          connectionLimit: actual!.rolconnlimit === -1 ? null : actual!.rolconnlimit,
+        });
+      }
+      // Die Grenze der lesenden Rolle kommt aus derselben Zeile.
+      const reader = real.rows.find((candidate) => candidate.rolname === expectedRole);
+      expect(settings.limits.role).toBe(reader!.rolconnlimit === -1 ? null : reader!.rolconnlimit);
+
+      // --- Der TLS-Zustand, wie der Server ihn meldet ---
+      expect(settings.tls.serverEnabled).toBe(reference!.server_ssl === "on");
+      expect(typeof settings.tls.encrypted).toBe("boolean");
+      // Ein Server ohne TLS kann keine verschluesselte Verbindung haben, und
+      // ohne Verschluesselung gibt es kein Protokoll zu nennen. Der Fall sagt
+      // damit nicht, wie der Stack konfiguriert ist, sondern dass die Antwort
+      // zu dem passt, was der Server ueber sich selbst sagt.
+      if (!settings.tls.serverEnabled) expect(settings.tls.encrypted).toBe(false);
+      if (!settings.tls.encrypted) expect(settings.tls.version).toBeNull();
+
+      // --- Zusage 2: kein Wert der Antwort verraet, wo die Datenbank liegt ---
+      const values: unknown[] = [];
+      const walk = (value: unknown): void => {
+        if (Array.isArray(value)) { for (const entry of value) walk(entry); return; }
+        if (value !== null && typeof value === "object") { for (const entry of Object.values(value)) walk(entry); return; }
+        values.push(value);
+      };
+      walk(settings);
+      const secrets = [target.hostname, target.port || "5432", decodeURIComponent(target.password), projectApiUrl!];
+      for (const secret of secrets) {
+        expect(secret, "Die Test-URL traegt diese Angabe nicht; dann prueft dieser Fall nichts.").toBeTruthy();
+        for (const value of values) expect(String(value), secret).not.toBe(secret);
+      }
+      const serialised = JSON.stringify(settings);
+      expect(serialised).not.toContain(decodeURIComponent(target.password));
+      expect(serialised).not.toContain(`:${target.port || "5432"}`);
+      expect(serialised).not.toContain("://");
+      for (const word of ["sslmode", "connectionString", "client_addr", "client_dn", "rolpassword"]) {
+        expect(serialised.toLowerCase(), word).not.toContain(word.toLowerCase());
+      }
+    } finally {
+      await projectApi.end();
+    }
+  });
+
   it("(2.57) proves the advisor rules that used to be unreachable", async () => {
     // Zwei Regeln, die es seit 2.39 und 2.40 gibt und die bis 2.56 nie liefen,
     // gegen die echte Datenbank -- jede mit dem Beleg, warum sie jetzt laufen
