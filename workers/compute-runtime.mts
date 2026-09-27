@@ -71,6 +71,10 @@ try {
     // 2.63 war er gebaut, zertifiziert und untaetig; ein Prozess, der ihn
     // stumm laufen liesse, waere von einem ohne ihn nicht zu unterscheiden.
     + (runtime.logDrainCollector ? " and the log drain collector" : "")
+    // Und derselbe Satz fuer den Dashboard-Webhook-Sammler (2.75). Er meldet
+    // Ereignisse des Projekts nach draussen; ob er laeuft, gehoert in die
+    // Startzeile und nicht in eine Vermutung.
+    + (runtime.dashboardWebhookCollector ? " and the dashboard webhook collector" : "")
     + (bound ? ` (probe on http://${bound.host}:${bound.port}/ready)` : ""),
   );
   runtime.scopes.length > 0 && probe?.observer.runtimeStarted();

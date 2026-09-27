@@ -49,7 +49,42 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
-- Neu in diesem Zweig: 2.53 Die Webhook-Bruecke laeuft als Prozess – das
+- Neu in diesem Zweig: 2.75 (Zweig `slice/dashhooks`) **Dashboard-Webhooks
+  tragen nur, was die Console zeigt.** Der Platzhalter `set-webhooks`
+  („Benachrichtigungen bei Ereignissen des Projekts selbst") ist echt. Die
+  Quelle ist die **Audit-Kette** der Control Plane (`audit_logs` aus 0001/0002),
+  nicht die Projektdatenbank: vier Ereignisarten (`migration_applied`,
+  `approval_decided`, `project_state_changed`, `environment_added`), jede mit
+  einer Liste von Handlungen aus dem Audit-Log und einer Positivliste von
+  Feldern. **Kein zweiter Zustellweg und keine Ereignistabelle**: dieselbe
+  Outbox, derselbe Vault-Signierer, dasselbe Backoff und Dead Letter aus `0032`;
+  die Kopplung und die Position stehen in
+  `0057_project_dashboard_webhooks.sql` (nach 0056 frei, IMMUTABLE-Funktion fuer
+  die Artenliste wie 0054, `GREATEST` in der Anweisung, kein DELETE,
+  `COLLATE "C"`, `notified_at` getrennt von `updated_at`). Anders als bei den
+  Log-Drains wird **nicht gebuendelt**: ein Ereignis, eine Meldung, weil ein
+  Projekt am Tag eine Handvoll davon erzeugt. Der Sammler laeuft von Anfang an
+  im Compute-Prozess (`QKERN_COMPUTE_DASHBOARD_WEBHOOKS_ENABLED=true`,
+  `lib/server/compute/dashboard-webhook-collector-runtime.ts`, Backoff je
+  Umgebung, weil es keinen Puffer gibt, der eine Runde ueberdauern muesste).
+  Die Feldgrenze haengt an `tests/dashboard-webhook-field-boundary`: Jedes
+  gemeldete Feld muss im Zeilentyp der zugehoerigen Ansicht stehen
+  (`AuditEvent`, `Approval`, `Project` in `lib/types.ts`, `ReviewItem` in
+  `migrations-view.tsx`, `Binding` in `infrastructure-view.tsx`). **Bewusst
+  zurueckgehalten**: `actor` bei jeder Art -- die Audit-Ansicht zeigt die
+  Referenz des Menschen, in der Control Plane ist das die E-Mail-Adresse des
+  Kontos, und eine Benachrichtigung braucht sie nicht; dazu `actionHash` bei
+  der Freigabe und `databaseInstanceRef` bei der Umgebung. Die Metadaten
+  verlassen die Datenbank nur mit den erlaubten Schluesseln (Positivliste im
+  SQL **und** in der Whitelist), `actor_ref`, `actor_type`, `entry_hash` und
+  `previous_hash` werden gar nicht gelesen. **Ehrlich offen**: at-least-once,
+  kein Nachschicken der Vergangenheit, und die Hashkette geht nicht mit hinaus
+  -- aus einer Folge von Meldungen kann ein Empfaenger nicht beweisen, dass
+  keine fehlt. Gemeldet wird der **gespeicherte** Zustand und nicht der Badge
+  der Audit-Ansicht: Deren Faltung auf drei Werte macht aus dem `succeeded` des
+  Provisioners ein `blocked`. PostgreSQL-Fall "(2.75) turns a real project
+  event into a signed dashboard webhook delivery". Im Browser nicht gesehen
+- Davor: 2.53 Die Webhook-Bruecke laeuft als Prozess, das
   "Ehrlich offen" aus 2.50 ist geschlossen. Der Compute-Prozess
   (`npm run worker:compute`) liest jetzt den Change Feed der
   Projektdatenbanken, die er bedient, und nennt die Bruecke in seiner

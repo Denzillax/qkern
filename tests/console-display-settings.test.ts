@@ -47,7 +47,7 @@ describe("console display settings", () => {
   it("refuses a value it cannot display instead of replacing it silently", () => {
     for (const body of [
       null, "de", [], { language: "es" }, { formatLocale: "de-AT" }, { timeZone: "Mars/Olympus" },
-      { timeZone: "" }, { startView: "set-webhooks" }, { startView: "does-not-exist" }, { theme: "sepia" },
+      { timeZone: "" }, { startView: "set-compute" }, { startView: "does-not-exist" }, { theme: "sepia" },
     ]) {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }

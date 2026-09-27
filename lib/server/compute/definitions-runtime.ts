@@ -18,6 +18,11 @@ import { LogDrainService } from "@/lib/server/compute/log-drains";
 import { PostgresLogDrainRepository } from "@/lib/server/compute/log-drain-postgres-repository";
 import { PostgresLogDrainCursorRepository } from
   "@/lib/server/compute/log-drain-cursor-postgres-repository";
+import { DashboardWebhookService } from "@/lib/server/compute/dashboard-webhooks";
+import { PostgresDashboardWebhookRepository } from
+  "@/lib/server/compute/dashboard-webhook-postgres-repository";
+import { PostgresDashboardWebhookCursorRepository } from
+  "@/lib/server/compute/dashboard-webhook-cursor-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
@@ -170,11 +175,39 @@ export function createLogDrainServiceFromEnv(
   });
 }
 
+/**
+ * Dashboard-Webhooks (2.75).
+ *
+ * Dieselbe Freischaltung wie die uebrigen Definitionen, aus demselben Grund wie
+ * bei den Log-Drains: Wer die Verwaltungsflaeche fuer Cron und Webhooks nicht
+ * hat, soll auch diese nicht haben. Ein eigener Schalter waere eine zweite
+ * Stelle, an der jemand eine Flaeche ohne Absicht aufmacht.
+ */
+export function createDashboardWebhookServiceFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) {
+  if (env.QKERN_COMPUTE_DEFINITIONS_ENABLED !== "true") {
+    throw new ConfigurationError("Set QKERN_COMPUTE_DEFINITIONS_ENABLED=true explicitly.");
+  }
+  if (runtimeModeFromEnv(env) !== "postgres") {
+    throw new ConfigurationError("Dashboard webhooks require the PostgreSQL runtime mode.");
+  }
+  const controlPlane = new PostgresControlPlane(getPostgresPool(env));
+  return new DashboardWebhookService({
+    repository: new PostgresDashboardWebhookRepository(controlPlane),
+    // Der Stand des Sammlers. Er steht in der Control Plane, weil der
+    // Compute-Prozess den Sammler betreibt; ohne den Prozess bleibt die Liste
+    // leer, und die Ansicht sagt genau das.
+    collector: new PostgresDashboardWebhookCursorRepository(controlPlane),
+  });
+}
+
 type GlobalComputeDefinitions = typeof globalThis & {
   __qkernComputeDefinitionService?: ComputeDefinitionService;
   __qkernFunctionInvocationService?: FunctionInvocationService;
   __qkernDatabaseWebhookService?: DatabaseWebhookService;
   __qkernLogDrainService?: LogDrainService;
+  __qkernDashboardWebhookService?: DashboardWebhookService;
 };
 
 export function getComputeDefinitionService() {
@@ -199,4 +232,10 @@ export function getLogDrainService() {
   const runtime = globalThis as GlobalComputeDefinitions;
   runtime.__qkernLogDrainService ??= createLogDrainServiceFromEnv();
   return runtime.__qkernLogDrainService;
+}
+
+export function getDashboardWebhookService() {
+  const runtime = globalThis as GlobalComputeDefinitions;
+  runtime.__qkernDashboardWebhookService ??= createDashboardWebhookServiceFromEnv();
+  return runtime.__qkernDashboardWebhookService;
 }

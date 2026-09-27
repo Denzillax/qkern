@@ -32,6 +32,11 @@ const projectLogDrainParameters = [
   { name: "logDrainId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
 ] as const;
 
+const projectDashboardWebhookParameters = [
+  ...projectAuthScopeParameters,
+  { name: "dashboardWebhookId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+] as const;
+
 const projectQueueParameters = [
   ...projectAuthScopeParameters,
   { name: "queue", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" } },
@@ -696,6 +701,40 @@ export const qkernOpenAPI = {
         security: [{ sessionCookie: [] }], parameters: projectLogDrainParameters,
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
         responses: { "200": { description: "Log drain", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectLogDrainResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/dashboard-webhooks": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectDashboardWebhooks",
+        summary: "List dashboard webhooks with event kinds, target and state",
+        description: "Owner or administrator only. Since `2.58.0`. Only the signing secret reference is returned; the secret itself lives in the Vault and never reaches this surface.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Dashboard webhooks", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDashboardWebhookListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "createProjectDashboardWebhook",
+        summary: "Report events of the project itself to a signed target",
+        description: "Owner or administrator only with trusted same-origin validation. Since `2.58.0`. Creates the outgoing webhook definition and the coupling in one transaction, and delivers over the existing webhook outbox, signer, backoff and dead letter. The source is the audit chain of the control plane, never a project database: changes to your tables are the database webhooks. A notice carries exactly the fields the console already shows for an audit entry and nothing else; there is no field for a field selection, a filter or a payload, because the boundary is not negotiable. Never carried: the actor reference, the audit hash chain, SQL statements, diffs, row values, tokens or secrets. Delivery is at least once, and the past is not sent afterwards. Event kinds and target are immutable afterwards.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectDashboardWebhook" } } } },
+        responses: { "201": { description: "Dashboard webhook created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDashboardWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "The webhook name already exists in this project environment or the limit is reached" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/dashboard-webhooks/{dashboardWebhookId}": {
+      get: {
+        tags: ["Project Compute"], operationId: "getProjectDashboardWebhook",
+        summary: "Read one dashboard webhook",
+        description: "Owner or administrator only. Since `2.58.0`.",
+        security: [{ sessionCookie: [] }], parameters: projectDashboardWebhookParameters,
+        responses: { "200": { description: "Dashboard webhook", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDashboardWebhookResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      patch: {
+        tags: ["Project Compute"], operationId: "setProjectDashboardWebhookEnabled",
+        summary: "Enable or disable one dashboard webhook",
+        description: "Since `2.58.0`. Disabling stops both the collecting and the delivery: nothing new is gathered while it is off, and pending notices are parked instead of burning attempts. There is deliberately no DELETE in this surface; deleting would take pending notices with it.",
+        security: [{ sessionCookie: [] }], parameters: projectDashboardWebhookParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
+        responses: { "200": { description: "Dashboard webhook", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDashboardWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/logs/search": {
@@ -1725,6 +1764,10 @@ export const qkernOpenAPI = {
       ProjectWebhookDelivery: { type: "object", additionalProperties: false, required: ["id", "webhookId", "eventType", "status", "attemptCount", "lastFailureCode", "occurredAt", "availableAt", "settledAt"], properties: { id: { type: "string", format: "uuid" }, webhookId: { type: "string", format: "uuid" }, eventType: { type: "string" }, status: { type: "string", enum: ["pending", "in_flight", "delivered", "dead_lettered"] }, attemptCount: { type: "integer", minimum: 0, maximum: 20 }, lastFailureCode: { type: ["string", "null"], enum: ["WEBHOOK_INVALID", "WEBHOOK_TIMEOUT", "WEBHOOK_REJECTED", "WEBHOOK_SIGNING_FAILED", null] }, occurredAt: { type: "string", format: "date-time" }, availableAt: { type: "string", format: "date-time" }, settledAt: { type: ["string", "null"], format: "date-time" } } },
       ProjectWebhookDeliveryListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectWebhookDelivery" } } } },
       ProjectLogDrain: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "webhookId", "name", "url", "sources", "eventTypes", "signingSecretRef", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, webhookId: { type: "string", format: "uuid", description: "The outgoing webhook definition this drain drives. Its delivery status is listed under compute/webhooks/{webhookId}/deliveries." }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri" }, sources: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "string", enum: ["auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series"] } }, eventTypes: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "string", enum: ["log.auth_audit", "log.function_invocations", "log.storage_objects", "log.webhook_deliveries", "log.usage_series"] } }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectDashboardWebhook: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "webhookId", "name", "url", "kinds", "eventTypes", "signingSecretRef", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, webhookId: { type: "string", format: "uuid", description: "The outgoing webhook definition this coupling drives. Its delivery status is listed under compute/webhooks/{webhookId}/deliveries." }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri" }, kinds: { type: "array", minItems: 1, maxItems: 4, uniqueItems: true, items: { type: "string", enum: ["migration_applied", "approval_decided", "project_state_changed", "environment_added"] } }, eventTypes: { type: "array", minItems: 1, maxItems: 4, uniqueItems: true, items: { type: "string", enum: ["project.migration_applied", "project.approval_decided", "project.project_state_changed", "project.environment_added"] } }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectDashboardWebhookResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDashboardWebhook" } } },
+      ProjectDashboardWebhookListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectDashboardWebhook" } } } },
+      CreateProjectDashboardWebhook: { type: "object", additionalProperties: false, required: ["name", "url", "kinds", "signingSecretRef"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri", description: "Exact public HTTPS target on port 443 without query, fragment or credentials, validated by the same rule the deliverer applies." }, kinds: { type: "array", minItems: 1, maxItems: 4, items: { type: "string", enum: ["migration_applied", "approval_decided", "project_state_changed", "environment_added"] }, description: "Chosen from the fixed list. Each kind names a set of audit actions; the intermediate states of a migration run are deliberately absent, because sending them would report the same run repeatedly with a changing outcome." }, signingSecretRef: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$", description: "Reference only. Never send a secret value to this endpoint; there is no field for one." }, enabled: { type: "boolean", default: true } } },
       ProjectLogDrainResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectLogDrain" } } },
       ProjectLogDrainListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectLogDrain" } } } },
       CreateProjectLogDrain: { type: "object", additionalProperties: false, required: ["name", "url", "sources", "signingSecretRef"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri", description: "Exact public HTTPS target on port 443 without query, fragment or credentials, validated by the same rule the deliverer applies." }, sources: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", enum: ["auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series"] }, description: "Chosen from the fixed list. The cron log is deliberately absent: it is reconstructed per request rather than stored, so its occurrences would be sent repeatedly with a changing state." }, signingSecretRef: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$", description: "Reference only. Never send a secret value to this endpoint; there is no field for one." }, enabled: { type: "boolean", default: true } } },

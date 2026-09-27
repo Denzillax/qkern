@@ -10,6 +10,14 @@ import { PostgresDatabaseWebhookRepository } from
   "@/lib/server/compute/database-webhook-postgres-repository";
 import { PostgresDatabaseWebhookCursorRepository } from
   "@/lib/server/compute/database-webhook-cursor-postgres-repository";
+import { DashboardWebhookCollectorRuntime } from
+  "@/lib/server/compute/dashboard-webhook-collector-runtime";
+import { PostgresDashboardWebhookCursorRepository } from
+  "@/lib/server/compute/dashboard-webhook-cursor-postgres-repository";
+import {
+  PostgresDashboardEventReader,
+  PostgresDashboardWebhookRepository,
+} from "@/lib/server/compute/dashboard-webhook-postgres-repository";
 import { LogDrainCollectorRuntime } from "@/lib/server/compute/log-drain-collector-runtime";
 import { PostgresLogDrainCursorRepository } from
   "@/lib/server/compute/log-drain-cursor-postgres-repository";
@@ -60,14 +68,16 @@ export type ComputeScopeConfig = Readonly<{
 export type ComputeRuntimeLogEvent = Readonly<{
   event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed"
   | "compute.database_webhook_round" | "compute.database_webhook_failed"
-  | "compute.log_drain_round" | "compute.log_drain_failed";
+  | "compute.log_drain_round" | "compute.log_drain_failed"
+  | "compute.dashboard_webhook_round" | "compute.dashboard_webhook_failed";
   scopeIndex: number;
   dispatched?: number;
   failures?: number;
   failureCode?: string;
   /**
-   * Zahl der eingereihten Zustellungen: von der Webhook-Bruecke (2.53) oder
-   * als Ladung des Log-Drain-Sammlers (2.64).
+   * Zahl der eingereihten Zustellungen: von der Webhook-Bruecke (2.53), als
+   * Ladung des Log-Drain-Sammlers (2.64) oder als Meldung des
+   * Dashboard-Webhook-Sammlers (2.75).
    */
   enqueued?: number;
 }>;
@@ -166,6 +176,8 @@ export type ComputeRuntime = {
   readonly databaseWebhookBridge: boolean;
   /** Ob der Log-Drain-Sammler (2.64) in diesem Prozess laeuft. Fuer die Startzeile. */
   readonly logDrainCollector: boolean;
+  /** Ob der Dashboard-Webhook-Sammler (2.75) in diesem Prozess laeuft. */
+  readonly dashboardWebhookCollector: boolean;
 };
 
 /**
@@ -222,6 +234,19 @@ export function createComputeRuntimeFromEnv(
     throw new ConfigurationError(
       "The log drain collector needs the webhook delivery loop in the same process.");
   }
+  // Der Dashboard-Webhook-Sammler (2.75) ist ausdruecklich anzuschalten, wie
+  // der Sammler daneben: Er schickt Ereignisse des Projekts an ein Ziel im
+  // Internet, und das soll niemand versehentlich einschalten. Eine
+  // Projektdatenbank braucht er nicht -- die Audit-Kette liegt in der Control
+  // Plane.
+  const dashboardWebhooksEnabled = env.QKERN_COMPUTE_DASHBOARD_WEBHOOKS_ENABLED === "true";
+  if (dashboardWebhooksEnabled && !webhooksEnabled) {
+    // Sonst reiht der Sammler Meldungen ein, die in diesem Prozess niemand
+    // abholt. Eine wachsende Outbox ohne Zusteller ist schlimmer als ein
+    // abgeschalteter Sammler.
+    throw new ConfigurationError(
+      "The dashboard webhook collector needs the webhook delivery loop in the same process.");
+  }
   const scopes = computeScopesFromEnv(env);
   const workerId = workerIdentity(env);
   const cronIntervalMs = integer(env.QKERN_COMPUTE_CRON_INTERVAL_MS, 30_000, 1_000, 900_000);
@@ -250,6 +275,16 @@ export function createComputeRuntimeFromEnv(
   const drainErrorMs = integer(env.QKERN_COMPUTE_LOG_DRAIN_ERROR_MS, 5_000, 100, 300_000);
   const drainDiscoveryMs = integer(
     env.QKERN_COMPUTE_LOG_DRAIN_DISCOVERY_MS, 30_000, 250, 3_600_000);
+  // Der Takt des Dashboard-Webhook-Sammlers (2.75), benannt wie der der
+  // Sammler daneben und mit denselben Grenzen. Eine Buendelung gibt es hier
+  // nicht, darum auch keine Groesse und kein Alter einer Ladung.
+  const dashboardReadLimit = integer(
+    env.QKERN_COMPUTE_DASHBOARD_WEBHOOK_READ_LIMIT, 100, 1, 1_000);
+  const dashboardIdleMs = integer(env.QKERN_COMPUTE_DASHBOARD_WEBHOOK_POLL_MS, 1_000, 50, 60_000);
+  const dashboardErrorMs = integer(
+    env.QKERN_COMPUTE_DASHBOARD_WEBHOOK_ERROR_MS, 5_000, 100, 300_000);
+  const dashboardDiscoveryMs = integer(
+    env.QKERN_COMPUTE_DASHBOARD_WEBHOOK_DISCOVERY_MS, 30_000, 250, 3_600_000);
 
   const controlPlane = new PostgresControlPlane(getPostgresPool(env));
 
@@ -375,14 +410,49 @@ export function createComputeRuntimeFromEnv(
     }),
   }) : undefined;
 
+  // Der Dashboard-Webhook-Sammler (2.75): ein Leser fuer alle Umgebungen dieses
+  // Prozesses, mit der Reihenfolge der Scope-Liste und einer dauerhaften
+  // Position je Webhook und Ereignisart.
+  const dashboardCursors = dashboardWebhooksEnabled
+    ? new PostgresDashboardWebhookCursorRepository(controlPlane)
+    : undefined;
+  const dashboardRuntime = dashboardCursors ? new DashboardWebhookCollectorRuntime({
+    scopes,
+    reader: new PostgresDashboardEventReader(controlPlane),
+    bindings: new PostgresDashboardWebhookRepository(controlPlane),
+    census: dashboardCursors,
+    cursors: dashboardCursors,
+    outbox,
+    readLimit: dashboardReadLimit,
+    idleIntervalMs: dashboardIdleMs,
+    errorIntervalMs: dashboardErrorMs,
+    discoveryIntervalMs: dashboardDiscoveryMs,
+    // Redigiert wie bei den Sammlern daneben: ein fester Code und der
+    // Scope-Index, keine Datenbankmeldung, keine Id, kein Endpunkt.
+    onFailure: (failureCode, scopeIndex) => {
+      safeRuntimeProbe(dependencies.probe, "iterationFailed");
+      safeComputeLog(dependencies.logger, {
+        event: "compute.dashboard_webhook_failed", scopeIndex, failureCode,
+      });
+    },
+    onEnqueued: (scopeIndex, enqueued) => safeComputeLog(dependencies.logger, {
+      event: "compute.dashboard_webhook_round", scopeIndex, enqueued,
+    }),
+  }) : undefined;
+
   return {
     scopes,
     databaseWebhookBridge: Boolean(bridgeRuntime),
     logDrainCollector: Boolean(drainRuntime),
+    dashboardWebhookCollector: Boolean(dashboardRuntime),
     async run(signal: AbortSignal): Promise<void> {
       const loops: Promise<void>[] = [];
       const stops: Array<() => void> = [];
 
+      if (dashboardRuntime) {
+        stops.push(() => dashboardRuntime.stop());
+        loops.push(dashboardRuntime.run());
+      }
       if (drainRuntime) {
         stops.push(() => drainRuntime.stop());
         loops.push(drainRuntime.run());

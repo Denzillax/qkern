@@ -1950,6 +1950,155 @@ Datenbank: Migration `0054_project_log_drains.sql` hält die Kopplung samt der
 festen Quellenliste. Die ausgehende Definition, die Outbox, die Lease, das
 Backoff und der Dead Letter bleiben in `0032`.
 
+### Dashboard-Webhooks
+
+Seit `2.58.0` ist **Einstellungen → Dashboard-Webhooks** keine Platzhalterseite
+mehr: QKERN meldet Ereignisse des Projekts selbst an ein fremdes Ziel, etwa an
+einen Chatkanal oder ein Ticketsystem.
+
+**Der Unterschied zu den Datenbank-Webhooks ist die Quelle.** Ein
+Datenbank-Webhook trägt eine Änderung an einer Tabelle **in** einer
+Projektdatenbank hinaus und hängt an einem Trigger dort. Ein Dashboard-Webhook
+trägt ein Ereignis **des Projekts** aus der Control Plane hinaus und liest dafür
+die Audit-Kette aus `0001` und `0002`. Er sieht keine einzige Zeile Ihrer Daten.
+Wer über Änderungen an seinen Tabellen benachrichtigt werden will, nimmt
+Integrationen → Datenbank-Webhooks.
+
+**Die eine harte Grenze.** Eine Meldung trägt genau die Felder, die die Console
+für einen Audit-Eintrag schon zeigt, und kein einziges mehr. Die Grenze steht als
+Feldliste je Ereignisart in `lib/console/dashboard-webhooks` und hängt an einem
+Vertrag: `tests/dashboard-webhook-field-boundary` liest die Zeilentypen der
+zugehörigen Console-Ansichten und verlangt für **jedes** gemeldete Feld einen
+Eintrag darin. Ein Feld mehr lässt den Lauf scheitern. Durchgesetzt wird sie zur
+Laufzeit von einer Whitelist: `projectDashboardEvent` geht die deklarierten
+Feldnamen durch und nimmt nur, was dort steht.
+
+Jede Meldung trägt dieselbe Hülle aus der Audit-Ansicht (`id`, `createdAt`,
+`action`, `status`, `environment`, `projectId`, `resource`) und dazu, je
+Ereignisart, die Felder der Ansicht, die diese Art zeigt:
+
+| Ereignisart | Handlungen im Audit-Log | Zusätzliche Felder | Zurückgehalten |
+| --- | --- | --- | --- |
+| `migration_applied` | `migration.apply.completed`, `migration.apply.failed` | `changeSetId`, `errorCode` | `actor`, `executorResult` |
+| `approval_decided` | `approval.approved`, `approval.rejected`, `approval.automatically_approved` | `risk` | `actor`, `actionHash` |
+| `project_state_changed` | `project.database.provisioning_failed`, `project.database.provisioning_retry_scheduled` | keine | `actor`, `errorCode`, `attempt` |
+| `environment_added` | `project.database.provisioning_requested`, `project.database.provisioned` | keine | `actor`, `databaseInstanceRef`, `bootstrapContractSha256`, `provisioningJobId` |
+
+**Warum die Akteursreferenz nicht hinausgeht.** Das ist die eine Entscheidung,
+die diese Seite bewusst trifft, und sie gilt für jede Ereignisart.
+`audit_logs.actor_ref` trägt bei jedem Ereignis, das ein Mensch ausgelöst hat,
+die Referenz dieses Menschen; in der Control Plane ist das die E-Mail-Adresse des
+angemeldeten Kontos. Die Audit-Ansicht **zeigt** sie in einer Spalte „Akteur",
+und ein Administrator derselben Organisation sieht sie also ohnehin. Hinaus geht
+sie trotzdem nicht: Für „die Migration ist angewendet" oder „die Freigabe ist
+erteilt" braucht ein fremder Dienst die Person nicht, und wer wissen muss, wer
+entschieden hat, liest das Audit-Log. Dort steht es mit Hash und Kette. Einen
+Schalter dafür gibt es nicht; ein Schalter wäre eine Zeile, die ein Betreiber
+einmal umlegt und danach niemand mehr liest.
+
+Zwei weitere Felder zeigt die Console und eine Meldung trägt sie trotzdem nicht.
+`actionHash` bindet eine Freigabe an genau eine Anweisung und genau eine
+Datenbankinstanz; die Freigabezentrale braucht ihn, eine Benachrichtigung nicht.
+`databaseInstanceRef` benennt die Instanz, auf der eine Umgebung läuft, und ist
+der Griff, an dem ein Angreifer die Datenbank dieses Projekts sucht.
+
+**Warum die Zwischenstände fehlen.** Eingereiht, wiederholt und zur Prüfung
+zurückgestellt sind Zustände desselben Migrationslaufs. Sie zu melden hieße,
+denselben Vorgang mehrfach mit wechselndem Ausgang zu senden, derselbe Grund,
+aus dem das Cron-Log keine Quelle der Log-Drains ist. Gemeldet wird der
+Abschluss, gelungen oder gescheitert.
+
+**Gemeldet wird der gespeicherte Zustand, nicht der Badge.** Die Audit-Ansicht
+faltet `audit_logs.status` für ihre Anzeige auf drei Werte zusammen, und dabei
+wird alles, was nicht `success` oder `pending` heißt, zu `blocked` (auch das
+`succeeded` des Provisioners). Eine Meldung trägt das gespeicherte Wort. Ein
+Empfänger, dem ein gelungenes Provisioning als „blockiert" gemeldet würde,
+bekäme eine Unwahrheit statt einer kürzeren Liste.
+
+**Was eine Meldung trägt.** Eine Hülle mit der Fassung des Vertrags, der
+Ereignisart und dem Ereignis, ohne Ziel, ohne Referenz, ohne Geheimnis:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "approval_decided",
+  "event": {
+    "id": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+    "createdAt": "2026-09-27T09:00:00.000Z",
+    "action": "approval.approved",
+    "status": "success",
+    "environment": "production",
+    "projectId": "7b1c0f1e-2d3c-4b5a-8978-8796a5b4c3d2",
+    "resource": "3c4b5a69-788a-4796-a5b4-c3d2e1f00f1e",
+    "risk": "high"
+  }
+}
+```
+
+**Ein Ereignis, eine Meldung.** Gebündelt wird ausdrücklich nicht. Ein Log-Drain
+bündelt, weil eine Umgebung hunderte Protokollzeilen je Minute erzeugt; ein
+Projekt erzeugt am Tag eine Handvoll dieser Ereignisse. Eine Ladung mit einem
+Eintrag wäre eine Hülle um nichts, und ein Empfänger, der eine Freigabe in einen
+Chatkanal schreibt, müsste sie erst wieder auspacken.
+
+**Zugestellt wird über den vorhandenen Webhook-Weg.** Es gibt keinen zweiten:
+dieselbe Outbox mit Lease aus `0032`, dieselbe serverberechnete Wartezeit,
+dieselbe Versuchsgrenze, dasselbe Dead Letter, derselbe `HmacWebhookSigner` über
+den Vault und dieselbe Zielregel `isDeliverableWebhookTarget`.
+
+**Zugestellt wird mindestens einmal, nicht genau einmal.** Zwischen dem Einreihen
+einer Meldung und dem Festhalten der Position liegt ein Augenblick, und zwei
+Compute-Prozesse mit derselben Umgebungsliste sind eine zulässige Betriebsform.
+Dieselbe Meldung kann deshalb zweimal ankommen; ein Empfänger erkennt das an
+`event.id`, der Kennung des Audit-Eintrags.
+
+**Die Vergangenheit wird nicht nachgeschickt.** Ein neu angelegter
+Dashboard-Webhook beginnt an der Spitze der Audit-Kette. Der Stand liegt je
+Webhook **und** Ereignisart in `project_dashboard_webhook_cursors`, damit ein
+Neustart dort weiterliest, wo die letzte Meldung endete, statt auf die inzwischen
+gewachsene Spitze zu springen.
+
+**Die Kette geht nicht mit hinaus.** Jeder Audit-Eintrag trägt seinen Hash und
+den seines Vorgängers, und genau daran lässt sich in der Console prüfen, dass
+nichts entfernt wurde. Eine Meldung trägt beide Hashes nicht: Aus einer Folge von
+Meldungen kann ein Empfänger nicht beweisen, dass keine fehlt. Wer diesen Beweis
+braucht, liest das Audit-Log.
+
+**Der Sammler läuft im Compute-Prozess** (`npm run worker:compute`),
+angeschaltet mit `QKERN_COMPUTE_DASHBOARD_WEBHOOKS_ENABLED=true`. Er nennt sich
+in der Startzeile, entdeckt die Umgebungen mit mindestens einer Kopplung und
+lässt eine Umgebung mit ausschließlich abgeschalteten Kopplungen bewusst dabei,
+damit aus dem Pausieren kein Stauen wird. Ohne diesen Prozess entsteht keine
+Meldung, und die Ansicht sagt dann „noch nie gemeldet" statt eines erfundenen
+Zeitpunkts.
+
+**Die Routen**, mit `project_compute_admin` und `Cache-Control: private,
+no-store` wie die benachbarten Definitionsrouten:
+
+- `GET /api/v1/projects/{projectId}/environments/{environment}/compute/dashboard-webhooks`
+- `POST` auf dieselbe Route legt an. Ziel, Ereignisarten und Referenz sind danach
+  unveränderlich; eine Änderung ist Neuanlegen.
+- `GET` und `PATCH` auf `.../compute/dashboard-webhooks/{dashboardWebhookId}`;
+  `PATCH` nimmt nur `{ "enabled": true | false }`.
+
+Ein Feld für eine Feldauswahl, einen Filter oder eine Nutzlast gibt es in keinem
+dieser Körper. Wäre es wählbar, wäre die Grenze verhandelbar.
+
+**Kein DELETE**, aus demselben Grund wie bei den Datenbank-Webhooks und den
+Log-Drains: Löschen nähme über den Fremdschlüssel die wartenden Meldungen mit.
+Abschalten hält sie an, ohne etwas zu verlieren, und ist rücknehmbar.
+
+Das Signaturgeheimnis liegt im Vault; gespeichert wird ausschließlich die
+**Referenz**. Sie erscheint unter Integrationen → Vault als Benutzer der Sorte
+Webhook, weil ein Dashboard-Webhook eine ausgehende Definition aus `0032`
+besitzt.
+
+Datenbank: Migration `0057_project_dashboard_webhooks.sql` hält die Kopplung samt
+der festen Artenliste und die Position je Webhook und Art. Die Ereignisse selbst
+bleiben in `audit_logs`; eine eigene Ereignistabelle wäre eine zweite Wahrheit
+über dieselben Vorgänge. Die ausgehende Definition, die Outbox, die Lease, das
+Backoff und der Dead Letter bleiben in `0032`.
+
 ### Eigene Darstellung der Console
 
 Seit `2.55.0` ist **Einstellungen → Dashboard** keine Platzhalterseite mehr. Die
