@@ -27,6 +27,11 @@ const projectDatabaseWebhookParameters = [
   { name: "databaseWebhookId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
 ] as const;
 
+const projectLogDrainParameters = [
+  ...projectAuthScopeParameters,
+  { name: "logDrainId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+] as const;
+
 const projectQueueParameters = [
   ...projectAuthScopeParameters,
   { name: "queue", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" } },
@@ -594,6 +599,40 @@ export const qkernOpenAPI = {
         security: [{ sessionCookie: [] }], parameters: projectDatabaseWebhookParameters,
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
         responses: { "200": { description: "Database webhook", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectDatabaseWebhookResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/log-drains": {
+      get: {
+        tags: ["Project Compute"], operationId: "listProjectLogDrains",
+        summary: "List log drains with sources, target and state",
+        description: "Owner or administrator only. Since `2.54.0`. Only the signing secret reference is returned; the secret itself lives in the Vault and never reaches this surface.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Log drains", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectLogDrainListResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Compute definitions are disabled or unavailable" } },
+      },
+      post: {
+        tags: ["Project Compute"], operationId: "createProjectLogDrain",
+        summary: "Forward the logs this console already shows to a signed target",
+        description: "Owner or administrator only with trusted same-origin validation. Since `2.54.0`. Creates the outgoing webhook definition and the coupling in one transaction, and delivers over the existing webhook outbox, signer, backoff and dead letter. A batch carries exactly the fields the console view of the same source already shows and nothing else: there is no field for a field selection, a filter or a payload, because the boundary is not negotiable. Never carried: container output, webhook or queue payloads, row values, e-mail addresses, tokens or secrets. Sources and target are immutable afterwards.",
+        security: [{ sessionCookie: [] }], parameters: projectAuthScopeParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectLogDrain" } } } },
+        responses: { "201": { description: "Log drain created", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectLogDrainResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "The drain name already exists in this project environment or the limit is reached" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/compute/log-drains/{logDrainId}": {
+      get: {
+        tags: ["Project Compute"], operationId: "getProjectLogDrain",
+        summary: "Read one log drain",
+        description: "Owner or administrator only. Since `2.54.0`.",
+        security: [{ sessionCookie: [] }], parameters: projectLogDrainParameters,
+        responses: { "200": { description: "Log drain", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectLogDrainResponse" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      patch: {
+        tags: ["Project Compute"], operationId: "setProjectLogDrainEnabled",
+        summary: "Enable or disable one log drain",
+        description: "Since `2.54.0`. Disabling stops both the collecting and the delivery: nothing new is gathered while it is off, and pending batches are parked instead of burning attempts. There is deliberately no DELETE in this surface; deleting would take pending batches with it.",
+        security: [{ sessionCookie: [] }], parameters: projectLogDrainParameters,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/SetComputeDefinitionEnabled" } } } },
+        responses: { "200": { description: "Log drain", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectLogDrainResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/compute/webhooks/{webhookId}/deliveries": {
@@ -1589,6 +1628,10 @@ export const qkernOpenAPI = {
       ProjectCronOccurrenceLogResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectCronOccurrenceLog" } } },
       ProjectWebhookDelivery: { type: "object", additionalProperties: false, required: ["id", "webhookId", "eventType", "status", "attemptCount", "lastFailureCode", "occurredAt", "availableAt", "settledAt"], properties: { id: { type: "string", format: "uuid" }, webhookId: { type: "string", format: "uuid" }, eventType: { type: "string" }, status: { type: "string", enum: ["pending", "in_flight", "delivered", "dead_lettered"] }, attemptCount: { type: "integer", minimum: 0, maximum: 20 }, lastFailureCode: { type: ["string", "null"], enum: ["WEBHOOK_INVALID", "WEBHOOK_TIMEOUT", "WEBHOOK_REJECTED", "WEBHOOK_SIGNING_FAILED", null] }, occurredAt: { type: "string", format: "date-time" }, availableAt: { type: "string", format: "date-time" }, settledAt: { type: ["string", "null"], format: "date-time" } } },
       ProjectWebhookDeliveryListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectWebhookDelivery" } } } },
+      ProjectLogDrain: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "webhookId", "name", "url", "sources", "eventTypes", "signingSecretRef", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, webhookId: { type: "string", format: "uuid", description: "The outgoing webhook definition this drain drives. Its delivery status is listed under compute/webhooks/{webhookId}/deliveries." }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri" }, sources: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "string", enum: ["auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series"] } }, eventTypes: { type: "array", minItems: 1, maxItems: 5, uniqueItems: true, items: { type: "string", enum: ["log.auth_audit", "log.function_invocations", "log.storage_objects", "log.webhook_deliveries", "log.usage_series"] } }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
+      ProjectLogDrainResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectLogDrain" } } },
+      ProjectLogDrainListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 100, items: { $ref: "#/components/schemas/ProjectLogDrain" } } } },
+      CreateProjectLogDrain: { type: "object", additionalProperties: false, required: ["name", "url", "sources", "signingSecretRef"], properties: { name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, url: { type: "string", format: "uri", description: "Exact public HTTPS target on port 443 without query, fragment or credentials, validated by the same rule the deliverer applies." }, sources: { type: "array", minItems: 1, maxItems: 5, items: { type: "string", enum: ["auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series"] }, description: "Chosen from the fixed list. The cron log is deliberately absent: it is reconstructed per request rather than stored, so its occurrences would be sent repeatedly with a changing state." }, signingSecretRef: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_./:-]{2,127}$", description: "Reference only. Never send a secret value to this endpoint; there is no field for one." }, enabled: { type: "boolean", default: true } } },
       ProjectDatabaseWebhook: { type: "object", additionalProperties: false, required: ["id", "organizationId", "projectId", "environment", "webhookId", "name", "schema", "table", "events", "eventTypes", "url", "signingSecretRef", "enabled", "createdAt"], properties: { id: { type: "string", format: "uuid" }, organizationId: { type: "string", format: "uuid" }, projectId: { type: "string", maxLength: 128 }, environment: { type: "string", enum: ["development", "staging", "production"] }, webhookId: { type: "string", format: "uuid", description: "The outgoing webhook definition this coupling drives. Its delivery status is listed under compute/webhooks/{webhookId}/deliveries." }, name: { type: "string", pattern: "^[a-z][a-z0-9_-]{2,62}$" }, schema: { const: "public" }, table: { type: "string", pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$" }, events: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string", enum: ["insert", "update", "delete"] } }, eventTypes: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string", enum: ["db.insert", "db.update", "db.delete"] } }, url: { type: "string", format: "uri" }, signingSecretRef: { type: "string", description: "Vault reference only. The signing secret itself is never stored or returned here." }, enabled: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
       ProjectDatabaseWebhookResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseWebhook" } } },
       ProjectDatabaseWebhookListResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "array", maxItems: 200, items: { $ref: "#/components/schemas/ProjectDatabaseWebhook" } } } },

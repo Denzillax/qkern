@@ -22,6 +22,7 @@ import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
 import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
 import { authProtectionTexts } from "@/lib/console/auth-protection-texts";
+import { logDrainTexts } from "@/lib/console/log-drains";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -98,6 +99,9 @@ async function consoleKeys(): Promise<string[]> {
   // Auth -> Passwortschutz (2.53) zeigt Wortlaute, Listenherkuenfte, Gruende
   // einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authProtectionTexts()) keys.add(text);
+  // Einstellungen -> Log-Drains (2.54) zeigt Quellen, ihre Feldlisten, die
+  // Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of logDrainTexts()) keys.add(text);
   return [...keys];
 }
 

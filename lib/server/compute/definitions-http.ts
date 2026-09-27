@@ -18,6 +18,7 @@ export type ComputeDefinitionRouteContext = {
     projectId: string; environment: string;
     cronId?: string; webhookId?: string; functionId?: string; name?: string;
     databaseWebhookId?: string;
+    logDrainId?: string;
   }>;
 };
 
