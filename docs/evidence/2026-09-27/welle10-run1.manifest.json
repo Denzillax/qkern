@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle10-run1.log",
+  "commit": "a7edf2f9fd482b003658958c7376ce74d9759602",
+  "commitSubject": "merge: Dashboard-Webhooks aus slice/dashhooks, dazu derselbe Fehler im Drain-Leser",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 57,
+  "testFiles": "31 passed (31)",
+  "tests": "209 passed (209)",
+  "passed": 209,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

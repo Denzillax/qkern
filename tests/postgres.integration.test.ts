@@ -3857,24 +3857,30 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // also **kleiner** als die Zeile selbst. Der Zeilenvergleich `(zeit, id) >
     // (zeit, id)` liess dieselbe Zeile bei jedem Lauf wieder durch, und der
     // Empfaenger bekam sie Lauf fuer Lauf erneut.
+    // Zwei Zeilen, nicht eine: Der Sammler dieses Falls fuellt eine Ladung bei
+    // zwei Eintraegen (`maxBatchEntries: 2`), und eine halbe Ladung wartet auf
+    // ihr Zeitfenster. Das ist kein Kniff des Falls, sondern die Buendelung des
+    // Produkts.
     const auditSink = new PostgresProjectAuthAuditSink(auth);
     const drainAppUser = randomUUID();
-    await auditSink.record({
-      scope, action: "project_auth.login.succeeded", actorType: "app_user",
-      actorRef: `project_auth_user:${drainAppUser}`,
-      resourceRef: `project_auth_user:${drainAppUser}`, status: "succeeded",
-    });
+    for (const status of ["succeeded", "failed"] as const) {
+      await auditSink.record({
+        scope, action: `project_auth.login.${status}`, actorType: "app_user",
+        actorRef: `project_auth_user:${drainAppUser}`,
+        resourceRef: `project_auth_user:${drainAppUser}`, status,
+      });
+    }
     // Die Gegenprobe zuerst: Die Datenbank hat wirklich Mikrosekunden gesetzt,
     // sonst prueft der Rest dieses Abschnitts nichts.
     const auditMoment = await owner.query<{ micros: string }>(
       `SELECT to_char(created_at, 'US') AS micros FROM audit_logs
         WHERE organization_id = $1 AND project_id = $2
-          AND action = 'project_auth.login.succeeded'`,
+          AND starts_with(action, 'project_auth.login.')
+        ORDER BY created_at`,
       [drainOrganization, drainProject]);
-    expect(auditMoment.rows).toHaveLength(1);
-    expect(auditMoment.rows[0].micros,
-      "die Datenbank hat den Zeitpunkt nur auf Millisekunden gesetzt")
-      .not.toMatch(/000$/);
+    expect(auditMoment.rows).toHaveLength(2);
+    expect(auditMoment.rows.some((row) => !/000$/.test(row.micros)),
+      "die Datenbank hat keinen Zeitpunkt mit Mikrosekunden gesetzt").toBe(true);
 
     expect(await collector.poll(), "die Audit-Zeile ging nicht hinaus").toBe(1);
     const afterAudit = await owner.query<{ n: string }>(
@@ -3883,7 +3889,25 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       [drainOrganization, drainProject]);
     expect(afterAudit.rows[0]?.n).toBe("1");
 
-    // Und jetzt der Kern: ein zweiter Lauf ohne neue Zeile schickt nichts.
+    // Und jetzt der Kern, und zwar am Leser und nicht am Sammler. Ein zweiter
+    // Lauf des Sammlers ist dafuer zu stumpf: Eine wieder hereingelesene Zeile
+    // legt sich in den Puffer und wartet dort auf ihr Zeitfenster, der Lauf
+    // meldet 0, und der Fehler bliebe unsichtbar. Geprueft wird darum die
+    // Zusage selbst: Die Position einer Zeile schliesst diese Zeile aus.
+    const auditReader = new PostgresLogDrainSourceReader(control);
+    const auditRows = await auditReader.read(scope, "auth_audit", { after: null, limit: 10 });
+    expect(auditRows).toHaveLength(2);
+    const lastCursor = auditRows[auditRows.length - 1].cursor;
+    expect(await auditReader.read(scope, "auth_audit", { after: lastCursor, limit: 10 }),
+      "der Leser gibt die Zeile wieder heraus, aus der ihre eigene Position stammt")
+      .toEqual([]);
+    // Und dieselbe Probe eine Zeile weiter vorn: Von zwei Zeilen darf die
+    // Position der ersten genau die zweite uebriglassen.
+    const afterFirstRow = await auditReader.read(
+      scope, "auth_audit", { after: auditRows[0].cursor, limit: 10 });
+    expect(afterFirstRow.map((row) => row.cursor)).toEqual([lastCursor]);
+
+    // Der Sammler bleibt trotzdem geprueft: ohne neue Zeile keine neue Ladung.
     expect(await collector.poll(), "dieselbe Audit-Zeile ging ein zweites Mal hinaus").toBe(0);
     const afterSecondPoll = await owner.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM project_webhook_deliveries

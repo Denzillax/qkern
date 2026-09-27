@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: ein Pfad fehlt und einer hat keine Route",
+  "log": "welle10-mutation-openapi.log",
+  "commit": "a7edf2f9fd482b003658958c7376ce74d9759602",
+  "commitSubject": "merge: Dashboard-Webhooks aus slice/dashhooks, dazu derselbe Fehler im Drain-Leser",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "2 failed | 2 passed (4)",
+  "passed": 2,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

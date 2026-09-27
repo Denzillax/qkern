@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: die Position wird auf Millisekunden gekuerzt",
+  "log": "welle10-mutation-drainposition.log",
+  "commit": "a7edf2f9fd482b003658958c7376ce74d9759602",
+  "commitSubject": "merge: Dashboard-Webhooks aus slice/dashhooks, dazu derselbe Fehler im Drain-Leser",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 57,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 37 skipped (38)",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 37,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

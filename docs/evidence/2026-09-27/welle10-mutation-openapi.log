@@ -1,0 +1,59 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/openapi-route-coverage.test.ts (4 tests | 2 failed) 9ms
+     × describes every route, except the ones excepted with a reason 5ms
+     × has a route behind every described path 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/openapi-route-coverage.test.ts > OpenAPI route coverage (2.73) > describes every route, except the ones excepted with a reason
+AssertionError: routes without an OpenAPI path and without an explicit exception: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "/v1/projects/{projectId}/environments/{environment}/database/health",
++ ]
+
+ ❯ tests/openapi-route-coverage.test.ts:89:89
+     87|   it("describes every route, except the ones excepted with a reason", …
+     88|     const missing = routePaths.filter((path) => !documentedPaths.inclu…
+     89|     expect(missing, "routes without an OpenAPI path and without an exp…
+       |                                                                                         ^
+     90|   });
+     91|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/openapi-route-coverage.test.ts > OpenAPI route coverage (2.73) > has a route behind every described path
+AssertionError: OpenAPI paths that no route serves: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "/v1/projects/{projectId}/environments/{environment}/database/vacuum",
++ ]
+
+ ❯ tests/openapi-route-coverage.test.ts:94:60
+     92|   it("has a route behind every described path", () => {
+     93|     const orphaned = documentedPaths.filter((path) => !routePaths.incl…
+     94|     expect(orphaned, "OpenAPI paths that no route serves").toEqual([]);
+       |                                                            ^
+     95|   });
+     96|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  16:02:51
+   Duration  392ms (transform 185ms, setup 0ms, import 232ms, tests 9ms, environment 0ms)
+
+
+EXIT=1
