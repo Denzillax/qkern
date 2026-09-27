@@ -90,13 +90,16 @@ import { FunctionInvocationService } from "@/lib/server/compute/function-invocat
 // derselbe Faecher, den die Route benutzt -- ueber echte Zeilen zweier Quellen.
 import {
   LOG_EXPLORER_OUT_OF_REACH,
-  logExplorerMoment,
   parseLogExplorerQuery,
+  type LogExplorerQuery,
 } from "@/lib/console/log-explorer";
+import { searchLogSources } from "@/lib/server/logs/log-explorer-search";
 import {
-  LogExplorerSourceFailure,
-  searchLogSources,
-} from "@/lib/server/logs/log-explorer-search";
+  authAuditFetcher,
+  functionInvocationFetcher,
+  storageObjectFetcher,
+} from "@/lib/server/logs/log-explorer-fetchers";
+import { RequestAuthorizationError } from "@/lib/server/request-context";
 import { FunctionInvocationError } from "@/lib/server/compute/functions";
 // Log-Drains (2.54): echte Definition, echte Quelle, echte Outbox, echter
 // Zusteller, echter Vault.
@@ -4090,44 +4093,54 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
     await invoker.invoke(admin, scope, probe.name, { probe: containerOutput });
 
-    // Der Faecher, mit genau den Lesungen, die die vorhandenen Routen
-    // benutzen. Storage wird abgewiesen wie fuer eine Anmeldung ohne die
-    // Rolle.
-    const fetchers = {
-      auth_audit: async (input: { cursor: string | null; limit: number }) => {
-        const page = await sink.list(scope, {
-          limit: input.limit, ...(input.cursor ? { cursor: input.cursor } : {}),
-        });
-        return {
-          entries: page.events.map((event) => Object.freeze({
-            source: "auth_audit" as const, id: event.id, at: logExplorerMoment(event.createdAt),
-            action: event.action, subject: event.resourceRef,
-            outcome: event.status === "succeeded" ? "ok" as const : "failed" as const,
-            detail: event.actorType,
-          })),
-          nextCursor: page.nextCursor,
-        };
-      },
-      function_invocations: async (input: { cursor: string | null; limit: number }) => {
-        const offset = input.cursor === null ? 0 : Number(input.cursor);
-        const page = await definitions.readFunctionInvocationLog(admin, scope, {
-          limit: input.limit, offset,
-        });
-        return {
-          entries: page.rows.map((row) => Object.freeze({
-            source: "function_invocations" as const, id: row.invocationId,
-            at: logExplorerMoment(row.startedAt), action: "compute.function_invocation",
-            subject: row.functionName,
-            outcome: row.outcome === "completed" ? "ok" as const : "failed" as const,
-            detail: `${row.durationMs} ms · ${row.statusCode ?? row.errorCode ?? "–"}`,
-          })),
-          nextCursor: page.hasMore ? String(offset + input.limit) : null,
-        };
-      },
-      storage_objects: async () => { throw new LogExplorerSourceFailure("forbidden"); },
-    };
+    // Der Faecher, mit genau den Lesungen der Route. Nicht mit nachgebauten:
+    // `log-explorer-fetchers` ist dieselbe Datei, die die Route benutzt, und
+    // eingesetzt wird hier allein die Tuer. Ein Nachbau hatte die Projektion
+    // und den Filter ein zweites Mal formuliert -- und genau daran ist dieser
+    // Fall einmal vorbeigelaufen: Der Filter `authStatus` stand in der Route,
+    // im Fall gar nicht, und beide waren gruen.
+    const { privateKey: explorerKey } = generateKeyPairSync("ed25519");
+    const authService = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: sink,
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-65", privateKey: explorerKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 11)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+    });
+    // Storage wird abgewiesen wie fuer eine Anmeldung ohne die Rolle: Die Tuer
+    // wirft, und zwar den Fehler, den die Route dort wirklich bekommt. Dass
+    // die Lesung dahinter nie stattfindet, ist die Zusage, und sie wird
+    // gezaehlt statt geglaubt.
+    let storageReads = 0;
+    // Die Suche gehoert in den Faecher, nicht daneben: Die Route baut die
+    // Lesungen je Anfrage, weil der Filter in ihnen steckt. Der Fall macht es
+    // genauso und kann darum drei verschiedene Suchen stellen.
+    const fan = (search: LogExplorerQuery) => ({
+      auth_audit: authAuditFetcher(async () => scope, authService, search),
+      function_invocations: functionInvocationFetcher(
+        async () => ({ principal: admin, scope }), definitions, search),
+      storage_objects: storageObjectFetcher(
+        async () => { throw new RequestAuthorizationError(); },
+        { readObjectLog: async () => { storageReads += 1; throw new Error("not expected"); } },
+        search),
+    });
 
-    const result = await searchLogSources(fetchers, parseLogExplorerQuery({}));
+    const baseQuery = parseLogExplorerQuery({});
+    const result = await searchLogSources(fan(baseQuery), baseQuery);
+
+    // Zuerst der Zustand je Quelle, dann erst die Zahl. Die Reihenfolge steht
+    // so, weil sie einmal gebraucht wurde: Eine Quelle, die wirft, faellt in
+    // der gemischten Liste nur als fehlende Zeile auf, und eine Zahl sagt
+    // nicht, welche der drei nicht geantwortet hat.
+    expect(Object.fromEntries(result.sources.map((report) => [report.id, report.state])))
+      .toEqual({ auth_audit: "ok", function_invocations: "ok", storage_objects: "forbidden" });
 
     // Vier echte Zeilen aus zwei Tabellen, in einer Liste.
     expect(result.entries).toHaveLength(4);
@@ -4143,11 +4156,6 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         .toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     }
 
-    // Die abgewiesene Quelle nimmt die anderen nicht mit, und sie wird
-    // benannt statt weggelassen.
-    expect(Object.fromEntries(result.sources.map((report) => [report.id, report.state])))
-      .toEqual({ auth_audit: "ok", function_invocations: "ok", storage_objects: "forbidden" });
-
     // Die Zeilen tragen keine Ausgabe eines Containers und keine Adresse --
     // `invoked_by` steht in 0045 und ist genau diese Adresse.
     const shown = JSON.stringify(result.entries);
@@ -4161,8 +4169,8 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     const seen: string[] = [];
     let before: string | null = null;
     for (let round = 0; round < 8; round += 1) {
-      const page = await searchLogSources(fetchers,
-        parseLogExplorerQuery({ limit: "1", ...(before ? { before } : {}) }));
+      const pageQuery = parseLogExplorerQuery({ limit: "1", ...(before ? { before } : {}) });
+      const page = await searchLogSources(fan(pageQuery), pageQuery);
       seen.push(...page.entries.map((entry) => `${entry.source}:${entry.id}`));
       if (!page.hasMore || page.nextCursor === null) break;
       before = page.nextCursor;
@@ -4171,8 +4179,8 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(new Set(seen).size).toBe(seen.length);
 
     // Der getypte Filter wirkt an echten Zeilen.
-    const failedOnly = await searchLogSources(fetchers,
-      parseLogExplorerQuery({ sources: "auth_audit", authStatus: "failed" }));
+    const failedQuery = parseLogExplorerQuery({ sources: "auth_audit", authStatus: "failed" });
+    const failedOnly = await searchLogSources(fan(failedQuery), failedQuery);
     expect(failedOnly.entries).toHaveLength(1);
     expect(failedOnly.entries[0].action).toBe("project_auth.login.failed");
 
@@ -4182,6 +4190,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(5);
     expect(LOG_EXPLORER_OUT_OF_REACH.map((entry) => entry.label))
       .toEqual(expect.arrayContaining(["Webhook-Zustellungen", "Cron-Vorkommen"]));
+
+    // Und die abgewiesene Quelle ist wirklich abgewiesen worden, nicht bloss
+    // leer: Ueber drei Suchen hinweg hat die Lesung dahinter nie stattgefunden.
+    expect(storageReads, "die abgewiesene Quelle wurde doch gelesen").toBe(0);
   });
 
   /**

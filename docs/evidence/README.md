@@ -1619,3 +1619,16 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle6-mutation-drain.log` | Mutation: Aufruferreferenz fährt mit | **197 von 198, exit 1 – absichtlich** |
 | `2026-09-27/welle6-local-run1.log` | Vitest lokal (Windows) | 2013 bestanden, exit 0 |
 | `2026-09-27/welle6-local-run2.log` | Vitest lokal (Windows) | 2013 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.55 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle7-run1.log` | PostgreSQL 17 | 201 von 201, exit 0 |
+| `2026-09-27/welle7-run2.log` | PostgreSQL 17 | 201 von 201, exit 0, Wiederholung |
+| `2026-09-27/welle7-mutation-moment.log` | Mutation: zweistellige Zeitzone gilt als keine | **200 von 201, exit 1 – absichtlich** |
+| `2026-09-27/welle7-mutation-cursor.log` | Mutation: der gespeicherte Stand wird ignoriert | **200 von 201, exit 1 – absichtlich** |
+| `2026-09-27/welle7-mutation-display.log` | Mutation: die Zeitzone wird beim zweiten Speichern nicht überschrieben | **200 von 201, exit 1 – absichtlich** |
+| `2026-09-27/welle7-local-run1.log` | Vitest lokal (Windows) | 2088 bestanden, exit 0 |
+| `2026-09-27/welle7-local-run2.log` | Vitest lokal (Windows) | 2088 bestanden, exit 0, Wiederholung |
+

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.54.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.55.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,34 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.54.0`
-- Neuester Slice: 2.55 Eigene Darstellung. `set-dashboard` ist echt. Fuenf
+- Paketversion: `2.55.0`
+- Neuester Slice: 2.55 Log-Explorer und Drain-Sammler, dazu zwei Befunde.
+  `logs-explorer` ist echt: eine **strukturierte** Suche ueber die drei
+  Quellen mit einer Leseroute ueber die ganze Umgebung (Auth-Protokoll,
+  Aufrufprotokoll, Stand der Speicherobjekte), gemischt zu einer Liste,
+  neueste zuerst, mit Quelle und Kennung als Nachrang. Freies SQL bekommt
+  die Seite **bewusst nicht**, und der Grund steht in
+  `lib/console/log-explorer`: Alle log-artigen Zeilen liegen in der Control
+  Plane, wo die Zeilen aller Organisationen in denselben Tabellen stehen.
+  Was der Explorer nicht erreicht, steht mit Grund in
+  `LOG_EXPLORER_OUT_OF_REACH`. Der **Drain-Sammler** laeuft seit 2.55 als
+  Prozess (`npm run worker:compute`) und haelt seinen Stand in
+  `project_log_drain_cursors` (Migration `0056`); ein Neustart springt nicht
+  mehr auf die Spitze.
+
+  Zwei Befunde, die ein naechster Agent kennen sollte. Erstens:
+  `timestamptz::text` schreibt den Versatz **zweistellig**, wenn er auf volle
+  Stunden faellt (`+00`, nicht `+00:00`). Wer daraus mit einem angehaengten
+  `Z` ein Datum baut, bekommt `Invalid Date` -- und im Faecher wurde daraus
+  stumm eine Quelle im Zustand `failed` und eine halbe Liste. Zweitens: Der
+  Zertifizierungsfall "(2.65)" hatte sich die Lesungen der Route nachgebaut,
+  weil er die Route ohne HTTP nicht betreten konnte, und belegte damit seine
+  eigene Kopie; der Filter `authStatus` stand in der Route und im Fall gar
+  nicht, und beide waren gruen. Die Lesungen liegen jetzt in
+  `lib/server/logs/log-explorer-fetchers`, Route und Fall setzen nur noch
+  die **Tuer** ein. Wer eine neue Quelle anschliesst, baut sie dort und
+  nirgends sonst. Im Browser nicht gesehen
+- Davor im selben Release: 2.55 Eigene Darstellung. `set-dashboard` ist echt. Fuenf
   Einstellungen je Person (Sprache, Formatgebietsschema, Zeitzone, Startseite,
   helles oder dunkles Aussehen), abgelegt in `user_console_settings`, Migration
   `0055_user_console_settings.sql` (nach 0054 frei) — **neben** `users` und

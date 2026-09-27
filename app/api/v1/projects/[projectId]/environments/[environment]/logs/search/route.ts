@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isConnectionUnavailable, ConfigurationError } from "@/lib/server/db/errors";
+import { isConnectionUnavailable } from "@/lib/server/db/errors";
 import {
   LOG_EXPLORER_OUT_OF_REACH,
   LOG_EXPLORER_SOURCE_DEFINITIONS,
   LogExplorerError,
-  logExplorerMoment,
   parseLogExplorerQuery,
-  type LogExplorerEntry,
   type LogExplorerQuery,
   type LogExplorerSourceId,
 } from "@/lib/console/log-explorer";
 import {
-  LogExplorerSourceFailure,
   searchLogSources,
   type LogExplorerSourceFetcher,
 } from "@/lib/server/logs/log-explorer-search";
+import {
+  authAuditFetcher,
+  functionInvocationFetcher,
+  storageObjectFetcher,
+} from "@/lib/server/logs/log-explorer-fetchers";
 import { adminProjectAuthScope } from "@/lib/server/project-auth/http";
 import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
 import type { ProjectAuthService } from "@/lib/server/project-auth/service";
@@ -27,7 +29,6 @@ import type { ProjectStorageService } from "@/lib/server/project-storage/service
 import {
   authenticatedContext,
   RequestAuthenticationError,
-  RequestAuthorizationError,
 } from "@/lib/server/request-context";
 
 /**
@@ -58,116 +59,6 @@ function noStore(data: unknown, status = 200): NextResponse {
   return NextResponse.json(data, {
     status, headers: { "Cache-Control": "private, no-store", Pragma: "no-cache" },
   });
-}
-
-/**
- * Warum eine Quelle nicht geliefert hat.
- *
- * `RequestAuthorizationError` heisst hier „diese Anmeldung hat die Rolle
- * nicht", nicht „kaputt": Der Aufrufer soll sehen, dass die Quelle existiert
- * und ihm fehlt, statt zu raten, warum die Liste kuerzer ist.
- */
-function sourceFailure(error: unknown): LogExplorerSourceFailure {
-  if (error instanceof RequestAuthorizationError) return new LogExplorerSourceFailure("forbidden");
-  if (error instanceof ConfigurationError) return new LogExplorerSourceFailure("unavailable");
-  if (isConnectionUnavailable(error)) return new LogExplorerSourceFailure("unavailable");
-  return new LogExplorerSourceFailure("failed");
-}
-
-/** Die Audit-Kette der Projekt-Anmeldung, durch ihre eigene Tuer. */
-function authFetcher(
-  request: NextRequest, routeContext: RouteContext, query: LogExplorerQuery,
-  service: ProjectAuthService,
-): LogExplorerSourceFetcher {
-  return async ({ cursor, limit }) => {
-    try {
-      const { scope } = await adminProjectAuthScope(request, routeContext);
-      const page = await service.listAuditEvents(scope, limit, cursor ?? undefined);
-      const entries: LogExplorerEntry[] = [];
-      for (const event of page.events) {
-        if (query.filters.authStatus && event.status !== query.filters.authStatus) continue;
-        if (query.filters.authActor && event.actorType !== query.filters.authActor) continue;
-        entries.push(Object.freeze({
-          source: "auth_audit" as const,
-          id: event.id,
-          at: logExplorerMoment(event.createdAt),
-          action: event.action,
-          subject: event.resourceRef,
-          outcome: event.status === "succeeded" ? "ok" as const : "failed" as const,
-          detail: event.actorType,
-        }));
-      }
-      return { entries, nextCursor: page.nextCursor };
-    } catch (error) { throw sourceFailure(error); }
-  };
-}
-
-/**
- * Das Aufrufprotokoll, durch seine eigene Tuer.
- *
- * Geblaettert wird ueber `offset`, weil die vorhandene Lesung genau das
- * anbietet. Der Cursor dieser Quelle ist deshalb schlicht der naechste
- * Versatz — undurchsichtig fuer den Faecher, der ihn nur zurueckreicht.
- */
-function invocationFetcher(
-  request: NextRequest, routeContext: RouteContext, query: LogExplorerQuery,
-  service: ComputeDefinitionService,
-): LogExplorerSourceFetcher {
-  return async ({ cursor, limit }) => {
-    try {
-      const context = await adminComputeContext(request, routeContext);
-      const offset = cursor === null ? 0 : Number(cursor);
-      const page = await service.readFunctionInvocationLog(context.principal, context.scope, {
-        outcome: query.filters.outcome ?? null, limit, offset,
-      });
-      const entries = page.rows.map((row) => Object.freeze({
-        source: "function_invocations" as const,
-        id: row.invocationId,
-        at: logExplorerMoment(row.startedAt),
-        action: "compute.function_invocation",
-        subject: row.functionName,
-        outcome: row.outcome === "completed" ? "ok" as const : "failed" as const,
-        detail: `${row.durationMs} ms · ${row.statusCode ?? row.errorCode ?? "–"}`,
-      }));
-      return { entries, nextCursor: page.hasMore ? String(offset + limit) : null };
-    } catch (error) { throw sourceFailure(error); }
-  };
-}
-
-/**
- * Der Stand der Speicherobjekte, durch seine eigene Tuer.
- *
- * Gemischt wird ueber `createdAt`. Das ist der einzige Zeitpunkt, den diese
- * Quelle als Ereignis hergibt: Wann ein Objekt geloescht oder zuletzt geprueft
- * wurde, steht als Zustand daneben, nicht als zweiter Eintrag — und zwei
- * Eintraege aus einer Zeile zu machen hiesse, ein Protokoll zu erfinden.
- */
-function storageFetcher(
-  request: NextRequest, routeContext: RouteContext, query: LogExplorerQuery,
-  service: ProjectStorageService,
-): LogExplorerSourceFetcher {
-  return async ({ cursor, limit }) => {
-    try {
-      const context = await adminProjectStorageContext(request, routeContext);
-      const page = await service.readObjectLog(context.principal, context.scope, {
-        status: query.filters.objectStatus,
-        cursor: cursor ?? undefined,
-        limit,
-      });
-      const entries = page.entries.map((object) => Object.freeze({
-        source: "storage_objects" as const,
-        id: object.id,
-        at: logExplorerMoment(object.createdAt),
-        action: "storage.object_state",
-        subject: `${object.bucketName}/${object.key}`,
-        outcome: object.status === "clean"
-          ? "ok" as const
-          : object.status === "infected" ? "failed" as const : "pending" as const,
-        detail: `${object.sizeBytes} B · ${object.contentType}`,
-      }));
-      return { entries, nextCursor: page.nextCursor };
-    } catch (error) { throw sourceFailure(error); }
-  };
 }
 
 export function createLogExplorerHandlers(services: {
@@ -204,10 +95,19 @@ export function createLogExplorerHandlers(services: {
         return noStore({ error: "Log search unavailable" }, 500);
       }
 
+      // Je Quelle eine Tuer, und nur die Tuer steht hier. Was dahinter
+      // gelesen und gefiltert wird, steht in `log-explorer-fetchers` -- an
+      // derselben Stelle, die der Fall gegen die echte Datenbank benutzt.
       const fetchers: Partial<Record<LogExplorerSourceId, LogExplorerSourceFetcher>> = {
-        auth_audit: authFetcher(request, routeContext, query, services.auth),
-        function_invocations: invocationFetcher(request, routeContext, query, services.compute),
-        storage_objects: storageFetcher(request, routeContext, query, services.storage),
+        auth_audit: authAuditFetcher(
+          async () => (await adminProjectAuthScope(request, routeContext)).scope,
+          services.auth, query),
+        function_invocations: functionInvocationFetcher(
+          async () => await adminComputeContext(request, routeContext),
+          services.compute, query),
+        storage_objects: storageObjectFetcher(
+          async () => await adminProjectStorageContext(request, routeContext),
+          services.storage, query),
       };
       const result = await searchLogSources(fetchers, query);
       return noStore({

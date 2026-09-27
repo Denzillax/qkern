@@ -95,6 +95,20 @@ describe("log explorer merge", () => {
     expect(merged.entries.map((item) => item.id)).toEqual(["half", "whole"]);
   });
 
+  it("reads the text form of a timestamptz, including a two-digit zone", () => {
+    // Genau die Zeichenketten, die `started_at::text` herausgibt. Postgres
+    // kuerzt den Versatz auf zwei Ziffern, wenn er auf volle Stunden faellt,
+    // und schneidet Nullen der Millisekunden ab.
+    expect(logExplorerMoment("2026-09-27 08:23:40.35+00")).toBe("2026-09-27T08:23:40.350Z");
+    expect(logExplorerMoment("2026-09-27 10:23:40+02")).toBe("2026-09-27T08:23:40.000Z");
+    expect(logExplorerMoment("2026-09-27 10:23:40.5+02:00")).toBe("2026-09-27T08:23:40.500Z");
+    // Eine Zeit ohne Zone gilt weiterhin als UTC.
+    expect(logExplorerMoment("2026-09-27 08:23:40.35")).toBe("2026-09-27T08:23:40.350Z");
+    // Und was kein Zeitpunkt ist, wird abgewiesen statt stillschweigend
+    // zu einer erfundenen Stelle in der Ordnung zu werden.
+    expect(() => logExplorerMoment("2026-09-27 08:23:40.35+00Z")).toThrow(LogExplorerError);
+  });
+
   it("pages across sources without skipping or repeating an entry", () => {
     const at = "2026-09-20T10:00:00.000Z";
     const pages = [

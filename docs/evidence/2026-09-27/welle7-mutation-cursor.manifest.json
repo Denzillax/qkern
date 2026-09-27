@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der gespeicherte Stand wird ignoriert",
+  "log": "welle7-mutation-cursor.log",
+  "commit": "a1ae2607ed283dbbdd6cd7bdfc6d3d364fe72820",
+  "commitSubject": "merge: Drain-Sammler als Prozess, Migration auf 0056",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 56,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 200 passed (201)",
+  "passed": 200,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

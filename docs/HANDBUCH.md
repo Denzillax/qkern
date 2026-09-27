@@ -2296,7 +2296,7 @@ Verwechslung war zwischen `2.50.0` und `2.52.0` der Zustand.
 #### Den Log-Drain-Sammler laufen lassen
 
 `2.54.0` hat die Log-Drains gebaut und zertifiziert — und denselben Fehler
-wiederholt: Niemand rief den Sammler auf. Seit `2.64.0` betreibt ihn derselbe
+wiederholt: Niemand rief den Sammler auf. Seit `2.55.0` betreibt ihn derselbe
 Compute-Prozess, der Cron auslöst, Webhooks zustellt und den Änderungs-Feed
 liest.
 

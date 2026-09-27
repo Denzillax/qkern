@@ -195,9 +195,38 @@ export function compareLogExplorerEntries(a: LogExplorerEntry, b: LogExplorerEnt
  * `2026-01-01T00:00:00.500Z` lexikografisch **kleiner** als
  * `2026-01-01T00:00:00Z` -- der Punkt steht vor dem Z -- und das Blaettern
  * uebersprunge Eintraege.
+ *
+ * Die Zone ist dabei der heikle Teil. `timestamptz::text` schreibt den Versatz
+ * **zweistellig**, wenn er auf volle Stunden faellt: `2026-09-27 08:23:40.35+00`,
+ * nicht `+00:00`. Eine Pruefung, die nur vier Ziffern kennt, haelt das fuer eine
+ * Zeit ohne Zone, haengt ein `Z` an und erzeugt `...+00Z` -- ein ungueltiges
+ * Datum. Genau daran ist der Fall (2.65) gescheitert: Die Quelle warf, der
+ * Faecher meldete sie als `failed`, und die gemischte Liste zeigte stumm nur
+ * die Haelfte ihrer Zeilen. Erkannt werden darum alle drei Schreibweisen des
+ * Versatzes, und `Z` kommt nur an eine Zeit, die wirklich keine Zone traegt.
  */
+const ZONE = /(Z|[+-]\d{2}(?::?\d{2})?)$/;
+
+/**
+ * Bringt die Schreibweise einer Quelle in die Form, die `new Date` nach Norm
+ * liest: `T` zwischen Datum und Zeit, und ein Versatz mit vier Ziffern.
+ *
+ * Das Auffuellen des Versatzes ist kein Schoenheitsschritt. `+00` ist nach
+ * ECMA-262 kein gueltiger Versatz, und die Laufzeit antwortet darauf mit
+ * `Invalid Date` -- nicht mit einem Fehler, den man an der Zeichenkette saehe.
+ */
+function normaliseMoment(value: string): string {
+  const text = value.replace(" ", "T");
+  const zone = ZONE.exec(text);
+  if (zone === null) return `${text}Z`;
+  if (zone[1] === "Z") return text;
+  const digits = zone[1].slice(1).replace(":", "");
+  const full = digits.length === 2 ? `${digits}00` : digits;
+  return `${text.slice(0, text.length - zone[1].length)}${zone[1][0]}${full.slice(0, 2)}:${full.slice(2)}`;
+}
+
 export function logExplorerMoment(value: string | Date): string {
-  const at = value instanceof Date ? value : new Date(value.includes("Z") || /[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value.replace(" ", "T")}Z`);
+  const at = value instanceof Date ? value : new Date(normaliseMoment(value));
   if (Number.isNaN(at.getTime())) throw new LogExplorerError("INVALID_RANGE");
   return at.toISOString();
 }

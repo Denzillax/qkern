@@ -5776,3 +5776,50 @@ kann persoenliche Angaben enthalten und geht trotzdem hinaus, weil die
 Console ihn zeigt; die Ansicht benennt das. Das Urteil zu den Anmelderechten
 kann eine Bedingung nicht auswerten, die eine Einstellung oder eine Funktion
 liest. Im Browser nicht gesehen.
+
+## Welle sieben (2.55): die eigene Sicht
+
+Drei Schnitte, die nebeneinander in getrennten Arbeitsbaeumen entstanden
+sind, und zwei Befunde, die erst der Lauf gegen die echte Datenbank
+hervorgeholt hat.
+
+Die Darstellung der Console gehoert jetzt der Person. Sprache, Zahlenformat,
+Zeitzone, Startseite und Thema liegen in `user_console_settings` neben
+`users`, nicht in der Ablage des Browsers: Die Einstellung muss lesbar sein,
+bevor eine Organisation gewaehlt ist, und sie soll auf dem zweiten Geraet
+derselben Person gelten. Fuenfunddreissig Ansichten formatieren seither ueber
+dieselbe Stelle, und ein Vertrag verbietet in `components/console` jedes
+`Intl`, jedes `toLocale` und jedes `toFixed`.
+
+Der Log-Explorer sucht ueber genau die drei Quellen, fuer die es eine
+Leseroute ueber die ganze Umgebung gibt, und sagt bei den uebrigen, warum
+nicht. Freies SQL bekommt er bewusst nicht: Alle log-artigen Zeilen von QKERN
+liegen in der Control Plane, wo die Zeilen aller Organisationen in denselben
+Tabellen stehen, und eine Abfragefaeche darueber hinge mit jeder Zeile an
+einer einzigen Policy.
+
+Zwei Befunde aus dem Lauf. Erstens: `timestamptz::text` schreibt den Versatz
+zweistellig, wenn er auf volle Stunden faellt. Der Explorer hielt `+00` fuer
+eine Zeit ohne Zone, hing ein `Z` an und erzeugte ein ungueltiges Datum. Die
+Quelle warf, der Faecher meldete sie als nicht erreichbar, und die gemischte
+Liste zeigte stumm die Haelfte ihrer Zeilen. Zweitens, und das ist der
+unangenehmere: Der Zertifizierungsfall hatte sich die Lesungen der Route
+nachgebaut, weil er die Route ohne HTTP nicht betreten konnte. Der Filter
+`authStatus` stand damit einmal in der Route und im Fall gar nicht, und beide
+waren gruen. Die Lesungen liegen jetzt in `lib/server/logs/log-explorer-fetchers`,
+und der Fall setzt nur noch die Tuer ein.
+
+Der Sammler der Drains laeuft als eigener Prozess und haelt seinen Stand in
+`project_log_drain_cursors`. Ein Neustart springt nicht mehr auf die Spitze
+und ueberspringt nicht, was in der Zwischenzeit entstanden ist. Die
+Mutationsprobe dreht genau das um und laesst den Neustartfall fallen.
+
+Checkpoint `2.55.0` am 27. September 2026: PostgreSQL 17 mit 201 von 201,
+exit 0, zweimal reproduziert; Lokal 2088 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert.
+
+Nicht erbracht: Der Drain liefert mindestens einmal, nicht genau einmal. Der
+Puffer wird bei SIGTERM nicht geleert. Ein Objektname kann persoenliche
+Angaben enthalten und geht trotzdem hinaus. Gespeicherte Suchen des
+Explorers liegen nur im Browser. Vier Log-Seiten haben weiterhin kein
+Backend. Im Browser nicht gesehen.
