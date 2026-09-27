@@ -1,4 +1,13 @@
-# Release 2.57.0 – Regeln, die nie liefen
+# Slice: Regeln, die nie liefen
+
+> **Nachtrag vom 27. September 2026.** Diese Datei hiess `RELEASE_2.57.md` und
+> trug die Überschrift „Release 2.57.0". Ein Release 2.57.0 hat es nie
+> gegeben. Die Zahl stammt von den Fallnummern dieses Schnitts, nicht von
+> einer Version; ausgeliefert wurde er in `2.52.0`, und dort steht er auch in
+> der Release Note. Umbenannt wurde die Datei, bevor 2.57.0 wirklich erscheint
+> und zwei verschiedene Dinge denselben Namen tragen. Der Text darunter ist
+> unverändert.
+
 
 Vier Stellen, an denen frühere Releases selbst notiert haben, dass etwas
 offen bleibt. Keine neue Fläche: zwei Beraterregeln laufen jetzt, ein
