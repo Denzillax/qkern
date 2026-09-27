@@ -256,10 +256,11 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
       switch (source) {
         case "auth_audit": {
           const result = await database.query<{
-            id: string; created_at: Date; action: string; actor_type: string;
+            id: string; created_at: Date; cursor_at: string; action: string; actor_type: string;
             resource_ref: string; status: string;
           }>(
-            `SELECT id, created_at, action, actor_type, resource_ref, status
+            `SELECT id, created_at, ${EXACT("created_at")} AS cursor_at,
+                    action, actor_type, resource_ref, status
                FROM audit_logs
               WHERE organization_id = $1 AND project_id = $2::uuid
                 AND environment = $3::qkern_environment
@@ -268,7 +269,7 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
               ORDER BY created_at ${direction}, id ${direction}
               LIMIT ${limit}`, values);
           return result.rows.map((row) => frozenRow({
-            cursor: formatCursor(row.created_at, row.id),
+            cursor: formatCursor(row.cursor_at, row.id),
             record: {
               id: row.id,
               createdAt: iso(row.created_at),
@@ -283,9 +284,10 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
           const result = await database.query<{
             id: string; function_id: string; function_name: string; invocation_id: string;
             started_at: Date; duration_ms: number; outcome: string;
-            status_code: number | null; error_code: string | null;
+            status_code: number | null; error_code: string | null; cursor_at: string;
           }>(
             `SELECT i.id, i.function_id, f.name AS function_name, i.invocation_id, i.started_at,
+                    ${EXACT("i.started_at")} AS cursor_at,
                     i.duration_ms, i.outcome, i.status_code, i.error_code
                FROM project_function_invocations i
                JOIN project_functions f
@@ -297,7 +299,7 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
               ORDER BY i.started_at ${direction}, i.id ${direction}
               LIMIT ${limit}`, values);
           return result.rows.map((row) => frozenRow({
-            cursor: formatCursor(row.started_at, row.id),
+            cursor: formatCursor(row.cursor_at, row.id),
             record: {
               functionId: row.function_id,
               functionName: row.function_name,
@@ -313,11 +315,12 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
         case "storage_objects": {
           const result = await database.query<{
             id: string; bucket_name: string; object_key: string; size_bytes: string;
-            content_type: string; status: string; created_at: Date;
+            content_type: string; status: string; created_at: Date; cursor_at: string;
             delete_after: Date | null; deleted_at: Date | null;
           }>(
             `SELECT o.id, b.name AS bucket_name, o.object_key, o.size_bytes::text AS size_bytes,
-                    o.content_type, o.status, o.created_at, o.delete_after, o.deleted_at
+                    o.content_type, o.status, o.created_at, o.delete_after, o.deleted_at,
+                    ${EXACT("o.created_at")} AS cursor_at
                FROM project_storage_objects o
                JOIN project_storage_buckets b
                  ON b.organization_id = o.organization_id AND b.project_id = o.project_id
@@ -328,7 +331,7 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
               ORDER BY o.created_at ${direction}, o.id ${direction}
               LIMIT ${limit}`, values);
           return result.rows.map((row) => frozenRow({
-            cursor: formatCursor(row.created_at, row.id),
+            cursor: formatCursor(row.cursor_at, row.id),
             record: {
               id: row.id,
               bucketName: row.bucket_name,
@@ -356,9 +359,11 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
           const result = await database.query<{
             id: string; event_type: string; status: string; attempt_count: number;
             last_failure_code: string | null; occurred_at: Date; settled_at: Date;
+            cursor_at: string;
           }>(
             `SELECT v.id, v.event_type, v.status, v.attempt_count, v.last_failure_code,
-                    v.occurred_at, COALESCE(v.delivered_at, v.dead_lettered_at) AS settled_at
+                    v.occurred_at, COALESCE(v.delivered_at, v.dead_lettered_at) AS settled_at,
+                    ${EXACT("COALESCE(v.delivered_at, v.dead_lettered_at)")} AS cursor_at
                FROM project_webhook_deliveries v
               WHERE v.organization_id = $1 AND v.project_id = $2::uuid
                 AND v.environment = $3::qkern_environment
@@ -371,7 +376,7 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
               ORDER BY COALESCE(v.delivered_at, v.dead_lettered_at) ${direction}, v.id ${direction}
               LIMIT ${limit}`, values);
           return result.rows.map((row) => frozenRow({
-            cursor: formatCursor(row.settled_at, row.id),
+            cursor: formatCursor(row.cursor_at, row.id),
             record: {
               id: row.id,
               eventType: row.event_type,
@@ -415,6 +420,10 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
           return result.rows.map((row) => frozenRow({
             // Die Position eines Eimers ist sein Beginn und die Metrik; eine
             // Zeilen-Id gibt es fuer eine Gruppe nicht.
+            //
+            // Hier ist `iso` richtig und `EXACT` unnoetig: Ein Eimerbeginn ist
+            // auf die Stunde abgeschnitten, seine Mikrosekunden sind null, und
+            // ein Millisekundenformat verliert daran nichts.
             cursor: `${iso(row.bucket_start)}#${row.metric}`,
             record: {
               metric: row.metric,
@@ -440,8 +449,28 @@ function iso(value: Date): string {
   return new Date(value).toISOString();
 }
 
-function formatCursor(at: Date, id: string): string {
-  return `${iso(at)}#${id}`;
+/**
+ * Der Zeitanteil einer Position, in Mikrosekunden und mit fester Breite.
+ *
+ * Diese Auswahl gehoert in **jede** Abfrage, deren Zeile eine Position
+ * bekommt, und sie darf nicht durch `row.created_at` ersetzt werden. Der Grund
+ * ist ein Fehler, der ausgeliefert war: Der Treiber gibt `timestamptz` als
+ * JavaScript-`Date` heraus, und ein `Date` kennt nur Millisekunden. Eine so
+ * gekuerzte Position ist **kleiner** als die Zeile, aus der sie stammt, und der
+ * Zeilenvergleich `(zeit, id) > (zeit, id)` liesse dieselbe Zeile bei jedem
+ * Lauf wieder durch -- Ladung fuer Ladung dieselbe Zeile, ohne dass es der
+ * Position anzusehen waere. Beim Aufrufprotokoll fiel es nicht auf, weil dort
+ * ein JavaScript-Zeitpunkt geschrieben wird und die Mikrosekunden ohnehin null
+ * sind; bei `audit_logs` setzt die Datenbank `now()`, und dort trifft es zu.
+ *
+ * `::text` waere falsch: PostgreSQL schreibt den Versatz zweistellig (`+00`),
+ * und mit einem angehaengten `Z` entstuende ein ungueltiges Datum.
+ */
+const EXACT = (column: string) =>
+  `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+function formatCursor(at: string, id: string): string {
+  return `${at}#${id}`;
 }
 
 /**

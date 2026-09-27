@@ -60,6 +60,7 @@ import { AuthReturnTargetsView } from "@/components/console/auth-return-targets-
 import { AuthRateLimitsView } from "@/components/console/auth-rate-limits-view";
 import { AuthProtectionView } from "@/components/console/auth-protection-view";
 import { AuthPoliciesView } from "@/components/console/auth-policies-view";
+import { DashboardWebhooksView } from "@/components/console/dashboard-webhooks-view";
 import { LogDrainsView } from "@/components/console/log-drains-view";
 import { DashboardSettingsView } from "@/components/console/dashboard-settings-view";
 import { LogExplorerView } from "@/components/console/log-explorer-view";
@@ -362,6 +363,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "auth-protection": return <AuthProtectionView projectId={props.project.id} environment={props.environment}/>;
     case "auth-policies": return <AuthPoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "set-log-drains": return <LogDrainsView projectId={props.project.id} environment={props.environment}/>;
+    case "set-webhooks": return <DashboardWebhooksView projectId={props.project.id} environment={props.environment}/>;
     case "logs-explorer": return <LogExplorerView projectId={props.project.id} environment={props.environment}/>;
     case "obs-query-insights": return <QueryInsightsView projectId={props.project.id} environment={props.environment}/>;
     case "auth-smtp": return <AuthSmtpView projectId={props.project.id} environment={props.environment}/>;

@@ -107,6 +107,22 @@ import {
   parseLogExplorerQuery,
   type LogExplorerQuery,
 } from "@/lib/console/log-explorer";
+// Dashboard-Webhooks (2.75): echte Audit-Kette, echte Kopplung, echte Outbox,
+// echter Zusteller, echter Vault. Die Abbildung `auditEventFromRecord` ist die,
+// mit der die Console ihre Audit-Ansicht fuellt: Der Fall zeigt damit, dass die
+// Akteursreferenz dort sichtbar ist und in der Meldung fehlt.
+import {
+  DashboardWebhookCollector,
+  DashboardWebhookService,
+} from "@/lib/server/compute/dashboard-webhooks";
+import {
+  PostgresDashboardEventReader,
+  PostgresDashboardWebhookRepository,
+} from "@/lib/server/compute/dashboard-webhook-postgres-repository";
+import { PostgresDashboardWebhookCursorRepository } from
+  "@/lib/server/compute/dashboard-webhook-cursor-postgres-repository";
+import { DASHBOARD_EVENT_DEFINITIONS } from "@/lib/console/dashboard-webhooks";
+import { auditEventFromRecord } from "@/lib/server/control-plane/mappers";
 import { searchLogSources } from "@/lib/server/logs/log-explorer-search";
 import {
   authAuditFetcher,
@@ -3830,6 +3846,52 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       signature: presented,
     }), "die Signatur stimmt nicht mit dem Schluessel des Vaults").toBe(true);
 
+    // --- Dieselbe Zeile nur einmal, auch wenn die Datenbank den Zeitpunkt
+    // setzt ------------------------------------------------------------------
+    //
+    // Das Aufrufprotokoll allein kann diese Zusage nicht pruefen: Dort schreibt
+    // ein JavaScript-Zeitpunkt, und dessen Mikrosekunden sind immer null. In
+    // `audit_logs` setzt die Datenbank `now()`, und dort waren sie es nicht.
+    // Genau daran hing ein ausgelieferter Fehler: Die Position einer Zeile kam
+    // aus einem JavaScript-`Date` und war damit auf Millisekunden gekuerzt,
+    // also **kleiner** als die Zeile selbst. Der Zeilenvergleich `(zeit, id) >
+    // (zeit, id)` liess dieselbe Zeile bei jedem Lauf wieder durch, und der
+    // Empfaenger bekam sie Lauf fuer Lauf erneut.
+    const auditSink = new PostgresProjectAuthAuditSink(auth);
+    const drainAppUser = randomUUID();
+    await auditSink.record({
+      scope, action: "project_auth.login.succeeded", actorType: "app_user",
+      actorRef: `project_auth_user:${drainAppUser}`,
+      resourceRef: `project_auth_user:${drainAppUser}`, status: "succeeded",
+    });
+    // Die Gegenprobe zuerst: Die Datenbank hat wirklich Mikrosekunden gesetzt,
+    // sonst prueft der Rest dieses Abschnitts nichts.
+    const auditMoment = await owner.query<{ micros: string }>(
+      `SELECT to_char(created_at, 'US') AS micros FROM audit_logs
+        WHERE organization_id = $1 AND project_id = $2
+          AND action = 'project_auth.login.succeeded'`,
+      [drainOrganization, drainProject]);
+    expect(auditMoment.rows).toHaveLength(1);
+    expect(auditMoment.rows[0].micros,
+      "die Datenbank hat den Zeitpunkt nur auf Millisekunden gesetzt")
+      .not.toMatch(/000$/);
+
+    expect(await collector.poll(), "die Audit-Zeile ging nicht hinaus").toBe(1);
+    const afterAudit = await owner.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2 AND event_type = 'log.auth_audit'`,
+      [drainOrganization, drainProject]);
+    expect(afterAudit.rows[0]?.n).toBe("1");
+
+    // Und jetzt der Kern: ein zweiter Lauf ohne neue Zeile schickt nichts.
+    expect(await collector.poll(), "dieselbe Audit-Zeile ging ein zweites Mal hinaus").toBe(0);
+    const afterSecondPoll = await owner.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2 AND event_type = 'log.auth_audit'`,
+      [drainOrganization, drainProject]);
+    expect(afterSecondPoll.rows[0]?.n,
+      "dieselbe Audit-Zeile liegt zweimal in der Outbox").toBe("1");
+
     // Abgeschaltet sammelt der Drain nichts Neues. Der dritte Aufruf steht im
     // Protokoll und bleibt dort -- das ist der Unterschied zwischen pausieren
     // und stauen.
@@ -3840,7 +3902,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     const afterDisable = await owner.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM project_webhook_deliveries
         WHERE organization_id = $1 AND project_id = $2`, [drainOrganization, drainProject]);
-    expect(afterDisable.rows[0]?.n).toBe("1");
+    // Zwei Ladungen, nicht eine: die des Aufrufprotokolls und die der
+    // Audit-Zeile. Beide sind vor dem Abschalten entstanden.
+    expect(afterDisable.rows[0]?.n).toBe("2");
     const stillLogged = await definitions.readFunctionInvocationLog(admin, scope, { limit: 10 });
     expect(stillLogged.rows).toHaveLength(3);
   });
@@ -5909,6 +5973,346 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`DROP PUBLICATION IF EXISTS "${publicationName}"`);
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     }
+  }, 120_000);
+  it("(2.75) turns a real project event into a signed dashboard webhook delivery", async () => {
+    // Die Grenze des Dashboard-Webhook-Slices (2.75) an echten Ereignissen der
+    // Control Plane: Was hinausgeht, muss genau die Projektion der
+    // Console-Ansicht sein, und der Weg dorthin muss der Produktweg sein.
+    //
+    // Der Vertrag `tests/dashboard-webhook-field-boundary` vergleicht Listen am
+    // Quelltext. Er kann nicht sagen, ob der Audit-Eintrag aus der Datenbank
+    // wirklich so aussieht -- ob also `actor_ref` beim Lesen tatsaechlich
+    // wegfaellt, ob von den Metadaten nur die erlaubten Schluessel die
+    // Datenbank verlassen, ob die Huelle ohne Ziel und ohne Referenz in der
+    // Outbox landet und ob der Zusteller sie mit dem Schluessel aus einem
+    // echten Vault signiert. Genau das laeuft hier, und zwar ueber die echte
+    // Produktkette: `PostgresControlPlaneService` schreibt Change Set und
+    // Freigabe und dazu den Audit-Eintrag, `PostgresDashboardEventReader` liest
+    // ihn, `DashboardWebhookCollector` reiht ihn ein, `WebhookOutbox` haelt ihn,
+    // `WebhookDeliveryRuntime` stellt zu.
+    //
+    // Der Fall hat zwei Haelften, weil die Grenze zwei verschiedene Dinge
+    // zusagt. Die **menschliche** Freigabe traegt in `actor_ref` die
+    // E-Mail-Adresse des Kontos und in den Metadaten den Aktionshash: Beides
+    // zeigt die Console, und beides darf im gesendeten Koerper nirgends stehen.
+    // Die **automatische** Freigabe traegt drei Metadatenschluessel, von denen
+    // genau einer auf der Positivliste steht: `risk` geht mit, `policyMode` und
+    // `policyRevision` nicht.
+    //
+    // Der Stack: PostgreSQL, weil der Fall eine echte Control Plane **und**
+    // einen echten Vault gleichzeitig braucht. Der Vault-Stack hat keine
+    // Datenbank; seit 2.50 laeuft im PostgreSQL-Stack ein Vault, genau aus
+    // diesem Grund.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.50, 2.53, 2.59 und 2.63:
+    // Das gemeinsame afterAll muss organizationA und organizationB loswerden,
+    // und eine Organisation mit unloeschbaren Zeilen darunter blockiert das.
+    // Abgeraeumt wird am Ende nur, was das Produkt selbst loeschen wuerde --
+    // und das ist hier nichts: `audit_logs` ist append-only, sein
+    // Fremdschluessel auf `organizations` ist `ON DELETE RESTRICT`, und die
+    // Dashboard-Webhook-Flaeche loescht ausdruecklich nicht.
+    expect(vaultKvUrl, "QKERN_TEST_VAULT_KV_URL fehlt").toBeTruthy();
+    expect(vaultTokenFile, "QKERN_TEST_VAULT_TOKEN_FILE fehlt").toBeTruthy();
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const hookOwner = randomUUID();
+    const hookOrganization = randomUUID();
+    const hookProject = randomUUID();
+    // Die Adresse ist der Lackmustest. `audit_logs.actor_ref` nimmt sie auf,
+    // die Audit-Ansicht der Console zeigt sie, und eine Meldung darf sie nicht
+    // tragen.
+    const actorRef = `dashboard-hook-${hookOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [hookOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Dashboard Webhooks', $2, $3)`,
+    [hookOrganization, `dashboard-hooks-${hookOrganization}`, hookOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [hookOrganization, hookOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Dashboard Webhooks', $3, 'test', 'ready', $4)`,
+    [hookProject, hookOrganization, `dashboard-hooks-${hookProject}`, hookOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [hookOrganization, hookProject, `managed:${hookProject}`]);
+
+    const scope = {
+      organizationId: hookOrganization, projectId: hookProject,
+      environment: "development" as const,
+    };
+    const admin = {
+      organizationId: hookOrganization, actorRef, role: "admin" as const, subject: hookOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+    const hooks = new PostgresDashboardWebhookRepository(control);
+    const cursors = new PostgresDashboardWebhookCursorRepository(control);
+
+    // Die Definition ueber den echten Dienst, mit der echten Pruefung. Zwei
+    // Ereignisarten: eine, die vorkommt, und eine, die nicht vorkommt. Ohne die
+    // zweite bewiese der Fall nichts darueber, dass je Art gelesen wird.
+    const service = new DashboardWebhookService({ repository: hooks, collector: cursors });
+    const hook = await service.create(admin, scope, {
+      name: "ereignisse-an-chat",
+      url: "https://chat.example.com/qkern/ereignisse",
+      kinds: ["migration_applied", "approval_decided"],
+      signingSecretRef: databaseWebhookSecretRef!,
+    });
+    expect(hook.kinds).toEqual(["migration_applied", "approval_decided"]);
+    expect(hook.eventTypes)
+      .toEqual(["project.migration_applied", "project.approval_decided"]);
+    expect(hook.enabled).toBe(true);
+    // Kein Geheimniswert, nirgends -- nur die Referenz.
+    expect(JSON.stringify(hook)).not.toContain("secret\":\"");
+    expect(hook.signingSecretRef).toBe(databaseWebhookSecretRef);
+
+    const outboxRepository = new PostgresWebhookOutboxRepository(control);
+    const collector = new DashboardWebhookCollector({
+      reader: new PostgresDashboardEventReader(control),
+      bindings: hooks,
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      cursors,
+      scope,
+    });
+    // Der erste Lauf setzt den Stand auf die Spitze: Ein neu angelegter
+    // Dashboard-Webhook meldet dem Empfaenger nicht als erste Handlung die
+    // Geschichte des Projekts.
+    expect(await collector.poll()).toBe(0);
+    // Und er behauptet noch nichts gemeldet zu haben.
+    expect(await service.collectorState(admin, scope)).toEqual([]);
+
+    const plane = new PostgresControlPlaneService(
+      new PostgresControlPlane(owner),
+      new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex")),
+    );
+    const context = {
+      organizationId: hookOrganization,
+      actor: { id: hookOwner, ref: actorRef, type: "user" as const },
+    };
+    const audit = () => new PostgresControlPlane(owner).withTenant(
+      { organizationId: hookOrganization, actorRef, readOnly: true },
+      async (repositories) => repositories.audit.list({
+        projectId: hookProject, environment: "development", limit: 50,
+      }));
+
+    // ---- Erste Haelfte: die menschliche Freigabe ----
+    //
+    // Die Vorgabe ist `manual`, eine Schemaaenderung braucht also eine
+    // Entscheidung. Entschieden wird ueber denselben Dienst, den die
+    // Freigabezentrale ruft; er entschluesselt die Anweisung noch einmal und
+    // rechnet den Aktionshash nach.
+    const table = `dashhooks_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const statement = `CREATE TABLE ${table} (id uuid PRIMARY KEY)`;
+    const change = await plane.createChangeSet(context, {
+      projectId: hookProject, environment: "development",
+      title: `Tabelle anlegen: ${table}`, statement,
+    });
+    const approvals = await owner.query<{ id: string }>(
+      "SELECT id FROM approval_requests WHERE change_set_id = $1", [change.id]);
+    expect(approvals.rows, "eine Schemaaenderung braucht eine Freigabe").toHaveLength(1);
+    const approved = await plane.decideApproval(context, {
+      approvalId: approvals.rows[0].id, decision: "approved",
+    });
+    expect(approved.status).toBe("approved");
+
+    // Die Console zeigt den Eintrag -- **mit** der Adresse des Akteurs. Gelesen
+    // wird er mit demselben Repository und derselben Abbildung, die den
+    // Console-Snapshot fuellen.
+    const afterDecision = await audit();
+    const human = afterDecision.filter((record) => record.action === "approval.approved");
+    expect(human, "die Entscheidung hat keinen Audit-Eintrag geschrieben").toHaveLength(1);
+    expect(auditEventFromRecord(human[0])?.actor, "die Console zeigt die Adresse nicht")
+      .toBe(actorRef);
+    expect(Object.keys(human[0].redactedMetadata)).toEqual(["actionHash"]);
+    // Die Vorschau des Change Sets steht ebenfalls im Protokoll, mit derselben
+    // Adresse. Sie ist keine Ereignisart, und deshalb darf sie nichts ausloesen.
+    expect(afterDecision.some((record) => record.action === "qkern_migration_preview")).toBe(true);
+
+    // Und jetzt der Dashboard-Webhook.
+    expect(await collector.poll()).toBe(1);
+
+    const first = await owner.query<{
+      event_type: string; status: string; payload: Record<string, unknown>;
+    }>(`SELECT event_type, status, payload FROM project_webhook_deliveries
+         WHERE organization_id = $1 AND project_id = $2
+         ORDER BY occurred_at, id`, [hookOrganization, hookProject]);
+    // Genau eine Meldung: Die zweite Ereignisart hat keinen Eintrag, und die
+    // Vorschau des Change Sets ist keine Ereignisart.
+    expect(first.rows).toHaveLength(1);
+    expect(first.rows[0].event_type).toBe("project.approval_decided");
+    expect(first.rows[0].status).toBe("pending");
+    expect(Object.keys(first.rows[0].payload).sort())
+      .toEqual(["event", "kind", "schemaVersion"]);
+    expect(first.rows[0].payload.kind).toBe("approval_decided");
+
+    const allowed = [...DASHBOARD_EVENT_DEFINITIONS.approval_decided.fields];
+    const event = first.rows[0].payload.event as Record<string, unknown>;
+    // Der Kern des Falls: Feld fuer Feld nur die Liste, die die Console zeigt.
+    // Die Liste ist eine Obergrenze -- ein Metadatenschluessel, den dieser
+    // Eintrag nicht traegt, fehlt auch in der Meldung.
+    for (const field of Object.keys(event)) {
+      expect(allowed, `${field} steht nicht auf der Positivliste`).toContain(field);
+    }
+    for (const field of ["id", "createdAt", "action", "status", "environment", "projectId",
+      "resource"]) {
+      expect(Object.keys(event), field).toContain(field);
+    }
+    expect(event.id).toBe(human[0].id);
+    expect(event.action).toBe("approval.approved");
+    expect(event.status).toBe("success");
+    expect(event.environment).toBe("development");
+    expect(event.projectId).toBe(hookProject);
+    expect(event.resource).toBe(approvals.rows[0].id);
+    // Der Aktionshash steht in den Metadaten, aber nicht auf der Liste.
+    expect(event).not.toHaveProperty("actionHash");
+
+    const stored = JSON.stringify(first.rows[0].payload);
+    expect(stored, "die Meldung traegt die Adresse des Akteurs").not.toContain(actorRef);
+    expect(stored, "die Meldung traegt die Anweisung").not.toContain(table);
+    expect(stored, "die Meldung traegt den Aktionshash")
+      .not.toContain(String(human[0].redactedMetadata.actionHash));
+    expect(stored, "die Meldung traegt die Hashkette").not.toContain(human[0].entryHash);
+    expect(stored, "die Meldung traegt das Ziel").not.toContain("chat.example.com");
+    expect(stored, "die Meldung traegt die Geheimnisreferenz")
+      .not.toContain(databaseWebhookSecretRef!);
+
+    // Der Stand des Sammlers, so wie die Ansicht ihn zeigt: je Webhook und Art
+    // eine Zeile, und nur fuer die Art, die wirklich gemeldet hat.
+    const state = await service.collectorState(admin, scope);
+    expect(state).toHaveLength(1);
+    expect(state![0].kind).toBe("approval_decided");
+    expect(state![0].webhookId).toBe(hook.webhookId);
+    expect(state![0].position.endsWith(`#${human[0].id}`)).toBe(true);
+
+    // Der echte Zustellprozess mit dem echten Signierer und dem echten Vault.
+    const secrets = new VaultWebhookSecretProvider({
+      vaultKvUrl: new URL(vaultKvUrl!),
+      tokenProvider: new VaultTokenFileProvider(vaultTokenFile!),
+      cacheTtlMs: 0,
+    });
+    const sent: Array<{ headers: Record<string, string>; body: string; url: string }> = [];
+    const delivery = new WebhookDeliveryRuntime({
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      definitions: outboxRepository,
+      deliverer: new WebhookDeliverer(new HmacWebhookSigner(secrets), {
+        // Der Empfaenger ist die eine nachgebaute Stelle: Er bestaetigt die
+        // Zustellung so, wie der Vertrag es verlangt, und haelt fest, was
+        // wirklich gesendet wurde.
+        send: async (request) => {
+          sent.push({ headers: { ...request.headers }, body: request.body, url: request.url });
+          return { status: 200, acknowledgementId: request.headers["x-qkern-delivery-id"] ?? null };
+        },
+      }),
+      scope,
+      workerId: "certification-dashboard-hooks-1",
+    });
+    expect(await delivery.runOnce(), "der Zustellprozess hat nicht zugestellt")
+      .toMatchObject({ delivered: 1, failed: 0, skipped: 0 });
+    expect(sent).toHaveLength(1);
+    const delivered = sent[0];
+    expect(delivered.url).toBe("https://chat.example.com/qkern/ereignisse");
+    expect(delivered.headers["x-qkern-event"]).toBe("project.approval_decided");
+    // Dieselbe Grenze noch einmal, aber am wirklich gesendeten Koerper: Was die
+    // Datenbank nicht traegt, koennte der Zusteller immer noch ergaenzt haben.
+    expect(delivered.body).not.toContain(actorRef);
+    expect(delivered.body).not.toContain(table);
+    expect(delivered.body).not.toContain(human[0].entryHash);
+    expect(delivered.body).toContain(human[0].id);
+    const body = JSON.parse(delivered.body) as {
+      data: { kind: string; event: Record<string, unknown> };
+    };
+    expect(body.data.kind).toBe("approval_decided");
+    for (const field of Object.keys(body.data.event)) {
+      expect(allowed, `${field} steht nicht auf der Positivliste`).toContain(field);
+    }
+
+    // Die Gegenrechnung: der Schluessel aus dem Vault, die Pruefung ohne den
+    // Signierer. Eine Signatur, die nur gegen sich selbst stimmt, waere keine.
+    const key = await secrets.resolve(databaseWebhookSecretRef!);
+    expect(key, "der Vault haelt den Schluessel nicht").not.toBeNull();
+    const signature = delivered.headers["x-qkern-signature"];
+    expect(signature).toMatch(/^v1=[A-Za-z0-9_-]{43,128};key=[A-Za-z0-9._:-]{1,64}$/);
+    const presented = signature.slice("v1=".length, signature.indexOf(";key="));
+    expect(signature.endsWith(`;key=${key!.keyId}`)).toBe(true);
+    expect(verifyWebhookSignature({
+      secret: key!.secret,
+      canonicalPayload: `${delivered.headers["x-qkern-timestamp"]}.${delivered.body}`,
+      signature: presented,
+    }), "die Signatur stimmt nicht mit dem Schluessel des Vaults").toBe(true);
+
+    // ---- Zweite Haelfte: die automatische Freigabe ----
+    //
+    // Sie ist der Weg, auf dem die Metadaten `policyMode`, `policyRevision` und
+    // `risk` entstehen. Genau einer davon steht auf der Positivliste.
+    await plane.setAutomationPolicy(context, {
+      projectId: hookProject, environment: "development", mode: "autonomous",
+      maxAutoRisk: "critical", autoQueue: false, emergencyStop: false,
+    });
+    const autoTable = `dashhooks_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const autoChange = await plane.createChangeSet(context, {
+      projectId: hookProject, environment: "development",
+      title: `Tabelle anlegen: ${autoTable}`,
+      statement: `CREATE TABLE ${autoTable} (id uuid PRIMARY KEY)`,
+    });
+    expect(autoChange.status, "die Automatik hat nicht freigegeben").toBe("approved");
+
+    const afterAutomation = await audit();
+    const automatic = afterAutomation.filter(
+      (record) => record.action === "approval.automatically_approved");
+    expect(automatic, "die Automatik hat keinen Audit-Eintrag geschrieben").toHaveLength(1);
+    expect(Object.keys(automatic[0].redactedMetadata).sort())
+      .toEqual(["policyMode", "policyRevision", "risk"]);
+    // Der Akteur ist hier die Regel und nicht ein Mensch. Auch sie geht nicht
+    // hinaus: Zurueckgehalten wird das Feld, nicht eine bestimmte Sorte Wert.
+    expect(auditEventFromRecord(automatic[0])?.actor).toBe("qkern-automation-policy:1");
+    // Und die Regelaenderung steht ebenfalls im Protokoll. Sie ist keine
+    // Ereignisart, und deshalb darf sie nichts ausloesen.
+    expect(afterAutomation.some((record) => record.action === "automation.policy.updated"))
+      .toBe(true);
+
+    expect(await collector.poll()).toBe(1);
+    const second = await owner.query<{ event_type: string; payload: Record<string, unknown> }>(
+      `SELECT event_type, payload FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2
+        ORDER BY occurred_at DESC, id DESC LIMIT 1`, [hookOrganization, hookProject]);
+    expect(second.rows).toHaveLength(1);
+    expect(second.rows[0].event_type).toBe("project.approval_decided");
+    const autoEvent = second.rows[0].payload.event as Record<string, unknown>;
+    expect(autoEvent.id).toBe(automatic[0].id);
+    expect(autoEvent.action).toBe("approval.automatically_approved");
+    // Der erlaubte Metadatenschluessel geht mit, die beiden anderen nicht.
+    expect(autoEvent.risk).toBe(automatic[0].redactedMetadata.risk);
+    expect(autoEvent).not.toHaveProperty("policyMode");
+    expect(autoEvent).not.toHaveProperty("policyRevision");
+    for (const field of Object.keys(autoEvent)) {
+      expect(allowed, `${field} steht nicht auf der Positivliste`).toContain(field);
+    }
+    const autoStored = JSON.stringify(second.rows[0].payload);
+    expect(autoStored, "die Meldung traegt die Fassung der Automatikregel")
+      .not.toContain("policyRevision");
+    expect(autoStored, "die Meldung traegt die Referenz der Automatikregel")
+      .not.toContain("qkern-automation-policy");
+    expect(autoStored, "die Meldung traegt die Anweisung").not.toContain(autoTable);
+
+    // Abgeschaltet meldet der Webhook nichts Neues. Die dritte Freigabe steht im
+    // Audit-Log und bleibt dort -- das ist der Unterschied zwischen pausieren
+    // und stauen.
+    await service.setEnabled(admin, scope, hook.id, false);
+    const thirdTable = `dashhooks_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    await plane.createChangeSet(context, {
+      projectId: hookProject, environment: "development",
+      title: `Tabelle anlegen: ${thirdTable}`,
+      statement: `CREATE TABLE ${thirdTable} (id uuid PRIMARY KEY)`,
+    });
+    expect(await collector.poll()).toBe(0);
+    const afterDisable = await owner.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, hookProject]);
+    expect(afterDisable.rows[0]?.n).toBe("2");
+    expect((await audit()).filter(
+      (record) => record.action === "approval.automatically_approved")).toHaveLength(2);
   }, 120_000);
 });
 

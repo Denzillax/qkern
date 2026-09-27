@@ -97,7 +97,7 @@ describe("console display settings route", () => {
       [{ language: "es" }, "Diese Sprache gibt es in der Console nicht."],
       [{ formatLocale: "de-AT" }, "Dieses Zahlen- und Datumsformat steht nicht zur Auswahl."],
       [{ timeZone: "Mars/Olympus" }, "Diese Zeitzone kennt die Laufzeit nicht."],
-      [{ startView: "set-webhooks" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
+      [{ startView: "set-compute" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
       [{ theme: "sepia" }, "Dieses Aussehen gibt es nicht."],
       ["kein Objekt", "Aus dieser Eingabe lässt sich keine Darstellung bauen."],
     ] as const) {
