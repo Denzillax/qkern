@@ -67,8 +67,14 @@ function quantity(value: string | null, unit: string): string {
   return parsed === null ? "–" : `${formatNumber(parsed)} ${unitLabel(unit, parsed)}`;
 }
 
-/** "je Vorgang" bei einer Einheit, sonst "je 1'000 Vorgänge". */
-function perUnits(value: string | null, unit: string): string {
+/**
+ * "je Vorgang" bei einer Einheit, sonst "je 1'000 Vorgänge".
+ *
+ * Seit 2.88 auch von Einstellungen -> Add-ons verwendet. Dieselbe Bezugsgroesse
+ * an zwei Stellen zweimal zu schreiben hiesse, sie irgendwann verschieden zu
+ * schreiben.
+ */
+export function perUnits(value: string | null, unit: string): string {
   const parsed = parseMicros(value);
   if (parsed === null) return "–";
   return parsed === 1n ? `${t("je")} ${unitLabel(unit, parsed)}` : `${t("je")} ${quantity(value, unit)}`;

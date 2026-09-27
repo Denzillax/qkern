@@ -97,7 +97,9 @@ describe("console display settings route", () => {
       [{ language: "es" }, "Diese Sprache gibt es in der Console nicht."],
       [{ formatLocale: "de-AT" }, "Dieses Zahlen- und Datumsformat steht nicht zur Auswahl."],
       [{ timeZone: "Mars/Olympus" }, "Diese Zeitzone kennt die Laufzeit nicht."],
-      [{ startView: "set-compute" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
+      // Ein Platzhalter, der noch einer ist: "set-compute" stand hier bis 2.88
+      // und ist seitdem eine echte Seite.
+      [{ startView: "logs-realtime" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
       [{ theme: "sepia" }, "Dieses Aussehen gibt es nicht."],
       ["kein Objekt", "Aus dieser Eingabe lässt sich keine Darstellung bauen."],
     ] as const) {

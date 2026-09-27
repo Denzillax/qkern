@@ -47,7 +47,7 @@ describe("console display settings", () => {
   it("refuses a value it cannot display instead of replacing it silently", () => {
     for (const body of [
       null, "de", [], { language: "es" }, { formatLocale: "de-AT" }, { timeZone: "Mars/Olympus" },
-      { timeZone: "" }, { startView: "set-compute" }, { startView: "does-not-exist" }, { theme: "sepia" },
+      { timeZone: "" }, { startView: "storage-vectors" }, { startView: "does-not-exist" }, { theme: "sepia" },
     ]) {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }
@@ -64,6 +64,13 @@ describe("console display settings", () => {
     // Seite liest echte Tabellen, und damit ist sie als Startseite erlaubt.
     expect(validateConsoleDisplaySettings({ startView: "int-graphql" }))
       .toEqual({ ...CONSOLE_DISPLAY_DEFAULTS, startView: "int-graphql" });
+    // Und seit 2.88 fuer die letzten drei Platzhalter der Einstellungen. Das
+    // negative Beispiel oben musste mitwandern: Es stand auf "set-compute",
+    // und genau diese Seite ist jetzt eine echte.
+    for (const startView of ["set-compute", "set-integrations", "set-addons"]) {
+      expect(validateConsoleDisplaySettings({ startView }), startView)
+        .toEqual({ ...CONSOLE_DISPLAY_DEFAULTS, startView });
+    }
   });
 
   it("formats a moment in every offered locale exactly as Intl does there", () => {
