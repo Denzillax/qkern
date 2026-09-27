@@ -43,6 +43,9 @@ import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
 import { missingLogTexts } from "@/lib/console/missing-log-texts";
 import { integrationsGraphqlTexts } from "@/lib/console/integrations-graphql-texts";
 import { authOAuthServerTexts } from "@/lib/console/auth-oauth-server-texts";
+import { provisioningOrderTexts } from "@/lib/console/provisioning-order-texts";
+import { integrationsServicesTexts } from "@/lib/console/integrations-services-texts";
+import { addonsTexts } from "@/lib/console/addons-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -194,6 +197,17 @@ async function consoleKeys(): Promise<string[]> {
   // Auth → OAuth-Server (2.82) zeigt Bereiche, Auslässungen und die Gründe
   // einer Ablehnung über t(variable).
   for (const text of authOAuthServerTexts()) keys.add(text);
+  // Einstellungen -> Compute und Disk (2.88) zeigt die Zustaende eines
+  // Auftrags, die Felder einer Bestellung, die Felder einer Bindung, die
+  // fuenf Fehlerklassen und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of provisioningOrderTexts()) keys.add(text);
+  // Einstellungen -> Integrationen (2.88) zeigt je fremdem Dienst Zweck,
+  // Beleg, Grenze und Ort, dazu die Dienste ohne Auskunft, was es nicht gibt
+  // und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of integrationsServicesTexts()) keys.add(text);
+  // Einstellungen -> Add-ons (2.88) zeigt die Form einer Rechnungszeile, was
+  // es nicht gibt und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of addonsTexts()) keys.add(text);
   return [...keys];
 }
 

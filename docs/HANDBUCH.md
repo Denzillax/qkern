@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.61.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.62.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -3770,6 +3770,127 @@ die Sandbox, die Compose-Dateien, `lib/server/db/pool`, `lib/server/db/sql`
 und alle Aufrufstellen von `admitApiRequest`. Ein Pooler in einer
 Compose-Datei, eine neue `middleware.ts` oder ein viertes zählendes Modul
 lässt den Lauf scheitern, statt eine Seite stillschweigend zur Lüge zu machen.
+
+### Die letzten drei Platzhalter der Einstellungen
+
+Seit `2.62.0` sind **Einstellungen → Compute und Disk**, **Einstellungen →
+Integrationen** und **Einstellungen → Add-ons** keine Platzhalterseiten mehr.
+Damit führt der Menüpunkt Einstellungen keinen einzigen Platzhalter mehr. Alle
+drei versprachen etwas, das es nicht gibt, und wieder war die Prüfung der
+Auftrag: Dreimal lautet die Antwort „gibt es nicht“, und dreimal aus einem
+anderen Grund. Einmal ist sogar das Gegenteil des Platzhaltertexts wahr.
+
+**Compute und Disk: die Provisionierung ist gebaut, die Grösse gibt es
+nicht.** Der Platzhalter sagte, die Provisionierung sei „noch nicht
+verbunden“. Das war falsch: Migration `0020` führt Aufträge und Bindungen,
+ein eigener Prozess arbeitet sie unter der Rolle `qkern_provisioner` ab, und
+`GET .../provisioning` gibt es seit `1.60.0`. Falsch war auch das Versprechen
+selbst. Eine Instanzgrösse und eine Plattengrösse gibt es nirgends:
+`project_database_provisioning_jobs` hat zwanzig Spalten,
+`project_database_bindings` fünfzehn, und keine davon ist eine Ausstattung.
+Die Bestellung, die QKERN hinausschickt, trägt sechs Felder
+(`provisioningJobId`, `organizationId`, `projectId`, `environment`, `region`,
+`bootstrapContractSha256`), und die Region ist keine Wahl, sondern der Text
+aus der Projektzeile. Die Antwort des Vermittlers wird gegen einen
+geschlossenen Schlüsselsatz aus **neun** Namen geprüft; eine Antwort mit einem
+zehnten Feld, auch einer Grösse, gilt als `INVALID_BINDING` und wird
+verworfen, bevor etwas davon in die Datenbank kommt.
+
+Die Seite wiederholt deshalb nicht, was Einstellungen → Infrastruktur aus
+`2.68` schon sagt, sondern beantwortet die zwei Fragen davor: was bestellt ist
+und was gebunden ist. Die echte Lesung ist der Zustand des
+Provisionierungsauftrags dieser Umgebung, und bis `2.62.0` hat keine Ansicht
+der Console ihn gelesen: Zustand, verbrauchte Versuche an der festen
+Obergrenze fünf, Wiederholungsrunden an der festen Obergrenze drei, die
+Fehlerklasse aus den fünf, die die Spalte annimmt, und zwei Zeitpunkte.
+**Die Bindung selbst ist nicht lesbar**, und das ist keine Vorsicht der
+Ansicht: `qkern_runtime` hat auf `project_database_bindings` kein Leserecht,
+und `qkern_project_database_provisioning_status` gibt kein Feld der Bindung
+heraus, nicht einmal `binding_id`. Die Seite nennt darum die neun Felder mit
+ihrer Bedeutung und keinen einzigen Wert; vier davon (`host`, `port`,
+`vaultStaticRole`, `serverCertificateSha256`) sind der Grund, warum die Zeile
+die Web-Laufzeit nichts angeht. Dass eine Bindung existiert, sagt trotzdem der
+Zustand: Die Prüfbedingung der Tabelle lässt `succeeded` ohne Bindung gar
+nicht zu. Ein 404 dieser Route heisst mit Absicht zweierlei, kein Auftrag oder
+kein Leserecht, damit sich über die Antworten nicht abzählen lässt, welche
+Umgebungen es gibt; die Seite sagt beide Ursachen.
+
+**Integrationen: es gibt verknüpfte Dienste, nur andere.** Der Platzhalter
+versprach „Git-Hosting oder Deploy-Plattformen“. Beides gibt es nicht, und
+zwar nirgends im Baum: Kein Modul unter `lib/`, `app/`, `workers/`, `sdk/`,
+`cli/` oder `mcp/` spricht mit GitHub, GitLab, Bitbucket, Vercel, Netlify oder
+Fly. QKERN liest kein Repository und liefert nichts aus, was eine
+Deploy-Plattform ausliefern würde: Eine Function wird als fertiges Image
+eingesetzt, gebaut hat es jemand anders, und ein Vorschauzweig je Änderung ist
+keine Sache, weil die drei Umgebungen feststehen.
+
+Verknüpfte Dienste gibt es trotzdem, und das **ist** die versprochene Liste,
+nur eine andere. Die Seite zeigt sieben: den Geheimnisspeicher, den
+Objektspeicher, den Mailserver, die OIDC-Anmeldedienste, die fremden
+Tokenaussteller aus `2.60.0`, die Webhook-Ziele und die Log-Ziele. Je Dienst
+steht dort, **ob** er eingerichtet ist und **woher** QKERN das weiss, und kein
+einziger Wert: kein Host, kein Port, keine Adresse, kein Benutzername, kein
+Token, kein Schlüssel und kein Name eines Anbieters. Wo gezählt wird, steht
+eine Anzahl. Gelesen wird aus sechs vorhandenen Routen: `advisors/health` für
+Geheimnis- und Objektspeicher, `auth/admin/mail` für die Betriebsart und das
+abgeleitete Ja der Anmeldung, `auth/admin/providers`,
+`auth/admin/third-party`, `compute/webhooks` und `compute/log-drains` für je
+eine Anzahl. Die Zustände sind die des Gesundheitsberaters aus `2.44`, mit dem
+`configured` aus `2.57`, und sie bedeuten hier dasselbe: hinterlegt, niemand
+gefragt. **Kein Feld dieser Seite baut eine Verbindung auf**, und einen Knopf
+„Verbindung testen“ gibt es nicht.
+
+Zwei Ehrlichkeiten stehen dazu. Erstens ist die Auskunft über den
+Objektspeicher die schwächste: Gezählt werden Buckets, nicht Zugangsdaten; ob
+ein echter Objektspeicher hinterlegt ist oder die Ablage im Speicher des
+Prozesses liegt, erreicht keine Route. Zweitens gibt es drei weitere fremde
+Dienste, über die die Console gar nichts sagen kann, weil sie nur in der
+Umgebung des Serverprozesses stehen: den Vermittler der Provisionierung, den
+Vermittler für das Einspielen auf Produktion und das Ziel für
+Störungsmeldungen. Sie stehen mit Namen und **ohne** Zustand da; sie als nicht
+eingerichtet zu zeigen wäre eine Behauptung, sie wegzulassen eine Lücke.
+
+**Add-ons: es gibt nichts, was extra kostet.** Der Platzhalter versprach
+„Zusatzleistungen wie eigene Domain oder mehr Backups“. Geprüft wurde die
+Abrechnung, und dort fehlt nicht eine Oberfläche, sondern die Form. Abgerechnet
+wird ausschliesslich je Metrik, und die Liste ist geschlossen: Dieselben sechs
+Kennungen stehen als Prüfbedingung in `0039_billing_rate_cards.sql`, noch
+einmal in `0040_billing_invoices.sql` und ein drittes Mal als Aufzählung in
+`lib/openapi.ts`. Eine Rechnungszeile trägt eine dieser sechs, eine Menge,
+einen Stückpreis, eine Bezugsgrösse und den Betrag daraus; ein Feld für eine
+Bezeichnung oder eine Beschreibung gibt es nicht, und `UNIQUE (invoice_id,
+metric)` begrenzt eine Rechnung auf höchstens sechs Zeilen. Eine Pauschale
+hätte keine Menge und damit keinen Weg zu einem Betrag. Ein Posten „eigene
+Domain“ ist also nicht bloss nicht eingerichtet, sondern nicht ausdrückbar.
+
+Die Seite wiederholt deshalb nicht die Projektion aus Einstellungen →
+Abrechnung, sondern zeigt den **ganzen** Katalog, auch die Metriken ohne
+Preis: Die Frage lautet nicht „was kostet es“, sondern „was kann überhaupt
+etwas kosten“. Gelesen wird dieselbe Route `GET .../usage/billing`, Geld läuft
+durch das Ledgerformat aus `2.37`. Dazu steht dort, was es ausserdem nicht
+gibt: keine Zahlungsanbindung, keine Tarife (die drei Pakete auf der Startseite
+hängen an keiner Zeile der Abrechnung), kein gekauftes Kontingent. Und wer
+einen Preis setzen will, tut es als Operator ausserhalb der Console: Das
+Preisblatt hat keine REST-Fläche, und seine Zeilen lassen sich weder ändern
+noch löschen, weil es dafür keine Zeilenpolitik gibt.
+
+**Der Fall gegen die echte Datenbank.** Neu ist genau eine Lesung, der Zustand
+des Provisionierungsauftrags, und sie ist belegt: `(2.88)` in
+`tests/postgres.integration.test.ts` legt zwei Mandanten an, fragt den Katalog
+des laufenden Servers nach einer Grössenspalte in beiden Tabellen, zeigt, dass
+`qkern_runtime` beide Tabellen nicht einmal lesen **darf** (`42501`), liest den
+eigenen Auftrag durch denselben Dienst, den die Route benutzt, und prüft den
+Schlüsselsatz der Antwort auf genau zehn Felder. Der Nachbarmandant bekommt
+für dasselbe Projekt `RESOURCE_NOT_FOUND`, sieht aber seinen eigenen Auftrag;
+danach wird eine echte Bindung geschrieben, der Auftrag steht auf `succeeded`,
+und die Antwort trägt immer noch kein Feld der Bindung, nicht ihre Kennung und
+nicht ihre Adresse. Die übrigen Lesungen der drei Seiten kommen aus Routen,
+die es schon gibt und die schon belegt sind. Geprüft werden die Seiten
+ausserdem von `tests/console-settings-views-contract`, und der Vertrag prüft
+nicht bloss, dass die Sätze dastehen, sondern dass sie stimmen: Er liest
+`0020`, `0039`, `0040`, den Arbeiter, den Vermittler-Adapter, alle Migrationen
+auf ein `GRANT` an `qkern_runtime` und den ganzen Baum auf ein Modul, das doch
+mit einem Git-Hoster spricht.
 
 ## 10. MCP für KI-Agenten
 

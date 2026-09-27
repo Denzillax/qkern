@@ -87,6 +87,9 @@ import { StorageSettingsView } from "@/components/console/storage-settings-view"
 import { S3AccessView } from "@/components/console/s3-access-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import { InfrastructureView } from "@/components/console/infrastructure-view";
+import { ProvisioningOrderView } from "@/components/console/provisioning-order-view";
+import { IntegrationsServicesView } from "@/components/console/integrations-services-view";
+import { AddonsView } from "@/components/console/addons-view";
 import { BranchFlowView } from "@/components/console/branch-flow-view";
 import { DatabaseHealthView } from "@/components/console/database-health-view";
 import type { Locale } from "@/lib/i18n/locales";
@@ -389,6 +392,13 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-s3": return <S3AccessView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-infrastructure": return <InfrastructureView projectId={props.project.id} environment={props.environment} region={props.project.region} status={props.project.status}/>;
+    // Die letzten drei Platzhalter der Einstellungen (2.88). Jede Seite sagt
+    // zuerst, was es nicht gibt und warum, und zeigt dann eine echte Lesung:
+    // den Provisionierungsauftrag, die sieben fremden Dienste, den ganzen
+    // Katalog der abrechenbaren Metriken.
+    case "set-compute": return <ProvisioningOrderView projectId={props.project.id} environment={props.environment}/>;
+    case "set-integrations": return <IntegrationsServicesView projectId={props.project.id} environment={props.environment}/>;
+    case "set-addons": return <AddonsView projectId={props.project.id} environment={props.environment}/>;
     // Branches ersetzt zwei Platzhalter mit einer Seite: Die Umgebungen sind
     // fest, und der Pruefschritt ist gebaut, nur anders (2.81).
     case "branches": return <BranchFlowView projectId={props.project.id} environment={props.environment}/>;
