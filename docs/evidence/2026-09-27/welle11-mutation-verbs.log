@@ -1,0 +1,59 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/openapi-route-coverage.test.ts (9 tests | 2 failed) 10ms
+     × describes every exported verb 4ms
+     × has an exported handler behind every described verb 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/openapi-route-coverage.test.ts > OpenAPI method coverage (2.76) > describes every exported verb
+AssertionError: exported handlers with no OpenAPI operation under their path: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "app/api/v1/auth/console-settings/route.ts PUT",
++ ]
+
+ ❯ tests/openapi-route-coverage.test.ts:276:90
+    274|       }
+    275|     }
+    276|     expect(undocumented, "exported handlers with no OpenAPI operation …
+       |                                                                                          ^
+    277|   });
+    278|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/openapi-route-coverage.test.ts > OpenAPI method coverage (2.76) > has an exported handler behind every described verb
+AssertionError: OpenAPI operations that the route file does not export: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "app/api/v1/auth/console-settings/route.ts PATCH",
++ ]
+
+ ❯ tests/openapi-route-coverage.test.ts:289:81
+    287|       }
+    288|     }
+    289|     expect(uncovered, "OpenAPI operations that the route file does not…
+       |                                                                                 ^
+    290|   });
+    291|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 7 passed (9)
+   Start at  17:40:20
+   Duration  466ms (transform 229ms, setup 0ms, import 302ms, tests 10ms, environment 0ms)
+
+
+EXIT=1

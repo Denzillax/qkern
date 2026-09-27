@@ -22,7 +22,6 @@ import { smtpProjectAuthDeliveryFromEnv } from "@/lib/server/project-auth/smtp-d
 import { projectAuthTokenServiceFromEnv, type ProjectAuthTokenService } from
   "@/lib/server/project-auth/tokens";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
-import { createFunctionInvocationServiceFromEnv } from "@/lib/server/compute/definitions-runtime";
 import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functions";
 import type { ProjectAuthHookPort } from "@/lib/server/project-auth/hooks";
 import {
@@ -62,7 +61,11 @@ function projectAuthHookPortFromEnv(
 ): ProjectAuthHookPort | undefined {
   if (env.QKERN_FUNCTIONS_ENABLED !== "true" || runtimeModeFromEnv(env) !== "postgres") return undefined;
   return new ProjectAuthFunctionHooks({
-    functions: createFunctionInvocationServiceFromEnv(env),
+    // Erst beim ersten Aufruf geladen, nicht beim Laden dieses Moduls: Der
+    // Aufrufdienst zieht die ganze Compute-Seite mit, und Project Auth wird in
+    // fast jeder Route geladen.
+    functions: async () => (await import("@/lib/server/compute/definitions-runtime"))
+      .createFunctionInvocationServiceFromEnv(env),
     // Geloggt werden Punkt und Fehlerklasse, nie eine Nutzlast und nie eine
     // Adresse. Die Entscheidung selbst faellt im Dienst und steht im Audit.
     onFailure: ({ point, error }) => {

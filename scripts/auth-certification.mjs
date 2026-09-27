@@ -41,4 +41,10 @@ if (down.error) {
   console.error(`Unable to clean up the Project Auth certification stack: ${down.error.message}`);
 }
 
+
+// Wie im PostgreSQL-Laeufer: Der Runner schreibt den Exit-Code selbst ins
+// Protokoll. `scripts/certification-manifest.mjs` liest ihn dort, und ein Log
+// ohne diese Zeile gilt als unvollstaendiger Lauf. Vorher musste ihn die Shell
+// anhaengen, also genau an der Stelle von Hand, an der die Evidenz entsteht.
+console.log(`EXIT=${status}`);
 process.exitCode = status;

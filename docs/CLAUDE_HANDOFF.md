@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.58.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.59.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -152,7 +152,30 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.58.0`
+- Paketversion: `2.59.0`
+- Neuester Slice: 2.59 Zwei Hooks, die geschlossen fallen, und Schluessel, die
+  nichts oeffnen. **`auth-hooks`** ist echt, Migration `0058`: zwei Punkte,
+  `sign_in` (darf abweisen, laeuft in `createSessionResult` vor
+  `createSession`, nicht bei einer Erneuerung) und `access_token_claims` (darf
+  Ansprueche aus einer erklaerten Liste setzen, laeuft vor **jedem**
+  Schreibzugriff, also auch bei jeder Erneuerung). **Beide fallen geschlossen**:
+  keine Antwort in der Frist heisst keine Sitzung und kein Token, und ein Hook,
+  der haengt, sperrt die Projektumgebung aus. Reservierte Ansprueche stehen
+  dreimal (reines Modul, Token-Ausgabe, `CHECK` in `0058`). Keinen Mail-Hook,
+  weil der Link einer Aktionsmail das Token im Klartext traegt.
+  **`storage-s3`** ist echt, Migration `0059`, aber das Paar **oeffnet heute
+  nichts**, und der erste Absatz der Seite sagt das: Beim Anbieter laesst sich
+  kein Paar anlegen (alle Objekte aller Projekte liegen in einem Bucket,
+  getrennt nur ueber das Praefix), und gegen QKERN selbst laesst es sich nicht
+  pruefen, solange nur sein Hash liegt.
+
+  **Zwei Dinge fuer den naechsten Agenten.** Erstens: Der Auth-Weg wird in fast
+  jeder Route geladen. Ein **statischer** Import der Compute-Seite in
+  `project-auth/runtime.ts` haengt damit an jedem Modul, das Project Auth
+  anfasst; der Aufrufdienst wird darum ueber einen Lader geholt und erst beim
+  ersten Hook-Aufruf geladen. Zweitens: `tests/openapi-route-coverage` prueft
+  seit 2.59 auch die **Verben**, in beide Richtungen, und laesst jede
+  Exportform fallen, die es im Bestand nicht gibt. Im Browser nicht gesehen
 - Neuester Slice: 2.58 Ein ausgelieferter Fehler und ein Vertrag gegen das
   Nachhinken. **Der Fehler, und er ist der wichtigste Teil**: Der Treiber gibt
   `timestamptz` als JavaScript-`Date` heraus, und ein `Date` kennt nur

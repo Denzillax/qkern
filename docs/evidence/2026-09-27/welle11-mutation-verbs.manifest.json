@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: ein Verb fehlt und eines hat keinen Export",
+  "log": "welle11-mutation-verbs.log",
+  "commit": "4850cbd28b277d59863209772e3b8f2eb87d9c83",
+  "commitSubject": "merge: Auth-Hooks aus slice/authhooks",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "2 failed | 7 passed (9)",
+  "passed": 7,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

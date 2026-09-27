@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle11-local-run2.log",
+  "commit": "4850cbd28b277d59863209772e3b8f2eb87d9c83",
+  "commitSubject": "merge: Auth-Hooks aus slice/authhooks",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "318 passed | 38 skipped (356)",
+  "tests": "2191 passed | 295 skipped (2486)",
+  "passed": 2191,
+  "failed": 0,
+  "skipped": 295,
+  "images": []
+}

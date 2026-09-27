@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle11-storage.log",
+  "commit": "4850cbd28b277d59863209772e3b8f2eb87d9c83",
+  "commitSubject": "merge: Auth-Hooks aus slice/authhooks",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

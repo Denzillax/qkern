@@ -1669,3 +1669,23 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle10-local-run1.log` | Vitest lokal (Windows) | 2174 bestanden, exit 0 |
 | `2026-09-27/welle10-local-run2.log` | Vitest lokal (Windows) | 2174 bestanden, exit 0, Wiederholung |
 
+## Läufe zu Release 2.59 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle11-run1.log` | PostgreSQL 17 | 211 von 211, exit 0 |
+| `2026-09-27/welle11-run2.log` | PostgreSQL 17 | 211 von 211, exit 0, Wiederholung |
+| `2026-09-27/welle11-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-27/welle11-storage.log` | versitygw und ClamAV | 8 von 8, exit 0 |
+| `2026-09-27/welle11-mutation-hooks.log` | Mutation: ein reservierter Anspruch kommt durch | **210 von 211, exit 1 – absichtlich** |
+| `2026-09-27/welle11-mutation-s3.log` | Mutation: der Hash des Geheimnisses steht in der Liste | **210 von 211, exit 1 – absichtlich** |
+| `2026-09-27/welle11-mutation-verbs.log` | Mutation: ein Verb fehlt und eines hat keinen Export | **7 von 9, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle11-local-run1.log` | Vitest lokal (Windows) | 2191 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-27/welle11-local-run2.log` | Vitest lokal (Windows) | 2191 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die beiden lokalen Läufe dieses Releases sind mit `--maxWorkers=3` gefahren,
+und der Grund steht in `docs/RELEASE_2.59.md`: Der Arbeitsplatz hatte an diesem
+Abend 1.9 von 15.7 GiB frei, und unter dieser Last rissen Fälle ihr
+Fünf-Sekunden-Budget, die allein in einer Sekunde durchlaufen. Dieselben
+Dateien, dieselben Erwartungen, weniger Arbeiter.
+

@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "welle11-auth.log",
+  "commit": "4850cbd28b277d59863209772e3b8f2eb87d9c83",
+  "commitSubject": "merge: Auth-Hooks aus slice/authhooks",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "7 passed (7)",
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

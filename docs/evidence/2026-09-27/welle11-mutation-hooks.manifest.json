@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: ein reservierter Anspruch kommt durch",
+  "log": "welle11-mutation-hooks.log",
+  "commit": "4850cbd28b277d59863209772e3b8f2eb87d9c83",
+  "commitSubject": "merge: Auth-Hooks aus slice/authhooks",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 59,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 210 passed (211)",
+  "passed": 210,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

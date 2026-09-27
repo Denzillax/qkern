@@ -5977,3 +5977,60 @@ Nicht erbracht: Die Beschreibung prueft Pfade, nicht Methoden. Die Zustellung
 ist mindestens einmal. Die Audit-Ansicht faltet den Zustand des Provisioners
 falsch. Ein logischer Slot ist im Stack nicht pruefbar, weil der Cluster
 `wal_level = replica` faehrt. Im Browser nicht gesehen.
+
+## Welle elf (2.59): geschlossen faellt, was nicht antwortet
+
+Zwei Platzhalter weniger, ein Vertrag ueber die HTTP-Verben, und zwei Fehler,
+die der eigene Zertifizierungsfall gefunden hat.
+
+Die Auth-Hooks sind der Schnitt, an dem eine einzige Entscheidung alles
+bestimmt: Was passiert, wenn der Hook nicht antwortet. Beide Punkte fallen
+**geschlossen**. Keine Antwort in der Frist heisst keine Sitzung und kein
+Token, und die Seite nennt den Preis wortwoertlich: Ein Hook, der haengt,
+sperrt diese Projektumgebung aus. Drei Ausgaenge bleiben unterschieden, damit
+die Console "hat abgewiesen" von "war nicht erreichbar" und von "hat
+unbrauchbar geantwortet" trennen kann.
+
+Die Auswahl der Punkte folgt einer Regel, die es wert ist, aufgeschrieben zu
+werden: Ein Punkt, an dem das Ergebnis des Aufrufs verworfen wuerde, ist kein
+Hook, sondern eine Benachrichtigung, die wie eine Wirkung aussieht. Darum gibt
+es keinen Punkt "nach der Anmeldung" und keinen Mail-Hook; der Link einer
+Aktionsmail traegt das Token im Klartext.
+
+Der Fall hat zwei echte Fehler gefunden. Der Anspruchs-Hook stand hinter dem
+Schreibzugriff, und eine Abweisung liess damit eine Sitzung ohne Token zurueck;
+bei einer Erneuerung waere die Sitzungsfamilie erledigt gewesen. Und die
+erklaerten Ansprueche fielen im Audit still weg, weil die Bereinigung kein
+Komma in einem Metadatenwert durchlaesst.
+
+Der S3-Zugang ist der Schnitt, der am meisten weggelassen hat. Beide moeglichen
+Wege sind begruendet verworfen: Beim Anbieter laesst sich kein Paar anlegen,
+weil alle Objekte aller Projekte in einem Bucket liegen und nur das Praefix sie
+trennt; und gegen QKERN selbst laesst sich ein Paar nicht pruefen, solange nur
+sein Hash liegt, weil eine S3-Signatur nachgerechnet wird und die Rechnung das
+Geheimnis braucht. Gebaut ist die Ausgabe samt Verwaltung, und der erste
+Absatz der Seite sagt, dass das Paar heute nichts oeffnet.
+
+Der Verb-Vertrag hat **nichts gefunden**, und das ist ein gutes Ergebnis: 165
+exportierte Verben deckten sich genau mit 165 beschriebenen Operationen, in
+beide Richtungen. Nachgetragen wurde nichts. Der Wert liegt in der Strenge des
+Lesers: Er kennt die drei Exportformen des Bestands, und jede andere Form am
+Zeilenanfang laesst den Vertrag mit Datei und Zeile fallen.
+
+Ein Nachtrag zum Verfahren, der mir selbst gilt. Nach elf Stack-Laeufen hatte
+die Maschine 1.9 von 15.7 GiB frei, und die lokale Suite ist darunter
+zerfallen. Ich habe zuerst den falschen Schluss gezogen und einen statischen
+Import als Ursache benannt; die Gegenprobe gegen den Stand von 2.58, heute
+zweimal gruen, hat das widerlegt. Die Ursache war der Speicher. Die
+Entkopplung bleibt, weil sie fuer sich richtig ist, aber ohne den falschen
+Messwert im Kommentar.
+
+Checkpoint `2.59.0` am 27. September 2026: PostgreSQL 17 mit 211 von 211,
+Mailpit und Dex mit 7 von 7, versitygw und ClamAV mit 8 von 8, alle exit 0;
+Lokal 2191 bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
+`--maxWorkers=3`.
+
+Nicht erbracht: Ein S3-Paar oeffnet nichts, und es gibt keine Rotation. Der
+Container laeuft nach Ablauf der Hook-Frist weiter. Der Verb-Vertrag prueft nur
+Exporte am Zeilenanfang. Die CORS-Vorfluege stehen mit Grund draussen. Im
+Browser nicht gesehen.
