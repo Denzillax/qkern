@@ -3684,8 +3684,13 @@ Seit `2.60.0` sind **Branches** und **Branches → Merge-Anfragen** keine
 Platzhalterseiten mehr. Aus zwei Platzhaltern ist eine Seite geworden, und sie
 sagt als Erstes, was QKERN nicht hat.
 
-**Es gibt keine frei benannten Zweige.** Jedes Projekt hat genau drei
+**Es gibt keine frei benannten Zweige.** Ein Projekt kennt genau drei
 Umgebungen, Development, Staging und Production, und diese drei stehen fest.
+Angelegt wird bei der Registrierung allerdings nur **eine**, und zwar
+Development; die beiden anderen entstehen, wenn jemand sie bindet. Die Seite
+zeigt trotzdem alle drei und sagt bei den unbelegten, dass sie es sind. Der
+Unterschied zwischen "kennt drei" und "hat drei" ist genau der Punkt, um den
+es hier geht.
 Eine Umgebung ist kein Zweig: Sie entsteht nicht auf Zuruf, sie verschwindet
 nicht nach dem Zusammenführen, und keine stammt von einer anderen ab. Die
 Reihenfolge auf der Seite ist die, in der Menschen üblicherweise vorgehen, und
