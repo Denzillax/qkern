@@ -2375,6 +2375,59 @@ Was die Seite auch nicht sagt: ob der Server drüben erreichbar ist, ob das
 Konto dort gilt und welche Tabellen es dort gibt. Sie liest den Katalog hier
 und öffnet keine Verbindung nach aussen.
 
+### Replikation: der Rückstand eines Slots
+
+Seit `2.58.0` ist **Datenbank → Replikation** keine Platzhalterseite mehr. Die
+Seite liest, was PostgreSQL über die Replikation Ihrer Projektdatenbank
+hergibt: die Publikationen aus `pg_publication`, die Abonnements dieser
+Datenbank aus `pg_subscription`, die Replikations-Slots aus
+`pg_replication_slots` mit Zustand und Rückstand, dazu `wal_level` und ob der
+Server gerade eine Wiederherstellung fährt.
+
+**Der Rückstand eines Slots ist die Zahl, auf die es ankommt.** Ein Slot merkt
+sich, bis wohin ein Konsument gelesen hat, und PostgreSQL hält dafür jedes
+WAL-Segment ab dieser Stelle fest. Liest niemand mehr, wächst der Rückstand mit
+jeder Änderung weiter, bis die Platte voll ist. Das ist kein Fehler des
+Servers, so arbeitet ein Slot. Die Seite zeigt
+darum je Slot den Abstand in Bytes, ob ein Konsument daran hängt und ein Urteil
+dazu: verlassen, Rückstand über der Grenze, verloren, in Betrieb.
+
+Die Restfrist kommt aus `safe_wal_size`. Steht dort keine Zahl, ist das keine
+Entwarnung, sondern `max_slot_wal_keep_size = -1`: Es gibt keine Grenze, bei der
+PostgreSQL den Slot fallen lässt, statt weiter WAL zu halten. Die Position des
+Slots selbst zeigt die Seite nicht; eine LSN ist eine Stelle im WAL und keine
+Betriebsangabe, die eine Oberfläche erklären kann.
+
+**Die Verbindungsangabe eines Abonnements liest QKERN nicht.** In
+`pg_subscription.subconninfo` steht die Verbindungszeichenfolge zum
+Herausgeber, und darin steht im Regelfall ein Passwort. PostgreSQL entzieht
+`public` das Recht auf genau diese Spalte; die Lesung verlässt sich nicht
+darauf, sondern wählt die Spalte nicht aus, auch nicht für eine Zählung. Ein
+Abonnement erscheint mit Name, Eigentümer, Zustand, dem Slotnamen drüben und
+den Publikationen, die es liest.
+
+**QKERN hat auf dieser Seite selbst keine Einrichtung.** Der Änderungs-Feed von
+Realtime läuft über einen Trigger und die Tabelle
+`qkern_internal.change_feed`, nicht über logische Replikation: Jede Rolle eines
+Projekts wird ausdrücklich ohne Replikationsrecht angelegt, und ein hängender
+Konsument an einem Slot wäre genau das Betriebsrisiko von oben. Jede
+Publikation und jeder Slot, den Sie hier sehen, ist von einem Menschen oder
+einem anderen Werkzeug angelegt worden.
+
+**Einrichten kann die Seite nicht**, und das steht mit Grund da. Ein Abonnement
+braucht eine Verbindung nach aussen und ein Geheimnis, das durch Browser, Route
+und Protokoll ginge; dafür hat QKERN heute keinen Weg, der die Zusagen des
+Vault einhält. Einen Slot anzulegen oder wegzuwerfen verlangt das
+Replikationsrecht, das keine Projektrolle hat. Die Seite zeigt stattdessen die
+vier Schritte, die ein Mensch an der Datenbank geht: `wal_level`, Publikation,
+Abonnement am Ziel, und danach den Rückstand im Auge behalten.
+
+Was die Seite auch nicht sagt: wie alt die letzte Änderung drüben ist. Ein
+Verzug in Sekunden stünde in `pg_stat_replication` oder `pg_stat_subscription`
+und setzt ein Recht voraus, das die Leserolle eines Projekts nicht hat. Der
+Rückstand steht darum in Bytes, so wie der Katalog ihn hergibt, und nicht in
+Zeit.
+
 ### Data API: kein Anfrageprotokoll
 
 Seit `2.51.0` ist auch **Logs → Data API** keine Platzhalterseite mehr — und

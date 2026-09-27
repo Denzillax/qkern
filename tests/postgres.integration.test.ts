@@ -18,6 +18,9 @@ import { hottestQueryPlanNode, QUERY_PLAN_HOT_SHARE } from "@/lib/console/query-
 // Route benutzt, und die echte generierte Data API als Gegenprobe.
 import { evaluateAuthAccess } from "@/lib/server/data-plane/auth-access-rules";
 import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
+// Datenbank -> Replikation (2.74): dieselbe reine Ableitung, mit der die
+// Ansicht aus Zustand und Konsument ihr Urteil ueber einen Slot macht.
+import { SLOT_STATE_TEXTS, slotState } from "@/lib/console/replication-texts";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
@@ -5712,6 +5715,188 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query(`DROP SERVER IF EXISTS "${legacyServer}" CASCADE`);
       await owner.query(`DROP FOREIGN DATA WRAPPER IF EXISTS "${bareWrapper}" CASCADE`);
       await owner.query("DROP EXTENSION IF EXISTS postgres_fdw CASCADE");
+    }
+  }, 120_000);
+  it("(2.74) reads a real replication slot with its backlog and carries no connection secret out", async () => {
+    // Datenbank -> Replikation (2.74) gegen die echte Datenbank.
+    //
+    // Der Unit-Test prueft die Abbildung an einem Fake-Client. Das ist die
+    // halbe Zusage. Die andere Haelfte kann nur ein echter Server belegen,
+    // und sie ist die, auf der dieser Schnitt steht:
+    //
+    // 1. **Der Rueckstand ist echt und er waechst.** Der Fall legt einen
+    //    echten Slot an, der WAL reserviert, und keinen Konsumenten dazu.
+    //    Dann schreibt er WAL und liest zweimal: Die gemeldete Zahl waechst
+    //    zwischen den beiden Lesungen. Genau so fuellt ein verlassener Slot
+    //    eine Platte, und genau das ist die Zahl, die die Seite zeigt.
+    // 2. **Die Publikation steht als das da, was sie ist.** Sie kommt aus
+    //    derselben Anweisung wie auf der Seite Publikationen; der Fall legt
+    //    eine echte an und liest sie durch den Produktcode zurueck.
+    // 3. **Kein Verbindungsgeheimnis in der Antwort.** `subconninfo` waere
+    //    das Feld, in dem eines stuende. Der Fall zeigt, dass die Leserolle an
+    //    dieser Spalte abgewiesen wird, und dass dieselbe Lesung trotzdem
+    //    durchgeht, weil sie die Spalte nicht auswaehlt. Dazu kommt die
+    //    Gegenprobe auf das Passwort der eigenen Verbindung.
+    //
+    // Ein logischer Slot steht hier nicht, und das ist keine Luecke: Der
+    // Zertifizierungsstack faehrt `wal_level = replica`, und darunter laesst
+    // PostgreSQL keinen logischen Slot anlegen. Der Fall prueft darum, dass
+    // die Lesung genau dieses `wal_level` meldet, statt eines zu behaupten.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const suffix = randomUUID().replaceAll("-", "_").slice(0, 12);
+    const slotName = `repl_2_74_${suffix}`;
+    const publicationName = `repl_2_74_pub_${suffix}`;
+    const schema = `repl_2_74_${suffix}`;
+
+    // Der Aufbau laeuft als Eigentuemer. Einen Slot anzulegen verlangt das
+    // Replikationsrecht, und genau darum kann die Seite es nicht.
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".bestellungen (id integer PRIMARY KEY, betrag numeric NOT NULL)`);
+      await owner.query(`CREATE PUBLICATION "${publicationName}" FOR TABLE "${schema}".bestellungen WITH (publish = 'insert, update')`);
+      // `true` reserviert die Position sofort. Ohne sie haette der Slot keinen
+      // Rueckstand, und der Fall pruefte die Zahl gar nicht.
+      await owner.query("SELECT pg_catalog.pg_create_physical_replication_slot($1, true)", [slotName]);
+
+      // --- Zusage 1: der Slot haelt wirklich WAL fest ----------------------
+      const reserved = await owner.query<{ restart: string; status: string; safe: string | null }>(
+        `SELECT restart_lsn::text AS restart, wal_status AS status, safe_wal_size::text AS safe
+         FROM pg_catalog.pg_replication_slots WHERE slot_name = $1`, [slotName]);
+      expect(reserved.rows[0]?.restart,
+        "der Slot hat keine Position reserviert; dann prueft dieser Fall keinen Rueckstand")
+        .toMatch(/^[0-9A-F]+\/[0-9A-F]+$/);
+      expect(reserved.rows[0]?.status).toBe("reserved");
+      const restartLsn = reserved.rows[0]!.restart;
+
+      const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+      try {
+        // --- Zusage 3a: die Leserolle kommt an subconninfo nicht heran ------
+        // Dieselbe Rolle, mit der die Ansicht liest. Waere die Spalte fuer sie
+        // lesbar, waere die Entscheidung von QKERN nicht zu belegen; sie ist
+        // es nicht, und die Lesung faellt trotzdem nicht aus, weil sie die
+        // Spalte nicht auswaehlt.
+        await expect(projectApi.query("SELECT subconninfo FROM pg_catalog.pg_subscription"))
+          .rejects.toThrowError(/permission denied/i);
+
+        const service = new ProjectDataPlaneService(
+          { resolveTarget: async () => ({ databaseInstanceRef: "managed:repl-2-74" }) },
+          { resolve: async () => ({
+            pool: projectApi,
+            expectedRole,
+            expectedDatabase,
+            expectedLedgerOwner: "qkern",
+          }) },
+        );
+        const inspection = { organizationId: organizationA, actorRef: `integration-${userId}@qkern.test` };
+        const replicationScope = { projectId: randomUUID(), environment: "development" as const };
+        const before = await service.inspectReplication(inspection, replicationScope);
+
+        // --- Die Form der Antwort ------------------------------------------
+        expect(before.source).toBe("postgres");
+        expect(Object.keys(before).sort()).toEqual([
+          "inRecovery", "publications", "slots", "source", "subscriptions", "truncated", "walLevel",
+        ]);
+        expect(before.truncated).toBe(false);
+
+        // --- Die beiden Schalter sind die des echten Servers ----------------
+        const settings = await owner.query<{ level: string; recovery: boolean; keep: string }>(
+          `SELECT current_setting('wal_level') AS level,
+                  pg_catalog.pg_is_in_recovery() AS recovery,
+                  current_setting('max_slot_wal_keep_size') AS keep`);
+        expect(before.walLevel).toBe(settings.rows[0]!.level);
+        expect(before.inRecovery).toBe(settings.rows[0]!.recovery);
+        // Der Zertifizierungsstack faehrt einen Primaerserver ohne logische
+        // Replikation. Waere das anders, waere es ein Fund und keine Toleranz.
+        expect(before.walLevel, "der Stack faehrt wal_level = replica").toBe("replica");
+        expect(before.inRecovery).toBe(false);
+
+        // --- Zusage 1: der Slot, sein Zustand und sein Rueckstand -----------
+        const slot = before.slots.find((entry) => entry.name === slotName);
+        expect(slot, "der angelegte Slot fehlt in der Antwort").toBeDefined();
+        expect(slot!.slotType).toBe("physical");
+        expect(slot!.plugin).toBeNull();
+        expect(slot!.database).toBeNull();
+        expect(slot!.temporary).toBe(false);
+        // Niemand haengt daran. Das ist der Fall, vor dem die Seite warnt.
+        expect(slot!.active).toBe(false);
+        expect(slot!.walStatus).toBe("reserved");
+        expect(slot!.retainedBytes, "ein Slot mit reservierter Position haelt WAL fest")
+          .toBeGreaterThanOrEqual(0);
+        // Ohne gesetzte Grenze gibt es keine Restfrist, und `null` sagt das,
+        // statt eine Zahl zu erfinden.
+        expect(settings.rows[0]!.keep, "eine gesetzte Grenze wuerde diese Zusage verschieben").toBe("-1");
+        expect(slot!.safeBytes).toBeNull();
+        // Und das Urteil, das die Ansicht daraus macht, an einem echten Slot.
+        expect(slotState(slot!)).toBe("abandoned");
+        expect(SLOT_STATE_TEXTS[slotState(slot!)].tone).toBe("risk high");
+
+        // --- Zusage 2: die Publikation --------------------------------------
+        const publication = before.publications.find((entry) => entry.name === publicationName);
+        expect(publication, "die angelegte Publikation fehlt in der Antwort").toBeDefined();
+        expect(publication!.publishInsert).toBe(true);
+        expect(publication!.publishUpdate).toBe(true);
+        expect(publication!.publishDelete).toBe(false);
+        expect(publication!.publishTruncate).toBe(false);
+        expect(publication!.allTables).toBe(false);
+        expect(publication!.tables).toEqual([`${schema}.bestellungen`]);
+        expect(publication!.owner).toBe("qkern");
+        // Dieselbe Publikation kommt aus der Lesung der Seite Publikationen;
+        // es gibt dafuer eine Stelle im Code und nicht zwei.
+        const pageRead = await service.inspectPublications(inspection, replicationScope);
+        expect(pageRead.publications.find((entry) => entry.name === publicationName))
+          .toEqual(publication);
+
+        // --- Zusage 1b: der Rueckstand waechst, weil niemand liest ----------
+        // Echtes WAL: Zeilen schreiben und das Segment wechseln. Der Slot
+        // steht still, die Schreibposition nicht.
+        await owner.query(`INSERT INTO "${schema}".bestellungen (id, betrag)
+          SELECT schritt, schritt * 1.5 FROM generate_series(1, 20000) AS schritt`);
+        await owner.query("SELECT pg_catalog.pg_switch_wal()");
+        await owner.query(`INSERT INTO "${schema}".bestellungen (id, betrag)
+          SELECT schritt, schritt * 2.5 FROM generate_series(20001, 40000) AS schritt`);
+
+        const after = await service.inspectReplication(inspection, replicationScope);
+        const later = after.slots.find((entry) => entry.name === slotName);
+        expect(later, "der Slot fehlt in der zweiten Lesung").toBeDefined();
+        expect(later!.retainedBytes,
+          "der Rueckstand eines Slots ohne Konsumenten waechst nicht mit geschriebenem WAL")
+          .toBeGreaterThan(slot!.retainedBytes!);
+        // Und die Position des Slots ist dieselbe geblieben: Es waechst der
+        // Abstand, nicht der Slot.
+        const unmoved = await owner.query<{ restart: string }>(
+          "SELECT restart_lsn::text AS restart FROM pg_catalog.pg_replication_slots WHERE slot_name = $1",
+          [slotName]);
+        expect(unmoved.rows[0]?.restart).toBe(restartLsn);
+
+        // --- Zusage 3b: kein Geheimnis und keine Adresse in der Antwort -----
+        const serialised = JSON.stringify(after);
+        expect(serialised, "das Passwort der eigenen Verbindung")
+          .not.toContain(decodeURIComponent(target.password));
+        expect(serialised).not.toContain("://");
+        // Keine LSN, auch nicht als Text: gerechnet wird der Abstand.
+        expect(serialised).not.toContain(restartLsn);
+        for (const forbidden of ["conninfo", "lsn", "origin", "password", "host"]) {
+          expect(serialised.toLowerCase(), forbidden).not.toContain(forbidden);
+        }
+        // Die Gegenprobe zur Gegenprobe: Die Namen stehen sehr wohl drin. Ein
+        // leerer String bestuende jede Pruefung darueber.
+        expect(serialised).toContain(slotName);
+        expect(serialised).toContain(publicationName);
+      } finally {
+        await projectApi.end();
+      }
+    } finally {
+      // Der Slot muss weg, sonst haelt er WAL fest, bis die Platte voll ist,
+      // und der naechste Lauf sieht Fremdes. Genau das sagt die Seite.
+      await owner.query(
+        `SELECT pg_catalog.pg_drop_replication_slot(slot_name)
+         FROM pg_catalog.pg_replication_slots WHERE slot_name = $1`, [slotName]);
+      await owner.query(`DROP PUBLICATION IF EXISTS "${publicationName}"`);
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     }
   }, 120_000);
 });
