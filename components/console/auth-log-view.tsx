@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, RefreshCw, ScrollText } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_AUDIT_ACTION_TEXTS,
@@ -42,8 +43,6 @@ type Payload = Record<string, unknown>;
 const PAGE_SIZE = 50;
 const PROJECT_AUTH_DISABLED_ERROR = "Project Auth is disabled";
 const KNOWN_ACTIONS = new Set<string>(PROJECT_AUTH_AUDIT_ACTIONS);
-const NUMBER = new Intl.NumberFormat("de-CH");
-const MOMENT = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" });
 
 /** GET mit JSON-Antwort; ein Body, der kein Objekt ist, wird zu `{}`. */
 async function readJson(url: string, signal: AbortSignal): Promise<{ status: number; payload: Payload }> {
@@ -126,8 +125,8 @@ export function AuthLogView({ projectId, environment }: { projectId: string; env
 
   return <div className="module-grid">
     <article className="console-card auth-overview">
-      <div><span>{t("EINTRÄGE")}</span><strong>{NUMBER.format(entries.length)}</strong><small>{t("die neuesten 50")}</small></div>
-      <div><span>{t("FEHLVERSUCHE")}</span><strong>{NUMBER.format(failed)}</strong><small>{t("unter den geladenen")}</small></div>
+      <div><span>{t("EINTRÄGE")}</span><strong>{formatNumber(entries.length)}</strong><small>{t("die neuesten 50")}</small></div>
+      <div><span>{t("FEHLVERSUCHE")}</span><strong>{formatNumber(failed)}</strong><small>{t("unter den geladenen")}</small></div>
     </article>
 
     <article className="console-card span-2">
@@ -144,7 +143,7 @@ export function AuthLogView({ projectId, environment }: { projectId: string; env
         <span>{t("Zeit")}</span><span>{t("Handlung")}</span><span>{t("Akteur")}</span><span>{t("Ausgang")}</span><span>{t("Betroffen")}</span>
       </div>}
       {entries.map((entry) => <div className="log-row" key={entry.id} style={columns}>
-        <time>{MOMENT.format(new Date(entry.createdAt))}</time>
+        <time>{formatMoment(entry.createdAt, "dateTimeSeconds")}</time>
         <span title={entry.action}>{actionLabel(entry.action)}</span>
         <span>{actorLabel(entry)}</span>
         <span className={entry.status === "failed" ? "risk medium" : "secure"}>{entry.status === "failed" ? t("fehlgeschlagen") : t("erfolgreich")}</span>

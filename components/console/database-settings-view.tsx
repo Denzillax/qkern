@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, Lock, RefreshCw, ShieldCheck, UserCog } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatDay } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   BINDING_STEPS,
@@ -161,7 +162,7 @@ export function DatabaseSettingsView({ projectId, environment }: { projectId: st
             <strong>{role.name}</strong>
             <p className="muted">{roleRights(role).map((right) => t(ROLE_RIGHT_TEXTS[right].label)).join(" · ")}</p>
             {role.connectionLimit !== null && <small>{t("Höchstens")} {role.connectionLimit} {t("Verbindungen")}</small>}
-            {role.validUntil !== null && <small>{t("Gültig bis")} {role.validUntil.slice(0, 10)}</small>}
+            {role.validUntil !== null && <small>{t("Gültig bis")} {formatDay(role.validUntil)}</small>}
           </div>
           <span className={verdict.tone}>{t(verdict.label)}</span>
         </div>;

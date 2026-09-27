@@ -71,6 +71,23 @@ Grossbuchstaben.
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
 - Paketversion: `2.54.0`
+- Neuester Slice: 2.55 Eigene Darstellung. `set-dashboard` ist echt. Fuenf
+  Einstellungen je Person (Sprache, Formatgebietsschema, Zeitzone, Startseite,
+  helles oder dunkles Aussehen), abgelegt in `user_console_settings`, Migration
+  `0055_user_console_settings.sql` (nach 0054 frei) — **neben** `users` und
+  nicht darin, weil die Anmelderolle sonst ein UPDATE auf der Tabelle mit den
+  Passworthashes braeuchte. Route `GET`/`PUT /v1/auth/console-settings` durch
+  dieselbe Tuer wie die uebrigen Kontorouten. Der Punkt des Slices ist das
+  **Wirken**: rund vierzig Formatierer in `components/console` (alle mit
+  `de-CH` fest im Code, alle stillschweigend in der Browserzone) laufen jetzt
+  durch `lib/console/display-settings`, gebunden ueber
+  `components/console/console-display`; der Vertrag
+  `tests/console-display-contract` verbietet in `components/console` jedes
+  `Intl.DateTimeFormat`, `Intl.NumberFormat`, `toLocale*` und `toFixed`. Die
+  Vorgaben bilden das Verhalten vor 2.55 Zeichen fuer Zeichen ab. **Bewusst
+  ausgenommen**: Geld bleibt im Ledgerformat aus 2.37, und ein Kalendertag
+  bleibt ISO, weil er keine Uhrzeit hat, in die sich eine Zone umrechnen
+  liesse. Im Browser nicht gesehen
 - Aktueller Slice: 2.54 Was hinausgeht – drei Implementierer parallel.
   **Log-Drains**: `set-log-drains` ist echt, und die harte Grenze lautet: ein
   Drain traegt nur, was die Console ohnehin zeigt. Weitergeleitet wird eine

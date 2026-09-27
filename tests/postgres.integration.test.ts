@@ -97,6 +97,10 @@ import {
 import { LOG_DRAIN_SOURCE_DEFINITIONS } from "@/lib/console/log-drains";
 // Die Bruecke als Prozess (2.53): derselbe Prozess, den der Betrieb startet.
 import { spawn } from "node:child_process";
+// Die eigene Darstellung der Console (2.55): dasselbe Repository, das die
+// Route benutzt, und dasselbe reine Modul, das die Ansicht anwendet.
+import { PostgresConsoleDisplaySettingsRepository } from "@/lib/server/auth/console-settings";
+import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -3880,6 +3884,102 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu zwei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+
+  it("(2.66) stores the console settings of a user and gives them back unchanged", async () => {
+    // Die eigene Darstellung der Console (2.55) gegen die echte Datenbank.
+    // Der Fall hat drei Zusagen, und keine davon liesse sich gegen einen
+    // Nachbau pruefen:
+    //
+    // 1. Die Einstellung kommt unveraendert zurueck. Geschrieben wird mit dem
+    //    Repository, das die Route benutzt, ueber die Anmelderolle
+    //    `qkern_auth`; gelesen wird danach ein zweites Mal als Eigentuemer
+    //    und mit Parametern. Nur eine echte Rolle kann zeigen, dass die
+    //    Spaltenrechte aus 0055 wirklich reichen.
+    // 2. Die Vorgaben und "keine Zeile" bedeuten dasselbe. Vor dem ersten
+    //    Schreiben antwortet das Repository mit `CONSOLE_DISPLAY_DEFAULTS`,
+    //    und genau das ist das Verhalten vor 2.55.
+    // 3. Die Datenbank weist ab, was die Console nicht darstellen kann. Der
+    //    CHECK aus 0055 wird als Eigentuemer geprobt, also ohne den Dienst
+    //    dazwischen; gegen einen Nachbau waere das die Pruefung des Nachbaus.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.59, 2.62 und 2.63: Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden, und
+    // dieser Fall soll ihm dabei nicht im Weg stehen. Geloescht wird nur, was
+    // das Produkt loescht; Nutzer, Organisation und die eine Einstellungszeile
+    // bleiben als erwarteter Rest im Wegwerf-Stack.
+    const displayOwner = randomUUID();
+    const displayOther = randomUUID();
+    const displayOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status) VALUES
+        ($1, $2, '$argon2id$integration-only', 'active'),
+        ($3, $4, '$argon2id$integration-only', 'active')`,
+    [displayOwner, `display-2-66-owner-${displayOwner}@qkern.test`,
+      displayOther, `display-2-66-other-${displayOther}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Display 2.66', $2, $3)`,
+    [displayOrganization, `display-2-66-${displayOrganization}`, displayOwner]);
+
+    const repository = new PostgresConsoleDisplaySettingsRepository(auth);
+
+    // --- Zusage 2: keine Zeile heisst die Vorgaben ---
+    expect(await repository.find(displayOwner)).toEqual(CONSOLE_DISPLAY_DEFAULTS);
+
+    // --- Zusage 1: geschrieben, unveraendert zurueck ---
+    const chosen: ConsoleDisplaySettings = {
+      language: "fr", formatLocale: "fr-CH", timeZone: "Asia/Singapore",
+      startView: "logs", theme: "dark",
+    };
+    expect(await repository.save(displayOwner, chosen)).toEqual(chosen);
+    expect(await repository.find(displayOwner)).toEqual(chosen);
+
+    // Und die Zeile steht wirklich so in der Tabelle, als Eigentuemer gelesen.
+    const stored = await owner.query<{
+      language: string; format_locale: string; time_zone: string;
+      start_view: string; theme: string; created_at: Date; updated_at: Date;
+    }>(`SELECT language, format_locale, time_zone, start_view, theme, created_at, updated_at
+          FROM user_console_settings WHERE user_id = $1`, [displayOwner]);
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0].language).toBe("fr");
+    expect(stored.rows[0].format_locale).toBe("fr-CH");
+    expect(stored.rows[0].time_zone).toBe("Asia/Singapore");
+    expect(stored.rows[0].start_view).toBe("logs");
+    expect(stored.rows[0].theme).toBe("dark");
+
+    // Ein zweites Speichern aendert dieselbe Zeile und ruehrt `created_at`
+    // nicht an; der Trigger aus 0055 setzt `updated_at`.
+    const again = await repository.save(displayOwner, { ...chosen, theme: "light", timeZone: "UTC" });
+    expect(again).toEqual({ ...chosen, theme: "light", timeZone: "UTC" });
+    const second = await owner.query<{ rows: string; created_at: Date; updated_at: Date }>(
+      `SELECT count(*)::text AS rows, min(created_at) AS created_at, max(updated_at) AS updated_at
+         FROM user_console_settings WHERE user_id = $1`, [displayOwner]);
+    expect(second.rows[0].rows).toBe("1");
+    expect(new Date(second.rows[0].created_at).getTime())
+      .toBe(new Date(stored.rows[0].created_at).getTime());
+    expect(new Date(second.rows[0].updated_at).getTime())
+      .toBeGreaterThanOrEqual(new Date(stored.rows[0].updated_at).getTime());
+
+    // Die Darstellung der einen Person ist nicht die der anderen.
+    expect(await repository.find(displayOther)).toEqual(CONSOLE_DISPLAY_DEFAULTS);
+
+    // --- Zusage 3: die Datenbank weist ab, was die Console nicht kann ---
+    for (const [column, value] of [
+      ["language", "es"], ["format_locale", "de-AT"], ["theme", "sepia"],
+      ["time_zone", "kein zonenname mit leerzeichen"], ["start_view", "Nicht Erlaubt"],
+    ] as const) {
+      await expect(owner.query(
+        `INSERT INTO user_console_settings (user_id, ${column}) VALUES ($1, $2)`,
+        [displayOther, value],
+      ), `${column} = ${value}`).rejects.toBeTruthy();
+    }
+    expect((await owner.query(
+      "SELECT count(*)::text AS rows FROM user_console_settings WHERE user_id = $1", [displayOther],
+    )).rows[0]).toEqual({ rows: "0" });
+
+    // Und die Anmelderolle hat weiterhin kein UPDATE auf `users`: Die eigene
+    // Tabelle aus 0055 ist genau deshalb eine eigene.
+    await expect(auth.query("UPDATE users SET status = 'disabled' WHERE id = $1", [displayOther]))
+      .rejects.toBeTruthy();
+  });
 });
 
 /**

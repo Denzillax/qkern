@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Fingerprint, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { buildUsageSeriesChart } from "@/lib/console/usage-series-chart";
 import {
@@ -60,10 +61,7 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-const NUMBER = new Intl.NumberFormat("de-CH");
-const HOUR = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" });
-const DAY = new Intl.DateTimeFormat("de-CH", { dateStyle: "short" });
-const moment = (value: string, bucket: Bucket) => (bucket === "hour" ? HOUR : DAY).format(new Date(value));
+const moment = (value: string, bucket: Bucket) => formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
 
 export function AuthSeriesView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/audit/series`;
@@ -137,9 +135,9 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
 
   return <div className="module-grid">
     <article className="console-card auth-overview">
-      <div><span>{t("HANDLUNGEN")}</span><strong>{NUMBER.format(totals?.total ?? 0)}</strong><small>{t("protokolliert im Fenster")}</small></div>
-      <div><span>{t("ERFOLGREICH")}</span><strong>{NUMBER.format(totals?.succeeded ?? 0)}</strong><small>{t("ohne Fehler abgeschlossen")}</small></div>
-      <div><span>{t("FEHLVERSUCHE")}</span><strong>{NUMBER.format(totals?.failed ?? 0)}</strong><small>{t("als fehlgeschlagen protokolliert")}</small></div>
+      <div><span>{t("HANDLUNGEN")}</span><strong>{formatNumber(totals?.total ?? 0)}</strong><small>{t("protokolliert im Fenster")}</small></div>
+      <div><span>{t("ERFOLGREICH")}</span><strong>{formatNumber(totals?.succeeded ?? 0)}</strong><small>{t("ohne Fehler abgeschlossen")}</small></div>
+      <div><span>{t("FEHLVERSUCHE")}</span><strong>{formatNumber(totals?.failed ?? 0)}</strong><small>{t("als fehlgeschlagen protokolliert")}</small></div>
     </article>
 
     <article className="console-card span-2">
@@ -182,9 +180,9 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
         </div>
         {series?.buckets.map((entry) => <div className="log-row" key={entry.start}>
           <time>{moment(entry.start, bucket)}</time>
-          <span>{NUMBER.format(entry.total)}</span>
-          <span>{NUMBER.format(entry.succeeded)}</span>
-          <span className={entry.failed === 0 ? "muted" : "risk medium"}>{NUMBER.format(entry.failed)}</span>
+          <span>{formatNumber(entry.total)}</span>
+          <span>{formatNumber(entry.succeeded)}</span>
+          <span className={entry.failed === 0 ? "muted" : "risk medium"}>{formatNumber(entry.failed)}</span>
         </div>)}
       </div>
     </article>
@@ -196,7 +194,7 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
         <div className="log-row log-header"><span>{t("Handlung")}</span><span>{t("Anzahl")}</span></div>
         {used.map((id) => <div className="log-row" key={id}>
           <span title={id}>{t(AUTH_AUDIT_ACTION_TEXTS[id])}</span>
-          <span>{NUMBER.format(totals?.actions[id] ?? 0)}</span>
+          <span>{formatNumber(totals?.actions[id] ?? 0)}</span>
         </div>)}
       </div>}
     </article>

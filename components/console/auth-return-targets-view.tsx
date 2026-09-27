@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link2, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_RETURN_TARGETS_AUDIT,
@@ -124,7 +125,7 @@ export function AuthReturnTargetsView({ projectId, environment }: { projectId: s
     </div>;
   }
 
-  const format = (value: string) => new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const format = (value: string) => formatMoment(value);
   const removed = data.targets.filter((origin) => !entries.includes(origin));
   const added = entries.filter((origin) => !data.targets.includes(origin));
 

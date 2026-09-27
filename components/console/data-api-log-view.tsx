@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, FileClock, RefreshCw, Table2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatCount, formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { DATA_API_LIMITS } from "@/lib/data-api-limits";
 import { dataApiReadiness, exposedTablesFromOpenApi, type DataApiReadiness } from "@/lib/console/data-api-exposure";
@@ -52,10 +53,9 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 
 /** Mengen sind Dezimalstrings und koennen ueber MAX_SAFE_INTEGER hinausgehen. */
 function amount(value: string): string {
-  return /^\d{1,30}$/.test(value) ? new Intl.NumberFormat("de-CH").format(BigInt(value)) : value;
+  return formatCount(value);
 }
 
-const HOUR = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" });
 
 export function DataApiLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
@@ -151,10 +151,10 @@ export function DataApiLogView({ projectId, environment }: { projectId: string; 
           <div><span>{t("EREIGNISSE")}</span><strong>{series.totals.events}</strong><small>{t("gemessene Vorgänge im Fenster")}</small></div>
         </div>
         {series.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Reihe zeigt nicht jeden Abschnitt des Fensters.")}</p>}
-        <p className="muted">{t("Fenster")}: {HOUR.format(new Date(series.windowStart))} – {HOUR.format(new Date(series.windowEnd))}</p>
+        <p className="muted">{t("Fenster")}: {formatMoment(series.windowStart)} – {formatMoment(series.windowEnd)}</p>
         <div className="log-row log-header"><span>{t("Stunde")}</span><span>{t("Angenommen")}</span><span>{t("Abgelehnt")}</span><span>{t("Ereignisse")}</span></div>
         {recent.map((entry) => <div className="log-row" key={entry.start}>
-          <time>{HOUR.format(new Date(entry.start))}</time>
+          <time>{formatMoment(entry.start)}</time>
           <span>{amount(entry.accepted)}</span>
           <span className={entry.rejected === "0" ? "muted" : "risk medium"}>{amount(entry.rejected)}</span>
           <code>{entry.events}</code>

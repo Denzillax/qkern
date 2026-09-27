@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleGauge, RefreshCw, TrendingUp } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { PERFORMANCE_RULES, type PerformanceRuleId, type PerformanceSeverity } from "@/lib/console/performance-advisor-texts";
 
@@ -128,7 +129,7 @@ export function PerformanceAdvisorView({ projectId, environment }: { projectId: 
           </div>)}
         </section>;
       })}
-      {checkedAt && <p className="muted">{t("Geprüft")}: {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(checkedAt))}</p>}
+      {checkedAt && <p className="muted">{t("Geprüft")}: {formatMoment(checkedAt, "dateTimeSeconds")}</p>}
     </article>
 
     <article className="console-card span-2">

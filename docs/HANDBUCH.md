@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.54.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.55.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -1949,6 +1949,60 @@ Webhook, weil ein Drain eine ausgehende Definition aus `0032` besitzt.
 Datenbank: Migration `0054_project_log_drains.sql` hält die Kopplung samt der
 festen Quellenliste. Die ausgehende Definition, die Outbox, die Lease, das
 Backoff und der Dead Letter bleiben in `0032`.
+
+### Eigene Darstellung der Console
+
+Seit `2.55.0` ist **Einstellungen → Dashboard** keine Platzhalterseite mehr. Die
+Seite stellt fünf Dinge ein, und alle fünf wirken: die Sprache der Console, das
+Gebietsschema für Datum, Uhrzeit und Zahlen, die Zeitzone, die Ansicht, auf der
+die Console öffnet, und das helle oder dunkle Aussehen. Sie gehören zum Konto,
+nicht zum Projekt und nicht zur Organisation.
+
+**Der Punkt ist nicht das Speichern, sondern das Wirken.** Vor `2.55.0` hatte die
+Console rund vierzig Stellen, die selbst formatierten — jede mit `de-CH` fest im
+Code und jede stillschweigend in der Zeitzone des Browsers. Die Console sprach
+also vier Sprachen, zeigte ihre Zahlen und Zeitpunkte aber in einer, und welcher
+Tag in einer Logzeile stand, entschied der Rechner des Betrachters: 22:30 UTC am
+24. ist in Zürich der 25. und in New York der 24., und die Seite sagte nie, in
+welcher Zone sie rechnet.
+
+Alle diese Stellen laufen jetzt durch `lib/console/display-settings`, gebunden
+über `components/console/console-display`. Der Vertrag
+`tests/console-display-contract` liest jede Datei in `components/console` und
+lässt dort weder `Intl.DateTimeFormat` noch `Intl.NumberFormat`, weder
+`toLocale*` noch `toFixed` zu. Die nächste Ansicht kann darum nicht wieder
+abdriften.
+
+**Die Vorgaben ändern nichts.** `language: browser` (Sprache weiter aus dem
+Locale-Cookie), `formatLocale: de-CH`, `timeZone: browser` (es wird keine Zone
+gesetzt, also rechnet `Intl` wie bisher), `startView: overview`, `theme: system`.
+Wer nichts einstellt, sieht Zeichen für Zeichen dasselbe wie vor `2.55.0`; ein
+eigener Testfall vergleicht jede Form gegen genau den Ausdruck, der vorher an
+der jeweiligen Stelle stand.
+
+**Zwei Dinge ändern sich bewusst nicht mit.** Geldbeträge bleiben im Format des
+Ledgers (`de-CH`, auf Rappen abgerundet, Regel aus `2.37.0`): Was die Console als
+Betrag zeigt, muss der Rechnung gleichen, und eine Rechnung wird im Format des
+Ledgers gestellt, nicht in dem des Betrachters. Und ein Kalendertag wie ein
+Gültigkeitsdatum einer Rolle oder eine Rechnungsperiode bleibt ISO — er hat
+keine Uhrzeit, in die sich eine Zeitzone umrechnen liesse.
+
+**Die Vorschau** rechnet mit demselben reinen Modul, das jede andere Ansicht
+benutzt. Was dort steht, steht nach dem Speichern wirklich überall; der
+Geldbetrag steht absichtlich daneben, damit man auf derselben Seite sieht, dass
+er sich nicht mitändert.
+
+**Route.** `GET` und `PUT` auf `/api/v1/auth/console-settings`, durch dieselbe
+Tür wie die übrigen Kontorouten: Session-Cookie, kein Organisationsbezug,
+`Cache-Control: private, no-store`. Ein fehlendes Feld nimmt die Vorgabe; ein
+vorhandenes, aber unbrauchbares Feld wird mit `400` und dem Grund in Worten
+abgelehnt und nie stillschweigend ersetzt. Kein `DELETE`: Zurückstellen heisst,
+die Vorgaben zu schreiben.
+
+Datenbank: Migration `0055_user_console_settings.sql` legt `user_console_settings`
+neben `users` — nicht hinein. `users` ist die Tabelle der Anmeldung, und eine
+Vorliebe dort abzulegen hiesse, der Anmelderolle ein `UPDATE` auf der Tabelle
+mit den Passworthashes zu geben, damit jemand seine Zeitzone wechseln kann.
 
 ### Vault: was QKERN kennt, und was es nicht kennt
 

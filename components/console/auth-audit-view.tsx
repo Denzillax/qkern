@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, RefreshCw, ScrollText } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -103,7 +104,7 @@ export function AuthAuditView({ projectId, environment }: { projectId: string; e
   if (state === "loading") return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Audit-Log wird geladen…")}</h3></div>;
   if (state === "unavailable" || state === "error") return <div className="console-card live-module-state"><Fingerprint size={26}/><h3>{state === "unavailable" ? t("Project Auth nicht aktiviert") : t("Project Auth nicht verfügbar")}</h3><p>{message}</p><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Noch einmal")}</button></div>;
 
-  const format = (value: string) => new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value));
+  const format = (value: string) => formatMoment(value, "dateTimeSeconds");
   const columns = { gridTemplateColumns: "150px 1.3fr 1fr 90px 110px 1.4fr" };
   const failed = events.filter((event) => event.status === "failed").length;
 

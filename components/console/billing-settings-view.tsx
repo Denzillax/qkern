@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Receipt, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { InvoicesCard } from "@/components/console/invoices-card";
 import type { ViewId } from "@/components/console/navigation";
@@ -61,10 +62,9 @@ function unitLabel(unit: string, count: bigint): string {
   }
 }
 
-const GROUPING = new Intl.NumberFormat("de-CH");
 function quantity(value: string | null, unit: string): string {
   const parsed = parseMicros(value);
-  return parsed === null ? "–" : `${GROUPING.format(parsed)} ${unitLabel(unit, parsed)}`;
+  return parsed === null ? "–" : `${formatNumber(parsed)} ${unitLabel(unit, parsed)}`;
 }
 
 /** "je Vorgang" bei einer Einheit, sonst "je 1'000 Vorgänge". */

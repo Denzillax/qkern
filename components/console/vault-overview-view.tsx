@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Lock, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   VAULT_OPERATOR_STEPS,
@@ -118,7 +119,7 @@ export function VaultOverviewView({ projectId, environment }: { projectId: strin
             <span className="muted">{row.users.map((user) => `${t(VAULT_REFERENCE_USERS[user.kind]?.label ?? "unbekannt")} · ${user.name}`).join(", ")}</span>
             <span className={STATUS_CLASS[row.status] ?? "muted"}>{statusLabel(row.status)}</span>
           </div>)}
-          {checkedAt && <p className="muted">{t("Geprüft")}: {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(checkedAt))}</p>}
+          {checkedAt && <p className="muted">{t("Geprüft")}: {formatMoment(checkedAt, "dateTimeSeconds")}</p>}
         </>}
       </>}
     </article>

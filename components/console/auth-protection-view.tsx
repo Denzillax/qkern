@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileWarning, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_PROTECTION_AUDIT,
@@ -155,7 +156,7 @@ export function AuthProtectionView({ projectId, environment }: { projectId: stri
     </div>;
   }
 
-  const format = (value: string) => new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const format = (value: string) => formatMoment(value);
   const changed = draft.leakedPasswordCheck !== data.protection.leakedPasswordCheck ||
     draft.minLength !== data.protection.minLength ||
     draft.notice !== data.protection.notice;

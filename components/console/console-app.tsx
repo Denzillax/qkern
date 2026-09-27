@@ -13,6 +13,9 @@ import { QKERNLogo, QKERNSymbol } from "@/components/brand";
 import { displayWorkspaceName } from "@/lib/console/workspace-name";
 import { NAV, NAV_ENTRIES, PLACEHOLDERS, groupOf, isPlaceholder, type ViewId } from "@/components/console/navigation";
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
+import {
+  formatDecimal, formatMoment, formatNumber, formatPercent, setConsoleDisplaySettings,
+} from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { QueuesView } from "@/components/console/queues-view";
@@ -55,6 +58,7 @@ import { AuthRateLimitsView } from "@/components/console/auth-rate-limits-view";
 import { AuthProtectionView } from "@/components/console/auth-protection-view";
 import { AuthPoliciesView } from "@/components/console/auth-policies-view";
 import { LogDrainsView } from "@/components/console/log-drains-view";
+import { DashboardSettingsView } from "@/components/console/dashboard-settings-view";
 import { AuthSmtpView } from "@/components/console/auth-smtp-view";
 import { AuthTemplatesView } from "@/components/console/auth-templates-view";
 import { AuthSeriesView } from "@/components/console/auth-series-view";
@@ -67,6 +71,11 @@ import { StoragePoliciesView } from "@/components/console/storage-policies-view"
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
 import type { Locale } from "@/lib/i18n/locales";
+import { LOCALE_COOKIE } from "@/lib/i18n/locales";
+import {
+  CONSOLE_DISPLAY_DEFAULTS, CONSOLE_DISPLAY_INHERIT, resolvedConsoleLanguage,
+  type ConsoleDisplaySettings,
+} from "@/lib/console/display-settings";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { InvoicesCard } from "@/components/console/invoices-card";
 import { BillingSettingsView } from "@/components/console/billing-settings-view";
@@ -128,9 +137,19 @@ type UsageProjection = {
 
 
 export function ConsoleApp({ locale }: { locale: Locale }) {
-  setConsoleLocale(locale);
+  // Die eigene Darstellung (2.55). Bis die Antwort da ist, gelten die
+  // Vorgaben, und die bilden das Verhalten vor 2.55 ab: Sprache aus dem
+  // Cookie, Format de-CH, Zone der Laufzeit, Start auf der Uebersicht. Es
+  // gibt darum kein Aufblitzen einer falschen Darstellung.
+  const [display, setDisplay] = useState<ConsoleDisplaySettings>(CONSOLE_DISPLAY_DEFAULTS);
+  setConsoleDisplaySettings(display);
+  setConsoleLocale(resolvedConsoleLanguage(display, locale));
   const router = useRouter();
   const [view, setView] = useState<ViewId>("overview");
+  // Die Startseite gilt genau einmal: beim ersten Laden. Wer danach
+  // navigiert, soll nicht beim naechsten Neuladen der Einstellungen
+  // zurueckgeworfen werden.
+  const startApplied = useRef(false);
   const [collapsed, setCollapsedState] = useState(false);
   useEffect(() => { try { if (window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "collapsed") setCollapsedState(true); } catch {} }, []);
   const setCollapsed = useCallback((next: boolean) => { setCollapsedState(next); try { window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "collapsed" : "expanded"); } catch {} }, []);
@@ -162,6 +181,48 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   }, [router]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Die Einstellungen der Person, durch dieselbe Tuer wie die Session.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/v1/auth/console-settings", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!cancelled && payload?.data) setDisplay(payload.data as ConsoleDisplaySettings);
+      } catch { /* Ohne Antwort bleiben die Vorgaben, und die sind das alte Verhalten. */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Startseite: nur beim ersten Mal.
+  useEffect(() => {
+    if (startApplied.current) return;
+    startApplied.current = true;
+    if (display.startView !== CONSOLE_DISPLAY_DEFAULTS.startView) setView(display.startView);
+  }, [display.startView]);
+
+  // Aussehen. `system` fasst nichts an; der Umschalter oben rechts und die
+  // Vorliebe des Betriebssystems entscheiden dann wie vor 2.55.
+  useEffect(() => {
+    if (display.theme === "system") return;
+    try {
+      document.documentElement.dataset.theme = display.theme;
+      window.localStorage.setItem("qkern-theme", display.theme);
+    } catch {}
+  }, [display.theme]);
+
+  // Sprache. Die Console rendert serverseitig aus dem Locale-Cookie (2.2);
+  // eine festgelegte Sprache schreibt das Cookie und laesst neu rendern,
+  // statt eine zweite Quelle fuer dieselbe Frage aufzumachen.
+  useEffect(() => {
+    if (display.language === CONSOLE_DISPLAY_INHERIT || display.language === locale) return;
+    try { document.cookie = `${LOCALE_COOKIE}=${display.language}; path=/; max-age=31536000; samesite=lax`; } catch {}
+    document.documentElement.lang = display.language;
+    router.refresh();
+  }, [display.language, locale, router]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setCommandOpen(true); }
@@ -231,7 +292,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
           {loading && <LoadingState/>}
           {error && <ErrorState message={error} retry={load}/>} 
           {!loading && !error && snapshot && project && (
-            <ViewRouter view={view} snapshot={snapshot} project={project} environment={environment} reload={load} navigate={changeView}/>
+            <ViewRouter view={view} snapshot={snapshot} project={project} environment={environment} reload={load} navigate={changeView} display={display} onDisplayChange={setDisplay}/>
           )}
         </main>
       </div>
@@ -240,7 +301,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   );
 }
 
-function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void }) {
+function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; display: ConsoleDisplaySettings; onDisplayChange: (settings: ConsoleDisplaySettings) => void }) {
   switch (props.view) {
     case "overview": return <ProductPreview service="Der Metrik-Dienst"><Overview snapshot={props.snapshot} project={props.project} navigate={props.navigate}/></ProductPreview>;
     case "database": return <DatabaseView project={props.project} navigate={props.navigate}/>;
@@ -327,6 +388,8 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Integrationen -> Vault zeigt jede bekannte Secret-Referenz und ihren
     // Stand, aber keinen Wert und kein Eingabefeld (2.58).
     case "int-vault": return <VaultOverviewView projectId={props.project.id} environment={props.environment}/>;
+    // Einstellungen -> Dashboard (2.55): die Darstellung der Console selbst.
+    case "set-dashboard": return <DashboardSettingsView settings={props.display} onSaved={props.onDisplayChange}/>;
     default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
   }
 }
@@ -358,10 +421,10 @@ function ProductPreview({ service, children }: { service: string; children: Reac
 
 function Overview({ snapshot, project, navigate }: { snapshot: Snapshot; project: Project; navigate: (view: ViewId) => void }) {
   const metrics = [
-    ["API-ANFRAGEN", project.apiRequests.toLocaleString("de-CH"), Braces],
-    [t("AKTIVE NUTZER"), project.activeUsers.toLocaleString("de-CH"), Users],
+    ["API-ANFRAGEN", formatNumber(project.apiRequests), Braces],
+    [t("AKTIVE NUTZER"), formatNumber(project.activeUsers), Users],
     ["DATENBANK", `${project.databaseSizeMb} MB`, Database],
-    ["STORAGE", `${(project.storageSizeMb / 1024).toFixed(2)} GB`, HardDrive],
+    ["STORAGE", `${formatDecimal(project.storageSizeMb / 1024, 2)} GB`, HardDrive],
   ] as const;
   return <>
     <div className="metric-grid">{metrics.map(([label, value, Icon]) => <article className="console-card metric-tile" key={label}><div><span>{label}</span><Icon size={17}/></div><strong>{value}</strong><small>{t("Aus dem Projektdatensatz")}</small></article>)}</div>
@@ -560,7 +623,7 @@ function AuthView({projectId,environment}:{projectId:string;environment:Environm
   const active=users.filter(user=>user.status==="active").length;const verified=users.filter(user=>Boolean(user.emailVerifiedAt)).length;
   if(state==="loading")return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Project Auth wird geladen…")}</h3></div>;
   if(state==="unavailable"||state==="error")return <div className="console-card live-module-state"><Fingerprint size={26}/><h3>{state==="unavailable"?t("Project Auth nicht aktiviert"):t("Project Auth nicht verfügbar")}</h3><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> {t("Noch einmal")}</button></div>;
-  return <div className="module-grid"><article className="console-card auth-overview"><div><span>{t("APP-NUTZER")}</span><strong>{users.length}</strong><small>{t("Aus dieser Umgebung")}</small></div><div><span>{t("AKTIV")}</span><strong>{active}</strong><small>{users.length?`${Math.round(active/users.length*100)}% der Nutzer`:t("Keine Nutzer")}</small></div><div><span>{t("E-MAIL BESTÄTIGT")}</span><strong>{verified}</strong><small>{jwks?t("JWKS online"):t("JWKS nicht erreichbar")}</small></div></article><article className="console-card span-2"><div className="card-head"><div><span>{t("PROJECT AUTH")}</span><h3>{t("Nutzer der Anwendung")}</h3></div><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> {t("Neu laden")}</button></div>{users.map(user=><div className="auth-user" key={user.id}><span className="avatar">{user.email.slice(0,2).toUpperCase()}</span><div><strong>{user.email}</strong><small>{user.emailVerifiedAt?`Bestätigt am ${new Intl.DateTimeFormat("de-CH").format(new Date(user.emailVerifiedAt))}`:t("Bestätigung ausstehend")}</small></div><span>{Object.keys(user.appMetadata).length?t("Metadaten"):t("E-Mail")}</span><span className={user.status==="active"?"secure":"muted"}>{user.status}</span><button className="plain-button" onClick={()=>void toggle(user)}><StableLabel current={user.status==="active"?t("Deaktivieren"):t("Aktivieren")} variants={tAll("Deaktivieren", "Aktivieren")}/></button></div>)}{users.length===0&&<div className="live-module-state compact"><Fingerprint size={24}/><p>{t("Noch keine Nutzer. Sie kommen über Signup, Magic Link oder OIDC herein.")}</p></div>}</article><article className="console-card"><div className="card-head"><div><span>{t("AUTH-VERTRAG")}</span><h3>{t("Verfügbare Verfahren")}</h3></div></div><div className="detail-list"><div><span>{t("E-Mail und Passwort")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("Magic Link / Reset")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("TOTP + Recovery")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("OIDC + PKCE")}</span><strong><OidcProviderSummary projectId={projectId} environment={environment}/></strong></div><div><span>{t("Ed25519 JWKS")}</span><strong className={jwks?"secure":""}>{jwks?t("Online"):t("Nicht erreichbar")}</strong></div></div></article></div>;
+  return <div className="module-grid"><article className="console-card auth-overview"><div><span>{t("APP-NUTZER")}</span><strong>{users.length}</strong><small>{t("Aus dieser Umgebung")}</small></div><div><span>{t("AKTIV")}</span><strong>{active}</strong><small>{users.length?`${formatPercent(active/users.length, 0)} der Nutzer`:t("Keine Nutzer")}</small></div><div><span>{t("E-MAIL BESTÄTIGT")}</span><strong>{verified}</strong><small>{jwks?t("JWKS online"):t("JWKS nicht erreichbar")}</small></div></article><article className="console-card span-2"><div className="card-head"><div><span>{t("PROJECT AUTH")}</span><h3>{t("Nutzer der Anwendung")}</h3></div><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> {t("Neu laden")}</button></div>{users.map(user=><div className="auth-user" key={user.id}><span className="avatar">{user.email.slice(0,2).toUpperCase()}</span><div><strong>{user.email}</strong><small>{user.emailVerifiedAt?`Bestätigt am ${formatMoment(user.emailVerifiedAt, "date")}`:t("Bestätigung ausstehend")}</small></div><span>{Object.keys(user.appMetadata).length?t("Metadaten"):t("E-Mail")}</span><span className={user.status==="active"?"secure":"muted"}>{user.status}</span><button className="plain-button" onClick={()=>void toggle(user)}><StableLabel current={user.status==="active"?t("Deaktivieren"):t("Aktivieren")} variants={tAll("Deaktivieren", "Aktivieren")}/></button></div>)}{users.length===0&&<div className="live-module-state compact"><Fingerprint size={24}/><p>{t("Noch keine Nutzer. Sie kommen über Signup, Magic Link oder OIDC herein.")}</p></div>}</article><article className="console-card"><div className="card-head"><div><span>{t("AUTH-VERTRAG")}</span><h3>{t("Verfügbare Verfahren")}</h3></div></div><div className="detail-list"><div><span>{t("E-Mail und Passwort")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("Magic Link / Reset")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("TOTP + Recovery")}</span><strong className="secure">{t("Bereit")}</strong></div><div><span>{t("OIDC + PKCE")}</span><strong><OidcProviderSummary projectId={projectId} environment={environment}/></strong></div><div><span>{t("Ed25519 JWKS")}</span><strong className={jwks?"secure":""}>{jwks?t("Online"):t("Nicht erreichbar")}</strong></div></div></article></div>;
 }
 
 /**
@@ -688,7 +751,7 @@ function ComputeView({projectId,environment}:{projectId:string;environment:Envir
       {message&&<p className="muted">{message}</p>}
       {cron.length===0&&<p className="muted">{t("Noch keine Cron-Jobs. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")}</p>}
       {cron.map(job=><div className="bucket-row" key={job.id}><span className="bucket-icon"><Zap size={16}/></span>
-        <div><strong>{job.name}</strong><small>{job.expression} UTC → {job.queue} · {job.lastDispatchedAt?`zuletzt ${new Intl.DateTimeFormat("de-CH",{dateStyle:"short",timeStyle:"short"}).format(new Date(job.lastDispatchedAt))}`:t("noch nie eingereiht")}</small></div>
+        <div><strong>{job.name}</strong><small>{job.expression} UTC → {job.queue} · {job.lastDispatchedAt?`zuletzt ${formatMoment(job.lastDispatchedAt)}`:t("noch nie eingereiht")}</small></div>
         <span className={job.enabled?"secure":"muted"}>{job.enabled?t("aktiv"):t("pausiert")}</span>
         <button className="plain-button" onClick={()=>void mutate(`/cron/${job.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!job.enabled})})}><StableLabel current={job.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
         <button className="icon-button" onClick={()=>{if(window.confirm(`Cron-Job ${job.name} löschen? Ausdruck und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.`))void mutate(`/cron/${job.id}`,{method:"DELETE"});}} aria-label={`${job.name} löschen`}><Trash2 size={14}/></button></div>)}
@@ -724,7 +787,7 @@ function LiveApiView({projectId,environment}:{projectId:string;environment:Envir
   const endpoint=paths[0]??`/v1/projects/${projectId}/environments/${environment}/tables/{table}/rows`;
   const typeScriptExample=`const response = await fetch(\n  \"/api${endpoint}?limit=20\",\n  { headers: {\n      Authorization: \"Bearer \" + QKERN_PUBLIC_KEY\n  } }\n);\nconst { data } = await response.json();`;
   const curlExample=`curl '/api${endpoint}?limit=20' -H \"Authorization: Bearer $QKERN_PUBLIC_KEY\"`;
-  return <div className="api-console-grid"><article className="console-card endpoint-list"><div className="card-head"><div><span>{t("GENERIERTE REST-API")}</span><h3>{t("Endpunkte aus dem Live-Schema")}</h3></div><span className={paths.length?"secure":"muted"}>{paths.length?t("OpenAPI aktuell"):t("Nicht eingerichtet")}</span></div>{paths.map(path=><button key={path}><span className="method get">CRUD</span><code>{path}</code><ChevronRight size={14}/></button>)}{paths.length===0&&<div className="live-module-state compact"><Braces size={24}/><p>{message||t("Keine Tabelle mit RLS und Primärschlüssel freigegeben.")}</p></div>}</article><article className="console-card code-sample"><div className="code-head"><span>GET {endpoint}</span><select value={language} onChange={event=>setLanguage(event.target.value)}><option value="typescript">TypeScript</option><option value="curl">cURL</option></select></div><pre>{language==="typescript"?typeScriptExample:curlExample}</pre><div className="code-note"><ShieldCheck size={14}/> Filter sind parametrisiert; die Zeilen begrenzt die Projektrolle mit RLS.</div></article><article className="console-card span-2 api-key-manager"><div className="card-head"><div><span>{t("API-KEYS DES PROJEKTS")}</span><h3>Zugriff für {environment}</h3></div><div><button className="secondary-button" onClick={()=>void createKey("public")}><Plus size={13}/> {t("Public Key")}</button><button className="button small" onClick={()=>void createKey("service")}><Plus size={13}/> {t("Service Key")}</button></div></div>{secret&&<div className="one-time-secret"><div><strong>{t("Jetzt kopieren, erscheint nur einmal")}</strong><code>{secret}</code></div><button onClick={()=>void navigator.clipboard.writeText(secret)}><Copy size={14}/> {t("Kopieren")}</button><button onClick={()=>setSecret("")}><X size={14}/></button></div>}<div className="api-key-list">{keys.map(key=><div key={key.id}><span className={`key-kind ${key.kind}`}>{key.kind}</span><div><strong>{key.name}</strong><code>{key.prefix}…</code></div><span>{key.revokedAt?"widerrufen":`läuft ab ${new Intl.DateTimeFormat("de-CH").format(new Date(key.expiresAt))}`}</span>{!key.revokedAt&&<button onClick={()=>void revoke(key.id)} aria-label={t("Key widerrufen")}><Trash2 size={14}/></button>}</div>)}{keys.length===0&&<p className="muted">{t("Noch keine Keys. Das Geheimnis wird nie gespeichert und nur einmal gezeigt.")}</p>}</div></article></div>;
+  return <div className="api-console-grid"><article className="console-card endpoint-list"><div className="card-head"><div><span>{t("GENERIERTE REST-API")}</span><h3>{t("Endpunkte aus dem Live-Schema")}</h3></div><span className={paths.length?"secure":"muted"}>{paths.length?t("OpenAPI aktuell"):t("Nicht eingerichtet")}</span></div>{paths.map(path=><button key={path}><span className="method get">CRUD</span><code>{path}</code><ChevronRight size={14}/></button>)}{paths.length===0&&<div className="live-module-state compact"><Braces size={24}/><p>{message||t("Keine Tabelle mit RLS und Primärschlüssel freigegeben.")}</p></div>}</article><article className="console-card code-sample"><div className="code-head"><span>GET {endpoint}</span><select value={language} onChange={event=>setLanguage(event.target.value)}><option value="typescript">TypeScript</option><option value="curl">cURL</option></select></div><pre>{language==="typescript"?typeScriptExample:curlExample}</pre><div className="code-note"><ShieldCheck size={14}/> Filter sind parametrisiert; die Zeilen begrenzt die Projektrolle mit RLS.</div></article><article className="console-card span-2 api-key-manager"><div className="card-head"><div><span>{t("API-KEYS DES PROJEKTS")}</span><h3>Zugriff für {environment}</h3></div><div><button className="secondary-button" onClick={()=>void createKey("public")}><Plus size={13}/> {t("Public Key")}</button><button className="button small" onClick={()=>void createKey("service")}><Plus size={13}/> {t("Service Key")}</button></div></div>{secret&&<div className="one-time-secret"><div><strong>{t("Jetzt kopieren, erscheint nur einmal")}</strong><code>{secret}</code></div><button onClick={()=>void navigator.clipboard.writeText(secret)}><Copy size={14}/> {t("Kopieren")}</button><button onClick={()=>setSecret("")}><X size={14}/></button></div>}<div className="api-key-list">{keys.map(key=><div key={key.id}><span className={`key-kind ${key.kind}`}>{key.kind}</span><div><strong>{key.name}</strong><code>{key.prefix}…</code></div><span>{key.revokedAt?"widerrufen":`läuft ab ${formatMoment(key.expiresAt, "date")}`}</span>{!key.revokedAt&&<button onClick={()=>void revoke(key.id)} aria-label={t("Key widerrufen")}><Trash2 size={14}/></button>}</div>)}{keys.length===0&&<p className="muted">{t("Noch keine Keys. Das Geheimnis wird nie gespeichert und nur einmal gezeigt.")}</p>}</div></article></div>;
 }
 
 function AIBridge({ projectId, environment, reload, navigate }: { projectId: string; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void }) {
@@ -814,14 +877,14 @@ function ErrorState({message,retry}:{message:string;retry:()=>void}){return <div
 function EmptyState({icon:Icon,title,text}:{icon:typeof Database;title:string;text:string}){return <div className="empty-state"><Icon size={28}/><h3>{title}</h3><p>{text}</p></div>}
 function CheckIcon(){return <span className="check-icon">✓</span>}
 function ArrowIcon(){return <span aria-hidden>→</span>}
-function formatTime(value:string){return new Intl.DateTimeFormat("de-CH",{hour:"2-digit",minute:"2-digit"}).format(new Date(value))}
+function formatTime(value:string){return formatMoment(value,"hourMinute")}
 function formatCell(value:unknown){if(value===null)return "null";if(typeof value==="object")return JSON.stringify(value);return String(value)}
-function formatBytes(value:number){if(value<1024)return `${value} B`;const units=["KB","MB","GB","TB","PB"];let amount=value/1024;let index=0;while(amount>=1024&&index<units.length-1){amount/=1024;index+=1;}return `${amount>=10?amount.toFixed(1):amount.toFixed(2)} ${units[index]}`;}
+function formatBytes(value:number){if(value<1024)return `${value} B`;const units=["KB","MB","GB","TB","PB"];let amount=value/1024;let index=0;while(amount>=1024&&index<units.length-1){amount/=1024;index+=1;}return `${amount>=10?formatDecimal(amount,1):formatDecimal(amount,2)} ${units[index]}`;}
 function formatUsageAmount(value:string,unit:"operations"|"rows"|"bytes"){
   const amount=BigInt(value);
-  if(unit!=="bytes")return new Intl.NumberFormat("de-CH").format(amount);
+  if(unit!=="bytes")return formatNumber(amount);
   const units=[["PB",1125899906842624n],["TB",1099511627776n],["GB",1073741824n],["MB",1048576n],["KB",1024n]] as const;
-  for(const [label,size] of units){if(amount>=size){const tenths=amount*10n/size;return `${tenths/10n}.${tenths%10n} ${label}`;}}
+  for(const [label,size] of units){if(amount>=size){const tenths=amount*10n/size;return `${formatDecimal(Number(tenths)/10,1)} ${label}`;}}
   return `${amount} B`;
 }
 function usageStatusLabel(status:UsageProjection["metrics"][number]["status"]){return ({unlimited:"unbegrenzt",ok:t("im Rahmen"),warning:"Warnschwelle",exhausted:t("ausgeschöpft"),exceeded:t("überschritten")} as const)[status];}

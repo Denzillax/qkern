@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, KeyRound, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -121,7 +122,7 @@ export function ComputeSecretsView({ projectId, environment }: { projectId: stri
         {secrets.secrets.length > 0 && (secrets.state === "ready" || secrets.state === "loading") && <>
           <div className="log-row log-header"><span>{t("Referenz")}</span><span>{t("Status")}</span></div>
           {secrets.secrets.map((item) => <div className="log-row" key={item.ref}><code>{item.ref}</code><span className={STATUS_CLASS[item.status] ?? "muted"}>{statusLabel(item.status)}</span></div>)}
-          {secrets.checkedAt && <p className="muted">{t("Geprüft")}: {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(secrets.checkedAt))}</p>}
+          {secrets.checkedAt && <p className="muted">{t("Geprüft")}: {formatMoment(secrets.checkedAt, "dateTimeSeconds")}</p>}
         </>}
       </>}
     </article>

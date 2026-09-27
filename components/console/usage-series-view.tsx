@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatCount, formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { buildUsageSeriesChart } from "@/lib/console/usage-series-chart";
 import {
@@ -59,18 +60,16 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 
 /**
  * Mengen sind Dezimalstrings und koennen ueber `Number.MAX_SAFE_INTEGER`
- * hinausgehen; `Intl.NumberFormat` gruppiert BigInt verlustfrei.
+ * hinausgehen; `formatCount` gruppiert sie als BigInt verlustfrei.
  */
 function amount(value: string): string {
   return /^\d{1,30}$/.test(value)
-    ? new Intl.NumberFormat("de-CH").format(BigInt(value))
+    ? formatCount(value)
     : value;
 }
 
-const HOUR = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" });
-const DAY = new Intl.DateTimeFormat("de-CH", { dateStyle: "short" });
 const moment = (value: string, bucket: Bucket) =>
-  (bucket === "hour" ? HOUR : DAY).format(new Date(value));
+  formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
 
 export function UsageSeriesView({ view, projectId, environment }: {
   view: UsageSeriesViewId;

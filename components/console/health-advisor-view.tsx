@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, RefreshCw, ShieldAlert, Stethoscope } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   HEALTH_STATES,
@@ -113,7 +114,7 @@ export function HealthAdvisorView({ projectId, environment }: { projectId: strin
       <p className="muted">{t("Das Gesamturteil ist der schlechteste Zustand, den ein Teil trägt. Ein abgeschalteter Dienst zieht es darum weiter herunter als ein erreichbarer, aber weniger als ein gestörter.")}</p>
       <p className="muted">{t("Gesund heisst hier: erreichbar und eingerichtet. Ob deine Anwendung funktioniert, sagt diese Seite nicht.")}</p>
       <p className="muted">{t("Erreichbar heisst: Der Dienst wurde gefragt und hat geantwortet. Eingerichtet heisst: Es ist eine Adresse oder eine Anbindung hinterlegt, gefragt wurde niemand. Realtime und Vault tragen nie mehr als das.")}</p>
-      {checkedAt && <p className="muted">{t("Geprüft")}: {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(checkedAt))}</p>}
+      {checkedAt && <p className="muted">{t("Geprüft")}: {formatMoment(checkedAt, "dateTimeSeconds")}</p>}
     </article>
 
     <article className="console-card span-2">

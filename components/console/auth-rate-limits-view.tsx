@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Gauge, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_RATE_LIMITS_AUDIT,
@@ -142,7 +143,7 @@ export function AuthRateLimitsView({ projectId, environment }: { projectId: stri
     </div>;
   }
 
-  const format = (value: string) => new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  const format = (value: string) => formatMoment(value);
   const changed = KINDS.filter((kind) =>
     draft[kind].max !== data.limits[kind].max || draft[kind].windowSeconds !== data.limits[kind].windowSeconds);
   // Strenger heisst: weniger Versuche je Zeit. Die Vorschau soll das sagen

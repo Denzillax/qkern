@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, UserCog } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { formatDay } from "@/components/console/console-display";
 
 /**
  * Rollen in der Console (2.20): die Datenbankrollen ohne die vordefinierten
@@ -40,7 +41,7 @@ export function RolesView({ projectId, environment }: { projectId: string; envir
     role.createDatabase ? "CREATEDB" : null, role.createRole ? "CREATEROLE" : null, role.replication ? "REPLICATION" : null,
     role.bypassRowSecurity ? "BYPASSRLS" : null, !role.inherit ? "NOINHERIT" : null,
     role.connectionLimit !== null ? `${t("max.")} ${role.connectionLimit} ${t("Verbindungen")}` : null,
-    role.validUntil ? `${t("gültig bis")} ${role.validUntil.slice(0, 10)}` : null,
+    role.validUntil ? `${t("gültig bis")} ${formatDay(role.validUntil)}` : null,
   ].filter(Boolean).join(" · ");
 
   return <div className="module-grid">

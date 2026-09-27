@@ -1,5 +1,9 @@
 import { InMemorySessionRepository, InMemoryUserRepository } from "@/lib/server/auth/memory-repositories";
 import { PostgresRegistrationRepository, PostgresSessionRepository, PostgresUserRepository } from "@/lib/server/auth/postgres-repositories";
+import {
+  InMemoryConsoleDisplaySettingsRepository,
+  PostgresConsoleDisplaySettingsRepository,
+} from "@/lib/server/auth/console-settings";
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { AuthService } from "@/lib/server/auth/service";
@@ -26,6 +30,11 @@ export function createAuthRuntime(env: Record<string, string | undefined> = proc
   const rateLimiter = new InMemoryRateLimiter();
   const passwords = new Argon2idPasswordHasher({ pepper: env.QKERN_PASSWORD_PEPPER });
   const registration = pool ? new PostgresRegistrationRepository(pool) : undefined;
+  // Die eigene Darstellung der Console (2.55) liegt an derselben Grenze wie
+  // die Anmeldung: Sie gehoert zur Person, nicht zur Organisation.
+  const consoleSettings = pool
+    ? new PostgresConsoleDisplaySettingsRepository(pool)
+    : new InMemoryConsoleDisplaySettingsRepository();
   return {
     adapter,
     users,
@@ -33,6 +42,7 @@ export function createAuthRuntime(env: Record<string, string | undefined> = proc
     rateLimiter,
     passwords,
     registration,
+    consoleSettings,
     service: new AuthService({ users, sessions, rateLimiter, passwords, registration }),
   };
 }

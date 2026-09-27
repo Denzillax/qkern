@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleGauge, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatDay } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { inclusivePeriodEnd, loadConsoleInvoices, type ConsoleInvoiceResult } from "@/components/console/invoices";
 import { formatMoneyMicros } from "@/lib/console/money";
@@ -48,7 +49,7 @@ export function InvoicesCard({ projectId, environment, onOpenUsage }: {
     {result?.state === "ready" && result.invoices.length === 0 && <p className="muted">{t("Noch keine Rechnung. Der Rechnungslauf fakturiert abgeschlossene Monate.")}</p>}
     {result?.state === "ready" && result.invoices.length > 0 && <div className="detail-list">
       {result.invoices.map((invoice) => <div key={invoice.invoiceNumber}>
-        <span>{t("Rechnung Nr.")} {invoice.invoiceNumber}<small>{invoice.periodStart} {t("bis")} {inclusivePeriodEnd(invoice.periodEnd)} · {t("ausgestellt")} {invoice.issuedAt.slice(0, 10)} · {t("fällig")} {invoice.dueAt.slice(0, 10)} · {invoice.lines.length} {t("Posten")}{invoice.unpricedMetrics.length > 0 ? ` · ${invoice.unpricedMetrics.length} ${t("Metriken ohne Preis")}` : ""}</small></span>
+        <span>{t("Rechnung Nr.")} {invoice.invoiceNumber}<small>{formatDay(invoice.periodStart)} {t("bis")} {formatDay(inclusivePeriodEnd(invoice.periodEnd))} · {t("ausgestellt")} {formatDay(invoice.issuedAt)} · {t("fällig")} {formatDay(invoice.dueAt)} · {invoice.lines.length} {t("Posten")}{invoice.unpricedMetrics.length > 0 ? ` · ${invoice.unpricedMetrics.length} ${t("Metriken ohne Preis")}` : ""}</small></span>
         <strong title={`${invoice.total} ${invoice.currency}`}>{formatMoneyMicros(invoice.totalMicros, invoice.currency)}</strong>
       </div>)}
     </div>}

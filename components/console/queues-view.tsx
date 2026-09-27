@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { tAll } from "@/components/console/console-i18n";
 
@@ -104,13 +105,13 @@ export function QueuesView({ projectId, environment }: { projectId: string; envi
       {queues.map((queue) => { const s = status[queue.name]; return <div key={queue.id}>
         <div className="bucket-row"><span className="bucket-icon"><Inbox size={16}/></span>
           <div><strong>{queue.name}</strong><small>{queue.enqueuePolicy === "service" ? t("nur Service Key") : t("angemeldete Nutzer")} · {queue.maxAttempts} {t("Versuche")} · {t("Lease")} {queue.visibilityTimeoutSeconds} s · {t("Retry")} {queue.retryBaseSeconds}–{queue.retryMaxSeconds} s{queue.dedupeWindowSeconds ? ` · ${t("Dedupe")} ${queue.dedupeWindowSeconds} s` : ""}</small></div>
-          <span title={s?.oldestAvailableAt ? `${t("Älteste wartet seit")} ${new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(s.oldestAvailableAt))}` : undefined}>{s ? `${s.available} ${t("wartend")} · ${s.inFlight} ${t("in Bearbeitung")} · ${s.completed} ${t("erledigt")}` : t("Status nicht verfügbar")}</span>
+          <span title={s?.oldestAvailableAt ? `${t("Älteste wartet seit")} ${formatMoment(s.oldestAvailableAt)}` : undefined}>{s ? `${s.available} ${t("wartend")} · ${s.inFlight} ${t("in Bearbeitung")} · ${s.completed} ${t("erledigt")}` : t("Status nicht verfügbar")}</span>
           <span className={s && s.deadLettered > 0 ? "risk high" : "muted"}>{s ? `${s.deadLettered} ${t("Dead Letters")}` : "–"}</span>
           <button className="plain-button" onClick={() => void showDeadLetters(queue)}><StableLabel current={open === queue.name ? t("Ausblenden") : t("Dead Letters")} variants={tAll("Ausblenden", "Dead Letters")}/></button>
         </div>
         {open === queue.name && <div className="detail-list">
           {deadLetters.length === 0 ? <div><span>{t("Keine Dead Letters")}</span><strong className="muted">–</strong></div> : deadLetters.map((letter) => <div key={letter.id}>
-            <span><code>{letter.id.slice(0, 8)}</code><small>{t("Versuch")} {letter.attempt} · {letter.failureCode} · {new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(letter.deadLetteredAt))}</small></span>
+            <span><code>{letter.id.slice(0, 8)}</code><small>{t("Versuch")} {letter.attempt} · {letter.failureCode} · {formatMoment(letter.deadLetteredAt)}</small></span>
             {letter.replayed ? <strong className="muted">{t("wieder eingereiht")}</strong> : <button className="plain-button" disabled={busy === letter.id} onClick={() => void replay(letter)}><RotateCcw size={13}/> {t("Wieder einreihen")}</button>}
           </div>)}
         </div>}

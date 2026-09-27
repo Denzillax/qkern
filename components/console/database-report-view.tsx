@@ -2,6 +2,7 @@
 
 import { Database, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { useDatabaseActivity, type Environment } from "@/components/console/database-activity-source";
 import { cacheHitRatio, connectionLoad, DATABASE_REPORT_HONESTY } from "@/lib/console/database-activity-texts";
@@ -17,16 +18,13 @@ import { cacheHitRatio, connectionLoad, DATABASE_REPORT_HONESTY } from "@/lib/co
  * Jede Zahl ist ein Zähler seit dem letzten Zurücksetzen der Statistik. Der
  * Satz dazu steht über den Zahlen und nicht im Kleingedruckten.
  */
-const NUMBER = new Intl.NumberFormat("de-CH");
-const PERCENT = new Intl.NumberFormat("de-CH", { style: "percent", maximumFractionDigits: 1 });
-const MOMENT = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" });
 
 /** Bytes lesbar, ohne eine Genauigkeit vorzutäuschen, die der Zähler nicht hat. */
 function bytes(value: number): string {
-  if (value < 1024) return `${NUMBER.format(value)} B`;
-  if (value < 1024 * 1024) return `${NUMBER.format(Math.round(value / 1024))} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${NUMBER.format(Math.round(value / (1024 * 1024)))} MiB`;
-  return `${NUMBER.format(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
+  if (value < 1024) return `${formatNumber(value)} B`;
+  if (value < 1024 * 1024) return `${formatNumber(Math.round(value / 1024))} KiB`;
+  if (value < 1024 * 1024 * 1024) return `${formatNumber(Math.round(value / (1024 * 1024)))} MiB`;
+  return `${formatNumber(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
 }
 
 export function DatabaseReportView({ projectId, environment }: { projectId: string; environment: Environment }) {
@@ -56,14 +54,14 @@ export function DatabaseReportView({ projectId, environment }: { projectId: stri
   return <div className="module-grid">
     <article className="console-card auth-overview">
       <div><span>{t("CACHE-TREFFERQUOTE")}</span>
-        <strong>{hitRatio === null ? "–" : PERCENT.format(hitRatio)}</strong>
+        <strong>{hitRatio === null ? "–" : formatPercent(hitRatio)}</strong>
         <small>{hitRatio === null ? t("noch kein Block gelesen") : t("Blöcke aus dem Speicher statt von der Platte")}</small></div>
       <div><span>{t("VERBINDUNGEN")}</span>
-        <strong>{NUMBER.format(database.backends)} / {NUMBER.format(database.maxConnections)}</strong>
-        <small>{load === null ? t("ohne gemeldete Grenze") : `${PERCENT.format(load)} ${t("von max_connections")}`}</small></div>
+        <strong>{formatNumber(database.backends)} / {formatNumber(database.maxConnections)}</strong>
+        <small>{load === null ? t("ohne gemeldete Grenze") : `${formatPercent(load)} ${t("von max_connections")}`}</small></div>
       <div><span>{t("TRANSAKTIONEN")}</span>
-        <strong>{NUMBER.format(transactions)}</strong>
-        <small>{NUMBER.format(database.rollbacks)} {t("davon zurückgerollt")}</small></div>
+        <strong>{formatNumber(transactions)}</strong>
+        <small>{formatNumber(database.rollbacks)} {t("davon zurückgerollt")}</small></div>
     </article>
 
     <article className="console-card span-2">
@@ -73,17 +71,17 @@ export function DatabaseReportView({ projectId, environment }: { projectId: stri
 
       <p className="muted">{t(DATABASE_REPORT_HONESTY)}</p>
       <p className="muted">{database.statsReset
-        ? `${t("Zuletzt zurückgesetzt:")} ${MOMENT.format(new Date(database.statsReset))}`
+        ? `${t("Zuletzt zurückgesetzt:")} ${formatMoment(database.statsReset)}`
         : t("Die Statistik wurde nie zurückgesetzt.")}</p>
       {hitRatio === null && <p className="muted">{t("Solange kein Block gelesen wurde, gibt es keine Trefferquote. Null Prozent wäre hier eine Behauptung.")}</p>}
 
       <div className="log-row log-header"><span>{t("Zahl")}</span><span>{t("Wert")}</span><span>{t("Was sie sagt")}</span></div>
-      <div className="log-row"><span>{t("Commits")}</span><code>{NUMBER.format(database.commits)}</code><small>{t("abgeschlossene Transaktionen")}</small></div>
-      <div className="log-row"><span>{t("Rollbacks")}</span><code>{NUMBER.format(database.rollbacks)}</code><small>{t("zurückgerollte Transaktionen; ein Fehler im Code zählt hier mit")}</small></div>
-      <div className="log-row"><span>{t("Blöcke aus dem Cache")}</span><code>{NUMBER.format(database.blocksHit)}</code><small>{t("lagen schon im Speicher")}</small></div>
-      <div className="log-row"><span>{t("Blöcke von der Platte")}</span><code>{NUMBER.format(database.blocksRead)}</code><small>{t("mussten gelesen werden; das Betriebssystem kann sie trotzdem gecacht haben")}</small></div>
-      <div className="log-row"><span>{t("Deadlocks")}</span><code className={database.deadlocks > 0 ? "risk medium" : undefined}>{NUMBER.format(database.deadlocks)}</code><small>{t("gegenseitig blockierte Transaktionen, die die Datenbank aufgelöst hat")}</small></div>
-      <div className="log-row"><span>{t("Temporäre Dateien")}</span><code>{NUMBER.format(database.tempFiles)}</code><small>{t("Sortierungen, die nicht in den Arbeitsspeicher passten")}</small></div>
+      <div className="log-row"><span>{t("Commits")}</span><code>{formatNumber(database.commits)}</code><small>{t("abgeschlossene Transaktionen")}</small></div>
+      <div className="log-row"><span>{t("Rollbacks")}</span><code>{formatNumber(database.rollbacks)}</code><small>{t("zurückgerollte Transaktionen; ein Fehler im Code zählt hier mit")}</small></div>
+      <div className="log-row"><span>{t("Blöcke aus dem Cache")}</span><code>{formatNumber(database.blocksHit)}</code><small>{t("lagen schon im Speicher")}</small></div>
+      <div className="log-row"><span>{t("Blöcke von der Platte")}</span><code>{formatNumber(database.blocksRead)}</code><small>{t("mussten gelesen werden; das Betriebssystem kann sie trotzdem gecacht haben")}</small></div>
+      <div className="log-row"><span>{t("Deadlocks")}</span><code className={database.deadlocks > 0 ? "risk medium" : undefined}>{formatNumber(database.deadlocks)}</code><small>{t("gegenseitig blockierte Transaktionen, die die Datenbank aufgelöst hat")}</small></div>
+      <div className="log-row"><span>{t("Temporäre Dateien")}</span><code>{formatNumber(database.tempFiles)}</code><small>{t("Sortierungen, die nicht in den Arbeitsspeicher passten")}</small></div>
       <div className="log-row"><span>{t("Temporäre Bytes")}</span><code>{bytes(database.tempBytes)}</code><small>{t("Menge, die dabei auf die Platte ging")}</small></div>
     </article>
 

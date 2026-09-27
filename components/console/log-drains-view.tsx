@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileClock, KeyRound, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   LOG_DRAIN_GAPS,
@@ -66,7 +67,7 @@ function formatTime(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
-    : new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(parsed);
+    : formatMoment(parsed);
 }
 
 export function LogDrainsView({ projectId, environment }: {

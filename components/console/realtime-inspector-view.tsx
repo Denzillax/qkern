@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Radio, Send, Unplug } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -93,7 +94,7 @@ export function RealtimeInspectorView({ projectId, environment }: { projectId: s
     <article className="console-card span-2 activity-log">
       <div className="card-head"><div><span>{t("PROTOKOLL")}</span><h3>{t("Nachrichten, neueste zuerst")}</h3></div><button className="plain-button" onClick={() => setLog([])}>{t("Leeren")}</button></div>
       {log.length === 0 && <p className="muted">{t("Noch nichts empfangen. Nach dem Abonnieren erscheinen Broadcasts, Presence und der Change-Feed des Kanals hier.")}</p>}
-      {log.map((line, index) => <div className="log-row" key={`${line.at}-${index}`}><time>{new Intl.DateTimeFormat("de-CH", { timeStyle: "medium" }).format(new Date(line.at))}</time><span>{line.kind}</span><code style={{ gridColumn: "span 3", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{line.text}</code></div>)}
+      {log.map((line, index) => <div className="log-row" key={`${line.at}-${index}`}><time>{formatMoment(line.at, "time")}</time><span>{line.kind}</span><code style={{ gridColumn: "span 3", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{line.text}</code></div>)}
     </article>
   </div>;
 }

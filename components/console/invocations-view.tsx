@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Blocks, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 
 /**
  * Function-Aufrufe in der Console (2.7). Die Route gibt es seit 1.89:
@@ -68,7 +69,7 @@ export function InvocationsView({ projectId, environment }: { projectId: string;
       {current && invocations.length === 0 && !message && <p className="muted">{t("Noch kein Aufruf protokolliert. Ein Testlauf unter Functions & Jobs erzeugt den ersten.")}</p>}
       {invocations.length > 0 && <div className="log-row log-header"><span>{t("Zeit")}</span><span>{t("Ausgelöst von")}</span><span>{t("Dauer")}</span><span>{t("Ausgang")}</span><span>{t("Status")}</span></div>}
       {invocations.map((item) => <div className="log-row" key={item.invocationId}>
-        <time>{new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" }).format(new Date(item.startedAt))}</time>
+        <time>{formatMoment(item.startedAt, "dateTimeSeconds")}</time>
         <span>{item.invokedBy}</span>
         <code>{item.durationMs} ms</code>
         <span className={item.outcome === "completed" ? "secure" : "risk high"}>{item.outcome === "completed" ? t("erfolgreich") : t("fehlgeschlagen")}</span>

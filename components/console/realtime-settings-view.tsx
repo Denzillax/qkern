@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   REALTIME_FIGURES_NOTE,
@@ -50,7 +51,6 @@ type Settings = {
   figures: { available: boolean; reason: string };
 };
 
-const NUMBER = new Intl.NumberFormat("de-CH");
 
 export function RealtimeSettingsView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -130,7 +130,7 @@ export function RealtimeSettingsView({ projectId, environment }: { projectId: st
             const origin = REALTIME_ORIGIN_TEXTS[limit.origin] ?? REALTIME_ORIGIN_TEXTS.code;
             return <div className="log-row" key={limit.id}>
               <span>{t(text.label)}<br/><small>{t(text.explains)}</small></span>
-              <code className={limit.invalid ? "risk medium" : undefined}>{limit.value === null ? t("ungültig") : NUMBER.format(limit.value)}</code>
+              <code className={limit.invalid ? "risk medium" : undefined}>{limit.value === null ? t("ungültig") : formatNumber(limit.value)}</code>
               <small>{t(REALTIME_UNIT_LABELS[limit.unit] ?? limit.unit)}</small>
               <span className={origin.tone}>{t(origin.label)}<br/><small>{limit.variable ?? t("keine Variable")}</small></span>
             </div>;

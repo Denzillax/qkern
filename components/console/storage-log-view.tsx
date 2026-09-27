@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Cloud, RefreshCw, ShieldAlert } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatDecimal, formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   STORAGE_LOG_DELETED_NOTE,
@@ -61,8 +62,7 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-const MOMENT = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" });
-const moment = (value: string) => MOMENT.format(new Date(value));
+const moment = (value: string) => formatMoment(value);
 
 /** Bytes in der Einheit, in der ein Mensch sie liest; die genaue Zahl bleibt im Titel. */
 function size(bytes: number): string {
@@ -70,7 +70,7 @@ function size(bytes: number): string {
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
-  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+  return `${unit === 0 ? formatDecimal(value, 0) : formatDecimal(value, 1)} ${units[unit]}`;
 }
 
 export function StorageLogView({ projectId, environment }: { projectId: string; environment: Environment }) {

@@ -114,6 +114,31 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/auth/console-settings": {
+      get: {
+        tags: ["Auth"], operationId: "getConsoleDisplaySettings",
+        summary: "Read the console display settings of the signed-in person",
+        description: "Since `2.55.0`. Language, number and date format, time zone, start view and light or dark mode, stored per user and not per project or organization. `Cache-Control: private, no-store`. Somebody who never chose anything gets the defaults, and the defaults reproduce the behaviour before `2.55.0` exactly: language from the locale cookie, `de-CH` formatting, the time zone of the runtime, the overview as the start view. Money keeps the ledger format of `2.37.0` and is deliberately not affected.",
+        security: [{ sessionCookie: [] }],
+        responses: {
+          "200": { description: "Console display settings", content: { "application/json": { schema: { $ref: "#/components/schemas/ConsoleDisplaySettingsResponse" } } } },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+      put: {
+        tags: ["Auth"], operationId: "setConsoleDisplaySettings",
+        summary: "Replace the console display settings of the signed-in person",
+        description: "Since `2.55.0`, with trusted same-origin validation. Replaces the settings completely; a missing field takes the default, and a present but unusable field is rejected with 400 and the reason in words rather than silently replaced. There is no DELETE: resetting means writing the defaults.",
+        security: [{ sessionCookie: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ConsoleDisplaySettings" } } } },
+        responses: {
+          "200": { description: "Console display settings", content: { "application/json": { schema: { $ref: "#/components/schemas/ConsoleDisplaySettingsResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+        },
+      },
+    },
     "/v1/projects": {
       get: {
         tags: ["Projects"], operationId: "listProjects", summary: "List projects visible to the authenticated organization membership",
@@ -1527,6 +1552,8 @@ export const qkernOpenAPI = {
       RegisterResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/RegisterData" } } },
       SessionData: { type: "object", additionalProperties: false, required: ["user", "session", "memberships"], properties: { user: { $ref: "#/components/schemas/AuthUser" }, session: { $ref: "#/components/schemas/AuthSession" }, memberships: { type: "array", items: { $ref: "#/components/schemas/Membership" } } } },
       SessionResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/SessionData" } } },
+      ConsoleDisplaySettings: { type: "object", additionalProperties: false, properties: { language: { type: "string", enum: ["browser", "de", "en", "fr", "it"], description: "`browser` keeps the locale cookie, which is the behaviour before `2.55.0`." }, formatLocale: { type: "string", enum: ["de-CH", "de-DE", "en-GB", "en-US", "fr-CH", "fr-FR", "it-CH", "it-IT"] }, timeZone: { type: "string", description: "An IANA zone, or `browser` for the zone of the runtime." }, startView: { type: "string", description: "The identifier of a connected console view; a placeholder is refused." }, theme: { type: "string", enum: ["system", "light", "dark"] } } },
+      ConsoleDisplaySettingsResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ConsoleDisplaySettings" } } },
       ProjectDatabaseProvisioningStatus: { type: "object", additionalProperties: false, required: ["projectId", "environment", "jobId", "status", "attemptCount", "maxAttempts", "retryCycleCount", "maxRetryCycles", "createdAt", "updatedAt"], properties: { projectId: { type: "string", format: "uuid" }, environment: { type: "string", enum: ["development", "staging", "production"] }, jobId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["pending", "running", "succeeded", "failed"] }, attemptCount: { type: "integer", minimum: 0, maximum: 5 }, maxAttempts: { const: 5 }, retryCycleCount: { type: "integer", minimum: 0, maximum: 3 }, maxRetryCycles: { const: 3 }, lastErrorCode: { type: "string", enum: ["PROVIDER_UNAVAILABLE", "PROVIDER_REJECTED", "INVALID_BINDING", "BOOTSTRAP_UNVERIFIED", "PROVISIONING_TIMEOUT"] }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } } },
       ProjectDatabaseProvisioningResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { type: "object", additionalProperties: false, required: ["provisioning"], properties: { provisioning: { $ref: "#/components/schemas/ProjectDatabaseProvisioningStatus" } } } } },
       ProjectDatabaseProvisioningRequestResult: { allOf: [{ $ref: "#/components/schemas/ProjectDatabaseProvisioningStatus" }, { type: "object", additionalProperties: false, required: ["outcome", "idempotent", "executed"], properties: { outcome: { type: "string", enum: ["requested", "retry_requested", "already_requested"] }, idempotent: { type: "boolean" }, executed: { const: false } } }] },

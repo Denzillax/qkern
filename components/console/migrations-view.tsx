@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GitCommitHorizontal, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import type { ChangeSet, Environment } from "@/lib/types";
 
 /**
@@ -24,7 +25,7 @@ type IncidentItem = {
   delivery: { status: "pending" | "published" | "dead_lettered"; attemptCount: number; failureCount: number; maxFailures: number };
 };
 
-const when = (iso: string) => new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+const when = (iso: string) => formatMoment(iso);
 
 export function MigrationsView({ projectId, environment, changeSets }: { projectId: string; environment: Environment; changeSets: ChangeSet[] }) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);

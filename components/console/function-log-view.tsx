@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   FUNCTION_LOG_COLUMNS,
@@ -55,7 +56,6 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-const MOMENT = new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "medium" });
 
 export function FunctionLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
@@ -180,7 +180,7 @@ export function FunctionLogView({ projectId, environment }: { projectId: string;
           {FUNCTION_LOG_COLUMNS.map((column) => <span key={column.label}>{t(column.label)}</span>)}
         </div>
         {rows.map((row) => <div className="log-row" key={row.invocationId}>
-          <time>{MOMENT.format(new Date(row.startedAt))}</time>
+          <time>{formatMoment(row.startedAt, "dateTimeSeconds")}</time>
           <span>{row.functionName}</span>
           <span>{row.invokedBy}</span>
           <code>{row.durationMs} ms</code>

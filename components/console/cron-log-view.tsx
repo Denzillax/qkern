@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock3, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
   CRON_MESSAGE_STATE_TEXTS,
@@ -51,7 +52,7 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 }
 
 const moment = (value: string) =>
-  new Intl.DateTimeFormat("de-CH", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  formatMoment(value);
 
 export function CronLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute/cron`;
