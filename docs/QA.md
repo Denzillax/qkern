@@ -5732,3 +5732,47 @@ hinaus. Bestehende Passwoerter werden nie geprueft, weil ein Argon2-Hash
 nicht lesbar ist. Kein Pooler, keine Netzbeschraenkung. Fuer echte
 Installationen fehlt die Archivkonfiguration, also auch die Wiederherstellung
 auf einen Zeitpunkt. Im Browser nicht gesehen.
+
+## Was hinausgeht – Release 2.54
+
+Ein Log-Drain ist die Stelle, an der Daten das Haus verlassen. Deshalb gilt
+hier eine harte Grenze: Weitergeleitet wird nur, was die Console ohnehin
+zeigt. Das ist keine Absichtserklaerung, sondern zwei Pruefungen. Eine
+Positivliste je Quelle entscheidet, was ueberhaupt in eine Ladung kommt, und
+ein Test liest die Zeilentypen der Konsolenansichten aus den Quelldateien
+und haelt jedes weitergeleitete Feld dagegen. Ein Gegentest sorgt dafuer,
+dass die Zusage nicht leer ist: Zwei Felder, die die Console zeigt, duerfen
+ausdruecklich nicht hinausgehen, weil sie eine Adresse tragen koennen.
+
+Zwei Quellen fehlen mit Absicht. Das Cron-Log wird je Anfrage rekonstruiert
+und nicht gespeichert; ein Vorkommen ginge sonst immer wieder mit
+wechselndem Zustand hinaus. Und Zustellungen, die zu einem Drain selbst
+gehoeren, sind ausgenommen, sonst erzeugte jede weitergeleitete Ladung eine
+Zeile, die der naechste Lauf wieder weiterleitet.
+
+Die Vorlagen des SQL-Editors fuegen ein und fuehren nichts aus. Den Knopf
+drueckt ein Mensch. Jede Vorlage laeuft im Test durch denselben Waechter,
+den auch die Route benutzt, und die Mutationsprobe zeigt, dass das
+kein Zierat ist: eine Vorlage mit einer Funktion mit Nebenwirkung faellt
+sowohl im Einzeltest als auch im Zertifizierungsfall.
+
+Der dritte Slice beantwortet die Frage, was ein angemeldeter Nutzer darf,
+und foerdert zwei Dinge zutage, die man wissen sollte. Ein angemeldeter
+Nutzer wird gar keine eigene Datenbankrolle: Es gibt nirgends einen
+Rollenwechsel, jede Anfrage laeuft ueber dieselbe Anwendungsrolle, und die
+Identitaet steckt ausschliesslich in Anspruechen, die transaktionslokal
+gesetzt werden. Und eine Tabelle ohne Zeilensicherheit ist nicht offen,
+sondern fuer die Data API unerreichbar. Das ist die Tatsache, die Leute
+ueberrascht, und die Mutationsprobe dreht genau sie um.
+
+Checkpoint `2.54.0` am 27. September 2026: PostgreSQL 17 mit 198 von 198,
+exit 0, zweimal reproduziert; Lokal 2013 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert; `next build` gruen.
+
+Nicht erbracht: Der Sammler der Drains hat noch keinen dauerhaften
+Aufrufer; seine Position liegt im Prozess, ein Neustart beginnt in der
+Gegenwart und eine abgebrochene Ladung kann doppelt gehen. Ein Objektname
+kann persoenliche Angaben enthalten und geht trotzdem hinaus, weil die
+Console ihn zeigt; die Ansicht benennt das. Das Urteil zu den Anmelderechten
+kann eine Bedingung nicht auswerten, die eine Einstellung oder eine Funktion
+liest. Im Browser nicht gesehen.

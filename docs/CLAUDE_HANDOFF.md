@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.53.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.54.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -70,8 +70,35 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.53.0`
-- Aktueller Slice: 2.53 Was das Passwort verraet – drei Implementierer
+- Paketversion: `2.54.0`
+- Aktueller Slice: 2.54 Was hinausgeht – drei Implementierer parallel.
+  **Log-Drains**: `set-log-drains` ist echt, und die harte Grenze lautet: ein
+  Drain traegt nur, was die Console ohnehin zeigt. Weitergeleitet wird eine
+  Positivliste je Quelle (`lib/console/log-drains.ts`), und ein Test liest die
+  Zeilentypen der Konsolenansichten aus den Quelldateien und prueft jedes
+  Feld dagegen; ein Gegentest haelt fest, dass `invokedBy` und `ownerSubject`
+  in der Console stehen und im Drain fehlen, weil sie eine Adresse tragen
+  koennen. Zustellung ueber den vorhandenen Outbox- und Signaturweg aus 2.50,
+  Migration `0054`. Das Cron-Log ist bewusst keine Quelle (es wird je Anfrage
+  rekonstruiert), und Zustellungen eines Drains sind von der Quelle
+  `webhook_deliveries` ausgenommen, sonst erzeugte jede Ladung die naechste.
+  **SQL-Vorlagen**: `sql-templates` ist echt, zehn nur lesende Vorlagen im
+  Editor; Auswaehlen fuegt ein, ausgefuehrt wird nichts. Zwei Vorlagen nehmen
+  Parameter, und die gehen durch dieselbe Bezeichnergrammatik wie der
+  Tabellen-Designer, mit denselben feindlichen Eingaben im Test. Keine
+  Vorlage liest die Spalte `query`. **Anmelderechte**: `auth-policies` ist
+  echt und beantwortet die Frage von der Anmeldeseite her. Befund: Ein
+  angemeldeter Nutzer wird **keine** eigene Datenbankrolle; es gibt nirgends
+  `SET ROLE`. Jede Anfrage laeuft ueber die eine Anwendungsrolle, die Identitaet
+  steckt in transaktionslokalen Anspruechen, und der Dienst prueft je
+  Transaktion, dass diese Rolle kein Superuser ist, RLS nicht umgeht und
+  keiner Gruppe angehoert. Zweiter Befund: Eine Tabelle ohne Zeilensicherheit
+  ist nicht offen, sondern fuer die Data API unerreichbar. Das Urteil sagt je
+  Zeile, was es nicht wissen kann. PostgreSQL-Faelle "(2.61)", "(2.62)",
+  "(2.63)": 198 statt 195. Drei Mutationen fallen, zwei davon doppelt.
+  Offen: Der Sammler der Drains hat noch keinen dauerhaften Aufrufer, wie die
+  Webhook-Bruecke bis 2.51. Im Browser nicht gesehen
+- Vorheriger Slice: 2.53 Was das Passwort verraet – drei Implementierer
   parallel. **Passwortschutz**: `auth-protection` ist echt, aber nur in dem
   Teil, der ohne fremden Dienst auskommt. Ein Abgleich bei einem externen
   Anbieter hiesse, dass jede Anmeldung jedes Kunden zu einem fremden Rechner
@@ -94,7 +121,7 @@ Grossbuchstaben.
   kein Archiv, keine Wiederherstellung auf einen Zeitpunkt.
   PostgreSQL-Faelle "(2.59)" und "(2.60)": 195 statt 193. Zwei Mutationen
   fallen. Im Browser nicht gesehen
-- Vorheriger Slice: 2.52 Grenzen, Geheimnisse, alte Versprechen – drei
+- Davor: 2.52 Grenzen, Geheimnisse, alte Versprechen – drei
   Implementierer parallel. **Grenzen je Zeitfenster**: `auth-rate-limits` ist
   echt, und die Bremse zaehlt jetzt in der Datenbank
   (`project_auth_rate_counters`, Migration `0052`) statt im Arbeitsspeicher

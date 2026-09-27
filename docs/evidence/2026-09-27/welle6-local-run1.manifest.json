@@ -1,0 +1,13 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle6-local-run1.log",
+  "commit": "ebfcbbedffcc4a12b9cd5f7c1881d7eb8b0aeebe",
+  "commitSubject": "merge: Log-Drains aus slice/logdrains",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "tests": "2013 passed | 282 skipped (2295)",
+  "passed": 2013,
+  "failed": 0,
+  "skipped": 282,
+  "images": []
+}

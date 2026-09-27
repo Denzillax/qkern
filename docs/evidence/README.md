@@ -1607,3 +1607,15 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle5-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
 | `2026-09-27/welle5-local-run1.log` | Vitest lokal (Windows) | 1844 bestanden, exit 0 |
 | `2026-09-27/welle5-local-run2.log` | Vitest lokal (Windows) | 1844 bestanden, exit 0, Wiederholung |
+
+## Läufe zu Release 2.54 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle6-run1.log` | PostgreSQL 17 | 198 von 198, exit 0 |
+| `2026-09-27/welle6-run2.log` | PostgreSQL 17 | 198 von 198, exit 0, Wiederholung |
+| `2026-09-27/welle6-mutation-access.log` | Mutation: Tabelle ohne RLS gilt als offen | **196 von 197, exit 1 – absichtlich** |
+| `2026-09-27/welle6-mutation-templates.log` | Mutation: eine Vorlage schreibt | **196 von 197, exit 1 – absichtlich** |
+| `2026-09-27/welle6-mutation-drain.log` | Mutation: Aufruferreferenz fährt mit | **197 von 198, exit 1 – absichtlich** |
+| `2026-09-27/welle6-local-run1.log` | Vitest lokal (Windows) | 2013 bestanden, exit 0 |
+| `2026-09-27/welle6-local-run2.log` | Vitest lokal (Windows) | 2013 bestanden, exit 0, Wiederholung |

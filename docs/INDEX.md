@@ -36,7 +36,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
 | [RELEASE_2.57.md](RELEASE_2.57.md) | Regeln, die nie liefen |
-| [RELEASE_2.53.md](RELEASE_2.53.md) | Aktueller Release: Was das Passwort verraet |
+| [RELEASE_2.54.md](RELEASE_2.54.md) | Aktueller Release: Was hinausgeht |
+| [RELEASE_2.53.md](RELEASE_2.53.md) | Was das Passwort verrät |
 | [RELEASE_2.52.md](RELEASE_2.52.md) | Grenzen, Geheimnisse, alte Versprechen |
 | [RELEASE_2.51.md](RELEASE_2.51.md) | Die Bruecke läuft |
 | [RELEASE_2.50.md](RELEASE_2.50.md) | Zweiter Faktor und Datenbank-Webhooks |
