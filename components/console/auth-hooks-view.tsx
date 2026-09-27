@@ -288,7 +288,7 @@ export function AuthHooksView({ projectId, environment }: { projectId: string; e
             aria-label={t("Frist in Millisekunden")}
             onChange={(event) => edit(() => setSignInTimeout(Number(event.target.value)))}
           /></label>
-          <small>{t("Erlaubt:")} {formatNumber(data.bounds.timeoutMs.min)}–{formatNumber(data.bounds.timeoutMs.max)}</small>
+          <small>{t("Erlaubt:")} {formatNumber(data.bounds.timeoutMs.min)} {t("bis")} {formatNumber(data.bounds.timeoutMs.max)}</small>
         </div>
         <p className="muted">{t(AUTH_HOOKS_SIGN_IN_WHERE)}</p>
         <p className="muted">{t(AUTH_HOOKS_SIGN_IN_NOT_REFRESH)}</p>
@@ -320,7 +320,7 @@ export function AuthHooksView({ projectId, environment }: { projectId: string; e
             aria-label={t("Frist für die Ausgabe des Access Token")}
             onChange={(event) => edit(() => setClaimsTimeout(Number(event.target.value)))}
           /></label>
-          <small>{t("Erlaubt:")} {formatNumber(data.bounds.timeoutMs.min)}–{formatNumber(data.bounds.timeoutMs.max)}</small>
+          <small>{t("Erlaubt:")} {formatNumber(data.bounds.timeoutMs.min)} {t("bis")} {formatNumber(data.bounds.timeoutMs.max)}</small>
         </div>
         <div className="log-row">
           <label>{t("Erlaubte Ansprüche, durch Komma getrennt")}<input
