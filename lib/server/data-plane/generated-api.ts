@@ -38,6 +38,27 @@ export type ProjectDataClaims = {
   sessionId?: string;
   userMetadata?: Record<string, unknown>;
   appMetadata?: Record<string, unknown>;
+  /**
+   * Der Aussteller eines fremden Tokens (2.80). Nur gesetzt, wenn das Token
+   * **nicht** von QKERN kommt.
+   *
+   * Er steht als `iss` in `request.jwt.claims`, damit eine Policy den
+   * Unterschied lesen kann. Ohne ihn saehe eine Bedingung nur `role` und `sub`
+   * und koennte nicht unterscheiden, ob dieses Subjekt ein Nutzer dieses
+   * Projekts ist oder ein Konto bei einem fremden Dienst. Das ist genau die
+   * Unterscheidung, die eine Policy treffen koennen muss.
+   */
+  issuer?: string;
+  /**
+   * Die uebrigen Ansprueche eines fremden Ausstellers (2.80): flach, skalar und
+   * begrenzt, so wie `third-party.ts` sie durchlaesst.
+   *
+   * Sie werden **vor** den eigenen Anspruechen gesetzt, damit ein fremder Name,
+   * der bis hierher kaeme, nie gewinnt. Gefiltert hat ihn schon die Pruefung;
+   * die Reihenfolge hier ist die Absicherung dagegen, dass jemand einen zweiten
+   * Weg baut, der die Filterung nicht kennt.
+   */
+  external?: Record<string, string | number | boolean | null>;
 };
 
 export type GeneratedDataContext = {
@@ -1062,6 +1083,10 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
       }
       const claims = JSON.stringify({
+        // Die Ansprueche eines fremden Ausstellers zuerst (2.80), die eigenen
+        // danach: Bei gleichem Namen gewinnt QKERN, und zwar durch die Stellung
+        // und nicht durch eine zweite Pruefung, die jemand vergessen kann.
+        ...(context.claims.external ?? {}),
         role: context.claims.role,
         sub: context.claims.subject,
         ...(context.claims.keyId ? { key_id: context.claims.keyId } : {}),
@@ -1071,6 +1096,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         ...(context.claims.sessionId ? { session_id: context.claims.sessionId } : {}),
         ...(context.claims.userMetadata ? { user_metadata: context.claims.userMetadata } : {}),
         ...(context.claims.appMetadata ? { app_metadata: context.claims.appMetadata } : {}),
+        ...(context.claims.issuer ? { iss: context.claims.issuer } : {}),
       });
       if (Buffer.byteLength(claims, "utf8") > 2_000) throw invalidInput();
       await client.query(
@@ -1134,6 +1160,17 @@ function assertRequest(
       (context.claims.email !== undefined && context.claims.email.length > 320) ||
       (context.claims.assurance !== undefined && !["aal1", "aal2"].includes(context.claims.assurance)) ||
       (context.claims.sessionId !== undefined && context.claims.sessionId.length > 128) ||
+      // Der Aussteller eines fremden Tokens (2.80). Begrenzt, weil er in eine
+      // Transaktionseinstellung wandert, und mit `issuer` **und** `service_role`
+      // zusammen verboten: Ein fremdes Token bekommt hoechstens
+      // `authenticated`, und diese Regel steht hier noch einmal, weil die Data
+      // API sie nicht davon abhaengig machen soll, dass jeder Aufrufweg sie
+      // kennt. Wer einen zweiten Weg baut, der ein fremdes Token auf
+      // `service_role` abbildet, faellt hier und nicht erst in einer Policy,
+      // die es nicht gibt.
+      (context.claims.issuer !== undefined &&
+        (context.claims.issuer.length < 1 || context.claims.issuer.length > 512 ||
+          context.claims.role === "service_role")) ||
       !["authenticated", "anon", "service_role"].includes(context.claims.role) ||
       !scope.projectId || scope.projectId.length > 128 ||
       !(["development", "staging", "production"] satisfies Environment[]).includes(scope.environment) ||

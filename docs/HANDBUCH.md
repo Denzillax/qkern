@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.55.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.60.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -1354,6 +1354,206 @@ dem Namen des beanstandeten Anspruchs, nie seinem Wert. Nach aussen gibt es drei
 unterschiedene Ausgänge: `403` für eine Ablehnung durch den Hook, `503` für
 einen Hook, der nicht geantwortet hat, und `502` für eine Antwort, die keine
 war.
+
+### Fremde Anbieter: Token annehmen, die QKERN nicht ausgegeben hat
+
+Seit `2.60.0` ist **Auth → Fremde Anbieter** keine Platzhalterseite mehr. Der
+Platzhalter sagte: „Token fremder Identitätsdienste akzeptieren, ohne eigene
+Nutzerkonten." Genau das ist gebaut.
+
+**Der Unterschied zum OIDC-Weg, und er ist der Grund für diesen Abschnitt.**
+Beide Wege fangen gleich an: Ein fremder Dienst hat ein Token ausgegeben, und
+QKERN prüft es. Danach gehen sie auseinander.
+
+- Beim **OIDC-Login** (`lib/server/project-auth/oidc.ts`) ist das fremde Token
+  eine Zwischenstation. QKERN legt daraufhin einen eigenen Nutzer in
+  `project_auth_users` an, verbindet ihn über `project_auth_oidc_identities` und
+  gibt ein **eigenes** Access Token aus: eigene Unterschrift, eigener
+  Aussteller, eigene Laufzeit von 15 Minuten, widerrufbare Sitzung. Alles, was
+  die Data API danach sieht, gehört QKERN.
+- **Hier** gibt es keine Zwischenstation. Die Anwendung schickt das Token, das
+  sie vom fremden Dienst schon hat, und die Data API arbeitet damit. Es entsteht
+  kein Konto, keine Sitzung, kein Refresh Token und keine Zeile, die man
+  widerrufen könnte.
+
+Das ist nicht der bequemere OIDC-Weg, sondern ein anderer Handel, und der Preis
+steht auch auf der Seite selbst:
+
+- **Kein Widerruf.** QKERN kann kein Token zurückziehen, das es nicht ausgegeben
+  hat. Gilt es bis zu seinem `exp`, dann gilt es bis dahin. Der einzige Widerruf
+  ist grob: Wer den Anbieter entfernt, lässt jedes Token dieses Ausstellers
+  fallen, auch die noch gültigen.
+- **Keine Nutzerliste.** Unter **Auth → Nutzer** steht niemand, der so
+  hereinkommt, und unter **Auth → Sitzungen** ist nichts zu beenden.
+- **Kein zweiter Faktor, keine Sperrung, keine Passwortregel, keine Grenzen je
+  Identität.** Alle vier sind Zusagen über Konten, und Konten gibt es hier
+  nicht. Was das Projekt schützt, sind die Policies und die Grenzen der Data API.
+- **Keine Obergrenze für die Laufzeit.** Wie lange ein Token gilt, entscheidet
+  der Aussteller. Ein Anbieter, der für ein Jahr ausgibt, gibt Zugang für ein
+  Jahr. Das ist eine Lücke und wird als solche genannt; wer das nicht will,
+  nimmt den OIDC-Weg, bei dem QKERN die Laufzeit selbst setzt.
+
+**Welche Rolle ein fremdes Token bekommt.** Höchstens `authenticated`. Nie
+`service_role`.
+
+`service_role` umgeht in der Data API jede Policy. Wer diese Rolle einem
+Aussteller gibt, den QKERN nicht kontrolliert, hat die Zeilensicherheit des
+Projekts an die Registrierungsseite dieses Ausstellers delegiert: Wer dort ein
+Konto anlegen kann, liest danach jede Zeile jeder Tabelle. Das ist keine
+Einstellung, die ein Warnhinweis vertreten kann, sondern eine Tür, und sie wird
+nicht gebaut. Wer eine Anfrage ohne Policies braucht, nimmt einen Service Key
+dieser Projektumgebung unter **Einstellungen → API-Keys**: Den gibt QKERN aus, er
+ist widerrufbar, und seine Ausgabe steht in der Audit-Kette.
+
+Die Grenze steht an drei Stellen, und jede soll einzeln richtig sein:
+
+1. In `lib/server/project-auth/third-party.ts`. `PROJECT_AUTH_THIRD_PARTY_ROLES`
+   kennt nur `anon` und `authenticated`, und ein Rollenanspruch mit einem anderen
+   Wert ist eine Ablehnung und **kein** stilles Herunterstufen. Ein
+   Herunterstufen sähe für den Aufrufer wie ein Erfolg aus, und er baute danach
+   eine Anwendung auf einer Rolle, die er nicht hat.
+2. Als `CHECK` in Migration `0061`. Die Datenbank soll keiner Anwendung glauben
+   müssen, dass jeder Schreiber durch den Dienst kommt.
+3. In `assertRequest` der generierten Data API: Ein Kontext mit gesetztem
+   `claims.issuer` **und** der Rolle `service_role` ist ungültige Eingabe. Wer
+   einen zweiten Aufrufweg baut, fällt dort und nicht erst in einer Policy, die
+   es nicht gibt.
+
+**Was geprüft wird.** Fünf Dinge, und alle fünf müssen stimmen: die Unterschrift
+gegen den Schlüsselsatz des Ausstellers, der Aussteller gegen den hinterlegten
+Wert, das Publikum gegen die erwarteten Werte, die Laufzeit gegen die Uhr, und
+das Signaturverfahren gegen `PROJECT_AUTH_THIRD_PARTY_ALGORITHMS`.
+
+Der tragende Satz: **Das Verfahren kommt aus dieser Liste und aus dem Schlüssel,
+nicht aus dem Token.** Der Header darf sagen, welchen Eintrag der Liste er meint;
+er darf nicht sagen, wie gerechnet wird. Damit sind die zwei alten Löcher zu:
+
+- **`alg: none`**, ein Token ohne Unterschrift, das ein Prüfer annimmt, weil der
+  Header behauptet, es gebe keine zu prüfen. Es fällt, weil `none` in der Liste
+  nicht vorkommt.
+- **Ein symmetrisches Verfahren mit dem öffentlichen Schlüssel als Geheimnis.**
+  Der Angreifer nimmt den frei abrufbaren Schlüssel des Ausstellers, rechnet
+  damit ein HMAC und schreibt `alg: HS256` in den Header. Ein Prüfer, der dem
+  Header folgt, benutzt dasselbe öffentliche Material als Geheimnis und
+  bestätigt die Fälschung. Es fällt zweimal: `HS256` steht nicht in der Liste,
+  **und** jeder Eintrag der Liste nennt den Schlüsseltyp, den er verlangt, sodass
+  ein `oct`-Schlüssel aus einem Schlüsselsatz zu keinem Verfahren passt.
+
+Dazu: Die Uhrentoleranz ist 30 Sekunden statt der 5, die ein eigenes Token
+bekommt. Bei einem eigenen Token ist der Aussteller derselbe Prozess; hier ist
+er eine fremde Maschine mit fremder Zeitquelle. Und ein Token **ohne** `exp`
+wird abgewiesen: Es gibt hier keinen Widerruf, also ist `exp` die einzige Zusage,
+dass dieser Zugang irgendwann aufhört.
+
+**Wie der Schlüsselsatz geholt wird.** Über `createGuardedFetch` aus
+`lib/server/net/guarded-fetch.ts`, also über genau dieselbe Adressprüfung, die
+die Ausgangsverbindungen einer Function nehmen: Der Name wird aufgelöst, **jede**
+aufgelöste Adresse muss öffentlich erreichbar sein, verbunden wird genau zu der
+geprüften, der Name wandert trotzdem als SNI mit, und eine Umleitung wird
+abgewiesen. Es gibt hier ausdrücklich **keine** zweite Adressprüfung: Hier gibt
+ein Betreiber eine Adresse ein und QKERN holt sie, also ist das die Form, in der
+serverseitige Anfragefälschung entsteht, und eine zweite Regel wäre eine zweite
+Regel, die hinterherhinkt.
+
+Dazu kommt nur, was die vorhandene Stelle nicht wissen kann: eine Frist von 5
+Sekunden, höchstens 128 KiB, höchstens 20 Schlüssel. Der Satz liegt fünf Minuten
+im Prozessspeicher und **nicht** in der Datenbank: Eine gespeicherte Kopie wäre
+ein zweiter Wahrheitsort, in dem ein zurückgezogener Schlüssel gültig bliebe. Der
+Preis ist ehrlich zu nennen: Jeder Prozess hält seinen eigenen Satz, mehrere
+Instanzen holen also mehrfach. Findet die Prüfung keinen passenden Schlüssel,
+wird einmal auf einen frischen bestanden, mit einem Mindestabstand von 30
+Sekunden, damit eine erfundene Schlüssel-ID kein Holen je Anfrage auslöst. Und
+ist der Satz nicht zu holen, werden die Token dieses Anbieters abgewiesen:
+Ungeprüft annehmen ist keine Betriebsart, auch wenn das heisst, dass ein Ausfall
+beim Anbieter dessen Nutzer aussperrt.
+
+**Wie die Ansprüche in die Zeilensicherheit kommen.** Über genau denselben Weg
+wie die eines eigenen Tokens, nämlich `run` in
+`lib/server/data-plane/generated-api.ts`: `request.jwt.claims` mit allen
+Ansprüchen als JSON, `request.jwt.claim.role` und `request.jwt.claim.sub`, je
+nur für diese eine Transaktion. Es gibt keine Abkürzung daneben; eine zweite
+Stelle wären zwei Wahrheiten.
+
+Was dazukommt, ist der Anspruch `iss` mit dem Aussteller. Nur ein fremdes Token
+trägt ihn, und eine Policy braucht ihn: Ohne ihn liesse sich nicht prüfen, ob
+eine Zeile einem Konto beim Anbieter gehört oder einem eigenen Nutzer. Von den
+übrigen Ansprüchen des Ausstellers wandern höchstens 16 mit, zusammen höchstens
+2048 Byte, und nur einzelne Werte. Ein verschachtelter Anspruch wird übergangen
+und nicht abgewiesen, denn ein fremdes Token trägt oft ein ganzes Profil. Die
+Ansprüche, die QKERN selbst setzt, werden ebenfalls übergangen, und bei gleichem
+Namen gewinnt QKERN durch die Stellung im Aufbau und nicht durch eine zweite
+Prüfung, die jemand vergessen kann. Kein `aal`, kein `session_id`, kein
+`email_verified`: Alle drei wären erfunden, denn QKERN weiss nicht, wie sich
+dieser Mensch beim fremden Dienst angemeldet hat.
+
+Eine Policy sieht damit so aus:
+
+```sql
+CREATE POLICY eigene_quelle ON public.notizen FOR SELECT TO <anwendungsrolle>
+  USING (besitzer = current_setting('request.jwt.claim.sub', true)
+     AND quelle = (current_setting('request.jwt.claims', true)::jsonb ->> 'iss'));
+```
+
+**Der Projekt-Key bleibt.** Ein fremdes Token allein öffnet die Data API nicht.
+Jede Anfrage bringt weiterhin den Public Key dieser Projektumgebung mit. Das
+Token sagt, wer der Aufrufer ist; der Key ist die Zusage des Projekts, dass diese
+Anwendung hier anklopfen darf, und er ist widerrufbar. Ausserdem wird ein
+vorgelegtes Token **immer zuerst als eigenes geprüft**
+(`projectApplicationPrincipal` in `lib/server/data-plane/generated-http.ts`);
+erst wenn das scheitert, kommt dieser Weg. Dadurch kann kein hinterlegter
+Anbieter einem Token von QKERN eine andere Bedeutung geben, auch nicht, wenn er
+denselben Aussteller nennt. Im Log steht ein solcher Aufrufer als
+`project-auth-third-party:<anbieter>:<subjekt>` und nicht als Nutzer-ID: Wer
+sucht, soll nicht nach einem Konto suchen, das nie existiert hat.
+
+**Was diese Seite nicht baut**, und das steht auch auf ihr selbst:
+
+- **Kein Bearbeiten.** Ein Anbieter wird angelegt und entfernt. Ein geänderter
+  Aussteller oder Schlüsselsatz machte aus dem Eintrag eine andere
+  Vertrauensbeziehung, ohne dass Name, Alter oder Audit-Zeile sich ändern; wer
+  die Liste danach liest, sähe denselben Anbieter und meinte denselben Dienst.
+  Die Datenbank hat auf `project_auth_third_party_providers` darum gar kein
+  `UPDATE`-Recht.
+- **Keine Discovery.** Die Adresse des Schlüsselsatzes wird nicht aus dem
+  Aussteller errechnet. Der Well-Known-Pfad ist eine Konvention und kein Gesetz;
+  wer ihn errechnet, holt bei einem Dienst, der ihn anders legt, still eine 404
+  und weist danach jedes Token ab.
+- **Keinen Testknopf.** Ein Holen beim Eintragen belegt, dass eine Adresse jetzt
+  antwortet, und nicht, dass eine Anfrage in einer Stunde durchkommt.
+- **Keine Liste der Zugriffe.** QKERN legt dafür keine Zeile an, und eine aus dem
+  Data-API-Log zusammengerechnete Liste wäre eine Vermutung mit dem Aussehen
+  einer Nutzerverwaltung.
+
+**Routen und Audit.** `GET` und `POST` auf
+`/api/v1/projects/{projectId}/environments/{environment}/auth/admin/third-party`,
+`DELETE` auf `.../third-party/{providerId}`; dieselbe Tür wie die übrigen
+`admin/*`-Routen: Console-Session mit `project_auth_admin`, kein Projekt-Key,
+`Cache-Control: private, no-store`, für die schreibenden Verben ein
+vertrauenswürdiger Origin. Ein `PUT` gibt es nicht. Eine abgelehnte Definition
+antwortet mit `400` und einem stabilen `reason`; der Versuch, `service_role`
+einzutragen, bekommt dabei den eigenen Grund `role_forbidden` und nicht
+`role_not_allowed`, weil das die falsche Auskunft wäre: Die Rolle gibt es, und
+sie ist hier verboten. Ein doppelter Name oder Aussteller ist ein `409`. Eine
+abgewiesene Anfrage der Data API bekommt einen `401` und **keinen** Grund: Wer
+erfährt, ob sein Publikum oder seine Unterschrift nicht gepasst hat, bekommt ein
+Werkzeug zum Probieren. Angelegt und entfernt schreiben
+`project_auth.third_party_provider.created` und
+`.removed` mit Name, Aussteller, Adresse des Schlüsselsatzes, Publikum und
+Rollenabbildung. Nichts davon ist ein Geheimnis: Der Aussteller steht in jedem
+Token, der Schlüsselsatz ist eine öffentliche Adresse, und die Rolle ist die
+Entscheidung, die dieser Eintrag trifft.
+
+Zertifiziert ist das im Fall `(2.80)` in `tests/postgres.integration.test.ts`:
+echtes RSA-Schlüsselpaar, echtes Token, echte Zeile in
+`project_auth_third_party_providers`, echte Lesung durch die generierte Data API
+unter einer Policy, die `sub` **und** `iss` nennt, und die Abweisung von
+`alg: none`, einer HS256-Fälschung mit dem öffentlichen Schlüssel als Geheimnis,
+einem symmetrischen Schlüssel im Schlüsselsatz, einem falschen Publikum, einem
+abgelaufenen Token und einer Unterschrift mit dem falschen Schlüssel. Gestellt
+ist dort genau eine Stelle, der Transport zum Schlüsselsatz: Der geprüfte Weg
+verlangt https und eine öffentlich erreichbare Adresse und kann im
+Zertifizierungsnetz keinen Server erreichen; die Adresspolicy selbst ist eigens
+zertifiziert.
 
 ## 7. Project Storage
 

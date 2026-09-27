@@ -29,6 +29,11 @@ import {
   type ProjectAuthHooks,
 } from "@/lib/server/project-auth/hooks";
 
+import type {
+  ProjectAuthThirdPartyDefinition,
+  ProjectAuthThirdPartyProvider,
+} from "@/lib/server/project-auth/third-party";
+
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
   "passwordHash" | "status" | "emailVerifiedAt" | "userMetadata" | "appMetadata" | "updatedAt">>;
 
@@ -171,6 +176,37 @@ export interface ProjectAuthRepository {
     subject: string,
   ): Promise<ProjectAuthOidcIdentity | null>;
   createOidcIdentity(identity: ProjectAuthOidcIdentity): Promise<ProjectAuthOidcIdentity>;
+
+  /**
+   * Die hinterlegten fremden Anbieter dieser Umgebung (2.80), nach Namen
+   * geordnet: gleiche Zeilen, gleiche Reihenfolge.
+   */
+  listThirdPartyProviders(scope: ProjectAuthScope): Promise<ProjectAuthThirdPartyProvider[]>;
+  /**
+   * Der Anbieter zu einem Aussteller, oder `null`.
+   *
+   * Der Lesepfad im heissen Weg: Eine Anfrage mit fremdem Token nennt ihren
+   * Aussteller im Token, und genau ein Eintrag je Umgebung darf ihn tragen (die
+   * UNIQUE-Bedingung aus 0061 sorgt dafuer). Gesucht wird ueber den Aussteller
+   * und nicht ueber den Namen des Anbieters, weil das Token den Namen nicht
+   * kennt: Der Name ist eine Beschriftung von QKERN und keine Zusage des
+   * Ausstellers.
+   */
+  findThirdPartyProviderByIssuer(
+    scope: ProjectAuthScope,
+    issuer: string,
+  ): Promise<ProjectAuthThirdPartyProvider | null>;
+  /**
+   * Legt einen Anbieter an. Es gibt bewusst kein Gegenstueck zum Aendern:
+   * Warum, steht in Migration 0061.
+   */
+  createThirdPartyProvider(
+    scope: ProjectAuthScope,
+    provider: ProjectAuthThirdPartyDefinition & { id: string },
+    now: Date,
+  ): Promise<ProjectAuthThirdPartyProvider>;
+  /** Entfernt einen Anbieter. `false` heisst: in dieser Umgebung gab es ihn nicht. */
+  deleteThirdPartyProvider(scope: ProjectAuthScope, providerId: string): Promise<boolean>;
 }
 
 export class DuplicateProjectAuthIdentityError extends Error {
@@ -189,6 +225,8 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly oidcIdentities = new Map<string, ProjectAuthOidcIdentity>();
   private readonly settings = new Map<string, ProjectAuthSettings>();
   private readonly rateCounters = new Map<string, number>();
+  /** Je Eintrag der Scope daneben, weil ein Anbieter keine Scope-Felder traegt. */
+  private readonly thirdParty = new Map<string, { scope: ProjectAuthScope; provider: ProjectAuthThirdPartyProvider }>();
 
   async findUserByEmail(scope: ProjectAuthScope, email: string) {
     const user = [...this.users.values()].find((candidate) => sameScope(candidate, scope) && candidate.email === email);
@@ -495,6 +533,48 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     this.oidcIdentities.set(key, stored);
     return cloneOidcIdentity(stored);
   }
+
+  async listThirdPartyProviders(scope: ProjectAuthScope) {
+    return [...this.thirdParty.values()]
+      .filter((entry) => sameScope(entry.scope, scope))
+      .map((entry) => cloneThirdPartyProvider(entry.provider))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async findThirdPartyProviderByIssuer(scope: ProjectAuthScope, issuer: string) {
+    const entry = [...this.thirdParty.values()].find((candidate) =>
+      sameScope(candidate.scope, scope) && candidate.provider.issuer === issuer);
+    return entry ? cloneThirdPartyProvider(entry.provider) : null;
+  }
+
+  async createThirdPartyProvider(
+    scope: ProjectAuthScope,
+    provider: ProjectAuthThirdPartyDefinition & { id: string },
+    now: Date,
+  ) {
+    // Dieselben zwei Bedingungen wie in PostgreSQL: ein Name je Umgebung, ein
+    // Aussteller je Umgebung. Diese Fassung ist nicht die Wahrheit im Betrieb,
+    // aber sie soll dieselbe Antwort geben, sonst weicht ein Test hier von der
+    // Datenbank ab.
+    const clash = [...this.thirdParty.values()].some((candidate) =>
+      sameScope(candidate.scope, scope) &&
+      (candidate.provider.name === provider.name || candidate.provider.issuer === provider.issuer));
+    if (clash) throw new DuplicateProjectAuthIdentityError();
+    const stored: ProjectAuthThirdPartyProvider = {
+      id: provider.id, name: provider.name, issuer: provider.issuer, jwksUri: provider.jwksUri,
+      audiences: [...provider.audiences], subjectClaim: provider.subjectClaim,
+      roleClaim: provider.roleClaim, defaultRole: provider.defaultRole, createdAt: new Date(now),
+    };
+    this.thirdParty.set(provider.id, { scope: { ...scope }, provider: stored });
+    return cloneThirdPartyProvider(stored);
+  }
+
+  async deleteThirdPartyProvider(scope: ProjectAuthScope, providerId: string) {
+    const entry = this.thirdParty.get(providerId);
+    if (!entry || !sameScope(entry.scope, scope)) return false;
+    this.thirdParty.delete(providerId);
+    return true;
+  }
 }
 
 function sameScope(left: ProjectAuthScope, right: ProjectAuthScope): boolean {
@@ -585,4 +665,8 @@ function cloneMfaFactor(factor: ProjectAuthMfaFactor): ProjectAuthMfaFactor {
 
 function cloneOidcIdentity(identity: ProjectAuthOidcIdentity): ProjectAuthOidcIdentity {
   return { ...identity, createdAt: new Date(identity.createdAt), lastSignInAt: new Date(identity.lastSignInAt) };
+}
+
+function cloneThirdPartyProvider(provider: ProjectAuthThirdPartyProvider): ProjectAuthThirdPartyProvider {
+  return { ...provider, audiences: [...provider.audiences], createdAt: new Date(provider.createdAt) };
 }

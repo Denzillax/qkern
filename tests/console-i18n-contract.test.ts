@@ -37,6 +37,7 @@ import { wrappersTexts } from "@/lib/console/wrappers-texts";
 import { replicationTexts } from "@/lib/console/replication-texts";
 import { s3AccessTexts } from "@/lib/console/s3-access-texts";
 import { authHookTexts } from "@/lib/console/auth-hooks-texts";
+import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -165,6 +166,10 @@ async function consoleKeys(): Promise<string[]> {
   // Ausfall gilt, die Gruende einer Ablehnung und seine Ehrlichkeitssaetze
   // ueber t(variable).
   for (const text of authHookTexts()) keys.add(text);
+  // Auth -> Fremde Anbieter (2.80) zeigt den Unterschied zum OIDC-Weg, die
+  // geprueften Verfahren, die Obergrenze der Rolle, die Gruende einer Ablehnung
+  // und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authThirdPartyTexts()) keys.add(text);
   return [...keys];
 }
 

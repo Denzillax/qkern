@@ -25,6 +25,10 @@ import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
 import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functions";
 import type { ProjectAuthHookPort } from "@/lib/server/project-auth/hooks";
 import {
+  ProjectAuthThirdPartyKeySets,
+  type ProjectAuthThirdPartyKeyPort,
+} from "@/lib/server/project-auth/third-party-keys";
+import {
   parseProjectAuthLeakList,
   projectAuthBuiltInLeakList,
   PROJECT_AUTH_LEAK_ALGORITHMS,
@@ -42,6 +46,7 @@ export type ProjectAuthRuntimeDependencies = {
   oidcClient?: ProjectAuthOidcClient;
   audit?: ProjectAuthAuditSink;
   hooks?: ProjectAuthHookPort;
+  thirdPartyKeys?: ProjectAuthThirdPartyKeyPort;
 };
 
 /**
@@ -115,6 +120,12 @@ export function createProjectAuthServiceFromEnv(
     oidcClient: dependencies.oidcClient ?? new ProjectAuthOidcClient(env),
     audit,
     hooks: dependencies.hooks ?? projectAuthHookPortFromEnv(env),
+    // Der Weg zu den Schluesselsaetzen fremder Aussteller (2.80). Er braucht
+    // keine eigene Freischaltung: Ohne hinterlegten Anbieter wird er nie
+    // benutzt, und ein Anbieter wird nur eingetragen, wer ihn eintraegt. Er
+    // haelt seinen Zwischenspeicher im Prozess und gehoert darum zum Dienst und
+    // nicht in jede Anfrage.
+    thirdPartyKeys: dependencies.thirdPartyKeys ?? new ProjectAuthThirdPartyKeySets(),
     callbackBaseUrl,
     allowedRedirectOrigins,
     exposeDeliveryTokens: exposeTokens,

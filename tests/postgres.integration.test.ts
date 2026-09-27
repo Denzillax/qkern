@@ -61,7 +61,7 @@ import { authFailureRanking, authFailureShare } from "@/lib/console/auth-perform
 import { PROJECT_AUTH_AUDIT_ACTION_IDS } from "@/lib/console/auth-observability-texts";
 // Der erzwingbare zweite Faktor (2.52): echte Repository-, Audit- und
 // Token-Teile hinter dem echten Dienst.
-import { createHmac, generateKeyPairSync } from "node:crypto";
+import { createHmac, generateKeyPairSync, sign } from "node:crypto";
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
@@ -158,6 +158,13 @@ import { spawn } from "node:child_process";
 // Route benutzt, und dasselbe reine Modul, das die Ansicht anwendet.
 import { PostgresConsoleDisplaySettingsRepository } from "@/lib/server/auth/console-settings";
 import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
+import { NextRequest } from "next/server";
+// Fremde Anbieter (2.80): der echte Weg, den jede Data-API-Route nimmt, und der
+// echte Halter der Schluesselsaetze. Es gibt keinen zweiten Weg, ein fremdes
+// Token in einen Aufrufer zu verwandeln, und der Fall benutzt darum auch keinen.
+import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
+import { ProjectAuthThirdPartyKeySets } from "@/lib/server/project-auth/third-party-keys";
+import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -6865,6 +6872,368 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     await owner.query(`DELETE FROM project_auth_users
       WHERE organization_id = $1 AND project_id = $2`, [hookOrganization, hookProject]);
   }, 120_000);
+  it("(2.80) accepts a real foreign token through the Data API under row security and refuses the four forgeries", async () => {
+    // Fremde Anbieter (2.80) an einem Stueck, gegen die echte Datenbank: echtes
+    // Schluesselpaar, echtes Token, echte Zeile in
+    // project_auth_third_party_providers, echte Pruefung durch den Dienst, echte
+    // Lesung durch die generierte Data API unter der Zeilensicherheit.
+    //
+    // Echt ist alles, worauf es ankommt: die Tabelle aus Migration 0061, das
+    // PostgreSQL-Repository von Project Auth, der Audit-Sink in der Hash-Kette,
+    // das reine Pruefmodul, der Weg `projectApplicationPrincipal`, den die
+    // Data-API-Routen wirklich nehmen, die echte Projektdatenbank mit echter
+    // Policy und die echte `GeneratedDataApiService`.
+    //
+    // Gestellt ist genau eine Stelle: der Transport zum Schluesselsatz. Der
+    // gepruefte Weg (`createGuardedFetch`) verlangt https und eine oeffentlich
+    // erreichbare Adresse und kann darum im Zertifizierungsnetz keinen Server
+    // erreichen; die Adresspolicy selbst ist eigens zertifiziert. An seiner
+    // Stelle steht hier ein Abrufer, der antwortet wie ein Aussteller.
+    // Dieselbe Grenze zieht der Fall (2.77) beim Container.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.62 und 2.77: Jede
+    // Aenderung schreibt eine Audit-Zeile, und eine Organisation mit
+    // Audit-Zeilen laesst sich wegen audit_logs_organization_id_fkey nicht mehr
+    // loeschen. Weggeraeumt wird nur das eigene Schema.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const foreignOwner = randomUUID();
+    const foreignOrganization = randomUUID();
+    const foreignProject = randomUUID();
+    const schema = `thirdparty_${randomUUID().replaceAll("-", "_")}`;
+    const scope = {
+      organizationId: foreignOrganization, projectId: foreignProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [foreignOwner, `third-party-owner-${foreignOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Third Party 2.80', $2, $3)`,
+    [foreignOrganization, `third-party-${foreignOrganization}`, foreignOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Third Party 2.80', $3, 'test', 'ready', $4)`,
+    [foreignProject, foreignOrganization, `third-party-${foreignProject}`, foreignOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [foreignOrganization, foreignProject, `managed:${foreignProject}`]);
+
+    // Zwei echte Schluesselpaare: eines gehoert dem Aussteller, das andere
+    // niemandem, den QKERN kennt. Das zweite ist der Fall "richtig geformtes
+    // Token, falsch unterschrieben", und der ist nur mit einem zweiten echten
+    // Schluessel zu zeigen.
+    const issuerKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const strangerKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const publicPem = issuerKeys.publicKey.export({ type: "spki", format: "pem" }).toString();
+    const issuer = "https://aussteller-2-80.example.com/auth";
+    const audience = "qkern-app-2-80";
+    const jwksUri = "https://aussteller-2-80.example.com/.well-known/jwks.json";
+    const liveJwk = {
+      ...issuerKeys.publicKey.export({ format: "jwk" }),
+      kid: "live-2-80", alg: "RS256", use: "sig",
+    };
+    // Ein symmetrischer Eintrag mitten im Schluesselsatz. Er steht hier, weil
+    // die zweite Tuer gegen die HS256-Faelschung sonst unbelegt bliebe: Ein
+    // Token, das ein erlaubtes Verfahren nennt und auf diesen Schluessel zeigt,
+    // muss am Schluesseltyp fallen und nicht erst an der Unterschrift.
+    const symmetricJwk = { kty: "oct", k: Buffer.from(publicPem, "utf8").toString("base64url"), kid: "sym-2-80" };
+    let fetched = 0;
+    const keySets = new ProjectAuthThirdPartyKeySets({
+      fetchFn: (async (input: RequestInfo | URL) => {
+        expect(String(input)).toBe(jwksUri);
+        fetched += 1;
+        return new Response(JSON.stringify({ keys: [liveJwk, symmetricJwk] }), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }) as unknown as typeof fetch,
+    });
+
+    const signingKey = generateKeyPairSync("ed25519").privateKey;
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-80", privateKey: signingKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 9)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      thirdPartyKeys: keySets,
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const subject = `aussteller|${randomUUID()}`;
+    const stranger = `aussteller|${randomUUID()}`;
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // --- Zusage 1: service_role ist nicht eintragbar --------------------
+      //
+      // Zuerst, und mit eigenem Grund. Das ist die Entscheidung dieses
+      // Schnittes, und sie soll nicht als allgemeine Formablehnung
+      // durchgehen: Die Rolle gibt es, und sie ist hier verboten.
+      await expect(service.createThirdPartyProvider(scope, {
+        name: "zu-viel", issuer: "https://zu-viel.example.com", jwksUri,
+        audiences: [audience], defaultRole: "service_role",
+      }, { id: foreignOwner })).rejects.toMatchObject({
+        name: "ProjectAuthThirdPartyError", reason: "role_forbidden", field: "defaultRole",
+      });
+      // Und die Datenbank sagt dasselbe, auch ohne den Dienst.
+      await expect(auth.query(`INSERT INTO project_auth_third_party_providers
+        (id, organization_id, project_id, environment, name, issuer, jwks_uri, audiences, default_role)
+        VALUES ($1,$2,$3,$4,'direkt','https://direkt.example.com',$5,ARRAY[$6]::text[],'service_role')`,
+      [randomUUID(), ...[foreignOrganization, foreignProject, "development"], jwksUri, audience]))
+        .rejects.toMatchObject({ code: "23514" });
+      // Ein Aussteller mit Schrägstrich am Ende faellt mit eigenem Grund: Der
+      // Anspruch `iss` wird Zeichen fuer Zeichen verglichen.
+      await expect(service.createThirdPartyProvider(scope, {
+        name: "mit-schraegstrich", issuer: `${issuer}/`, jwksUri, audiences: [audience],
+      }, { id: foreignOwner })).rejects.toMatchObject({ reason: "issuer_trailing_slash" });
+
+      // --- Zusage 2: der Eintrag entsteht wirklich ------------------------
+      const stored = await service.createThirdPartyProvider(scope, {
+        name: "aussteller-2-80", issuer, jwksUri, audiences: [audience],
+        subjectClaim: "sub", roleClaim: "qkern_rolle", defaultRole: "authenticated",
+      }, { id: foreignOwner });
+      expect(stored.configured).toBe(true);
+      expect(stored.forbiddenRole).toBe("service_role");
+      expect(stored.roles).toEqual(["anon", "authenticated"]);
+      // Die Positivliste kommt aus dem Dienst und nicht aus diesem Fall. Was
+      // nicht darin steht, ist die Aussage: kein `none`, kein HS-Verfahren.
+      expect(stored.algorithms).not.toContain("none");
+      expect(stored.algorithms.some((entry) => entry.startsWith("HS"))).toBe(false);
+      expect(stored.algorithms).toContain("RS256");
+      const providerRow = await auth.query<{ default_role: string; audiences: string[] }>(
+        `SELECT default_role, audiences FROM project_auth_third_party_providers
+         WHERE organization_id = $1 AND project_id = $2 AND issuer = $3`,
+        [foreignOrganization, foreignProject, issuer]);
+      expect(providerRow.rows[0]).toMatchObject({ default_role: "authenticated", audiences: [audience] });
+      // Kein Recht zum Aendern, genau wie 0061 es sagt.
+      await expect(auth.query(
+        `UPDATE project_auth_third_party_providers SET jwks_uri = $1 WHERE issuer = $2`,
+        ["https://woanders.example.com/jwks", issuer])).rejects.toThrowError(/permission denied/i);
+
+      // --- Zusage 3: ein echtes Token wird angenommen ---------------------
+      const token = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: { iss: issuer, aud: audience, sub: subject, qkern_rolle: "authenticated", abteilung: "einkauf" },
+      });
+      const accepted = await service.verifyThirdPartyToken(scope, token);
+      expect(accepted.ok).toBe(true);
+      if (!accepted.ok) throw new Error("unerreichbar");
+      expect(accepted.identity).toMatchObject({ subject, role: "authenticated", issuer });
+      // Die eigenen Ansprueche des Ausstellers wandern mit, die von QKERN nicht.
+      expect(accepted.identity.claims).toEqual({ abteilung: "einkauf", qkern_rolle: "authenticated" });
+      expect(fetched).toBe(1);
+      // Der Schluesselsatz wird gehalten und nicht bei jeder Pruefung geholt.
+      await service.verifyThirdPartyToken(scope, token);
+      expect(fetched).toBe(1);
+
+      // --- Zusage 4: die vier Faelschungen fallen, und zwar mit Grund -----
+      //
+      // `alg: none` zweimal: einmal so, wie ein Angreifer es schreibt (leere
+      // Unterschrift), und einmal mit Muell an der Stelle der Unterschrift.
+      // Der zweite Fall ist der wichtige, denn nur er kommt bis zur Wahl des
+      // Verfahrens und belegt, dass sie aus der Positivliste kommt.
+      const unsigned = `${base64url({ alg: "none", typ: "JWT" })}.${base64url({
+        iss: issuer, aud: audience, sub: subject, exp: Math.floor(Date.now() / 1000) + 600,
+      })}.`;
+      await expect(service.verifyThirdPartyToken(scope, unsigned))
+        .resolves.toMatchObject({ ok: false, reason: "not_three_parts" });
+      const noneWithNoise = `${base64url({ alg: "none", typ: "JWT" })}.${base64url({
+        iss: issuer, aud: audience, sub: subject, exp: Math.floor(Date.now() / 1000) + 600,
+      })}.AAAA`;
+      await expect(service.verifyThirdPartyToken(scope, noneWithNoise))
+        .resolves.toMatchObject({ ok: false, reason: "algorithm_not_allowed" });
+
+      // Das falsche Publikum.
+      const wrongAudience = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: { iss: issuer, aud: "eine-andere-app", sub: subject },
+      });
+      await expect(service.verifyThirdPartyToken(scope, wrongAudience))
+        .resolves.toMatchObject({ ok: false, reason: "audience_mismatch" });
+
+      // Das abgelaufene Token. Weit jenseits der Toleranz von 30 Sekunden,
+      // damit der Fall nicht an der Toleranz haengt, die er nicht prueft.
+      const expired = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: {
+          iss: issuer, aud: audience, sub: subject,
+          iat: Math.floor(Date.now() / 1000) - 7_200, exp: Math.floor(Date.now() / 1000) - 3_600,
+        },
+      });
+      await expect(service.verifyThirdPartyToken(scope, expired))
+        .resolves.toMatchObject({ ok: false, reason: "expired" });
+
+      // Die Unterschrift mit dem falschen Schluessel. Derselbe `kid`, damit
+      // der Fall wirklich an der Rechnung scheitert und nicht daran, dass
+      // kein Schluessel gefunden wurde.
+      const forged = foreignToken({
+        privateKey: strangerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: { iss: issuer, aud: audience, sub: subject },
+      });
+      await expect(service.verifyThirdPartyToken(scope, forged))
+        .resolves.toMatchObject({ ok: false, reason: "signature_invalid" });
+
+      // --- Zusage 5: die HS256-Faelschung, beide Tueren -------------------
+      //
+      // Erste Tuer: `HS256` steht nicht auf der Positivliste. Die Unterschrift
+      // ist ein echtes HMAC mit dem oeffentlichen Schluessel des Ausstellers
+      // als Geheimnis, also genau die Faelschung, um die es geht.
+      const hsHeader = base64url({ alg: "HS256", typ: "JWT", kid: "live-2-80" });
+      const hsClaims = base64url({
+        iss: issuer, aud: audience, sub: subject, exp: Math.floor(Date.now() / 1000) + 600,
+      });
+      const hsToken = `${hsHeader}.${hsClaims}.${createHmac("sha256", publicPem)
+        .update(`${hsHeader}.${hsClaims}`).digest("base64url")}`;
+      await expect(service.verifyThirdPartyToken(scope, hsToken))
+        .resolves.toMatchObject({ ok: false, reason: "algorithm_not_allowed" });
+      // Zweite Tuer: ein erlaubtes Verfahren, aber der Schluessel im
+      // Schluesselsatz ist symmetrisch. Der Schluesseltyp muss zum Verfahren
+      // passen, sonst waere ein `oct`-Eintrag ein Geheimnis, das jeder kennt.
+      const symmetricPointer = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "sym-2-80" },
+        claims: { iss: issuer, aud: audience, sub: subject },
+      });
+      await expect(service.verifyThirdPartyToken(scope, symmetricPointer))
+        .resolves.toMatchObject({ ok: false, reason: "key_type_mismatch" });
+
+      // --- Zusage 6: service_role kommt auch aus dem Token nicht heraus ---
+      const wantsService = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: { iss: issuer, aud: audience, sub: subject, qkern_rolle: "service_role" },
+      });
+      await expect(service.verifyThirdPartyToken(scope, wantsService))
+        .resolves.toMatchObject({ ok: false, reason: "role_claim_not_allowed" });
+      // Und ein unbekannter Aussteller findet gar keinen Eintrag.
+      const unknownIssuer = foreignToken({
+        privateKey: issuerKeys.privateKey,
+        header: { alg: "RS256", typ: "JWT", kid: "live-2-80" },
+        claims: { iss: "https://niemand.example.com", aud: audience, sub: subject },
+      });
+      await expect(service.verifyThirdPartyToken(scope, unknownIssuer))
+        .resolves.toMatchObject({ ok: false, reason: "no_provider" });
+
+      // --- Zusage 7: die echte Lesung durch die Data API unter RLS --------
+      //
+      // Die Policy nennt beides: den Anspruch `sub` und den Anspruch `iss` aus
+      // `request.jwt.claims`. Damit prueft dieser Fall nicht nur, dass etwas
+      // gelesen wird, sondern dass genau die Ansprueche des fremden Tokens auf
+      // demselben Weg ankommen wie die eines eigenen.
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".fremde_notizen (
+        id uuid PRIMARY KEY, besitzer text NOT NULL, quelle text NOT NULL, inhalt text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".fremde_notizen ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY eigene_quelle ON "${schema}".fremde_notizen
+        FOR SELECT TO ${expectedRole} USING (
+          besitzer = current_setting('request.jwt.claim.sub', true) AND
+          quelle = (current_setting('request.jwt.claims', true)::jsonb ->> 'iss'))`);
+      const mine = randomUUID();
+      await owner.query(`INSERT INTO "${schema}".fremde_notizen (id, besitzer, quelle, inhalt) VALUES
+        ($1, $2, $3, 'meine beim fremden Anbieter'),
+        ($4, $2, 'https://qkern.test/eigen', 'dasselbe Subjekt, andere Quelle'),
+        ($5, $6, $3, 'fremdes Subjekt, gleiche Quelle')`,
+      [mine, subject, issuer, randomUUID(), randomUUID(), stranger]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      // Der Weg, den die Data-API-Routen wirklich nehmen. Gestellt ist nur der
+      // Key-Dienst: Welcher Public Key gueltig ist, ist eigens zertifiziert,
+      // und der Fall soll nicht davon abhaengen. Dass ein Key **verlangt**
+      // wird, prueft er gleich danach.
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: foreignOrganization, projectId: foreignProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) => secret === "qk_pub_2_80" ? keyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const request = new NextRequest("https://qkern.test/api/v1/projects/x/environments/development/data", {
+        headers: { authorization: `Bearer ${token}`, "x-qkern-key": "qk_pub_2_80" },
+      });
+      const principal = await projectApplicationPrincipal(
+        request, { projectId: foreignProject, environment: "development" }, keys, service,
+      );
+      expect(principal).not.toBeNull();
+      expect(principal!.role).toBe("authenticated");
+      expect(principal!.subject).toBe(subject);
+      // Der Aktor sagt, dass hier kein Konto steht, und nennt keine Nutzer-ID.
+      expect(principal!.actorRef.startsWith("project-auth-third-party:aussteller-2-80:")).toBe(true);
+      // Kein erfundenes aal, keine erfundene Sitzung.
+      expect(principal!.claims.assurance).toBeUndefined();
+      expect(principal!.claims.sessionId).toBeUndefined();
+      expect(principal!.claims.issuer).toBe(issuer);
+
+      // Ohne Public Key gibt es diesen Weg nicht, auch nicht mit gueltigem Token.
+      await expect(projectApplicationPrincipal(
+        new NextRequest("https://qkern.test/api/v1/projects/x/environments/development/data", {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        { projectId: foreignProject, environment: "development" }, keys, service,
+      )).rejects.toThrowError();
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${foreignProject}` }) };
+      const generated = new GeneratedDataApiService(targets, connections);
+      const rows = await generated.listRows(
+        { organizationId: principal!.organizationId, actorRef: principal!.actorRef, claims: principal!.claims },
+        { projectId: foreignProject, environment: "development" },
+        { schema, table: "fremde_notizen" },
+      );
+      // Genau eine Zeile: die mit demselben Subjekt **und** derselben Quelle.
+      // Die anderen zwei belegen, dass beide Ansprueche wirklich wirken und
+      // nicht bloss einer davon gesetzt ist.
+      expect(rows.rows.map((row) => row.inhalt)).toEqual(["meine beim fremden Anbieter"]);
+
+      // Und eine abgewiesene Faelschung kommt gar nicht bis zur Datenbank.
+      await expect(projectApplicationPrincipal(
+        new NextRequest("https://qkern.test/api/v1/projects/x/environments/development/data", {
+          headers: { authorization: `Bearer ${forged}`, "x-qkern-key": "qk_pub_2_80" },
+        }),
+        { projectId: foreignProject, environment: "development" }, keys, service,
+      )).rejects.toThrowError();
+
+      // --- Zusage 8: das Entfernen nimmt die Erlaubnis zurueck ------------
+      const after = await service.deleteThirdPartyProvider(
+        scope, stored.providers[0].id, { id: foreignOwner },
+      );
+      expect(after.providers).toEqual([]);
+      expect(after.configured).toBe(false);
+      // Dasselbe Token, das eben noch gelesen hat, findet jetzt keinen Eintrag.
+      await expect(service.verifyThirdPartyToken(scope, token))
+        .resolves.toMatchObject({ ok: false, reason: "no_provider" });
+
+      // --- Zusage 9: die Spur traegt kein Token --------------------------
+      const auditRows = await owner.query<{ action: string; metadata: string }>(
+        `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+          WHERE organization_id = $1`, [foreignOrganization]);
+      const actions = auditRows.rows.map((row) => String(row.action));
+      expect(actions).toContain("project_auth.third_party_provider.created");
+      expect(actions).toContain("project_auth.third_party_provider.removed");
+      const serialised = JSON.stringify(auditRows.rows);
+      expect(serialised).not.toContain(token);
+      expect(serialised).not.toContain(subject);
+      expect(serialised).not.toContain("service_role");
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
 });
 
 /**
@@ -6915,4 +7284,32 @@ function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInpu
     vault: { connected: true },
     ...overrides,
   };
+}
+
+
+/**
+ * Ein echtes Token eines fremden Ausstellers (2.80), von aussen gebaut.
+ *
+ * Der Fall darf das Token nicht von QKERN bauen lassen, sonst prueft er die
+ * Pruefung gegen ihren eigenen Aufbau. Gebaut wird darum hier, mit
+ * `node:crypto` und nichts weiter, so wie ein fremder Dienst es tun wuerde.
+ *
+ * `exp` und `iat` haben eine Vorgabe, weil fast jeder Fall ein gueltiges Token
+ * will; wer den Ablauf prueft, gibt sie selbst an und ueberschreibt sie damit.
+ */
+function foreignToken(input: {
+  privateKey: import("node:crypto").KeyObject;
+  header: Record<string, unknown>;
+  claims: Record<string, unknown>;
+}): string {
+  const seconds = Math.floor(Date.now() / 1000);
+  const encodedHeader = base64url(input.header);
+  const encodedClaims = base64url({ iat: seconds, exp: seconds + 600, ...input.claims });
+  const signature = sign("RSA-SHA256", Buffer.from(`${encodedHeader}.${encodedClaims}`, "utf8"), input.privateKey);
+  return `${encodedHeader}.${encodedClaims}.${signature.toString("base64url")}`;
+}
+
+/** Ein JSON-Teil eines JWT, so wie er im Token steht. */
+function base64url(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
