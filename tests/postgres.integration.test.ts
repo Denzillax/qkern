@@ -4801,6 +4801,17 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(JSON.stringify(afterFirst[0].payload),
         "die Ladung traegt die Ausgabe des Containers").not.toContain(containerOutput);
       // Die Position liegt dauerhaft in der Control Plane, nicht im Prozess.
+      //
+      // Gewartet wird, und zwar aus einem Grund im Produkt: Der Sammler reiht
+      // erst ein und haelt danach die Position fest, in zwei Anweisungen und
+      // absichtlich in dieser Reihenfolge (lieber eine Ladung doppelt als eine
+      // verlorene). Zwischen beiden liegt ein Fenster. Ein Fall, der direkt
+      // nach der Ladung nachsieht, prueft darum nicht das Produkt, sondern wer
+      // schneller war; zweimal ist er genau daran gescheitert. Die Erwartung
+      // bleibt dieselbe, nur ihr Zeitpunkt wird ausgesprochen.
+      await until("Die festgehaltene Position des Drains", 90_000,
+        async () => (await cursors())[0]?.forwarded === true,
+        () => `Ausgabe: ${first.output().slice(-800)}`);
       expect((await cursors())[0], "der Prozess hat seine Position nicht festgehalten")
         .toMatchObject({ forwarded: true });
 
