@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -66,7 +66,6 @@ export const PLACEHOLDERS = {
   "branches-merge": { label: "Merge-Anfragen", supabase: "Branches → Merge Requests", backend: "fehlt", note: "Änderungen eines Zweigs prüfen und übernehmen. Change Sets und Freigaben decken den Prüfschritt schon ab." },
   // Einstellungen
   "set-compute": { label: "Compute und Disk", supabase: "Project Settings → Compute and Disk", backend: "fehlt", note: "Grösse der Instanz und der Platte. Die Provisionierung ist noch nicht verbunden." },
-  "set-infrastructure": { label: "Infrastruktur", supabase: "Project Settings → Infrastructure", backend: "fehlt", note: "Region, Postgres-Version, Lese-Replikate." },
   "set-integrations": { label: "Integrationen", supabase: "Project Settings → Integrations", backend: "fehlt", note: "Verknüpfte Dienste wie Git-Hosting oder Deploy-Plattformen." },
   "set-addons": { label: "Add-ons", supabase: "Project Settings → Add Ons", backend: "fehlt", note: "Zusatzleistungen wie eigene Domain oder mehr Backups." },
   "set-webhooks": { label: "Dashboard-Webhooks", supabase: "Project Settings → Webhooks", backend: "fehlt", note: "Benachrichtigungen bei Ereignissen des Projekts selbst." },
@@ -122,7 +121,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "branches", label: "Branches", icon: GitBranch, children: [ph("branches"), ph("branches-merge")] },
   { id: "settings", label: "Einstellungen", icon: Settings, children: [
-    { id: "settings", label: "Allgemein" }, ph("set-compute"), ph("set-infrastructure"), ph("set-integrations"), ph("set-addons"),
+    { id: "settings", label: "Allgemein" }, ph("set-compute"), { id: "set-infrastructure", label: "Infrastruktur" }, ph("set-integrations"), ph("set-addons"),
     { id: "set-api", label: "Data API" }, { id: "set-api-keys", label: "API-Keys" }, { id: "set-jwt", label: "JWT-Schlüssel" }, { id: "set-log-drains", label: "Log-Drains" }, ph("set-webhooks"), { id: "set-billing", label: "Abrechnung" }, { id: "set-dashboard", label: "Dashboard" },
   ] },
 ];

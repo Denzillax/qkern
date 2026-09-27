@@ -28,6 +28,7 @@ import { logDrainTexts } from "@/lib/console/log-drains";
 import { displaySettingsTexts } from "@/lib/console/display-settings-texts";
 import { logExplorerTexts } from "@/lib/console/log-explorer";
 import { queryPerformanceTexts } from "@/lib/console/query-performance-texts";
+import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -124,6 +125,9 @@ async function consoleKeys(): Promise<string[]> {
   // Berichte -> Abfrage-Leistung (2.67) zeigt Zeiteinheiten und seine
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of queryPerformanceTexts()) keys.add(text);
+  // Einstellungen -> Infrastruktur (2.67) zeigt Zustaende, Bindungen, was es
+  // nicht gibt und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of infrastructureTexts()) keys.add(text);
   return [...keys];
 }
 

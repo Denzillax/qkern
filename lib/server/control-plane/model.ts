@@ -42,6 +42,24 @@ export type SetAutomationPolicyInput = {
   emergencyStop: boolean;
 };
 
+/**
+ * Eine Umgebung eines Projekts, wie `project_environments` sie fuehrt (2.68).
+ *
+ * `databaseInstanceRef` ist die undurchsichtige Kennung, die der
+ * Provisionierer vergibt (`managed:…`), oder eine wartende Marke
+ * (`pending:…`). Sie ist keine Adresse: weder Host noch Port noch Passwort
+ * stehen darin, und der Katalog der Verbindungen gibt sie auch nicht her.
+ * Genau deshalb darf sie in der Console stehen.
+ */
+export type ProjectEnvironmentBinding = {
+  environment: Environment;
+  databaseInstanceRef: string;
+  /** false, solange die Referenz wartet und auf keine Datenbank zeigt */
+  bound: boolean;
+  /** null, wo die Quelle keinen Zeitpunkt fuehrt (der Speicher-Dienst) */
+  createdAt: string | null;
+};
+
 export type ControlPlaneSnapshot = {
   projects: Project[];
   changeSets: ChangeSet[];
@@ -54,6 +72,11 @@ export interface ControlPlaneService {
   listProjects(context: ControlPlaneContext): Promise<Project[]>;
   getProject(context: ControlPlaneContext, projectId: string): Promise<Project>;
   getProjectEnvironment(context: ControlPlaneContext, projectId: string, environment: Environment): Promise<Project>;
+  /** Alle Umgebungen eines Projekts mit ihrer Datenbankreferenz (2.68), nur lesend. */
+  listProjectEnvironments(
+    context: ControlPlaneContext,
+    projectId: string,
+  ): Promise<ProjectEnvironmentBinding[]>;
   /** Internal opaque target lookup. Connection strings never cross this boundary. */
   getProjectDatabaseTarget(
     context: ControlPlaneContext,
