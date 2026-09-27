@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle13-local-run1.log",
+  "commit": "65d752924bc2444284049497b1fc5b6348e2cab3",
+  "commitSubject": "test: Der GraphQL-Fall behauptet keine Zeilenordnung mehr",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "323 passed | 38 skipped (361)",
+  "tests": "2247 passed | 301 skipped (2548)",
+  "passed": 2247,
+  "failed": 0,
+  "skipped": 301,
+  "images": []
+}

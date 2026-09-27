@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.60.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.61.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -230,7 +230,32 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.60.0`
+- Paketversion: `2.61.0`
+- Neuester Slice: 2.61 Ein Ablauf, eine Sprache, drei ehrliche Antworten.
+  **`auth-oauth-server`** ist echt, Migration `0062`: genau ein Ablauf
+  (Authorization Code mit PKCE), drei Bereiche, Token immer mit der Rolle
+  `authenticated`. Die Grenze steht als **Abwesenheit**: Es gibt weder am
+  Client noch am Token eine Spalte fuer eine Rolle. QKERN schickt selbst keinen
+  302; die Zustimmung ist ein POST mit JSON-Antwort.
+  **`int-graphql`** ist echt: lesend, ohne fremde Bibliothek, auf der
+  vorhandenen Data API. Was fehlt, ist mehr als was da ist, und jede Auslassung
+  hat einen eigenen Ablehnungsgrund. Die Grenzen greifen **vor** der
+  Verbindung, und jeder Alias zaehlt einzeln.
+  **`compute-logs`, `logs-api`, `logs-pooler`** sind echte Seiten, die sagen,
+  dass es ihr Log nicht gibt, und warum: In der Sandbox ist der Standardkanal
+  die JSON-Leitung zum Container, es gibt keine Middleware, und es gibt keinen
+  Pooler.
+
+  **Drei Dinge fuer den naechsten Agenten.** Erstens: Der Vertrag
+  `tests/console-missing-log-views-contract` prueft nicht, dass die Saetze
+  dastehen, sondern dass sie **stimmen**; wer ein viertes zaehlendes Modul
+  anschliesst, laesst ihn fallen, und das ist Absicht. Zweitens: Eine
+  Zusicherung auf die **erste** Zeile einer Abfrage ohne `orderBy` behauptet
+  eine Ordnung; der GraphQL-Fall ist genau daran gefallen. Drittens: Beim
+  Zusammenfuehren zweier Zweige, die beide einen Fall anhaengen, wird der Block
+  an der Kopfzeile des naechsten Falls geschnitten, nicht an einer
+  Klammerbilanz: Ein Fall mit GraphQL-Schnipseln hat unbalancierte Klammern im
+  Text. Im Browser nicht gesehen
 - Neuester Slice: 2.60 Anmelden ohne Passwort, vertrauen mit Grenze.
   **`auth-passkeys`** ist echt, Migration `0060`: WebAuthn fuer die
   Projekt-Anmeldung, ohne fremde Bibliothek, nur `node:crypto`. Die

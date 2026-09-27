@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle13-run1.log",
+  "commit": "65d752924bc2444284049497b1fc5b6348e2cab3",
+  "commitSubject": "test: Der GraphQL-Fall behauptet keine Zeilenordnung mehr",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 62,
+  "testFiles": "31 passed (31)",
+  "tests": "217 passed (217)",
+  "passed": 217,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -1702,3 +1702,16 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-27/welle12-local-run1.log` | Vitest lokal (Windows) | 2213 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-27/welle12-local-run2.log` | Vitest lokal (Windows) | 2213 bestanden, exit 0, mit `--maxWorkers=3` |
 
+## Läufe zu Release 2.61 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle13-run1.log` | PostgreSQL 17 | 217 von 217, exit 0 |
+| `2026-09-27/welle13-run2.log` | PostgreSQL 17 | 217 von 217, exit 0, Wiederholung |
+| `2026-09-27/welle13-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-27/welle13-mutation-oauth.log` | Mutation: ein verbrauchter Code kommt noch einmal durch | **216 von 217, exit 1 – absichtlich** |
+| `2026-09-27/welle13-mutation-graphql.log` | Mutation: Aliasse zählen nicht mit | **216 von 217, exit 1 – absichtlich** |
+| `2026-09-27/welle13-mutation-honestlogs.log` | Mutation: ein viertes zählendes Modul | **17 von 18, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle13-local-run1.log` | Vitest lokal (Windows) | 2247 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-27/welle13-local-run2.log` | Vitest lokal (Windows) | 2247 bestanden, exit 0, mit `--maxWorkers=3` |
+

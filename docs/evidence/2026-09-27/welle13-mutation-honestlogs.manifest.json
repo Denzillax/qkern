@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: ein viertes zaehlendes Modul",
+  "log": "welle13-mutation-honestlogs.log",
+  "commit": "65d752924bc2444284049497b1fc5b6348e2cab3",
+  "commitSubject": "test: Der GraphQL-Fall behauptet keine Zeilenordnung mehr",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 17 passed (18)",
+  "passed": 17,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

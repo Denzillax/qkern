@@ -6086,3 +6086,56 @@ Nicht erbracht: Keine Obergrenze fuer die Laufzeit eines fremden Tokens. Der
 Transport zum Schluesselsatz ist im Fall gestellt. Kein Loeschweg fuer
 Administratoren, wenn jemand sein einziges Geraet verliert. Die Console kann
 keinen Passkey einrichten. Im Browser nicht gesehen.
+
+## Welle dreizehn (2.61): ein Ablauf, eine Sprache, drei ehrliche Antworten
+
+Fuenf Platzhalter weniger, und drei davon werden zu Seiten, die zuerst sagen,
+dass es das Versprochene nicht gibt.
+
+Der OAuth-Server haelt genau einen Ablauf, Authorization Code mit PKCE, und
+laesst alles andere weg. Der Code ist einmalig, sechzig Sekunden gueltig, an
+Client, Ziel, Pruefsumme und Nutzer gebunden, und wird in **einer** Anweisung
+gefunden und verbraucht, bevor irgendetwas anderes geprueft wird. Eine zweite
+Tuer haelt dagegen: Die Kennung des Codes ist in der Token-Tabelle eindeutig.
+Ein Token bekommt immer die Rolle `authenticated`, und die Grenze steht als
+Abwesenheit: Es gibt weder am Client noch am Token eine Spalte fuer eine Rolle,
+sie wird beim Pruefen gesetzt statt gelesen. QKERN schickt selbst keinen 302;
+die Zustimmung ist ein POST und antwortet mit JSON.
+
+GraphQL laesst mehr weg als es kann, und das ist der Punkt: Mutationen,
+Subscriptions, Fragmente, Variablen, Direktiven, Introspektion, Beziehungen,
+Views und Aggregate fehlen, jedes mit eigenem Ablehnungsgrund. Ohne Fragmente
+gibt es auch keine Fragment-Rekursion zu begrenzen. Die Grenzen greifen, bevor
+eine Verbindung aufgeht, und jeder Alias zaehlt einzeln; die Mutationsprobe
+zaehlt sie nicht mit und faellt.
+
+Die drei Log-Seiten sind der Schnitt, bei dem die Pruefung die eigentliche
+Arbeit war. Die Ausgabe einer Function fehlt nicht "noch": In der Sandbox ist
+der Standardkanal gar kein Ausgabekanal, sondern die JSON-Leitung zwischen
+Host und Container, der Fehlerkanal wird nur gezaehlt und bei 8 KiB gekappt,
+und der Container laeuft mit `--rm`. Beim API-Gateway fehlt nicht das Log,
+sondern der Rand: Es gibt keine Middleware. Beim Pooler gibt es keinen Pooler,
+und die vermutete Auslastung ist nicht erreichbar, weil die Zaehler des
+Treibers hinter der Poolschnittstelle liegen.
+
+Dabei fiel ein Fehler in **bestehendem** Text auf: Die Data-API-Seite nannte
+sechs Module, die unter den API-Anfragen mitzaehlen; nachgezaehlt sind es drei.
+Der Satz war in die beruhigende Richtung falsch. Der Vertrag prueft seither
+nicht, dass die Saetze dastehen, sondern dass sie stimmen.
+
+Zwei Nachtraege zum Verfahren. Eine Mutationsprobe hat einen zweiten Fall
+mitgerissen, und der zweite lag falsch: Der GraphQL-Fall verglich die Werte der
+ersten Zeile mit einer festen Zahl und behauptete damit eine Ordnung, die die
+Abfrage nicht verlangt. Er prueft jetzt je Zeile und ohne Annahme ueber die
+Reihenfolge, und die Probe ist wiederholt worden, bis nur noch der gemeinte
+Fall fiel. Und ein Fall lag unfertig in einem Arbeitsbaum; er ist als (2.85)
+uebernommen worden und belegt, dass die dauerhafte Position einen Neustart
+ueberlebt.
+
+Checkpoint `2.61.0` am 27. September 2026: PostgreSQL 17 mit 217 von 217,
+Mailpit und Dex mit 7 von 7, beide exit 0; Lokal 2247 bestanden, 0
+fehlgeschlagen, zweimal reproduziert mit `--maxWorkers=3`.
+
+Nicht erbracht: Keine Zustimmungsseite von QKERN. Kein Aufraeumer fuer
+abgelaufene Codes und Token. Widerruf nur je Client. Views bleiben in GraphQL
+aussen vor. Im Browser nicht gesehen.

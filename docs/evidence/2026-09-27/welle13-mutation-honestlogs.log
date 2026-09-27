@@ -1,0 +1,39 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-missing-log-views-contract.test.ts (18 tests | 1 failed) 82ms
+     × names exactly the modules that really count a request 57ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-missing-log-views-contract.test.ts > console missing log views contract > names exactly the modules that really count a request
+AssertionError: expected [ 'generated_data_api', …(3) ] to deeply equal [ 'generated_data_api', …(2) ]
+
+- Expected
++ Received
+
+  [
+    "generated_data_api",
+    "project_queues",
+    "project_storage",
++   "realtime",
+  ]
+
+ ❯ tests/console-missing-log-views-contract.test.ts:218:33
+    216|     };
+    217|     await walk("lib/server");
+    218|     expect([...sources].sort()).toEqual(["generated_data_api", "projec…
+       |                                 ^
+    219|     // Die Seite nennt dieselben drei und behauptet keine weiteren.
+    220|     const view = await source(GATEWAY_VIEW);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 passed (18)
+   Start at  23:32:14
+   Duration  648ms (transform 311ms, setup 0ms, import 427ms, tests 82ms, environment 0ms)
+
+
+EXIT=1
