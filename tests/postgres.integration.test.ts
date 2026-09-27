@@ -2418,7 +2418,21 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(serialised).not.toContain("leaks.txt");
     // Und die Anzahl aus der Listendatei taucht nirgends auf: Eine Ablehnung
     // sagt nie, wie oft ein Passwort vorkommt.
-    expect(serialised).not.toContain("4711");
+    //
+    // Geprueft wird das an den Werten und nicht an der Zeichenkette. Die
+    // Suche nach "4711" im JSON hat einmal angeschlagen, und zwar in einer
+    // zufaelligen Kennung: Eine UUID hat 32 Hex-Stellen, und vier davon
+    // treffen irgendwann jede vierstellige Zahl. Der Fall haette dann eine
+    // Undichtigkeit gemeldet, die es nicht gab. Die Werte zu lesen ist auch
+    // die schaerfere Probe: Sie faellt auch dort, wo die Zahl als Zahl und
+    // nicht als Text stuende.
+    const metadataValues = (value: unknown): unknown[] =>
+      value !== null && typeof value === "object"
+        ? Object.values(value as Record<string, unknown>).flatMap(metadataValues)
+        : [value];
+    const allValues = page.events.flatMap((event) => metadataValues(event.metadata));
+    expect(allValues.filter((value) => value === 4711 || value === "4711"),
+      "eine Zeile traegt die Haeufigkeit aus der Listendatei").toEqual([]);
 
     // Aufgeraeumt wird nur, was das Produkt loescht: die App-Nutzer. Ihre
     // Token und Sitzungen haengen per ON DELETE CASCADE daran. Organisation,

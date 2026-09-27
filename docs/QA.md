@@ -6034,3 +6034,55 @@ Nicht erbracht: Ein S3-Paar oeffnet nichts, und es gibt keine Rotation. Der
 Container laeuft nach Ablauf der Hook-Frist weiter. Der Verb-Vertrag prueft nur
 Exporte am Zeilenanfang. Die CORS-Vorfluege stehen mit Grund draussen. Im
 Browser nicht gesehen.
+
+## Welle zwoelf (2.60): anmelden ohne Passwort, vertrauen mit Grenze
+
+Vier Platzhalter weniger, und zwei davon ersetzt eine Seite, die vor allem
+sagt, was QKERN nicht hat.
+
+Die Passkeys sind der Schnitt, bei dem die Trennung zwischen "geprueft" und
+"geglaubt" den Wert ausmacht. Geprueft wird: Die Herausforderung wird in der
+Datenbank verbraucht, mit einem Schreibzugriff, der nur bei einem leeren Feld
+setzt und nur dann eine Zeile zurueckgibt, also einmalig auch bei zwei
+gleichzeitigen Anfragen. Die Signatur ueber `authenticatorData` und den Hash
+der Client-Daten gegen den abgelegten Schluessel. `type`, `challenge`,
+`origin` und `crossOrigin`, dazu der Hash der Domaene genau jener Herkunft.
+Der Zaehler, geschrieben mit dem gelesenen Stand in der Bedingung, bevor eine
+Sitzung entsteht.
+
+Geglaubt wird die Attestation, weil es bei der verbreiteten Form keine
+pruefbare Aussage gibt; ab der ersten Anmeldung wird gerechnet. Nicht gebaut
+sind Verfahren ausser ES256, Passkeys ueber Unterdomaenen und die
+Benutzerbestaetigung als zweiter Faktor. Jede dieser Auslassungen steht als
+Satz auf der Seite.
+
+Die Sitzung entsteht auf demselben Weg wie bei einer Passwortanmeldung, also
+laufen der Hook `sign_in` aus 2.59, die MFA-Erzwingung und die Grenzen je
+Zeitfenster mit. Es gibt keinen zweiten Weg zur Sitzung, und das ist die
+Zusage, die den Schnitt klein gehalten hat.
+
+Bei den fremden Anbietern gibt eine einzige Entscheidung den Ausschlag: Ein
+Token eines fremden Ausstellers kommt hoechstens als `authenticated` an, nie
+als `service_role`. Diese Rolle umgeht in der Data API jede Policy, und wer
+sie einem Aussteller gibt, den QKERN nicht kontrolliert, hat die
+Zeilensicherheit an dessen Registrierungsseite delegiert. Die Grenze steht
+dreimal: im reinen Modul, als `CHECK` in 0061 und in der Eingangspruefung der
+Data API. Das Signaturverfahren kommt aus der Positivliste und aus dem
+Schluesseltyp, nie aus dem Header; ein `alg: none` ist damit erledigt, bevor
+ein Schluessel gesucht wird.
+
+Zwei Fehler hat erst der Lauf gegen die echte Datenbank gefunden, nicht der
+Entwurf. PostgreSQL erlaubt in einem regulaeren Ausdruck hoechstens 255
+Wiederholungen, die Pruefung in der Migration war also gar kein gueltiges
+Muster. Und eine Zusicherung war in einem von vier Laeufen falsch, weil ein
+Schluessel im DER-Format seinen einen Teil im Klartext traegt und die gesuchte
+Zeichenkette je nach erstem Byte des anderen woertlich darin steht.
+
+Checkpoint `2.60.0` am 27. September 2026: PostgreSQL 17 mit 214 von 214,
+Mailpit und Dex mit 7 von 7, beide exit 0; Lokal 2213 bestanden, 0
+fehlgeschlagen, zweimal reproduziert mit `--maxWorkers=3`.
+
+Nicht erbracht: Keine Obergrenze fuer die Laufzeit eines fremden Tokens. Der
+Transport zum Schluesselsatz ist im Fall gestellt. Kein Loeschweg fuer
+Administratoren, wenn jemand sein einziges Geraet verliert. Die Console kann
+keinen Passkey einrichten. Im Browser nicht gesehen.

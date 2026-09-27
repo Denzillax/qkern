@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der Ankunftszeitpunkt kommt aus der Anlage",
+  "log": "welle12-mutation-branches.log",
+  "commit": "c958241cb39093c27baab173a022178de761477a",
+  "commitSubject": "merge: Fremde Anbieter aus slice/thirdparty",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 61,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 213 passed (214)",
+  "passed": 213,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

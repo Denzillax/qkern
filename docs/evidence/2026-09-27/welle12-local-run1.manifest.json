@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle12-local-run1.log",
+  "commit": "c958241cb39093c27baab173a022178de761477a",
+  "commitSubject": "merge: Fremde Anbieter aus slice/thirdparty",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "320 passed | 38 skipped (358)",
+  "tests": "2213 passed | 298 skipped (2511)",
+  "passed": 2213,
+  "failed": 0,
+  "skipped": 298,
+  "images": []
+}

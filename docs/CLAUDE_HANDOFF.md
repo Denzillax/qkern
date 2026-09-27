@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.59.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.60.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -199,7 +199,32 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.59.0`
+- Paketversion: `2.60.0`
+- Neuester Slice: 2.60 Anmelden ohne Passwort, vertrauen mit Grenze.
+  **`auth-passkeys`** ist echt, Migration `0060`: WebAuthn fuer die
+  Projekt-Anmeldung, ohne fremde Bibliothek, nur `node:crypto`. Die
+  Herausforderung wird in der Datenbank verbraucht (ein UPDATE, das nur bei
+  `NULL` setzt und nur dann eine Zeile zurueckgibt), der Zaehler wird mit dem
+  gelesenen Stand im WHERE geschrieben, und die Sitzung entsteht in
+  `beginAuthenticatedSession` -- es gibt **keinen** zweiten Weg zur Sitzung,
+  also laufen Hook, MFA-Erzwingung und Grenzen mit. Was **nicht** geprueft
+  wird, steht als Satz auf der Seite: Attestation, Verfahren ausser ES256,
+  Unterdomaenen, Benutzerbestaetigung als zweiter Faktor.
+  **`auth-third-party`** ist echt, Migration `0061`: Ein Token eines fremden
+  Ausstellers kommt hoechstens als `authenticated` an, **nie** als
+  `service_role`, und die Grenze steht dreimal (reines Modul, `CHECK` in 0061,
+  Eingangspruefung der Data API). Das Verfahren kommt aus der Positivliste und
+  aus dem Schluesseltyp, nie aus dem Header. **`branches`** ersetzt zwei
+  Platzhalter und sagt im ersten Absatz, dass es keine frei benannten Zweige
+  gibt.
+
+  **Zwei Fallen, in die der Lauf gegen die echte Datenbank gefuehrt hat.**
+  PostgreSQL erlaubt in einem regulaeren Ausdruck hoechstens **255**
+  Wiederholungen; `{16,1364}` ist kein gueltiges Muster. Und ein
+  EC-Schluessel im DER-Format traegt seinen einen Teil im Klartext, sodass
+  base64url davon je nach erstem Byte des anderen woertlich im Schluessel
+  steht -- eine Zusicherung darauf ist in einem von vier Laeufen falsch. Im
+  Browser nicht gesehen
 - Neuester Slice: 2.59 Zwei Hooks, die geschlossen fallen, und Schluessel, die
   nichts oeffnen. **`auth-hooks`** ist echt, Migration `0058`: zwei Punkte,
   `sign_in` (darf abweisen, laeuft in `createSessionResult` vor
