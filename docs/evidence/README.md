@@ -1656,3 +1656,16 @@ STATUS.md) halten über den Umbau hinweg.
 | `2026-09-27/welle9-local-run1.log` | Vitest lokal (Windows) | 2141 bestanden, exit 0 |
 | `2026-09-27/welle9-local-run2.log` | Vitest lokal (Windows) | 2141 bestanden, exit 0, Wiederholung |
 
+## Läufe zu Release 2.58 (27. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle10-run1.log` | PostgreSQL 17 | 209 von 209, exit 0 |
+| `2026-09-27/welle10-run2.log` | PostgreSQL 17 | 209 von 209, exit 0, Wiederholung |
+| `2026-09-27/welle10-mutation-drainposition.log` | Mutation: die Position wird auf Millisekunden gekürzt | **1 von 1 gefallen, exit 1 – absichtlich, Einzelfall** |
+| `2026-09-27/welle10-mutation-replication.log` | Mutation: der Rückstand misst gegen sich selbst | **208 von 209, exit 1 – absichtlich** |
+| `2026-09-27/welle10-mutation-dashhooks.log` | Mutation: die Akteursreferenz fährt als Ressource mit | **208 von 209, exit 1 – absichtlich** |
+| `2026-09-27/welle10-mutation-openapi.log` | Mutation: ein Pfad fehlt und einer hat keine Route | **2 von 4 gefallen, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle10-local-run1.log` | Vitest lokal (Windows) | 2174 bestanden, exit 0 |
+| `2026-09-27/welle10-local-run2.log` | Vitest lokal (Windows) | 2174 bestanden, exit 0, Wiederholung |
+

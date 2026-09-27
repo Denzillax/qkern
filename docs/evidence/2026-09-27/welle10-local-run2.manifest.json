@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle10-local-run2.log",
+  "commit": "7d0c837b547eb5e6348c9801a3e359b5b1343ffe",
+  "commitSubject": "test: Der Fall (2.63) belegt die Position am Leser, nicht am Sammler",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "316 passed | 38 skipped (354)",
+  "tests": "2174 passed | 293 skipped (2467)",
+  "passed": 2174,
+  "failed": 0,
+  "skipped": 293,
+  "images": []
+}

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der Rueckstand misst gegen sich selbst",
+  "log": "welle10-mutation-replication.log",
+  "commit": "7d0c837b547eb5e6348c9801a3e359b5b1343ffe",
+  "commitSubject": "test: Der Fall (2.63) belegt die Position am Leser, nicht am Sammler",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 57,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 208 passed (209)",
+  "passed": 208,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

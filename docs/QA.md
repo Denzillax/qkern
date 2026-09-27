@@ -5920,3 +5920,60 @@ Nicht erbracht: Vier neue Routen stehen nicht in der OpenAPI-Beschreibung.
 Postgres-Zustand und Berichte -> Datenbank ueberschneiden sich. Die Zaehler
 haben keinen Zeitpunkt. Eine gescheiterte Anmeldung ist kein Angriff. Im
 Browser nicht gesehen.
+
+## Welle zehn (2.58): die Beschreibung hinkt nicht mehr
+
+Zwei Platzhalter weniger, eine vollstaendige API-Beschreibung samt Vertrag,
+und ein Fehler, der seit 2.54 ausgeliefert war.
+
+Der Fehler zuerst, weil er der wichtigste Teil dieser Welle ist. Der Treiber
+gibt `timestamptz` als JavaScript-`Date` heraus, und ein `Date` kennt nur
+Millisekunden. Der Drain-Sammler merkt sich die Position einer Zeile als deren
+Zeitpunkt und Kennung; diese Position war damit **kleiner** als die Zeile, aus
+der sie stammt, und der Zeilenvergleich liess dieselbe Zeile bei jedem Lauf
+wieder durch. Beim Aufrufprotokoll fiel es nicht auf, weil dort ein
+JavaScript-Zeitpunkt geschrieben wird und die Mikrosekunden ohnehin null sind.
+In `audit_logs` setzt die Datenbank `now()`, und dort trifft es zu. Gefunden
+hat es der Schnitt zu den Dashboard-Webhooks an seinem eigenen Code; behoben
+ist es an beiden Stellen, in vier von fuenf Lesungen des Drains. Die fuenfte
+braucht es nicht, weil ein Nutzungs-Eimer auf die Stunde abgeschnitten ist,
+und dort steht der Grund als Kommentar.
+
+Der Nachweis dazu hat selbst zwei Anlaeufe gebraucht, und das ist die Lehre
+dieser Welle. Der erste Versuch prueft den Sammler: ein zweiter Lauf ohne neue
+Zeile soll nichts schicken. Die Mutationsprobe ist **nicht** gefallen, und
+genau das war der Befund: Eine wieder hereingelesene Zeile legt sich in den
+Puffer und wartet dort auf ihr Zeitfenster, der Lauf meldet null, und der
+Fehler bleibt unsichtbar. Geprueft wird jetzt die Zusage selbst, am Leser: Die
+Position einer Zeile schliesst diese Zeile aus, und die Position der ersten
+von zwei Zeilen laesst genau die zweite uebrig. Eine Probe, die nicht faellt,
+ist die einzige Stelle, an der ein zu schwacher Fall auffaellt.
+
+Die API-Beschreibung hinkte hinter den Routen her: 27 Pfade fehlten, darunter
+zehn Schema-Kataloge, die Aggregate und RPC der Data API, die
+Multipart-Uploads und die Rechnungsrouten. Sie stehen jetzt drin, mit den
+echten Grenzen aus den Konstanten. Der eigentliche Wert ist der Vertrag: Er
+findet jede Routendatei, uebersetzt ihren Pfad und verlangt, dass er
+beschrieben ist oder mit Grund auf einer Ausnahmeliste steht. Er prueft auch
+die Gegenrichtung, weil ein beschriebener Pfad ohne Route eine Zusage ohne
+Deckung ist, und er haelt einen Riegel gegen sich selbst: Ein leerer
+Dateilauf wuerde jede Luecke durchlassen, darum verlangt er ueber hundert
+gefundene Routen. Beim ersten Einsatz hat er sofort gegriffen und die neue
+Replikations-Route benannt.
+
+Die Replikation zeigt Publikationen, Abonnements und Slots. Die Zahl, auf die
+es im Betrieb ankommt, ist der Rueckstand: Ein verlassener Slot haelt WAL
+fest, bis die Platte voll ist. `subconninfo` wird nicht gefiltert, sondern in
+keiner Anweisung ausgewaehlt. Die Dashboard-Webhooks tragen Ereignisse des
+Projekts hinaus, ueber dieselbe Outbox, denselben Vault-Signierer und dasselbe
+Backoff wie die Datenbank-Webhooks, mit einer Positivliste der Felder je
+Ereignisart.
+
+Checkpoint `2.58.0` am 27. September 2026: PostgreSQL 17 mit 209 von 209,
+exit 0, zweimal reproduziert; Lokal 2174 bestanden, 0 fehlgeschlagen,
+zweimal reproduziert.
+
+Nicht erbracht: Die Beschreibung prueft Pfade, nicht Methoden. Die Zustellung
+ist mindestens einmal. Die Audit-Ansicht faltet den Zustand des Provisioners
+falsch. Ein logischer Slot ist im Stack nicht pruefbar, weil der Cluster
+`wal_level = replica` faehrt. Im Browser nicht gesehen.

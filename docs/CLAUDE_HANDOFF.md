@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.57.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.58.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -105,8 +105,33 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.57.0`
-- Neuester Slice: 2.57 Drei Seiten, die mit dem beginnen, was sie nicht haben.
+- Paketversion: `2.58.0`
+- Neuester Slice: 2.58 Ein ausgelieferter Fehler und ein Vertrag gegen das
+  Nachhinken. **Der Fehler, und er ist der wichtigste Teil**: Der Treiber gibt
+  `timestamptz` als JavaScript-`Date` heraus, und ein `Date` kennt nur
+  Millisekunden. Wer daraus eine Position baut, hat eine Position, die
+  **kleiner** ist als die Zeile, aus der sie stammt; ein Zeilenvergleich
+  `(zeit, id) > (zeit, id)` laesst dieselbe Zeile dann bei jedem Lauf wieder
+  durch. Der Zeitanteil einer Position kommt darum aus
+  `to_char(... 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')` und nie aus
+  `toISOString`. Betroffen waren vier von fuenf Lesungen in
+  `log-drain-postgres-repository` (seit 2.54 ausgeliefert) und der neue Leser
+  der Dashboard-Webhooks. Wer eine weitere Quelle mit einem
+  datenbankgesetzten Zeitpunkt anschliesst, faellt in dieselbe Grube.
+
+  **Und eine Lehre zur Mutationsprobe**: Die erste Probe zu diesem Fehler ist
+  nicht gefallen, weil der Fall den Sammler prueft und eine wieder
+  hereingelesene Zeile sich in dessen Puffer legt. Geprueft wird jetzt der
+  Leser. Eine Probe, die nicht faellt, ist die einzige Stelle, an der ein zu
+  schwacher Fall auffaellt.
+
+  Dazu: `db-pipelines` ist echt (Replikation mit dem Rueckstand der Slots,
+  `subconninfo` wird nicht ausgewaehlt), `set-webhooks` ist echt
+  (Dashboard-Webhooks auf der vorhandenen Zustellkette, Migration `0057`), und
+  `lib/openapi.ts` hat 27 fehlende Pfade bekommen. Der Vertrag
+  `tests/openapi-route-coverage` haelt sie dort; er prueft **Pfade, nicht
+  Methoden**, und das ist die naechste offene Aufgabe. Im Browser nicht gesehen
+- Davor: 2.57 Drei Seiten, die mit dem beginnen, was sie nicht haben.
   `logs-postgres` heißt jetzt **Postgres-Zustand**: Ein Serverlog gibt es
   nicht, QKERN hat keinen Dateizugriff auf die Projektdatenbank. Gelesen wird
   über `inspectDatabaseHealth` aus `pg_stat_database` und, je nach

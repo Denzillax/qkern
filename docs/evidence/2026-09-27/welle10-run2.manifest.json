@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle10-run2.log",
+  "commit": "7d0c837b547eb5e6348c9801a3e359b5b1343ffe",
+  "commitSubject": "test: Der Fall (2.63) belegt die Position am Leser, nicht am Sammler",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 57,
+  "testFiles": "31 passed (31)",
+  "tests": "209 passed (209)",
+  "passed": 209,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
