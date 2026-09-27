@@ -429,7 +429,7 @@ describe("project auth password leaks", () => {
       actorType: "admin", actorRef: "admin-1", status: "succeeded",
       resourceRef: "project_auth_environment:development",
       metadata: {
-        leakedPasswordCheck: true, minLength: 14, notice: "named",
+        leakCheck: true, minLength: 14, notice: "named",
         listSource: "file", listEntries: 1,
       },
     });

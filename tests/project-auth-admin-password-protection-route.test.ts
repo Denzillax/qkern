@@ -155,7 +155,7 @@ describe("project auth admin password protection route", () => {
       actorType: "admin", actorRef: built.principal.user.id, status: "succeeded",
       resourceRef: "project_auth_environment:development",
       metadata: {
-        leakedPasswordCheck: true, minLength: 16, notice: "generic",
+        leakCheck: true, minLength: 16, notice: "generic",
         listSource: "file", listEntries: 1,
       },
     });
