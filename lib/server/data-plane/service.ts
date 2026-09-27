@@ -467,6 +467,44 @@ export type ProjectReplicationResult = {
   truncated: boolean;
 };
 
+/**
+ * Der Aenderungs-Feed dieser Projektdatenbank (2.86).
+ *
+ * `qkern_internal.change_feed` ist die Stelle, an der eine erfasste Aenderung
+ * liegt, bis ein Leser sie geholt hat. Die Zahl, auf die es im Betrieb
+ * ankommt, ist der Rueckstand: wie viele Zeilen oberhalb der gespeicherten
+ * Position noch warten. Er wird in der Datenbank gezaehlt und nicht aus zwei
+ * Positionen geschaetzt, denn zwischen zwei Positionen koennen Zeilen fehlen,
+ * die die Aufbewahrung bereits entfernt hat.
+ *
+ * `present` unterscheidet zwei Faelle, die eine Null nicht unterscheiden
+ * koennte: ein Feed ohne wartende Zeile und eine Projektdatenbank, in der die
+ * Erfassung gar nicht eingerichtet ist.
+ *
+ * `capturedTables` zaehlt die Trigger, die auf `qkern_internal.capture_change`
+ * zeigen. Ohne einen davon bleibt der Feed leer, und das ist keine Stoerung,
+ * sondern eine Einrichtung, die noch aussteht.
+ *
+ * Ausdruecklich nicht enthalten: `row_key`. Dort stehen die
+ * Primaerschluesselwerte echter Zeilen des Kunden, und eine Logseite braucht
+ * sie nicht, um zu sagen, wie viele Aenderungen warten.
+ */
+export type ProjectChangeFeedResult = {
+  source: "postgres";
+  present: boolean;
+  /** Zeilen, die im Feed liegen. */
+  rows: number;
+  /** Zeilen oberhalb der uebergebenen Position. */
+  backlog: number;
+  oldestPosition: number | null;
+  newestPosition: number | null;
+  oldestCommittedAt: string | null;
+  newestCommittedAt: string | null;
+  byOperation: { insert: number; update: number; delete: number };
+  /** Tabellen mit einem Trigger auf `qkern_internal.capture_change`. */
+  capturedTables: number;
+};
+
 export type ProjectColumnPrivilege = {
   table: string;
   column: string;
@@ -854,6 +892,19 @@ export interface ProjectDataPlanePort {
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
   ): Promise<ProjectReplicationResult>;
+  /**
+   * Der Aenderungs-Feed mit seinem Rueckstand (2.86).
+   *
+   * `cursorPosition` ist die gespeicherte Position der Webhook-Bruecke aus der
+   * Kontrollebene. Sie wird uebergeben und nicht hier gelesen: Sie steht in
+   * einer anderen Datenbank, und diese Lesung soll keine zweite Verbindung
+   * dorthin aufmachen.
+   */
+  inspectChangeFeed(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    cursorPosition: number,
+  ): Promise<ProjectChangeFeedResult>;
   inspectColumnPrivileges(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -1573,6 +1624,18 @@ type ReplicationSubscriptionRow = {
   subscription_name: string; owner: string; enabled: boolean; slot_name: string | null; publications: string[];
 };
 type ReplicationStateRow = { wal_level: string; in_recovery: boolean };
+
+type ChangeFeedRow = {
+  rows: string;
+  backlog: string;
+  oldest_position: string | null;
+  newest_position: string | null;
+  oldest_committed_at: Date | null;
+  newest_committed_at: Date | null;
+  inserts: string;
+  updates: string;
+  deletes: string;
+};
 type ForeignDataWrapperRow = { wrapper_name: string; owner: string; handler: string | null; validator: string | null };
 type ForeignServerRow = {
   server_name: string; wrapper_name: string; owner: string;
@@ -1857,6 +1920,56 @@ const REPLICATION_STATE_SQL = `
   SELECT current_setting('wal_level') AS wal_level,
          pg_catalog.pg_is_in_recovery() AS in_recovery`;
 
+/**
+ * Ob die Erfassung in dieser Projektdatenbank ueberhaupt eingerichtet ist
+ * (2.86).
+ *
+ * `to_regclass` gibt null statt zu scheitern, wenn es die Tabelle nicht gibt.
+ * Ein Fehler an dieser Stelle waere von einer nicht erreichbaren Datenbank
+ * nicht zu unterscheiden, und die Seite sagte dann das Falsche.
+ */
+const CHANGE_FEED_PRESENT_SQL = `
+  SELECT pg_catalog.to_regclass('qkern_internal.change_feed') IS NOT NULL AS present`;
+
+/**
+ * Der Stand des Feeds und sein Rueckstand (2.86).
+ *
+ * Der Rueckstand wird gezaehlt und nicht gerechnet: `max(position) - $1` waere
+ * eine Schaetzung, sobald die Aufbewahrung Zeilen zwischen der Position und dem
+ * Ende entfernt hat.
+ *
+ * `row_key` steht in keiner Spalte dieser Anweisung. Dort liegen die
+ * Primaerschluesselwerte echter Kundenzeilen, und diese Lesung braucht sie
+ * nicht.
+ */
+const CHANGE_FEED_SQL = `
+  SELECT count(*)::text AS rows,
+         count(*) FILTER (WHERE position > $1)::text AS backlog,
+         min(position)::text AS oldest_position,
+         max(position)::text AS newest_position,
+         min(committed_at) AS oldest_committed_at,
+         max(committed_at) AS newest_committed_at,
+         count(*) FILTER (WHERE operation = 'insert')::text AS inserts,
+         count(*) FILTER (WHERE operation = 'update')::text AS updates,
+         count(*) FILTER (WHERE operation = 'delete')::text AS deletes
+    FROM qkern_internal.change_feed`;
+
+/**
+ * Wie viele Tabellen ihre Aenderungen wirklich erfassen (2.86).
+ *
+ * Ueber `pg_proc` und `pg_namespace` statt ueber einen `regprocedure`-Cast:
+ * Der Cast scheitert, wenn es die Funktion nicht gibt, und ein Fehler waere
+ * hier wieder von einer nicht erreichbaren Datenbank nicht zu unterscheiden.
+ */
+const CHANGE_FEED_TRIGGERS_SQL = `
+  SELECT count(*)::text AS captured
+    FROM pg_catalog.pg_trigger AS trigger
+    JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger.tgfoid
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+   WHERE NOT trigger.tgisinternal
+     AND namespace.nspname = 'qkern_internal'
+     AND procedure.proname = 'capture_change'`;
+
 const MAX_REPLICATION_SLOTS = 200;
 const MAX_REPLICATION_SUBSCRIPTIONS = 100;
 const MAX_SUBSCRIPTION_PUBLICATIONS = 100;
@@ -2118,6 +2231,32 @@ function walBytes(value: unknown): number | null {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
   return parsed;
+}
+
+/**
+ * Eine Zahl aus dem Aenderungs-Feed (2.86).
+ *
+ * `count(*)` und `position` sind `bigint` und erreichen den Treiber als
+ * Zeichenkette. Ungeprueft wuerde daraus still `NaN`, und die Seite zeigte eine
+ * Zahl, die keine ist.
+ */
+function feedCount(value: unknown): number {
+  if (typeof value !== "string" || !UNSIGNED_DECIMAL.test(value)) {
+    throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  }
+  return parsed;
+}
+
+/** `min`/`max` ueber eine leere Tabelle sind null, und null heisst hier "keine Zeile". */
+function feedMoment(value: Date | null): string | null {
+  if (value === null || value === undefined) return null;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+  return parsed.toISOString();
 }
 
 function identifierList(value: unknown, max: number): value is string[] {
@@ -2856,6 +2995,71 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
     });
   }
 
+  /**
+   * Der Aenderungs-Feed mit seinem Rueckstand (2.86).
+   *
+   * Drei Anweisungen in derselben Transaktion: ob es den Feed gibt, was in ihm
+   * liegt, und wie viele Tabellen ueberhaupt erfassen. Getrennt gefragt
+   * koennte die Antwort einen Feed mit Zeilen und null erfassenden Tabellen
+   * melden, den es so nie gab.
+   *
+   * Ohne Feed werden die beiden anderen Anweisungen nicht gestellt. Sie waeren
+   * ein Syntaxfehler auf einer Tabelle, die es nicht gibt, und der Fehler
+   * verliesse diese Methode als "nicht erreichbar" -- eine falsche Auskunft
+   * ueber eine Datenbank, die sehr wohl geantwortet hat.
+   */
+  async inspectChangeFeed(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+    cursorPosition: number,
+  ): Promise<ProjectChangeFeedResult> {
+    assertContextAndScope(context, scope);
+    if (!Number.isSafeInteger(cursorPosition) || cursorPosition < 0) {
+      throw new ProjectDataPlaneError("DATA_PLANE_INVALID_INPUT");
+    }
+    return this.run(context, scope, async (client) => {
+      const presence = await client.query<{ present: boolean }>(CHANGE_FEED_PRESENT_SQL);
+      const present = presence.rows[0];
+      if (!present || typeof present.present !== "boolean") {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      if (!present.present) {
+        return {
+          source: "postgres" as const, present: false, rows: 0, backlog: 0,
+          oldestPosition: null, newestPosition: null,
+          oldestCommittedAt: null, newestCommittedAt: null,
+          byOperation: { insert: 0, update: 0, delete: 0 }, capturedTables: 0,
+        };
+      }
+
+      const feed = await client.query<ChangeFeedRow>(CHANGE_FEED_SQL, [cursorPosition]);
+      const triggers = await client.query<{ captured: string }>(CHANGE_FEED_TRIGGERS_SQL);
+      const row = feed.rows[0];
+      const trigger = triggers.rows[0];
+      // `count(*)` liefert immer eine Zeile, auch auf einer leeren Tabelle.
+      // Fehlt sie, hat die Datenbank nicht geantwortet, was diese Anweisung
+      // zusagt.
+      if (!row || !trigger) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+
+      return {
+        source: "postgres" as const,
+        present: true,
+        rows: feedCount(row.rows),
+        backlog: feedCount(row.backlog),
+        oldestPosition: row.oldest_position === null ? null : feedCount(row.oldest_position),
+        newestPosition: row.newest_position === null ? null : feedCount(row.newest_position),
+        oldestCommittedAt: feedMoment(row.oldest_committed_at),
+        newestCommittedAt: feedMoment(row.newest_committed_at),
+        byOperation: {
+          insert: feedCount(row.inserts),
+          update: feedCount(row.updates),
+          delete: feedCount(row.deletes),
+        },
+        capturedTables: feedCount(trigger.captured),
+      };
+    });
+  }
+
   async inspectColumnPrivileges(
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
@@ -3240,6 +3444,14 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
   }
 
   async inspectReplication(_context: ProjectDataPlaneContext, _scope: ProjectDataPlaneScope): Promise<ProjectReplicationResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectChangeFeed(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+    _cursorPosition: number,
+  ): Promise<ProjectChangeFeedResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 

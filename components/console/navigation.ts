@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler", "int-graphql", "auth-oauth-server",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler", "int-graphql", "auth-oauth-server", "logs-realtime",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -50,7 +50,9 @@ export const PLACEHOLDERS = {
   // API-Gateway und Pooler sind seit 2.84 echte Seiten. Beide Male fehlt nicht
   // das Backend, sondern die Sache selbst: kein Rand, der protokolliert, und
   // kein Pooler zwischen Anwendung und Datenbank.
-  "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
+  // Realtime ist seit 2.86 eine echte Seite: Kanäle und Nachrichten stehen
+  // dauerhaft in der Kontrollebene, der Rückstand des Änderungs-Feeds wird
+  // gezählt, und Verbindungen führt niemand auf.
   // Integrationen
   // Branches: beide Platzhalter sind seit 2.81 eine echte Seite.
   // Einstellungen
@@ -101,7 +103,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
     { id: "logs", label: "Audit" }, { id: "logs-api", label: "API-Gateway" }, { id: "logs-postgres", label: "Postgres-Zustand" }, { id: "logs-postgrest", label: "Data API" }, { id: "logs-auth", label: "Auth" }, { id: "logs-storage", label: "Storage" },
-    ph("logs-realtime"), { id: "logs-functions", label: "Functions" }, { id: "logs-pooler", label: "Pooler" }, { id: "logs-cron", label: "Cron" }, { id: "logs-explorer", label: "Explorer" },
+    { id: "logs-realtime", label: "Realtime" }, { id: "logs-functions", label: "Functions" }, { id: "logs-pooler", label: "Pooler" }, { id: "logs-cron", label: "Cron" }, { id: "logs-explorer", label: "Explorer" },
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },
   { id: "int-queues", label: "Integrationen", icon: Plug, children: [

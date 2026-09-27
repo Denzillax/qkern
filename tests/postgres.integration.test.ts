@@ -6,6 +6,9 @@ import { AuditRepository, PostgresControlPlane } from "@/lib/server/db/repositor
 import { CronDispatcher } from "@/lib/server/compute/cron";
 import { ComputeDefinitionService } from "@/lib/server/compute/definitions";
 import { PostgresComputeDefinitionRepository } from "@/lib/server/compute/definitions-postgres-repository";
+import { PostgresDatabaseWebhookCursorRepository } from "@/lib/server/compute/database-webhook-cursor-postgres-repository";
+import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
+import { PostgresRealtimeLogReader } from "@/lib/server/realtime/log-reader";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
@@ -8790,6 +8793,285 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   }, 120_000);
+
+
+  it("(2.86) reads the realtime channels, keeps a counter past retention, counts the change feed backlog against the stored position and shows the neighbour nothing", async () => {
+    // Logs -> Realtime (2.86) gegen die echte Datenbank. Die Seite behauptet
+    // vier Dinge, und keines davon liesse sich gegen einen Nachbau pruefen:
+    //
+    // 1. Kanaele und Nachrichten sind echte Zeilen. Sie entstehen ueber den
+    //    echten Event-Log, also denselben Schreibweg, den ein Broadcast nimmt,
+    //    und werden danach gegen `realtime_channel_sequences` und
+    //    `realtime_events` nachgezaehlt.
+    // 2. Der Zaehler ueberlebt die Aufbewahrung. Genau das sagt der Satz auf
+    //    der Seite, und genau das laesst sich nur zeigen, indem eine echte
+    //    Zeile wirklich entfernt wird: Danach steht der Kanal noch da, mit
+    //    einer Nachricht weniger und derselben Zahl vergebener Sequenzen.
+    // 3. Der Rueckstand wird gezaehlt und nicht gerechnet. Der Fall reisst
+    //    darum ein Loch in den Feed: `max - Position` saehe danach anders aus
+    //    als die Zahl der wartenden Zeilen, und nur die gezaehlte stimmt.
+    // 4. Gelesen wird unter der Zeilensicherheit. Der Nachbar bekommt keine
+    //    Zeile dieses Projekts zu sehen, und der Eigentuemer sehr wohl.
+    //
+    // Die Projektdatenbank ist eine echte, eigene: Ledger, Zaun und der
+    // ausgelieferte Change Feed, dazu eine Kundentabelle mit dem echten
+    // Trigger. Gelesen wird sie durch den echten `ProjectDataPlaneService`,
+    // also durch dieselbe Grenzpruefung, die jede Katalogansicht passiert.
+    expect(process.env.QKERN_TEST_ALLOW_DATABASE_CREATE_DROP,
+      "QKERN_TEST_ALLOW_DATABASE_CREATE_DROP fehlt").toBe("true");
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+
+    const logProject = randomUUID();
+    const databaseName = `qkern_rtlog_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const captured = `bewegungen_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const untouched = `stammdaten_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const rowId = randomUUID();
+    // Ein Wert, den keine Antwort dieser Seite tragen darf. Er ist der
+    // Lackmustest dafuer, dass `row_key` nirgends mitkommt.
+    const confidential = `IBAN-CH93-${randomUUID()}`;
+
+    const withDatabase = (base: string, name: string) => {
+      const url = new URL(base);
+      url.pathname = `/${name}`;
+      return url.toString();
+    };
+
+    // Das Projekt haengt an organizationA. Der Realtime-Log schreibt keine
+    // Audit-Zeile, also raeumt das gemeinsame afterAll es mit der Organisation
+    // wieder ab; eine eigene Wegwerf-Organisation braucht dieser Fall nicht.
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Realtime Log 2.86', $3, 'test', 'ready', $4)`,
+    [logProject, organizationA, `realtime-log-2-86-${logProject}`, userId]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [organizationA, logProject, `managed:${logProject}`]);
+
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_ledger_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+        NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    await owner.query(`DO $$ BEGIN
+      CREATE ROLE qkern_project_migrator LOGIN PASSWORD 'qkern_project_migrator_local_only'
+        NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    // Der Zaun in `db/project/0002` verlangt einen Ledger-Eigentuemer ohne jede
+    // Mitgliedschaft. Seit PostgreSQL 16 teilt `CREATE ROLE` die neue Rolle dem
+    // Erzeuger zu, also wird hier dieselbe Stelle aufgeraeumt wie in 2.49.
+    await owner.query(`DO $$ DECLARE entry record; BEGIN
+      FOR entry IN SELECT m.member::regrole::text AS role FROM pg_auth_members m
+        WHERE m.roleid = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE qkern_ledger_owner FROM %I', entry.role);
+      END LOOP;
+      FOR entry IN SELECT m.roleid::regrole::text AS role FROM pg_auth_members m
+        WHERE m.member = 'qkern_ledger_owner'::regrole LOOP
+        EXECUTE format('REVOKE %I FROM qkern_ledger_owner', entry.role);
+      END LOOP;
+    END $$;`);
+
+    await owner.query(`CREATE DATABASE "${databaseName}"`);
+    let project: SqlPool | undefined;
+    let projectApi: SqlPool | undefined;
+    try {
+      project = createPostgresPool({
+        connectionString: withDatabase(ownerUrl!, databaseName), max: 2,
+        statementTimeoutMillis: 120_000,
+      });
+      // Die ausgelieferten Dateien, nicht Nachbauten.
+      for (const file of ["0001_qkern_migration_ledger.sql", "0002_qkern_migration_fence.sql",
+        "0003_qkern_change_feed.sql"]) {
+        await project.query(await readFile(path.resolve(process.cwd(), "db/project", file), "utf8"));
+      }
+      await project.query(`GRANT CONNECT ON DATABASE "${databaseName}" TO qkern_project_api_app`);
+      // Eine erfasste Tabelle und eine ohne Trigger. Ohne die zweite bewiese
+      // `capturedTables` nichts: Eine Zahl, die jede Tabelle zaehlt, saehe
+      // genauso aus wie eine, die nur die erfassten zaehlt.
+      await project.query(
+        `CREATE TABLE public.${captured} (id uuid PRIMARY KEY, iban text NOT NULL)`);
+      await project.query(`CREATE TRIGGER ${captured}_capture
+        AFTER INSERT OR UPDATE OR DELETE ON public.${captured}
+        FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
+      await project.query(
+        `CREATE TABLE public.${untouched} (id uuid PRIMARY KEY, iban text NOT NULL)`);
+
+      // Drei echte Aenderungen, je eine Sorte. Ab hier macht der Trigger die
+      // Arbeit, und die Positionen 1 bis 3 sind keine gesetzten Zahlen.
+      await project.query(
+        `INSERT INTO public.${captured} (id, iban) VALUES ($1, $2)`, [rowId, confidential]);
+      await project.query(
+        `UPDATE public.${captured} SET iban = $2 WHERE id = $1`, [rowId, `${confidential}-neu`]);
+      await project.query(`DELETE FROM public.${captured} WHERE id = $1`, [rowId]);
+      // Eine Aenderung an der Tabelle ohne Trigger darf gar nichts erzeugen.
+      await project.query(
+        `INSERT INTO public.${untouched} (id, iban) VALUES ($1, $2)`, [randomUUID(), confidential]);
+      const writtenFeed = await project.query<{ n: string; lowest: string; highest: string }>(
+        `SELECT count(*)::text AS n, min(position)::text AS lowest, max(position)::text AS highest
+           FROM qkern_internal.change_feed`);
+      expect(writtenFeed.rows[0], "der Trigger hat nicht erfasst")
+        .toMatchObject({ n: "3", lowest: "1", highest: "3" });
+
+      const control = new PostgresControlPlane(runtime);
+      const scope = {
+        organizationId: organizationA, projectId: logProject, environment: "development" as const,
+      };
+      const actorRef = `integration-${userId}@qkern.test`;
+      const principal = { organizationId: organizationA, actorRef };
+
+      // --- Zusage 1: Kanaele und Nachrichten sind echte Zeilen ---
+      // Geschrieben durch den echten Event-Log und damit unter der
+      // Laufzeitrolle: keine Abkuerzung ueber den Eigentuemer, der RLS ohnehin
+      // nicht spuert.
+      const eventLog = new PostgresRealtimeEventLog(control, actorRef);
+      const first = await eventLog.append({
+        ...scope, channel: "auftraege", event: "angelegt",
+        payload: { referenz: "A-1" }, actorRole: "service_role", createdAt: new Date(),
+      });
+      const second = await eventLog.append({
+        ...scope, channel: "auftraege", event: "geaendert",
+        payload: { referenz: "A-2" }, actorRole: "authenticated", createdAt: new Date(),
+      });
+      const third = await eventLog.append({
+        ...scope, channel: "hinweise", event: "gesendet",
+        payload: { text: "kurz" }, actorRole: "anon", createdAt: new Date(),
+      });
+      // Die Sequenz kommt aus der Datenbank und laeuft je Kanal.
+      expect([first.sequence, second.sequence, third.sequence]).toEqual([1, 2, 1]);
+
+      const reader = new PostgresRealtimeLogReader(control);
+      const before = await reader.read(principal, scope);
+      expect(before.source).toBe("postgres");
+      expect(before.channelsTruncated).toBe(false);
+      expect(before.messagesTruncated).toBe(false);
+      // Nach Namen gesucht und nicht nach Platz: Die Ordnung der Antwort ist
+      // die des Zaehlers, und zwei Zeitstempel koennen gleich sein.
+      const orders = before.channels.find((entry) => entry.channel === "auftraege")!;
+      const notes = before.channels.find((entry) => entry.channel === "hinweise")!;
+      expect(before.channels.map((entry) => entry.channel).sort()).toEqual(["auftraege", "hinweise"]);
+      expect(orders).toMatchObject({ stored: 2, assigned: 2, firstSequence: 1, lastSequence: 2 });
+      expect(orders.byRole).toEqual({ anon: 0, authenticated: 1, service_role: 1 });
+      expect(notes).toMatchObject({ stored: 1, assigned: 1, firstSequence: 1, lastSequence: 1 });
+      expect(notes.byRole).toEqual({ anon: 1, authenticated: 0, service_role: 0 });
+      // Jede Zahl steht so in der Datenbank.
+      const storedRows = await owner.query<{ channel: string; n: string; assigned: string }>(
+        `SELECT sequences.channel AS channel,
+                count(event.sequence)::text AS n,
+                (sequences.next_sequence - 1)::text AS assigned
+           FROM realtime_channel_sequences AS sequences
+           LEFT JOIN realtime_events AS event
+             ON event.organization_id = sequences.organization_id
+            AND event.project_id = sequences.project_id
+            AND event.environment = sequences.environment
+            AND event.channel = sequences.channel
+          WHERE sequences.project_id = $1
+          GROUP BY sequences.channel, sequences.next_sequence
+          ORDER BY sequences.channel`, [logProject]);
+      expect(storedRows.rows).toEqual([
+        { channel: "auftraege", n: "2", assigned: "2" },
+        { channel: "hinweise", n: "1", assigned: "1" },
+      ]);
+      // Die Nutzlast verlaesst den Leser nicht, nur ihre Groesse.
+      const message = before.messages.find(
+        (entry) => entry.channel === "auftraege" && entry.sequence === 1)!;
+      expect(message).toMatchObject({ event: "angelegt", actorRole: "service_role" });
+      // Die Groesse ist die der Datenbank und nicht die einer eigenen
+      // Serialisierung: `jsonb::text` setzt ein Leerzeichen hinter den
+      // Doppelpunkt, `JSON.stringify` nicht.
+      const storedBytes = await owner.query<{ bytes: string }>(
+        `SELECT octet_length(payload::text)::text AS bytes FROM realtime_events
+          WHERE project_id = $1 AND channel = 'auftraege' AND sequence = 1`, [logProject]);
+      expect(message.payloadBytes).toBe(Number(storedBytes.rows[0].bytes));
+      expect(message.payloadBytes).toBeGreaterThan(0);
+      expect(JSON.stringify(before.messages)).not.toContain("A-1");
+      expect(JSON.stringify(before.messages)).not.toContain("referenz");
+
+      // --- Zusage 2: der Zaehler ueberlebt die Aufbewahrung ---
+      // Eine echte Zeile weg, so wie die Aufbewahrung sie wegnimmt.
+      const removed = await owner.query(
+        `DELETE FROM realtime_events
+          WHERE project_id = $1 AND channel = 'auftraege' AND sequence = 1`, [logProject]);
+      expect(removed.rowCount, "die Aufbewahrung hat nichts entfernt").toBe(1);
+      const afterRetention = await reader.read(principal, scope);
+      const thinned = afterRetention.channels.find((entry) => entry.channel === "auftraege")!;
+      // Der Kanal steht noch da, mit einer Nachricht weniger und derselben Zahl
+      // vergebener Sequenzen. Genau das sagt der Satz auf der Seite.
+      expect(thinned).toMatchObject({ stored: 1, assigned: 2, firstSequence: 2, lastSequence: 2 });
+      expect(afterRetention.messages.some(
+        (entry) => entry.channel === "auftraege" && entry.sequence === 1)).toBe(false);
+
+      // --- Zusage 3: der Rueckstand wird gezaehlt, nicht gerechnet ---
+      // Die Position schreibt der echte Cursor-Schreibweg der Bruecke, unter
+      // der Laufzeitrolle und damit unter RLS.
+      const cursors = new PostgresDatabaseWebhookCursorRepository(control, actorRef);
+      await cursors.save(scope, 1);
+      const withCursor = await reader.read(principal, scope);
+      expect(withCursor.cursor).not.toBeNull();
+      expect(withCursor.cursor!.position).toBe(1);
+
+      projectApi = createPostgresPool({
+        connectionString: withDatabase(projectApiUrl!, databaseName), max: 2,
+      });
+      const dataPlane = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${logProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi!,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: databaseName,
+          expectedLedgerOwner: "qkern_ledger_owner",
+        }) },
+      );
+      const dataScope = { projectId: logProject, environment: "development" as const };
+      const feed = await dataPlane.inspectChangeFeed(principal, dataScope, withCursor.cursor!.position);
+      expect(feed).toMatchObject({
+        source: "postgres", present: true, rows: 3, backlog: 2,
+        oldestPosition: 1, newestPosition: 3, capturedTables: 1,
+      });
+      expect(feed.byOperation).toEqual({ insert: 1, update: 1, delete: 1 });
+      // `row_key` steht in keiner Spalte der Anweisung, und der Beleg dafuer
+      // ist der Schluesselwert selbst: 32 Hexstellen, die nicht zufaellig
+      // irgendwo auftauchen.
+      expect(JSON.stringify(feed)).not.toContain(rowId);
+      expect(JSON.stringify(feed)).not.toContain(confidential);
+
+      // Und jetzt das Loch: Die Aufbewahrung nimmt die Zeile in der Mitte weg.
+      // `max - Position` waere danach 2, wartend ist aber nur noch eine Zeile.
+      const cleared = await project.query(
+        "DELETE FROM qkern_internal.change_feed WHERE position = 2");
+      expect(cleared.rowCount, "die Zeile in der Mitte ist nicht weg").toBe(1);
+      const withHole = await dataPlane.inspectChangeFeed(principal, dataScope, 1);
+      expect(withHole.newestPosition! - 1, "die gerechnete Zahl ist die andere").toBe(2);
+      expect(withHole.backlog, "der Rueckstand ist gezaehlt und nicht gerechnet").toBe(1);
+      expect(withHole.rows).toBe(2);
+      // Und er haengt wirklich an der Position: aufgeholt ist aufgeholt.
+      const caughtUp = await dataPlane.inspectChangeFeed(principal, dataScope, 3);
+      expect(caughtUp.backlog).toBe(0);
+      expect(caughtUp.rows).toBe(2);
+
+      // --- Zusage 4: der Nachbar sieht nichts davon ---
+      const neighbour = {
+        organizationId: organizationB,
+        actorRef: `integration-${secondUserId}@qkern.test`,
+      };
+      const hidden = await reader.read(neighbour, scope);
+      expect(hidden.channels).toEqual([]);
+      expect(hidden.messages).toEqual([]);
+      // Keine Position null, sondern gar keine: Der Nachbar sieht die Zeile
+      // der Bruecke ueberhaupt nicht.
+      expect(hidden.cursor).toBeNull();
+      // Gegenprobe, damit die leeren Listen nicht von leeren Tabellen kommen:
+      // Der Eigentuemer sieht dieselben Zeilen sehr wohl.
+      const visible = await owner.query<{ events: string; channels: string; cursors: string }>(
+        `SELECT (SELECT count(*)::text FROM realtime_events WHERE project_id = $1) AS events,
+                (SELECT count(*)::text FROM realtime_channel_sequences WHERE project_id = $1) AS channels,
+                (SELECT count(*)::text FROM project_database_webhook_cursors WHERE project_id = $1) AS cursors`,
+        [logProject]);
+      expect(visible.rows[0]).toEqual({ events: "2", channels: "2", cursors: "1" });
+    } finally {
+      await Promise.allSettled([project?.end(), projectApi?.end()]);
+      await owner.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
+        .catch(() => undefined);
+    }
+  }, 120_000);
+
 
 });
 
