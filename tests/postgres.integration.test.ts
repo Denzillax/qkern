@@ -75,7 +75,10 @@ import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgre
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
 import { NoopDevelopmentProjectAuthDelivery, ProjectAuthService } from "@/lib/server/project-auth/service";
-import { ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
+// Der OAuth-Server (2.82) legt nur die Pruefsumme eines Tokens ab. Der Fall
+// rechnet sie mit derselben Funktion nach, damit er nicht bloss behaupten muss,
+// dass in der Zeile kein Klartext steht.
+import { hashProjectAuthToken, ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
 // Grenzen je Zeitfenster (2.56): dieselbe reine Formel, die der Dienst
 // benutzt, damit der Fall den Hash nachrechnen kann statt ihn zu glauben.
 import { projectAuthRateSubjectHash } from "@/lib/server/project-auth/rate-limits";
@@ -7829,6 +7832,421 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const serialised = JSON.stringify(auditRows.rows);
       expect(serialised).not.toContain(token);
       expect(serialised).not.toContain(subject);
+      expect(serialised).not.toContain("service_role");
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
+  it("(2.82) issues an OAuth code with PKCE, redeems it once, reads with the token under row security and refuses replay, a wrong verifier, a foreign return target and an ungranted scope", async () => {
+    // Der OAuth-Server (2.82) an einem Stueck, gegen die echte Datenbank: echter
+    // Nutzer, echte Anmeldung, echter Client in project_auth_oauth_clients,
+    // echter Code in project_auth_oauth_codes, echtes Token in
+    // project_auth_oauth_tokens, echte Lesung durch die generierte Data API
+    // unter der Zeilensicherheit.
+    //
+    // Echt ist alles, worauf es ankommt: die drei Tabellen aus Migration 0062,
+    // das PostgreSQL-Repository von Project Auth, der Audit-Sink in der
+    // Hash-Kette, das reine Modul `oauth.ts`, der Weg
+    // `projectApplicationPrincipal`, den die Data-API-Routen wirklich nehmen,
+    // die echte Projektdatenbank mit echter Policy und die echte
+    // `GeneratedDataApiService`.
+    //
+    // Gestellt ist genau eines: der Key-Dienst. Welcher Public Key gueltig ist,
+    // ist eigens zertifiziert, und dieser Fall soll nicht davon abhaengen; dass
+    // ein Key **verlangt** wird, prueft er trotzdem.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.80: Jede Aenderung
+    // schreibt eine Audit-Zeile, und eine Organisation mit Audit-Zeilen laesst
+    // sich wegen audit_logs_organization_id_fkey nicht mehr loeschen.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const oauthOwner = randomUUID();
+    const oauthOrganization = randomUUID();
+    const oauthProject = randomUUID();
+    const schema = `oauthserver_${randomUUID().replaceAll("-", "_")}`;
+    const scope = {
+      organizationId: oauthOrganization, projectId: oauthProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [oauthOwner, `oauth-owner-${oauthOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'OAuth Server 2.82', $2, $3)`,
+    [oauthOrganization, `oauth-server-${oauthOrganization}`, oauthOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'OAuth Server 2.82', $3, 'test', 'ready', $4)`,
+    [oauthProject, oauthOrganization, `oauth-server-${oauthProject}`, oauthOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [oauthOrganization, oauthProject, `managed:${oauthProject}`]);
+
+    const signingKey = generateKeyPairSync("ed25519").privateKey;
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-82", privateKey: signingKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 11)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    // Der Prueftext und seine Pruefsumme, von aussen gerechnet. Der Fall darf
+    // die Pruefsumme nicht von QKERN rechnen lassen, sonst pruefte er die
+    // Pruefung gegen ihren eigenen Aufbau; gerechnet wird darum hier, mit
+    // `node:crypto` und nichts weiter, so wie eine Anwendung es tun wuerde.
+    const verifier = randomBytes(32).toString("base64url");
+    const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+    expect(verifier).toMatch(/^[A-Za-z0-9._~-]{43}$/);
+    expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const strangerVerifier = randomBytes(32).toString("base64url");
+    expect(strangerVerifier).not.toBe(verifier);
+
+    const home = "https://app.test/oauth/zurueck";
+    const second = "https://app.test/oauth/zweitweg";
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // --- Zusage 1: der Nutzer, der zustimmt, ist ein echter -------------
+      const email = `oauth-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const userId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+
+      // --- Zusage 2: was kein Client werden darf --------------------------
+      //
+      // Jede Ablehnung mit eigenem Grund, weil sie verschiedene Dinge sagen.
+      // Ein Stern ist der Versuch, eine Gruppe von Zielen zu erlauben; eine
+      // Abfrage waere in zwei Schreibweisen zweimal derselbe Ort; `http` auf
+      // einem fremden Host ist ein Code im Klartext auf der Leitung.
+      const refusedClient = (client: unknown) =>
+        service.createOAuthClient(scope, client, { id: oauthOwner });
+      await expect(refusedClient({
+        name: "stern", redirectUris: ["https://app.test/*"], scopes: ["data:read"],
+      })).rejects.toMatchObject({
+        name: "ProjectAuthOAuthError", reason: "redirect_uri_wildcard", field: "redirectUris",
+      });
+      await expect(refusedClient({
+        name: "abfrage", redirectUris: ["https://app.test/zurueck?weiter=ja"], scopes: ["data:read"],
+      })).rejects.toMatchObject({ reason: "redirect_uri_carries_query", field: "redirectUris" });
+      await expect(refusedClient({
+        name: "unsicher", redirectUris: ["http://fremd.example.com/zurueck"], scopes: ["data:read"],
+      })).rejects.toMatchObject({ reason: "redirect_uri_insecure_scheme", field: "redirectUris" });
+      await expect(refusedClient({
+        name: "alles", redirectUris: [home], scopes: ["data:read", "alles:lesen"],
+      })).rejects.toMatchObject({ reason: "scope_unknown", field: "scopes" });
+
+      // --- Zusage 3: der Client entsteht wirklich, und ohne Geheimnis -----
+      const stored = await service.createOAuthClient(scope, {
+        name: "ai-bridge", redirectUris: [home, second], scopes: ["identity:read", "data:read"],
+      }, { id: oauthOwner });
+      expect(stored.configured).toBe(true);
+      expect(stored.role).toBe("authenticated");
+      expect(stored.forbiddenRole).toBe("service_role");
+      expect(stored.grant).toBe("authorization_code");
+      expect(stored.challengeMethod).toBe("S256");
+      expect(stored.scopes).toEqual(["identity:read", "data:read", "data:write"]);
+      // Die nicht gebauten Verfahren kommen aus dem Dienst und nicht aus diesem
+      // Fall. Dass `implicit` und `password` darin stehen, ist die Aussage:
+      // Sie sind benannt und nicht bloss vergessen.
+      expect(stored.unsupportedGrants).toEqual(
+        ["implicit", "password", "client_credentials", "refresh_token"],
+      );
+      expect(stored.clients).toHaveLength(1);
+      const clientId = stored.clients[0].id;
+      expect(clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(stored.clients[0]).toMatchObject({
+        name: "ai-bridge", redirectUris: [home, second], scopes: ["identity:read", "data:read"],
+      });
+      // Es gibt keine Spalte fuer ein Geheimnis, und das ist die Zusage dieses
+      // Schnittes. Geprueft wird sie am Katalog und nicht an der Antwort: Eine
+      // Antwort ohne Feld koennte ein weggelassenes Feld sein, eine Tabelle
+      // ohne Spalte kann kein Geheimnis halten.
+      const columns = await owner.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'project_auth_oauth_clients'`);
+      const columnNames = columns.rows.map((row) => String(row.column_name));
+      expect(columnNames).toContain("redirect_uris");
+      expect(columnNames.filter((column) => column.includes("secret"))).toEqual([]);
+      // Kein Recht zum Aendern, genau wie 0062 es sagt.
+      await expect(auth.query(
+        `UPDATE project_auth_oauth_clients SET scopes = ARRAY['data:write']::text[] WHERE id = $1`,
+        [clientId])).rejects.toThrowError(/permission denied/i);
+      // Und `plain` kommt nicht einmal an der Datenbank vorbei.
+      await expect(auth.query(`INSERT INTO project_auth_oauth_codes
+        (id, organization_id, project_id, environment, client_id, auth_user_id, redirect_uri,
+         scopes, code_hash, code_challenge, code_challenge_method, expires_at)
+        VALUES ($1,$2,$3,'development',$4,$5,$6,ARRAY['data:read']::text[],$7,$8,'plain',now() + interval '1 minute')`,
+      [randomUUID(), oauthOrganization, oauthProject, clientId, userId, home,
+        `direkt-${randomUUID()}`, challenge])).rejects.toMatchObject({ code: "23514" });
+
+      // --- Zusage 4: was kein Code werden darf ----------------------------
+      const refusedAuthorize = (request: unknown) =>
+        service.authorizeOAuth(scope, signedIn.accessToken, request);
+      // Ein fremdes Ruecksprungziel, das der Client nicht fuehrt.
+      await expect(refusedAuthorize({
+        clientId: "ai-bridge", redirectUri: "https://angreifer.test/zurueck",
+        scopes: ["data:read"], codeChallenge: challenge,
+      })).rejects.toMatchObject({ reason: "redirect_uri_unknown", field: "redirectUri" });
+      // Ein Bereich, den dieser Client nicht fuehrt. Keine stille Kuerzung.
+      await expect(refusedAuthorize({
+        clientId: "ai-bridge", redirectUri: home,
+        scopes: ["data:read", "data:write"], codeChallenge: challenge,
+      })).rejects.toMatchObject({ reason: "scope_not_granted", field: "scopes" });
+      // `plain` faellt mit eigenem Grund, und der implizite Ablauf auch.
+      await expect(refusedAuthorize({
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read"],
+        codeChallenge: challenge, codeChallengeMethod: "plain",
+      })).rejects.toMatchObject({ reason: "challenge_method_unsupported" });
+      await expect(refusedAuthorize({
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read"],
+        codeChallenge: challenge, responseType: "token",
+      })).rejects.toMatchObject({ reason: "response_type_unsupported", field: "responseType" });
+      // Und ohne gueltiges Zugangstoken des Nutzers gibt es gar keinen Anlauf.
+      await expect(service.authorizeOAuth(scope, "nicht.mein.token", {
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read"], codeChallenge: challenge,
+      })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      // Bis hierher steht keine einzige Code-Zeile in der Datenbank.
+      const codeCount = async () => (await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_auth_oauth_codes
+          WHERE organization_id = $1 AND project_id = $2`,
+        [oauthOrganization, oauthProject])).rows[0].count;
+      expect(await codeCount()).toBe("0");
+
+      // --- Zusage 5: der falsche Prueftext faellt, und verbraucht den Code -
+      //
+      // Der wichtigere Teil ist der zweite Satz. Der Code ist danach weg,
+      // obwohl die Pruefung gescheitert ist: Wer ihn erst nach erfolgreicher
+      // Pruefung verbrauchte, liesse beliebig viele Versuche zu.
+      const wrongVerifierAttempt = await service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read"], codeChallenge: challenge,
+      });
+      expect(wrongVerifierAttempt.code).toMatch(/^qk_oauthcode_[A-Za-z0-9_-]{43}$/);
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "ai-bridge", code: wrongVerifierAttempt.code, redirectUri: home,
+        codeVerifier: strangerVerifier,
+      })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      // Derselbe Code, jetzt mit dem richtigen Prueftext: trotzdem vorbei.
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "ai-bridge", code: wrongVerifierAttempt.code, redirectUri: home,
+        codeVerifier: verifier,
+      })).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
+
+      // --- Zusage 6: ein fremdes Ruecksprungziel beim Einloesen -----------
+      //
+      // Beide Ziele gehoeren dem Client; nur gehoert das zweite nicht zu
+      // diesem Code. Ohne die Bindung waere ein Code, der an einem Ziel
+      // abgefangen wurde, an jedem anderen Ziel desselben Clients einloesbar.
+      const boundToHome = await service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read"], codeChallenge: challenge,
+      });
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "ai-bridge", code: boundToHome.code, redirectUri: second, codeVerifier: verifier,
+      })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+
+      // --- Zusage 7: der ganze Ablauf, und er endet in einem Token --------
+      const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "ai-bridge", redirectUri: home, scopes: ["data:read", "identity:read"],
+        codeChallenge: challenge, state: "zustand-2-82",
+      });
+      // Der `state` kommt unveraendert zurueck, und das Ziel auch: Genau daraus
+      // baut die Anwendung ihre Adresse selbst, weil QKERN keinen 302 schickt.
+      expect(granted.state).toBe("zustand-2-82");
+      expect(granted.redirectUri).toBe(home);
+      // Die Reihenfolge der Bereiche kommt aus der Liste und nicht aus der
+      // Eingabe: Dieselbe Erlaubnis soll ueberall gleich aussehen.
+      expect(granted.scopes).toEqual(["identity:read", "data:read"]);
+      const codeRow = await auth.query<{ consumed: boolean; method: string; challenge: string }>(
+        `SELECT consumed_at IS NOT NULL AS consumed, code_challenge_method AS method,
+                code_challenge AS challenge
+           FROM project_auth_oauth_codes
+          WHERE organization_id = $1 AND project_id = $2 AND redirect_uri = $3 AND consumed_at IS NULL`,
+        [oauthOrganization, oauthProject, home]);
+      expect(codeRow.rows).toHaveLength(1);
+      expect(codeRow.rows[0]).toMatchObject({ consumed: false, method: "S256", challenge });
+
+      const issued = await service.exchangeOAuthCode(scope, {
+        clientId: "ai-bridge", code: granted.code, redirectUri: home, codeVerifier: verifier,
+      });
+      expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
+      expect(issued).toMatchObject({
+        tokenType: "Bearer", expiresIn: 3_600, clientName: "ai-bridge",
+        scopes: ["identity:read", "data:read"],
+      });
+      // Kein Refresh Token, auch nicht als leeres Feld.
+      expect(issued).not.toHaveProperty("refreshToken");
+      // Das Token ist nicht das Sitzungstoken der Anmeldung, und es ist auch
+      // kein JWT: kein Punkt, keine drei Teile, keine Unterschrift.
+      expect(issued.accessToken).not.toBe(signedIn.accessToken);
+      expect(issued.accessToken.includes(".")).toBe(false);
+      // Und es steht nicht im Klartext in der Datenbank.
+      const tokenRows = await auth.query<{ hash: string; scopes: string[] }>(
+        `SELECT token_hash AS hash, scopes FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2`, [oauthOrganization, oauthProject]);
+      expect(tokenRows.rows).toHaveLength(1);
+      expect(tokenRows.rows[0].hash).not.toBe(issued.accessToken);
+      expect(tokenRows.rows[0].hash).toBe(hashProjectAuthToken(issued.accessToken));
+      expect(tokenRows.rows[0].scopes).toEqual(["identity:read", "data:read"]);
+
+      // --- Zusage 8: das zweite Einloesen ist ein Wiedereinspielangriff ---
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "ai-bridge", code: granted.code, redirectUri: home, codeVerifier: verifier,
+      })).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
+      // Und es ist dabei kein zweites Token entstanden.
+      expect((await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2`,
+        [oauthOrganization, oauthProject])).rows[0].count).toBe("1");
+
+      // --- Zusage 9: was das Token umfasst --------------------------------
+      const verified = await service.verifyOAuthToken(scope, issued.accessToken);
+      expect(verified.ok).toBe(true);
+      if (!verified.ok) throw new Error("unerreichbar");
+      expect(verified.identity).toMatchObject({
+        clientName: "ai-bridge", userId, email, role: "authenticated",
+        scopes: ["identity:read", "data:read"],
+      });
+      // Die Rolle kommt aus dem Dienst und nicht aus einer Zeile: Es gibt in
+      // dieser Tabelle keine Spalte, die `service_role` tragen koennte.
+      const tokenColumns = await owner.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'project_auth_oauth_tokens'`);
+      expect(tokenColumns.rows.map((row) => String(row.column_name))).not.toContain("role");
+
+      // --- Zusage 10: die echte Lesung durch die Data API unter RLS -------
+      //
+      // Die Policy nennt beides: den Anspruch `sub` und den Anspruch
+      // `client_id` aus `request.jwt.claims`. Damit prueft dieser Fall nicht
+      // nur, dass etwas gelesen wird, sondern dass genau die Ansprueche eines
+      // OAuth-Tokens auf demselben Weg ankommen wie die eines eigenen.
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".notizen (
+        id uuid PRIMARY KEY, besitzer text NOT NULL, quelle text NOT NULL, inhalt text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".notizen ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY eigener_client ON "${schema}".notizen
+        FOR SELECT TO ${expectedRole} USING (
+          besitzer = current_setting('request.jwt.claim.sub', true) AND
+          quelle = (current_setting('request.jwt.claims', true)::jsonb ->> 'client_id'))`);
+      await owner.query(`INSERT INTO "${schema}".notizen (id, besitzer, quelle, inhalt) VALUES
+        ($1, $2, 'ai-bridge', 'meine ueber die Bruecke'),
+        ($3, $2, 'eine-andere-app', 'dasselbe Subjekt, anderer Client'),
+        ($4, $5, 'ai-bridge', 'fremdes Subjekt, gleicher Client')`,
+      [randomUUID(), userId, randomUUID(), randomUUID(), randomUUID()]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: oauthOrganization, projectId: oauthProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) => secret === "qk_public_2_82" ? keyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const dataRequest = (token: string, withKey = true) => new NextRequest(
+        "https://qkern.test/api/v1/projects/x/environments/development/data",
+        { headers: withKey
+          ? { authorization: `Bearer ${token}`, "x-qkern-key": "qk_public_2_82" }
+          : { authorization: `Bearer ${token}` } },
+      );
+      const principal = await projectApplicationPrincipal(
+        dataRequest(issued.accessToken),
+        { projectId: oauthProject, environment: "development" }, keys, service, "read",
+      );
+      expect(principal).not.toBeNull();
+      expect(principal!.role).toBe("authenticated");
+      expect(principal!.subject).toBe(userId);
+      expect(principal!.actorRef).toBe(`project-auth-oauth:ai-bridge:${userId}`);
+      // Kein erfundenes aal, keine erfundene Sitzung: Ein OAuth-Token haengt an
+      // keiner Sitzung, und QKERN weiss nicht, wie sich dieser Mensch zuletzt
+      // angemeldet hat.
+      expect(principal!.claims.assurance).toBeUndefined();
+      expect(principal!.claims.sessionId).toBeUndefined();
+      expect(principal!.claims.external).toEqual({
+        token_use: "oauth", client_id: "ai-bridge", scope: "identity:read data:read",
+      });
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${oauthProject}` }) };
+      const generated = new GeneratedDataApiService(targets, connections);
+      const rows = await generated.listRows(
+        { organizationId: principal!.organizationId, actorRef: principal!.actorRef, claims: principal!.claims },
+        { projectId: oauthProject, environment: "development" },
+        { schema, table: "notizen" },
+      );
+      // Genau eine Zeile: die mit demselben Subjekt **und** demselben Client.
+      // Die anderen zwei belegen, dass beide Ansprueche wirklich wirken und
+      // nicht bloss einer davon gesetzt ist.
+      expect(rows.rows.map((row) => row.inhalt)).toEqual(["meine ueber die Bruecke"]);
+
+      // --- Zusage 11: der nicht zugestimmte Bereich --------------------
+      //
+      // Dasselbe Token, dieselbe Tuer, nur schreibend. `data:write` steht weder
+      // am Client noch am Token, also faellt die Anfrage, bevor die Datenbank
+      // sie sieht.
+      await expect(projectApplicationPrincipal(
+        dataRequest(issued.accessToken),
+        { projectId: oauthProject, environment: "development" }, keys, service, "write",
+      )).rejects.toThrowError();
+      // Und an einer Tuer, die keine OAuth-Token annimmt (Queues, Functions),
+      // faellt es ebenfalls. Das ist die Vorgabe und keine Einstellung.
+      await expect(projectApplicationPrincipal(
+        dataRequest(issued.accessToken),
+        { projectId: oauthProject, environment: "development" }, keys, service,
+      )).rejects.toThrowError();
+      // Ohne Public Key gibt es diesen Weg nicht, auch nicht mit gueltigem Token.
+      await expect(projectApplicationPrincipal(
+        dataRequest(issued.accessToken, false),
+        { projectId: oauthProject, environment: "development" }, keys, service, "read",
+      )).rejects.toThrowError();
+
+      // --- Zusage 12: das Entfernen nimmt das Token mit -------------------
+      const after = await service.deleteOAuthClient(scope, clientId, { id: oauthOwner });
+      expect(after.clients).toEqual([]);
+      expect(after.configured).toBe(false);
+      // Dasselbe Token, das eben noch gelesen hat, gilt nicht mehr.
+      await expect(service.verifyOAuthToken(scope, issued.accessToken))
+        .resolves.toMatchObject({ ok: false, reason: "unknown" });
+      // Und die Zeilen sind wirklich weg, nicht bloss unerreichbar.
+      expect((await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2`,
+        [oauthOrganization, oauthProject])).rows[0].count).toBe("0");
+      expect(await codeCount()).toBe("0");
+
+      // --- Zusage 13: die Spur traegt weder Code noch Token ---------------
+      const auditRows = await owner.query<{ action: string; metadata: string }>(
+        `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+          WHERE organization_id = $1`, [oauthOrganization]);
+      const actions = auditRows.rows.map((row) => String(row.action));
+      expect(actions).toContain("project_auth.oauth_client.created");
+      expect(actions).toContain("project_auth.oauth_code.issued");
+      expect(actions).toContain("project_auth.oauth_token.issued");
+      expect(actions).toContain("project_auth.oauth_token.refused");
+      expect(actions).toContain("project_auth.oauth_client.removed");
+      const serialised = JSON.stringify(auditRows.rows);
+      expect(serialised).not.toContain(issued.accessToken);
+      expect(serialised).not.toContain(granted.code);
+      expect(serialised).not.toContain(verifier);
+      expect(serialised).not.toContain(challenge);
       expect(serialised).not.toContain("service_role");
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

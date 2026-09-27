@@ -73,6 +73,37 @@ Grossbuchstaben.
   entfernt wird in der Anwendung des Nutzers (`auth/passkeys`).
 
 - Neu in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
+- Neu in diesem Zweig: 2.82 (Zweig `slice/oauthserver`) **QKERN gibt selbst
+  Token aus: Authorization Code mit PKCE, und nur das.** Der Platzhalter
+  `auth-oauth-server` ist echt, Migration
+  `0062_project_auth_oauth_server.sql` mit drei Tabellen (Clients, Codes,
+  Token). Das ist das Gegenstueck zu 2.80: Dort nimmt QKERN fremde Token an,
+  hier gibt es eigene aus. **Kein impliziter Ablauf, kein Passwort-Ablauf, kein
+  Client-Credentials-Ablauf, kein Refresh Token**, und jede Auslassung steht mit
+  Grund im Code, auf der Seite und im Handbuch. Der Client ist oeffentlich und
+  hat **keine Spalte fuer ein Geheimnis**; sein Schutz ist PKCE, und nur `S256`
+  ist erlaubt (die Datenbank laesst in der Spalte fuer das Verfahren keinen
+  anderen Wert zu). Der Code gilt 60 Sekunden, haengt an Client, Ruecksprungziel,
+  Pruefsumme und Nutzer, und wird beim Einloesen **verbraucht, bevor irgendetwas
+  anderes geprueft wird** (ein `UPDATE ... WHERE consumed_at IS NULL`, das die
+  Zeile zurueckgibt); eine zweite Tuer ist die Eindeutigkeit von `code_id` in der
+  Token-Tabelle. Das ausgegebene Token ist **undurchsichtig und kein JWT**: Es
+  gilt, weil eine Zeile existiert, und genau das macht es widerrufbar; der
+  Widerruf geht ueber den Client und nimmt per `ON DELETE CASCADE` dessen Codes
+  und alle seine Token mit. **Die Rolle ist immer `authenticated`, nie
+  `service_role`**, und diese Grenze steht als Abwesenheit: Es gibt weder am
+  Client noch am Token eine Spalte fuer eine Rolle. Drei Bereiche gibt es:
+  `identity:read`, `data:read`, `data:write`; das Schreibrecht wird in
+  `generatedDataContext` wirklich geprueft, und `projectApplicationPrincipal`
+  weist ein OAuth-Token an jeder Tuer ab, die es nicht ausdruecklich zulaesst
+  (Vorgabe `reject`), damit Queues und Functions nicht stillschweigend
+  mitlaufen. **QKERN schickt selbst keinen 302**: Die Zustimmung ist ein `POST`
+  und antwortet mit JSON aus Code, Ziel und `state`; dieselbe Grenze wie bei den
+  Ruecksprungzielen aus 2.54. Nebenbei wurde `presentedProjectApiKey` genauer
+  gemacht: Ein Bearer gilt nur noch als Projekt-Key, wenn er `qk_public_` oder
+  `qk_service_` traegt, sonst waere `qk_oauth_...` an der falschen Tuer
+  gelandet. Zertifiziert im Fall `(2.82)`.
+
 - Neu in diesem Zweig: 2.80 (Zweig `slice/thirdparty`) **Fremde Token, gegen
   den Schluesselsatz des Ausstellers geprueft.** Der Platzhalter
   `auth-third-party` ist echt, Migration

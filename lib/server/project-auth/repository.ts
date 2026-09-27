@@ -36,6 +36,14 @@ import type {
   ProjectAuthThirdPartyProvider,
 } from "@/lib/server/project-auth/third-party";
 
+import type {
+  ProjectAuthOAuthClient,
+  ProjectAuthOAuthClientDefinition,
+  ProjectAuthOAuthCode,
+  ProjectAuthOAuthScope,
+  ProjectAuthOAuthToken,
+} from "@/lib/server/project-auth/oauth";
+
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
   "passwordHash" | "status" | "emailVerifiedAt" | "userMetadata" | "appMetadata" | "updatedAt">>;
 
@@ -237,6 +245,92 @@ export interface ProjectAuthRepository {
   ): Promise<ProjectAuthThirdPartyProvider>;
   /** Entfernt einen Anbieter. `false` heisst: in dieser Umgebung gab es ihn nicht. */
   deleteThirdPartyProvider(scope: ProjectAuthScope, providerId: string): Promise<boolean>;
+
+  /* -------------------------------------------------------------- *
+   * OAuth-Server (2.82)
+   * -------------------------------------------------------------- */
+
+  /** Die hinterlegten OAuth-Clients dieser Umgebung, nach Namen geordnet. */
+  listOAuthClients(scope: ProjectAuthScope): Promise<ProjectAuthOAuthClient[]>;
+  /**
+   * Der Client zu einem Namen, oder `null`.
+   *
+   * Gesucht wird ueber den Namen und nicht ueber die Kennung, weil der Name die
+   * Kennung ist: Eine Anwendung schickt `client_id`, und das ist der Name, den
+   * die Console vergeben hat. Eine zweite, zufaellige Kennung daneben waere ein
+   * zweiter Bezeichner fuer dieselbe Sache, und die Console muesste erklaeren,
+   * welchen der Entwickler in seine Anwendung schreibt.
+   */
+  findOAuthClientByName(scope: ProjectAuthScope, name: string): Promise<ProjectAuthOAuthClient | null>;
+  /** Legt einen Client an. Es gibt bewusst kein Gegenstueck zum Aendern (Migration 0062). */
+  createOAuthClient(
+    scope: ProjectAuthScope,
+    client: ProjectAuthOAuthClientDefinition & { id: string },
+    now: Date,
+  ): Promise<ProjectAuthOAuthClient>;
+  /**
+   * Entfernt einen Client. `false` heisst: in dieser Umgebung gab es ihn nicht.
+   *
+   * Mit dem Client fallen seine Codes und seine ausgegebenen Token, ueber
+   * ON DELETE CASCADE. Das ist der Widerruf dieser Flaeche.
+   */
+  deleteOAuthClient(scope: ProjectAuthScope, clientId: string): Promise<boolean>;
+
+  /** Legt einen Code an. Der Code selbst kommt nie hierher, nur seine Pruefsumme. */
+  createOAuthCode(
+    scope: ProjectAuthScope,
+    code: {
+      id: string;
+      clientId: string;
+      userId: string;
+      redirectUri: string;
+      scopes: ProjectAuthOAuthScope[];
+      codeHash: string;
+      codeChallenge: string;
+      createdAt: Date;
+      expiresAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthCode>;
+  /**
+   * Verbraucht einen Code und gibt ihn zurueck, oder `null`.
+   *
+   * **Beides in einer Anweisung**, und das ist die Zusage: Gefunden wird nur ein
+   * Code, der noch nicht verbraucht und noch nicht abgelaufen ist, und dieselbe
+   * Anweisung setzt den Verbrauchsvermerk. Zwei Anfragen mit demselben Code
+   * bekommen darum nicht beide eine Zeile, auch nicht, wenn sie gleichzeitig
+   * kommen. Ein Lesen und ein spaeteres Schreiben haetten dieses Fenster.
+   */
+  consumeOAuthCode(
+    scope: ProjectAuthScope,
+    codeHash: string,
+    now: Date,
+  ): Promise<ProjectAuthOAuthCode | null>;
+
+  /** Legt ein ausgegebenes Token an. `code_id` ist eindeutig (Migration 0062). */
+  createOAuthToken(
+    scope: ProjectAuthScope,
+    token: {
+      id: string;
+      clientId: string;
+      userId: string;
+      codeId: string;
+      tokenHash: string;
+      scopes: ProjectAuthOAuthScope[];
+      createdAt: Date;
+      expiresAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthToken>;
+  /**
+   * Das Token zu einer Pruefsumme, samt Client und Nutzer, oder `null`.
+   *
+   * Der Lesepfad im heissen Weg. Die Frist wird hier **nicht** geprueft: Ob ein
+   * Token abgelaufen ist, entscheidet der Dienst an seiner Uhr, damit ein Test
+   * die Uhr stellen kann und nicht die Datenbank.
+   */
+  findOAuthTokenByHash(
+    scope: ProjectAuthScope,
+    tokenHash: string,
+  ): Promise<{ token: ProjectAuthOAuthToken; clientName: string } | null>;
 }
 
 export class DuplicateProjectAuthIdentityError extends Error {
@@ -258,6 +352,13 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly rateCounters = new Map<string, number>();
   /** Je Eintrag der Scope daneben, weil ein Anbieter keine Scope-Felder traegt. */
   private readonly thirdParty = new Map<string, { scope: ProjectAuthScope; provider: ProjectAuthThirdPartyProvider }>();
+  /** Die OAuth-Clients (2.82), je Eintrag der Scope daneben, wie bei den fremden Anbietern. */
+  private readonly oauthClients = new Map<string, { scope: ProjectAuthScope; client: ProjectAuthOAuthClient }>();
+  /** Die Codes, geschluesselt ueber ihre Pruefsumme: derselbe Zugriffsweg wie in der Datenbank. */
+  private readonly oauthCodes = new Map<string, { scope: ProjectAuthScope; code: ProjectAuthOAuthCode }>();
+  /** Die ausgegebenen Token, ebenfalls ueber ihre Pruefsumme, mit dem Code daneben. */
+  private readonly oauthTokens =
+    new Map<string, { scope: ProjectAuthScope; codeId: string; token: ProjectAuthOAuthToken }>();
 
   async findUserByEmail(scope: ProjectAuthScope, email: string) {
     const user = [...this.users.values()].find((candidate) => sameScope(candidate, scope) && candidate.email === email);
@@ -662,6 +763,113 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     this.thirdParty.delete(providerId);
     return true;
   }
+
+  /* ---------------------------------------------------------------- *
+   * OAuth-Server (2.82)
+   * ---------------------------------------------------------------- */
+
+  async listOAuthClients(scope: ProjectAuthScope) {
+    return [...this.oauthClients.values()]
+      .filter((entry) => sameScope(entry.scope, scope))
+      .map((entry) => cloneOAuthClient(entry.client))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async findOAuthClientByName(scope: ProjectAuthScope, name: string) {
+    const entry = [...this.oauthClients.values()].find((candidate) =>
+      sameScope(candidate.scope, scope) && candidate.client.name === name);
+    return entry ? cloneOAuthClient(entry.client) : null;
+  }
+
+  async createOAuthClient(
+    scope: ProjectAuthScope,
+    client: ProjectAuthOAuthClientDefinition & { id: string },
+    now: Date,
+  ) {
+    // Dieselbe Bedingung wie in PostgreSQL: ein Name je Umgebung. Diese Fassung
+    // ist nicht die Wahrheit im Betrieb, aber sie soll dieselbe Antwort geben,
+    // sonst weicht ein Test hier von der Datenbank ab.
+    const clash = [...this.oauthClients.values()].some((candidate) =>
+      sameScope(candidate.scope, scope) && candidate.client.name === client.name);
+    if (clash) throw new DuplicateProjectAuthIdentityError();
+    const stored: ProjectAuthOAuthClient = {
+      id: client.id, name: client.name,
+      redirectUris: [...client.redirectUris], scopes: [...client.scopes],
+      createdAt: new Date(now),
+    };
+    this.oauthClients.set(client.id, { scope: { ...scope }, client: stored });
+    return cloneOAuthClient(stored);
+  }
+
+  async deleteOAuthClient(scope: ProjectAuthScope, clientId: string) {
+    const entry = this.oauthClients.get(clientId);
+    if (!entry || !sameScope(entry.scope, scope)) return false;
+    this.oauthClients.delete(clientId);
+    // Was in PostgreSQL ON DELETE CASCADE tut, steht hier von Hand. Ohne diese
+    // zwei Zeilen wuerde diese Fassung einen Widerruf vortaeuschen, den die
+    // Datenbank wirklich leistet, und ein Test gegen sie waere wertlos.
+    for (const [key, code] of this.oauthCodes) {
+      if (code.code.clientId === clientId) this.oauthCodes.delete(key);
+    }
+    for (const [key, token] of this.oauthTokens) {
+      if (token.token.clientId === clientId) this.oauthTokens.delete(key);
+    }
+    return true;
+  }
+
+  async createOAuthCode(
+    scope: ProjectAuthScope,
+    code: {
+      id: string; clientId: string; userId: string; redirectUri: string;
+      scopes: ProjectAuthOAuthScope[]; codeHash: string; codeChallenge: string;
+      createdAt: Date; expiresAt: Date;
+    },
+  ) {
+    if (this.oauthCodes.has(code.codeHash)) throw new DuplicateProjectAuthIdentityError();
+    const stored: ProjectAuthOAuthCode = {
+      id: code.id, clientId: code.clientId, userId: code.userId, redirectUri: code.redirectUri,
+      scopes: [...code.scopes], codeChallenge: code.codeChallenge,
+      createdAt: new Date(code.createdAt), expiresAt: new Date(code.expiresAt), consumedAt: null,
+    };
+    this.oauthCodes.set(code.codeHash, { scope: { ...scope }, code: stored });
+    return cloneOAuthCode(stored);
+  }
+
+  async consumeOAuthCode(scope: ProjectAuthScope, codeHash: string, now: Date) {
+    const entry = this.oauthCodes.get(codeHash);
+    if (!entry || !sameScope(entry.scope, scope)) return null;
+    if (entry.code.consumedAt !== null || entry.code.expiresAt <= now) return null;
+    entry.code.consumedAt = new Date(now);
+    return cloneOAuthCode(entry.code);
+  }
+
+  async createOAuthToken(
+    scope: ProjectAuthScope,
+    token: {
+      id: string; clientId: string; userId: string; codeId: string; tokenHash: string;
+      scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
+    },
+  ) {
+    // Die Eindeutigkeit von `code_id` aus 0062, hier von Hand: Aus einem Code
+    // entsteht genau ein Token.
+    const clash = [...this.oauthTokens.values()].some((candidate) =>
+      candidate.codeId === token.codeId);
+    if (clash || this.oauthTokens.has(token.tokenHash)) throw new DuplicateProjectAuthIdentityError();
+    const stored: ProjectAuthOAuthToken = {
+      id: token.id, clientId: token.clientId, userId: token.userId, scopes: [...token.scopes],
+      createdAt: new Date(token.createdAt), expiresAt: new Date(token.expiresAt),
+    };
+    this.oauthTokens.set(token.tokenHash, { scope: { ...scope }, codeId: token.codeId, token: stored });
+    return cloneOAuthToken(stored);
+  }
+
+  async findOAuthTokenByHash(scope: ProjectAuthScope, tokenHash: string) {
+    const entry = this.oauthTokens.get(tokenHash);
+    if (!entry || !sameScope(entry.scope, scope)) return null;
+    const client = this.oauthClients.get(entry.token.clientId);
+    if (!client) return null;
+    return { token: cloneOAuthToken(entry.token), clientName: client.client.name };
+  }
 }
 
 function sameScope(left: ProjectAuthScope, right: ProjectAuthScope): boolean {
@@ -764,4 +972,26 @@ function cloneOidcIdentity(identity: ProjectAuthOidcIdentity): ProjectAuthOidcId
 
 function cloneThirdPartyProvider(provider: ProjectAuthThirdPartyProvider): ProjectAuthThirdPartyProvider {
   return { ...provider, audiences: [...provider.audiences], createdAt: new Date(provider.createdAt) };
+}
+
+function cloneOAuthClient(client: ProjectAuthOAuthClient): ProjectAuthOAuthClient {
+  return {
+    ...client, redirectUris: [...client.redirectUris], scopes: [...client.scopes],
+    createdAt: new Date(client.createdAt),
+  };
+}
+
+function cloneOAuthCode(code: ProjectAuthOAuthCode): ProjectAuthOAuthCode {
+  return {
+    ...code, scopes: [...code.scopes], createdAt: new Date(code.createdAt),
+    expiresAt: new Date(code.expiresAt),
+    consumedAt: code.consumedAt === null ? null : new Date(code.consumedAt),
+  };
+}
+
+function cloneOAuthToken(token: ProjectAuthOAuthToken): ProjectAuthOAuthToken {
+  return {
+    ...token, scopes: [...token.scopes], createdAt: new Date(token.createdAt),
+    expiresAt: new Date(token.expiresAt),
+  };
 }

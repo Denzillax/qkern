@@ -114,6 +114,28 @@ import {
 } from "@/lib/server/project-auth/third-party";
 import type { ProjectAuthThirdPartyKeyPort } from "@/lib/server/project-auth/third-party-keys";
 import {
+  checkProjectAuthOAuthAuthorize,
+  parseProjectAuthOAuthAuthorize,
+  parseProjectAuthOAuthClient,
+  parseProjectAuthOAuthExchange,
+  projectAuthOAuthVerifierMatches,
+  PROJECT_AUTH_OAUTH_BOUNDS,
+  PROJECT_AUTH_OAUTH_CHALLENGE_METHOD,
+  PROJECT_AUTH_OAUTH_CODE,
+  PROJECT_AUTH_OAUTH_FORBIDDEN_ROLE,
+  PROJECT_AUTH_OAUTH_GRANT,
+  PROJECT_AUTH_OAUTH_ROLE,
+  PROJECT_AUTH_OAUTH_SCOPES,
+  PROJECT_AUTH_OAUTH_TOKEN,
+  PROJECT_AUTH_OAUTH_UNSUPPORTED_GRANTS,
+  type ProjectAuthOAuthAuthorizeRejection,
+  type ProjectAuthOAuthClient,
+  type ProjectAuthOAuthClientRejection,
+  type ProjectAuthOAuthExchangeRejection,
+  type ProjectAuthOAuthIdentity,
+  type ProjectAuthOAuthRefusal,
+} from "@/lib/server/project-auth/oauth";
+import {
   hashProjectAuthToken,
   ProjectAuthTokenError,
   ProjectAuthTokenService,
@@ -383,6 +405,54 @@ export class ProjectAuthThirdPartyError extends Error {
   }
 }
 recognisedByName(ProjectAuthThirdPartyError, "ProjectAuthThirdPartyError");
+
+/**
+ * Der OAuth-Server einer Umgebung, wie die Console ihn sieht (2.82).
+ *
+ * Mitgeliefert werden die Clients, die Bereiche mit ihrer Bedeutung, die Rolle,
+ * die ein Token bekommt, die Rolle, die es nie bekommt, die nicht gebauten
+ * Verfahren und die Raender. Die Console soll nichts davon aus eigenem Wissen
+ * behaupten muessen: Welche Bereiche es gibt und welche Rolle ein fremder
+ * Client bekommt, entscheidet der Dienst, und wenn sich das einmal aendert,
+ * aendert sich diese Zeile und nicht ein Satz in einer Ansicht.
+ */
+export type PublicProjectAuthOAuthServer = {
+  clients: Array<{
+    id: string;
+    name: string;
+    redirectUris: string[];
+    scopes: string[];
+    createdAt: string;
+  }>;
+  scopes: readonly string[];
+  /** Die Rolle, die jedes Token dieses Ablaufs in der Zeilensicherheit bekommt. */
+  role: string;
+  /** Die Rolle, die es nie bekommt. Ausdruecklich genannt, nicht bloss weggelassen. */
+  forbiddenRole: string;
+  /** Die Verfahren, die dieser Server nicht kennt, mit Namen. */
+  unsupportedGrants: readonly string[];
+  /** Das einzige Verfahren, und die einzige Art der Pruefsumme. */
+  grant: string;
+  challengeMethod: string;
+  bounds: typeof PROJECT_AUTH_OAUTH_BOUNDS;
+  /** Ob in dieser Umgebung ueberhaupt ein Client hinterlegt ist. */
+  configured: boolean;
+};
+
+export class ProjectAuthOAuthError extends Error {
+  constructor(
+    readonly reason:
+      | ProjectAuthOAuthClientRejection
+      | ProjectAuthOAuthAuthorizeRejection
+      | ProjectAuthOAuthExchangeRejection
+      | "duplicate",
+    readonly field: string,
+  ) {
+    super("Invalid Project Auth OAuth request");
+    this.name = "ProjectAuthOAuthError";
+  }
+}
+recognisedByName(ProjectAuthOAuthError, "ProjectAuthOAuthError");
 
 export class ProjectAuthHookError extends Error {
   constructor(
@@ -1232,6 +1302,349 @@ export class ProjectAuthService {
       metadata: { provider: providerId },
     });
     return publicThirdParty(await this.dependencies.repository.listThirdPartyProviders(scope));
+  }
+
+  /* ---------------------------------------------------------------- *
+   * OAuth-Server (2.82)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Die hinterlegten OAuth-Clients dieser Umgebung, samt den Bereichen, der
+   * Rolle und den Grenzen.
+   */
+  async listOAuthClients(scope: ProjectAuthScope): Promise<PublicProjectAuthOAuthServer> {
+    assertScope(scope);
+    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+  }
+
+  /**
+   * Legt einen OAuth-Client an.
+   *
+   * Eine Grenze steht hier und nicht in der Datenbank, weil die Datenbank sie
+   * nicht kennen kann: die Zahl der Clients je Umgebung. Jeder zusaetzliche
+   * Client ist eine laufende Erlaubnis, im Namen von Nutzern dieses Projekts zu
+   * arbeiten, und die Liste soll ueberschaubar bleiben.
+   *
+   * **Es gibt kein Geheimnis zurueckzugeben**, und darum gibt diese Methode
+   * keines. Sie antwortet mit der Liste nach der Aenderung, wie ihre Geschwister
+   * aus 2.77 und 2.80. Wer hier ein Geheimnis erwartet, sucht den vertraulichen
+   * Client, und den gibt es nicht: Der Grund steht in `oauth.ts` und in
+   * Migration 0062.
+   *
+   * Der Audit-Eintrag traegt Name, Anzahl der Ruecksprungziele und die Bereiche.
+   * Nichts davon ist ein Geheimnis: Der Name steht in jeder Anfrage der
+   * Anwendung, und die Bereiche sind die Erlaubnis, die dieser Eintrag erteilt.
+   * Die Ziele selbst stehen nicht darin, weil die Bereinigung der Audit-Kette aus
+   * einer Adresse ohnehin nur Bruchstuecke durchliesse; wer sie sehen will,
+   * liest die Liste in der Console.
+   */
+  async createOAuthClient(
+    scope: ProjectAuthScope,
+    input: unknown,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthOAuthServer> {
+    assertScope(scope);
+    const parsed = parseProjectAuthOAuthClient(input);
+    if (!parsed.ok) throw new ProjectAuthOAuthError(parsed.reason, parsed.field);
+    const existing = await this.dependencies.repository.listOAuthClients(scope);
+    if (existing.length >= PROJECT_AUTH_OAUTH_BOUNDS.clients.max) {
+      throw new ProjectAuthOAuthError("too_many_clients", "clients");
+    }
+    const now = this.now();
+    let created: ProjectAuthOAuthClient;
+    try {
+      created = await this.dependencies.repository.createOAuthClient(
+        scope, { ...parsed.client, id: this.id() }, now,
+      );
+    } catch (error) {
+      if (error instanceof DuplicateProjectAuthIdentityError) {
+        throw new ProjectAuthOAuthError("duplicate", "name");
+      }
+      throw error;
+    }
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_client.created",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_oauth_client:${created.id}`,
+      status: "succeeded",
+      metadata: {
+        client: created.name,
+        redirectTargets: created.redirectUris.length,
+        // Getrennt mit einem Leerzeichen und nicht mit einem Komma: Die
+        // Bereinigung der Audit-Kette laesst in einem Metadatenwert kein Komma
+        // durch, und ein Wert mit einem Komma faellt dort **still** weg.
+        scopes: created.scopes.join(" "),
+      },
+    });
+    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+  }
+
+  /**
+   * Entfernt einen OAuth-Client, und damit seine Codes und seine Token.
+   *
+   * Das ist der einzige Widerruf dieser Flaeche, und er ist grob: Er nimmt nicht
+   * ein Token zurueck, sondern alle Token dieses Clients, von allen Nutzern. Das
+   * ist Absicht und keine Sparsamkeit: Ein Nutzer hat einer **Anwendung**
+   * zugestimmt, nicht einem Token, das er nie gesehen hat. Wer eine einzelne
+   * Zustimmung zurueckziehen will, findet hier nichts dafuer, und die Seite sagt
+   * das.
+   */
+  async deleteOAuthClient(
+    scope: ProjectAuthScope,
+    clientId: string,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthOAuthServer> {
+    assertScope(scope);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)) {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+    const removed = await this.dependencies.repository.deleteOAuthClient(scope, clientId);
+    if (!removed) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_client.removed",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_oauth_client:${clientId}`,
+      status: "succeeded",
+      metadata: { client: clientId },
+    });
+    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+  }
+
+  /**
+   * Die Zustimmung: Ein angemeldeter Nutzer dieses Projekts erlaubt einem
+   * Client, in seinem Namen zu arbeiten, und bekommt einen Code dafuer.
+   *
+   * **Der Nutzer kommt aus seinem eigenen Access Token und nicht aus der
+   * Anfrage.** Das ist die tragende Zeile dieser Methode. Wer zustimmt, ist der,
+   * der sich bei QKERN angemeldet hat, und keine Kennung, die im Rumpf steht.
+   * Eine Kennung im Rumpf waere die Erlaubnis, im Namen eines Fremden
+   * zuzustimmen.
+   *
+   * **QKERN antwortet mit JSON und nicht mit einem 302.** Zurueck gehen der
+   * Code, das Ruecksprungziel und der `state`; die Anwendung baut ihre Adresse
+   * selbst. Dieselbe Grenze zieht 2.54 bei den Ruecksprungzielen der Anmeldung,
+   * und sie steht dort mit demselben Grund: Ein Ziel, das ein Dienst selbst
+   * anspringt, ist eine Flaeche, auf der jede Luecke in der Pruefung sofort ein
+   * offener Umleiter ist.
+   *
+   * **Was hier nicht passiert:** Es entsteht keine Zustimmungsseite von QKERN.
+   * Die Anwendung, in der der Nutzer angemeldet ist, zeigt ihm, was er erlaubt,
+   * und ruft danach diese Route. Das ist ehrlich gesagt eine Verlagerung: QKERN
+   * kann nicht beweisen, dass der Nutzer eine Liste gesehen hat. Was QKERN
+   * beweisen kann, prueft es: dass der Nutzer angemeldet ist, dass der Client
+   * hinterlegt ist, dass das Ziel eines seiner Ziele ist und dass die Bereiche
+   * in seinen Bereichen liegen.
+   */
+  async authorizeOAuth(
+    scope: ProjectAuthScope,
+    accessToken: string,
+    input: unknown,
+  ): Promise<{
+    code: string;
+    codeExpiresAt: string;
+    redirectUri: string;
+    state: string | null;
+    scopes: string[];
+    clientName: string;
+  }> {
+    assertScope(scope);
+    const parsed = parseProjectAuthOAuthAuthorize(input);
+    if (!parsed.ok) throw new ProjectAuthOAuthError(parsed.reason, parsed.field);
+    // Erst der Nutzer, dann der Client. Die Reihenfolge ist Absicht: Ein
+    // Aufrufer ohne gueltiges Token soll nicht erfahren, welche Clients es gibt.
+    const principal = await this.verifyAccess(scope, accessToken);
+    const client = await this.dependencies.repository.findOAuthClientByName(scope, parsed.request.clientName);
+    if (!client) throw new ProjectAuthOAuthError("client_unknown", "clientId");
+    const checked = checkProjectAuthOAuthAuthorize(parsed.request, client);
+    if (!checked.ok) throw new ProjectAuthOAuthError(checked.reason, checked.field);
+    const now = this.now();
+    const code = this.opaqueToken("oauthcode");
+    if (!PROJECT_AUTH_OAUTH_CODE.test(code)) throw new ProjectAuthError("INVALID_INPUT");
+    const expiresAt = new Date(now.getTime() + PROJECT_AUTH_OAUTH_BOUNDS.codeTtlSeconds * 1000);
+    const stored = await this.dependencies.repository.createOAuthCode(scope, {
+      id: this.id(), clientId: client.id, userId: principal.user.id,
+      redirectUri: parsed.request.redirectUri, scopes: parsed.request.scopes,
+      codeHash: hashProjectAuthToken(code), codeChallenge: parsed.request.codeChallenge,
+      createdAt: now, expiresAt,
+    });
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_code.issued",
+      actorType: "app_user", actorRef: projectAuthUserRef(principal.user.id),
+      resourceRef: `project_auth_oauth_code:${stored.id}`,
+      status: "succeeded",
+      metadata: { client: client.name, scopes: stored.scopes.join(" ") },
+    });
+    return {
+      code,
+      codeExpiresAt: stored.expiresAt.toISOString(),
+      redirectUri: stored.redirectUri,
+      // Unveraendert zurueck, und nur zurueck. QKERN liest den `state` nicht und
+      // legt nichts darin ab: Er gehoert der Anwendung, und sie prueft mit ihm,
+      // dass der Ruecksprung zu ihrem eigenen Anlauf gehoert.
+      state: parsed.request.state,
+      scopes: [...stored.scopes],
+      clientName: client.name,
+    };
+  }
+
+  /**
+   * Das Einloesen: Aus einem Code wird ein Token, genau einmal.
+   *
+   * Die Reihenfolge der Pruefungen ist die Zusage dieser Methode:
+   *
+   * 1. **Der Code wird verbraucht, bevor irgendetwas anderes geprueft wird.**
+   *    Finden und Verbrauchen passieren in einer Anweisung (siehe
+   *    `consumeOAuthCode`). Ein zweites Einloesen findet darum keinen Code mehr,
+   *    auch nicht, wenn beide Anfragen gleichzeitig kommen, und auch nicht, wenn
+   *    die erste danach an der Pruefsumme gescheitert ist. Das ist der
+   *    wesentliche Punkt: Ein Code, der einmal vorgezeigt wurde, ist verbraucht,
+   *    gleich wie es weitergeht. Wer ihn erst nach erfolgreicher Pruefung
+   *    verbrauchte, liesse einem Angreifer beliebig viele Versuche mit dem
+   *    Prueftext.
+   * 2. **Dann der Client.** Ein Code, der zu einem anderen Client gehoert, faellt
+   *    hier, und der Code ist trotzdem weg.
+   * 3. **Dann das Ruecksprungziel**, Zeichen fuer Zeichen gegen den Wert, unter
+   *    dem der Code ausgegeben wurde.
+   * 4. **Dann der Prueftext**, gegen die gespeicherte Pruefsumme, in fester
+   *    Zeit.
+   *
+   * Jede Ablehnung ist derselbe Fehler nach draussen: `INVALID_TOKEN`, also 401
+   * und "Authentication failed". Ein Aufrufer, der erfaehrt, ob sein Ziel oder
+   * sein Prueftext nicht gepasst hat, bekommt ein Werkzeug zum Probieren; wer
+   * den Grund braucht, ist der Betreiber, und er liest ihn im Audit. Die eine
+   * Ausnahme ist das zweite Einloesen: Es bekommt `TOKEN_REPLAYED`, weil das
+   * derselbe Ausgang mit einem eigenen Namen im Audit ist und der Aufrufer davon
+   * nichts erfaehrt, was er nicht schon weiss.
+   */
+  async exchangeOAuthCode(
+    scope: ProjectAuthScope,
+    input: unknown,
+  ): Promise<{
+    accessToken: string;
+    tokenType: "Bearer";
+    expiresIn: number;
+    expiresAt: string;
+    scopes: string[];
+    clientName: string;
+  }> {
+    assertScope(scope);
+    const parsed = parseProjectAuthOAuthExchange(input);
+    if (!parsed.ok) throw new ProjectAuthOAuthError(parsed.reason, parsed.field);
+    const request = parsed.request;
+    const now = this.now();
+    const consumed = await this.dependencies.repository.consumeOAuthCode(
+      scope, hashProjectAuthToken(request.code), now,
+    );
+    if (!consumed) {
+      // Kein Code, ein abgelaufener Code oder ein zweites Einloesen. Die drei
+      // sind hier nicht auseinanderzuhalten, und sie muessen es auch nicht sein:
+      // Nach draussen ist es dasselbe, und im Audit steht der Versuch.
+      await this.recordAudit({
+        scope, action: "project_auth.oauth_token.refused",
+        actorType: "system", actorRef: "system",
+        resourceRef: `project_auth_oauth_client:${request.clientName}`,
+        status: "failed", metadata: { reason: "code_not_redeemable", client: request.clientName },
+      });
+      throw new ProjectAuthError("TOKEN_REPLAYED");
+    }
+    const client = await this.dependencies.repository.findOAuthClientByName(scope, request.clientName);
+    const refuse = async (reason: string): Promise<never> => {
+      await this.recordAudit({
+        scope, action: "project_auth.oauth_token.refused",
+        actorType: "system", actorRef: "system",
+        resourceRef: `project_auth_oauth_code:${consumed.id}`,
+        status: "failed", metadata: { reason, client: request.clientName },
+      });
+      throw new ProjectAuthError("INVALID_TOKEN");
+    };
+    if (!client || client.id !== consumed.clientId) return refuse("client_mismatch");
+    if (consumed.redirectUri !== request.redirectUri) return refuse("redirect_uri_mismatch");
+    if (!projectAuthOAuthVerifierMatches({
+      codeVerifier: request.codeVerifier, codeChallenge: consumed.codeChallenge,
+    })) return refuse("verifier_mismatch");
+    // Der Nutzer muss es noch geben und aktiv sein. Ein Code ueberlebt eine
+    // Sperrung um bis zu eine Minute, und eine Minute ist genug, um ein Token zu
+    // holen, das zwoelf Stunden gilt.
+    const user = await this.dependencies.repository.findUserById(scope, consumed.userId);
+    if (!user || user.status !== "active") return refuse("user_unavailable");
+    const token = this.opaqueToken("oauth");
+    if (!PROJECT_AUTH_OAUTH_TOKEN.test(token)) throw new ProjectAuthError("INVALID_INPUT");
+    const expiresAt = new Date(now.getTime() + PROJECT_AUTH_OAUTH_BOUNDS.tokenTtlSeconds * 1000);
+    const issued = await this.dependencies.repository.createOAuthToken(scope, {
+      id: this.id(), clientId: client.id, userId: user.id, codeId: consumed.id,
+      tokenHash: hashProjectAuthToken(token), scopes: consumed.scopes,
+      createdAt: now, expiresAt,
+    });
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_token.issued",
+      actorType: "app_user", actorRef: projectAuthUserRef(user.id),
+      resourceRef: `project_auth_oauth_token:${issued.id}`,
+      status: "succeeded",
+      metadata: { client: client.name, scopes: issued.scopes.join(" ") },
+    });
+    return {
+      accessToken: token,
+      tokenType: "Bearer",
+      expiresIn: PROJECT_AUTH_OAUTH_BOUNDS.tokenTtlSeconds,
+      expiresAt: issued.expiresAt.toISOString(),
+      scopes: [...issued.scopes],
+      clientName: client.name,
+      // Kein `refreshToken` in dieser Antwort, und keines mit dem Wert `null`.
+      // Ein Feld, das immer leer ist, laedt dazu ein, es eines Tages zu fuellen,
+      // ohne dass jemand die Entscheidung dahinter noch einmal trifft.
+    };
+  }
+
+  /**
+   * Prueft ein vorgelegtes OAuth-Token (2.82).
+   *
+   * Das Token ist undurchsichtig: Gueltig ist es, weil eine Zeile existiert, und
+   * nicht, weil eine Unterschrift stimmt. Geprueft wird darum in dieser
+   * Reihenfolge: Form, Zeile, Uhr.
+   *
+   * Die Form zuerst, und zwar bevor die Datenbank gefragt wird. Ein Aufrufer,
+   * der Muell schickt, soll keine Abfrage kosten, und die Pruefsumme eines
+   * Wertes, der nie ein Token war, hat in keiner Abfrage etwas zu suchen.
+   *
+   * **Die Rolle wird nicht gelesen, sondern gesetzt.** Sie kommt aus
+   * `PROJECT_AUTH_OAUTH_ROLE` und nicht aus der Zeile, und darum gibt es keinen
+   * Wert in dieser Datenbank, der ein Token auf `service_role` heben koennte.
+   * Das ist derselbe Gedanke wie bei den fremden Anbietern (2.80), nur schaerfer:
+   * Dort gab es eine Spalte mit zwei erlaubten Werten, hier gibt es gar keine.
+   */
+  async verifyOAuthToken(
+    scope: ProjectAuthScope,
+    token: string,
+  ): Promise<{ ok: true; identity: ProjectAuthOAuthIdentity }
+    | { ok: false; reason: ProjectAuthOAuthRefusal }> {
+    assertScope(scope);
+    if (typeof token !== "string" || token.length > PROJECT_AUTH_OAUTH_BOUNDS.tokenLength ||
+        !PROJECT_AUTH_OAUTH_TOKEN.test(token)) {
+      return { ok: false, reason: "malformed" };
+    }
+    const found = await this.dependencies.repository.findOAuthTokenByHash(
+      scope, hashProjectAuthToken(token),
+    );
+    if (!found) return { ok: false, reason: "unknown" };
+    if (found.token.expiresAt <= this.now()) return { ok: false, reason: "expired" };
+    const user = await this.dependencies.repository.findUserById(scope, found.token.userId);
+    // Ein gesperrter oder geloeschter Nutzer laesst das Token fallen. Ohne diese
+    // Zeile waere eine Sperrung unter Auth → Nutzer eine Sperrung nur fuer die
+    // eigene Anwendung des Projekts, und ein fremder Client arbeitete weiter im
+    // Namen eines Menschen, dem das Projekt den Zugang genommen hat.
+    if (!user || user.status !== "active") return { ok: false, reason: "unknown" };
+    return {
+      ok: true,
+      identity: {
+        clientId: found.token.clientId,
+        clientName: found.clientName,
+        userId: found.token.userId,
+        email: user.email,
+        scopes: [...found.token.scopes],
+        role: PROJECT_AUTH_OAUTH_ROLE,
+        expiresAt: found.token.expiresAt,
+      },
+    };
   }
 
   /**
@@ -2579,6 +2992,12 @@ export class DisabledProjectAuthService {
   listThirdPartyProviders(): never { return this.disabled(); }
   createThirdPartyProvider(): never { return this.disabled(); }
   deleteThirdPartyProvider(): never { return this.disabled(); }
+  listOAuthClients(): never { return this.disabled(); }
+  createOAuthClient(): never { return this.disabled(); }
+  deleteOAuthClient(): never { return this.disabled(); }
+  authorizeOAuth(): never { return this.disabled(); }
+  exchangeOAuthCode(): never { return this.disabled(); }
+  verifyOAuthToken(): never { return this.disabled(); }
   verifyThirdPartyToken(): never { return this.disabled(); }
   verifyMfaChallenge(): never { return this.disabled(); }
   beginPasskeyRegistration(): never { return this.disabled(); }
@@ -2632,6 +3051,33 @@ function publicThirdParty(providers: readonly ProjectAuthThirdPartyProvider[]): 
     ownClaims: [...PROJECT_AUTH_THIRD_PARTY_OWN_CLAIMS],
     bounds: PROJECT_AUTH_THIRD_PARTY_BOUNDS,
     configured: providers.length > 0,
+  };
+}
+
+/**
+ * Die Auskunft ueber den OAuth-Server (2.82).
+ *
+ * Mitgeliefert werden die Bereiche, die Rolle, die verbotene Rolle, die nicht
+ * gebauten Verfahren und die Raender. Nichts davon ist eine Kopie fuer die
+ * Bequemlichkeit: Die Console soll nicht behaupten muessen, dass `service_role`
+ * ausgeschlossen ist oder dass es kein Refresh Token gibt. Beides entscheidet
+ * dieser Dienst, und beides sagt er hier.
+ */
+function publicOAuthServer(clients: readonly ProjectAuthOAuthClient[]): PublicProjectAuthOAuthServer {
+  return {
+    clients: clients.map((client) => ({
+      id: client.id, name: client.name,
+      redirectUris: [...client.redirectUris], scopes: [...client.scopes],
+      createdAt: client.createdAt.toISOString(),
+    })),
+    scopes: [...PROJECT_AUTH_OAUTH_SCOPES],
+    role: PROJECT_AUTH_OAUTH_ROLE,
+    forbiddenRole: PROJECT_AUTH_OAUTH_FORBIDDEN_ROLE,
+    unsupportedGrants: [...PROJECT_AUTH_OAUTH_UNSUPPORTED_GRANTS],
+    grant: PROJECT_AUTH_OAUTH_GRANT,
+    challengeMethod: PROJECT_AUTH_OAUTH_CHALLENGE_METHOD,
+    bounds: PROJECT_AUTH_OAUTH_BOUNDS,
+    configured: clients.length > 0,
   };
 }
 

@@ -40,6 +40,7 @@ import { authHookTexts } from "@/lib/console/auth-hooks-texts";
 import { authPasskeysTexts } from "@/lib/console/auth-passkeys-texts";
 import { branchFlowTexts } from "@/lib/console/branch-flow-texts";
 import { authThirdPartyTexts } from "@/lib/console/auth-third-party-texts";
+import { authOAuthServerTexts } from "@/lib/console/auth-oauth-server-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -180,6 +181,9 @@ async function consoleKeys(): Promise<string[]> {
   // geprueften Verfahren, die Obergrenze der Rolle, die Gruende einer Ablehnung
   // und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of authThirdPartyTexts()) keys.add(text);
+  // Auth → OAuth-Server (2.82) zeigt Bereiche, Auslässungen und die Gründe
+  // einer Ablehnung über t(variable).
+  for (const text of authOAuthServerTexts()) keys.add(text);
   return [...keys];
 }
 

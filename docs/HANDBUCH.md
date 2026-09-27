@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.60.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.61.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -1718,6 +1718,144 @@ ist dort genau eine Stelle, der Transport zum Schlüsselsatz: Der geprüfte Weg
 verlangt https und eine öffentlich erreichbare Adresse und kann im
 Zertifizierungsnetz keinen Server erreichen; die Adresspolicy selbst ist eigens
 zertifiziert.
+
+### QKERN als OAuth-Anbieter: ein Ablauf, vollständig
+
+Seit `2.61.0` ist **Auth → OAuth-Server** keine Platzhalterseite mehr. Der
+Platzhalter sagte: „QKERN selbst als OAuth-Anbieter für andere Apps. Für die AI
+Bridge vorgesehen, noch nicht gebaut.“ Gebaut ist jetzt **genau ein Ablauf**:
+Authorization Code mit PKCE. Er ist vollständig, und was daneben fehlt, fehlt
+mit Grund.
+
+Das ist das Gegenstück zu **Auth → Fremde Anbieter** aus `2.60.0`. Dort nimmt
+QKERN Token an, die ein anderer ausgegeben hat; hier gibt QKERN Token aus, die
+ein anderer benutzt. Die Richtung dreht die Frage: dort ging es darum, wem QKERN
+glaubt, hier darum, was QKERN zusagt.
+
+**Der Ablauf in vier Schritten.** Eine Anwendung ist als Client hinterlegt. Der
+Nutzer ist in dieser Anwendung bei QKERN angemeldet. Die Anwendung ruft
+`POST /auth/oauth/authorize` mit ihrem `client_id`, einem ihrer
+Rücksprungziele, den Bereichen, die sie will, und der Prüfsumme eines
+Prüftexts, den sie gerade gewürfelt hat. QKERN antwortet mit einem Code. Die
+Anwendung löst ihn bei `POST /auth/oauth/token` gegen ein Token ein und legt
+dabei den Prüftext vor.
+
+**QKERN schickt selbst keinen 302.** Die Zustimmung antwortet mit JSON: dem
+Code, dem Ziel und dem `state`; die Anwendung baut ihre Adresse selbst. Dieselbe
+Grenze gilt seit `2.54.0` für die Rücksprungziele der Anmeldung, und sie gilt aus
+demselben Grund: Ein Ziel, das ein Dienst selbst anspringt, ist eine Fläche, auf
+der jede Lücke in der Prüfung sofort ein offener Umleiter ist. Darum ist die
+Zustimmung auch ein `POST` und kein `GET`: Ein `GET` wäre der Ort, an dem ein
+Browser landet, und damit die Einladung, von hier aus weiterzuleiten. Das
+Rücksprungziel ist deshalb keine Adresse, an die jemand geschickt wird, sondern
+eine Bindung des Codes; es wird Zeichen für Zeichen verglichen, und Abfrage,
+Fragment, Anmeldedaten und Platzhalter sind darin verboten.
+
+**Der Client hat kein Geheimnis**, und das ist die Zusage dieses Schnitts. Es
+gibt in `project_auth_oauth_clients` keine Spalte dafür. Ein Client ist eine
+Anwendung, die der Nutzer installiert oder im Browser lädt; ein Geheimnis darin
+liegt im Programmpaket oder im JavaScript und ist mit einem Editor zu lesen.
+PKCE ist genau dafür da. Der Name des Clients ist gleichzeitig sein `client_id`
+auf der Leitung; eine zweite, zufällige Kennung daneben wäre ein zweiter
+Bezeichner für dieselbe Sache. Ein Client wird angelegt und entfernt, nicht
+bearbeitet: Ein geändertes Ziel oder ein geänderter Bereich würde die Zusage
+ändern, unter der ein Nutzer zugestimmt hat, und die Datenbank hat auf dieser
+Tabelle darum gar kein `UPDATE`-Recht.
+
+**Es gibt drei Bereiche.** `identity:read` gibt Kennung und E-Mail-Adresse des
+Nutzers, abrufbar unter `GET /auth/oauth/userinfo`, und sonst nichts: kein
+`user_metadata`, kein `app_metadata`, keine Sitzung, keine Angabe über einen
+zweiten Faktor. `data:read` erlaubt Lesen durch die Data API, `data:write`
+Schreiben, beides unter der Zeilensicherheit und als dieser Nutzer. Einen
+Bereich je Tabelle gibt es nicht, weil die Zeilensicherheit die Frage schon
+feiner beantwortet: Eine Policy entscheidet je Zeile. Verlangt eine Anwendung
+mehr, als ihr Client führt, wird der Anlauf abgewiesen und nicht still gekürzt.
+
+**Der Code ist einmalig, kurzlebig und vierfach gebunden.** Er gilt 60 Sekunden
+und hängt am Client, am Rücksprungziel, an der Prüfsumme des Prüftexts und am
+Nutzer, der zugestimmt hat. Gespeichert ist nur seine Prüfsumme. Beim Einlösen
+wird er **verbraucht, bevor irgendetwas anderes geprüft wird**, und zwar in
+derselben `UPDATE`-Anweisung, die ihn findet: Zwei gleichzeitige Anfragen sehen
+darum nicht beide eine freie Zeile, und ein Code, der einmal vorgezeigt wurde,
+ist weg, gleich wie es weitergeht. Wer ihn erst nach erfolgreicher Prüfung
+verbrauchte, liesse einem Angreifer beliebig viele Versuche mit dem Prüftext.
+Eine zweite Tür hält dasselbe: `code_id` ist in `project_auth_oauth_tokens`
+eindeutig, aus einem Code entsteht also genau ein Token, auch dann, wenn jemand
+einen zweiten Einlöseweg baut, der den Vermerk nicht setzt. Als Verfahren gilt
+nur `S256`; `plain` hiesse, die Prüfsumme **ist** der Prüftext, und die Datenbank
+lässt in der Spalte gar keinen anderen Wert zu. Verglichen wird in fester Zeit.
+
+**Das Token ist nicht das Sitzungstoken der Anmeldung.** Jenes ist ein
+signiertes JWT und gilt, weil eine Unterschrift stimmt; dieses ist ein
+Zufallswert (`qk_oauth_…`) und gilt, weil eine Zeile existiert. Der Grund ist der
+Widerruf: Ein signiertes Token gilt bis zu seinem Ende, und wer es vorher stoppen
+will, braucht eine Liste der gestoppten, also dieselbe Tabelle, nur umgekehrt.
+Der Preis steht dazu: Jede Anfrage mit einem solchen Token kostet eine
+Datenbankabfrage. Ein Token gilt eine Stunde, es gibt kein Refresh Token, und es
+hängt an keiner Sitzung: Es überlebt die Abmeldung in der eigenen Anwendung des
+Projekts. Ein gesperrter oder gelöschter Nutzer lässt es bei der nächsten Anfrage
+fallen.
+
+**Die Rolle ist immer `authenticated`.** Nie `service_role`, und auch nie `anon`.
+Die Grenze steht nicht als Prüfung, sondern als Abwesenheit: Es gibt am Client
+und am Token keine Spalte für eine Rolle, also keinen Wert, den jemand verstellen
+könnte; die Rolle wird beim Prüfen gesetzt und nicht gelesen. Die Data API weist
+zusätzlich ab, was sie nicht annehmen darf. Wer eine Anfrage ohne Policies
+braucht, nimmt einen Service Key dieser Projektumgebung. Die Ansprüche gehen
+denselben Weg wie die eines eigenen Tokens (`request.jwt.claims`,
+`request.jwt.claim.role`, `request.jwt.claim.sub`), und drei kommen dazu:
+`token_use` mit dem Wert `oauth`, `client_id` mit dem Namen des Clients und
+`scope` mit den zugestimmten Bereichen. Eine Policy kann damit einem fremden
+Client weniger erlauben als der eigenen Anwendung, obwohl beide denselben Nutzer
+nennen. Ein Projekt-Key bleibt bei jeder Anfrage nötig: Das Token sagt, wer der
+Aufrufer ist, der Key ist die Zusage des Projekts, dass diese Anwendung hier
+anklopfen darf.
+
+**Ein OAuth-Token öffnet nur die Data API.** Queues, Functions und Storage nehmen
+es nicht an, und das ist voreingestellt so: Es gibt heute keinen Bereich, der
+eine Queue oder eine Function beschreibt, und ein Token, das dort mitliefe, hätte
+eine Erlaubnis, die niemand hinschreiben kann.
+
+**Der Widerruf geht über den Client.** Wer ihn entfernt, lässt über
+`ON DELETE CASCADE` seine Codes und alle seine Token fallen, von allen Nutzern,
+sofort. Feiner geht es nicht: Eine einzelne Zustimmung eines einzelnen Nutzers
+zurückzunehmen, gibt es nicht.
+
+**Was diese Fläche bewusst nicht hält.** Keinen impliziten Ablauf, der das Token
+selbst an das Rücksprungziel und damit in den Browserverlauf gäbe. Keinen
+Passwort-Ablauf, der verlangte, dass die fremde Anwendung das Passwort sieht;
+genau das soll ein OAuth-Ablauf verhindern. Keinen Client-Credentials-Ablauf: Ein
+Token ohne Nutzer ist ein Schlüssel für eine Maschine, und den gibt QKERN schon
+als widerrufbaren Service Key aus. Kein Refresh Token: Ein Dauerzugang für eine
+fremde Anwendung ist eine eigene Entscheidung mit eigener Widerrufsfläche. Keine
+Zustimmungsseite von QKERN, also kein Beweis, dass der Nutzer eine Liste gesehen
+hat; die Anwendung zeigt sie, und das ist eine Verlagerung. Kein vertraulicher
+Client. Kein Dokument unter `.well-known/oauth-authorization-server`. Keine Liste
+in der Console, welcher Nutzer welchem Client zugestimmt hat. Und keinen
+Aufräumer für abgelaufene Zeilen: Sie gelten nicht mehr, denn die Prüfung sieht
+auf die Uhr, aber sie bleiben stehen und die Tabellen wachsen.
+
+Die Routen: `GET` und `POST /auth/admin/oauth-clients` sowie
+`DELETE /auth/admin/oauth-clients/{clientId}` hinter der Console-Session mit
+`project_auth_admin`; `POST /auth/oauth/authorize` mit Public Key **und** dem
+Access Token des Nutzers; `POST /auth/oauth/token` mit Public Key allein;
+`GET /auth/oauth/userinfo` mit Public Key und OAuth-Token. Ein abgewiesener
+Anlauf nennt seinen Grund, ein abgewiesenes Einlösen nicht: Dort steht die Tür
+offen, und was sie sagt, sagt sie jedem. Geschrieben werden
+`project_auth.oauth_client.created` und `.removed`,
+`project_auth.oauth_code.issued`, `project_auth.oauth_token.issued` und
+`project_auth.oauth_token.refused` mit dem Grund. Weder ein Code noch ein Token
+noch ein Prüftext landet in der Kette.
+
+Zertifiziert ist das im Fall `(2.82)` in `tests/postgres.integration.test.ts`:
+echter Nutzer, echte Anmeldung, echter Client in `project_auth_oauth_clients`,
+echter Code in `project_auth_oauth_codes`, echtes Token in
+`project_auth_oauth_tokens`, echte Lesung durch die generierte Data API unter
+einer Policy, die `sub` **und** `client_id` nennt, und die Abweisung eines
+zweiten Einlösens, eines falschen Prüftexts (der den Code trotzdem verbraucht),
+eines fremden Rücksprungziels, eines nicht erlaubten Bereichs, von `plain`, von
+`response_type=token` und einer Anfrage ohne Projekt-Key. Gestellt ist dort genau
+eines: der Key-Dienst, weil eigens zertifiziert ist, welcher Public Key gilt.
 
 ## 7. Project Storage
 
