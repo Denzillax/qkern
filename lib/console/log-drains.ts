@@ -348,7 +348,7 @@ export const LOG_DRAIN_NO_DELETE =
   "Löschen gibt es hier nicht. Ein Löschen nähme die wartenden Ladungen mit; Abschalten hält sie an, ohne etwas zu verlieren.";
 
 export const LOG_DRAIN_GAPS =
-  "Ein Drain verspricht keine Lückenlosigkeit. Der weiterleitende Prozess führt seinen Stand je Lauf; nach einem Neustart beginnt er bei der Gegenwart, statt die Vergangenheit nachzuschicken. Eine Ladung kann doppelt ankommen, und ein Empfänger erkennt das an der Kennung des Eintrags.";
+  "Ein Drain verspricht keine Lückenlosigkeit. Der weiterleitende Prozess hält seinen Stand je Drain und Quelle in der Control Plane; nach einem Neustart liest er dort weiter, wo die letzte Ladung endete, statt die Vergangenheit nachzuschicken. Eine Ladung kann trotzdem doppelt ankommen, und ein Empfänger erkennt das an der Kennung des Eintrags.";
 
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */
 export function logDrainTexts(): string[] {

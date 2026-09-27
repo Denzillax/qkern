@@ -63,11 +63,31 @@ const STATUS_LABELS: Record<Delivery["status"], string> = {
   dead_lettered: "aufgegeben",
 };
 
+/**
+ * Der Stand des Sammlers (2.64), so wie die Route ihn liefert: je Drain und
+ * Quelle die zuletzt weitergeleitete Position und der Zeitpunkt dazu. Eine
+ * leere Liste heisst "noch nie" -- es gibt keinen erfundenen Zeitpunkt.
+ */
+type Forward = {
+  webhookId: string; source: LogDrainSourceId; position: string; updatedAt: string;
+};
+
 function formatTime(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
     : formatMoment(parsed);
+}
+
+/**
+ * Die Position ist `<zeitpunkt>#<id>` und undurchsichtig. Gezeigt wird ihr
+ * Zeitanteil: Er sagt einem Menschen, bis wann die Quelle weitergeleitet ist.
+ * Die Id dahinter ist die Kennung eines Log-Eintrags und beantwortet keine
+ * Frage, die in dieser Ansicht jemand stellt.
+ */
+function positionTime(position: string): string {
+  const separator = position.indexOf("#");
+  return formatTime(separator < 1 ? position : position.slice(0, separator));
 }
 
 export function LogDrainsView({ projectId, environment }: {
@@ -76,6 +96,7 @@ export function LogDrainsView({ projectId, environment }: {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [drains, setDrains] = useState<LogDrainRecord[]>([]);
   const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({});
+  const [forwards, setForwards] = useState<Forward[]>([]);
   const [state, setState] = useState<State>("loading");
   const [message, setMessage] = useState("");
 
@@ -99,6 +120,7 @@ export function LogDrainsView({ projectId, environment }: {
       if (!response.ok) throw new Error(payload.error ?? t("Log-Drains nicht verfügbar"));
       const list = (payload.data ?? []) as LogDrainRecord[];
       setDrains(list);
+      setForwards((payload.forwards ?? []) as Forward[]);
       setState("ready");
 
       // Der Zustellstatus haengt an der ausgehenden Definition; das ist
@@ -172,6 +194,14 @@ export function LogDrainsView({ projectId, environment }: {
     setMessage(payload.error ?? t("Die Änderung wurde abgelehnt."));
   }
 
+  /**
+   * Der juengste Zeitpunkt, zu dem ueberhaupt etwas hinausgegangen ist. Gibt
+   * es keinen, steht in der Ansicht "noch nie" -- und nicht eine Null.
+   */
+  const newestForward = forwards.reduce<string | null>(
+    (newest, entry) => newest === null || entry.updatedAt > newest ? entry.updatedAt : newest,
+    null);
+
   function toggleSource(source: LogDrainSourceId, checked: boolean) {
     setSources((current) => checked
       ? [...current.filter((entry) => entry !== source), source]
@@ -196,6 +226,13 @@ export function LogDrainsView({ projectId, environment }: {
       <div><span>{t("AKTIV")}</span><strong>{drains.filter((drain) => drain.enabled).length}</strong><small>{t("leiten weiter")}</small></div>
       <div><span>{t("ABGESCHALTET")}</span><strong>{drains.filter((drain) => !drain.enabled).length}</strong><small>{t("warten")}</small></div>
       <div><span>{t("FASSUNG")}</span><strong>{LOG_DRAIN_SCHEMA_VERSION}</strong><small>{t("Schema der Ladung")}</small></div>
+      <div>
+        <span>{t("ZULETZT WEITERGELEITET")}</span>
+        <strong>{newestForward ? formatTime(newestForward) : t("noch nie")}</strong>
+        <small>{newestForward
+          ? t("durch den Sammler im Compute-Prozess")
+          : t("kein Log weitergeleitet")}</small>
+      </div>
     </article>
 
     <article className="console-card span-2">
@@ -238,6 +275,10 @@ export function LogDrainsView({ projectId, environment }: {
           <strong>{drain.name}</strong>
           <small>{drain.sources.map((source) => t(LOG_DRAIN_SOURCE_TEXTS[source].label)).join(", ")} → {drain.url}</small>
           <small>{t("Signaturgeheimnis:")} {drain.signingSecretRef} · {t("angelegt")} {formatTime(drain.createdAt)}</small>
+          <small>{forwards.filter((entry) => entry.webhookId === drain.webhookId).length === 0
+            ? t("noch nie weitergeleitet")
+            : forwards.filter((entry) => entry.webhookId === drain.webhookId).map((entry) =>
+              `${t(LOG_DRAIN_SOURCE_TEXTS[entry.source].label)} ${t("weitergeleitet bis")} ${positionTime(entry.position)} · ${formatTime(entry.updatedAt)}`).join(" · ")}</small>
           <small>{(deliveries[drain.id] ?? []).length === 0
             ? t("noch keine Ladung")
             : (deliveries[drain.id] ?? []).map((delivery) =>

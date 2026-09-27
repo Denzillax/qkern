@@ -10,6 +10,13 @@ import { PostgresDatabaseWebhookRepository } from
   "@/lib/server/compute/database-webhook-postgres-repository";
 import { PostgresDatabaseWebhookCursorRepository } from
   "@/lib/server/compute/database-webhook-cursor-postgres-repository";
+import { LogDrainCollectorRuntime } from "@/lib/server/compute/log-drain-collector-runtime";
+import { PostgresLogDrainCursorRepository } from
+  "@/lib/server/compute/log-drain-cursor-postgres-repository";
+import {
+  PostgresLogDrainRepository,
+  PostgresLogDrainSourceReader,
+} from "@/lib/server/compute/log-drain-postgres-repository";
 import { PostgresRealtimeChangeSource, type ProjectConnection } from
   "@/lib/server/realtime/postgres-change-source";
 import { WebhookDeliveryRuntime } from "@/lib/server/compute/webhook-delivery-runtime";
@@ -52,12 +59,16 @@ export type ComputeScopeConfig = Readonly<{
  */
 export type ComputeRuntimeLogEvent = Readonly<{
   event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed"
-  | "compute.database_webhook_round" | "compute.database_webhook_failed";
+  | "compute.database_webhook_round" | "compute.database_webhook_failed"
+  | "compute.log_drain_round" | "compute.log_drain_failed";
   scopeIndex: number;
   dispatched?: number;
   failures?: number;
   failureCode?: string;
-  /** Zahl der von der Webhook-Bruecke eingereihten Zustellungen (2.53). */
+  /**
+   * Zahl der eingereihten Zustellungen: von der Webhook-Bruecke (2.53) oder
+   * als Ladung des Log-Drain-Sammlers (2.64).
+   */
   enqueued?: number;
 }>;
 
@@ -153,6 +164,8 @@ export type ComputeRuntime = {
   readonly scopes: readonly ComputeScopeConfig[];
   /** Ob die Webhook-Bruecke (2.53) in diesem Prozess laeuft. Fuer die Startzeile. */
   readonly databaseWebhookBridge: boolean;
+  /** Ob der Log-Drain-Sammler (2.64) in diesem Prozess laeuft. Fuer die Startzeile. */
+  readonly logDrainCollector: boolean;
 };
 
 /**
@@ -197,6 +210,18 @@ export function createComputeRuntimeFromEnv(
     throw new ConfigurationError(
       "The database webhook bridge requires a project database connection.");
   }
+  // Der Log-Drain-Sammler (2.64) ist ausdruecklich anzuschalten, wie die
+  // Bruecke daneben: Er schickt Protokollzeilen an ein Ziel im Internet, und
+  // das soll niemand versehentlich einschalten. Eine Projektdatenbank braucht
+  // er nicht -- alle fuenf Quellen liegen in der Control Plane.
+  const logDrainsEnabled = env.QKERN_COMPUTE_LOG_DRAINS_ENABLED === "true";
+  if (logDrainsEnabled && !webhooksEnabled) {
+    // Sonst reiht der Sammler Ladungen ein, die in diesem Prozess niemand
+    // abholt. Eine wachsende Outbox ohne Zusteller ist schlimmer als ein
+    // abgeschalteter Sammler.
+    throw new ConfigurationError(
+      "The log drain collector needs the webhook delivery loop in the same process.");
+  }
   const scopes = computeScopesFromEnv(env);
   const workerId = workerIdentity(env);
   const cronIntervalMs = integer(env.QKERN_COMPUTE_CRON_INTERVAL_MS, 30_000, 1_000, 900_000);
@@ -212,6 +237,19 @@ export function createComputeRuntimeFromEnv(
   const bridgeErrorMs = integer(env.QKERN_COMPUTE_DATABASE_WEBHOOK_ERROR_MS, 5_000, 100, 300_000);
   const bridgeDiscoveryMs = integer(
     env.QKERN_COMPUTE_DATABASE_WEBHOOK_DISCOVERY_MS, 30_000, 250, 3_600_000);
+  // Der Takt des Sammlers (2.64), benannt wie der der Bruecke und mit
+  // denselben Grenzen. Die beiden Groessen, die es hier zusaetzlich gibt,
+  // beschreiben die Buendelung: Eine Ladung geht hinaus, wenn sie voll ist
+  // **oder** wenn sie alt genug ist.
+  const drainBatchEntries = integer(
+    env.QKERN_COMPUTE_LOG_DRAIN_BATCH_ENTRIES, 100, 1, 1_000);
+  const drainBatchAgeMs = integer(
+    env.QKERN_COMPUTE_LOG_DRAIN_BATCH_AGE_MS, 60_000, 1_000, 3_600_000);
+  const drainReadLimit = integer(env.QKERN_COMPUTE_LOG_DRAIN_READ_LIMIT, 200, 1, 1_000);
+  const drainIdleMs = integer(env.QKERN_COMPUTE_LOG_DRAIN_POLL_MS, 1_000, 50, 60_000);
+  const drainErrorMs = integer(env.QKERN_COMPUTE_LOG_DRAIN_ERROR_MS, 5_000, 100, 300_000);
+  const drainDiscoveryMs = integer(
+    env.QKERN_COMPUTE_LOG_DRAIN_DISCOVERY_MS, 30_000, 250, 3_600_000);
 
   const controlPlane = new PostgresControlPlane(getPostgresPool(env));
 
@@ -304,13 +342,51 @@ export function createComputeRuntimeFromEnv(
     })
     : undefined;
 
+  // Der Sammler (2.64): ein Leser fuer alle Umgebungen dieses Prozesses, mit
+  // der Reihenfolge der Scope-Liste und einer dauerhaften Position je Drain
+  // und Quelle. Die Kopplungen und die Quellen liest er mit denselben beiden
+  // Repositories, die 2.54 gebaut hat.
+  const drainCursors = logDrainsEnabled
+    ? new PostgresLogDrainCursorRepository(controlPlane)
+    : undefined;
+  const drainRuntime = drainCursors ? new LogDrainCollectorRuntime({
+    scopes,
+    reader: new PostgresLogDrainSourceReader(controlPlane),
+    drains: new PostgresLogDrainRepository(controlPlane),
+    census: drainCursors,
+    cursors: drainCursors,
+    outbox,
+    maxBatchEntries: drainBatchEntries,
+    maxBatchAgeMs: drainBatchAgeMs,
+    readLimit: drainReadLimit,
+    idleIntervalMs: drainIdleMs,
+    errorIntervalMs: drainErrorMs,
+    discoveryIntervalMs: drainDiscoveryMs,
+    // Redigiert wie bei der Bruecke: ein fester Code und der Scope-Index,
+    // keine Datenbankmeldung, keine Id, kein Endpunkt.
+    onFailure: (failureCode, scopeIndex) => {
+      safeRuntimeProbe(dependencies.probe, "iterationFailed");
+      safeComputeLog(dependencies.logger, {
+        event: "compute.log_drain_failed", scopeIndex, failureCode,
+      });
+    },
+    onEnqueued: (scopeIndex, enqueued) => safeComputeLog(dependencies.logger, {
+      event: "compute.log_drain_round", scopeIndex, enqueued,
+    }),
+  }) : undefined;
+
   return {
     scopes,
     databaseWebhookBridge: Boolean(bridgeRuntime),
+    logDrainCollector: Boolean(drainRuntime),
     async run(signal: AbortSignal): Promise<void> {
       const loops: Promise<void>[] = [];
       const stops: Array<() => void> = [];
 
+      if (drainRuntime) {
+        stops.push(() => drainRuntime.stop());
+        loops.push(drainRuntime.run());
+      }
       if (bridgeRuntime) {
         stops.push(() => bridgeRuntime.stop());
         loops.push(bridgeRuntime.run());

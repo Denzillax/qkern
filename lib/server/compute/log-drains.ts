@@ -46,8 +46,34 @@ export interface LogDrainRepository {
     enabled: boolean): Promise<LogDrainRecord | null>;
 }
 
+/**
+ * Wie weit der Sammler gekommen ist, so weit die Ansicht es zeigen darf (2.64).
+ *
+ * Seit der Sammler als Prozess laeuft, gibt es dazu eine ehrliche Angabe, und
+ * vorher gab es keine: `project_log_drain_cursors` haelt je Drain und Quelle
+ * die zuletzt weitergeleitete Position und wann sie geschrieben wurde. Mehr
+ * behauptet diese Naht nicht -- insbesondere nicht, wann zuletzt *nachgesehen*
+ * wurde. Der Prozess liest im Sekundentakt und schreibt nur, wenn eine Ladung
+ * hinausgegangen ist; "zuletzt nachgesehen" waere eine Zahl, die es nirgends
+ * gibt.
+ */
+export type LogDrainForward = Readonly<{
+  webhookId: string;
+  source: LogDrainSourceId;
+  position: string;
+  updatedAt: string;
+}>;
+
+export interface LogDrainCollectorStateSource {
+  lastForwards(
+    principal: { organizationId: string; actorRef: string },
+    scope: ComputeDefinitionScope,
+  ): Promise<LogDrainForward[]>;
+}
+
 export type LogDrainServiceOptions = {
   repository: LogDrainRepository;
+  collector?: LogDrainCollectorStateSource;
   maxPerScope?: number;
 };
 
@@ -67,6 +93,19 @@ export class LogDrainService {
   async list(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
     this.assertScope(principal, scope);
     return await this.options.repository.list(principal, scope);
+  }
+
+  /**
+   * Wann jeder Drain zuletzt weitergeleitet hat und bis zu welcher Position.
+   *
+   * `null` heisst "diese Installation fuehrt keine dauerhafte Position", eine
+   * leere Liste heisst "noch nie weitergeleitet". Die Ansicht muss beides
+   * unterscheiden koennen, ohne zu raten.
+   */
+  async collectorState(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope) {
+    this.assertScope(principal, scope);
+    if (!this.options.collector) return null;
+    return await this.options.collector.lastForwards(principal, scope);
   }
 
   async get(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string) {
@@ -178,18 +217,57 @@ export interface LogDrainSourceReader {
 }
 
 export class LogDrainCollectorError extends Error {
-  constructor(readonly code: "LOG_DRAIN_COLLECTOR_INVALID_INPUT") {
-    super(code);
+  constructor(
+    readonly code: "LOG_DRAIN_COLLECTOR_INVALID_INPUT" | "LOG_DRAIN_COLLECTOR_CURSOR_FAILED",
+    options?: ErrorOptions,
+  ) {
+    super(code, options);
     this.name = "LogDrainCollectorError";
   }
 }
 recognisedByName(LogDrainCollectorError, "LogDrainCollectorError");
+
+/**
+ * Die Position eines Drains in einer Quelle, dauerhaft (2.64).
+ *
+ * Je Drain **und** je Quelle, nicht je Umgebung: Zwei Drains derselben
+ * Umgebung duerfen verschiedene Quellen beliefern, und eine gemeinsame
+ * Position hiesse fuer einen von beiden ueberspringen oder wiederholen.
+ *
+ * `load` gibt `null` zurueck, wenn es noch keine Position gibt -- der Sammler
+ * beginnt dann an der Spitze und schreibt sie sofort fest. Scheitert das
+ * Lesen, wirft `load`; der Sammler faengt dann **nicht** an, statt sich eine
+ * Position auszudenken.
+ *
+ * `begin` und `advance` sind zwei Methoden und nicht eine, weil sie zwei
+ * verschiedene Dinge behaupten: `begin` haelt den Anfangsstand fest, ohne dass
+ * je etwas hinausgegangen waere; `advance` haelt die Position einer
+ * eingereihten Ladung fest. Waere es eine Methode, zeigte die Console fuer
+ * einen frisch angelegten Drain einen Zeitpunkt, zu dem niemand etwas
+ * weitergeleitet hat.
+ */
+export interface LogDrainCursorStore {
+  load(scope: WebhookOutboxScope, webhookId: string, source: LogDrainSourceId):
+    Promise<string | null>;
+  begin(scope: WebhookOutboxScope, webhookId: string, source: LogDrainSourceId,
+    position: string): Promise<void>;
+  advance(scope: WebhookOutboxScope, webhookId: string, source: LogDrainSourceId,
+    position: string): Promise<void>;
+}
 
 export type LogDrainCollectorOptions = {
   reader: LogDrainSourceReader;
   drains: LogDrainBindingSource;
   outbox: Pick<WebhookOutbox, "enqueue">;
   scope: WebhookOutboxScope;
+  /**
+   * Die dauerhafte Position je Drain und Quelle (2.64).
+   *
+   * Ohne sie verhaelt sich der Sammler wie in 2.54: Der Stand lebt im Prozess,
+   * ein Neustart beginnt an der Gegenwart. Der Dauerprozess reicht sie
+   * ausdruecklich ein.
+   */
+  cursors?: LogDrainCursorStore;
   /** Ab so vielen gesammelten Eintraegen geht eine Ladung hinaus. */
   maxBatchEntries?: number;
   /** Und spaetestens nach dieser Zeit, auch wenn die Ladung kleiner bleibt. */
@@ -203,6 +281,16 @@ type Buffer = {
   rows: Array<Readonly<Record<string, unknown>>>;
   /** Wann der erste Eintrag dieser Ladung gesammelt wurde. */
   openedAt: number;
+  /**
+   * Die Position der juengsten Zeile in dieser Ladung.
+   *
+   * Sie ist nicht dasselbe wie der Stand im Prozess: Der wandert weiter,
+   * sobald gelesen wurde, diese hier gilt erst, wenn die Ladung eingereiht
+   * ist. Genau diese wird dauerhaft festgehalten -- ein Absturz zwischen
+   * Lesen und Einreihen liest denselben Bereich noch einmal, statt ihn zu
+   * verlieren.
+   */
+  lastCursor: string;
 };
 
 /**
@@ -227,11 +315,16 @@ type Buffer = {
  *
  * ## Was dieser Sammler nicht verspricht
  *
- * Luckenlosigkeit. Der Stand steht im Prozess, nicht in der Datenbank -- wie
- * die Position der Webhook-Bruecke vor 0050. Ein Neustart beginnt an der
- * Gegenwart, ein abgebrochener Lauf kann eine Ladung doppelt senden. Beides
- * sagt die Ansicht, und beides ist die ehrliche Zusage: Wer eine
- * beweisbare Kette braucht, liest das Audit-Log, das sie hat.
+ * Luckenlosigkeit. Seit 2.64 liegt der Stand in `project_log_drain_cursors`
+ * und nicht mehr nur im Prozess: Ein Neustart liest dort weiter, wo die letzte
+ * eingereihte Ladung endete. Doppelt ankommen kann eine Ladung trotzdem --
+ * zwischen dem Einreihen und dem Festhalten der Position liegt ein Augenblick,
+ * und zwei Instanzen mit derselben Scope-Liste sind erlaubt. Genau das sagt
+ * die Ansicht auch so: Wer eine beweisbare Kette braucht, liest das Audit-Log,
+ * das sie hat.
+ *
+ * Ohne eingereichte Ablage bleibt es beim Verhalten aus 2.54 -- der Stand lebt
+ * dann im Prozess, und ein Neustart beginnt an der Gegenwart.
  */
 export class LogDrainCollector {
   private readonly cursors = new Map<string, string | null>();
@@ -264,7 +357,7 @@ export class LogDrainCollector {
         for (const source of drain.sources) {
           const key = `${drain.webhookId}:${source}`;
           active.add(key);
-          await this.collect(key, source);
+          await this.collect(key, drain.webhookId, source);
         }
       }
       // Ein Drain, der abgeschaltet oder um eine Quelle aermer wurde, laesst
@@ -300,17 +393,53 @@ export class LogDrainCollector {
     this.stopped = true;
   }
 
-  private async collect(key: string, source: LogDrainSourceId) {
+  /**
+   * Der Anfangsstand eines Schluessels.
+   *
+   * Ohne dauerhafte Ablage ist es die Spitze der Quelle, wie in 2.54. Mit ihr
+   * gilt die gespeicherte Position -- und gibt es noch keine, wird die Spitze
+   * **sofort** festgeschrieben. Ohne dieses sofortige Schreiben spraenge ein
+   * Neustart vor der ersten Ladung auf die inzwischen gewachsene Spitze und
+   * uebersprunge alles dazwischen.
+   */
+  private async startPosition(webhookId: string, source: LogDrainSourceId):
+  Promise<string | null> {
+    const store = this.options.cursors;
+    if (!store) return await this.options.reader.tip(this.options.scope, source);
+    let stored: string | null;
+    try {
+      stored = await store.load(this.options.scope, webhookId, source);
+    } catch (cause) {
+      // Kein Ersatzwert. Die Spitze uebersprunge, was seit dem letzten Lauf
+      // entstanden ist, und der Anfang wiederholte das ganze Protokoll.
+      throw new LogDrainCollectorError("LOG_DRAIN_COLLECTOR_CURSOR_FAILED", { cause });
+    }
+    if (stored !== null) return stored === "" ? null : stored;
+    const tip = await this.options.reader.tip(this.options.scope, source);
+    try {
+      // Die leere Zeichenkette heisst "von Anfang an" -- so sieht eine Quelle
+      // ohne eine einzige Zeile aus.
+      await store.begin(this.options.scope, webhookId, source, tip ?? "");
+    } catch (cause) {
+      throw new LogDrainCollectorError("LOG_DRAIN_COLLECTOR_CURSOR_FAILED", { cause });
+    }
+    return tip;
+  }
+
+  private async collect(key: string, webhookId: string, source: LogDrainSourceId) {
     if (!this.cursors.has(key)) {
-      this.cursors.set(key, await this.options.reader.tip(this.options.scope, source));
+      this.cursors.set(key, await this.startPosition(webhookId, source));
     }
     const after = this.cursors.get(key) ?? null;
     const rows = await this.options.reader.read(this.options.scope, source, {
       after, limit: this.readLimit,
     });
     if (rows.length === 0) return;
-    const buffer = this.buffers.get(key) ?? { rows: [], openedAt: this.now().getTime() };
+    const last = rows[rows.length - 1].cursor;
+    const buffer = this.buffers.get(key)
+      ?? { rows: [], openedAt: this.now().getTime(), lastCursor: last };
     for (const row of rows) buffer.rows.push(row.record);
+    buffer.lastCursor = last;
     this.buffers.set(key, buffer);
     // Der Stand wandert erst weiter, wenn die Zeilen im Puffer liegen. Ein
     // Fehler beim Lesen wiederholt denselben Bereich; lieber eine Ladung
@@ -340,6 +469,17 @@ export class LogDrainCollector {
       occurredAt: this.now(),
     });
     this.buffers.delete(key);
+    // Erst einreihen, dann die Position festhalten -- dieselbe Reihenfolge wie
+    // in der Webhook-Bruecke. Ein Absturz zwischen beiden wiederholt hoechstens
+    // eine Ladung; er verliert keine. Umgekehrt waere der Verlust still.
+    if (this.options.cursors) {
+      try {
+        await this.options.cursors.advance(
+          this.options.scope, webhookId, source, buffer.lastCursor);
+      } catch (cause) {
+        throw new LogDrainCollectorError("LOG_DRAIN_COLLECTOR_CURSOR_FAILED", { cause });
+      }
+    }
     return true;
   }
 }

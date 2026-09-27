@@ -16,6 +16,8 @@ import { PostgresDatabaseWebhookCursorRepository } from
   "@/lib/server/compute/database-webhook-cursor-postgres-repository";
 import { LogDrainService } from "@/lib/server/compute/log-drains";
 import { PostgresLogDrainRepository } from "@/lib/server/compute/log-drain-postgres-repository";
+import { PostgresLogDrainCursorRepository } from
+  "@/lib/server/compute/log-drain-cursor-postgres-repository";
 import { PostgresFunctionConcurrency } from "@/lib/server/compute/function-concurrency";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
 import { DockerFunctionSandbox } from "@/lib/server/compute/function-sandbox-docker";
@@ -158,8 +160,13 @@ export function createLogDrainServiceFromEnv(
   if (runtimeModeFromEnv(env) !== "postgres") {
     throw new ConfigurationError("Log drains require the PostgreSQL runtime mode.");
   }
+  const controlPlane = new PostgresControlPlane(getPostgresPool(env));
   return new LogDrainService({
-    repository: new PostgresLogDrainRepository(new PostgresControlPlane(getPostgresPool(env))),
+    repository: new PostgresLogDrainRepository(controlPlane),
+    // Der Stand des Sammlers (2.64). Er steht in der Control Plane, seit der
+    // Compute-Prozess den Sammler wirklich betreibt; ohne den Prozess bleibt
+    // die Liste leer, und die Ansicht sagt genau das.
+    collector: new PostgresLogDrainCursorRepository(controlPlane),
   });
 }
 

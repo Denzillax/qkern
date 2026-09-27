@@ -40,9 +40,14 @@ export function createLogDrainHandlers(service: LogDrainService) {
     GET: async (request: NextRequest, routeContext: ComputeDefinitionRouteContext) => {
       try {
         const context = await adminComputeContext(request, routeContext);
-        return computeNoStore({
-          data: await service.list(context.principal, context.scope),
-        });
+        // Die Drains und, seit 2.64, der Stand des Sammlers: wann jeder Drain
+        // zuletzt weitergeleitet hat und bis zu welcher Position. Eine leere
+        // Liste heisst "noch nie", und die Ansicht sagt das auch so.
+        const [data, forwards] = await Promise.all([
+          service.list(context.principal, context.scope),
+          service.collectorState(context.principal, context.scope),
+        ]);
+        return computeNoStore({ data, forwards });
       } catch (error) { return computeRouteError(error); }
     },
     POST: async (request: NextRequest, routeContext: ComputeDefinitionRouteContext) => {
