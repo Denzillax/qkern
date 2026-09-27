@@ -42,6 +42,19 @@ import { ProjectAuthTokenService } from "@/lib/server/project-auth/tokens";
 // Grenzen je Zeitfenster (2.56): dieselbe reine Formel, die der Dienst
 // benutzt, damit der Fall den Hash nachrechnen kann statt ihn zu glauben.
 import { projectAuthRateSubjectHash } from "@/lib/server/project-auth/rate-limits";
+// Passwoerter gegen bekannte Lecks (2.53): dieselbe reine Formel und derselbe
+// Lader, die der Dienst benutzt. Der Fall schreibt eine echte Listendatei und
+// laedt sie durch den Lader, damit die Datei im Fall dieselbe Reise macht wie
+// im Betrieb.
+import {
+  projectAuthBuiltInLeakList,
+  projectAuthPasswordDigest,
+  projectAuthPasswordIsLeaked,
+  PROJECT_AUTH_BUILT_IN_LEAKED_PASSWORDS,
+} from "@/lib/server/project-auth/password-leaks";
+import { leakedPasswordListFromEnv } from "@/lib/server/project-auth/runtime";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   buildProjectAuthAuditSeries,
   projectAuthSeriesRowLimit,
@@ -1888,6 +1901,249 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // haengen — audit_logs ist append-only.
     await owner.query(`DELETE FROM project_auth_users
       WHERE organization_id = $1 AND project_id = $2`, [rateOrganization, rateProject]);
+  });
+
+  it("(2.60) refuses a known leaked password at sign-up when the project requires it", async () => {
+    // Der tragende Teil dieses Slices gegen die echte Datenbank: Eine
+    // Umgebung schaltet die Leckpruefung ein, und eine Registrierung mit einem
+    // Passwort aus der hinterlegten Liste kommt nicht durch -- ohne dass
+    // irgendetwas das Netz verlaesst.
+    //
+    // Echt ist alles, worauf es ankommt: das PostgreSQL-Repository, der
+    // Audit-Sink in der Hash-Kette, der Argon2-Hasher, der Ed25519-Signierer
+    // und die Listendatei, die durch denselben Lader geht wie im Betrieb
+    // (`leakedPasswordListFromEnv`). Fest sind nur die Uhr und die Zustellung.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.45, 2.52, 2.54 und 2.57:
+    // Das Setzen der Regel und jede Ablehnung schreiben eine Audit-Zeile, und
+    // eine Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen; das gemeinsame
+    // afterAll muss organizationA und organizationB loswerden. Weggeraeumt
+    // wird darum nur, was das Produkt selbst loescht: der App-Nutzer.
+    const leakOwner = randomUUID();
+    const leakOrganization = randomUUID();
+    const leakProject = randomUUID();
+    const scope = {
+      organizationId: leakOrganization, projectId: leakProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [leakOwner, `auth-leak-owner-${leakOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Password Protection', $2, $3)`,
+    [leakOrganization, `auth-leak-${leakOrganization}`, leakOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Password Protection', $3, 'test', 'ready', $4)`,
+    [leakProject, leakOrganization, `auth-leak-${leakProject}`, leakOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [leakOrganization, leakProject, `managed:${leakProject}`]);
+
+    // Die Listendatei, im Format der bekannten Listen: SHA-1 in Hex, ein
+    // Doppelpunkt, eine Anzahl, die verworfen wird. Der Lader liest sie
+    // genauso, wie er sie im Betrieb aus der Prozessumgebung liest.
+    const leaked = "correct horse battery staple";
+    const directory = mkdtempSync(path.join(tmpdir(), "qkern-cert-leaks-"));
+    const listFile = path.join(directory, "leaks.txt");
+    writeFileSync(listFile, [
+      "# QKERN certification list, two entries",
+      `${projectAuthPasswordDigest(leaked, "sha1")}:4711`,
+      `${projectAuthPasswordDigest("ein zweites bekanntes Passwort", "sha1")}:1`,
+      "",
+    ].join("\n"), "utf8");
+    const list = leakedPasswordListFromEnv({
+      QKERN_PROJECT_AUTH_LEAKED_PASSWORD_FILE: listFile,
+    });
+    expect(list).toMatchObject({ source: "file", algorithm: "sha1", prefixLength: 40, entries: 2 });
+
+    // Die eingebaute Liste haette hier nichts getan, und das soll der Fall
+    // aussprechen: Alle 25 Eintraege sind kuerzer als die 12 Zeichen, die der
+    // Dienst ohnehin verlangt. Darum prueft dieser Fall mit einer Datei.
+    expect(projectAuthPasswordIsLeaked(projectAuthBuiltInLeakList(), leaked)).toBe(false);
+    for (const builtIn of PROJECT_AUTH_BUILT_IN_LEAKED_PASSWORDS) {
+      expect(builtIn.length, builtIn).toBeLessThan(12);
+    }
+
+    const at = new Date("2026-09-26T13:00:00.000Z");
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      leakedPasswords: list,
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-60", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 11)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+      now: () => new Date(at),
+    });
+
+    // Ohne Zeile in project_auth_settings gilt die Vorgabe, und die ist aus.
+    expect(await service.readPasswordProtection(scope)).toMatchObject({
+      protection: { leakedPasswordCheck: false, minLength: 12, notice: "named" },
+      configured: false, updatedAt: null,
+      list: { source: "file", entries: 2, builtInEntries: 25 },
+    });
+    // Und darum kommt das bekannte Passwort vor dem Einschalten durch.
+    const before = `before-${randomUUID()}@example.test`;
+    expect(await service.signUp(scope, {
+      email: before, password: leaked, redirectTo: "https://app.test/willkommen",
+      rateLimitKey: randomUUID(),
+    })).toMatchObject({ accepted: true });
+
+    // Die Regel, ueber den echten Dienst und in die echten Spalten.
+    const stored = await service.setPasswordProtection(scope, {
+      leakedPasswordCheck: true, minLength: 14, notice: "named",
+    }, { id: leakOwner });
+    expect(stored).toMatchObject({
+      protection: { leakedPasswordCheck: true, minLength: 14, notice: "named" }, configured: true,
+    });
+    const columns = await auth.query<{
+      leaked_password_check: boolean; password_min_length: number; leaked_password_notice: string;
+    }>(
+      `SELECT leaked_password_check, password_min_length, leaked_password_notice
+       FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [leakOrganization, leakProject],
+    );
+    expect(columns.rows).toEqual([{
+      leaked_password_check: true, password_min_length: 14, leaked_password_notice: "named",
+    }]);
+
+    // Und jetzt der Satz, um den es geht: Dieselbe Registrierung, dieselbe
+    // Liste, dasselbe Passwort -- und sie kommt nicht durch.
+    const victim = `after-${randomUUID()}@example.test`;
+    await expect(service.signUp(scope, {
+      email: victim, password: leaked, redirectTo: "https://app.test/willkommen",
+      rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "LEAKED_PASSWORD" });
+    // Es ist auch wirklich kein Konto entstanden.
+    const users = await auth.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM project_auth_users
+       WHERE organization_id = $1 AND project_id = $2 AND email = $3`,
+      [leakOrganization, leakProject, victim],
+    );
+    expect(users.rows[0].count).toBe("0");
+
+    // Die Mindestlaenge dieser Umgebung greift ueber die 12 des Dienstes
+    // hinaus, und sie ist ein anderer Code als die Leckpruefung.
+    await expect(service.signUp(scope, {
+      email: victim, password: "dreizehnzeich", redirectTo: "https://app.test/willkommen",
+      rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
+
+    // Ein unbekanntes Passwort kommt durch, und das Konto entsteht.
+    const clean = "eine ausreichend lange Parole ohne Leck";
+    const signUp = await service.signUp(scope, {
+      email: victim, password: clean, redirectTo: "https://app.test/willkommen",
+      rateLimitKey: randomUUID(),
+    });
+    const verified = await service.consumeEmailToken(scope, {
+      token: signUp.debugToken!, purpose: "email_verification",
+    });
+    if ("mfaRequired" in verified) throw new Error("unexpected MFA");
+    expect(verified.accessToken.length).toBeGreaterThan(20);
+
+    // Der zweite Weg, auf dem ein Passwort gesetzt wird: dieselbe Regel, und
+    // der Zuruecksetz-Schein bleibt dabei brauchbar.
+    const reset = await service.requestPasswordReset(scope, {
+      email: victim, redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    await expect(service.resetPassword(scope, { token: reset.debugToken!, password: leaked }))
+      .rejects.toMatchObject({ code: "LEAKED_PASSWORD" });
+    expect(await service.resetPassword(scope, {
+      token: reset.debugToken!, password: `${clean} zwei`,
+    })).toEqual({ reset: true });
+
+    // Der Wortlaut ist eine Einstellung, und er aendert den Code, nicht die
+    // Entscheidung.
+    await service.setPasswordProtection(scope, {
+      leakedPasswordCheck: true, minLength: 14, notice: "generic",
+    }, { id: leakOwner });
+    await expect(service.signUp(scope, {
+      email: `quiet-${randomUUID()}@example.test`, password: leaked,
+      redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
+
+    // Die Datenbank haelt die Raender selbst, nicht nur der Dienst.
+    for (const statement of [
+      "SET password_min_length = 11",
+      "SET password_min_length = 129",
+      "SET leaked_password_notice = 'loud'",
+    ]) {
+      await expect(auth.query(
+        `UPDATE project_auth_settings ${statement}
+         WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+        [leakOrganization, leakProject],
+      ), statement).rejects.toBeInstanceOf(Error);
+    }
+
+    // Der Schalter aus 2.52, die Liste aus 2.54 und die Grenzen aus 2.56
+    // teilen sich die Zeile mit dem Passwortschutz, fassen einander aber nicht
+    // an.
+    await service.setMfaRequired(scope, true, { id: leakOwner });
+    await service.setReturnTargets(scope, ["https://app.test"], { id: leakOwner });
+    await service.setRateLimits(scope, {
+      sign_in: { max: 7, windowSeconds: 900 },
+      mail: { max: 5, windowSeconds: 3600 },
+      refresh: { max: 9, windowSeconds: 3600 },
+    }, { id: leakOwner });
+    const shared = await auth.query<{
+      mfa_required: boolean; redirect_allow_list: string[]; sign_in_max: number;
+      leaked_password_check: boolean; password_min_length: number; leaked_password_notice: string;
+    }>(
+      `SELECT mfa_required, redirect_allow_list, sign_in_max,
+              leaked_password_check, password_min_length, leaked_password_notice
+       FROM project_auth_settings
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [leakOrganization, leakProject],
+    );
+    expect(shared.rows).toEqual([{
+      mfa_required: true, redirect_allow_list: ["https://app.test"], sign_in_max: 7,
+      leaked_password_check: true, password_min_length: 14, leaked_password_notice: "generic",
+    }]);
+
+    // Jede Aenderung und jede Ablehnung stehen in der Hash-Kette -- und zwar
+    // ohne Passwort, ohne Digest, ohne Adresse und ohne Pfad.
+    const page = await service.listAuditEvents(scope, 100);
+    const changed = page.events.filter((event) => event.action === "project_auth.password_protection.changed");
+    expect(changed).toHaveLength(2);
+    expect(changed[changed.length - 1]).toMatchObject({
+      actorType: "admin", actorRef: leakOwner, status: "succeeded",
+      resourceRef: "project_auth_environment:development",
+      metadata: {
+        leakedPasswordCheck: true, minLength: 14, notice: "named",
+        listSource: "file", listEntries: 2,
+      },
+    });
+    const refused = page.events.filter((event) => event.action === "project_auth.password.refused");
+    // Drei Leckablehnungen und eine wegen der Laenge.
+    expect(refused.filter((event) => event.metadata.reason === "known_leak")).toHaveLength(3);
+    expect(refused.filter((event) => event.metadata.reason === "too_short")).toHaveLength(1);
+    expect(refused.find((event) => event.metadata.reason === "known_leak")?.metadata)
+      .toEqual({ reason: "known_leak", listSource: "file", listEntries: 2 });
+    const serialised = JSON.stringify(page.events);
+    expect(serialised).not.toContain(leaked);
+    expect(serialised).not.toContain(projectAuthPasswordDigest(leaked, "sha1"));
+    expect(serialised).not.toContain("@");
+    expect(serialised).not.toContain("leaks.txt");
+    // Und die Anzahl aus der Listendatei taucht nirgends auf: Eine Ablehnung
+    // sagt nie, wie oft ein Passwort vorkommt.
+    expect(serialised).not.toContain("4711");
+
+    // Aufgeraeumt wird nur, was das Produkt loescht: die App-Nutzer. Ihre
+    // Token und Sitzungen haengen per ON DELETE CASCADE daran. Organisation,
+    // Projekt und Umgebung bleiben stehen, weil Audit-Zeilen daran haengen und
+    // audit_logs append-only ist.
+    expect(before).not.toBe(victim);
+    await owner.query(`DELETE FROM project_auth_users
+      WHERE organization_id = $1 AND project_id = $2`, [leakOrganization, leakProject]);
   });
 
 

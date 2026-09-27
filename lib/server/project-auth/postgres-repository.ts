@@ -24,6 +24,10 @@ import {
   type ProjectAuthRateLimitKind,
   type ProjectAuthRateLimits,
 } from "@/lib/server/project-auth/rate-limits";
+import {
+  isProjectAuthPasswordNotice,
+  type ProjectAuthPasswordProtection,
+} from "@/lib/server/project-auth/password-leaks";
 
 type Row = Record<string, unknown>;
 type PostgresError = Error & { code?: string; constraint?: string };
@@ -313,6 +317,38 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
   }
 
   /**
+   * Setzt den Passwortschutz (2.53), wieder als INSERT mit ON CONFLICT: Die
+   * Zeile entsteht erst, wenn jemand etwas einstellt, und der Schalter aus
+   * 2.52, die Liste aus 2.54 und die Grenzen aus 2.56 bleiben unberuehrt,
+   * weil das UPDATE genau die vier Spalten nennt, um die es geht.
+   *
+   * Die Leckliste steht hier nicht und kommt hier nie an. Was in die Zeile
+   * geht, sind ein Schalter, eine Zahl und ein Wort.
+   */
+  async writePasswordProtection(
+    scope: ProjectAuthScope,
+    protection: ProjectAuthPasswordProtection,
+    now: Date,
+  ): Promise<ProjectAuthSettings> {
+    const result = await query(this.pool, `INSERT INTO project_auth_settings
+      (organization_id, project_id, environment,
+       leaked_password_check, password_min_length, leaked_password_notice, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT (organization_id, project_id, environment)
+      DO UPDATE SET
+        leaked_password_check = EXCLUDED.leaked_password_check,
+        password_min_length = EXCLUDED.password_min_length,
+        leaked_password_notice = EXCLUDED.leaked_password_notice,
+        updated_at = EXCLUDED.updated_at
+      RETURNING ${SETTINGS_COLUMNS}`, [
+      ...scopeValues(scope),
+      protection.leakedPasswordCheck, protection.minLength, protection.notice,
+      now,
+    ]);
+    return settingsFromRow(result.rows[0]);
+  }
+
+  /**
    * Der Zaehler (2.56), und er ist mit Absicht eine einzige Anweisung.
    *
    * Der DELETE im CTE raeumt die abgelaufenen Fenster **desselben**
@@ -462,7 +498,8 @@ const ONE_TIME_COLUMNS = `id, organization_id, project_id, environment, auth_use
   token_hash, metadata, created_at, expires_at, consumed_at`;
 const SETTINGS_COLUMNS = `organization_id, project_id, environment, mfa_required, redirect_allow_list,
   sign_in_max, sign_in_window_seconds, mail_max, mail_window_seconds,
-  refresh_max, refresh_window_seconds, updated_at`;
+  refresh_max, refresh_window_seconds,
+  leaked_password_check, password_min_length, leaked_password_notice, updated_at`;
 const SETTINGS_SELECT = `SELECT ${SETTINGS_COLUMNS} FROM project_auth_settings`;
 const MFA_COLUMNS = `id, organization_id, project_id, environment, auth_user_id, encrypted_secret,
   recovery_code_hashes, created_at, verified_at`;
@@ -582,7 +619,9 @@ function oneTimeFromRow(row: Row): ProjectAuthOneTimeToken {
 }
 
 function settingsFromRow(row: Row): ProjectAuthSettings {
-  if (!row || typeof row.mfa_required !== "boolean") {
+  if (!row || typeof row.mfa_required !== "boolean" ||
+      typeof row.leaked_password_check !== "boolean" ||
+      !isProjectAuthPasswordNotice(row.leaked_password_notice)) {
     throw new InvalidRecordError("Invalid project auth settings.");
   }
   return {
@@ -603,6 +642,11 @@ function settingsFromRow(row: Row): ProjectAuthSettings {
         max: boundedInteger(row.refresh_max, "refresh limit"),
         windowSeconds: boundedInteger(row.refresh_window_seconds, "refresh window"),
       },
+    },
+    passwordProtection: {
+      leakedPasswordCheck: row.leaked_password_check,
+      minLength: boundedInteger(row.password_min_length, "password minimum length"),
+      notice: row.leaked_password_notice,
     },
     updatedAt: timestamp(row.updated_at, "settings update"),
   };

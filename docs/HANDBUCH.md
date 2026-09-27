@@ -668,14 +668,19 @@ Wichtige öffentliche Pfade beginnen mit
   Texte der Aktionsmails; in der Console unter Auth → SMTP und Auth → E-Mail-Vorlagen
 - `admin/rate-limits` (GET liest, PUT ersetzt) führt seit `2.52.0` die Grenzen je
   Zeitfenster dieser Umgebung; in der Console unter Auth → Rate Limits
+- `admin/password-protection` (GET liest, PUT ersetzt) führt seit `2.53.0` den
+  Passwortschutz dieser Umgebung: Prüfung gegen bekannte Lecks, Mindestlänge und
+  Wortlaut einer Ablehnung; in der Console unter Auth → Passwortschutz
 
 Project Auth schreibt seit 2.35 diese Ereignisse in die Hash-Kette `audit_logs`:
 `project_auth.signup.succeeded`, `project_auth.login.succeeded`,
 `project_auth.login.failed`, `project_auth.logout`, `project_auth.mfa.enrolled`,
 `project_auth.mfa.verified`, `project_auth.user.updated`,
 `project_auth.session.revoked`, `project_auth.sessions.revoked_all` und seit
-`2.49.0` `project_auth.mfa.enforcement_changed` sowie seit `2.52.0`
-`project_auth.rate_limits.changed` und `project_auth.rate_limit.blocked`. Ein Refresh
+`2.49.0` `project_auth.mfa.enforcement_changed`, seit `2.52.0`
+`project_auth.rate_limits.changed` und `project_auth.rate_limit.blocked` sowie seit
+`2.53.0` `project_auth.password_protection.changed` und
+`project_auth.password.refused`. Ein Refresh
 wird nicht protokolliert, das wäre zu viel Rauschen. App-Nutzer erscheinen nur als
 `project_auth_user:<id>`, ein Fehlversuch mit unbekannter E-Mail als `anonymous`,
 Console-Aktionen mit der ID des Console-Nutzers. E-Mails, Passwörter, Token und
@@ -880,9 +885,10 @@ derselbe wie bisher.
 **Was eine Grenze nicht kann**, und das steht auch auf der Seite selbst: Eine
 Grenze je Identität hält einen **verteilten** Angriff über viele Konten nicht
 auf. Wer ein Passwort gegen zehntausend verschiedene Adressen probiert,
-bleibt bei jeder einzelnen unter der Grenze. Dagegen hilft nur, was QKERN
-hier nicht hat: Captcha, Prüfung gegen bekannte Lecks, Bot-Abwehr — die
-Platzhalterseite Auth → Angriffsschutz. Eine Grenze ist auch keine
+bleibt bei jeder einzelnen unter der Grenze. Dagegen hilft die Prüfung gegen
+bekannte Lecks, die seit `2.53.0` unter Auth → Passwortschutz steht, und
+darüber hinaus ein Captcha oder eine Bot-Abwehr — zwei Dinge, die QKERN nicht
+hat und die im nächsten Abschnitt begründet fehlen. Eine Grenze ist auch keine
 Kontosperre und keine Zustellsperre. Und die Refresh-Grenze greift erst, wenn
 ein Token zu einer echten Familie gehört; ein geratenes Token wird davor
 abgelehnt und kommt beim Zähler gar nicht an.
@@ -898,6 +904,123 @@ den sechs Zahlen danach; greift eine Grenze, entsteht
 `project_auth.rate_limit.blocked` mit Art, Grenze und Fenster — ohne
 Schlüssel, ohne Hash und ohne Adresse. Die reine Entscheidung liegt in
 `lib/server/project-auth/rate-limits.ts`, ohne Datenbank und ohne React.
+
+### Passwörter gegen bekannte Lecks
+
+Seit `2.53.0` ist **Auth → Passwortschutz** keine Platzhalterseite mehr. Der
+Platzhalter hiess „Angriffsschutz“ und versprach drei Dinge: „Captcha,
+Passwortprüfung gegen bekannte Lecks, Bot-Abwehr“. Gebaut ist **eines** davon,
+und zwar dasjenige, das ohne fremden Dienst und ohne Browser-Herausforderung
+auskommt. Die anderen zwei fehlen weiterhin, und weiter unten steht, warum.
+
+**Kein fremder Dienst, und das ist der Punkt.** Der naheliegende Weg wäre Have
+I Been Pwned: die ersten fünf Zeichen des SHA-1 hinschicken, die Antwort
+durchsehen. Das ist k-Anonymität und technisch anständig — und es hiesse
+doch, dass jede Registrierung jedes Kunden dieser Installation an einen
+fremden Host geht, samt Zeitpunkt, Häufigkeit und Hashpräfix. Diese
+Entscheidung darf ein Backend nicht für seine Nutzer treffen. QKERN prüft
+darum **ausschliesslich lokal**: eine Liste im Prozessspeicher, kein einziger
+ausgehender Aufruf. Das reine Modul
+`lib/server/project-auth/password-leaks.ts` importiert nichts ausser
+`node:crypto`.
+
+**Was eingestellt wird.** Drei Werte je Projektumgebung, gespeichert in
+`project_auth_settings` (Migration `0053`): ein Schalter
+`leaked_password_check`, eine Mindestlänge `password_min_length` von 12 bis
+128 Zeichen und ein Wortlaut `leaked_password_notice`, entweder `named` oder
+`generic`. Beide Grenzen prüfen Route, Dienst **und** Datenbank. Die Vorgabe
+ist **aus**: Die Prüfung lehnt ein Passwort ab, das ein Nutzer gerade gewählt
+hat, und dieses Verhalten soll ein Betreiber einschalten, nicht geschenkt
+bekommen. Nach unten ist die Mindestlänge bei 12 zu Ende, weil der Dienst
+jedes kürzere Passwort seit jeher abweist; eine Einstellung, die diese Zusage
+unterlaufen könnte, wäre eine Verschlechterung, die wie eine Einstellung
+aussieht.
+
+**Wo durchgesetzt wird.** An den beiden Stellen, an denen ein Passwort gesetzt
+wird: `signUp` und `resetPassword` in
+`lib/server/project-auth/service.ts`. Nicht in der Console und nicht in der
+Route — es gibt mehr als eine Tür zu diesen Stellen (REST, SDK, CLI, MCP), und
+eine Regel, die an einer Tür hängt, ist keine Regel. Beim Zurücksetzen steht
+die Prüfung **vor** dem Einlösen des Tokens: Ein abgelehntes Passwort soll den
+Zurücksetz-Schein nicht verbrauchen.
+
+**Was verglichen wird.** Nie das Passwort, immer sein SHA-1- oder
+SHA-256-Digest, gross geschrieben und auf die Präfixlänge der Liste gekürzt.
+Ein Treffer auf einem Präfix ist streng genommen ein *möglicher* Treffer; bei
+16 Hexzeichen liegt die Kollisionswahrscheinlichkeit je Eintrag bei 2^-64. Das
+ist die Genauigkeit, die das Format hergibt.
+
+**Die Liste.** Eine Installation zeigt mit
+`QKERN_PROJECT_AUTH_LEAKED_PASSWORD_FILE` auf eine Textdatei, wahlweise mit
+`QKERN_PROJECT_AUTH_LEAKED_PASSWORD_ALGORITHM` auf `sha1` (Vorgabe) oder
+`sha256`. Format: je Zeile ein Digest oder ein Präfix davon in Hex, wahlweise
+gefolgt von `:` und einer Zahl, die verworfen wird — genau das Format, in dem
+die bekannten Listen ausgeliefert werden. Leerzeilen und Zeilen mit `#` sind
+Kommentar; alle Einträge müssen dieselbe Länge zwischen 16 Hexzeichen und der
+Digestlänge haben, höchstens eine Million Einträge und höchstens 16 MiB. Eine
+fehlende, zu grosse oder fehlerhafte Datei ist eine `ConfigurationError` und
+lässt Project Auth **nicht starten**; still auf die eingebaute Liste
+zurückzufallen hiesse, eine eingeschaltete Prüfung weiterlaufen zu lassen, die
+nichts mehr prüft. Der Fehlertext nennt Grund und Zeilennummer, nie den Pfad
+und nie einen Eintrag.
+
+**Die eingebaute Liste, samt der unbequemen Hälfte.** Ohne Datei gelten
+**25 Einträge**: die Ränge 1 bis 25 der jährlich veröffentlichten Liste „Worst
+Passwords of the Year 2019“ von SplashData, in ihrer Reihenfolge. Keine
+erfundenen Einträge, keine behauptete Quelle. Eine echte Leckliste ist
+hunderte Megabyte gross, veraltet ab dem Tag des Commits und gehört nicht in
+dieses Repository. **Und alle 25 Einträge sind kürzer als die zwölf Zeichen,
+die QKERN ohnehin verlangt** — ohne hinterlegte Datei lehnt die Prüfung
+deshalb nichts ab, was die Längenregel nicht schon ablehnt. Die eingebaute
+Liste gibt dem Schalter ein definiertes Verhalten, keinen Schutz. Die
+Alternative wäre gewesen, längere Einträge zu erfinden und eine Quelle zu
+behaupten, die es nicht gibt.
+
+**Was eine Ablehnung verrät.** Bei `named`: dass dieses Passwort aus bekannten
+Lecks stammt (`LEAKED_PASSWORD`, `400`, „Password appears in a known
+credential leak“). Das ist handelbar und kein Geheimnis — wer es eingegeben
+hat, kennt es. Bei `generic`: nur, dass das Passwort den Regeln dieses
+Projekts nicht genügt (`WEAK_PASSWORD`, `400`). **Nie** sagt eine Ablehnung,
+wie oft das Passwort vorkommt oder aus welchem Leck; die erste Angabe kennt
+die Prüfung nicht einmal, weil in der Liste ein Digest und kein Zähler steht.
+Das Passwort selbst erscheint in keiner Logzeile, keinem Fehlertext und keinem
+Audit-Eintrag.
+
+**Fail closed, anders als beim Zähler.** Die Grenzen aus `2.52.0` öffnen bei
+einem Fehler des Zählers; diese Prüfung tut das nicht. Der Zähler ist eine
+Schicht vor der Tür und darf im Zweifel durchlassen; hier wird entschieden,
+welches Passwort ein Konto bekommt, und ein Lesefehler auf den Einstellungen
+ist keine Erlaubnis.
+
+**Was diese Seite nicht baut**, und das steht auch auf ihr selbst:
+
+- **Kein Captcha.** Es braucht zwei Dinge, die QKERN hier nicht hat: einen
+  fremden Dienst, der die Aufgabe stellt und das Ergebnis bestätigt, und eine
+  Browser-Herausforderung im Frontend des Kunden. Ein Schalter in der Console,
+  hinter dem nichts steht, wäre schlimmer als ein ehrlich leerer Platz.
+- **Keine Bot-Abwehr** über die Grenzen je Zeitfenster aus `2.52.0` hinaus.
+  Was darüber hinausgehen würde — Fingerprinting, Reputationslisten,
+  Verhaltensmodelle — braucht Daten über den Anfragenden, die QKERN bewusst
+  nicht sammelt.
+- **Keine nachträgliche Prüfung bestehender Konten.** QKERN speichert
+  Passwörter als Argon2id-Hash und kann sie nicht lesen, also auch nicht
+  gegen eine Liste halten. Die Prüfung greift nur bei neu gesetzten
+  Passwörtern.
+- **Kein Schutz gegen einen verteilten Angriff.** Geprüft wird, was ein Nutzer
+  sich aussucht, nicht, was ein Angreifer rät. Gegen das Raten helfen die
+  Rate Limits, gegen ein erratenes Passwort der zweite Faktor.
+
+Die Route ist
+`GET|PUT /api/v1/projects/{projectId}/environments/{environment}/auth/admin/password-protection`
+— dieselbe Tür wie die übrigen `admin/*`-Routen: Console-Session mit
+`project_auth_admin`, `Cache-Control: private, no-store`, bei `PUT` zusätzlich
+ein geprüfter Origin. Der Körper nennt alle drei Werte auf einmal. Ein
+Passwort erreicht diese Route nie und sie hat auch keinen Weg, eines
+entgegenzunehmen. Jede Änderung schreibt
+`project_auth.password_protection.changed` mit Schalter, Mindestlänge,
+Wortlaut sowie Herkunft und Grösse der geltenden Liste; eine Ablehnung
+schreibt `project_auth.password.refused` mit dem Grund — ohne Passwort, ohne
+Digest und ohne Adresse.
 
 ### Der Mailweg, ehrlich gezeigt
 

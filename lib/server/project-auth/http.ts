@@ -142,6 +142,16 @@ export function projectAuthRouteError(error: unknown, request?: NextRequest): Ne
           ...(error.retryAfterSeconds ? { "Retry-After": String(error.retryAfterSeconds) } : {}),
         },
       }));
+      // Das Passwort steht in der Leckliste dieser Installation (2.53). 400
+      // und ein Satz, der sagt, woran es lag: Das ist handelbar — der Nutzer
+      // kann ein anderes waehlen — und es ist kein Geheimnis, denn er hat es
+      // gerade selbst getippt. Was der Satz nicht sagt: wie oft es vorkommt
+      // und aus welchem Leck. Steht die Umgebung auf `generic`, kommt dieser
+      // Code gar nicht erst an, sondern WEAK_PASSWORD.
+      case "LEAKED_PASSWORD":
+        return respond(projectAuthNoStore({ error: "Password appears in a known credential leak" }, 400));
+      case "WEAK_PASSWORD":
+        return respond(projectAuthNoStore({ error: "Password does not meet the policy of this project" }, 400));
       case "RESOURCE_NOT_FOUND": return respond(projectAuthNoStore({ error: "Resource not found" }, 404));
       case "PROJECT_AUTH_DISABLED": return respond(projectAuthNoStore({ error: "Project Auth is disabled" }, 503));
       // Der Dienst laeuft, nur das Audit fehlt. 503 und ein eigener Text:

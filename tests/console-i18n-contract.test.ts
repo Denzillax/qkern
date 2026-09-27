@@ -21,6 +21,7 @@ import { vaultOverviewTexts } from "@/lib/console/vault-overview-texts";
 import { authRateLimitTexts } from "@/lib/console/auth-rate-limits-texts";
 import { pointInTimeTexts } from "@/lib/console/point-in-time-texts";
 import { databaseSettingsTexts } from "@/lib/console/database-settings-texts";
+import { authProtectionTexts } from "@/lib/console/auth-protection-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -94,6 +95,9 @@ async function consoleKeys(): Promise<string[]> {
   // Datenbank -> Einstellungen (2.53) zeigt Rollenrechte, Urteile, den
   // TLS-Zustand und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of databaseSettingsTexts()) keys.add(text);
+  // Auth -> Passwortschutz (2.53) zeigt Wortlaute, Listenherkuenfte, Gruende
+  // einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of authProtectionTexts()) keys.add(text);
   return [...keys];
 }
 
