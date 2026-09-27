@@ -30,6 +30,7 @@ import { logExplorerTexts } from "@/lib/console/log-explorer";
 import { queryPerformanceTexts } from "@/lib/console/query-performance-texts";
 import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 import { queryInsightsTexts } from "@/lib/console/query-insights";
+import { authPerformanceTexts } from "@/lib/console/auth-performance-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -132,6 +133,9 @@ async function consoleKeys(): Promise<string[]> {
   // Berichte -> Abfrage-Einblicke (2.67) zeigt Knotenarten, ihre Bedeutung,
   // die Gruende einer Ablehnung und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of queryInsightsTexts()) keys.add(text);
+  // Auth -> Auth-Leistung (2.71) zeigt seine Ehrlichkeitssaetze ueber
+  // t(variable), darunter den Satz, dass es keine Antwortzeit gibt.
+  for (const text of authPerformanceTexts()) keys.add(text);
   return [...keys];
 }
 

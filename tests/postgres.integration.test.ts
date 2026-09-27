@@ -42,6 +42,10 @@ import { createTableStatement, TableChangeSetError } from "@/lib/console/table-c
 // anzeigt, durch denselben Lesepfad, den die Query-Route benutzt.
 import { SQL_TEMPLATES, sqlTemplateStatement } from "@/lib/console/sql-templates";
 import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
+// Auth -> Auth-Leistung (2.71): dieselben reinen Funktionen, mit denen die
+// Ansicht aus der Reihe den Anteil und die Rangfolge der Fehlschlaege macht.
+import { authFailureRanking, authFailureShare } from "@/lib/console/auth-performance";
+import { PROJECT_AUTH_AUDIT_ACTION_IDS } from "@/lib/console/auth-observability-texts";
 // Der erzwingbare zweite Faktor (2.52): echte Repository-, Audit- und
 // Token-Teile hinter dem echten Dienst.
 import { createHmac, generateKeyPairSync } from "node:crypto";
@@ -1405,6 +1409,206 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(serialised).not.toMatch(/qk_|entry_hash/);
     }
     // Ohne eigenes Zeitbudget: drei Eintraege, ein Auszug und vier Aggregationen.
+  });
+
+  it("(2.71) splits the failures of the real chain by action and says since when", async () => {
+    // Auth -> Auth-Leistung (2.71) gegen die echte Datenbank.
+    //
+    // Die Seite verspricht die Fehlerrate je Handlungsart. Bis 2.71 war die
+    // Antwort der Reihe dafuer zu grob: Sie trug je Eimer eine einzige Zahl
+    // gescheiterter Handlungen, und "die Anmeldung scheitert" war darin nicht
+    // von "der zweite Faktor scheitert" zu unterscheiden. Die Aufteilung
+    // entsteht nicht in JavaScript, sondern in der Datenbank: `GROUP BY 1, 2`
+    // ueber Eimer **und** Handlung, dazu
+    // `COUNT(*) FILTER (WHERE status = 'failed')` je Gruppe.
+    //
+    // Der Unit-Test daneben (`auth-performance.test.ts`) rechnet die Rangfolge
+    // aus einer Reihe, die im Test woertlich dasteht. Das ist die halbe
+    // Zusage. Die andere Haelfte ist der Weg von der Kette bis in die Zeile
+    // der Console, und die kann nur eine echte Datenbank belegen:
+    //
+    // 1. **Die gescheiterten haengen wirklich an ihrer Handlung.** In
+    //    derselben Stunde stehen vier zweite Faktoren, davon drei
+    //    gescheitert, und drei gelungene Anmeldungen, davon keine. Eine
+    //    Antwort, die nur "fuenf gescheitert" sagt, faellt hier durch.
+    // 2. **Der Dienst liest, den die Route benutzt.** Gelesen wird ueber
+    //    `ProjectAuthService.readAuditSeries`, denselben Aufruf wie in
+    //    `admin/audit/series`. Es gibt keinen Nachbau: echtes Repository,
+    //    echter Sink, echte Kette.
+    // 3. **"Seit wann" ist der Eimer der Reihe und nicht die Uhr.** 47
+    //    Stunden spaeter liegt dieselbe Stunde im ersten Eimer des Fensters
+    //    und die Rangfolge nennt genau ihn; 48 Stunden spaeter ist sie leer,
+    //    weil die Fenstergrenze als WHERE in der Abfrage steht.
+    // 4. **Die Rangfolge traegt keine Person.** Sie besteht aus Kennungen,
+    //    Zahlen und einem Eimerbeginn, aus nichts sonst.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.35, 2.45 und 2.47: Die
+    // Eintraege sind Audit-Zeilen, und eine Organisation mit Audit-Zeilen
+    // laesst sich nicht mehr loeschen; das gemeinsame afterAll muss
+    // organizationA und organizationB loswerden. Weggeraeumt wird darum
+    // nichts: audit_logs ist append-only (der Trigger aus 0002 weist UPDATE
+    // und DELETE ab), und der Wegwerf-Stack faellt nach dem Lauf weg.
+    const rateOwner = randomUUID();
+    const rateOrganization = randomUUID();
+    const rateProject = randomUUID();
+    const scope = { organizationId: rateOrganization, projectId: rateProject, environment: "development" as const };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [rateOwner, `auth-performance-owner-${rateOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Auth Performance 2.71', $2, $3)`,
+    [rateOrganization, `auth-performance-2-71-${rateOrganization}`, rateOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Auth Performance 2.71', $3, 'test', 'ready', $4)`,
+    [rateProject, rateOrganization, `auth-performance-2-71-${rateProject}`, rateOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [rateOrganization, rateProject, `managed:${rateProject}`]);
+
+    const sink = new PostgresProjectAuthAuditSink(auth);
+    const appUser = randomUUID();
+    const userRef = `project_auth_user:${appUser}`;
+    // Der Zeitpunkt kommt aus der Kette und nicht von der Uhr dieses
+    // Prozesses: `created_at` setzt die Datenbank selbst, und append-only
+    // heisst, dass er sich nachtraeglich nicht setzen laesst. Nur das
+    // Fenster, das der Dienst spannt, wird hier gesteuert.
+    let seriesNow = new Date();
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: sink,
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-71", privateKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 7)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+      now: () => new Date(seriesNow),
+    });
+
+    // Neun Handlungen dreier Arten, mit drei verschiedenen Fehlerbildern:
+    // der zweite Faktor scheitert meistens, die Anmeldung gelingt immer, und
+    // dazu zwei Fehlversuche, die schon als Art nichts anderes sind. Eine
+    // gemeinsame Fehlerzahl je Eimer kann diese drei Lagen nicht auseinander
+    // halten; genau darum geht es hier.
+    const written: Array<{ action: string; status: "succeeded" | "failed" }> = [
+      { action: "project_auth.mfa.verified", status: "failed" },
+      { action: "project_auth.mfa.verified", status: "failed" },
+      { action: "project_auth.mfa.verified", status: "failed" },
+      { action: "project_auth.mfa.verified", status: "succeeded" },
+      { action: "project_auth.login.failed", status: "failed" },
+      { action: "project_auth.login.failed", status: "failed" },
+      { action: "project_auth.login.succeeded", status: "succeeded" },
+      { action: "project_auth.login.succeeded", status: "succeeded" },
+      { action: "project_auth.login.succeeded", status: "succeeded" },
+    ];
+    for (const event of written) {
+      await sink.record({
+        scope, actorType: "app_user", actorRef: userRef, resourceRef: userRef,
+        action: event.action, status: event.status, metadata: { method: "password" },
+      });
+    }
+
+    const page = await sink.list(scope, { limit: 20 });
+    expect(page.events).toHaveLength(written.length);
+    const at = new Date(page.events[0].createdAt);
+    const hour = new Date(Math.floor(at.getTime() / 3_600_000) * 3_600_000);
+    // Alle neun Zeilen in derselben Stunde: Sonst haette das Schreiben eine
+    // Stundengrenze ueberquert, und "seit wann" meinte zwei Eimer statt einen.
+    for (const event of page.events) {
+      expect(new Date(event.createdAt).getTime()).toBeGreaterThanOrEqual(hour.getTime());
+      expect(new Date(event.createdAt).getTime()).toBeLessThan(hour.getTime() + 3_600_000);
+    }
+
+    // --- Zusage 1 und 2: der Dienst der Route, und die Aufteilung je Handlung
+    seriesNow = at;
+    const series = await service.readAuditSeries(scope, { bucket: "hour" });
+    expect(series.truncated).toBe(false);
+    const current = series.buckets.find((entry) => entry.start === hour.toISOString())!;
+    expect(current).toMatchObject({ total: 9, succeeded: 4, failed: 5 });
+    // Der Kern: dieselbe Stunde, dasselbe `failed`, und trotzdem drei Arten
+    // mit drei verschiedenen Fehlerbildern.
+    expect(current.actions["project_auth.mfa.verified"]).toBe(4);
+    expect(current.failedActions["project_auth.mfa.verified"]).toBe(3);
+    expect(current.actions["project_auth.login.succeeded"]).toBe(3);
+    expect(current.failedActions["project_auth.login.succeeded"]).toBe(0);
+    expect(current.actions["project_auth.login.failed"]).toBe(2);
+    expect(current.failedActions["project_auth.login.failed"]).toBe(2);
+    expect(current.failedActions.other).toBe(0);
+    // Die Aufteilung ist vollstaendig: Was je Handlung gescheitert ist,
+    // ergibt zusammen genau die Zahl des Eimers, keine mehr und keine
+    // weniger.
+    const perAction = PROJECT_AUTH_AUDIT_ACTION_IDS
+      .reduce((sum, id) => sum + current.failedActions[id], 0);
+    expect(perAction).toBe(current.failed);
+    expect(series.totals.failedActions["project_auth.mfa.verified"]).toBe(3);
+    expect(series.totals).toMatchObject({ total: 9, succeeded: 4, failed: 5 });
+
+    // Der Anteil ist eine Rechnung auf echten Zahlen und keine Schaetzung.
+    expect(authFailureShare(series.totals)).toBeCloseTo(5 / 9, 12);
+
+    // --- Zusage 3: die Rangfolge, und seit wann ------------------------------
+    const ranking = authFailureRanking(series);
+    expect(ranking.map((row) => row.id)).toEqual([
+      "project_auth.mfa.verified", "project_auth.login.failed",
+    ]);
+    expect(ranking[0]).toEqual({
+      id: "project_auth.mfa.verified", total: 4, failed: 3, share: 0.75,
+      firstFailureStart: hour.toISOString(),
+    });
+    expect(ranking[1]).toEqual({
+      id: "project_auth.login.failed", total: 2, failed: 2, share: 1,
+      firstFailureStart: hour.toISOString(),
+    });
+    // Die gelungene Anmeldung kommt neun Mal im Fenster vor und steht
+    // trotzdem nicht in der Liste: Sie ist kein Mal gescheitert.
+    expect(ranking.some((row) => row.id === "project_auth.login.succeeded")).toBe(false);
+
+    // 47 Stunden spaeter liegt die Stunde genau im ersten Eimer des Fensters.
+    // "Seit wann" nennt dann genau diesen Eimer und nicht etwa die Uhr.
+    seriesNow = new Date(at.getTime() + 47 * 3_600_000);
+    const edgeIn = await service.readAuditSeries(scope, { bucket: "hour" });
+    expect(edgeIn.buckets[0].start).toBe(hour.toISOString());
+    const edgeRanking = authFailureRanking(edgeIn);
+    expect(edgeRanking.map((row) => [row.id, row.firstFailureStart])).toEqual([
+      ["project_auth.mfa.verified", hour.toISOString()],
+      ["project_auth.login.failed", hour.toISOString()],
+    ]);
+
+    // 48 Stunden spaeter liegen die Zeilen eine Stunde vor dem Fenster. Die
+    // Grenze steckt als WHERE in der Abfrage; die Seite sagt dann, dass im
+    // Fenster nichts gescheitert ist, und nicht, dass nichts geschah.
+    seriesNow = new Date(at.getTime() + 48 * 3_600_000);
+    const edgeOut = await service.readAuditSeries(scope, { bucket: "hour" });
+    expect(new Date(edgeOut.windowStart).getTime()).toBe(hour.getTime() + 3_600_000);
+    expect(edgeOut.totals).toMatchObject({ total: 0, failed: 0 });
+    expect(authFailureRanking(edgeOut)).toEqual([]);
+    expect(authFailureShare(edgeOut.totals)).toBe(0);
+
+    // Dieselben Zeilen in Tageseimern: anderes Fenster, dieselbe Aufteilung.
+    seriesNow = at;
+    const daily = await service.readAuditSeries(scope, { bucket: "day" });
+    const day = new Date(Math.floor(at.getTime() / 86_400_000) * 86_400_000);
+    expect(daily.totals.failedActions["project_auth.mfa.verified"]).toBe(3);
+    expect(authFailureRanking(daily).map((row) => [row.id, row.firstFailureStart])).toEqual([
+      ["project_auth.mfa.verified", day.toISOString()],
+      ["project_auth.login.failed", day.toISOString()],
+    ]);
+
+    // --- Zusage 4: die Seite traegt keine Person -----------------------------
+    for (const answer of [series, edgeIn, edgeOut, daily]) {
+      const serialised = JSON.stringify({ series: answer, ranking: authFailureRanking(answer) });
+      expect(serialised).not.toContain("@");
+      expect(serialised).not.toContain(appUser);
+      expect(serialised).not.toContain("project_auth_user");
+      expect(serialised).not.toMatch(/qk_|entry_hash/);
+    }
+    // Ohne eigenes Zeitbudget: neun Eintraege, ein Auszug und vier Reihen.
   });
 
   it("(2.52) refuses a usable session without the second factor when the project requires it", async () => {

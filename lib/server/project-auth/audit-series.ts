@@ -61,6 +61,20 @@ export type ProjectAuthAuditCounts = {
   succeeded: number;
   failed: number;
   actions: Record<ProjectAuthAuditActionId, number>;
+  /**
+   * Die gescheiterten je Handlungsart (2.71).
+   *
+   * Die Datenbank gruppiert ohnehin nach Eimer **und** Handlung und zaehlt
+   * dabei `COUNT(*) FILTER (WHERE status = 'failed')`; bis 2.71 wurde diese
+   * Zahl beim Aufbau in eine einzige Summe je Eimer gefaltet und war danach
+   * weg. Sie steht jetzt daneben, weil "Anmeldung scheitert" und "zweiter
+   * Faktor scheitert" zwei verschiedene Lagen sind und eine gemeinsame
+   * Fehlerzahl beide verdeckt. Es kommt keine Abfrage dazu.
+   *
+   * `actions[id] - failedActions[id]` ist die Zahl der gelungenen derselben
+   * Art; eine dritte Tabelle dafuer waere dieselbe Zahl zweimal.
+   */
+  failedActions: Record<ProjectAuthAuditActionId, number>;
 };
 
 export type ProjectAuthAuditSeriesBucketView = ProjectAuthAuditCounts & {
@@ -104,13 +118,15 @@ export function projectAuthSeriesRowLimit(bucket: ProjectAuthSeriesBucket): numb
 
 function emptyCounts(): ProjectAuthAuditCounts {
   const actions = {} as Record<ProjectAuthAuditActionId, number>;
-  for (const id of PROJECT_AUTH_AUDIT_ACTION_IDS) actions[id] = 0;
-  return { total: 0, succeeded: 0, failed: 0, actions };
+  const failedActions = {} as Record<ProjectAuthAuditActionId, number>;
+  for (const id of PROJECT_AUTH_AUDIT_ACTION_IDS) { actions[id] = 0; failedActions[id] = 0; }
+  return { total: 0, succeeded: 0, failed: 0, actions, failedActions };
 }
 
 function add(counts: ProjectAuthAuditCounts, action: string, total: number, failed: number): void {
   const id: ProjectAuthAuditActionId = KNOWN.has(action) ? action as ProjectAuthAuditAction : "other";
   counts.actions[id] += total;
+  counts.failedActions[id] += failed;
   counts.total += total;
   counts.failed += failed;
   counts.succeeded += total - failed;
