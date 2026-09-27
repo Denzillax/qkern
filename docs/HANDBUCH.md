@@ -2296,6 +2296,46 @@ und nachträglich lässt sich das auch nicht erfahren. Das „seit wann“ ist d
 Beginn des Abschnitts, in dem der erste Fehlschlag liegt, nicht seine Minute;
 feiner löst die Reihe nicht auf. Fällt es auf den ersten Abschnitt des
 Fensters, kann es früher angefangen haben.
+### Postgres: kein Serverlog, sondern der Zustand
+
+Seit `2.57.0` ist **Logs → Postgres-Zustand** keine Platzhalterseite mehr. Der
+Platzhalter versprach „das Serverlog der Projektdatenbank: Verbindungen,
+Fehler, langsame Statements“, und die Seite sagt als Erstes, dass es dieses
+Log hier nicht gibt.
+
+**Das Serverlog liegt in Dateien neben dem Datenverzeichnis des Servers.**
+QKERN hat auf dieses Verzeichnis keinen Zugriff, und `log_destination` schreibt
+weiter dorthin. Eine Konsolenfläche, die so täte, als läse sie mit, wäre eine
+Lüge. Wer das Serverlog braucht, holt es dort, wo der Server läuft.
+
+Was die Seite stattdessen hält, ist der **Zustand**, gelesen über
+`GET .../database/health` und damit über dieselbe Tür wie `/database/activity`
+und `/database/runtime`. Aus `pg_stat_database` kommen abgebrochene
+Transaktionen, Deadlocks, Konflikte, eröffnete, verlorene, fatal beendete und
+abgeschossene Sitzungen, temporäre Dateien mit ihrer Menge, Treffer und
+Lesevorgänge der Puffer, der Zustand der Datenprüfsummen und der Zeitpunkt der
+letzten Rücksetzung. Dazu kommt der Schreibweg des Servers: Checkpoints und
+Hintergrundschreiber, aus `pg_stat_checkpointer` ab PostgreSQL 17 und aus
+`pg_stat_bgwriter` davor. Welche Sicht dieser Server hat, fragt QKERN im
+Katalog nach und schreibt die Antwort auf die Seite, statt eine Version
+anzunehmen.
+
+**Jede Zahl ist ein Zähler seit der letzten Rücksetzung**, kein Ereignis mit
+Zeitpunkt. Der Satz steht über den Zahlen: Zwei Deadlocks heissen zwei seit
+dem Zeitpunkt, der darunter steht, und nicht zwei gerade eben. Die einzige
+Ausnahme ist die letzte gefallene Prüfsumme, denn die führt `pg_stat_database`
+mit ihrem Zeitpunkt.
+
+**Null ist nicht dasselbe wie nicht gemessen.** Läuft der Server ohne
+Datenprüfsummen, steht dort „nicht geprüft“ und keine 0; eine 0 hiesse
+„geprüft und nichts gefunden“.
+
+Nicht auf der Seite, jeweils mit Grund: kein Wortlaut einer Fehlermeldung (die
+Statistiksichten führen keinen Text), keine langsamen Statements (die stehen
+unter Abfrage-Leistung, und auch dort ohne ihren Text), keine einzelne
+Verbindung (die Gruppen stehen unter Berichte → Verbindungen) und kein Knopf,
+der die Statistik zurücksetzt: `pg_stat_reset()` ist ein Schreibaufruf, und
+diese Seite liest.
 
 ### Data API: kein Anfrageprotokoll
 

@@ -21,7 +21,7 @@ import {
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -53,7 +53,6 @@ export const PLACEHOLDERS = {
   // Berichte
   // Logs
   "logs-api": { label: "API-Gateway", supabase: "Logs → API Gateway", backend: "fehlt", note: "Jede Anfrage am Rand mit Status und Dauer." },
-  "logs-postgres": { label: "Postgres", supabase: "Logs → Postgres", backend: "fehlt", note: "Das Serverlog der Projektdatenbank: Verbindungen, Fehler, langsame Statements." },
   "logs-realtime": { label: "Realtime", supabase: "Logs → Realtime", backend: "fehlt", note: "Verbindungen, Kanäle und Nachrichten des Realtime-Transports über die Zeit." },
   "logs-pooler": { label: "Pooler", supabase: "Logs → Pooler", backend: "fehlt", note: "Log des Verbindungspools: Warteschlange, abgewiesene Verbindungen, Grenzen." },
   // Integrationen
@@ -110,7 +109,7 @@ export const NAV: NavGroup[] = [
     { id: "obs-query-performance", label: "Abfrage-Leistung" }, { id: "obs-query-insights", label: "Abfrage-Einblicke" }, { id: "obs-connections", label: "Verbindungen" },
   ] },
   { id: "logs", label: "Logs", icon: FileClock, children: [
-    { id: "logs", label: "Audit" }, ph("logs-api"), ph("logs-postgres"), { id: "logs-postgrest", label: "Data API" }, { id: "logs-auth", label: "Auth" }, { id: "logs-storage", label: "Storage" },
+    { id: "logs", label: "Audit" }, ph("logs-api"), { id: "logs-postgres", label: "Postgres-Zustand" }, { id: "logs-postgrest", label: "Data API" }, { id: "logs-auth", label: "Auth" }, { id: "logs-storage", label: "Storage" },
     ph("logs-realtime"), { id: "logs-functions", label: "Functions" }, ph("logs-pooler"), { id: "logs-cron", label: "Cron" }, { id: "logs-explorer", label: "Explorer" },
   ] },
   { id: "monitoring", label: "Nutzung & Limits", icon: CircleGauge },

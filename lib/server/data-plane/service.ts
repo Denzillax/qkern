@@ -486,6 +486,87 @@ export type ProjectDatabaseRuntimeResult = {
   startedAt: string;
 };
 
+/**
+ * Der Zustand der Projektdatenbank (2.70), aus den Statistiksichten.
+ *
+ * Das ist ausdruecklich **kein Serverlog**. QKERN hat keinen Dateizugriff auf
+ * die Projektdatenbank, und `log_destination` schreibt in Dateien des
+ * Servers. Was hier steht, sind Zaehler: Summen seit dem letzten Zuruecksetzen
+ * der Statistik. Kein Feld traegt einen Zeitpunkt eines Ereignisses, mit einer
+ * benannten Ausnahme (`checksumLastFailure`), und keines traegt einen Wortlaut.
+ *
+ * Die Abgrenzung zu `inspectActivity` ist gewollt. Dort stehen Durchsatz und
+ * die Verbindungen je Rolle und Zustand; hier stehen die Stoerungen und der
+ * Schreibweg des Servers. Die Verbindungsgruppen werden hier nicht wiederholt.
+ */
+export type ProjectDatabaseHealthResult = {
+  source: "postgres";
+  database: {
+    /** `numbackends`: offene Verbindungen dieser Datenbank, kein Zaehler, sondern ein Stand */
+    backends: number;
+    /** `xact_commit` seit der letzten Ruecksetzung */
+    commits: number;
+    /** `xact_rollback`: abgebrochene Transaktionen, seit der letzten Ruecksetzung */
+    rollbacks: number;
+    blocksRead: number;
+    blocksHit: number;
+    deadlocks: number;
+    /** `conflicts`: Abbrueche wegen der Wiederherstellung auf einem Standby */
+    conflicts: number;
+    tempFiles: number;
+    tempBytes: number;
+    /**
+     * `checksum_failures`. `null` heisst nicht null Fehler, sondern dass
+     * dieser Server ohne Datenpruefsummen laeuft und darum nichts zaehlt.
+     */
+    checksumFailures: number | null;
+    /** `checksum_last_failure`, UTC-Text; `null`, solange keine Pruefsumme fiel */
+    checksumLastFailure: string | null;
+    /** `sessions`: eroeffnete Sitzungen seit der letzten Ruecksetzung */
+    sessions: number;
+    /** `sessions_abandoned`: die Gegenstelle ging verloren */
+    sessionsAbandoned: number;
+    /** `sessions_fatal`: ein fataler Fehler beendete die Sitzung */
+    sessionsFatal: number;
+    /** `sessions_killed`: ein Operator oder ein Zeitlimit beendete die Sitzung */
+    sessionsKilled: number;
+    /** `stats_reset`, UTC-Text; `null` heisst, es wurde nie zurueckgesetzt */
+    statsReset: string | null;
+  };
+  /**
+   * Der Schreibweg des Servers. Er gilt fuer den ganzen Cluster und nicht nur
+   * fuer diese eine Datenbank; die Ansicht sagt das.
+   */
+  writeback: {
+    /**
+     * Woher die Checkpoint-Zaehler kommen. PostgreSQL 17 hat sie aus
+     * `pg_stat_bgwriter` nach `pg_stat_checkpointer` verschoben. QKERN liest
+     * die Sicht, die dieser Server wirklich hat, und sagt welche.
+     */
+    checkpointSource: "pg_stat_checkpointer" | "pg_stat_bgwriter";
+    /** Checkpoints, die der Zeitplan ausgeloest hat */
+    checkpointsTimed: number;
+    /** Checkpoints, die eine Anforderung ausgeloest hat, etwa die Menge an WAL */
+    checkpointsRequested: number;
+    /** Millisekunden, gerundet: Schreibphase aller Checkpoints */
+    checkpointWriteMs: number;
+    /** Millisekunden, gerundet: Synchronisationsphase aller Checkpoints */
+    checkpointSyncMs: number;
+    /** Puffer, die Checkpoints geschrieben haben */
+    buffersCheckpoint: number;
+    /** Puffer, die der Hintergrundschreiber geschrieben hat */
+    buffersClean: number;
+    /** Wie oft der Hintergrundschreiber an seiner eigenen Grenze aufhoerte */
+    maxwrittenClean: number;
+    /** Angeforderte Puffer; die Zahl steigt mit jeder Leseanforderung */
+    buffersAlloc: number;
+    /** `stats_reset` der Checkpoint-Sicht, UTC-Text */
+    checkpointerStatsReset: string | null;
+    /** `stats_reset` von `pg_stat_bgwriter`, UTC-Text */
+    bgwriterStatsReset: string | null;
+  };
+};
+
 export type ProjectReadQueryResult = {
   source: "postgres";
   columns: string[];
@@ -594,6 +675,10 @@ export interface ProjectDataPlanePort {
     context: ProjectDataPlaneContext,
     scope: ProjectDataPlaneScope,
   ): Promise<ProjectDatabaseRuntimeResult>;
+  inspectDatabaseHealth(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseHealthResult>;
 }
 
 export type ProjectDataPlaneErrorCode =
@@ -1053,6 +1138,141 @@ const CONNECTION_GROUPS_SQL = `
   GROUP BY 1, 2
   ORDER BY connections DESC, role_name ASC, state ASC
   LIMIT $1`;
+
+type DatabaseHealthRow = {
+  backends: string | number;
+  commits: string | number;
+  rollbacks: string | number;
+  blocks_read: string | number;
+  blocks_hit: string | number;
+  deadlocks: string | number;
+  conflicts: string | number;
+  temp_files: string | number;
+  temp_bytes: string | number;
+  /** `null`, wenn der Server ohne Datenpruefsummen laeuft */
+  checksum_failures: string | null;
+  checksum_last_failure: string | null;
+  sessions: string | number;
+  sessions_abandoned: string | number;
+  sessions_fatal: string | number;
+  sessions_killed: string | number;
+  stats_reset: string | null;
+};
+
+type WritebackRow = {
+  checkpoints_timed: string | number;
+  checkpoints_requested: string | number;
+  checkpoint_write_ms: string | number;
+  checkpoint_sync_ms: string | number;
+  buffers_checkpoint: string | number;
+  buffers_clean: string | number;
+  maxwritten_clean: string | number;
+  buffers_alloc: string | number;
+  checkpointer_stats_reset: string | null;
+  bgwriter_stats_reset: string | null;
+};
+
+/**
+ * Der Zustand der eigenen Datenbank, aus `pg_stat_database` (2.70).
+ *
+ * Diese Anweisung steht neben `DATABASE_ACTIVITY_SQL` und wiederholt sie
+ * nicht aus Versehen: Dort werden die Zahlen des Durchsatzes gelesen, hier
+ * die der Stoerungen. Ueberschneiden tun sich nur die Zaehler, die beide
+ * Seiten brauchen, um ueberhaupt eine Aussage zu machen (Commits gegen
+ * Rollbacks, Treffer gegen Lesen).
+ *
+ * `datname = current_database()` ist die Grenze und keine Bequemlichkeit: In
+ * dieser Sicht stehen auf einem Cluster auch die Zeilen anderer Mandanten.
+ *
+ * Gelesen werden nur Zaehler und zwei Zeitpunkte. Kein Name einer Relation,
+ * kein Abfragetext, kein Wortlaut einer Fehlermeldung: `pg_stat_database`
+ * fuehrt keinen, und QKERN holt ihn sich auch nicht anderswo.
+ *
+ * `bigint` geht als Text ueber die Grenze, damit der Treiber nichts rundet,
+ * was die Pruefung danach nicht mehr sehen koennte.
+ */
+const DATABASE_HEALTH_SQL = `
+  SELECT stat.numbackends AS backends,
+         stat.xact_commit::text AS commits,
+         stat.xact_rollback::text AS rollbacks,
+         stat.blks_read::text AS blocks_read,
+         stat.blks_hit::text AS blocks_hit,
+         stat.deadlocks::text AS deadlocks,
+         stat.conflicts::text AS conflicts,
+         stat.temp_files::text AS temp_files,
+         stat.temp_bytes::text AS temp_bytes,
+         stat.checksum_failures::text AS checksum_failures,
+         to_char(stat.checksum_last_failure AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS checksum_last_failure,
+         stat.sessions::text AS sessions,
+         stat.sessions_abandoned::text AS sessions_abandoned,
+         stat.sessions_fatal::text AS sessions_fatal,
+         stat.sessions_killed::text AS sessions_killed,
+         to_char(stat.stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS stats_reset
+  FROM pg_catalog.pg_stat_database AS stat
+  WHERE stat.datname = current_database()`;
+
+/**
+ * Ob dieser Server `pg_stat_checkpointer` schon kennt (2.70).
+ *
+ * PostgreSQL 17 hat die Checkpoint-Zaehler aus `pg_stat_bgwriter` in eine
+ * eigene Sicht verschoben. Eine Anweisung, die beide Spaltensaetze abdeckt,
+ * gibt es nicht: Ein Name, den der Katalog nicht kennt, scheitert schon beim
+ * Parsen, also auch in einem CASE-Zweig, der nie laeuft. Darum wird zuerst
+ * gefragt und dann die passende Anweisung geschickt. `to_regclass` gibt
+ * `NULL` statt eines Fehlers, wenn es die Sicht nicht gibt.
+ */
+const HAS_CHECKPOINTER_SQL = `
+  SELECT to_regclass('pg_catalog.pg_stat_checkpointer') IS NOT NULL AS has_checkpointer`;
+
+/**
+ * Der Schreibweg ab PostgreSQL 17 (2.70): Checkpoints aus
+ * `pg_stat_checkpointer`, der Hintergrundschreiber aus `pg_stat_bgwriter`.
+ *
+ * Beide Sichten haben genau eine Zeile und gelten fuer den ganzen Cluster,
+ * nicht fuer diese eine Datenbank. Das ist keine Luecke in der Eingrenzung:
+ * Es sind Zahlen ueber die Arbeit des Servers, keine Zahlen ueber Daten. Die
+ * Ansicht sagt es trotzdem, damit niemand sie dieser Datenbank zuschreibt.
+ *
+ * Die Zeiten kommen als `double precision` in Millisekunden. Gerundet wird
+ * hier und nicht in der Console, damit die Grenze eine ganze Zahl pruefen
+ * kann statt einer Gleitkommazahl.
+ */
+const CHECKPOINTER_SQL = `
+  SELECT checkpointer.num_timed::text AS checkpoints_timed,
+         checkpointer.num_requested::text AS checkpoints_requested,
+         round(checkpointer.write_time)::bigint::text AS checkpoint_write_ms,
+         round(checkpointer.sync_time)::bigint::text AS checkpoint_sync_ms,
+         checkpointer.buffers_written::text AS buffers_checkpoint,
+         bgwriter.buffers_clean::text AS buffers_clean,
+         bgwriter.maxwritten_clean::text AS maxwritten_clean,
+         bgwriter.buffers_alloc::text AS buffers_alloc,
+         to_char(checkpointer.stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS checkpointer_stats_reset,
+         to_char(bgwriter.stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS bgwriter_stats_reset
+  FROM pg_catalog.pg_stat_checkpointer AS checkpointer,
+       pg_catalog.pg_stat_bgwriter AS bgwriter`;
+
+/**
+ * Derselbe Schreibweg vor PostgreSQL 17 (2.70), als alles noch in
+ * `pg_stat_bgwriter` stand.
+ *
+ * Die Antwort hat dieselbe Form wie die der neuen Sicht, damit die Ansicht
+ * nur eine kennt. Nur `checkpointer_stats_reset` bleibt leer, und zwar
+ * wahrheitsgemaess: Es gibt keine zweite Sicht, die zurueckgesetzt werden
+ * koennte. Die Antwort nennt darum auch ihre Quelle, statt die neue Sicht
+ * vorzutaeuschen.
+ */
+const LEGACY_BGWRITER_SQL = `
+  SELECT bgwriter.checkpoints_timed::text AS checkpoints_timed,
+         bgwriter.checkpoints_req::text AS checkpoints_requested,
+         round(bgwriter.checkpoint_write_time)::bigint::text AS checkpoint_write_ms,
+         round(bgwriter.checkpoint_sync_time)::bigint::text AS checkpoint_sync_ms,
+         bgwriter.buffers_checkpoint::text AS buffers_checkpoint,
+         bgwriter.buffers_clean::text AS buffers_clean,
+         bgwriter.maxwritten_clean::text AS maxwritten_clean,
+         bgwriter.buffers_alloc::text AS buffers_alloc,
+         NULL::text AS checkpointer_stats_reset,
+         to_char(bgwriter.stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS bgwriter_stats_reset
+  FROM pg_catalog.pg_stat_bgwriter AS bgwriter`;
 
 /**
  * Row-Level-Security-Regeln eines Schemas, aus `pg_policy` (2.19). Abgeleitet
@@ -1692,6 +1912,101 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
   }
 
   /**
+   * Der Zustand der Projektdatenbank (2.70), aus den Statistiksichten.
+   *
+   * Drei Anweisungen in derselben lesenden Transaktion: die Zeile dieser
+   * Datenbank aus `pg_stat_database`, die Frage, welche Checkpoint-Sicht
+   * dieser Server hat, und der Schreibweg aus der Sicht, die es wirklich
+   * gibt. Die Frage dazwischen ist noetig, weil ein Name, den der Katalog
+   * nicht kennt, schon beim Parsen scheitert; siehe `HAS_CHECKPOINTER_SQL`.
+   *
+   * Jeder Zaehler passiert die Grenze. Das ist hier kein Formalismus: Der
+   * Treiber liefert `bigint` als Text, und ein Text, der kein Zaehler ist,
+   * wuerde in der Console als Zahl gelesen. Was nicht wie ein Zaehler
+   * aussieht, laesst den Aufruf scheitern, statt eine Zahl zu erfinden.
+   *
+   * `checksum_failures` ist der einzige Wert, der `null` sein darf und
+   * trotzdem gueltig ist: Ein Server ohne Datenpruefsummen zaehlt nicht, und
+   * eine 0 waere hier die Behauptung, es sei geprueft und nichts gefunden
+   * worden.
+   */
+  async inspectDatabaseHealth(
+    context: ProjectDataPlaneContext,
+    scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseHealthResult> {
+    assertContextAndScope(context, scope);
+    return this.run(context, scope, async (client) => {
+      const databaseRows = await client.query<DatabaseHealthRow>(DATABASE_HEALTH_SQL);
+      const row = databaseRows.rows[0];
+      // Ohne Zeile gibt es nichts zu sagen. Nullen waeren hier gelogen, also
+      // faellt der Aufruf fail-closed.
+      if (!row) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+
+      const probe = await client.query<{ has_checkpointer: boolean }>(HAS_CHECKPOINTER_SQL);
+      const hasCheckpointer = probe.rows[0]?.has_checkpointer;
+      if (typeof hasCheckpointer !== "boolean") throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      const writebackRows = await client.query<WritebackRow>(
+        hasCheckpointer ? CHECKPOINTER_SQL : LEGACY_BGWRITER_SQL,
+      );
+      const writeback = writebackRows.rows[0];
+      if (!writeback) throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+
+      const counters = [
+        counter(row.backends), counter(row.commits), counter(row.rollbacks),
+        counter(row.blocks_read), counter(row.blocks_hit), counter(row.deadlocks),
+        counter(row.conflicts), counter(row.temp_files), counter(row.temp_bytes),
+        counter(row.sessions), counter(row.sessions_abandoned),
+        counter(row.sessions_fatal), counter(row.sessions_killed),
+        counter(writeback.checkpoints_timed), counter(writeback.checkpoints_requested),
+        counter(writeback.checkpoint_write_ms), counter(writeback.checkpoint_sync_ms),
+        counter(writeback.buffers_checkpoint), counter(writeback.buffers_clean),
+        counter(writeback.maxwritten_clean), counter(writeback.buffers_alloc),
+      ];
+      if (counters.some((value) => value === null)) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      // Zeitpunkte gehen nur als UTC-Text durch, in genau der Form, die
+      // `to_char` oben schreibt. Alles andere wuerde die Console formatieren,
+      // ohne es zu verstehen.
+      for (const moment of [row.checksum_last_failure, row.stats_reset,
+        writeback.checkpointer_stats_reset, writeback.bgwriter_stats_reset]) {
+        if (moment !== null && (typeof moment !== "string" || !UTC_MOMENT.test(moment))) {
+          throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+        }
+      }
+      const checksumFailures = row.checksum_failures === null ? null : counter(row.checksum_failures);
+      if (row.checksum_failures !== null && checksumFailures === null) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+
+      const [
+        backends, commits, rollbacks, blocksRead, blocksHit, deadlocks, conflicts,
+        tempFiles, tempBytes, sessions, sessionsAbandoned, sessionsFatal, sessionsKilled,
+        checkpointsTimed, checkpointsRequested, checkpointWriteMs, checkpointSyncMs,
+        buffersCheckpoint, buffersClean, maxwrittenClean, buffersAlloc,
+      ] = counters as number[];
+
+      return {
+        source: "postgres",
+        database: {
+          backends, commits, rollbacks, blocksRead, blocksHit, deadlocks, conflicts,
+          tempFiles, tempBytes, checksumFailures,
+          checksumLastFailure: row.checksum_last_failure,
+          sessions, sessionsAbandoned, sessionsFatal, sessionsKilled,
+          statsReset: row.stats_reset,
+        },
+        writeback: {
+          checkpointSource: hasCheckpointer ? "pg_stat_checkpointer" : "pg_stat_bgwriter",
+          checkpointsTimed, checkpointsRequested, checkpointWriteMs, checkpointSyncMs,
+          buffersCheckpoint, buffersClean, maxwrittenClean, buffersAlloc,
+          checkpointerStatsReset: writeback.checkpointer_stats_reset,
+          bgwriterStatsReset: writeback.bgwriter_stats_reset,
+        },
+      };
+    });
+  }
+
+  /**
    * Die teuersten Statements der eigenen Datenbank, ohne ihren Text (2.57).
    *
    * Der Gegenentwurf zu "gar nicht lesen" aus 2.40: Statt die Sicht ganz
@@ -2296,6 +2611,13 @@ export class DisabledProjectDataPlane implements ProjectDataPlanePort {
     _context: ProjectDataPlaneContext,
     _scope: ProjectDataPlaneScope,
   ): Promise<ProjectDatabaseRuntimeResult> {
+    throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
+  }
+
+  async inspectDatabaseHealth(
+    _context: ProjectDataPlaneContext,
+    _scope: ProjectDataPlaneScope,
+  ): Promise<ProjectDatabaseHealthResult> {
     throw new ProjectDataPlaneError("DATA_PLANE_DISABLED");
   }
 
