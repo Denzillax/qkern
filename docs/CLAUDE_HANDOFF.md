@@ -95,6 +95,39 @@ Grossbuchstaben.
   verwaisen waere schlimmer als eine wachsende Tabelle. Fall `(2.89)` in
   `tests/postgres.integration.test.ts`.
 
+- Neu in diesem Zweig: 2.92 (Zweig `slice/consent`) **Eine Zustimmung ist eine
+  Zeile.** Migration `0064_project_auth_oauth_consents.sql` legt
+  `project_auth_oauth_consents` an (Nutzer, Client, Bereiche, `granted_at`,
+  `revoked_at`) und haengt `consent_id` an Codes und Token. Damit schliessen sich
+  die drei offenen Punkte aus 2.82 als **eine** Sache: Widerruf je Zustimmung
+  statt nur je Client, eine Ansicht, wer wem was erlaubt hat, und eine
+  Zustimmung, die eine Tatsache in der Datenbank ist statt einer Behauptung der
+  Anwendung. **Was das belegt**: dass ein Aufrufer mit dem gueltigen Access Token
+  dieses Nutzers genau diese Bereiche ausdruecklich genannt hat, zu diesem
+  Zeitpunkt, in einer Anfrage (`POST /auth/oauth/consents`), die nichts anderes
+  tut. **Was es nicht belegt**: dass ein Mensch eine Liste gesehen hat. Eine
+  eigene Zustimmungsseite gibt es weiterhin nicht, denn sie hiesse, einen
+  Anmeldefluss im Browser zu bauen; der Satz steht so auf der Seite und im
+  Handbuch. `authorizeOAuth` gibt ohne geltende Zustimmung **keinen Code** mehr
+  heraus (`consent_missing`), und verglichen wird auf **genau** diese Bereiche
+  und nicht auf mindestens diese: Bei einem Teilmengenvergleich entschiede die
+  Reihenfolge der Zeilen, an welcher der Code haengt, und der Widerruf waere ein
+  Glueckspiel. Zweimal dieselben Bereiche fuer denselben Client sind **eine**
+  Zeile mit dem urspruenglichen Zeitpunkt (Teilindex ueber die nicht
+  widerrufenen); andere Bereiche sind eine zweite Zeile, und die erste bleibt
+  stehen. **Der Widerruf** wirkt sofort, weil `verifyOAuthToken` die Zustimmung
+  in derselben Abfrage mitliest, und er **loescht nicht**: Die Zeile bleibt mit
+  beiden Zeitpunkten stehen, `qkern_auth` hat auf der Tabelle kein `DELETE`, und
+  ein Waechter laesst `revoked_at` nicht wieder auf NULL. Das Entfernen des
+  Clients nimmt die Zustimmungen dagegen wirklich mit (`ON DELETE CASCADE`), und
+  die Console sagt den Unterschied an beiden Knoepfen. **Offen**: Ein Nutzer kann
+  seine eigene Zustimmung nicht selbst zurueckziehen (nur der Betreiber in der
+  Console), und Token aus der Zeit vor 0064 tragen keine Zustimmung und gelten
+  darum nicht mehr (hoechstens eine Stunde Wirkung). Neue Routen:
+  `POST /auth/oauth/consents` und
+  `DELETE /auth/admin/oauth-consents/{consentId}`. Zertifiziert im Fall
+  `(2.92)`.
+
 - Neu in diesem Zweig: 2.82 (Zweig `slice/oauthserver`) **QKERN gibt selbst
   Token aus: Authorization Code mit PKCE, und nur das.** Der Platzhalter
   `auth-oauth-server` ist echt, Migration

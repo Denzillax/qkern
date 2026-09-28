@@ -8598,6 +8598,19 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
           WHERE organization_id = $1 AND project_id = $2`,
         [oauthOrganization, oauthProject])).rows[0].count;
       expect(await codeCount()).toBe("0");
+      // --- Die Zustimmungen, ohne die es seit 2.92 keinen Code gibt --------
+      //
+      // Zwei Zeilen, weil dieser Fall zwei verschiedene Bereichsmengen anlaeuft
+      // und genau verglichen wird und nicht auf Teilmengen. Dass eine fehlende
+      // Zustimmung den Anlauf wirklich stoppt, prueft `(2.92)`; hier stehen sie,
+      // damit dieser Fall weiter das prueft, was er prueft.
+      await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "ai-bridge", scopes: ["data:read"],
+      });
+      await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "ai-bridge", scopes: ["identity:read", "data:read"],
+      });
+
 
       // --- Zusage 5: der falsche Prueftext faellt, und verbraucht den Code -
       //
@@ -9735,6 +9748,332 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+
+  it("(2.92) records a consent as one row, issues a token on it, revokes exactly that consent so the token stops working while the row stays, and refuses a scope nobody consented to", async () => {
+    // Eine Zustimmung ist eine Zeile (2.92), gegen die echte Datenbank.
+    //
+    // Echt ist alles, worauf es ankommt: der Nutzer und seine Anmeldung ueber
+    // den echten Dienst, der Client in `project_auth_oauth_clients`, die
+    // Zustimmung in `project_auth_oauth_consents` aus Migration 0064, der Code,
+    // das Token, der Widerruf, die Audit-Kette und die Rechte, die PostgreSQL
+    // auf diesen Tabellen vergibt. Gestellt ist nichts.
+    //
+    // Der Fall prueft die vier Zusagen dieses Schnitts an einem Stueck:
+    //
+    // 1. Ohne Zustimmung gibt es keinen Code, und ein Bereich, dem niemand
+    //    zugestimmt hat, faellt mit eigenem Grund.
+    // 2. Zweimal dieselbe Zustimmung ist eine Zeile, andere Bereiche sind eine
+    //    zweite.
+    // 3. Der Widerruf wirkt sofort auf das Token dieser Zustimmung und laesst
+    //    die Nachbarzustimmung in Ruhe.
+    // 4. Die widerrufene Zeile bleibt stehen, mit beiden Zeitpunkten, und die
+    //    Datenbank laesst sie weder loeschen noch wieder oeffnen.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.82: Jede Aenderung
+    // schreibt eine Audit-Zeile, und eine Organisation mit Audit-Zeilen laesst
+    // sich wegen audit_logs_organization_id_fkey nicht mehr loeschen.
+    const consentOwner = randomUUID();
+    const consentOrganization = randomUUID();
+    const consentProject = randomUUID();
+    const scope = {
+      organizationId: consentOrganization, projectId: consentProject,
+      environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [consentOwner, `consent-owner-${consentOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'OAuth Consent 2.92', $2, $3)`,
+    [consentOrganization, `oauth-consent-${consentOrganization}`, consentOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'OAuth Consent 2.92', $3, 'test', 'ready', $4)`,
+    [consentProject, consentOrganization, `oauth-consent-${consentProject}`, consentOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [consentOrganization, consentProject, `managed:${consentProject}`]);
+
+    const signingKey = generateKeyPairSync("ed25519").privateKey;
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-92", privateKey: signingKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 13)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    // Der Prueftext und seine Pruefsumme, von aussen gerechnet, wie in 2.82:
+    // Der Fall darf die Pruefsumme nicht von QKERN rechnen lassen.
+    const verifier = randomBytes(32).toString("base64url");
+    const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+    const home = "https://app.test/oauth/zurueck";
+
+    try {
+      // --- Der Nutzer und der Client --------------------------------------
+      const email = `consent-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const userId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+
+      const stored = await service.createOAuthClient(scope, {
+        name: "zustimmung-app", redirectUris: [home], scopes: ["identity:read", "data:read"],
+      }, { id: consentOwner });
+      const clientId = stored.clients[0].id;
+      // Die Antwort traegt die Zustimmungen von Anfang an, und sie ist leer:
+      // Ein Client, dem noch niemand zugestimmt hat, hat keine.
+      expect(stored.consents).toEqual([]);
+      expect(stored.consentsTruncated).toBe(false);
+
+      // --- Zusage 1: ohne Zustimmung kein Code ----------------------------
+      //
+      // Der Client fuehrt `data:read`, das Ruecksprungziel stimmt, der Nutzer
+      // ist angemeldet. Trotzdem faellt der Anlauf, und zwar mit eigenem Grund:
+      // Es fehlt die Zustimmung, und das ist etwas anderes als ein Bereich, den
+      // der Client nicht fuehrt.
+      await expect(service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", redirectUri: home, scopes: ["data:read"],
+        codeChallenge: challenge,
+      })).rejects.toMatchObject({
+        name: "ProjectAuthOAuthError", reason: "consent_missing", field: "scopes",
+      });
+      // Und es steht wirklich keine Zeile da, weder Zustimmung noch Code.
+      const countOf = async (table: string) => (await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM ${table}
+          WHERE organization_id = $1 AND project_id = $2`,
+        [consentOrganization, consentProject])).rows[0].count;
+      expect(await countOf("project_auth_oauth_consents")).toBe("0");
+      expect(await countOf("project_auth_oauth_codes")).toBe("0");
+
+      // --- Zusage 2: was keine Zustimmung werden darf ---------------------
+      //
+      // Mehr, als der Client fuehrt, ist eine Abweisung und keine stille
+      // Kuerzung. Und ohne gueltiges Token des Nutzers gibt es gar keine
+      // Zustimmung: Eine Kennung im Rumpf waere die Erlaubnis, im Namen eines
+      // Fremden zuzustimmen.
+      await expect(service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", scopes: ["data:read", "data:write"],
+      })).rejects.toMatchObject({ reason: "scope_not_granted", field: "scopes" });
+      await expect(service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", scopes: [],
+      })).rejects.toMatchObject({ reason: "scopes_empty", field: "scopes" });
+      await expect(service.grantOAuthConsent(scope, "nicht.mein.token", {
+        clientId: "zustimmung-app", scopes: ["data:read"],
+      })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      expect(await countOf("project_auth_oauth_consents")).toBe("0");
+
+      // --- Zusage 3: die Zustimmung entsteht, und zweimal ist einmal -------
+      const lesen = await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", scopes: ["data:read"],
+      });
+      expect(lesen.consentId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(lesen.clientName).toBe("zustimmung-app");
+      expect(lesen.scopes).toEqual(["data:read"]);
+      const wieder = await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", scopes: ["data:read"],
+      });
+      // Dieselbe Zeile, derselbe Zeitpunkt. Der Zeitpunkt ist der wichtigere
+      // Teil: Eine zweite Zustimmung, die ihn verschiebt, waere eine Zeile, die
+      // ueber sich selbst etwas Falsches sagt.
+      expect(wieder.consentId).toBe(lesen.consentId);
+      expect(wieder.grantedAt).toBe(lesen.grantedAt);
+      expect(await countOf("project_auth_oauth_consents")).toBe("1");
+
+      // --- Zusage 4: ein Bereich, dem niemand zugestimmt hat ---------------
+      //
+      // `identity:read` steht am Client, aber nicht in der Zustimmung. Der
+      // Anlauf faellt, und er faellt mit demselben Grund wie ganz ohne
+      // Zustimmung: Verglichen wird auf genau diese Bereiche.
+      await expect(service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", redirectUri: home, scopes: ["identity:read"],
+        codeChallenge: challenge,
+      })).rejects.toMatchObject({ reason: "consent_missing", field: "scopes" });
+      // Und dasselbe fuer die groessere Menge, obwohl sie die zugestimmte
+      // enthaelt. Kein Teilmengenvergleich, in keine der beiden Richtungen.
+      await expect(service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", redirectUri: home, scopes: ["identity:read", "data:read"],
+        codeChallenge: challenge,
+      })).rejects.toMatchObject({ reason: "consent_missing", field: "scopes" });
+      expect(await countOf("project_auth_oauth_codes")).toBe("0");
+
+      // --- Zusage 5: der ganze Ablauf auf dieser Zustimmung ---------------
+      const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", redirectUri: home, scopes: ["data:read"],
+        codeChallenge: challenge,
+      });
+      const issued = await service.exchangeOAuthCode(scope, {
+        clientId: "zustimmung-app", code: granted.code, redirectUri: home, codeVerifier: verifier,
+      });
+      expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
+      // Code und Token haengen wirklich an dieser Zeile, und zwar in der
+      // Datenbank und nicht nur im Kopf des Dienstes. Ohne diese Bindung waere
+      // der Widerruf ein Vergleich ueber Nutzer, Client und Bereiche, also
+      // dieselbe Zuordnung ein zweites Mal gebaut.
+      const bound = await auth.query<{ code_consent: string; token_consent: string }>(
+        `SELECT c.consent_id::text AS code_consent, t.consent_id::text AS token_consent
+           FROM project_auth_oauth_codes c
+           JOIN project_auth_oauth_tokens t ON t.code_id = c.id
+          WHERE c.organization_id = $1 AND c.project_id = $2`,
+        [consentOrganization, consentProject]);
+      expect(bound.rows).toEqual([{ code_consent: lesen.consentId, token_consent: lesen.consentId }]);
+      const verified = await service.verifyOAuthToken(scope, issued.accessToken);
+      expect(verified).toMatchObject({ ok: true });
+      if (!verified.ok) throw new Error("unerreichbar");
+      expect(verified.identity).toMatchObject({
+        clientName: "zustimmung-app", userId, email, role: "authenticated", scopes: ["data:read"],
+      });
+
+      // --- Zusage 6: andere Bereiche sind eine zweite Zeile ---------------
+      const beides = await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", scopes: ["identity:read", "data:read"],
+      });
+      expect(beides.consentId).not.toBe(lesen.consentId);
+      // Die Reihenfolge der Bereiche kommt aus der Liste und nicht aus der
+      // Eingabe, damit dieselbe Erlaubnis ueberall gleich aussieht.
+      expect(beides.scopes).toEqual(["identity:read", "data:read"]);
+      expect(await countOf("project_auth_oauth_consents")).toBe("2");
+      // Und die erste gilt weiter. Eine neue Zustimmung mit anderen Bereichen
+      // stillschweigend als Ersatz zu behandeln waere ein Widerruf, den niemand
+      // verlangt hat.
+      expect(await service.verifyOAuthToken(scope, issued.accessToken))
+        .toMatchObject({ ok: true });
+
+      // --- Zusage 7: der Widerruf trifft genau eine Zustimmung ------------
+      const afterRevoke = await service.revokeOAuthConsent(scope, lesen.consentId, { id: consentOwner });
+      // Das Token dieser Zustimmung gilt nicht mehr, sofort, und der Grund ist
+      // ein eigener: `revoked` sagt etwas anderes als `unknown`.
+      expect(await service.verifyOAuthToken(scope, issued.accessToken))
+        .toEqual({ ok: false, reason: "revoked" });
+
+      // --- Zusage 8: und die Zeile bleibt stehen --------------------------
+      //
+      // Geordnet gelesen, damit die Zusicherung nicht an der Laune der
+      // Datenbank haengt: nach dem Zeitpunkt, und bei gleichem Zeitpunkt nach
+      // der Kennung.
+      const rows = await auth.query<{
+        id: string; scopes: string[]; granted: string; revoked: string | null;
+      }>(`SELECT id::text AS id, scopes,
+                 to_char(granted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS granted,
+                 CASE WHEN revoked_at IS NULL THEN NULL ELSE 'widerrufen' END AS revoked
+            FROM project_auth_oauth_consents
+           WHERE organization_id = $1 AND project_id = $2
+           ORDER BY granted_at ASC, id ASC`, [consentOrganization, consentProject]);
+      const byId = [...rows.rows].sort((left, right) => left.id.localeCompare(right.id));
+      const expected = [
+        { id: lesen.consentId, scopes: ["data:read"], revoked: "widerrufen" },
+        { id: beides.consentId, scopes: ["identity:read", "data:read"], revoked: null },
+      ].sort((left, right) => left.id.localeCompare(right.id));
+      expect(byId.map((row) => ({ id: row.id, scopes: row.scopes, revoked: row.revoked })))
+        .toEqual(expected);
+      // Der Zeitpunkt der Zustimmung hat der Widerruf nicht angefasst.
+      const kept = byId.find((row) => row.id === lesen.consentId);
+      expect(kept?.granted).toBe(lesen.grantedAt);
+
+      // --- Zusage 9: der Widerruf geht nur einmal und nur in eine Richtung -
+      await expect(service.revokeOAuthConsent(scope, lesen.consentId, { id: consentOwner }))
+        .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+      // Loeschen darf diese Rolle gar nicht, und den Vermerk wieder loesen auch
+      // nicht: Das eine verbietet der Rechtesatz aus 0064, das andere der
+      // Waechter. Ohne den zweiten waere eine widerrufene Erlaubnis mit einem
+      // UPDATE wieder offen, ohne dass die Liste es zeigte.
+      await expect(auth.query(
+        "DELETE FROM project_auth_oauth_consents WHERE id = $1", [lesen.consentId]))
+        .rejects.toThrowError(/permission denied/i);
+      await expect(auth.query(
+        "UPDATE project_auth_oauth_consents SET revoked_at = NULL WHERE id = $1", [lesen.consentId]))
+        .rejects.toMatchObject({ code: "55000" });
+      await expect(auth.query(
+        `UPDATE project_auth_oauth_consents SET scopes = ARRAY['data:write']::text[] WHERE id = $1`,
+        [lesen.consentId])).rejects.toThrowError(/permission denied/i);
+      const privileges = await owner.query<{ rolname: string; may_delete: boolean; may_update: boolean }>(
+        `SELECT role.rolname,
+                has_table_privilege(role.rolname, 'project_auth_oauth_consents', 'DELETE') AS may_delete,
+                has_any_column_privilege(role.rolname, 'project_auth_oauth_consents', 'UPDATE') AS may_update
+           FROM (VALUES (1, 'qkern_auth'), (2, 'qkern_runtime'), (3, 'qkern_worker')) AS role(ord, rolname)
+          ORDER BY role.ord`);
+      expect(privileges.rows).toEqual([
+        { rolname: "qkern_auth", may_delete: false, may_update: true },
+        { rolname: "qkern_runtime", may_delete: false, may_update: false },
+        { rolname: "qkern_worker", may_delete: false, may_update: false },
+      ]);
+
+      // --- Zusage 10: ein Code ueberlebt den Widerruf nicht ---------------
+      //
+      // Der Code entsteht, dann faellt seine Zustimmung, dann kommt das
+      // Einloesen. Ohne diese Pruefung waere ein Widerruf eine Minute lang
+      // folgenlos, und eine Minute reicht, um ein Token zu holen, das eine
+      // Stunde gilt.
+      const nachtraeglich = await service.authorizeOAuth(scope, signedIn.accessToken, {
+        clientId: "zustimmung-app", redirectUri: home, scopes: ["identity:read", "data:read"],
+        codeChallenge: challenge,
+      });
+      await service.revokeOAuthConsent(scope, beides.consentId, { id: consentOwner });
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "zustimmung-app", code: nachtraeglich.code, redirectUri: home,
+        codeVerifier: verifier,
+      })).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      expect(await countOf("project_auth_oauth_tokens")).toBe("1");
+
+      // --- Zusage 11: was die Console sieht -------------------------------
+      const view = await service.listOAuthClients(scope);
+      expect(view.consentsTruncated).toBe(false);
+      const shown = [...view.consents].sort((left, right) => left.id.localeCompare(right.id));
+      expect(shown.map((consent) => ({
+        id: consent.id, clientName: consent.clientName, email: consent.email,
+        scopes: consent.scopes, revoked: consent.revokedAt !== null,
+      }))).toEqual([
+        { id: lesen.consentId, clientName: "zustimmung-app", email, scopes: ["data:read"], revoked: true },
+        { id: beides.consentId, clientName: "zustimmung-app", email, scopes: ["identity:read", "data:read"], revoked: true },
+      ].sort((left, right) => left.id.localeCompare(right.id)));
+      // Kein Token, kein Code, kein Prueftext in dem, was die Seite bekommt.
+      const payload = JSON.stringify(view);
+      expect(payload).not.toContain(issued.accessToken);
+      expect(payload).not.toContain(granted.code);
+      expect(payload).not.toContain(verifier);
+      expect(payload).not.toContain(challenge);
+
+      // --- Zusage 12: die Spur -------------------------------------------
+      const auditRows = await owner.query<{ action: string; metadata: string }>(
+        `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+          WHERE organization_id = $1`, [consentOrganization]);
+      const actions = auditRows.rows.map((row) => String(row.action));
+      expect(actions).toContain("project_auth.oauth_consent.granted");
+      expect(actions).toContain("project_auth.oauth_consent.revoked");
+      // Zwei Zustimmungen, zwei Zeilen: Die zweite Erteilung derselben Bereiche
+      // hat keine geschrieben, denn sie war keine Aenderung.
+      expect(actions.filter((action) => action === "project_auth.oauth_consent.granted")).toHaveLength(2);
+      expect(actions.filter((action) => action === "project_auth.oauth_consent.revoked")).toHaveLength(2);
+      const serialised = JSON.stringify(auditRows.rows);
+      expect(serialised).not.toContain(issued.accessToken);
+      expect(serialised).not.toContain(granted.code);
+      expect(serialised).not.toContain(verifier);
+
+      // --- Zusage 13: das Entfernen des Clients nimmt die Zeilen mit ------
+      //
+      // Der Unterschied zum Widerruf, und er steht in der Console: Widerruf
+      // behaelt die Zeile, Entfernen des Clients nimmt sie mit.
+      const removed = await service.deleteOAuthClient(scope, clientId, { id: consentOwner });
+      expect(removed.clients).toEqual([]);
+      expect(removed.consents).toEqual([]);
+      expect(await countOf("project_auth_oauth_consents")).toBe("0");
+      expect(afterRevoke.consents).toHaveLength(2);
+    } finally {
+      await owner.query("DELETE FROM users WHERE id = $1", [consentOwner]).catch(() => undefined);
+    }
+  }, 120_000);
 
 });
 

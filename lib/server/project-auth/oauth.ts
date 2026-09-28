@@ -51,6 +51,23 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * Pruefsumme geht durch den Browser. Darum gibt es in diesem Modul keinen
  * Begriff `clientSecret` und in Migration 0062 keine Spalte dafuer.
  *
+ * ## Die Zustimmung ist eine Zeile (2.92)
+ *
+ * Bis 2.82 war die Zustimmung ein Vorgang ohne Spur: Wer zugestimmt hatte,
+ * stand am Code und am Token, also an zwei kurzlebigen Dingen, und nach einer
+ * Stunde war nichts mehr davon zu sehen. Seit 2.92 ist sie eine eigene Zeile
+ * (Migration 0064) mit Nutzer, Client, Bereichen, Zeitpunkt und Widerruf, und
+ * `authorizeOAuth` gibt keinen Code mehr aus, zu dem es keine gibt.
+ *
+ * **Was das belegt und was nicht.** QKERN hat weiterhin keine eigene
+ * Zustimmungsseite; eine zu bauen hiesse, einen Anmeldefluss im Browser zu
+ * bauen, und das ist ein eigener Schnitt. Belegt ist darum nicht, dass ein
+ * Mensch eine Liste gelesen hat. Belegt ist, dass ein Aufrufer mit dem
+ * gueltigen Access Token dieses Nutzers genau diese Bereiche ausdruecklich
+ * genannt hat, zu diesem Zeitpunkt, in einer Anfrage, die nichts anderes tut.
+ * Das ist schmaler als eine Zustimmungsseite und dafuer eine Tatsache in der
+ * Datenbank statt einer Behauptung der Anwendung.
+ *
  * ## Und der Satz, der die Grenze dieses Produkts haelt
  *
  * QKERN schickt selbst keinen 302 an ein Ruecksprungziel. Die Zustimmung
@@ -177,9 +194,17 @@ export const PROJECT_AUTH_OAUTH_STATE = /^[A-Za-z0-9._~-]{1,256}$/;
  * unterhalb dessen, was eine Abfrage belasten wuerde.
  *
  * `redirectUriLength`: 512 Zeichen je Ziel, wie bei den Adressen in 0061.
+ *
+ * `consents`: 200 Zeilen je Umgebung in der Console (2.92). Das ist kein Rand
+ * fuer die Zustimmungen selbst, davon darf es beliebig viele geben, sondern
+ * einer fuer die Liste: Eine Ansicht, die eine unbegrenzte Tabelle in einem
+ * Stueck holt, ist im Betrieb eine Abfrage ohne Obergrenze. Die Seite sagt, wenn
+ * sie abgeschnitten hat; eine Liste, die stillschweigend endet, waere die
+ * unehrlichste Form von Vollstaendigkeit.
  */
 export const PROJECT_AUTH_OAUTH_BOUNDS = {
   clients: { max: 10 },
+  consents: { max: 200 },
   redirectUris: { min: 1, max: 5 },
   redirectUriLength: 512,
   codeTtlSeconds: 60,
@@ -324,7 +349,118 @@ export function orderedScopes(scopes: readonly ProjectAuthOAuthScope[]): Project
 }
 
 /* ------------------------------------------------------------------ *
- * Die Zustimmung
+ * Die Zustimmung als Zeile (2.92)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Eine erteilte Zustimmung, wie sie in der Datenbank steht (Migration 0064).
+ *
+ * Nutzer, Client, Bereiche, Zeitpunkt, und ob sie noch gilt. Der Widerruf ist
+ * ein Datum und kein Schalter: Ein Schalter sagte nur, dass widerrufen wurde,
+ * dieses Feld sagt, wann.
+ */
+export type ProjectAuthOAuthConsent = {
+  id: string;
+  clientId: string;
+  userId: string;
+  scopes: ProjectAuthOAuthScope[];
+  grantedAt: Date;
+  revokedAt: Date | null;
+};
+
+/** Warum eine Zustimmung nicht erteilt werden konnte. Der Schluessel ist stabil. */
+export type ProjectAuthOAuthConsentRejection =
+  | "not_an_object"
+  | "client_unknown"
+  | "scopes_empty"
+  | "scope_unknown"
+  | "scope_duplicate"
+  | "scope_not_granted";
+
+export type ProjectAuthOAuthConsentRequest = {
+  clientName: string;
+  scopes: ProjectAuthOAuthScope[];
+};
+
+export type ProjectAuthOAuthConsentParse =
+  | { ok: true; request: ProjectAuthOAuthConsentRequest }
+  | { ok: false; reason: ProjectAuthOAuthConsentRejection; field: string };
+
+/**
+ * Prueft eine Zustimmung gegen die Form, ohne den Client zu kennen.
+ *
+ * **Die Bereiche sind Pflicht und haben keine Vorgabe.** Das ist die tragende
+ * Entscheidung dieser Funktion. Eine Zustimmung ohne genannte Bereiche muesste
+ * QKERN aus dem Client ergaenzen, und dann stuende in der Zeile, was der Client
+ * darf, und nicht, was der Nutzer erlaubt hat. Wer zustimmt, nennt die Liste,
+ * sonst gibt es keine Zustimmung.
+ */
+export function parseProjectAuthOAuthConsent(input: unknown): ProjectAuthOAuthConsentParse {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ok: false, reason: "not_an_object", field: "consent" };
+  }
+  const raw = input as Record<string, unknown>;
+  if (typeof raw.clientId !== "string" || !PROJECT_AUTH_OAUTH_CLIENT_NAME.test(raw.clientId.trim())) {
+    return { ok: false, reason: "client_unknown", field: "clientId" };
+  }
+  if (!Array.isArray(raw.scopes) || raw.scopes.length === 0) {
+    return { ok: false, reason: "scopes_empty", field: "scopes" };
+  }
+  const scopes: ProjectAuthOAuthScope[] = [];
+  for (const candidate of raw.scopes) {
+    if (!isProjectAuthOAuthScope(candidate)) {
+      return { ok: false, reason: "scope_unknown", field: "scopes" };
+    }
+    if (scopes.includes(candidate)) return { ok: false, reason: "scope_duplicate", field: "scopes" };
+    scopes.push(candidate);
+  }
+  return { ok: true, request: { clientName: raw.clientId.trim(), scopes: orderedScopes(scopes) } };
+}
+
+/**
+ * Deckt diese Zustimmung genau diese Bereiche?
+ *
+ * **Genau, und nicht "mindestens".** Eine Zustimmung ueber `data:read` und
+ * `data:write` deckt einen Anlauf ueber `data:read` hier **nicht**, und das ist
+ * Absicht:
+ *
+ * * Ein Vergleich auf Teilmengen liesse mehrere Zeilen als Treffer zu, und dann
+ *   entschiede die Reihenfolge der Zeilen, an welcher der Code haengt. Der
+ *   Widerruf wuerde damit ein Glueckspiel: Der Nutzer nimmt eine Zeile zurueck
+ *   und weiss nicht, ob das Token an ihr hing.
+ * * Die Anwendung nennt die Bereiche ohnehin bei der Zustimmung; dieselbe Liste
+ *   beim Anlauf zu schicken kostet sie nichts.
+ *
+ * Verglichen wird ueber die geordnete Liste, denn beide Seiten sind durch
+ * `orderedScopes` gelaufen. Zwei Schreibweisen derselben Menge gibt es darum
+ * nicht.
+ */
+export function projectAuthOAuthConsentCovers(
+  consent: Pick<ProjectAuthOAuthConsent, "scopes">,
+  scopes: readonly ProjectAuthOAuthScope[],
+): boolean {
+  const wanted = orderedScopes(scopes);
+  const granted = orderedScopes(consent.scopes);
+  return wanted.length === granted.length && wanted.every((scope, index) => granted[index] === scope);
+}
+
+/**
+ * Gilt diese Zustimmung noch?
+ *
+ * Eine Zeile und eine Frage, und sie steht hier statt in einer Bedingung
+ * mitten im Dienst, damit es genau eine Stelle gibt, die sie beantwortet.
+ * Keine Zustimmung ist dabei dasselbe wie eine widerrufene: Ein Token, das an
+ * keiner haengt, ist eines aus der Zeit vor Migration 0064, und es gilt nicht
+ * mehr.
+ */
+export function projectAuthOAuthConsentHolds(
+  consent: Pick<ProjectAuthOAuthConsent, "revokedAt"> | null | undefined,
+): boolean {
+  return consent !== null && consent !== undefined && consent.revokedAt === null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Der Anlauf
  * ------------------------------------------------------------------ */
 
 export type ProjectAuthOAuthAuthorizeRequest = {
@@ -344,6 +480,7 @@ export type ProjectAuthOAuthAuthorizeRejection =
   | "scope_unknown"
   | "scope_duplicate"
   | "scope_not_granted"
+  | "consent_missing"
   | "scopes_empty"
   | "challenge_invalid"
   | "challenge_method_unsupported"
@@ -572,6 +709,11 @@ export type ProjectAuthOAuthCode = {
   id: string;
   clientId: string;
   userId: string;
+  /**
+   * Die Zustimmung, unter der dieser Code ausgegeben wurde (2.92). `null` nur
+   * fuer Zeilen aus der Zeit vor Migration 0064; der Dienst loest sie nicht ein.
+   */
+  consentId: string | null;
   redirectUri: string;
   scopes: ProjectAuthOAuthScope[];
   codeChallenge: string;
@@ -585,6 +727,12 @@ export type ProjectAuthOAuthToken = {
   id: string;
   clientId: string;
   userId: string;
+  /**
+   * Die Zustimmung, an der dieses Token haengt (2.92). Wird sie widerrufen,
+   * gilt das Token im selben Augenblick nicht mehr. `null` nur fuer Zeilen aus
+   * der Zeit vor Migration 0064, und die gelten ebenfalls nicht mehr.
+   */
+  consentId: string | null;
   scopes: ProjectAuthOAuthScope[];
   createdAt: Date;
   expiresAt: Date;
@@ -594,7 +742,12 @@ export type ProjectAuthOAuthToken = {
 export type ProjectAuthOAuthRefusal =
   | "malformed"
   | "unknown"
-  | "expired";
+  | "expired"
+  // Die Zustimmung hinter diesem Token gilt nicht mehr, oder es haengt an
+  // keiner. Ein eigener Grund und nicht `unknown`, weil er im Audit etwas
+  // anderes sagt: `unknown` heisst, dass es diese Zeile nie gab, `revoked`
+  // heisst, dass jemand sie zurueckgenommen hat.
+  | "revoked";
 
 /**
  * Darf ein Token mit diesen Bereichen diese Anfrage?

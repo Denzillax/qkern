@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Trash2, Waypoints } from "lucide-react";
+import { KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Trash2, UserCheck, Waypoints } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
@@ -10,9 +10,16 @@ import {
   AUTH_OAUTH_CODE_BINDINGS,
   AUTH_OAUTH_CODE_CONSUMED_FIRST,
   AUTH_OAUTH_CODE_WHAT,
+  AUTH_OAUTH_CONSENT_EXACT_SCOPES,
+  AUTH_OAUTH_CONSENT_IS_A_ROW,
+  AUTH_OAUTH_CONSENT_PROVES_NOT,
+  AUTH_OAUTH_CONSENT_REQUIRED,
+  AUTH_OAUTH_CONSENT_SAME_TWICE,
   AUTH_OAUTH_CONSTANT_TIME,
   AUTH_OAUTH_DATA_API_ONLY,
   AUTH_OAUTH_DISABLED_USER,
+  AUTH_OAUTH_GRANT_LIST,
+  AUTH_OAUTH_GRANT_LIST_TRUNCATED,
   AUTH_OAUTH_KEY_STILL_REQUIRED,
   AUTH_OAUTH_NAME_IS_CLIENT_ID,
   AUTH_OAUTH_NO_CLEANUP,
@@ -20,10 +27,10 @@ import {
   AUTH_OAUTH_NO_CONSENT_SCREEN,
   AUTH_OAUTH_NO_DISCOVERY,
   AUTH_OAUTH_NO_EDIT,
-  AUTH_OAUTH_NO_GRANT_LIST,
   AUTH_OAUTH_NO_RATE_LIMIT,
   AUTH_OAUTH_NO_REASON_ON_EXCHANGE,
   AUTH_OAUTH_NO_REDIRECT,
+  AUTH_OAUTH_NO_SELF_SERVICE_REVOCATION,
   AUTH_OAUTH_NO_SESSION,
   AUTH_OAUTH_NO_SILENT_NARROWING,
   AUTH_OAUTH_NO_TABLE_SCOPES,
@@ -35,7 +42,8 @@ import {
   AUTH_OAUTH_REJECTIONS,
   AUTH_OAUTH_REPLAY_REFUSED,
   AUTH_OAUTH_REVOCATION,
-  AUTH_OAUTH_REVOCATION_COARSE,
+  AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW,
+  AUTH_OAUTH_REVOCATION_PER_CONSENT,
   AUTH_OAUTH_ROLE_ALTERNATIVE,
   AUTH_OAUTH_ROLE_CEILING,
   AUTH_OAUTH_ROLE_WHERE,
@@ -74,6 +82,25 @@ import {
  * die Grenzen kommen aus der Antwort der Route und nicht aus dieser Datei. Was
  * ein Token umfasst, entscheidet der Dienst, und die Seite soll es nicht aus
  * eigenem Wissen behaupten.
+ *
+ * ## Was 2.92 hinzufügt
+ *
+ * Eine Zustimmung ist eine Zeile, und die Seite zeigt sie: je Client, wer
+ * zugestimmt hat, zu welchen Bereichen, seit wann, ob sie noch gilt, und ein
+ * Knopf, der genau diese eine zurücknimmt. Kein Token, kein Code, keine
+ * Prüfsumme; wer wissen will, was eine Anwendung getan hat, liest das
+ * Audit-Log.
+ *
+ * Die drei Sätze oben bleiben in dieser Reihenfolge stehen, weil sie zusammen
+ * die Wahrheit ergeben und einzeln nicht: Es gibt keine Zustimmungsseite von
+ * QKERN; was stattdessen belegt ist, ist eine Zeile mit Zeitpunkt und
+ * Bereichen; und was auch damit nicht belegt ist, ist, dass ein Mensch eine
+ * Liste gelesen hat.
+ *
+ * Zwei Knöpfe nehmen hier etwas zurück, und sie tun Verschiedenes. Der Widerruf
+ * einer Zustimmung lässt ihre Zeile stehen, mit beiden Zeitpunkten. Das
+ * Entfernen des Clients nimmt seine Zustimmungen wirklich mit. Beide Vorschauen
+ * sagen das, bevor jemand klickt.
  */
 type Environment = "development" | "staging" | "production";
 
@@ -85,8 +112,22 @@ type Client = {
   createdAt: string;
 };
 
+/** Eine Zustimmung, wie die Route sie zeigt: ohne Token, ohne Code, ohne Geheimnis. */
+type Consent = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  userId: string;
+  email: string;
+  scopes: string[];
+  grantedAt: string;
+  revokedAt: string | null;
+};
+
 type OAuthServer = {
   clients: Client[];
+  consents: Consent[];
+  consentsTruncated: boolean;
   scopes: string[];
   role: string;
   forbiddenRole: string;
@@ -95,6 +136,7 @@ type OAuthServer = {
   challengeMethod: string;
   bounds: {
     clients: { max: number };
+    consents: { max: number };
     redirectUris: { min: number; max: number };
     redirectUriLength: number;
     codeTtlSeconds: number;
@@ -111,6 +153,9 @@ function targetList(raw: string): string[] {
 
 export function AuthOAuthServerView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/oauth-clients`;
+  // Die Zustimmungen kommen in derselben Antwort wie die Clients; nur ihr
+  // Widerruf hat eine eigene Adresse.
+  const consentRoute = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/oauth-consents`;
   const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
   const [data, setData] = useState<OAuthServer | null>(null);
   const [name, setName] = useState("");
@@ -121,6 +166,10 @@ export function AuthOAuthServerView({ projectId, environment }: { projectId: str
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Getrennt vom Entfernen eines Clients, weil es zwei verschiedene Dinge sind:
+  // Das eine nimmt eine Zustimmung zurueck und laesst ihre Zeile stehen, das
+  // andere nimmt den Client samt allen Zustimmungen mit.
+  const [revoking, setRevoking] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
 
   const load = useCallback(async (initial: boolean) => {
@@ -201,6 +250,22 @@ export function AuthOAuthServerView({ projectId, environment }: { projectId: str
     finally { setSaving(false); }
   }
 
+  async function revoke(consentId: string) {
+    setRevoking(null);
+    setSaving(true);
+    try {
+      const response = await fetch(`${consentRoute}/${consentId}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.data) {
+        setMessage(explain(payload, t("Die Zustimmung konnte nicht widerrufen werden.")));
+        return;
+      }
+      setData(payload.data as OAuthServer);
+      setMessage("");
+    } catch { setMessage(t("Die Zustimmung konnte nicht widerrufen werden.")); }
+    finally { setSaving(false); }
+  }
+
   if (state === "loading") {
     return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Der OAuth-Server wird geladen…")}</h3></div>;
   }
@@ -266,6 +331,11 @@ export function AuthOAuthServerView({ projectId, environment }: { projectId: str
       <p className="muted">{t(AUTH_OAUTH_ONE_FLOW)}</p>
       <p className="muted">{t(AUTH_OAUTH_NO_REDIRECT)}</p>
       <p className="risk medium">{t(AUTH_OAUTH_NO_CONSENT_SCREEN)}</p>
+      {/* Der Satz zur fehlenden Seite steht weiter oben und bleibt stehen. Was
+          danebengehoert, ist das, was stattdessen belegt ist, und die Grenze
+          davon: Beides steht hier und nicht in einer Fussnote. */}
+      <p className="muted">{t(AUTH_OAUTH_CONSENT_IS_A_ROW)}</p>
+      <p className="risk medium">{t(AUTH_OAUTH_CONSENT_PROVES_NOT)}</p>
       <p className="muted">{t(AUTH_OAUTH_KEY_STILL_REQUIRED)}</p>
       <p className="muted">{t(AUTH_OAUTH_DATA_API_ONLY)}</p>
       {message && <p className="risk medium">{message}</p>}
@@ -295,9 +365,47 @@ export function AuthOAuthServerView({ projectId, environment }: { projectId: str
         <div className="log-row"><span className="muted">{t("Geheimnis")}</span><small>{t("Keines. Dieser Client ist öffentlich und wird über PKCE geschützt.")}</small></div>
         <div className="log-row"><span className="muted">{t("Angelegt")}</span><small>{formatMoment(client.createdAt)}</small></div>
         {client.scopes.map((scope) => <small className="muted" key={scope}>{scopeNote(scope)}</small>)}
+        <div className="log-row"><span className="muted">{t("Zustimmungen")}</span>
+          <small>{formatNumber(data.consents.filter((consent) => consent.clientId === client.id).length)}</small>
+        </div>
+        {data.consents.filter((consent) => consent.clientId === client.id).length === 0 &&
+          <small className="muted">{t("Diesem Client hat noch niemand zugestimmt.")}</small>}
+        {data.consents.filter((consent) => consent.clientId === client.id).map((consent) =>
+          <div className="log-row" key={consent.id}>
+            <span className={consent.revokedAt === null ? "secure" : "muted"}>
+              {consent.revokedAt === null ? <ShieldCheck size={15}/> : <ShieldOff size={15}/>} {consent.email}
+            </span>
+            <code>{consent.scopes.join(" ")}</code>
+            {/* Zwei Schlüssel und nicht einer: Auf Deutsch ist "Widerrufen"
+                zugleich der Knopf und der Zustand, in anderen Sprachen sind das
+                zwei verschiedene Wörter. */}
+            <small>{consent.revokedAt === null
+              ? `${t("Zugestimmt am")} ${formatMoment(consent.grantedAt)}`
+              : `${t("Widerrufen am")} ${formatMoment(consent.revokedAt)}`}</small>
+            {consent.revokedAt === null && <button className="plain-button" onClick={() => { setMessage(""); setRevoking(consent.id); }} disabled={saving}>
+              <Trash2 size={14}/> <StableLabel current={t("Widerrufen")} variants={tAll("Widerrufen")}/>
+            </button>}
+          </div>)}
+        {data.consents.filter((consent) => consent.clientId === client.id)
+          .filter((consent) => consent.id === revoking)
+          .map((consent) => <div className="console-card preview-card" key={consent.id}>
+            <div className="card-head"><div><span>{t("VORSCHAU")}</span><h3>{t("Zustimmung widerrufen")}</h3></div><ShieldAlert size={18}/></div>
+            <p className="risk medium">{t("Der Widerruf wirkt sofort. Die Token dieser Zustimmung gelten ab der nächsten Anfrage nicht mehr.")}</p>
+            <div className="log-row"><span className="muted">{t("Nutzer")}</span><code>{consent.email}</code></div>
+            <div className="log-row"><span className="muted">{t("Bereiche")}</span><code>{consent.scopes.join(" ")}</code></div>
+            <div className="log-row"><span className="muted">{t("Zugestimmt")}</span><small>{formatMoment(consent.grantedAt)}</small></div>
+            <p className="muted">{t(AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW)}</p>
+            <div className="log-row">
+              <button className="secondary-button" onClick={() => void revoke(consent.id)} disabled={saving}>
+                <StableLabel current={saving ? t("Wird widerrufen…") : t("Jetzt widerrufen")} variants={tAll("Wird widerrufen…", "Jetzt widerrufen")}/>
+              </button>
+              <button className="plain-button" onClick={() => setRevoking(null)} disabled={saving}>{t("Abbrechen")}</button>
+            </div>
+          </div>)}
         {removing === client.id && <div className="console-card preview-card">
           <div className="card-head"><div><span>{t("VORSCHAU")}</span><h3>{t("Client entfernen")}</h3></div><ShieldAlert size={18}/></div>
           <p className="risk medium">{t("Entfernen wirkt sofort. Alle Token dieses Clients fallen, von allen Nutzern, auch die noch gültigen.")}</p>
+          <p className="risk medium">{t("Und die Zustimmungen dieses Clients verschwinden wirklich, samt ihren Zeitpunkten. Das ist der Unterschied zum Widerruf einer einzelnen Zustimmung, der die Zeile stehen lässt.")}</p>
           <div className="log-row"><span className="muted">{t("client_id")}</span><code>{client.name}</code></div>
           <div className="log-row">
             <button className="secondary-button" onClick={() => void remove(client.id)} disabled={saving}>
@@ -428,9 +536,27 @@ export function AuthOAuthServerView({ projectId, environment }: { projectId: str
 
     <article className="console-card">
       <div className="card-head"><div><span>{t("WIDERRUF")}</span><h3>{t("Wie eine Erlaubnis wieder aufhört")}</h3></div><Trash2 size={18}/></div>
+      <p className="muted">{t(AUTH_OAUTH_REVOCATION_PER_CONSENT)}</p>
+      <p className="muted">{t(AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW)}</p>
       <p className="muted">{t(AUTH_OAUTH_REVOCATION)}</p>
-      <p className="risk medium">{t(AUTH_OAUTH_REVOCATION_COARSE)}</p>
-      <p className="muted">{t(AUTH_OAUTH_NO_GRANT_LIST)}</p>
+      <p className="risk medium">{t(AUTH_OAUTH_NO_SELF_SERVICE_REVOCATION)}</p>
+    </article>
+
+    <article className="console-card">
+      <div className="card-head"><div><span>{t("ZUSTIMMUNGEN")}</span><h3>{t("Wer welchem Client was erlaubt hat")}</h3></div><UserCheck size={18}/></div>
+      <p className="muted">{t(AUTH_OAUTH_GRANT_LIST)}</p>
+      <p className="muted">{t(AUTH_OAUTH_CONSENT_REQUIRED)}</p>
+      <p className="muted">{t(AUTH_OAUTH_CONSENT_EXACT_SCOPES)}</p>
+      <p className="muted">{t(AUTH_OAUTH_CONSENT_SAME_TWICE)}</p>
+      <div className="log-row">
+        <span>{t("Zustimmungen in dieser Umgebung")}</span>
+        <small>{formatNumber(data.consents.length)} {t("von höchstens")} {formatNumber(data.bounds.consents.max)}</small>
+      </div>
+      <div className="log-row">
+        <span>{t("Davon noch gültig")}</span>
+        <small>{formatNumber(data.consents.filter((consent) => consent.revokedAt === null).length)}</small>
+      </div>
+      {data.consentsTruncated && <p className="risk medium">{t(AUTH_OAUTH_GRANT_LIST_TRUNCATED)}</p>}
     </article>
 
     <article className="console-card">

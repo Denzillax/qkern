@@ -1970,10 +1970,10 @@ es nicht an, und das ist voreingestellt so: Es gibt heute keinen Bereich, der
 eine Queue oder eine Function beschreibt, und ein Token, das dort mitliefe, hätte
 eine Erlaubnis, die niemand hinschreiben kann.
 
-**Der Widerruf geht über den Client.** Wer ihn entfernt, lässt über
-`ON DELETE CASCADE` seine Codes und alle seine Token fallen, von allen Nutzern,
-sofort. Feiner geht es nicht: Eine einzelne Zustimmung eines einzelnen Nutzers
-zurückzunehmen, gibt es nicht.
+**Der grobe Widerruf geht über den Client.** Wer ihn entfernt, lässt über
+`ON DELETE CASCADE` seine Codes, alle seine Token und alle seine Zustimmungen
+fallen, von allen Nutzern, sofort. Den feinen Widerruf je Zustimmung gibt es
+seit `2.64.0`, und er steht im nächsten Abschnitt.
 
 **Was diese Fläche bewusst nicht hält.** Keinen impliziten Ablauf, der das Token
 selbst an das Rücksprungziel und damit in den Browserverlauf gäbe. Keinen
@@ -1984,8 +1984,7 @@ als widerrufbaren Service Key aus. Kein Refresh Token: Ein Dauerzugang für eine
 fremde Anwendung ist eine eigene Entscheidung mit eigener Widerrufsfläche. Keine
 Zustimmungsseite von QKERN, also kein Beweis, dass der Nutzer eine Liste gesehen
 hat; die Anwendung zeigt sie, und das ist eine Verlagerung. Kein vertraulicher
-Client. Kein Dokument unter `.well-known/oauth-authorization-server`. Keine Liste
-in der Console, welcher Nutzer welchem Client zugestimmt hat. Und keinen
+Client. Kein Dokument unter `.well-known/oauth-authorization-server`. Und keinen
 Aufräumer für abgelaufene Zeilen: Sie gelten nicht mehr, denn die Prüfung sieht
 auf die Uhr, aber sie bleiben stehen und die Tabellen wachsen.
 
@@ -2010,6 +2009,97 @@ zweiten Einlösens, eines falschen Prüftexts (der den Code trotzdem verbraucht)
 eines fremden Rücksprungziels, eines nicht erlaubten Bereichs, von `plain`, von
 `response_type=token` und einer Anfrage ohne Projekt-Key. Gestellt ist dort genau
 eines: der Key-Dienst, weil eigens zertifiziert ist, welcher Public Key gilt.
+
+### Eine Zustimmung ist eine Zeile
+
+Seit `2.64.0` ist eine Zustimmung eine Zeile in
+`project_auth_oauth_consents` (Migration `0064`): ein Nutzer, ein Client, eine
+Menge von Bereichen, der Zeitpunkt, und ob sie noch gilt. Damit schliessen sich
+die drei Punkte, die `2.61.0` offen gelassen hat, und zwar als **eine** Sache:
+kein Widerruf je Zustimmung, keine Ansicht, wer wem was erlaubt hat, und keine
+Zustimmung, auf die QKERN sich berufen könnte.
+
+**Der Ablauf hat jetzt fünf Schritte statt vier.** Vor dem Anlauf steht
+`POST /auth/oauth/consents`: dieselbe Tür wie der Anlauf, also Public Key der
+Projektumgebung und das Access Token des Nutzers, und im Rumpf der `client_id`
+und die Bereiche. Erst danach gibt `POST /auth/oauth/authorize` einen Code zu
+genau diesen Bereichen heraus. Fehlt die Zustimmung, fällt der Anlauf mit dem
+Grund `consent_missing`, und es entsteht kein Code.
+
+**Was das belegt.** Dass ein Aufrufer mit dem gültigen Access Token dieses
+Nutzers genau diese Bereiche ausdrücklich genannt hat, zu diesem Zeitpunkt, in
+einer Anfrage, die nichts anderes tut.
+
+**Was es nicht belegt.** Dass ein Mensch eine Liste gelesen hat. Eine eigene
+Zustimmungsseite von QKERN gibt es weiterhin nicht; sie zu bauen hiesse, einen
+Anmeldefluss im Browser zu bauen, und das ist ein eigener Schnitt. Zwischen der
+Anwendung und dem Nutzer steht also nach wie vor nur die Anwendung. Der
+Unterschied zu vorher ist trotzdem gross: Die Zustimmung ist eine Tatsache in
+der Datenbank mit Zeitpunkt und Bereichen statt einer Behauptung, die mit dem
+Token abläuft. Dieser Absatz steht wortgleich auf der Console-Seite, weil er
+dorthin gehört, wo jemand die Liste liest.
+
+**Zweimal dasselbe ist einmal.** Dieselben Bereiche für denselben Client sind
+keine zweite Zustimmung, sondern dieselbe, und sie behält ihren
+ursprünglichen Zeitpunkt; das hält ein Teilindex über die nicht
+widerrufenen Zeilen, also auch bei zwei gleichzeitigen Anfragen. **Andere**
+Bereiche sind etwas anderes und werden eine zweite Zeile; die erste bleibt
+stehen und gilt weiter. Sie stillschweigend mitzuwiderrufen wäre ein Widerruf,
+den niemand verlangt hat, sie stillschweigend zu erweitern eine Erlaubnis, die
+niemand erteilt hat.
+
+**Verglichen wird auf genau diese Bereiche**, nicht auf mindestens diese. Eine
+Zustimmung über `identity:read data:read` deckt einen Anlauf über
+`data:read` allein also nicht. Der Grund ist der Widerruf: Würden mehrere
+Zeilen passen, entschiede die Reihenfolge der Zeilen, an welcher der Code
+hängt, und wer widerruft, wüsste nicht, ob er das Token getroffen hat.
+Der Code trägt darum `consent_id`, das Token ebenfalls, und beide zeigen auf
+dieselbe Zeile.
+
+**Der Widerruf wirkt sofort und löscht nicht.**
+`DELETE /auth/admin/oauth-consents/{consentId}` setzt `revoked_at` und sonst
+nichts. Die Token dieser Zustimmung gelten ab der nächsten Anfrage nicht mehr,
+ohne zweiten Lauf und ohne Frist: Ein OAuth-Token gilt, weil eine Zeile
+existiert, und seit `0064` nur, solange seine Zustimmung gilt; die Prüfung
+liest beides in einer Abfrage. Die Zeile bleibt mit beiden Zeitpunkten stehen,
+wie bei den S3-Schlüsselpaaren aus `2.59.0`: Wer widerruft, will die Spur
+behalten. `qkern_auth` hat auf dieser Tabelle gar kein `DELETE`, und ein
+Wächter lässt `revoked_at` nicht wieder auf `NULL` fallen. Auch ein Code,
+dessen Zustimmung zwischen Anlauf und Einlösen fällt, wird nicht mehr
+eingelöst; ohne das wäre ein Widerruf eine Minute lang folgenlos, und eine
+Minute reicht für ein Token, das eine Stunde gilt.
+
+**Der Unterschied zum Entfernen des Clients** steht in der Console an beiden
+Knöpfen: Der Widerruf behält die Zeile, das Entfernen des Clients nimmt seine
+Zustimmungen wirklich mit.
+
+**Was die Console zeigt.** Unter **Auth → OAuth-Server** steht je Client, wer
+zugestimmt hat (E-Mail-Adresse), zu welchen Bereichen, seit wann, ob die
+Zustimmung noch gilt, und ein Knopf, der genau diese eine zurücknimmt, mit
+Vorschau davor. Kein Token, kein Code, keine Prüfsumme; was eine Anwendung mit
+ihrem Zugang wirklich getan hat, steht unter **Auth → Audit-Log**. Die Liste
+ist bei 200 Zeilen abgeschnitten, und die Seite sagt es dann.
+
+**Was diese Fläche weiterhin nicht hält.** Keine Zustimmungsseite von QKERN,
+siehe oben. Keinen Weg, auf dem ein Nutzer seine eigene Zustimmung selbst
+zurücknimmt: Es gibt nur den Weg über den Betreiber, und eine Seite zur
+Selbstverwaltung wäre wieder eine Seite im Browser. Und Token, die vor `0064`
+ausgegeben wurden, tragen keine Zustimmung; sie werden abgewiesen, was
+höchstens eine Stunde lang jemanden trifft, denn länger gilt kein Token.
+
+Geschrieben werden `project_auth.oauth_consent.granted` mit Client und
+Bereichen, und zwar nur für eine wirklich neue Zustimmung, sowie
+`project_auth.oauth_consent.revoked` mit Nutzer und Bereichen. Weder ein Token
+noch ein Code noch ein Prüftext landet in der Kette.
+
+Zertifiziert ist das im Fall `(2.92)` in `tests/postgres.integration.test.ts`:
+echter Nutzer, echte Anmeldung, echter Client, echte Zustimmung in
+`project_auth_oauth_consents`, echter Code und echtes Token darauf, echter
+Widerruf, und danach gilt das Token nicht mehr, während die Zeile mit
+unverändertem Zeitpunkt stehen bleibt. Dazu die Abweisung eines Anlaufs nach
+einem Bereich, dem niemand zugestimmt hat, die zweite Zustimmung, die dieselbe
+Zeile ist, der zweite Widerruf, der nichts mehr findet, und die Probe, dass
+weder `DELETE` noch ein Zurücksetzen des Widerrufs an der Datenbank vorbeikommt.
 
 ## 7. Project Storage
 

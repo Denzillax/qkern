@@ -117,7 +117,9 @@ import {
   checkProjectAuthOAuthAuthorize,
   parseProjectAuthOAuthAuthorize,
   parseProjectAuthOAuthClient,
+  parseProjectAuthOAuthConsent,
   parseProjectAuthOAuthExchange,
+  projectAuthOAuthConsentHolds,
   projectAuthOAuthVerifierMatches,
   PROJECT_AUTH_OAUTH_BOUNDS,
   PROJECT_AUTH_OAUTH_CHALLENGE_METHOD,
@@ -131,6 +133,8 @@ import {
   type ProjectAuthOAuthAuthorizeRejection,
   type ProjectAuthOAuthClient,
   type ProjectAuthOAuthClientRejection,
+  type ProjectAuthOAuthConsent,
+  type ProjectAuthOAuthConsentRejection,
   type ProjectAuthOAuthExchangeRejection,
   type ProjectAuthOAuthIdentity,
   type ProjectAuthOAuthRefusal,
@@ -424,6 +428,25 @@ export type PublicProjectAuthOAuthServer = {
     scopes: string[];
     createdAt: string;
   }>;
+  /**
+   * Die Zustimmungen dieser Umgebung (2.92), die geltenden und die
+   * widerrufenen, je mit Client, Nutzer, Bereichen und Zeitpunkt.
+   *
+   * Kein Token, kein Code, keine Pruefsumme: Die Console soll zeigen, wer wem
+   * was erlaubt hat, und nichts, womit sich eine Anfrage stellen liesse.
+   */
+  consents: Array<{
+    id: string;
+    clientId: string;
+    clientName: string;
+    userId: string;
+    email: string;
+    scopes: string[];
+    grantedAt: string;
+    revokedAt: string | null;
+  }>;
+  /** Ob die Liste der Zustimmungen am Rand abgeschnitten wurde. */
+  consentsTruncated: boolean;
   scopes: readonly string[];
   /** Die Rolle, die jedes Token dieses Ablaufs in der Zeilensicherheit bekommt. */
   role: string;
@@ -444,6 +467,7 @@ export class ProjectAuthOAuthError extends Error {
     readonly reason:
       | ProjectAuthOAuthClientRejection
       | ProjectAuthOAuthAuthorizeRejection
+      | ProjectAuthOAuthConsentRejection
       | ProjectAuthOAuthExchangeRejection
       | "duplicate",
     readonly field: string,
@@ -1314,7 +1338,159 @@ export class ProjectAuthService {
    */
   async listOAuthClients(scope: ProjectAuthScope): Promise<PublicProjectAuthOAuthServer> {
     assertScope(scope);
-    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+    return this.oauthServerView(scope);
+  }
+
+  /**
+   * Der Stand dieser Flaeche: Clients und Zustimmungen in einer Antwort.
+   *
+   * An einer Stelle, weil jede schreibende Methode denselben Stand
+   * zurueckgibt, und weil die Console sonst zwei Aufrufe braeuchte, um eine
+   * Seite zu zeichnen. Eine Zeile mehr als der Rand wird geholt, damit die
+   * Antwort sagen kann, dass sie abgeschnitten ist.
+   */
+  private async oauthServerView(scope: ProjectAuthScope): Promise<PublicProjectAuthOAuthServer> {
+    const [clients, consents] = await Promise.all([
+      this.dependencies.repository.listOAuthClients(scope),
+      this.dependencies.repository.listOAuthConsents(
+        scope, PROJECT_AUTH_OAUTH_BOUNDS.consents.max + 1,
+      ),
+    ]);
+    return publicOAuthServer(clients, consents);
+  }
+
+  /**
+   * Eine Zustimmung erteilen (2.92).
+   *
+   * **Wer sie erteilt.** Der Nutzer aus seinem eigenen Access Token, genau wie
+   * beim Anlauf, und nie eine Kennung aus dem Rumpf. Was diese Zeile belegt,
+   * steht im Kopf von `oauth.ts` und auf der Seite, und es ist schmaler als
+   * eine Zustimmungsseite: dass ein Aufrufer mit dem gueltigen Token dieses
+   * Nutzers genau diese Bereiche ausdruecklich genannt hat, zu diesem
+   * Zeitpunkt, in einer Anfrage, die nichts anderes tut. Nicht belegt ist, dass
+   * ein Mensch eine Liste gelesen hat; QKERN hat keine eigene Zustimmungsseite,
+   * und diese Methode tut nicht so, als haette es eine.
+   *
+   * **Warum das eine eigene Route ist und nicht Teil des Anlaufs.** Legte der
+   * Anlauf die Zustimmung nebenbei mit an, waere die Zustimmung wieder das,
+   * was sie in 2.82 war: eine Behauptung der Anwendung, nur mit einer Zeile
+   * daneben. Getrennt ist sie eine eigene Handlung mit eigener Audit-Zeile, und
+   * der Anlauf kann sich auf etwas berufen, das vorher da war.
+   *
+   * **Zweimal dasselbe ist einmal.** Dieselben Bereiche, derselbe Client,
+   * derselbe Nutzer: dieselbe Zeile, mit ihrem urspruenglichen Zeitpunkt. Der
+   * Teilindex aus 0064 haelt das auch dann, wenn zwei Anfragen gleichzeitig
+   * kommen; die zweite faellt in den Fehler und liest danach die Zeile der
+   * ersten.
+   */
+  async grantOAuthConsent(
+    scope: ProjectAuthScope,
+    accessToken: string,
+    input: unknown,
+  ): Promise<{
+    consentId: string;
+    clientName: string;
+    scopes: string[];
+    grantedAt: string;
+  }> {
+    assertScope(scope);
+    const parsed = parseProjectAuthOAuthConsent(input);
+    if (!parsed.ok) throw new ProjectAuthOAuthError(parsed.reason, parsed.field);
+    // Erst der Nutzer, dann der Client, dieselbe Reihenfolge wie beim Anlauf:
+    // Ein Aufrufer ohne gueltiges Token soll nicht erfahren, welche Clients es
+    // gibt.
+    const principal = await this.verifyAccess(scope, accessToken);
+    const client = await this.dependencies.repository.findOAuthClientByName(
+      scope, parsed.request.clientName,
+    );
+    if (!client) throw new ProjectAuthOAuthError("client_unknown", "clientId");
+    // Niemand kann mehr erlauben, als der Client fuehrt. Keine stille Kuerzung,
+    // aus demselben Grund wie beim Anlauf: Eine gekuerzte Zustimmung saehe fuer
+    // die Anwendung wie ein Erfolg aus, und der Nutzer haette etwas erlaubt,
+    // was er so nicht gelesen hat.
+    if (!parsed.request.scopes.every((entry) => client.scopes.includes(entry))) {
+      throw new ProjectAuthOAuthError("scope_not_granted", "scopes");
+    }
+    const now = this.now();
+    const existing = await this.dependencies.repository.findOAuthConsent(
+      scope, client.id, principal.user.id, parsed.request.scopes,
+    );
+    let consent = existing;
+    if (!consent) {
+      try {
+        consent = await this.dependencies.repository.createOAuthConsent(scope, {
+          id: this.id(), clientId: client.id, userId: principal.user.id,
+          scopes: parsed.request.scopes, grantedAt: now,
+        });
+      } catch (error) {
+        if (!(error instanceof DuplicateProjectAuthIdentityError)) throw error;
+        // Zwei gleichzeitige Zustimmungen. Die Zeile der anderen ist dieselbe
+        // Zustimmung, also wird sie gelesen und nicht als Fehler gemeldet.
+        consent = await this.dependencies.repository.findOAuthConsent(
+          scope, client.id, principal.user.id, parsed.request.scopes,
+        );
+        if (!consent) throw error;
+      }
+    }
+    // Die Audit-Zeile nur fuer die wirklich neue Zustimmung. Eine zweite
+    // Erteilung ist keine Aenderung, und eine Kette, die Nichtaenderungen
+    // mitschreibt, macht aus jedem Programmstart eine Handlung.
+    if (!existing) {
+      await this.recordAudit({
+        scope, action: "project_auth.oauth_consent.granted",
+        actorType: "app_user", actorRef: projectAuthUserRef(principal.user.id),
+        resourceRef: `project_auth_oauth_consent:${consent.id}`,
+        status: "succeeded",
+        metadata: { client: client.name, scopes: consent.scopes.join(" ") },
+      });
+    }
+    return {
+      consentId: consent.id,
+      clientName: client.name,
+      scopes: [...consent.scopes],
+      grantedAt: consent.grantedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Eine Zustimmung widerrufen (2.92).
+   *
+   * **Sofort, und die Token dieser Zustimmung gelten nicht mehr.** Das braucht
+   * keinen zweiten Schritt: Ein Token gilt, weil eine Zeile existiert, und seit
+   * 0064 zusaetzlich nur, solange seine Zustimmung gilt. `verifyOAuthToken`
+   * liest beides in einer Abfrage.
+   *
+   * **Die Zeile bleibt stehen**, mit ihrem Zeitpunkt und ihrem
+   * Widerrufszeitpunkt. Dieselbe Entscheidung wie bei den S3-Schluesseln aus
+   * 2.78: Wer widerruft, will die Spur behalten. Die Tabelle hat fuer diese
+   * Rolle gar kein DELETE.
+   *
+   * Ein zweiter Widerruf derselben Zustimmung ist `RESOURCE_NOT_FOUND` und
+   * nicht ein zweiter Erfolg: Sonst schriebe jeder Klick einen neuen Zeitpunkt,
+   * und der Zeitpunkt des Widerrufs waere der des letzten Klicks statt der des
+   * Widerrufs.
+   */
+  async revokeOAuthConsent(
+    scope: ProjectAuthScope,
+    consentId: string,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthOAuthServer> {
+    assertScope(scope);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(consentId)) {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+    const revoked = await this.dependencies.repository.revokeOAuthConsent(
+      scope, consentId, this.now(),
+    );
+    if (!revoked) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_consent.revoked",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_oauth_consent:${revoked.id}`,
+      status: "succeeded",
+      metadata: { user: revoked.userId, scopes: revoked.scopes.join(" ") },
+    });
+    return this.oauthServerView(scope);
   }
 
   /**
@@ -1376,7 +1552,7 @@ export class ProjectAuthService {
         scopes: created.scopes.join(" "),
       },
     });
-    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+    return this.oauthServerView(scope);
   }
 
   /**
@@ -1407,7 +1583,7 @@ export class ProjectAuthService {
       status: "succeeded",
       metadata: { client: clientId },
     });
-    return publicOAuthServer(await this.dependencies.repository.listOAuthClients(scope));
+    return this.oauthServerView(scope);
   }
 
   /**
@@ -1434,6 +1610,13 @@ export class ProjectAuthService {
    * beweisen kann, prueft es: dass der Nutzer angemeldet ist, dass der Client
    * hinterlegt ist, dass das Ziel eines seiner Ziele ist und dass die Bereiche
    * in seinen Bereichen liegen.
+   *
+   * **Und seit 2.92 eines mehr:** dass zu genau diesen Bereichen eine geltende
+   * Zustimmung dieses Nutzers fuer diesen Client in der Datenbank steht. Ohne
+   * sie gibt es keinen Code, und die Ablehnung heisst `consent_missing`. Damit
+   * ist die Zustimmung eine Tatsache mit Zeitpunkt statt einer Behauptung der
+   * Anwendung, auch ohne eigene Seite. Der Code haengt an dieser einen Zeile,
+   * und darum trifft ein Widerruf spaeter genau ihn und das Token daraus.
    */
   async authorizeOAuth(
     scope: ProjectAuthScope,
@@ -1457,12 +1640,20 @@ export class ProjectAuthService {
     if (!client) throw new ProjectAuthOAuthError("client_unknown", "clientId");
     const checked = checkProjectAuthOAuthAuthorize(parsed.request, client);
     if (!checked.ok) throw new ProjectAuthOAuthError(checked.reason, checked.field);
+    // Die Zustimmung, und zwar zu genau diesen Bereichen. Der Grund fuer
+    // "genau" steht bei `projectAuthOAuthConsentCovers`: Ein Vergleich auf
+    // Teilmengen liesse mehrere Zeilen als Treffer zu, und dann entschiede die
+    // Reihenfolge der Zeilen, an welcher der Code haengt.
+    const consent = await this.dependencies.repository.findOAuthConsent(
+      scope, client.id, principal.user.id, parsed.request.scopes,
+    );
+    if (!consent) throw new ProjectAuthOAuthError("consent_missing", "scopes");
     const now = this.now();
     const code = this.opaqueToken("oauthcode");
     if (!PROJECT_AUTH_OAUTH_CODE.test(code)) throw new ProjectAuthError("INVALID_INPUT");
     const expiresAt = new Date(now.getTime() + PROJECT_AUTH_OAUTH_BOUNDS.codeTtlSeconds * 1000);
     const stored = await this.dependencies.repository.createOAuthCode(scope, {
-      id: this.id(), clientId: client.id, userId: principal.user.id,
+      id: this.id(), clientId: client.id, userId: principal.user.id, consentId: consent.id,
       redirectUri: parsed.request.redirectUri, scopes: parsed.request.scopes,
       codeHash: hashProjectAuthToken(code), codeChallenge: parsed.request.codeChallenge,
       createdAt: now, expiresAt,
@@ -1567,11 +1758,19 @@ export class ProjectAuthService {
     // holen, das zwoelf Stunden gilt.
     const user = await this.dependencies.repository.findUserById(scope, consumed.userId);
     if (!user || user.status !== "active") return refuse("user_unavailable");
+    // Und die Zustimmung muss noch gelten (2.92). Ein Code ueberlebt einen
+    // Widerruf sonst um bis zu eine Minute, und eine Minute reicht, um ein
+    // Token zu holen, das eine Stunde gilt. Ein Code ohne Zustimmung ist einer
+    // aus der Zeit vor Migration 0064; er wird nicht mehr eingeloest.
+    const consent = consumed.consentId === null ? null
+      : await this.dependencies.repository.findOAuthConsentById(scope, consumed.consentId);
+    if (consent === null || !projectAuthOAuthConsentHolds(consent)) return refuse("consent_revoked");
     const token = this.opaqueToken("oauth");
     if (!PROJECT_AUTH_OAUTH_TOKEN.test(token)) throw new ProjectAuthError("INVALID_INPUT");
     const expiresAt = new Date(now.getTime() + PROJECT_AUTH_OAUTH_BOUNDS.tokenTtlSeconds * 1000);
     const issued = await this.dependencies.repository.createOAuthToken(scope, {
       id: this.id(), clientId: client.id, userId: user.id, codeId: consumed.id,
+      consentId: consent.id,
       tokenHash: hashProjectAuthToken(token), scopes: consumed.scopes,
       createdAt: now, expiresAt,
     });
@@ -1627,6 +1826,13 @@ export class ProjectAuthService {
     );
     if (!found) return { ok: false, reason: "unknown" };
     if (found.token.expiresAt <= this.now()) return { ok: false, reason: "expired" };
+    // Die Zustimmung hinter diesem Token (2.92). Sie kommt aus derselben
+    // Abfrage wie das Token, kostet also nichts zusaetzlich, und sie ist der
+    // Grund, warum ein Widerruf sofort wirkt statt beim naechsten Ablauf. Ein
+    // Token ohne Zustimmung faellt ebenfalls: Es ist eines aus der Zeit vor
+    // Migration 0064, und ein Token ohne Zustimmung ist genau das, was dieser
+    // Schnitt abschafft.
+    if (!projectAuthOAuthConsentHolds(found.consent)) return { ok: false, reason: "revoked" };
     const user = await this.dependencies.repository.findUserById(scope, found.token.userId);
     // Ein gesperrter oder geloeschter Nutzer laesst das Token fallen. Ohne diese
     // Zeile waere eine Sperrung unter Auth → Nutzer eine Sperrung nur fuer die
@@ -3063,13 +3269,27 @@ function publicThirdParty(providers: readonly ProjectAuthThirdPartyProvider[]): 
  * ausgeschlossen ist oder dass es kein Refresh Token gibt. Beides entscheidet
  * dieser Dienst, und beides sagt er hier.
  */
-function publicOAuthServer(clients: readonly ProjectAuthOAuthClient[]): PublicProjectAuthOAuthServer {
+function publicOAuthServer(
+  clients: readonly ProjectAuthOAuthClient[],
+  // Eine Zeile mehr, als die Console zeigt: Daran und nur daran ist zu sehen,
+  // dass die Liste abgeschnitten ist. Ein Zaehler ueber die ganze Tabelle waere
+  // eine zweite Abfrage fuer eine Zahl, die niemand braucht.
+  consents: ReadonlyArray<ProjectAuthOAuthConsent & { clientName: string; email: string }> = [],
+): PublicProjectAuthOAuthServer {
+  const shown = consents.slice(0, PROJECT_AUTH_OAUTH_BOUNDS.consents.max);
   return {
     clients: clients.map((client) => ({
       id: client.id, name: client.name,
       redirectUris: [...client.redirectUris], scopes: [...client.scopes],
       createdAt: client.createdAt.toISOString(),
     })),
+    consents: shown.map((consent) => ({
+      id: consent.id, clientId: consent.clientId, clientName: consent.clientName,
+      userId: consent.userId, email: consent.email, scopes: [...consent.scopes],
+      grantedAt: consent.grantedAt.toISOString(),
+      revokedAt: consent.revokedAt === null ? null : consent.revokedAt.toISOString(),
+    })),
+    consentsTruncated: consents.length > shown.length,
     scopes: [...PROJECT_AUTH_OAUTH_SCOPES],
     role: PROJECT_AUTH_OAUTH_ROLE,
     forbiddenRole: PROJECT_AUTH_OAUTH_FORBIDDEN_ROLE,

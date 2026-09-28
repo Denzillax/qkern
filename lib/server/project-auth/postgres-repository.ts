@@ -49,6 +49,7 @@ import {
   type ProjectAuthOAuthClient,
   type ProjectAuthOAuthClientDefinition,
   type ProjectAuthOAuthCode,
+  type ProjectAuthOAuthConsent,
   type ProjectAuthOAuthScope,
   type ProjectAuthOAuthToken,
 } from "@/lib/server/project-auth/oauth";
@@ -730,21 +731,139 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
+  /* ---------------------------------------------------------------- *
+   * Die Zustimmung als Zeile (2.92)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Die Zustimmungen dieser Umgebung, je mit Client und E-Mail-Adresse.
+   *
+   * Zwei INNER JOIN, und beide sagen etwas: Eine Zustimmung ohne Client und eine
+   * ohne Nutzer gibt es in dieser Datenbank nicht (beide Fremdschluessel
+   * loeschen mit), und ein LEFT JOIN wuerde eine Zeile mit leerem Namen zeigen,
+   * wo in Wahrheit eine kaputte Datenbank stuende.
+   *
+   * Die Ordnung steht in der Abfrage und nicht beim Aufrufer: die juengste
+   * zuerst, bei gleichem Zeitpunkt nach der Kennung. Eine Liste ohne
+   * festgelegte Ordnung waere in der Console jedes Mal eine andere.
+   */
+  async listOAuthConsents(
+    scope: ProjectAuthScope,
+    limit: number,
+  ): Promise<Array<ProjectAuthOAuthConsent & { clientName: string; email: string }>> {
+    const result = await query(this.pool, `SELECT ${OAUTH_CONSENT_COLUMNS.split(", ")
+      .map((column) => `k.${column}`).join(", ")}, c.name AS client_name, u.email AS email
+      FROM project_auth_oauth_consents k
+      JOIN project_auth_oauth_clients c ON c.id = k.client_id
+      JOIN project_auth_users u ON u.id = k.auth_user_id
+      WHERE k.organization_id = $1 AND k.project_id = $2 AND k.environment = $3
+      ORDER BY k.granted_at DESC, k.id ASC
+      LIMIT $4`, [...scopeValues(scope), Math.max(0, Math.trunc(limit))]);
+    return result.rows.map((row) => {
+      const clientName = String(row.client_name);
+      if (!PROJECT_AUTH_OAUTH_CLIENT_NAME.test(clientName)) {
+        throw new InvalidRecordError("Invalid project auth oauth client.");
+      }
+      return { ...oauthConsentFromRow(row), clientName, email: String(row.email) };
+    });
+  }
+
+  async findOAuthConsent(
+    scope: ProjectAuthScope,
+    clientId: string,
+    userId: string,
+    scopes: ProjectAuthOAuthScope[],
+  ): Promise<ProjectAuthOAuthConsent | null> {
+    // Gleichheit auf dem ganzen Feld und kein Vergleich auf Teilmengen. Die
+    // Bereiche stehen geordnet in der Zeile, also ist `=` hier genau die Frage
+    // aus `projectAuthOAuthConsentCovers`, nur in SQL. `revoked_at IS NULL`
+    // gehoert dazu: Eine widerrufene Zustimmung ist keine.
+    const result = await query(this.pool, `SELECT ${OAUTH_CONSENT_COLUMNS}
+      FROM project_auth_oauth_consents
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND client_id = $4 AND auth_user_id = $5 AND scopes = $6::text[]
+        AND revoked_at IS NULL
+      LIMIT 1`, [...scopeValues(scope), clientId, userId, [...scopes]]);
+    return result.rows[0] ? oauthConsentFromRow(result.rows[0]) : null;
+  }
+
+  async findOAuthConsentById(
+    scope: ProjectAuthScope,
+    consentId: string,
+  ): Promise<ProjectAuthOAuthConsent | null> {
+    const result = await query(this.pool, `SELECT ${OAUTH_CONSENT_COLUMNS}
+      FROM project_auth_oauth_consents
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND id = $4
+      LIMIT 1`, [...scopeValues(scope), consentId]);
+    return result.rows[0] ? oauthConsentFromRow(result.rows[0]) : null;
+  }
+
+  async createOAuthConsent(
+    scope: ProjectAuthScope,
+    consent: {
+      id: string; clientId: string; userId: string;
+      scopes: ProjectAuthOAuthScope[]; grantedAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthConsent> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_oauth_consents
+        (id, organization_id, project_id, environment, client_id, auth_user_id,
+         scopes, granted_at, revoked_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,NULL)
+        RETURNING ${OAUTH_CONSENT_COLUMNS}`, [
+        consent.id, ...scopeValues(scope), consent.clientId, consent.userId,
+        [...consent.scopes], consent.grantedAt,
+      ]);
+      return oauthConsentFromRow(result.rows[0]);
+    } catch (error) {
+      const pg = error as PostgresError;
+      // Der Teilindex aus 0064: Es gibt diese Zustimmung schon, und sie gilt.
+      // Der Dienst liest sie danach und gibt dieselbe Zeile zurueck, statt eine
+      // zweite anzulegen.
+      if (pg.code === "23505") throw new DuplicateProjectAuthIdentityError();
+      throw mapPostgresError(error);
+    }
+  }
+
+  /**
+   * Der Widerruf, und er ist ein UPDATE auf genau einer Spalte.
+   *
+   * `revoked_at IS NULL` steht in der Bedingung und nicht im Dienst: Zwei
+   * gleichzeitige Widerrufe sollen nicht beide gelingen und dabei zwei
+   * verschiedene Zeitpunkte schreiben. Die zweite Anfrage findet keine Zeile
+   * mehr und bekommt `null`, also dieselbe Antwort wie bei einer Kennung, die
+   * es nicht gibt. Das ist hier richtig: Beide Male ist nichts zu tun.
+   */
+  async revokeOAuthConsent(
+    scope: ProjectAuthScope,
+    consentId: string,
+    now: Date,
+  ): Promise<ProjectAuthOAuthConsent | null> {
+    const result = await query(this.pool, `UPDATE project_auth_oauth_consents
+      SET revoked_at = $5
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+        AND id = $4 AND revoked_at IS NULL
+      RETURNING ${OAUTH_CONSENT_COLUMNS}`, [...scopeValues(scope), consentId, now]);
+    return result.rows[0] ? oauthConsentFromRow(result.rows[0]) : null;
+  }
+
   async createOAuthCode(
     scope: ProjectAuthScope,
     code: {
-      id: string; clientId: string; userId: string; redirectUri: string;
+      id: string; clientId: string; userId: string; consentId: string; redirectUri: string;
       scopes: ProjectAuthOAuthScope[]; codeHash: string; codeChallenge: string;
       createdAt: Date; expiresAt: Date;
     },
   ): Promise<ProjectAuthOAuthCode> {
     try {
       const result = await this.pool.query(`INSERT INTO project_auth_oauth_codes
-        (id, organization_id, project_id, environment, client_id, auth_user_id, redirect_uri,
-         scopes, code_hash, code_challenge, code_challenge_method, created_at, expires_at, consumed_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9,$10,$11,$12,$13,NULL)
+        (id, organization_id, project_id, environment, client_id, auth_user_id, consent_id,
+         redirect_uri, scopes, code_hash, code_challenge, code_challenge_method,
+         created_at, expires_at, consumed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::text[],$10,$11,$12,$13,$14,NULL)
         RETURNING ${OAUTH_CODE_COLUMNS}`, [
-        code.id, ...scopeValues(scope), code.clientId, code.userId, code.redirectUri,
+        code.id, ...scopeValues(scope), code.clientId, code.userId, code.consentId,
+        code.redirectUri,
         [...code.scopes], code.codeHash, code.codeChallenge,
         PROJECT_AUTH_OAUTH_CHALLENGE_METHOD, code.createdAt, code.expiresAt,
       ]);
@@ -784,18 +903,18 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
   async createOAuthToken(
     scope: ProjectAuthScope,
     token: {
-      id: string; clientId: string; userId: string; codeId: string; tokenHash: string;
-      scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
+      id: string; clientId: string; userId: string; codeId: string; consentId: string;
+      tokenHash: string; scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
     },
   ): Promise<ProjectAuthOAuthToken> {
     try {
       const result = await this.pool.query(`INSERT INTO project_auth_oauth_tokens
         (id, organization_id, project_id, environment, client_id, auth_user_id, code_id,
-         token_hash, scopes, created_at, expires_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::text[],$10,$11)
+         consent_id, token_hash, scopes, created_at, expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::text[],$11,$12)
         RETURNING ${OAUTH_TOKEN_COLUMNS}`, [
         token.id, ...scopeValues(scope), token.clientId, token.userId, token.codeId,
-        token.tokenHash, [...token.scopes], token.createdAt, token.expiresAt,
+        token.consentId, token.tokenHash, [...token.scopes], token.createdAt, token.expiresAt,
       ]);
       return oauthTokenFromRow(result.rows[0]);
     } catch (error) {
@@ -810,14 +929,27 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
   async findOAuthTokenByHash(
     scope: ProjectAuthScope,
     tokenHash: string,
-  ): Promise<{ token: ProjectAuthOAuthToken; clientName: string } | null> {
+  ): Promise<{
+    token: ProjectAuthOAuthToken;
+    clientName: string;
+    consent: ProjectAuthOAuthConsent | null;
+  } | null> {
     // Der Name des Clients kommt mitgelesen und nicht in einer zweiten Abfrage:
     // Der heisse Weg soll eine Abfrage kosten und nicht zwei, und der INNER JOIN
     // sagt zugleich die Zusage, dass ein Token ohne Client nichts ist.
+    //
+    // Die Zustimmung kommt im selben Zug (2.92), und dieser JOIN ist ein LEFT
+    // JOIN, obwohl der andere ein INNER ist. Der Unterschied ist die Aussage:
+    // Ein Token ohne Client kann es nicht geben, ein Token ohne Zustimmung
+    // schon, naemlich eines aus der Zeit vor Migration 0064. Ein INNER JOIN
+    // liesse es als "unbekannt" durchfallen, und der Dienst koennte nicht mehr
+    // sagen, dass hier eine Zustimmung fehlt statt ein Token.
     const result = await query(this.pool, `SELECT ${OAUTH_TOKEN_COLUMNS.split(", ")
-      .map((column) => `t.${column}`).join(", ")}, c.name AS client_name
+      .map((column) => `t.${column}`).join(", ")}, c.name AS client_name,
+      ${OAUTH_CONSENT_COLUMNS.split(", ").map((column) => `k.${column} AS zustimmung_${column}`).join(", ")}
       FROM project_auth_oauth_tokens t
       JOIN project_auth_oauth_clients c ON c.id = t.client_id
+      LEFT JOIN project_auth_oauth_consents k ON k.id = t.consent_id
       WHERE t.organization_id = $1 AND t.project_id = $2 AND t.environment = $3 AND t.token_hash = $4
       LIMIT 1`, [...scopeValues(scope), tokenHash]);
     const row = result.rows[0];
@@ -826,7 +958,17 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     if (!PROJECT_AUTH_OAUTH_CLIENT_NAME.test(clientName)) {
       throw new InvalidRecordError("Invalid project auth oauth client.");
     }
-    return { token: oauthTokenFromRow(row), clientName };
+    // Die Spalten der Zustimmung tragen ein eigenes Praefix, weil das Token
+    // selbst schon eine Spalte `consent_id` hat: Zwei gleich benannte Spalten in
+    // einer Antwort haetten am Ende eine gewonnen, und welche, entschiede der
+    // Treiber.
+    const consent = row.zustimmung_id === null || row.zustimmung_id === undefined ? null
+      : oauthConsentFromRow({
+        id: row.zustimmung_id, client_id: row.zustimmung_client_id,
+        auth_user_id: row.zustimmung_auth_user_id, scopes: row.zustimmung_scopes,
+        granted_at: row.zustimmung_granted_at, revoked_at: row.zustimmung_revoked_at,
+      });
+    return { token: oauthTokenFromRow(row), clientName, consent };
   }
 }
 
@@ -873,10 +1015,11 @@ const OAUTH_CLIENT_SELECT = `SELECT ${OAUTH_CLIENT_COLUMNS} FROM project_auth_oa
 // Die Pruefsumme des Codes steht absichtlich nicht in der Liste: Wer die Zeile
 // schon hat, braucht sie nicht, und was nicht gelesen wird, kann nicht in ein
 // Protokoll geraten.
-const OAUTH_CODE_COLUMNS = `id, client_id, auth_user_id, redirect_uri, scopes, code_challenge,
-  code_challenge_method, created_at, expires_at, consumed_at`;
+const OAUTH_CODE_COLUMNS = `id, client_id, auth_user_id, consent_id, redirect_uri, scopes,
+  code_challenge, code_challenge_method, created_at, expires_at, consumed_at`;
 // Dasselbe hier, und aus demselben Grund: kein `token_hash`.
-const OAUTH_TOKEN_COLUMNS = `id, client_id, auth_user_id, scopes, created_at, expires_at`;
+const OAUTH_TOKEN_COLUMNS = `id, client_id, auth_user_id, consent_id, scopes, created_at, expires_at`;
+const OAUTH_CONSENT_COLUMNS = `id, client_id, auth_user_id, scopes, granted_at, revoked_at`;
 
 function sessionValues(session: ProjectAuthSession): SqlValue[] {
   return [session.id, session.organizationId, session.projectId, session.environment, session.userId,
@@ -1146,6 +1289,7 @@ function oauthCodeFromRow(row: Row): ProjectAuthOAuthCode {
   }
   return {
     id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id),
+    consentId: row.consent_id === null || row.consent_id === undefined ? null : String(row.consent_id),
     redirectUri: String(row.redirect_uri), scopes, codeChallenge,
     createdAt: timestamp(row.created_at, "oauth code creation"),
     expiresAt: timestamp(row.expires_at, "oauth code expiry"),
@@ -1160,9 +1304,33 @@ function oauthTokenFromRow(row: Row): ProjectAuthOAuthToken {
     throw new InvalidRecordError("Invalid project auth oauth token.");
   }
   return {
-    id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id), scopes,
+    id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id),
+    consentId: row.consent_id === null || row.consent_id === undefined ? null : String(row.consent_id),
+    scopes,
     createdAt: timestamp(row.created_at, "oauth token creation"),
     expiresAt: timestamp(row.expires_at, "oauth token expiry"),
+  };
+}
+
+/**
+ * Eine Zustimmung aus der Zeile (2.92).
+ *
+ * Geprueft wird hier noch einmal, was der CHECK aus 0064 schon prueft: dass die
+ * Bereiche welche sind, die es gibt. Dieselbe Regel wie beim Client: Eine Zeile
+ * aus einem Handeingriff soll hier als unbrauchbare Zeile auffallen und nicht
+ * als Erlaubnis weiterlaufen, denn eine Erlaubnis, die niemand beschrieben hat,
+ * ist die schlechteste Art von Erlaubnis.
+ */
+function oauthConsentFromRow(row: Row): ProjectAuthOAuthConsent {
+  const scopes = stringArray(row.scopes, "oauth consent scopes");
+  if (!scopes.every(isProjectAuthOAuthScope) || scopes.length < 1) {
+    throw new InvalidRecordError("Invalid project auth oauth consent.");
+  }
+  return {
+    id: String(row.id), clientId: String(row.client_id), userId: String(row.auth_user_id), scopes,
+    grantedAt: timestamp(row.granted_at, "oauth consent grant"),
+    revokedAt: row.revoked_at === null || row.revoked_at === undefined
+      ? null : timestamp(row.revoked_at, "oauth consent revocation"),
   };
 }
 
