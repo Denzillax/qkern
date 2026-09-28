@@ -179,6 +179,14 @@ import { PostgresProjectAuthExpiryStore } from "@/lib/server/project-auth/expiry
 // Die eigene Darstellung der Console (2.55): dasselbe Repository, das die
 // Route benutzt, und dasselbe reine Modul, das die Ansicht anwendet.
 import { PostgresConsoleDisplaySettingsRepository } from "@/lib/server/auth/console-settings";
+// Der Riegel faellt, wo das Gate steht (2.91): das echte Gate des entfernten
+// MCP-Weges, der echte MCP-Server und ein echter MCP-Client am Transport des
+// SDK. Es gibt keinen zweiten Weg, ein OAuth-Token in eine MCP-Sitzung zu
+// verwandeln, und der Fall benutzt darum auch keinen.
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { admitMcpOAuthRequest } from "@/mcp/oauth-gate";
+import { createQKERNMcpServer, type MCPContext } from "@/mcp/server";
 import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -9378,6 +9386,355 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query("DELETE FROM users WHERE id = $1", [sweepOwner]).catch(() => undefined);
     }
   }, 60_000);
+
+
+  it("(2.91) turns a real OAuth token into an MCP session with exactly the tools its scopes open, writes a row through it, and refuses an ungranted, an expired and a revoked token with the same answer", async () => {
+    // Der Riegel faellt (2.91), und dieser Fall ist der Grund. Er faehrt den
+    // ganzen Weg an einem Stueck gegen die echte Datenbank: echter Nutzer,
+    // echte Anmeldung, echter OAuth-Client aus Migration 0062, echter Code mit
+    // PKCE, echtes undurchsichtiges Token, echtes Gate (`mcp/oauth-gate.ts`),
+    // echter MCP-Server mit echtem Client ueber einen echten Transport, echte
+    // generierte Data API und echte Zeilensicherheit.
+    //
+    // Gestellt ist genau eines: der Key-Dienst, wie schon in 2.82. Welcher
+    // Projekt-Key gueltig ist, ist eigens zertifiziert; dass ein Key
+    // **verlangt** wird und dass er und nicht die Prozessumgebung den Mandanten
+    // nennt, prueft dieser Fall trotzdem selbst.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const mcpOwner = randomUUID();
+    const mcpOrganization = randomUUID();
+    const mcpProject = randomUUID();
+    const schema = `mcpoauth_${randomUUID().replaceAll("-", "_")}`;
+    const scope = {
+      organizationId: mcpOrganization, projectId: mcpProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [mcpOwner, `mcp-owner-${mcpOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'MCP OAuth 2.91', $2, $3)`,
+    [mcpOrganization, `mcp-oauth-${mcpOrganization}`, mcpOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'MCP OAuth 2.91', $3, 'test', 'ready', $4)`,
+    [mcpProject, mcpOrganization, `mcp-oauth-${mcpProject}`, mcpOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [mcpOrganization, mcpProject, `managed:${mcpProject}`]);
+
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService(
+        { kid: "certification-2-91", privateKey: generateKeyPairSync("ed25519").privateKey },
+        "https://qkern.test",
+      ),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 29)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    // Der Mandant in der Prozessumgebung zeigt absichtlich woandershin. Genau
+    // das ist die Frage dieses Falles: Ein OAuth-Aufrufer darf ihn nicht
+    // bekommen, auch dann nicht, wenn er gesetzt ist.
+    const previousEnv = {
+      organization: process.env.QKERN_MCP_ORGANIZATION_ID,
+      project: process.env.QKERN_MCP_PROJECT_ID,
+      environment: process.env.QKERN_MCP_ENVIRONMENT,
+    };
+    const strangerOrganization = randomUUID();
+    const strangerProject = randomUUID();
+    process.env.QKERN_MCP_ORGANIZATION_ID = strangerOrganization;
+    process.env.QKERN_MCP_PROJECT_ID = strangerProject;
+    process.env.QKERN_MCP_ENVIRONMENT = "production";
+
+    const home = "https://app.test/mcp/zurueck";
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // --- Der Nutzer, der zustimmt ---------------------------------------
+      const email = `mcp-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const appUserId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+      expect(appUserId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+      const stored = await service.createOAuthClient(scope, {
+        name: "mcp-bridge", redirectUris: [home],
+        scopes: ["identity:read", "data:read", "data:write"],
+      }, { id: mcpOwner });
+      expect(stored.clients).toHaveLength(1);
+      const clientId = stored.clients[0].id;
+      expect(clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+      // Drei echte Durchlaeufe des Ablaufs, jeder mit eigenem Prueftext. Die
+      // Pruefsumme rechnet dieser Fall selbst, mit `node:crypto` und nichts
+      // weiter, so wie eine Anwendung es tun wuerde.
+      const issueToken = async (scopes: Array<"identity:read" | "data:read" | "data:write">) => {
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+          clientId: "mcp-bridge", redirectUri: home, scopes, codeChallenge: challenge, state: null,
+        });
+        const issued = await service.exchangeOAuthCode(scope, {
+          clientId: "mcp-bridge", code: granted.code, redirectUri: home, codeVerifier: verifier,
+        });
+        expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
+        return issued;
+      };
+      const readToken = await issueToken(["identity:read", "data:read"]);
+      const writeToken = await issueToken(["data:write"]);
+      const identityToken = await issueToken(["identity:read"]);
+
+      // --- Die Tabelle, die wirklich unter einer Policy steht -------------
+      //
+      // Die Policy nennt `sub` und `client_id` aus `request.jwt.claims`. Damit
+      // prueft der Fall nicht, dass irgendetwas gelesen wird, sondern dass
+      // genau die Ansprueche eines OAuth-Tokens auch ueber MCP ankommen.
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".notizen (
+        id uuid PRIMARY KEY, besitzer text NOT NULL, quelle text NOT NULL, inhalt text NOT NULL)`);
+      await owner.query(`ALTER TABLE "${schema}".notizen ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY eigener_client_liest ON "${schema}".notizen
+        FOR SELECT TO ${expectedRole} USING (
+          besitzer = current_setting('request.jwt.claim.sub', true) AND
+          quelle = (current_setting('request.jwt.claims', true)::jsonb ->> 'client_id'))`);
+      await owner.query(`CREATE POLICY eigener_client_schreibt ON "${schema}".notizen
+        FOR INSERT TO ${expectedRole} WITH CHECK (
+          besitzer = current_setting('request.jwt.claim.sub', true) AND
+          quelle = (current_setting('request.jwt.claims', true)::jsonb ->> 'client_id'))`);
+      const eigeneZeile = randomUUID();
+      await owner.query(`INSERT INTO "${schema}".notizen (id, besitzer, quelle, inhalt) VALUES
+        ($1, $2, 'mcp-bridge', 'meine ueber die Bruecke'),
+        ($3, $2, 'eine-andere-app', 'dasselbe Subjekt, anderer Client'),
+        ($4, $5, 'mcp-bridge', 'fremdes Subjekt, gleicher Client')`,
+      [eigeneZeile, appUserId, randomUUID(), randomUUID(), randomUUID()]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      // --- Der Key nennt den Mandanten, und ein zweiter einen fremden ------
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: mcpOrganization, projectId: mcpProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const strangerKeyPrincipal = {
+        ...keyPrincipal, id: randomUUID(),
+        organizationId: strangerOrganization, projectId: strangerProject,
+      };
+      const keys = {
+        authenticate: async (secret: string) =>
+          secret === "qk_public_2_91" ? keyPrincipal
+            : secret === "qk_public_2_91_fremd" ? strangerKeyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const admit = (token: string, key: string | undefined = "qk_public_2_91") =>
+        admitMcpOAuthRequest(
+          { authorization: `Bearer ${token}`, projectKey: key },
+          { keys, projectAuth: service },
+        );
+
+      const generated = new GeneratedDataApiService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${mcpProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+        }) },
+      );
+      // Ein echter MCP-Client an einem echten Server, ueber den Transport des
+      // SDK. Der Fall liest damit `tools/list` und ruft `tools/call` so auf, wie
+      // ein fremder Agent es tut, und nicht an der Anmeldung vorbei.
+      const connect = async (context: MCPContext) => {
+        const server = createQKERNMcpServer(context, { generatedDataApi: generated });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new McpClient({ name: "certification-2-91", version: "1.0.0" });
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+        return { client, close: async () => { await client.close(); await server.close(); } };
+      };
+      const toolText = (result: unknown) => {
+        const content = (result as { content: Array<{ type: string; text: string }> }).content;
+        expect(content).toHaveLength(1);
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+
+      // --- Zusage 1: der Mandant kommt vom Key und nie aus der Umgebung ----
+      const readAdmission = await admit(readToken.accessToken);
+      expect(readAdmission.ok).toBe(true);
+      if (!readAdmission.ok) throw new Error("unerreichbar");
+      expect(readAdmission.context).toMatchObject({
+        organizationId: mcpOrganization, projectId: mcpProject, environment: "development",
+        actorRef: `project-auth-oauth:mcp-bridge:${appUserId}`,
+      });
+      // Und wirklich nicht das aus dem Prozess, das waehrend dieses Falles
+      // gesetzt ist und woandershin zeigt.
+      expect(readAdmission.context.organizationId).not.toBe(process.env.QKERN_MCP_ORGANIZATION_ID);
+      expect(readAdmission.context.projectId).not.toBe(process.env.QKERN_MCP_PROJECT_ID);
+      expect(readAdmission.context.environment).not.toBe(process.env.QKERN_MCP_ENVIRONMENT);
+      // Die Bindung ist die Pruefsumme des Tokens und nicht das Token.
+      expect(readAdmission.sessionBinding).toBe(hashProjectAuthToken(readToken.accessToken));
+      expect(readAdmission.sessionBinding).not.toContain(readToken.accessToken);
+
+      // --- Zusage 2: genau die Werkzeuge, die die Bereiche freigeben -------
+      const lesend = await connect(readAdmission.context);
+      try {
+        const listed = (await lesend.client.listTools()).tools.map((tool) => tool.name).sort();
+        // Vollstaendig und nicht "enthaelt": Die Aussage dieses Schnittes ist,
+        // was **nicht** dabei ist. Kein Migration-Preview, kein Apply, kein
+        // roher SELECT an der Zeilensicherheit vorbei, keine Queue, kein
+        // Bucket, keine Control Plane.
+        expect(listed).toEqual(["qkern_table_rows_list"]);
+
+        const result = await lesend.client.callTool({
+          name: "qkern_table_rows_list",
+          arguments: { schema, table: "notizen", orderColumn: "inhalt", orderDirection: "asc" },
+        });
+        const payload = toolText(result);
+        const rows = payload.rows as Array<Record<string, string>>;
+        // Genau eine Zeile: dasselbe Subjekt **und** derselbe Client. Die
+        // anderen zwei belegen, dass beide Ansprueche wirken.
+        expect(rows).toHaveLength(1);
+        expect(rows[0].inhalt).toBe("meine ueber die Bruecke");
+        expect(rows[0].id).toBe(eigeneZeile);
+
+        // Das Werkzeug, das es hier nicht gibt, gibt es wirklich nicht: Der
+        // Aufruf scheitert am Server, weil dort kein Werkzeug dieses Namens
+        // angemeldet ist, und nicht an einer Prueffrage im Werkzeug selbst.
+        const versuchteZeile = randomUUID();
+        const abgewiesen = await lesend.client.callTool({
+          name: "qkern_table_rows_insert",
+          arguments: { schema, table: "notizen", rows: [
+            { id: versuchteZeile, besitzer: appUserId, quelle: "mcp-bridge", inhalt: "darf nicht" },
+          ] },
+        });
+        expect(abgewiesen).toEqual({
+          isError: true,
+          content: [{
+            type: "text",
+            text: "MCP error -32602: Tool qkern_table_rows_insert not found",
+          }],
+        });
+        // Und es ist dabei nichts entstanden.
+        expect((await owner.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM "${schema}".notizen WHERE id = $1`,
+          [versuchteZeile])).rows[0].count).toBe("0");
+      } finally { await lesend.close(); }
+
+      // --- Zusage 3: schreiben schliesst lesen nicht ein -------------------
+      const writeAdmission = await admit(writeToken.accessToken);
+      expect(writeAdmission.ok).toBe(true);
+      if (!writeAdmission.ok) throw new Error("unerreichbar");
+      const schreibend = await connect(writeAdmission.context);
+      const geschriebeneZeile = randomUUID();
+      try {
+        const listed = (await schreibend.client.listTools()).tools.map((tool) => tool.name).sort();
+        expect(listed).toEqual([
+          "qkern_table_row_delete", "qkern_table_row_update", "qkern_table_rows_insert",
+        ]);
+
+        const result = await schreibend.client.callTool({
+          name: "qkern_table_rows_insert",
+          arguments: { schema, table: "notizen", rows: [{
+            id: geschriebeneZeile, besitzer: appUserId, quelle: "mcp-bridge",
+            inhalt: "ueber MCP geschrieben",
+          }] },
+        });
+        expect((result as { isError?: boolean }).isError).toBeFalsy();
+        expect(toolText(result).rows as unknown[]).toHaveLength(1);
+      } finally { await schreibend.close(); }
+      // Die Zeile steht wirklich in der Projektdatenbank, an ihrem
+      // Primaerschluessel nachgeschlagen und nicht an der ersten Zeile einer
+      // ungeordneten Abfrage.
+      const geschrieben = await owner.query<{ besitzer: string; quelle: string; inhalt: string }>(
+        `SELECT besitzer, quelle, inhalt FROM "${schema}".notizen WHERE id = $1`,
+        [geschriebeneZeile]);
+      expect(geschrieben.rows).toHaveLength(1);
+      expect(geschrieben.rows[0]).toEqual({
+        besitzer: appUserId, quelle: "mcp-bridge", inhalt: "ueber MCP geschrieben",
+      });
+
+      // --- Zusage 4: ein Token ohne einen Bereich fuer ein Werkzeug --------
+      //
+      // Es ist echt, es ist frisch, und es kommt trotzdem nicht herein. Aber
+      // mit einer anderen Antwort als ein ungueltiges: Das Token gilt, der
+      // Nutzer hat nur nicht zugestimmt, und ein 401 forderte hier zum
+      // Anmelden auf und aenderte nichts.
+      const identityAdmission = await admit(identityToken.accessToken);
+      expect(identityAdmission).toEqual({
+        ok: false, status: 403,
+        error: "This OAuth token carries no scope that opens a QKERN MCP tool",
+      });
+
+      // --- Zusage 5: abgelaufen, fremder Mandant, widerrufen, erfunden -----
+      //
+      // Vier verschiedene Gruende, eine einzige Antwort. Wer erfaehrt, ob sein
+      // Token unbekannt oder bloss abgelaufen ist, bekommt ein Werkzeug zum
+      // Probieren; der Betreiber liest den Grund im Audit.
+      const unbekannt = await admit(`qk_oauth_${randomBytes(32).toString("base64url")}`);
+      expect(unbekannt).toEqual({ ok: false, status: 401, error: "Unauthorized" });
+
+      // Gealtert wird die ganze Zeile und nicht bloss ihr Ende: Migration 0062
+      // laesst ein `expires_at` vor dem `created_at` gar nicht zu, und diese
+      // Bedingung soll der Fall nicht umgehen, sondern einhalten.
+      const abgelaufen = await owner.query(
+        `UPDATE project_auth_oauth_tokens
+            SET created_at = now() - interval '5 hours', expires_at = now() - interval '4 hours'
+          WHERE organization_id = $1 AND project_id = $2 AND token_hash = $3`,
+        [mcpOrganization, mcpProject, hashProjectAuthToken(readToken.accessToken)]);
+      expect(abgelaufen.rowCount).toBe(1);
+      expect(await admit(readToken.accessToken)).toEqual(unbekannt);
+
+      // Derselbe gueltige Token, ein Key eines fremden Projekts: Der Mandant
+      // ist nicht zu tauschen, weil das Token in jenem Projekt keine Zeile hat.
+      expect(await admit(writeToken.accessToken, "qk_public_2_91_fremd")).toEqual(unbekannt);
+      // Und ohne Key gibt es diesen Weg gar nicht: Ohne Mandanten gibt es die
+      // Abfrage nicht, mit der dieses Token ueberhaupt gefunden wuerde.
+      expect(await admitMcpOAuthRequest(
+        { authorization: `Bearer ${writeToken.accessToken}` },
+        { keys, projectAuth: service },
+      )).toEqual(unbekannt);
+
+      // Widerrufen heisst hier: Der Client wird entfernt, und Migration 0062
+      // nimmt seine Token mit. Das ist der Weg, den die Console anbietet.
+      const after = await service.deleteOAuthClient(scope, clientId, { id: mcpOwner });
+      expect(after.clients).toEqual([]);
+      expect(await admit(writeToken.accessToken)).toEqual(unbekannt);
+      expect((await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2`,
+        [mcpOrganization, mcpProject])).rows[0].count).toBe("0");
+
+      // --- Zusage 6: die Spur traegt kein Token ---------------------------
+      const auditRows = await owner.query<{ action: string; metadata: string }>(
+        `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+          WHERE organization_id = $1`, [mcpOrganization]);
+      const serialised = JSON.stringify(auditRows.rows);
+      expect(serialised).not.toContain(readToken.accessToken);
+      expect(serialised).not.toContain(writeToken.accessToken);
+      expect(serialised).not.toContain(identityToken.accessToken);
+      expect(serialised).not.toContain("service_role");
+    } finally {
+      process.env.QKERN_MCP_ORGANIZATION_ID = previousEnv.organization;
+      process.env.QKERN_MCP_PROJECT_ID = previousEnv.project;
+      process.env.QKERN_MCP_ENVIRONMENT = previousEnv.environment;
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
 
 });
 

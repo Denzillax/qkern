@@ -17,12 +17,46 @@ import {
   type ProjectDataPlanePort,
 } from "@/lib/server/data-plane/service";
 import type { Environment } from "@/lib/types";
+import {
+  projectAuthOAuthAllows,
+  type ProjectAuthOAuthScope,
+} from "@/lib/server/project-auth/oauth";
+import { isMcpToolName, mcpToolAllowedForScopes } from "@/mcp/tool-scopes";
 import { getProjectStorageService } from "@/lib/server/project-storage/runtime";
 import { ProjectStorageError, type ProjectStorageService } from "@/lib/server/project-storage/service";
 import { getProjectQueueService } from "@/lib/server/project-queues/runtime";
 import { ProjectQueueError, type ProjectQueueService } from "@/lib/server/project-queues/service";
 
-export type MCPContext = { organizationId: string; projectId: string; environment: Environment; actorRef: string };
+/**
+ * Wer diesen Server benutzt, und womit (2.91).
+ *
+ * `local_static_bearer` ist der Weg fuer die Entwicklung: ein Token aus der
+ * Prozessumgebung, ein Mandant aus der Prozessumgebung, alle Werkzeuge. Er ist
+ * bequem, weil auf dem Rechner des Entwicklers ohnehin niemand anderes ist, und
+ * er bleibt genau darum auf `NODE_ENV !== "production"` beschraenkt.
+ *
+ * `project_oauth` ist der Weg fuer alles andere: ein Token, das QKERN selbst
+ * einem Client ausgegeben hat (2.82), ein Mandant, der aus den vorgelegten
+ * Zugangsdaten kommt, und nur die Werkzeuge, die die zugestimmten Bereiche
+ * freigeben (`mcp/tool-scopes.ts`).
+ */
+export type MCPAccess =
+  | { kind: "local_static_bearer" }
+  | {
+    kind: "project_oauth";
+    clientName: string;
+    userId: string;
+    email: string;
+    scopes: readonly ProjectAuthOAuthScope[];
+  };
+
+export type MCPContext = {
+  organizationId: string;
+  projectId: string;
+  environment: Environment;
+  actorRef: string;
+  access: MCPAccess;
+};
 
 export function mcpContextFromEnv(environment: Record<string, string | undefined> = process.env): MCPContext {
   const organizationId = environment.QKERN_MCP_ORGANIZATION_ID?.trim();
@@ -31,7 +65,14 @@ export function mcpContextFromEnv(environment: Record<string, string | undefined
   if (!organizationId) throw new Error("QKERN_MCP_ORGANIZATION_ID is required.");
   if (!projectId) throw new Error("QKERN_MCP_PROJECT_ID is required.");
   if (target !== "development" && target !== "staging" && target !== "production") throw new Error("QKERN_MCP_ENVIRONMENT must be development, staging or production.");
-  return { organizationId, projectId, environment: target, actorRef: environment.QKERN_MCP_ACTOR_REF?.trim() || "local-mcp-agent" };
+  // Der Mandant aus der Prozessumgebung gilt nur fuer den statischen Bearer.
+  // Ein OAuth-Aufrufer bekommt seinen Mandanten nie von hier, sondern aus dem,
+  // was er vorlegt; der Grund steht in `mcp/oauth-gate.ts`.
+  return {
+    organizationId, projectId, environment: target,
+    actorRef: environment.QKERN_MCP_ACTOR_REF?.trim() || "local-mcp-agent",
+    access: { kind: "local_static_bearer" },
+  };
 }
 
 function controlContext(context: MCPContext) {
@@ -58,13 +99,41 @@ export function createQKERNMcpServer(
     },
   );
 
-  server.registerTool("qkern_project_get", {
+  /**
+   * Die Anmeldung eines Werkzeugs, durch die Zuordnung hindurch (2.91).
+   *
+   * Zwei Dinge passieren hier, und beide sollen unuebersehbar sein:
+   *
+   * 1. Ein Name ohne Eintrag in `MCP_TOOL_SCOPES` wirft. Wer ein Werkzeug
+   *    hinzufuegt, muss entscheiden, ob es ueber OAuth erreichbar ist, und er
+   *    merkt das beim ersten Start und nicht beim ersten Vorfall.
+   * 2. Ein OAuth-Aufrufer bekommt ein nicht freigegebenes Werkzeug gar nicht
+   *    erst angemeldet. Es fehlt damit auch in `tools/list`, und das ist der
+   *    Unterschied zwischen einer geschlossenen Tuer und einer abgeschlossenen.
+   *
+   * Der Rueckgabewert von `registerTool` wird an keiner Stelle dieses Moduls
+   * benutzt; darum darf dieser Umweg ihn verschlucken, und darum steht hier die
+   * einzige Typumdeutung der Datei.
+   */
+  type RegisterTool = typeof server.registerTool;
+  const register = ((name: string, ...rest: unknown[]) => {
+    if (!isMcpToolName(name)) {
+      throw new Error(`MCP tool ${name} has no entry in MCP_TOOL_SCOPES.`);
+    }
+    if (context.access.kind === "project_oauth" &&
+        !mcpToolAllowedForScopes(name, context.access.scopes)) {
+      return undefined;
+    }
+    return (server.registerTool as unknown as (...args: unknown[]) => unknown)(name, ...rest);
+  }) as unknown as RegisterTool;
+
+  register("qkern_project_get", {
     description: "Return the current scoped QKERN project without credentials.",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => text(await controlPlaneService.getProjectEnvironment(controlContext(context), context.projectId, context.environment)));
 
-  server.registerTool("qkern_automation_policy_get", {
+  register("qkern_automation_policy_get", {
     description: "Return the effective manual, guarded or autonomous policy and risk ceiling for the current project environment.",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -74,7 +143,7 @@ export function createQKERNMcpServer(
     context.environment,
   )));
 
-  server.registerTool("qkern_schema_list", {
+  register("qkern_schema_list", {
     description: "List bounded schema metadata for the current project and environment.",
     inputSchema: { schema: z.string().max(63).default("public") },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -90,7 +159,7 @@ export function createQKERNMcpServer(
     }
   });
 
-  server.registerTool("qkern_query_readonly", {
+  register("qkern_query_readonly", {
     description: "Execute one bounded SELECT query through the verified read-only project data plane. DDL, DML, multiple statements and secret access are rejected.",
     inputSchema: { statement: z.string().min(1).max(4_000), limit: z.number().int().min(1).max(100).default(20) },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -107,10 +176,39 @@ export function createQKERNMcpServer(
   });
 
   const scalar = z.union([z.string().max(4_000), z.number(), z.boolean(), z.null()]);
+  /**
+   * Die Ansprueche, mit denen die generierte Data API arbeitet.
+   *
+   * Beim statischen Bearer ist das Subjekt der Agent selbst: Es gibt keinen
+   * Nutzer, in dessen Namen er handelt, und eines zu erfinden waere schlimmer
+   * als keines zu haben.
+   *
+   * Beim OAuth-Token ist das Subjekt der Nutzer, der zugestimmt hat, und die
+   * Ansprueche sind Zeichen fuer Zeichen dieselben wie an der HTTP-Tuer
+   * (`oauthPrincipal` in `lib/server/data-plane/generated-http.ts`): dieselbe
+   * Rolle, dasselbe `external.token_use`, derselbe Name des Clients, dieselbe
+   * Bereichsliste, und die E-Mail-Adresse nur mit `identity:read`. Eine Policy
+   * soll nicht unterscheiden koennen, ob dieselbe Anwendung ueber REST oder
+   * ueber MCP gekommen ist; sie soll unterscheiden koennen, dass es eine fremde
+   * Anwendung ist, und genau das steht in `external`.
+   */
   const dataContext = {
     organizationId: context.organizationId,
     actorRef: context.actorRef,
-    claims: { role: "authenticated" as const, subject: `agent:${context.actorRef}`.slice(0, 320) },
+    claims: context.access.kind === "project_oauth"
+      ? {
+        role: "authenticated" as const,
+        subject: context.access.userId,
+        ...(projectAuthOAuthAllows(context.access.scopes, "identity:read")
+          ? { email: context.access.email }
+          : {}),
+        external: {
+          token_use: "oauth",
+          client_id: context.access.clientName,
+          scope: context.access.scopes.join(" "),
+        },
+      }
+      : { role: "authenticated" as const, subject: `agent:${context.actorRef}`.slice(0, 320) },
   };
   const dataScope = { projectId: context.projectId, environment: context.environment };
   const storageScope = { organizationId: context.organizationId, ...dataScope };
@@ -123,7 +221,7 @@ export function createQKERNMcpServer(
   const queueScope = storageScope;
   const queuePrincipal = storagePrincipal;
 
-  server.registerTool("qkern_storage_buckets_list", {
+  register("qkern_storage_buckets_list", {
     description: "List storage buckets, fixed access policies, quotas and usage in the current scoped project environment.",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -134,7 +232,7 @@ export function createQKERNMcpServer(
     } catch (error) { return projectStorageToolError(error); }
   });
 
-  server.registerTool("qkern_storage_objects_list", {
+  register("qkern_storage_objects_list", {
     description: "List bounded object metadata for one storage bucket. Quarantined status is visible to the scoped administrator; provider keys and checksums are never returned.",
     inputSchema: {
       bucket: z.string().min(1).max(128),
@@ -150,7 +248,7 @@ export function createQKERNMcpServer(
     } catch (error) { return projectStorageToolError(error); }
   });
 
-  server.registerTool("qkern_queues_list", {
+  register("qkern_queues_list", {
     description: "List queue definitions and bounded delivery policies in the current scoped project environment. Message payloads and lease credentials are never returned.",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -161,7 +259,7 @@ export function createQKERNMcpServer(
     } catch (error) { return projectQueueToolError(error); }
   });
 
-  server.registerTool("qkern_queue_status", {
+  register("qkern_queue_status", {
     description: "Return aggregate message-state counts for one scoped queue. Payloads, worker identities and lease credentials are never returned.",
     inputSchema: { queue: z.string().regex(/^[a-z][a-z0-9_-]{2,62}$/) },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -172,7 +270,7 @@ export function createQKERNMcpServer(
     } catch (error) { return projectQueueToolError(error); }
   });
 
-  server.registerTool("qkern_queue_message_enqueue", {
+  register("qkern_queue_message_enqueue", {
     description: "Enqueue one bounded JSON message in the current scoped queue. Use a stable dedupe key for retry-safe agent workflows. This does not expose worker claim or lease operations.",
     inputSchema: {
       queue: z.string().regex(/^[a-z][a-z0-9_-]{2,62}$/),
@@ -190,7 +288,7 @@ export function createQKERNMcpServer(
     } catch (error) { return projectQueueToolError(error); }
   });
 
-  server.registerTool("qkern_table_rows_list", {
+  register("qkern_table_rows_list", {
     description: "List RLS-filtered rows from one live-schema-allowlisted table. Values are parameterized and sensitive-name columns are excluded.",
     inputSchema: {
       schema: z.string().max(63).default("public"),
@@ -218,7 +316,7 @@ export function createQKERNMcpServer(
     } catch (error) { return generatedDataToolError(error); }
   });
 
-  server.registerTool("qkern_table_rows_insert", {
+  register("qkern_table_rows_insert", {
     description: "Insert up to 25 rows through the live-schema allowlist and project RLS. This directly mutates project data and must remain client-approved.",
     inputSchema: {
       schema: z.string().max(63).default("public"), table: z.string().min(1).max(63),
@@ -232,7 +330,7 @@ export function createQKERNMcpServer(
     } catch (error) { return generatedDataToolError(error); }
   });
 
-  server.registerTool("qkern_table_row_update", {
+  register("qkern_table_row_update", {
     description: "Update one RLS-visible row by its exact primary key. This directly mutates project data and must remain client-approved.",
     inputSchema: {
       schema: z.string().max(63).default("public"), table: z.string().min(1).max(63),
@@ -246,7 +344,7 @@ export function createQKERNMcpServer(
     } catch (error) { return generatedDataToolError(error); }
   });
 
-  server.registerTool("qkern_table_row_delete", {
+  register("qkern_table_row_delete", {
     description: "Delete one RLS-visible row by its exact primary key. This directly mutates project data and must remain client-approved.",
     inputSchema: {
       schema: z.string().max(63).default("public"), table: z.string().min(1).max(63),
@@ -260,7 +358,7 @@ export function createQKERNMcpServer(
     } catch (error) { return generatedDataToolError(error); }
   });
 
-  server.registerTool("qkern_logs_search", {
+  register("qkern_logs_search", {
     description: "Search the scoped, redacted audit log with a hard result limit.",
     inputSchema: { query: z.string().max(200).default(""), limit: z.number().int().min(1).max(50).default(20) },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -273,7 +371,7 @@ export function createQKERNMcpServer(
     return text({ data: events, truncated: events.length === limit });
   });
 
-  server.registerTool("qkern_migration_preview", {
+  register("qkern_migration_preview", {
     description: "Create an immutable migration preview. The active project policy may leave it pending or record an automatic Approval decision. This never applies SQL to the project database.",
     inputSchema: { title: z.string().min(3).max(120), statement: z.string().min(5).max(10_000) },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
@@ -288,7 +386,7 @@ export function createQKERNMcpServer(
     });
   });
 
-  server.registerTool("qkern_migration_apply_queue", {
+  register("qkern_migration_apply_queue", {
     description: "Queue one already-approved Change Set for asynchronous apply. This changes control-plane state and can lead to destructive database effects; it never executes SQL inside this MCP request. Production additionally requires an exact fresh externally signed release authorization.",
     inputSchema: { changeSetId: z.string().min(3).max(80) },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
