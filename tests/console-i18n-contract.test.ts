@@ -48,6 +48,7 @@ import { restoreToNewProjectTexts } from "@/lib/console/restore-to-new-project-t
 import { provisioningOrderTexts } from "@/lib/console/provisioning-order-texts";
 import { integrationsServicesTexts } from "@/lib/console/integrations-services-texts";
 import { addonsTexts } from "@/lib/console/addons-texts";
+import { backupsTexts } from "@/lib/console/backups-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -218,6 +219,10 @@ async function consoleKeys(): Promise<string[]> {
   // Einstellungen -> Add-ons (2.88) zeigt die Form einer Rechnungszeile, was
   // es nicht gibt und seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of addonsTexts()) keys.add(text);
+  // Datenbank -> Backups (2.90) zeigt den Stand des erklaerten Archivs, den
+  // Befund zu Produktweg und Pruefweg, die Schritte eines Betreibers und
+  // seine Ehrlichkeitssaetze ueber t(variable).
+  for (const text of backupsTexts()) keys.add(text);
   return [...keys];
 }
 

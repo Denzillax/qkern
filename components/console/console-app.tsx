@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, ArchiveRestore, Bell, Blocks, BookOpen, Bot, Braces, Check, ChevronDown, ChevronLeft,
+  Activity, Bell, Blocks, BookOpen, Bot, Braces, Check, ChevronDown, ChevronLeft,
   ChevronRight, CircleGauge, Cloud, Code2, Command, Database, Fingerprint, HardDrive, Copy,
   ListFilter, LogOut, Menu, Pencil, Play, Plus, RefreshCw, Search, Settings, ShieldCheck, Table2,
   Terminal, Trash2, Users, Webhook, X, Zap,
@@ -47,6 +47,7 @@ import { ReplicationView } from "@/components/console/replication-view";
 import { ColumnPrivilegesView } from "@/components/console/column-privileges-view";
 import { DatabaseSettingsView } from "@/components/console/database-settings-view";
 import { CronView } from "@/components/console/cron-view";
+import { BackupsView } from "@/components/console/backups-view";
 import { PitrView } from "@/components/console/pitr-view";
 import { RestoreToNewProjectView } from "@/components/console/restore-to-new-project-view";
 import { DatabaseWebhooksView } from "@/components/console/database-webhooks-view";
@@ -343,7 +344,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "activity": case "logs": return <ActivityView audit={props.snapshot.audit} aiOnly={props.view === "activity"}/>;
     case "approvals": return <ApprovalView projectId={props.project.id} environment={props.environment} approvals={props.snapshot.approvals} changes={props.snapshot.changeSets} reload={props.reload}/>;
     case "monitoring": return <UsageView projectId={props.project.id} environment={props.environment}/>;
-    case "backups": return <BackupsView/>;
+    case "backups": return <BackupsView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-pitr": return <PitrView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-restore": return <RestoreToNewProjectView projectId={props.project.id} environment={props.environment}/>;
     case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }} organizationId={props.snapshot.organization.id}/>;
@@ -931,7 +932,6 @@ function UsageView({projectId,environment}:{projectId:string;environment:Environ
   </>;
 }
 
-function BackupsView(){return <div className="module-grid"><article className="console-card span-2 placeholder-state"><ArchiveRestore size={26}/><div><span className="console-kicker">{t("Backups")}</span><h2>{t("Noch nicht verbunden")}</h2><p>{t("Backups, Point-in-time-Recovery und Restore-Drills brauchen ein WAL-Archiv ausserhalb des Wegwerf-Stacks. Bis dahin zeigt diese Ansicht keine erfundenen Wiederherstellungspunkte.")}</p></div><button className="button small is-placeholder" disabled title={t("Backups sind noch nicht verbunden")}>{t("Backup erstellen")}</button></article></div>}
 
 function SettingsView({ project, organizationId }: { project: { name: string; id: string }; organizationId: string }){return <div className="settings-layout"><aside className="console-card settings-nav"><button className="active" type="button">{t("Allgemein")}</button>{["Umgebungen","API-Keys","KI-Verbindungen","Team","Gefahrenzone"].map(tab=><button key={tab} type="button" disabled className="is-placeholder" title={`${tab} ist noch nicht verbunden`}>{tab}</button>)}</aside><article className="console-card settings-form"><span className="console-kicker">{t("Projekteinstellungen")}</span><h2>{t("Allgemein")}</h2><label>{t("Projektname")}<input value={project.name} readOnly/></label><label>{t("Projekt-ID")}<input value={project.id} readOnly/></label><label>{t("Organisations-ID")}<input value={organizationId} readOnly/></label><div className="form-note"><ShieldCheck size={16}/><p><strong>{t("Nur lesend")}</strong><br/>Umbenennen, Regionen und Gefahrenzone sind noch nicht verbunden; diese Ansicht zeigt den echten Namen, die echte ID des Projekts und die ID der Organisation.</p></div><button className="button is-placeholder" disabled title={t("Speichern ist noch nicht verbunden")}>{t("Änderungen speichern")}</button></article></div>}
 

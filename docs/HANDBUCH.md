@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.62.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.63.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -502,6 +502,82 @@ entfernt, lässt dort einen Fall scheitern.
 
 Die Seite hat keinen Knopf ausser „Neu laden“. Es gibt nichts auszulösen, und
 ein abgeschalteter Knopf wäre ein Versprechen.
+
+### Backups
+
+Seit `2.63.0` zeigt **Datenbank → Backups** keinen abgeschalteten Knopf
+„Backup erstellen“ mehr. Die Seite galt als echte Ansicht, trug aber genau das,
+was QKERN sonst nirgends duldet: eine Schaltfläche, die eine Fähigkeit
+behauptet, die es nicht gibt.
+
+**Die Prüfung zuerst.** Gesucht wurde ein Weg im Produktcode, der ein
+Basisbackup einer Projektdatenbank anstösst. Es gibt keinen. Kein Modul unter
+`lib/server`, kein Worker, kein Befehl des CLI und keine Route ruft
+`pg_basebackup`, `pg_dump`, `pg_dumpall` oder `pg_receivewal` auf. Der Ordner
+`lib/server/backup`, in dem man es vermuten würde, hält drei Dateien, und alle
+drei lesen: das Fenster einer Wiederherstellung, den Verifier der Evidenz und
+dessen Aufbau aus der Umgebung. Unter den Backup-Routen einer Umgebung steht
+genau ein Pfad, `point-in-time`, und er kennt nur `GET`. Der Knopf hat also
+nicht auf ein fehlendes Stück Oberfläche gewartet, sondern auf einen Weg, den
+es nicht gibt. Er ist darum weg, und an seiner Stelle steht, warum.
+
+**Produktweg und Prüfweg.** Die eine Stelle im ganzen Baum, die wirklich ein
+Basisbackup zieht, liegt unter `tests/`. `npm run test:backup:docker` fährt
+`scripts/backup-certification.mjs`; das Skript startet ausschliesslich `docker`,
+hebt den Stack `docker-compose.backup-certification.yml`, lässt darin
+`tests/backup-restore-drill.integration.test.ts` laufen, liest die signierte
+Evidenz aus dem Protokoll und legt sie unter `docs/evidence/backup-restore/` ab.
+Es spricht selbst mit keiner Datenbank. Das ist ein Prüfweg und kein
+Produktweg, und der Unterschied ist kein Wortspiel: Ein Betreiber, der diesen
+Befehl in einen Zeitplan hängt, sichert nicht seine Daten, sondern belegt ein
+Verfahren.
+
+**Und gesichert wird die Kontrollebene.** Der Quellserver des Stacks trägt die
+Datenbank `qkern_control`; der Drill schreibt darin in `users`, `organizations`
+und `audit_logs`. Die Evidenz trägt den Bereich `control_plane`, der Verifier
+kennt keinen zweiten und weist jede Evidenz mit einem anderen Bereich ab. Über
+ein Backup einer Projektdatenbank sagt der Drill nichts, und die Seite sagt
+genau das.
+
+**Was die Seite zeigt.** Oben die Frage „Wer sichert diese Projektdatenbank, und
+wann zuletzt?“ mit ihrer Antwort, darunter den Befund in fünf Zeilen (kein
+Produktweg, ein Prüfweg, der Geltungsbereich, kein Katalog, keine bestellende
+Route), dann den Stand des erklärten WAL-Archivs und zuletzt fünf Schritte, die
+ein Betreiber am Server geht: Archivierung einschalten, Basisbackup über die
+Replikationsverbindung ziehen, verschlüsseln und den Klartext löschen, das
+Archiv der Console erklären, den Drill fahren und die Evidenz aufheben. Die
+Seite führt keinen davon aus.
+
+| Stand | Wann |
+| --- | --- |
+| Kein erklärtes Archiv und kein belegter Lauf | Es ist kein WAL-Archiv erklärt. Ohne Erklärung weiss QKERN über die Sicherung dieser Datenbank nichts. |
+| Archiv erklärt, Verfahren nicht belegt | Ein Archiv ist erklärt, aber es liegt keine gültige, signierte Drill-Evidenz vor. |
+| Archiv erklärt, Verfahren belegt, diese Datenbank ungesichert | Ein Archiv ist erklärt, und die Evidenz liegt innerhalb der festen Policy. Belegt ist das Verfahren an der Kontrollebene. |
+
+Ohne erklärtes Archiv bleibt der Stand auch dann der erste, wenn eine gültige
+Evidenz vorliegt. Das ist Absicht: Der Drill belegt ein Verfahren und nicht das
+Archiv dieser Umgebung.
+
+**Kein Katalog.** QKERN führt über seine Backups nichts in der Kontrollebene.
+Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder
+Wiederherstellungsläufe an, und es gibt darum weder eine Liste vergangener
+Läufe noch einen Zeitpunkt eines letzten Backups. Die Seite lässt diese Stelle
+leer, statt sie zu füllen.
+
+**Die Seite liest nichts Neues**, und auch das ist ein Befund. Die einzigen
+echten Angaben sind die Erklärung des Betreibers über sein WAL-Archiv und die
+Evidenz des letzten Drills, und beide holt schon
+`/database/backups/point-in-time`. Eine zweite Route hätte dieselbe Erklärung
+und dieselbe Datei ein zweites Mal gelesen. Es gibt darum keine neue Route,
+keinen Eintrag in `lib/openapi.ts` und keinen Fall gegen die echte Datenbank.
+Stattdessen prüft `tests/console-backups-contract.test.ts`, dass die Sätze der
+Seite **stimmen**: Er liest den gesamten Produktquelltext nach Backup-Werkzeugen
+ab, zählt die Verben unter den Backup-Routen, durchsucht alle Migrationen nach
+einer Backup-Tabelle, liest Skript, Stack und Drill nach und prüft, dass die
+Erklärung genau drei Umgebungsvariablen umfasst und der neueste
+wiederherstellbare Punkt unbekannt bleibt. Wer morgen einen Produktweg zum
+Basisbackup baut, lässt dort einen Fall scheitern, statt die Seite
+stillschweigend zur Lüge zu machen.
 
 ### Datenbank-Einstellungen
 
