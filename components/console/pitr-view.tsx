@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { History, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
+import { formatDecimal, formatMoment, formatNumber } from "@/components/console/console-display";
 import {
   POINT_IN_TIME_ASSERTION_TEXTS,
   POINT_IN_TIME_HONESTY,
@@ -21,8 +22,17 @@ import type { PointInTimeRecoveryOverview } from "@/lib/server/backup/point-in-t
  */
 type Environment = "development" | "staging" | "production";
 
-const utc = (value: string) => value.replace("T", " ").replace(".000Z", " UTC").replace("Z", " UTC");
-const minutes = (seconds: number) => `${Math.round(seconds / 60)}`;
+/**
+ * Sekunden als Zahl mit Einheit, ohne Rundung auf Minuten.
+ *
+ * Vorher stand hier `Math.round(seconds / 60)`. Damit erschien ein Rueckstand
+ * von 29 Sekunden als "0", und das ist an genau dieser Stelle die
+ * unguenstigste Luege: Die Zahl soll sagen, wie viel ein Wiederanlauf
+ * verliert. Sekunden bleiben Sekunden, bis eine Minute voll ist.
+ */
+const seconds = (value: number) => value < 60
+  ? `${formatNumber(value)} s`
+  : `${formatDecimal(value / 60, 1)} min`;
 
 export function PitrView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const [overview, setOverview] = useState<PointInTimeRecoveryOverview | null>(null);
@@ -58,7 +68,7 @@ export function PitrView({ projectId, environment }: { projectId: string; enviro
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("FENSTER")}</span><h3>{t("Ältester und neuester Wiederherstellungspunkt")}</h3></div></div>
       <div className="bucket-row"><span className="bucket-icon"><History size={16}/></span>
-        <div><strong>{overview.window.earliestRestorablePoint ? utc(overview.window.earliestRestorablePoint) : t("nicht bekannt")}</strong>
+        <div><strong>{overview.window.earliestRestorablePoint ? formatMoment(overview.window.earliestRestorablePoint, "dateTimeSeconds") : t("nicht bekannt")}</strong>
           <small>{t("Ältester Punkt")}{overview.window.earliestSource === "retention" ? ` · ${t("aus der erklärten Aufbewahrung")}` : overview.window.earliestSource === "archiving_since" ? ` · ${t("aus dem erklärten Beginn der Archivierung")}` : ""}</small></div>
       </div>
       <div className="bucket-row"><span className="bucket-icon"><History size={16}/></span>
@@ -73,13 +83,13 @@ export function PitrView({ projectId, environment }: { projectId: string; enviro
       {!drill && <p className="muted">{t("Es liegt keine gültige, signierte Evidenz eines Restore-Drills vor. Entweder ist die Prüfung nicht eingeschaltet, oder die Evidenz ist älter, als die Policy zulässt.")}</p>}
       {drill && <>
         <article className="console-card auth-overview">
-          <div><span>{t("GEPRÜFT AM")}</span><strong>{utc(drill.verifiedAt)}</strong><small>{t("Zeitpunkt der Prüfung")}</small></div>
-          <div><span>{t("RÜCKSTAND")}</span><strong>{minutes(drill.recoveryPointLagSeconds)}</strong><small>{t("Minuten zwischen Snapshot und Ende des Backups")}</small></div>
-          <div><span>{t("DAUER")}</span><strong>{minutes(drill.restoreDurationSeconds)}</strong><small>{t("Minuten bis der wiederhergestellte Server stand")}</small></div>
+          <div><span>{t("GEPRÜFT AM")}</span><strong>{formatMoment(drill.verifiedAt, "dateTimeSeconds")}</strong><small>{t("Zeitpunkt der Prüfung")}</small></div>
+          <div><span>{t("RÜCKSTAND")}</span><strong>{seconds(drill.recoveryPointLagSeconds)}</strong><small>{t("Zeit zwischen Snapshot und Ende des Backups")}</small></div>
+          <div><span>{t("DAUER")}</span><strong>{seconds(drill.restoreDurationSeconds)}</strong><small>{t("Zeit, bis der wiederhergestellte Server stand")}</small></div>
         </article>
         {drill.proves.map((assertion) => <div className="bucket-row" key={assertion}><span className="bucket-icon"><ShieldCheck size={16}/></span>
           <div><small>{t(POINT_IN_TIME_ASSERTION_TEXTS[assertion])}</small></div></div>)}
-        <p className="muted">{t("Der Drill läuft gegen einen eigenen Stack mit eigenem WAL-Archiv. Er belegt das Verfahren und die Software, nicht das Archiv dieser Umgebung.")}</p>
+        <p className="muted">{t("Der Drill läuft gegen einen eigenen Stack mit eigenem WAL-Archiv, und er stellt dort die Kontrollebene wieder her, nicht diese Projektdatenbank. Er belegt das Verfahren und die Software, nicht das Archiv dieser Umgebung.")}</p>
       </>}
     </article>
 
