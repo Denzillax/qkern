@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.63.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.64.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -4239,7 +4239,8 @@ npm run mcp
 Der Agent kann Projekt, Automation Policy, Schema, begrenzte Reads, Audit Logs und
 Migration Previews verwenden. Apply bleibt ein separates destruktives Tool. Die
 QKERN-Policy entscheidet, ob ein Preview pending oder automatisch approved wird.
-Remote MCP in Production bleibt bis zum OAuth/OIDC-Resource-Server-Gate deaktiviert.
+Das gilt für den lokalen STDIO-Weg und für den statischen Bearer; was ein
+entfernter Client über OAuth erreicht, steht in Abschnitt 10.1.
 
 Wenn die Generated Data API aktiviert ist, stehen zusätzlich
 `qkern_table_rows_list`, `qkern_table_rows_insert`, `qkern_table_row_update` und
@@ -4262,6 +4263,81 @@ und `qkern_queue_message_enqueue` hinzu. Das Enqueue-Tool ist ein Write und ohne
 bewusst keine MCP-Tools: Ein KI-Client erhält keine Worker-Lease-Autorität. Ob ein
 MCP-Client vor dem Enqueue fragt, steuert dessen Write-Approval-Konfiguration;
 QKERN erzwingt unabhängig davon Scope, Queue-Policy, Payloadgrenzen und Capacity.
+
+### 10.1 Remote MCP über OAuth (seit `2.64.0`)
+
+Der HTTP-Transport kennt zwei Betriebsarten, gesteuert über `QKERN_MCP_AUTH`.
+Ohne die Variable gilt in Production `oauth` und sonst `static`.
+
+`static` ist der statische Bearer aus `QKERN_MCP_TOKEN`. Er ist bequem auf dem
+eigenen Rechner und bleibt dort: Der Prozess startet mit dieser Betriebsart unter
+`NODE_ENV=production` nicht, und `QKERN_MCP_HOST` darf dabei die Loopback-Adresse
+nicht verlassen. Der Grund steht in der Fehlermeldung selbst. Dieses Token wird
+nicht widerrufen, es nennt keinen Nutzer, und es trägt keine Bereiche.
+
+`oauth` ist der entfernte Weg. Ein Aufrufer legt zwei Dinge vor:
+
+```
+x-qkern-key:   qk_public_… oder qk_service_… (nennt Organisation, Projekt, Umgebung)
+Authorization: Bearer qk_oauth_… (nennt Client, Nutzer und Bereiche)
+```
+
+Der Mandant kommt vollständig aus dem Projekt-Key. `QKERN_MCP_ORGANIZATION_ID`,
+`QKERN_MCP_PROJECT_ID` und `QKERN_MCP_ENVIRONMENT` gelten auf diesem Weg nicht,
+auch nicht, wenn sie gesetzt sind. Ein Token wird innerhalb eines Mandanten
+nachgeschlagen; passen Key und Token nicht zusammen, findet das Token dort keine
+Zeile, und die Antwort ist die der unbekannten Token. Ein Mandantentausch über
+Kopfzeilen ist damit nicht abgewehrt, sondern gar nicht ausdrückbar.
+
+Welcher Bereich welches Werkzeug freigibt, steht in `mcp/tool-scopes.ts`, und nur
+dort:
+
+| Bereich | Werkzeuge über OAuth |
+| --- | --- |
+| `data:read` | `qkern_table_rows_list` |
+| `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
+| `identity:read` | kein eigenes Werkzeug; entscheidet, ob die E-Mail-Adresse in den Ansprüchen der Data-API-Anfrage steht |
+
+Alle übrigen Werkzeuge sind über OAuth nicht erreichbar, und sie fehlen einem
+solchen Client schon in `tools/list`. Das betrifft `qkern_query_readonly` und
+`qkern_schema_list` (sie lesen an der Zeilensicherheit vorbei, `data:read` sagt
+aber Lesen unter der Zeilensicherheit zu), `qkern_project_get`,
+`qkern_automation_policy_get` und `qkern_logs_search` (Control Plane, kein
+Bereich beschreibt sie), Storage und Queues (laufen im Namen des Betreibers) sowie
+`qkern_migration_preview` und `qkern_migration_apply_queue`. Ein Migration-Apply
+über einen fremden Client bleibt zu, mit jedem Bereich, den es gibt.
+
+Schreiben schließt Lesen nicht ein. Ein Token mit `data:write` bekommt die drei
+Mutationen und keine Leseliste, genauso wie an der Data API. Wer beides braucht,
+lässt beidem zustimmen.
+
+Die Anfragen laufen unter der Zeilensicherheit des Nutzers, der zugestimmt hat.
+In `request.jwt.claims` stehen dieselben Angaben wie beim REST-Weg, also `sub`,
+`role: authenticated` und unter `external` die Werte `token_use: "oauth"`,
+`client_id` und `scope`. Eine Policy kann einer fremden Anwendung damit weniger
+erlauben als der eigenen, obwohl beide denselben Nutzer nennen.
+
+Abgelehnt wird in zwei Abstufungen. Ein unbekanntes, abgelaufenes, widerrufenes
+oder an einen gesperrten Nutzer gebundenes Token bekommt `401` ohne Grund; wer
+den Grund erführe, hätte ein Werkzeug zum Probieren, und der Betreiber liest ihn
+im Audit. Ein gültiges Token, dessen Bereiche kein einziges Werkzeug öffnen,
+bekommt `403` mit einem eigenen Satz, denn das ist eine Rechtefrage und keine
+Anmeldefrage. Widerrufen heißt hier: den OAuth-Client unter Auth entfernen. Seine
+Token verschwinden mit ihm, und die nächste Anfrage fällt sofort.
+
+Eine MCP-Sitzung gehört dem Token, das sie begonnen hat. Dieselbe Sitzungskennung
+mit einem anderen Token gilt als unbekannte Sitzung, weil die angemeldeten
+Werkzeuge am Server dieser Sitzung hängen und nicht an der einzelnen Anfrage.
+
+Wer nicht auf der Loopback-Adresse bindet, muss `QKERN_MCP_ALLOWED_HOSTS` setzen.
+Der Schutz gegen DNS-Rebinding schaltet sich sonst still ab.
+
+```powershell
+$env:QKERN_MCP_AUTH="oauth"
+$env:QKERN_MCP_HOST="0.0.0.0"
+$env:QKERN_MCP_ALLOWED_HOSTS="mcp.example.ch"
+npm run mcp:http
+```
 
 ## 11. Qualitätsprüfung
 

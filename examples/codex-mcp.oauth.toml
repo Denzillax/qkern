@@ -1,23 +1,30 @@
-# Production target for a remote QKERN MCP deployment.
+# Remote target for a QKERN MCP deployment running with QKERN_MCP_AUTH=oauth.
+#
+# The tool list below is what an OAuth token can reach at all (see
+# docs/MCP_REMOTE_AUTH.md). A token only sees the subset its own scopes open:
+# data:read opens the list tool, data:write opens the three mutations. Control
+# plane, schema, raw queries, storage, queues and migrations are not reachable
+# over OAuth and are not registered for such a session.
 [mcp_servers.qkern]
 url = "https://mcp.your-qkern-domain.ch/mcp"
 auth = "oauth"
 required = true
 enabled = true
 enabled_tools = [
-  "qkern_project_get",
-  "qkern_schema_list",
-  "qkern_query_readonly",
-  "qkern_logs_search",
-  "qkern_migration_preview",
-  "qkern_migration_apply_queue",
+  "qkern_table_rows_list",
+  "qkern_table_rows_insert",
+  "qkern_table_row_update",
+  "qkern_table_row_delete",
 ]
 default_tools_approval_mode = "writes"
 startup_timeout_sec = 10
 tool_timeout_sec = 45
 
-[mcp_servers.qkern.tools.qkern_migration_preview]
+[mcp_servers.qkern.tools.qkern_table_rows_insert]
 approval_mode = "prompt"
 
-[mcp_servers.qkern.tools.qkern_migration_apply_queue]
+[mcp_servers.qkern.tools.qkern_table_row_update]
+approval_mode = "prompt"
+
+[mcp_servers.qkern.tools.qkern_table_row_delete]
 approval_mode = "prompt"
