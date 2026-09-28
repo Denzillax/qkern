@@ -28,6 +28,9 @@ function code(text: string): string {
 }
 
 const APP = "components/console/console-app.tsx";
+// Der Editor liegt seit dem Umzug aus der Schale in einer eigenen Datei; die
+// Zusagen dieser Seite stehen darum dort und nicht mehr in `console-app.tsx`.
+const VIEW = "components/console/sql-view.tsx";
 const MODULE = "lib/console/sql-templates.ts";
 
 describe("console sql templates view contract", () => {
@@ -52,7 +55,7 @@ describe("console sql templates view contract", () => {
   });
 
   it("inserts a template and never runs it", async () => {
-    const app = await source(APP);
+    const app = await source(VIEW);
     const start = app.indexOf("function insertTemplate(");
     expect(start, "insertTemplate fehlt").toBeGreaterThan(0);
     // Ohne Kommentarzeilen: geprueft wird der Code, nicht die Erzaehlung.
@@ -68,7 +71,7 @@ describe("console sql templates view contract", () => {
   });
 
   it("builds no SQL of its own: every statement comes from the pure module", async () => {
-    const app = await source(APP);
+    const app = await source(VIEW);
     expect(app).toContain('from "@/lib/console/sql-templates"');
     // Kein Name wird in der Ansicht zitiert oder zusammengeklebt.
     const start = app.indexOf("function insertTemplate(");
@@ -79,7 +82,7 @@ describe("console sql templates view contract", () => {
   });
 
   it("says in the view that a template is a starting point and that QKERN runs nothing on its own", async () => {
-    const app = await source(APP);
+    const app = await source(VIEW);
     const honesty = "Eine Vorlage ist ein Anfang, keine Antwort. Sie landet im Editorfeld, und nichts läuft: QKERN führt von sich aus keine Abfrage aus, den Knopf drückst du.";
     expect(app).toContain(honesty);
     for (const locale of ["en", "fr", "it"] as const) {
@@ -88,7 +91,7 @@ describe("console sql templates view contract", () => {
   });
 
   it("shows every template with its title and its question, and names the extension one of them needs", async () => {
-    const app = await source(APP);
+    const app = await source(VIEW);
     expect(app).toContain("{SQL_TEMPLATES.map((template) =>");
     expect(app).toContain("{t(template.title)}");
     expect(app).toContain("{t(template.question)}");

@@ -45,9 +45,13 @@ describe("console billing view", () => {
     expect(card).toContain("formatMoneyMicros(invoice.totalMicros");
     // Der Tooltip zeigt den exakten Wert aus dem Dokument, ungerundet.
     expect(card).toContain("title={`${invoice.total} ${invoice.currency}`}");
+    // Die Karte steht in der Nutzung, und die ist seit dem Umzug aus der
+    // Schale eine eigene Datei. Definiert wird sie weder hier noch dort.
     const app = await read("components/console/console-app.tsx");
+    const usage = await read("components/console/usage-view.tsx");
     expect(app).not.toMatch(/function InvoicesCard/);
-    expect(app).toContain('from "@/components/console/invoices-card"');
+    expect(usage).not.toMatch(/function InvoicesCard/);
+    expect(usage).toContain('from "@/components/console/invoices-card"');
   });
 
   it("labels every usage metric and translates each label", async () => {
