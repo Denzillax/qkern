@@ -6186,3 +6186,59 @@ reproduziert mit `--maxWorkers=3`.
 Nicht erbracht: Zwei Platzhalter bleiben. Die Seite Datenbank, Backups zeigt
 weiterhin einen abgeschalteten Knopf. Die Bindung einer Umgebung bleibt fuer
 die Console unlesbar. Im Browser nicht gesehen.
+
+## Welle fuenfzehn (2.63): gerendert, aufgeraeumt, kein toter Knopf
+
+Drei Schulden aus den Releases davor, keine neue Flaeche, und zwei der drei
+haben Fehler gefunden, die vorher niemand gesehen haette.
+
+Der Render-Vertrag schliesst die Luecke hinter dem Satz, mit dem jede Release
+Note dieser Reihe endet. Rund vierzig Ansichten waren entstanden, und keine war
+je gerendert worden, auch nicht in einem Test. Ein Feldzugriff auf etwas
+Undefiniertes im ersten Durchlauf waere niemandem aufgefallen. Gerendert werden
+jetzt 79 Komponenten in 93 Faellen, in vier Sprachen also 372 Durchlaeufe, ueber
+`renderToStaticMarkup` und ohne eine neue Abhaengigkeit. Der Vertrag prueft mehr
+als "wirft nicht": Jede Ansicht muss beim Oeffnen einen Ladezustand zeigen, und
+ein englisches Rendern darf keinen deutschen Text enthalten, den die
+Uebersetzung nie gesehen hat.
+
+Gefunden hat er **nichts**, und das ist das ehrliche Ergebnis. Nachgesetzt
+wurde mehrfach. Was er nicht kann, steht in ihm: Effekte laufen nicht, also
+bleiben der fertige Zustand, der Fehlerzustand und jede Tabelle mit Zeilen
+ungesehen. Ein Rendern ohne Effekte ist kein Browserbesuch, und der Vertrag
+behauptet das auch nicht.
+
+Die beiden Fehler kamen von woanders: Beim Aufraeumen der Backups-Seite fiel
+auf, dass die PITR-Seite die Drill-Evidenz so zeigt, als waere sie eine Aussage
+ueber diese Projektumgebung. Der Geltungsbereich der Evidenz ist die
+Kontrollebene, also eine ganz andere Datenbank. Und sie rundete Sekunden auf
+Minuten, wodurch ein Rueckstand von 29 Sekunden als "0" erschien. An genau
+dieser Stelle ist das die unguenstigste Luege, weil die Zahl sagen soll, wie
+viel ein Wiederanlauf verliert.
+
+Der Knopf "Backup erstellen" ist weg. Die Pruefung ging ueber den Befund aus
+2.62 hinaus: Im gesamten Produktquelltext kommt kein Backup-Werkzeug vor, und
+unter den Backup-Routen liegt genau ein Pfad mit genau einem lesenden Verb. Der
+Knopf haette nichts aufzurufen gehabt.
+
+Der Aufraeumer loescht nach 24 Stunden, und die Frist ist mit Absicht laenger
+als die laengste Lebensdauer dieser Artefakte: Eine geloeschte Zeile kann nie
+das Gegenstueck von etwas Gueltigem sein. Geschnitten wird am Ablauf und nicht
+am Verbrauch, weil an einer verbrauchten, aber noch gueltigen Zeile ein zweites
+Einloesen auffaellt. `project_storage_uploads` bleibt liegen, obwohl es eine
+Ablaufspalte hat: Hinter der Zeile stehen Bytes bei einem Anbieter.
+
+Ein Nachtrag, der fuer sich spricht: Ein Vertrag hat eine veraltete Zahl
+gefunden, die niemand gepflegt hatte. Der Empfaenger-Stack faehrt inzwischen 16
+Faelle, die Statusdatei behauptete 14. Die Zahl war nicht falsch erfunden,
+sondern mitgewachsen, ohne dass jemand hinsah.
+
+Checkpoint `2.63.0` am 28. September 2026: PostgreSQL 17 mit 220 von 220,
+Mailpit und Dex mit 7 von 7, HTTPS-Empfaenger mit 16 von 16, alle exit 0;
+Lokal 2300 bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
+`--maxWorkers=3`.
+
+Nicht erbracht: Im Browser weiterhin nicht gesehen. Vierzehn Ansichten liegen
+in `console-app.tsx` und werden vom Vertrag nicht erreicht. Zwei Platzhalter
+bleiben. QKERN hat weiterhin keinen Weg, ein Backup einer Projektdatenbank
+anzustossen.

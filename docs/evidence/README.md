@@ -1727,3 +1727,17 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-27/welle14-local-run1.log` | Vitest lokal (Windows) | 2274 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-27/welle14-local-run2.log` | Vitest lokal (Windows) | 2274 bestanden, exit 0, mit `--maxWorkers=3` |
 
+## Läufe zu Release 2.63 (28. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle15-run1.log` | PostgreSQL 17 | 220 von 220, exit 0 |
+| `2026-09-27/welle15-run2.log` | PostgreSQL 17 | 220 von 220, exit 0, Wiederholung |
+| `2026-09-27/welle15-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-27/welle15-receiver.log` | Node 24 HTTPS-Empfänger und PostgreSQL 17 | 16 von 16, exit 0 |
+| `2026-09-27/welle15-mutation-cleanup.log` | Mutation: gelöscht wird ohne Frist | **219 von 220, exit 1 – absichtlich** |
+| `2026-09-27/welle15-mutation-renderguard.log` | Mutation: Feldzugriff im ersten Renderdurchlauf | **1 von 5, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle15-mutation-backupspage.log` | Mutation: der abgeschaltete Knopf ist zurück | **10 von 11, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle15-local-run1.log` | Vitest lokal (Windows) | 2300 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-27/welle15-local-run2.log` | Vitest lokal (Windows) | 2300 bestanden, exit 0, mit `--maxWorkers=3` |
+

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.62.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.63.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -252,7 +252,35 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.62.0`
+- Paketversion: `2.63.0`
+- Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
+  aus den Releases davor sind bezahlt.
+
+  **`tests/console-view-render-contract`** rendert jede Konsolenansicht
+  wenigstens einmal: 79 Komponenten, 93 Faelle, in vier Sprachen also 372
+  Durchlaeufe, ueber `renderToStaticMarkup` und **ohne** neue Abhaengigkeit. Er
+  findet die Ansichten ueber das Dateisystem, also faellt er, sobald eine neue
+  dazukommt und nicht gerendert wird. Was er **nicht** kann, steht in ihm:
+  Effekte laufen nicht, also bleiben der fertige Zustand, der Fehlerzustand und
+  jede Tabelle mit Zeilen ungesehen. Ein Rendern ohne Effekte ist kein
+  Browserbesuch. Vier Ansichten oeffnen im Ruhezustand und stehen namentlich mit
+  Begruendung in `OPENS_IDLE`.
+
+  **Der Aufraeumer** (Migration `0063`) laeuft im Compute-Prozess und loescht
+  abgelaufene Einmal-Token, OAuth-Token und OAuth-Codes nach **24 Stunden**.
+  Die Frist ist mit Absicht laenger als die laengste Lebensdauer dieser
+  Artefakte, damit eine geloeschte Zeile nie das Gegenstueck von etwas
+  Gueltigem sein kann. Jede Spur bleibt stehen, und
+  `project_storage_uploads` ist ausgelassen: Hinter der Zeile stehen Bytes bei
+  einem Anbieter.
+
+  **Der Knopf "Backup erstellen" ist weg.** Im Produktquelltext kommt kein
+  Backup-Werkzeug vor, und unter den Backup-Routen gibt es genau einen Pfad mit
+  genau einem lesenden Verb. Dabei sind zwei Fehler an der PITR-Seite
+  aufgefallen: Sie zeigte die Drill-Evidenz so, dass sie sich wie eine Aussage
+  ueber diese Projektumgebung liest (der Drill stellt die **Kontrollebene**
+  wieder her), und sie rundete Sekunden auf Minuten, wodurch ein Rueckstand von
+  29 Sekunden als "0" erschien. Beides ist berichtigt. Im Browser nicht gesehen
 - Neuester Slice: 2.62 Die letzten Platzhalter. Von den sechsundzwanzig
   Platzhalterseiten, mit denen diese Sitzung begann, sind **zwei** uebrig:
   `storage-analytics` (Iceberg) und `storage-vectors`. Alles andere ist eine

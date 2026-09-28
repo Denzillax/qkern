@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Feldzugriff im ersten Renderdurchlauf",
+  "log": "welle15-mutation-renderguard.log",
+  "commit": "4bc9f8328fcff8fdba571e84d6483c4d4829f15f",
+  "commitSubject": "merge: Aufraeumer aus slice/cleanup",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "4 failed | 1 passed (5)",
+  "passed": 1,
+  "failed": 4,
+  "skipped": 0,
+  "images": []
+}

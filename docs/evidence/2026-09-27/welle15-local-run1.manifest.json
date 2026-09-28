@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle15-local-run1.log",
+  "commit": "4bc9f8328fcff8fdba571e84d6483c4d4829f15f",
+  "commitSubject": "merge: Aufraeumer aus slice/cleanup",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "328 passed | 38 skipped (366)",
+  "tests": "2300 passed | 304 skipped (2604)",
+  "passed": 2300,
+  "failed": 0,
+  "skipped": 304,
+  "images": []
+}

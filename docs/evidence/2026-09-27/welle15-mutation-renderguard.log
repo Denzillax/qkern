@@ -1,0 +1,171 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-view-render-contract.test.ts (5 tests | 4 failed) 5456ms
+     × rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React 1478ms
+     × zeigt im ersten Durchlauf etwas und nicht eine leere Seite 395ms
+     × zeigt im ersten Durchlauf einen Ladezustand, wo eine Ansicht beim Oeffnen etwas holt 367ms
+     × zeigt in einer fremden Sprache keinen deutschen Text, den der Uebersetzer nie gesehen hat 444ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React
+AssertionError: expected 'RolesView [de#0] wirft: Cannot read p…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ RolesView [de#0] wirft: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
++ RolesView [en#0] wirft: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
++ RolesView [fr#0] wirft: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
++ RolesView [it#0] wirft: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
+
+ ❯ tests/console-view-render-contract.test.ts:349:31
+    347|       }
+    348|     }
+    349|     expect(broken.join("\n")).toBe("");
+       |                               ^
+    350|   });
+    351|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt im ersten Durchlauf etwas und nicht eine leere Seite
+AssertionError: expected 'RolesView#0 wirft beim Rendern: Canno…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ RolesView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
+
+ ❯ tests/console-view-render-contract.test.ts:367:29
+    365|       }
+    366|     }
+    367|     expect(thin.join("\n")).toBe("");
+       |                             ^
+    368|   });
+    369|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt im ersten Durchlauf einen Ladezustand, wo eine Ansicht beim Oeffnen etwas holt
+AssertionError: expected 'RolesView#0 wirft beim Rendern: Canno…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ RolesView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
+
+ ❯ tests/console-view-render-contract.test.ts:381:31
+    379|       if (!loading) silent.push(`${made.component}#${made.index} zeigt…
+    380|     }
+    381|     expect(silent.join("\n")).toBe("");
+       |                               ^
+    382|   });
+    383|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt in einer fremden Sprache keinen deutschen Text, den der Uebersetzer nie gesehen hat
+AssertionError: expected 'RolesView#0 wirft beim Rendern: Canno…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ RolesView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'name')
++ TypeError: Cannot read properties of undefined (reading 'name')
++     at RolesView (C:/Projekte/qkern/code/qkern/components/console/roles-view.tsx:35:119)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:275:22)
+
+ ❯ tests/console-view-render-contract.test.ts:404:34
+    402|     }
+    403|     setConsoleLocale("de");
+    404|     expect(leftovers.join("\n")).toBe("");
+       |                                  ^
+    405|   });
+    406| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  19:00:04
+   Duration  7.21s (transform 3.25s, setup 0ms, import 1.51s, tests 5.46s, environment 0ms)
+
+
+EXIT=1

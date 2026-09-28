@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: geloescht wird ohne Frist",
+  "log": "welle15-mutation-cleanup.log",
+  "commit": "4bc9f8328fcff8fdba571e84d6483c4d4829f15f",
+  "commitSubject": "merge: Aufraeumer aus slice/cleanup",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 63,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 219 passed (220)",
+  "passed": 219,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

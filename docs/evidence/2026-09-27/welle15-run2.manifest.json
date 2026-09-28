@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle15-run2.log",
+  "commit": "4bc9f8328fcff8fdba571e84d6483c4d4829f15f",
+  "commitSubject": "merge: Aufraeumer aus slice/cleanup",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 63,
+  "testFiles": "31 passed (31)",
+  "tests": "220 passed (220)",
+  "passed": 220,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

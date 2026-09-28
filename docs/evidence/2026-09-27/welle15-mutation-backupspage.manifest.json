@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: der abgeschaltete Knopf ist zurueck",
+  "log": "welle15-mutation-backupspage.log",
+  "commit": "4bc9f8328fcff8fdba571e84d6483c4d4829f15f",
+  "commitSubject": "merge: Aufraeumer aus slice/cleanup",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 10 passed (11)",
+  "passed": 10,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}
