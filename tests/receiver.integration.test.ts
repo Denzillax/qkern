@@ -141,6 +141,11 @@ describe.runIf(enabled)("Receiver certification", () => {
         QKERN_RUNTIME_MODE: "postgres",
         QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
         QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+        // Hier steht Cron auf dem Pruefstand. Der Aufraeumer aus 2.89 braucht
+        // die Auth-Verbindung, und dieser Stack reicht dem Fall keine; er wird
+        // darum ausdruecklich abgeschaltet, statt den Prozess am Start zu
+        // hindern.
+        QKERN_COMPUTE_AUTH_RETENTION_ENABLED: "false",
       },
     });
     let noise = "";

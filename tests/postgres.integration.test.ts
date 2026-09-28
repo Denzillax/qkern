@@ -169,6 +169,13 @@ import {
 import { LOG_DRAIN_SOURCE_DEFINITIONS } from "@/lib/console/log-drains";
 // Die Bruecke als Prozess (2.53): derselbe Prozess, den der Betrieb startet.
 import { spawn } from "node:child_process";
+// Was abgelaufen ist, verschwindet auch (2.89): derselbe Aufraeumer und
+// derselbe Postgres-Halter, die der Compute-Prozess betreibt.
+import {
+  ProjectAuthExpiryRetentionRuntime,
+  type ProjectAuthExpiryStore,
+} from "@/lib/server/project-auth/expiry-retention";
+import { PostgresProjectAuthExpiryStore } from "@/lib/server/project-auth/expiry-retention-postgres";
 // Die eigene Darstellung der Console (2.55): dasselbe Repository, das die
 // Route benutzt, und dasselbe reine Modul, das die Ansicht anwendet.
 import { PostgresConsoleDisplaySettingsRepository } from "@/lib/server/auth/console-settings";
@@ -4268,6 +4275,11 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
             QKERN_RUNTIME_MODE: "postgres",
             QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
             QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            // Seit 2.89 raeumt derselbe Prozess die abgelaufenen
+            // Einmal-Artefakte von Project Auth auf, und dafuer braucht er die
+            // Auth-Verbindung. Ohne sie startet er nicht -- das ist Absicht und
+            // gehoert damit auch in jeden Fall, der ihn wirklich startet.
+            QKERN_AUTH_DATABASE_URL: authUrl!,
             // Derselbe Katalog wie bei Realtime Changes: dieselbe
             // unprivilegierte Rolle, der `db/project/0003` das Leserecht auf
             // dem Feed erteilt.
@@ -4841,6 +4853,11 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
             QKERN_RUNTIME_MODE: "postgres",
             QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
             QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            // Seit 2.89 raeumt derselbe Prozess die abgelaufenen
+            // Einmal-Artefakte von Project Auth auf, und dafuer braucht er die
+            // Auth-Verbindung. Ohne sie startet er nicht -- das ist Absicht und
+            // gehoert damit auch in jeden Fall, der ihn wirklich startet.
+            QKERN_AUTH_DATABASE_URL: authUrl!,
             QKERN_WEBHOOK_VAULT_KV_URL: vaultKvUrl!,
             QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
           },
@@ -7973,6 +7990,11 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
             QKERN_RUNTIME_MODE: "postgres",
             QKERN_STATEMENT_ENCRYPTION_KEY: "0".repeat(64),
             QKERN_RUNTIME_DATABASE_URL: runtimeUrl!,
+            // Seit 2.89 raeumt derselbe Prozess die abgelaufenen
+            // Einmal-Artefakte von Project Auth auf, und dafuer braucht er die
+            // Auth-Verbindung. Ohne sie startet er nicht -- das ist Absicht und
+            // gehoert damit auch in jeden Fall, der ihn wirklich startet.
+            QKERN_AUTH_DATABASE_URL: authUrl!,
             QKERN_WEBHOOK_VAULT_KV_URL: vaultKvUrl!,
             QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
           },
@@ -9072,6 +9094,290 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+  it("(2.89) removes exactly the long-expired one-time artefacts, keeps the fresh ones, keeps a code whose token still lives, and lets only the auth role delete", async () => {
+    // Was abgelaufen ist, verschwindet auch (2.89), gegen die echte Datenbank.
+    //
+    // Echt ist alles: echte Zeilen in `project_auth_one_time_tokens`,
+    // `project_auth_oauth_codes` und `project_auth_oauth_tokens`, die jede
+    // CHECK-Bedingung ihrer Migration erfuellen, der echte Postgres-Halter aus
+    // dem Produktcode, der echte Aufraeumer, den der Compute-Prozess betreibt,
+    // und die echte Auth-Verbindung, also die Rolle `qkern_auth`.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.82: Was unter einer
+    // Organisation haengt, faellt mit ihr, und diese hier wird am Ende wieder
+    // geloescht.
+    const sweepOwner = randomUUID();
+    const sweepOrganization = randomUUID();
+    const sweepProject = randomUUID();
+    const sweepScope = {
+      organizationId: sweepOrganization, projectId: sweepProject,
+      environment: "development" as const,
+    };
+    const hash = () => randomBytes(32).toString("base64url");
+    // **Ein** Bezugspunkt fuer alle Zeiten, und alles wird von ihm aus
+    // gerechnet. Zwei Aufrufe von `Date.now()` liegen Mikrosekunden
+    // auseinander, und die Laufzeitbedingungen aus 0062 sind scharf: Ein Code
+    // darf hoechstens fuenf Minuten und ein Token hoechstens zwoelf Stunden
+    // nach seiner Entstehung ablaufen. Mit zwei Bezugspunkten waere eine Zeile
+    // gelegentlich um eine Mikrosekunde zu lang, und der Fall fiele aus einem
+    // Grund, der nichts mit dem Aufraeumer zu tun hat.
+    const base = Date.now();
+    const at = (hours: number) => new Date(base + hours * 3_600_000);
+    const plus = (from: Date, ms: number) => new Date(from.getTime() + ms);
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [sweepOwner, `sweep-owner-${sweepOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Expiry Sweep 2.89', $2, $3)`,
+    [sweepOrganization, `expiry-sweep-${sweepOrganization}`, sweepOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Expiry Sweep 2.89', $3, 'test', 'ready', $4)`,
+    [sweepProject, sweepOrganization, `expiry-sweep-${sweepProject}`, sweepOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [sweepOrganization, sweepProject, `managed:${sweepProject}`]);
+
+    const appUser = randomUUID();
+    await owner.query(`INSERT INTO project_auth_users
+      (id, organization_id, project_id, environment, email, password_hash, email_verified_at)
+      VALUES ($1, $2, $3, 'development', $4, '$argon2id$integration-only', now())`,
+    [appUser, sweepOrganization, sweepProject, `sweep-user-${appUser}@example.test`]);
+    const client = randomUUID();
+    await owner.query(`INSERT INTO project_auth_oauth_clients
+      (id, organization_id, project_id, environment, name, redirect_uris, scopes)
+      VALUES ($1, $2, $3, 'development', 'expiry-sweep-app',
+              ARRAY['https://app.test/zurueck'], ARRAY['identity:read'])`,
+    [client, sweepOrganization, sweepProject]);
+
+    // --- Die Einmal-Token, vier Stueck mit vier verschiedenen Schicksalen ---
+    //
+    // `ottAncientConsumed` und `ottAncientPasskey` sind vor zwei Tagen
+    // abgelaufen. Der verbrauchte ist ausdruecklich dabei: Der Aufraeumer
+    // schneidet am Ablauf und nicht am Verbrauch, und beide Zeilen sollen
+    // gleich behandelt werden, sobald der Ablauf lange genug her ist.
+    // `ottRecent` ist vor zwei Stunden abgelaufen und muss die erste Runde
+    // ueberleben; `ottValid` gilt noch und muss jede Runde ueberleben.
+    const ottAncientConsumed = randomUUID();
+    const ottAncientPasskey = randomUUID();
+    const ottRecent = randomUUID();
+    const ottValid = randomUUID();
+    await owner.query(`INSERT INTO project_auth_one_time_tokens
+      (id, organization_id, project_id, environment, auth_user_id, purpose, token_hash,
+       created_at, expires_at, consumed_at)
+      VALUES
+        ($1, $5, $6, 'development', $7, 'magic_link', $8, $12, $13, $14),
+        ($2, $5, $6, 'development', $7, 'passkey_authentication', $9, $12, $13, NULL),
+        ($3, $5, $6, 'development', $7, 'password_reset', $10, $15, $16, NULL),
+        ($4, $5, $6, 'development', $7, 'email_verification', $11, $17, $18, NULL)`,
+    [ottAncientConsumed, ottAncientPasskey, ottRecent, ottValid,
+      sweepOrganization, sweepProject, appUser,
+      hash(), hash(), hash(), hash(),
+      at(-50), at(-48), at(-49),
+      at(-3), at(-2),
+      at(-1), at(1)]);
+
+    // --- Die Codes und die Token daran ---
+    //
+    // `codeOrphan`: vor zwei Tagen abgelaufen, nie eingeloest. Faellt.
+    // `codeDeadToken`: vor zwei Tagen abgelaufen, das Token daraus ebenfalls.
+    //   Beide fallen, und zwar in dieser Reihenfolge.
+    // `codeLiveToken`: vor zwei Tagen abgelaufen, aber das Token daraus gilt
+    //   noch zehn Stunden. Er bleibt stehen, samt Token. `code_id` haengt mit
+    //   ON DELETE CASCADE am Code; ohne diese Ruecksicht risse der Aufraeumer
+    //   einer Anwendung mitten in der Sitzung den Zugang weg, dem ein Nutzer
+    //   zugestimmt hat.
+    // `codeFresh`: laeuft erst in fuenf Minuten ab. Bleibt.
+    const codeOrphan = randomUUID();
+    const codeDeadToken = randomUUID();
+    const codeLiveToken = randomUUID();
+    const codeFresh = randomUUID();
+    const challenge = createHash("sha256").update(randomBytes(32)).digest("base64url");
+    await owner.query(`INSERT INTO project_auth_oauth_codes
+      (id, organization_id, project_id, environment, client_id, auth_user_id, redirect_uri,
+       scopes, code_hash, code_challenge, code_challenge_method, created_at, expires_at)
+      VALUES
+        ($1, $5, $6, 'development', $7, $8, 'https://app.test/zurueck',
+         ARRAY['identity:read'], $9, $13, 'S256', $14, $15),
+        ($2, $5, $6, 'development', $7, $8, 'https://app.test/zurueck',
+         ARRAY['identity:read'], $10, $13, 'S256', $14, $15),
+        ($3, $5, $6, 'development', $7, $8, 'https://app.test/zurueck',
+         ARRAY['identity:read'], $11, $13, 'S256', $14, $15),
+        ($4, $5, $6, 'development', $7, $8, 'https://app.test/zurueck',
+         ARRAY['identity:read'], $12, $13, 'S256', $16, $17)`,
+    [codeOrphan, codeDeadToken, codeLiveToken, codeFresh,
+      sweepOrganization, sweepProject, client, appUser,
+      hash(), hash(), hash(), hash(), challenge,
+      at(-48), plus(at(-48), 300_000),
+      at(0), plus(at(0), 300_000)]);
+
+    const tokenDead = randomUUID();
+    const tokenLive = randomUUID();
+    await owner.query(`INSERT INTO project_auth_oauth_tokens
+      (id, organization_id, project_id, environment, client_id, auth_user_id, code_id,
+       token_hash, scopes, created_at, expires_at)
+      VALUES
+        ($1, $3, $4, 'development', $5, $6, $7, $9, ARRAY['identity:read'], $11, $12),
+        ($2, $3, $4, 'development', $5, $6, $8, $10, ARRAY['identity:read'], $13, $14)`,
+    [tokenDead, tokenLive, sweepOrganization, sweepProject, client, appUser,
+      codeDeadToken, codeLiveToken, hash(), hash(),
+      at(-48), at(-40), at(-1), at(10)]);
+
+    try {
+      // --- Runde eins: die Frist von 24 Stunden, also der Vorgabewert -------
+      //
+      // Der Aufraeumer laeuft ueber die Auth-Verbindung, weil nur `qkern_auth`
+      // diese drei Tabellen sieht. `batchSize: 1` ist Absicht: So braucht jede
+      // Tabelle mehrere Anweisungen, und der Fall prueft damit auch, dass die
+      // Haeppchen wirklich weiterlaufen statt nach der ersten aufzuhoeren.
+      //
+      // Der Halter liegt hinter einem Mitschnitt, und zwar aus einem Grund:
+      // Der Aufraeumer faengt einen Fehlschlag je Umgebung ab, damit eine
+      // klemmende Umgebung die uebrigen nicht aufhaelt. Eine Null waere danach
+      // von einem Fehler nicht zu unterscheiden. Der Mitschnitt haelt die
+      // Ursache fest, bevor sie verschluckt wird, und der Fall zeigt sie.
+      const causes: string[] = [];
+      const store = recordFailures(new PostgresProjectAuthExpiryStore(auth), causes);
+      const firstRound = await new ProjectAuthExpiryRetentionRuntime({
+        store, scopes: [sweepScope], graceMs: 86_400_000, batchSize: 1, maxBatches: 10,
+      }).runOnce();
+      expect(causes, "Der Aufraeumer hat einen Fehlschlag verschluckt").toEqual([]);
+      expect(firstRound).toEqual({ oneTimeTokens: 2, oauthTokens: 1, oauthCodes: 2 });
+
+      const afterFirst = await owner.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_one_time_tokens
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+          ORDER BY expires_at`, [sweepOrganization, sweepProject]);
+      // Der vor zwei Stunden abgelaufene bleibt: Er kann noch Gegenstand einer
+      // Fehlersuche sein, und genau dafuer gibt es die Frist.
+      expect(afterFirst.rows.map((row) => row.id)).toEqual([ottRecent, ottValid]);
+
+      const codesAfterFirst = await owner.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_oauth_codes
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+          ORDER BY expires_at`, [sweepOrganization, sweepProject]);
+      expect(codesAfterFirst.rows.map((row) => row.id)).toEqual([codeLiveToken, codeFresh]);
+
+      const tokensAfterFirst = await owner.query<{ id: string; code_id: string }>(
+        `SELECT id::text AS id, code_id::text AS code_id FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+          ORDER BY expires_at`, [sweepOrganization, sweepProject]);
+      expect(tokensAfterFirst.rows).toEqual([{ id: tokenLive, code_id: codeLiveToken }]);
+
+      // --- Runde zwei: die kuerzeste erlaubte Frist ------------------------
+      //
+      // Eine Minute ist die Untergrenze, die die Konfiguration zulaesst. Jetzt
+      // ist auch der vor zwei Stunden abgelaufene Einmal-Token faellig -- und
+      // der Code mit dem lebenden Token bleibt trotzdem stehen. Das ist der
+      // Punkt der Ruecksicht: Sie haengt nicht daran, dass die Frist laenger
+      // ist als die Laufzeit eines Tokens.
+      const secondRound = await new ProjectAuthExpiryRetentionRuntime({
+        store, scopes: [sweepScope], graceMs: 60_000, batchSize: 1, maxBatches: 10,
+      }).runOnce();
+      expect(secondRound).toEqual({ oneTimeTokens: 1, oauthTokens: 0, oauthCodes: 0 });
+
+      const afterSecond = await owner.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_one_time_tokens
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+          ORDER BY expires_at`, [sweepOrganization, sweepProject]);
+      expect(afterSecond.rows.map((row) => row.id)).toEqual([ottValid]);
+
+      const codesAfterSecond = await owner.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_oauth_codes
+          WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
+          ORDER BY expires_at`, [sweepOrganization, sweepProject]);
+      expect(codesAfterSecond.rows.map((row) => row.id)).toEqual([codeLiveToken, codeFresh]);
+
+      // --- Eine dritte Runde findet nichts mehr ----------------------------
+      //
+      // Sonst waere nicht zu unterscheiden, ob der Aufraeumer aufhoert oder
+      // ob er in jeder Runde dieselben Zeilen noch einmal zaehlt.
+      const thirdRound = await new ProjectAuthExpiryRetentionRuntime({
+        store, scopes: [sweepScope], graceMs: 60_000, batchSize: 1, maxBatches: 10,
+      }).runOnce();
+      expect(thirdRound).toEqual({ oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0 });
+
+      // --- Die Rechte: genau eine Rolle darf loeschen ----------------------
+      // Die Ordnung steht als Zahl in der Liste und nicht im Namen: Wie eine
+      // Datenbank Unterstriche sortiert, haengt an ihrer Collation, und eine
+      // Zusicherung, die daran haengt, prueft die Collation statt die Rechte.
+      const privileges = await owner.query<{ rolname: string; relname: string; may_delete: boolean }>(
+        `SELECT role.rolname, tab.relname,
+                has_table_privilege(role.rolname, tab.relname, 'DELETE') AS may_delete
+           FROM (VALUES (1, 'qkern_auth'), (2, 'qkern_runtime'),
+                        (3, 'qkern_worker'), (4, 'qkern_provisioner')) AS role(ord, rolname),
+                (VALUES (1, 'project_auth_one_time_tokens'), (2, 'project_auth_oauth_codes'),
+                        (3, 'project_auth_oauth_tokens')) AS tab(ord, relname)
+          ORDER BY role.ord, tab.ord`);
+      expect(privileges.rows).toEqual([
+        { rolname: "qkern_auth", relname: "project_auth_one_time_tokens", may_delete: true },
+        { rolname: "qkern_auth", relname: "project_auth_oauth_codes", may_delete: true },
+        { rolname: "qkern_auth", relname: "project_auth_oauth_tokens", may_delete: true },
+        { rolname: "qkern_runtime", relname: "project_auth_one_time_tokens", may_delete: false },
+        { rolname: "qkern_runtime", relname: "project_auth_oauth_codes", may_delete: false },
+        { rolname: "qkern_runtime", relname: "project_auth_oauth_tokens", may_delete: false },
+        { rolname: "qkern_worker", relname: "project_auth_one_time_tokens", may_delete: false },
+        { rolname: "qkern_worker", relname: "project_auth_oauth_codes", may_delete: false },
+        { rolname: "qkern_worker", relname: "project_auth_oauth_tokens", may_delete: false },
+        { rolname: "qkern_provisioner", relname: "project_auth_one_time_tokens", may_delete: false },
+        { rolname: "qkern_provisioner", relname: "project_auth_oauth_codes", may_delete: false },
+        { rolname: "qkern_provisioner", relname: "project_auth_oauth_tokens", may_delete: false },
+      ]);
+
+      // Und dasselbe als Versuch statt als Katalogauskunft: Die
+      // Runtime-Verbindung kommt an diese Tabellen nicht heran.
+      await expect(runtime.query(
+        "DELETE FROM project_auth_one_time_tokens WHERE organization_id = $1",
+        [sweepOrganization])).rejects.toBeTruthy();
+      await expect(runtime.query(
+        "DELETE FROM project_auth_oauth_tokens WHERE organization_id = $1",
+        [sweepOrganization])).rejects.toBeTruthy();
+
+      // Die Gegenprobe zur Rechteliste: Neu hinzugekommen ist DELETE und
+      // sonst nichts. `qkern_auth` darf diese drei Tabellen nach wie vor nicht
+      // beliebig umschreiben; ein volles UPDATE auf dem Code waere die
+      // Moeglichkeit, einen Verbrauchsvermerk samt Pruefsumme zu faelschen.
+      const unchanged = await owner.query<{
+        code_update: boolean; code_column_update: boolean;
+        token_update: boolean; token_column_update: boolean; token_insert: boolean;
+      }>(
+        `SELECT has_table_privilege('qkern_auth', 'project_auth_oauth_codes', 'UPDATE')
+                  AS code_update,
+                has_any_column_privilege('qkern_auth', 'project_auth_oauth_codes', 'UPDATE')
+                  AS code_column_update,
+                has_table_privilege('qkern_auth', 'project_auth_oauth_tokens', 'UPDATE')
+                  AS token_update,
+                has_any_column_privilege('qkern_auth', 'project_auth_oauth_tokens', 'UPDATE')
+                  AS token_column_update,
+                has_table_privilege('qkern_auth', 'project_auth_oauth_tokens', 'INSERT')
+                  AS token_insert`);
+      // Am Code gibt es UPDATE nur auf einer einzigen Spalte, dem
+      // Verbrauchsvermerk: auf der Tabelle darum falsch, auf einer Spalte
+      // wahr. Am Token gibt es ueberhaupt kein UPDATE, weder so noch so. Und
+      // INSERT ist unveraendert da, sonst haette 0063 mehr angefasst als
+      // gewollt.
+      expect(unchanged.rows[0]).toEqual({
+        code_update: false, code_column_update: true,
+        token_update: false, token_column_update: false, token_insert: true,
+      });
+
+      // Und die Spuren daneben sind unberuehrt: Der Nutzer und der Client
+      // stehen noch da. Der Aufraeumer fasst weder Einwilligungen noch
+      // Schluessel an.
+      const survivors = await owner.query<{ users: string; clients: string }>(
+        `SELECT (SELECT count(*)::text FROM project_auth_users
+                  WHERE organization_id = $1 AND project_id = $2) AS users,
+                (SELECT count(*)::text FROM project_auth_oauth_clients
+                  WHERE organization_id = $1 AND project_id = $2) AS clients`,
+        [sweepOrganization, sweepProject]);
+      expect(survivors.rows[0]).toEqual({ users: "1", clients: "1" });
+    } finally {
+      await owner.query("DELETE FROM organizations WHERE id = $1", [sweepOrganization])
+        .catch(() => undefined);
+      await owner.query("DELETE FROM users WHERE id = $1", [sweepOwner]).catch(() => undefined);
+    }
+  }, 60_000);
 
 });
 
@@ -9149,6 +9455,41 @@ function healthyInput(overrides: Partial<HealthAdvisorInput>): HealthAdvisorInpu
     realtime: { configured: true },
     vault: { connected: true },
     ...overrides,
+  };
+}
+
+/**
+ * Haelt fest, woran der Aufraeumer (2.89) gescheitert ist.
+ *
+ * Er selbst faengt jeden Fehlschlag je Umgebung ab und meldet nach aussen nur
+ * einen festen Code -- richtig so, denn die Ursache kann eine Datenbankmeldung
+ * tragen und gehoert nicht ins Prozesslog. Im Fall darf sie aber nicht
+ * verschwinden: Sonst waere eine Runde, in der nichts faellig war, von einer,
+ * in der alles scheiterte, nicht zu unterscheiden.
+ */
+function recordFailures(
+  store: ProjectAuthExpiryStore, causes: string[],
+): ProjectAuthExpiryStore {
+  const watch = <Args extends unknown[]>(step: (...args: Args) => Promise<number>) =>
+    async (...args: Args): Promise<number> => {
+      try {
+        return await step(...args);
+      } catch (error) {
+        // Mit Ursachenkette: Der Produktcode verpackt eine Datenbankmeldung
+        // absichtlich in `PersistenceError`, und die Verpackung allein
+        // ("The database operation failed.") sagt einem Fall gar nichts.
+        const chain: string[] = [];
+        for (let current: unknown = error; current instanceof Error; current = current.cause) {
+          chain.push(current.message);
+        }
+        causes.push(chain.join(" <- ") || String(error));
+        throw error;
+      }
+    };
+  return {
+    deleteExpiredOneTimeTokens: watch(store.deleteExpiredOneTimeTokens.bind(store)),
+    deleteExpiredOAuthTokens: watch(store.deleteExpiredOAuthTokens.bind(store)),
+    deleteExpiredOAuthCodes: watch(store.deleteExpiredOAuthCodes.bind(store)),
   };
 }
 

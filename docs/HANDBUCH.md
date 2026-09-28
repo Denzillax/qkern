@@ -3754,6 +3754,80 @@ Die Console zeigt daraufhin je Drain, wann er zuletzt weitergeleitet hat und
 bis zu welcher Position — und „noch nie", solange nichts hinausgegangen ist.
 Der Prozess nennt den Sammler in seiner Startzeile.
 
+#### Abgelaufene Einmal-Artefakte aufräumen
+
+Seit `2.63.0` räumt derselbe Compute-Prozess auf, was in Project Auth abgelaufen
+ist. Drei Tabellen halten Dinge, die genau einmal und nur kurz gelten:
+
+* `project_auth_one_time_tokens` (Bestätigungslink, Magic Link,
+  Passwort-Reset, OIDC-Zustand, MFA-Herausforderung und seit `2.79.0` die
+  Passkey-Herausforderungen),
+* `project_auth_oauth_codes`,
+* `project_auth_oauth_tokens`.
+
+Jede Prüfung sieht auf die Uhr, eine abgelaufene Zeile gilt also nicht mehr.
+Gelöscht hat sie trotzdem nie jemand, und die Migration `0062` hat das offen
+hingeschrieben, statt einen Auftrag zu behaupten, der nicht läuft. Jetzt gibt es
+ihn.
+
+**Er läuft, wenn Sie ihn nicht abschalten**, anders als Brücke und Sammler
+darüber. Der Unterschied hat einen Grund: Die beiden Sammler schicken Daten ins
+Internet, dieser Aufräumer löscht Zeilen in derselben Datenbank. Er braucht die
+Auth-Verbindung, weil nur die Rolle `qkern_auth` diese drei Tabellen überhaupt
+sieht; Migration `0063` gibt ihr das `DELETE` und keiner anderen Rolle. Fehlt
+`QKERN_AUTH_DATABASE_URL`, **startet der Prozess nicht**:
+
+```powershell
+$env:QKERN_AUTH_DATABASE_URL="postgresql://qkern_auth_app:<passwort>@localhost:5432/qkern_control"
+npm run worker:compute
+# Oder ausdrücklich ohne ihn:
+$env:QKERN_COMPUTE_AUTH_RETENTION_ENABLED="false"
+```
+
+**Die Frist nach dem Ablauf beträgt 24 Stunden**
+(`QKERN_COMPUTE_AUTH_RETENTION_GRACE_MS`), und die Zahl ist eine Entscheidung,
+keine Rundung. Eine Zeile, die vor einer Sekunde abgelaufen ist, ist der
+Gegenstand der Fehlersuche, die gerade anfängt („mein Magic Link ging nicht",
+„der OAuth-Ablauf brach beim Einlösen ab"). Ist sie weg, sieht ein abgelaufener
+Code aus wie ein erfundener, und genau diesen Unterschied will ein Betreiber
+sehen. 24 Stunden sind länger als die längste Lebensdauer, die eines dieser
+Artefakte haben kann (zwölf Stunden beim OAuth-Token), und sie decken einen
+ganzen Betriebstag ab. Länger wäre keine Frist mehr, sondern eine zweite
+Aufbewahrung, und die gehört ins Audit und nicht in eine Tabelle mit
+Prüfsummen von Token.
+
+**Gelöscht wird in Häppchen mit Obergrenze**
+(`QKERN_COMPUTE_AUTH_RETENTION_BATCH`, Vorgabe 500 Zeilen je Anweisung,
+`QKERN_COMPUTE_AUTH_RETENTION_MAX_BATCHES`, Vorgabe 10 Anweisungen je Tabelle,
+Umgebung und Runde). Eine gewachsene Tabelle wird so über viele Runden leer,
+statt in einer einzigen langen Anweisung gesperrt zu werden. Der Takt steht in
+`QKERN_COMPUTE_AUTH_RETENTION_INTERVAL_MS` (Vorgabe eine Stunde).
+
+**Was er ausdrücklich stehen lässt**, und jede Auslassung hat ihren Grund:
+
+* **Verbraucht ist kein Löschgrund.** Geschnitten wird am Ablauf, nicht am
+  Verbrauch. Ein verbrauchtes, noch nicht abgelaufenes Token ist die Zeile, an
+  der ein zweites Einlösen auffliegt.
+* **Ein Code, an dem noch ein Token hängt, bleibt stehen.** `code_id` hängt mit
+  `ON DELETE CASCADE` am Code; ohne diese Rücksicht risse der Aufräumer einer
+  Anwendung mitten in der Sitzung den Zugang weg, dem ein Nutzer zugestimmt hat.
+* **Spuren bleiben.** Sitzungen (auch widerrufene und als kompromittiert
+  vermerkte), Nutzer, Passkeys, OAuth-Clients, API- und S3-Schlüssel und jede
+  Audit-Zeile fasst er nicht an. Ein widerrufener Schlüssel ist eine Spur, kein
+  Abfall, und die Audit-Kette ist append-only.
+* **Hochgeladene Objekte und angefangene Uploads** (`project_storage_uploads`)
+  bleiben ebenfalls liegen, obwohl sie eine Ablaufspalte haben. Hinter einer
+  solchen Zeile stehen Bytes bei einem Anbieter; sie wegzuräumen, ohne die Bytes
+  zu betrachten, wäre der stille Verlust ihrer einzigen Spur. Das bleibt offen
+  und steht hier, weil es ehrlicher ist als ein Aufräumer, der mehr anfasst, als
+  er verantworten kann.
+* `project_auth_rate_counters` räumt der Auth-Dienst seit `2.56.0` selbst auf.
+
+Der Prozess meldet je Runde und Umgebung `compute.auth_retention_round` mit drei
+Zahlen, je Tabelle einer, und dem Index der Umgebung in Ihrer Scope-Liste. Keine
+Id, keine Prüfsumme, keine Adresse, kein Rücksprungziel. Eine Runde ohne fällige
+Zeile schweigt. Und der Prozess nennt den Aufräumer in seiner Startzeile.
+
 ### Branches: Umgebungen sind keine Zweige
 
 Seit `2.60.0` sind **Branches** und **Branches → Merge-Anfragen** keine

@@ -75,6 +75,10 @@ try {
     // Ereignisse des Projekts nach draussen; ob er laeuft, gehoert in die
     // Startzeile und nicht in eine Vermutung.
     + (runtime.dashboardWebhookCollector ? " and the dashboard webhook collector" : "")
+    // Und derselbe Satz fuer den Aufraeumer abgelaufener Einmal-Artefakte
+    // (2.89). Er loescht Zeilen; dass er laeuft, gehoert in die Startzeile und
+    // nicht in eine Vermutung.
+    + (runtime.authRetention ? " and the auth expiry retention sweep" : "")
     + (bound ? ` (probe on http://${bound.host}:${bound.port}/ready)` : ""),
   );
   runtime.scopes.length > 0 && probe?.observer.runtimeStarted();

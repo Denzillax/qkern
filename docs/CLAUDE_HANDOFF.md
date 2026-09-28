@@ -73,6 +73,28 @@ Grossbuchstaben.
   entfernt wird in der Anwendung des Nutzers (`auth/passkeys`).
 
 - Neu in diesem Zweig: 2.78 (Zweig `slice/s3keys`) **S3-Zugang gibt Schlüssel
+- Neu in diesem Zweig: 2.89 (Zweig `slice/cleanup`) **Was abgelaufen ist,
+  verschwindet auch.** Migration `0063_project_auth_expiry_retention.sql` gibt
+  `qkern_auth` das `DELETE` auf `project_auth_one_time_tokens`,
+  `project_auth_oauth_codes` und `project_auth_oauth_tokens` (und keiner anderen
+  Rolle) und legt je einen Index auf die Ablaufspalte. Der Aufraeumer wohnt im
+  **vorhandenen** Compute-Prozess, nicht in einem neuen: Ein zweiter
+  Dauerprozess waere eine zweite Stelle, die jemand starten muss, und dieser
+  Prozess betreibt bereits einen Aufraeumer (Webhook-Zustellungen). Er laeuft
+  ueber die Auth-Verbindung, weil nur `qkern_auth` diese Tabellen sieht; fehlt
+  `QKERN_AUTH_DATABASE_URL`, startet der Prozess nicht, statt still nichts zu
+  tun. **Frist nach dem Ablauf: 24 Stunden** -- laenger als die laengste
+  Lebensdauer eines dieser Artefakte (zwoelf Stunden beim OAuth-Token) und lang
+  genug fuer einen Betriebstag Fehlersuche. Geloescht wird in Haeppchen mit
+  Obergrenze. **Bewusst stehen bleiben**: verbrauchte, aber noch nicht
+  abgelaufene Zeilen (an ihnen fliegt ein zweites Einloesen auf), ein Code mit
+  noch lebendem Token (`code_id` haengt mit `ON DELETE CASCADE` am Code),
+  Sitzungen, Passkeys, Clients, API- und S3-Schluessel und jede Audit-Zeile.
+  **Offen**: `project_storage_uploads` hat eine Ablaufspalte, wird aber nicht
+  angefasst -- hinter der Zeile stehen Bytes bei einem Anbieter, und die zu
+  verwaisen waere schlimmer als eine wachsende Tabelle. Fall `(2.89)` in
+  `tests/postgres.integration.test.ts`.
+
 - Neu in diesem Zweig: 2.82 (Zweig `slice/oauthserver`) **QKERN gibt selbst
   Token aus: Authorization Code mit PKCE, und nur das.** Der Platzhalter
   `auth-oauth-server` ist echt, Migration
