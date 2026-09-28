@@ -36,12 +36,14 @@ import type {
   ProjectAuthThirdPartyProvider,
 } from "@/lib/server/project-auth/third-party";
 
-import type {
-  ProjectAuthOAuthClient,
-  ProjectAuthOAuthClientDefinition,
-  ProjectAuthOAuthCode,
-  ProjectAuthOAuthScope,
-  ProjectAuthOAuthToken,
+import {
+  projectAuthOAuthConsentCovers,
+  type ProjectAuthOAuthClient,
+  type ProjectAuthOAuthClientDefinition,
+  type ProjectAuthOAuthCode,
+  type ProjectAuthOAuthConsent,
+  type ProjectAuthOAuthScope,
+  type ProjectAuthOAuthToken,
 } from "@/lib/server/project-auth/oauth";
 
 export type ProjectAuthUserPatch = Partial<Pick<ProjectAuthUser,
@@ -276,6 +278,77 @@ export interface ProjectAuthRepository {
    */
   deleteOAuthClient(scope: ProjectAuthScope, clientId: string): Promise<boolean>;
 
+  /* -------------------------------------------------------------- *
+   * Die Zustimmung als Zeile (2.92)
+   * -------------------------------------------------------------- */
+
+  /**
+   * Die Zustimmungen dieser Umgebung, die geltenden und die widerrufenen, je
+   * mit der E-Mail-Adresse des Nutzers, der zugestimmt hat.
+   *
+   * Geordnet nach Zeitpunkt, die juengste zuerst, und bei gleichem Zeitpunkt
+   * nach der Kennung: Eine Liste ohne festgelegte Ordnung waere in der Console
+   * jedes Mal eine andere, und ein Test darauf pruefte die Laune der Datenbank.
+   *
+   * `limit` ist ein Rand und keine Seitennavigation. Der Aufrufer fragt eines
+   * mehr an, als er zeigen will, und sagt dann auf der Seite, dass die Liste
+   * abgeschnitten ist; eine Liste, die stillschweigend endet, waere die
+   * unehrlichste Form von Vollstaendigkeit.
+   */
+  listOAuthConsents(
+    scope: ProjectAuthScope,
+    limit: number,
+  ): Promise<Array<ProjectAuthOAuthConsent & { clientName: string; email: string }>>;
+  /**
+   * Die geltende Zustimmung dieses Nutzers fuer diesen Client mit **genau**
+   * diesen Bereichen, oder `null`.
+   *
+   * Genau, nicht mindestens: Der Grund steht bei
+   * `projectAuthOAuthConsentCovers` in `oauth.ts`.
+   */
+  findOAuthConsent(
+    scope: ProjectAuthScope,
+    clientId: string,
+    userId: string,
+    scopes: ProjectAuthOAuthScope[],
+  ): Promise<ProjectAuthOAuthConsent | null>;
+  /**
+   * Die Zustimmung zu einer Kennung, gleich ob sie noch gilt, oder `null`.
+   *
+   * Der Weg beim Einloesen: Der Code nennt seine Zustimmung, und gefragt wird
+   * genau nach ihr. Nicht noch einmal nach Nutzer, Client und Bereichen, denn
+   * das faende nach einem Widerruf und einer neuen Zustimmung eine **andere**
+   * Zeile, und der Code haengte an der falschen.
+   */
+  findOAuthConsentById(
+    scope: ProjectAuthScope,
+    consentId: string,
+  ): Promise<ProjectAuthOAuthConsent | null>;
+  /** Legt eine Zustimmung an. */
+  createOAuthConsent(
+    scope: ProjectAuthScope,
+    consent: {
+      id: string;
+      clientId: string;
+      userId: string;
+      scopes: ProjectAuthOAuthScope[];
+      grantedAt: Date;
+    },
+  ): Promise<ProjectAuthOAuthConsent>;
+  /**
+   * Widerruft eine Zustimmung. `null` heisst: Es gab sie in dieser Umgebung
+   * nicht, oder sie war schon widerrufen.
+   *
+   * Die Zeile bleibt stehen, sie bekommt nur ihr zweites Datum. Die Tabelle aus
+   * 0064 hat fuer diese Rolle gar kein DELETE, also ist das hier keine
+   * Hoeflichkeit, sondern das Einzige, was geht.
+   */
+  revokeOAuthConsent(
+    scope: ProjectAuthScope,
+    consentId: string,
+    now: Date,
+  ): Promise<ProjectAuthOAuthConsent | null>;
+
   /** Legt einen Code an. Der Code selbst kommt nie hierher, nur seine Pruefsumme. */
   createOAuthCode(
     scope: ProjectAuthScope,
@@ -283,6 +356,7 @@ export interface ProjectAuthRepository {
       id: string;
       clientId: string;
       userId: string;
+      consentId: string;
       redirectUri: string;
       scopes: ProjectAuthOAuthScope[];
       codeHash: string;
@@ -314,6 +388,7 @@ export interface ProjectAuthRepository {
       clientId: string;
       userId: string;
       codeId: string;
+      consentId: string;
       tokenHash: string;
       scopes: ProjectAuthOAuthScope[];
       createdAt: Date;
@@ -330,7 +405,16 @@ export interface ProjectAuthRepository {
   findOAuthTokenByHash(
     scope: ProjectAuthScope,
     tokenHash: string,
-  ): Promise<{ token: ProjectAuthOAuthToken; clientName: string } | null>;
+  ): Promise<{
+    token: ProjectAuthOAuthToken;
+    clientName: string;
+    /**
+     * Die Zustimmung hinter diesem Token, mitgelesen und nicht in einer zweiten
+     * Abfrage (2.92). `null` heisst: Es gibt keine, also ist das Token eines aus
+     * der Zeit vor Migration 0064.
+     */
+    consent: ProjectAuthOAuthConsent | null;
+  } | null>;
 }
 
 export class DuplicateProjectAuthIdentityError extends Error {
@@ -354,6 +438,9 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly thirdParty = new Map<string, { scope: ProjectAuthScope; provider: ProjectAuthThirdPartyProvider }>();
   /** Die OAuth-Clients (2.82), je Eintrag der Scope daneben, wie bei den fremden Anbietern. */
   private readonly oauthClients = new Map<string, { scope: ProjectAuthScope; client: ProjectAuthOAuthClient }>();
+  /** Die Zustimmungen (2.92), je Eintrag der Scope daneben, wie die Clients. */
+  private readonly oauthConsents =
+    new Map<string, { scope: ProjectAuthScope; consent: ProjectAuthOAuthConsent }>();
   /** Die Codes, geschluesselt ueber ihre Pruefsumme: derselbe Zugriffsweg wie in der Datenbank. */
   private readonly oauthCodes = new Map<string, { scope: ProjectAuthScope; code: ProjectAuthOAuthCode }>();
   /** Die ausgegebenen Token, ebenfalls ueber ihre Pruefsumme, mit dem Code daneben. */
@@ -814,20 +901,107 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     for (const [key, token] of this.oauthTokens) {
       if (token.token.clientId === clientId) this.oauthTokens.delete(key);
     }
+    // Und die Zustimmungen dieses Clients, ebenfalls ueber ON DELETE CASCADE
+    // (0064). Das ist der Unterschied zum Widerruf, den die Seite nennt:
+    // Widerruf behaelt die Zeile, Entfernen des Clients nimmt sie mit.
+    for (const [key, consent] of this.oauthConsents) {
+      if (consent.consent.clientId === clientId) this.oauthConsents.delete(key);
+    }
     return true;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Die Zustimmung als Zeile (2.92)
+   * ---------------------------------------------------------------- */
+
+  async listOAuthConsents(scope: ProjectAuthScope, limit: number) {
+    return [...this.oauthConsents.values()]
+      .filter((entry) => sameScope(entry.scope, scope))
+      // Dieselbe Ordnung wie in der Datenbank: der Zeitpunkt zuerst, die
+      // Kennung als Entscheidung bei gleichem Zeitpunkt. Ohne den zweiten
+      // Schluessel haengt die Reihenfolge zweier Zeilen aus derselben
+      // Millisekunde an der Laune der Sortierung.
+      .sort((left, right) => right.consent.grantedAt.getTime() - left.consent.grantedAt.getTime() ||
+        left.consent.id.localeCompare(right.consent.id))
+      .slice(0, Math.max(0, limit))
+      .flatMap((entry) => {
+        const client = this.oauthClients.get(entry.consent.clientId);
+        const user = this.users.get(entry.consent.userId);
+        // Ohne Client oder ohne Nutzer gibt es die Zeile in der Datenbank gar
+        // nicht mehr (beide Fremdschluessel loeschen mit). Hier faellt sie
+        // darum aus der Liste, statt mit einem erfundenen Namen zu erscheinen.
+        if (!client || !user) return [];
+        return [{
+          ...cloneOAuthConsent(entry.consent), clientName: client.client.name, email: user.email,
+        }];
+      });
+  }
+
+  async findOAuthConsent(
+    scope: ProjectAuthScope,
+    clientId: string,
+    userId: string,
+    scopes: ProjectAuthOAuthScope[],
+  ) {
+    const entry = [...this.oauthConsents.values()].find((candidate) =>
+      sameScope(candidate.scope, scope) && candidate.consent.clientId === clientId &&
+      candidate.consent.userId === userId && candidate.consent.revokedAt === null &&
+      projectAuthOAuthConsentCovers(candidate.consent, scopes));
+    return entry ? cloneOAuthConsent(entry.consent) : null;
+  }
+
+  async findOAuthConsentById(scope: ProjectAuthScope, consentId: string) {
+    const entry = this.oauthConsents.get(consentId);
+    if (!entry || !sameScope(entry.scope, scope)) return null;
+    return cloneOAuthConsent(entry.consent);
+  }
+
+  async createOAuthConsent(
+    scope: ProjectAuthScope,
+    consent: {
+      id: string; clientId: string; userId: string;
+      scopes: ProjectAuthOAuthScope[]; grantedAt: Date;
+    },
+  ) {
+    // Der Teilindex aus 0064, hier von Hand: eine geltende Zustimmung je
+    // Nutzer, Client und Bereichsmenge. Diese Fassung ist nicht die Wahrheit im
+    // Betrieb, aber sie soll dieselbe Antwort geben.
+    const clash = [...this.oauthConsents.values()].some((candidate) =>
+      sameScope(candidate.scope, scope) && candidate.consent.clientId === consent.clientId &&
+      candidate.consent.userId === consent.userId && candidate.consent.revokedAt === null &&
+      projectAuthOAuthConsentCovers(candidate.consent, consent.scopes));
+    if (clash) throw new DuplicateProjectAuthIdentityError();
+    const stored: ProjectAuthOAuthConsent = {
+      id: consent.id, clientId: consent.clientId, userId: consent.userId,
+      scopes: [...consent.scopes], grantedAt: new Date(consent.grantedAt), revokedAt: null,
+    };
+    this.oauthConsents.set(consent.id, { scope: { ...scope }, consent: stored });
+    return cloneOAuthConsent(stored);
+  }
+
+  async revokeOAuthConsent(scope: ProjectAuthScope, consentId: string, now: Date) {
+    const entry = this.oauthConsents.get(consentId);
+    if (!entry || !sameScope(entry.scope, scope)) return null;
+    // Nur in eine Richtung, wie der Waechter in 0064: Eine schon widerrufene
+    // Zustimmung laesst sich nicht noch einmal widerrufen und erst recht nicht
+    // wieder oeffnen.
+    if (entry.consent.revokedAt !== null) return null;
+    entry.consent.revokedAt = new Date(now);
+    return cloneOAuthConsent(entry.consent);
   }
 
   async createOAuthCode(
     scope: ProjectAuthScope,
     code: {
-      id: string; clientId: string; userId: string; redirectUri: string;
+      id: string; clientId: string; userId: string; consentId: string; redirectUri: string;
       scopes: ProjectAuthOAuthScope[]; codeHash: string; codeChallenge: string;
       createdAt: Date; expiresAt: Date;
     },
   ) {
     if (this.oauthCodes.has(code.codeHash)) throw new DuplicateProjectAuthIdentityError();
     const stored: ProjectAuthOAuthCode = {
-      id: code.id, clientId: code.clientId, userId: code.userId, redirectUri: code.redirectUri,
+      id: code.id, clientId: code.clientId, userId: code.userId, consentId: code.consentId,
+      redirectUri: code.redirectUri,
       scopes: [...code.scopes], codeChallenge: code.codeChallenge,
       createdAt: new Date(code.createdAt), expiresAt: new Date(code.expiresAt), consumedAt: null,
     };
@@ -846,8 +1020,8 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   async createOAuthToken(
     scope: ProjectAuthScope,
     token: {
-      id: string; clientId: string; userId: string; codeId: string; tokenHash: string;
-      scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
+      id: string; clientId: string; userId: string; codeId: string; consentId: string;
+      tokenHash: string; scopes: ProjectAuthOAuthScope[]; createdAt: Date; expiresAt: Date;
     },
   ) {
     // Die Eindeutigkeit von `code_id` aus 0062, hier von Hand: Aus einem Code
@@ -856,7 +1030,8 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
       candidate.codeId === token.codeId);
     if (clash || this.oauthTokens.has(token.tokenHash)) throw new DuplicateProjectAuthIdentityError();
     const stored: ProjectAuthOAuthToken = {
-      id: token.id, clientId: token.clientId, userId: token.userId, scopes: [...token.scopes],
+      id: token.id, clientId: token.clientId, userId: token.userId, consentId: token.consentId,
+      scopes: [...token.scopes],
       createdAt: new Date(token.createdAt), expiresAt: new Date(token.expiresAt),
     };
     this.oauthTokens.set(token.tokenHash, { scope: { ...scope }, codeId: token.codeId, token: stored });
@@ -868,7 +1043,16 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     if (!entry || !sameScope(entry.scope, scope)) return null;
     const client = this.oauthClients.get(entry.token.clientId);
     if (!client) return null;
-    return { token: cloneOAuthToken(entry.token), clientName: client.client.name };
+    // Die Zustimmung kommt mit, so wie der Name des Clients: Der heisse Weg
+    // soll eine Auskunft sein und nicht drei, und der Dienst soll den Widerruf
+    // nicht in einer zweiten Frage nachholen muessen.
+    const consent = entry.token.consentId === null
+      ? null : this.oauthConsents.get(entry.token.consentId) ?? null;
+    return {
+      token: cloneOAuthToken(entry.token),
+      clientName: client.client.name,
+      consent: consent ? cloneOAuthConsent(consent.consent) : null,
+    };
   }
 }
 
@@ -978,6 +1162,13 @@ function cloneOAuthClient(client: ProjectAuthOAuthClient): ProjectAuthOAuthClien
   return {
     ...client, redirectUris: [...client.redirectUris], scopes: [...client.scopes],
     createdAt: new Date(client.createdAt),
+  };
+}
+
+function cloneOAuthConsent(consent: ProjectAuthOAuthConsent): ProjectAuthOAuthConsent {
+  return {
+    ...consent, scopes: [...consent.scopes], grantedAt: new Date(consent.grantedAt),
+    revokedAt: consent.revokedAt === null ? null : new Date(consent.revokedAt),
   };
 }
 

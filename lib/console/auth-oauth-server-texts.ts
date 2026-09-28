@@ -42,7 +42,27 @@ export const AUTH_OAUTH_TARGET_IS_A_BINDING =
 
 /** Es gibt keine Zustimmungsseite von QKERN. */
 export const AUTH_OAUTH_NO_CONSENT_SCREEN =
-  "Es gibt keine Zustimmungsseite von QKERN. Die Anwendung, in der der Nutzer angemeldet ist, zeigt ihm, was er erlaubt, und ruft danach die Route. Das ist eine Verlagerung, und sie wird hier gesagt statt verschwiegen: QKERN kann nicht beweisen, dass der Nutzer eine Liste gesehen hat. Was QKERN beweisen kann, prüft es: dass der Nutzer angemeldet ist, dass der Client hinterlegt ist, dass das Ziel eines seiner Ziele ist und dass die Bereiche in seinen Bereichen liegen.";
+  "Es gibt keine Zustimmungsseite von QKERN. Die Anwendung, in der der Nutzer angemeldet ist, zeigt ihm, was er erlaubt, und ruft danach die Route. Das ist eine Verlagerung, und sie wird hier gesagt statt verschwiegen: QKERN kann nicht beweisen, dass der Nutzer eine Liste gesehen hat. Eine eigene Seite dafür hiesse, einen Anmeldefluss im Browser zu bauen, und das ist ein eigener Schnitt.";
+
+/** Und was stattdessen in der Datenbank steht. */
+export const AUTH_OAUTH_CONSENT_IS_A_ROW =
+  "Was stattdessen belegt ist: Eine Zustimmung ist eine Zeile. Die Anwendung erteilt sie über eine eigene Route, mit dem Access Token des Nutzers und den Bereichen ausdrücklich genannt, und erst danach gibt QKERN einen Code zu diesen Bereichen heraus. Belegt ist damit, dass ein Aufrufer mit dem gültigen Token dieses Nutzers genau diese Bereiche genannt hat, zu diesem Zeitpunkt, in einer Anfrage, die nichts anderes tut.";
+
+/** Und die Grenze davon, noch einmal deutlich. */
+export const AUTH_OAUTH_CONSENT_PROVES_NOT =
+  "Nicht belegt ist, dass ein Mensch eine Liste gelesen hat. Zwischen der Anwendung und dem Nutzer steht weiterhin nur die Anwendung. Der Unterschied zu vorher ist trotzdem gross: Die Zustimmung ist jetzt eine Tatsache in der Datenbank mit Zeitpunkt und Bereichen statt einer Behauptung, die mit dem Token abläuft.";
+
+/** Was passiert, wenn die Zustimmung fehlt. */
+export const AUTH_OAUTH_CONSENT_REQUIRED =
+  "Ohne Zustimmung gibt es keinen Code. Verlangt eine Anwendung Bereiche, zu denen dieser Nutzer nichts erteilt hat, wird der Anlauf abgewiesen, und zwar mit eigenem Grund und nicht als allgemeine Ablehnung.";
+
+/** Warum genau diese Bereiche und nicht mindestens diese. */
+export const AUTH_OAUTH_CONSENT_EXACT_SCOPES =
+  "Verglichen wird auf genau diese Bereiche und nicht auf mindestens diese. Eine Zustimmung über Lesen und Schreiben deckt einen Anlauf über Lesen allein also nicht. Der Grund ist der Widerruf: Würden mehrere Zeilen passen, entschiede die Reihenfolge der Zeilen, an welcher der Code hängt, und wer widerruft, wüsste nicht, ob er das Token getroffen hat.";
+
+/** Zweimal dasselbe ist einmal. */
+export const AUTH_OAUTH_CONSENT_SAME_TWICE =
+  "Dieselben Bereiche für denselben Client sind keine zweite Zustimmung, sondern dieselbe, und sie behält ihren ursprünglichen Zeitpunkt. Andere Bereiche sind etwas anderes und werden eine zweite Zeile; die erste bleibt stehen und gilt weiter. Sie stillschweigend mit zu widerrufen wäre ein Widerruf, den niemand verlangt hat.";
 
 /* ------------------------------------------------------------------ *
  * Der Client
@@ -192,13 +212,21 @@ export const AUTH_OAUTH_DATA_API_ONLY =
  * Der Widerruf
  * ------------------------------------------------------------------ */
 
-/** Der einzige Widerruf. */
+/** Der grobe Widerruf. */
 export const AUTH_OAUTH_REVOCATION =
-  "Der Widerruf geht über den Client. Wer ihn entfernt, lässt seine Codes und alle seine Token fallen, von allen Nutzern, sofort.";
+  "Der grobe Widerruf geht über den Client. Wer ihn entfernt, lässt seine Codes, alle seine Token und alle seine Zustimmungen fallen, von allen Nutzern, sofort.";
 
-/** Und was er nicht kann. */
-export const AUTH_OAUTH_REVOCATION_COARSE =
-  "Feiner geht es nicht: Eine einzelne Zustimmung eines einzelnen Nutzers zurückzunehmen, gibt es hier nicht. Wer das braucht, entfernt den Client und legt ihn neu an; danach stimmen alle Nutzer wieder zu.";
+/** Der feine Widerruf, je Zustimmung. */
+export const AUTH_OAUTH_REVOCATION_PER_CONSENT =
+  "Der feine Widerruf geht über die einzelne Zustimmung. Er wirkt sofort: Ein Token gilt, weil eine Zeile existiert, und nur, solange seine Zustimmung gilt. Es braucht keinen Lauf, der Token einsammelt, und keine Frist.";
+
+/** Und was der Widerruf mit der Zeile macht. */
+export const AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW =
+  "Die widerrufene Zustimmung bleibt stehen, mit ihrem Zeitpunkt und dem des Widerrufs. Widerrufen ist nicht löschen: Wer widerruft, will die Spur behalten, und die Datenbank gibt für diese Tabelle gar kein Recht zum Löschen. Entfernt jemand dagegen den Client, verschwinden seine Zustimmungen wirklich, und das ist der Unterschied zwischen den beiden Knöpfen auf dieser Seite.";
+
+/** Was der Nutzer selbst nicht kann. */
+export const AUTH_OAUTH_NO_SELF_SERVICE_REVOCATION =
+  "Ein Nutzer kann seine eigene Zustimmung hier nicht selbst zurücknehmen. Es gibt nur diesen Weg über den Betreiber. Eine Seite, auf der ein Nutzer seine Erlaubnisse verwaltet, wäre wieder eine Seite im Browser, und die gehört zu demselben Schnitt wie die fehlende Zustimmungsseite.";
 
 /* ------------------------------------------------------------------ *
  * Was nicht gebaut ist
@@ -222,9 +250,13 @@ export type AuthOAuthOmissionId = keyof typeof AUTH_OAUTH_OMISSION_TEXTS;
 export const AUTH_OAUTH_NO_DISCOVERY =
   "Es gibt kein Dokument unter .well-known/oauth-authorization-server. Eine Anwendung, die diesen Server benutzt, kennt ihn ohnehin, und ein Verzeichnis, das Verfahren aufzählt, die es nicht gibt, wäre eine Zusage ohne Deckung.";
 
-/** Keine eigene Nutzerliste je Client. */
-export const AUTH_OAUTH_NO_GRANT_LIST =
-  "Es gibt keine Liste, welcher Nutzer welchem Client zugestimmt hat. Die Zeilen liegen in der Datenbank, aber keine Ansicht zeigt sie, und keine Route gibt sie heraus. Wer wissen will, was ein Client tut, liest die Audit-Zeilen dieser Umgebung.";
+/** Die Liste je Client, und was sie nicht zeigt. */
+export const AUTH_OAUTH_GRANT_LIST =
+  "Je Client stehen unten seine Zustimmungen: wer zugestimmt hat, zu welchen Bereichen, seit wann, und ob die Zustimmung noch gilt. Kein Token, kein Code, keine Prüfsumme. Was eine Anwendung mit ihrem Zugang wirklich getan hat, steht nicht hier, sondern unter Auth und Audit-Log.";
+
+/** Und der Rand der Liste. */
+export const AUTH_OAUTH_GRANT_LIST_TRUNCATED =
+  "Es gibt mehr Zustimmungen, als diese Seite zeigt. Die Liste ist abgeschnitten, und das steht hier, weil eine Liste, die stillschweigend endet, die unehrlichste Form von Vollständigkeit wäre.";
 
 /** Kein Aufräumer. */
 export const AUTH_OAUTH_NO_CLEANUP =
@@ -265,6 +297,7 @@ export const AUTH_OAUTH_REJECTIONS = {
   client_unknown: "Zu diesem Namen ist in dieser Umgebung kein Client hinterlegt.",
   redirect_uri_unknown: "Dieses Rücksprungziel ist keines der hinterlegten.",
   scope_not_granted: "Der Anlauf verlangt einen Bereich, den dieser Client nicht führt.",
+  consent_missing: "Zu genau diesen Bereichen gibt es keine geltende Zustimmung dieses Nutzers für diesen Client.",
   challenge_invalid: "Die Prüfsumme des Prüftexts hat nicht die Form eines SHA-256 in base64url.",
   challenge_method_unsupported: "Dieser Server kennt nur S256 als Verfahren für die Prüfsumme.",
   state_invalid: "Der state ist zu lang oder enthält Zeichen, die hier nicht vorkommen dürfen.",
@@ -284,6 +317,16 @@ export function authOAuthServerTexts(): string[] {
     AUTH_OAUTH_NO_REDIRECT,
     AUTH_OAUTH_TARGET_IS_A_BINDING,
     AUTH_OAUTH_NO_CONSENT_SCREEN,
+    AUTH_OAUTH_CONSENT_IS_A_ROW,
+    AUTH_OAUTH_CONSENT_PROVES_NOT,
+    AUTH_OAUTH_CONSENT_REQUIRED,
+    AUTH_OAUTH_CONSENT_EXACT_SCOPES,
+    AUTH_OAUTH_CONSENT_SAME_TWICE,
+    AUTH_OAUTH_REVOCATION_PER_CONSENT,
+    AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW,
+    AUTH_OAUTH_NO_SELF_SERVICE_REVOCATION,
+    AUTH_OAUTH_GRANT_LIST,
+    AUTH_OAUTH_GRANT_LIST_TRUNCATED,
     AUTH_OAUTH_PUBLIC_CLIENT,
     AUTH_OAUTH_WHY_NO_SECRET,
     AUTH_OAUTH_NAME_IS_CLIENT_ID,
@@ -313,9 +356,7 @@ export function authOAuthServerTexts(): string[] {
     AUTH_OAUTH_KEY_STILL_REQUIRED,
     AUTH_OAUTH_DATA_API_ONLY,
     AUTH_OAUTH_REVOCATION,
-    AUTH_OAUTH_REVOCATION_COARSE,
     AUTH_OAUTH_NO_DISCOVERY,
-    AUTH_OAUTH_NO_GRANT_LIST,
     AUTH_OAUTH_NO_CLEANUP,
     AUTH_OAUTH_NO_RATE_LIMIT,
     AUTH_OAUTH_NO_CONFIDENTIAL_CLIENT,
