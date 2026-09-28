@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle14-local-run2.log",
+  "commit": "aa76a9d96d928c8e714fd082f433bb60460963aa",
+  "commitSubject": "merge: Drei Einstellungsseiten aus slice/settings",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "325 passed | 38 skipped (363)",
+  "tests": "2274 passed | 303 skipped (2577)",
+  "passed": 2274,
+  "failed": 0,
+  "skipped": 303,
+  "images": []
+}

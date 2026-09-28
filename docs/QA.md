@@ -6139,3 +6139,50 @@ fehlgeschlagen, zweimal reproduziert mit `--maxWorkers=3`.
 Nicht erbracht: Keine Zustimmungsseite von QKERN. Kein Aufraeumer fuer
 abgelaufene Codes und Token. Widerruf nur je Client. Views bleiben in GraphQL
 aussen vor. Im Browser nicht gesehen.
+
+## Welle vierzehn (2.62): die letzten Platzhalter
+
+Fuenf Platzhalterseiten weniger. Von den sechsundzwanzig, mit denen dieser Tag
+begann, sind zwei uebrig, und beide brauchen eine Ablageform, die QKERN nicht
+hat.
+
+Die Pruefung hat jedes Mal etwas anderes ergeben, und keine der fuenf Seiten
+ist geworden, was ihr Platzhalter versprach.
+
+**QKERN fuehrt keinen Katalog seiner Backups.** Keine der 62 Migrationen legt
+eine Tabelle dafuer an, und die einzige echte Quelle ist die signierte
+Drill-Evidenz. Deren Geltungsbereich ist die Control Plane: Der zertifizierte
+Lauf stellt die Kontrollebene wieder her, nicht die Projektdatenbank. Vom Weg
+ins neue Projekt fehlen drei von vier Gliedern: Den Broker-Client gibt es, den
+Dienst dahinter nicht, die Provisioniererrolle hat `NOCREATEDB`, und im
+Produktquelltext steht kein `CREATE DATABASE`. Der Betreiberweg, den der
+Auftrag vermutete, geht darum nicht, und die Seite verneint ihn ausdruecklich,
+statt ihn zu beschreiben.
+
+**Im Realtime-Log liegt nur, was ein Client als Broadcast geschickt hat.**
+Zugestellte Datenbankaenderungen werden je Abonnent mit dessen Anspruechen
+gelesen und nie gemeinsam gespeichert, Presence gar nicht. Verbindungen liegen
+in einer Map im Prozessspeicher. Der Rueckstand ist die Zahl, die im Betrieb
+zaehlt, und er wird in der Datenbank **gezaehlt** statt aus Hoechstwert minus
+Position gerechnet; die Mutationsprobe macht genau diesen Fehler.
+
+**Der Platzhalter zu Compute und Disk war in beide Richtungen falsch.** Die
+Provisionierung ist gebaut und zertifiziert, die versprochene Groesse gibt es
+dagegen nirgends. Bei den Add-ons fehlt keine Oberflaeche, sondern die Form:
+Eine Rechnungszeile hat kein Feld fuer eine Bezeichnung, und die Eindeutigkeit
+je Metrik begrenzt sie auf sechs.
+
+Zwei Nachtraege zum Verfahren. Ein Beispiel muss mitwandern, sonst prueft es
+irgendwann das Gegenteil von dem, was es sagt: Zwei Vertraege benutzten
+`logs-realtime` als Beispiel fuer eine Seite, die es als Startseite nicht geben
+darf, und in 2.61 war es `logs-pooler`. Und ein Fall liegt bewusst in
+`provisioning-port-postgres.integration.test.ts`: derselbe Stack, dieselbe
+Beweiskraft, aber die Datei wird von der Fortschrittstabelle nicht gezaehlt.
+
+Checkpoint `2.62.0` am 28. September 2026: PostgreSQL 17 mit 219 von 219,
+exit 0, zweimal reproduziert; Lokal 2274 bestanden, 0 fehlgeschlagen, zweimal
+reproduziert mit `--maxWorkers=3`.
+
+Nicht erbracht: Zwei Platzhalter bleiben. Die Seite Datenbank, Backups zeigt
+weiterhin einen abgeschalteten Knopf. Die Bindung einer Umgebung bleibt fuer
+die Console unlesbar. Im Browser nicht gesehen.

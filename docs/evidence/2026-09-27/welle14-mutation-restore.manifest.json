@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: eine Migration legt einen Backup-Katalog an",
+  "log": "welle14-mutation-restore.log",
+  "commit": "aa76a9d96d928c8e714fd082f433bb60460963aa",
+  "commitSubject": "merge: Drei Einstellungsseiten aus slice/settings",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 11 passed (12)",
+  "passed": 11,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

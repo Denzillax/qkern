@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.61.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.62.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -230,7 +230,32 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.61.0`
+- Paketversion: `2.62.0`
+- Neuester Slice: 2.62 Die letzten Platzhalter. Von den sechsundzwanzig
+  Platzhalterseiten, mit denen diese Sitzung begann, sind **zwei** uebrig:
+  `storage-analytics` (Iceberg) und `storage-vectors`. Alles andere ist eine
+  echte Seite, und wo es nichts zu zeigen gibt, sagt die Seite das mit Grund.
+
+  **Drei Befunde, die ein naechster Agent kennen sollte.** Erstens: **QKERN
+  fuehrt keinen Katalog seiner Backups.** Keine der 62 Migrationen legt eine
+  Tabelle dafuer an, und der zertifizierte Drill stellt die **Control Plane**
+  wieder her, nicht die Projektdatenbank. Wer "in neues Projekt
+  wiederherstellen" bauen will, braucht zuerst einen Provisionierungsdienst:
+  Den Broker-*Client* gibt es, den Dienst dahinter nicht, die
+  Provisioniererrolle hat `NOCREATEDB`, und im Produktquelltext steht kein
+  `CREATE DATABASE`. Zweitens: **Im Realtime-Log liegt nur, was ein Client als
+  Broadcast geschickt hat.** Zugestellte Datenbankaenderungen werden je
+  Abonnent mit dessen Anspruechen gelesen und nie gemeinsam gespeichert,
+  Presence gar nicht. Verbindungen liegen in einer Map im Prozessspeicher.
+  Drittens: **Eine Rechnungszeile hat kein Feld fuer eine Bezeichnung**, und
+  die Eindeutigkeit je Metrik begrenzt sie auf sechs. Eine Pauschale haette
+  keine Menge und damit keinen Weg zu einem Betrag; deshalb gibt es keine
+  Add-ons und nicht bloss keine Oberflaeche dafuer.
+
+  Der Fall `(2.88)` liegt in `provisioning-port-postgres.integration.test.ts`
+  und nicht in `postgres.integration.test.ts`: Dieselbe Beweiskraft, aber die
+  Datei wird von `status-module-counts-contract` nicht gezaehlt. Im Browser
+  nicht gesehen
 - Neuester Slice: 2.61 Ein Ablauf, eine Sprache, drei ehrliche Antworten.
   **`auth-oauth-server`** ist echt, Migration `0062`: genau ein Ablauf
   (Authorization Code mit PKCE), drei Bereiche, Token immer mit der Rolle

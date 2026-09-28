@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle14-run1.log",
+  "commit": "aa76a9d96d928c8e714fd082f433bb60460963aa",
+  "commitSubject": "merge: Drei Einstellungsseiten aus slice/settings",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 62,
+  "testFiles": "31 passed (31)",
+  "tests": "219 passed (219)",
+  "passed": 219,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

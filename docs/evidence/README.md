@@ -1715,3 +1715,15 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-27/welle13-local-run1.log` | Vitest lokal (Windows) | 2247 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-27/welle13-local-run2.log` | Vitest lokal (Windows) | 2247 bestanden, exit 0, mit `--maxWorkers=3` |
 
+## Läufe zu Release 2.62 (28. September 2026)
+
+| Log | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-27/welle14-run1.log` | PostgreSQL 17 | 219 von 219, exit 0 |
+| `2026-09-27/welle14-run2.log` | PostgreSQL 17 | 219 von 219, exit 0, Wiederholung |
+| `2026-09-27/welle14-mutation-realtimelog.log` | Mutation: der Rückstand wird gerechnet statt gezählt | **218 von 219, exit 1 – absichtlich** |
+| `2026-09-27/welle14-mutation-settings.log` | Mutation: die Laufzeitrolle darf die Bindungen lesen | **218 von 219, exit 1 – absichtlich** |
+| `2026-09-27/welle14-mutation-restore.log` | Mutation: eine Migration legt einen Backup-Katalog an | **11 von 12, exit 1 – absichtlich, ohne Datenbank** |
+| `2026-09-27/welle14-local-run1.log` | Vitest lokal (Windows) | 2274 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-27/welle14-local-run2.log` | Vitest lokal (Windows) | 2274 bestanden, exit 0, mit `--maxWorkers=3` |
+

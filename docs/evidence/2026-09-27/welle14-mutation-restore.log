@@ -1,0 +1,40 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-restore-to-new-project-contract.test.ts (12 tests | 1 failed) 1683ms
+     × finds no table anywhere in the migrations that would hold a backup 45ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-restore-to-new-project-contract.test.ts > console restore to new project contract > finds no table anywhere in the migrations that would hold a backup
+AssertionError: Eine Migration legt jetzt doch eine Backup-Tabelle an: expected [ { …(2) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "migration": "0062_project_auth_oauth_server.sql",
++     "table": "project_database_backups",
++   },
++ ]
+
+ ❯ tests/console-restore-to-new-project-contract.test.ts:168:80
+    166|     expect(created.length).toBeGreaterThan(50);
+    167|     const backupish = created.filter(({ table }) => /backup|restore|sn…
+    168|     expect(backupish, "Eine Migration legt jetzt doch eine Backup-Tabe…
+       |                                                                                ^
+    169|     expect(RESTORE_KNOWLEDGE_TEXTS.no_catalogue.explains)
+    170|       .toContain("Keine Migration legt eine Tabelle für Backups");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 passed (12)
+   Start at  07:23:32
+   Duration  2.65s (transform 534ms, setup 0ms, import 736ms, tests 1.68s, environment 0ms)
+
+
+EXIT=1
