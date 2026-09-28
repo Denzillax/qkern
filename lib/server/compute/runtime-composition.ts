@@ -1,5 +1,5 @@
 import { ConfigurationError } from "@/lib/server/db/errors";
-import { getPostgresPool } from "@/lib/server/db/pool";
+import { getAuthPostgresPool, getPostgresPool } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { CronDispatcher } from "@/lib/server/compute/cron";
 import { PostgresCronRepository } from "@/lib/server/compute/cron-postgres-repository";
@@ -36,6 +36,10 @@ import { EnvWebhookSecretProvider, HmacWebhookSigner } from "@/lib/server/comput
 import { FetchWebhookTransport } from "@/lib/server/compute/webhook-transport";
 import { WebhookDeliverer, type WebhookSignerPort, type WebhookTransportPort } from
   "@/lib/server/compute/webhooks";
+import { ProjectAuthExpiryRetentionRuntime } from
+  "@/lib/server/project-auth/expiry-retention";
+import { PostgresProjectAuthExpiryStore } from
+  "@/lib/server/project-auth/expiry-retention-postgres";
 import { safeRuntimeProbe, type RuntimeProbeObserver } from
   "@/lib/server/operations/runtime-probe";
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
@@ -69,11 +73,19 @@ export type ComputeRuntimeLogEvent = Readonly<{
   event: "compute.cron_round" | "compute.webhook_delivered" | "compute.webhook_failed"
   | "compute.database_webhook_round" | "compute.database_webhook_failed"
   | "compute.log_drain_round" | "compute.log_drain_failed"
-  | "compute.dashboard_webhook_round" | "compute.dashboard_webhook_failed";
+  | "compute.dashboard_webhook_round" | "compute.dashboard_webhook_failed"
+  | "compute.auth_retention_round" | "compute.auth_retention_failed";
   scopeIndex: number;
   dispatched?: number;
   failures?: number;
   failureCode?: string;
+  /**
+   * Was der Aufraeumer abgelaufener Einmal-Artefakte (2.89) entfernt hat:
+   * drei Zahlen, je Tabelle eine. Keine Id, keine Pruefsumme, keine Adresse
+   * und kein Ruecksprungziel -- diese Zeile darf ueberall stehen, wo das
+   * Prozesslog steht.
+   */
+  removed?: Readonly<{ oneTimeTokens: number; oauthTokens: number; oauthCodes: number }>;
   /**
    * Zahl der eingereihten Zustellungen: von der Webhook-Bruecke (2.53), als
    * Ladung des Log-Drain-Sammlers (2.64) oder als Meldung des
@@ -178,6 +190,12 @@ export type ComputeRuntime = {
   readonly logDrainCollector: boolean;
   /** Ob der Dashboard-Webhook-Sammler (2.75) in diesem Prozess laeuft. */
   readonly dashboardWebhookCollector: boolean;
+  /**
+   * Ob der Aufraeumer abgelaufener Einmal-Artefakte (2.89) in diesem Prozess
+   * laeuft. Fuer die Startzeile: Ein Prozess, der ihn stumm laufen liesse,
+   * waere von einem ohne ihn nicht zu unterscheiden.
+   */
+  readonly authRetention: boolean;
 };
 
 /**
@@ -249,6 +267,34 @@ export function createComputeRuntimeFromEnv(
   }
   const scopes = computeScopesFromEnv(env);
   const workerId = workerIdentity(env);
+  // Der Aufraeumer abgelaufener Einmal-Artefakte (2.89) laeuft, wenn ihn
+  // niemand ausdruecklich abschaltet -- wie Cron und die Zustellung daneben,
+  // und anders als Bruecke und Sammler. Der Unterschied hat einen Grund: Die
+  // beiden Sammler schicken Daten ins Internet, dieser Aufraeumer loescht
+  // Zeilen in derselben Datenbank. Ausdruecklich anzuschalten waere hier die
+  // Wiederholung des Fehlers, den dieses Projekt schon dreimal gemacht hat:
+  // gebaut, zertifiziert und untaetig.
+  //
+  // Er braucht die Auth-Verbindung. Fehlt sie, faellt der Start mit einer
+  // Meldung, die sagt, was zu tun ist -- ein stilles Ueberspringen waere genau
+  // der Zustand, den 0062 offen benannt hat.
+  const authRetentionEnabled = env.QKERN_COMPUTE_AUTH_RETENTION_ENABLED !== "false";
+  if (authRetentionEnabled && !env.QKERN_AUTH_DATABASE_URL?.trim()) {
+    throw new ConfigurationError(
+      "The project auth retention sweep needs QKERN_AUTH_DATABASE_URL, "
+      + "or set QKERN_COMPUTE_AUTH_RETENTION_ENABLED=false.");
+  }
+  // 24 Stunden Frist nach dem Ablauf. Die Begruendung steht an der Klasse:
+  // laenger als die laengste Lebensdauer eines dieser Artefakte (zwoelf
+  // Stunden beim OAuth-Token) und lang genug fuer einen ganzen Betriebstag
+  // Fehlersuche.
+  const authRetentionGraceMs = integer(env.QKERN_COMPUTE_AUTH_RETENTION_GRACE_MS,
+    86_400_000, 60_000, 365 * 86_400_000);
+  const authRetentionBatch = integer(env.QKERN_COMPUTE_AUTH_RETENTION_BATCH, 500, 1, 5_000);
+  const authRetentionMaxBatches = integer(
+    env.QKERN_COMPUTE_AUTH_RETENTION_MAX_BATCHES, 10, 1, 1_000);
+  const authRetentionIntervalMs = integer(env.QKERN_COMPUTE_AUTH_RETENTION_INTERVAL_MS,
+    3_600_000, 1_000, 86_400_000);
   const cronIntervalMs = integer(env.QKERN_COMPUTE_CRON_INTERVAL_MS, 30_000, 1_000, 900_000);
   const cronMaxCatchUp = integer(env.QKERN_COMPUTE_CRON_MAX_CATCH_UP, 5, 1, 100);
   const webhookBatch = integer(env.QKERN_COMPUTE_WEBHOOK_BATCH, 5, 1, 10);
@@ -440,11 +486,39 @@ export function createComputeRuntimeFromEnv(
     }),
   }) : undefined;
 
+  // Der Aufraeumer (2.89): dieselben Umgebungen, die dieser Prozess ohnehin
+  // bedient, und die Auth-Verbindung, weil nur `qkern_auth` diese drei Tabellen
+  // sieht. Er wohnt hier und nicht in einem eigenen Prozess, weil ein zweiter
+  // Dauerprozess eine zweite Stelle waere, die jemand starten muss -- und weil
+  // dieser Prozess bereits einen Aufraeumer betreibt (Webhook-Zustellungen).
+  const authRetention = authRetentionEnabled ? new ProjectAuthExpiryRetentionRuntime({
+    store: new PostgresProjectAuthExpiryStore(getAuthPostgresPool(env)),
+    scopes,
+    graceMs: authRetentionGraceMs,
+    batchSize: authRetentionBatch,
+    maxBatches: authRetentionMaxBatches,
+    intervalMs: authRetentionIntervalMs,
+    // Drei Zahlen und der Index der Umgebung. Der Index zeigt in
+    // `QKERN_COMPUTE_SCOPES_JSON`, die der Betreiber selbst gesetzt hat.
+    onPruned: (scopeIndex, removed) => safeComputeLog(dependencies.logger, {
+      event: "compute.auth_retention_round", scopeIndex, removed,
+    }),
+    onFailure: (scopeIndex) => {
+      safeRuntimeProbe(dependencies.probe, "iterationFailed");
+      safeComputeLog(dependencies.logger, {
+        event: "compute.auth_retention_failed", scopeIndex,
+        failureCode: "auth_retention_failed",
+      });
+    },
+    ...(sleep ? { sleep } : {}),
+  }) : undefined;
+
   return {
     scopes,
     databaseWebhookBridge: Boolean(bridgeRuntime),
     logDrainCollector: Boolean(drainRuntime),
     dashboardWebhookCollector: Boolean(dashboardRuntime),
+    authRetention: Boolean(authRetention),
     async run(signal: AbortSignal): Promise<void> {
       const loops: Promise<void>[] = [];
       const stops: Array<() => void> = [];
@@ -464,6 +538,10 @@ export function createComputeRuntimeFromEnv(
       if (retention) {
         stops.push(() => retention.stop());
         loops.push(retention.run());
+      }
+      if (authRetention) {
+        stops.push(() => authRetention.stop());
+        loops.push(authRetention.run());
       }
 
       for (const [scopeIndex, scope] of scopes.entries()) {

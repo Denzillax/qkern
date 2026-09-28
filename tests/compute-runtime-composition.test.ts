@@ -115,4 +115,34 @@ describe("createComputeRuntimeFromEnv", () => {
       ...base, QKERN_COMPUTE_DATABASE_WEBHOOK_POLL_MS: "10",
     })).toThrow(ConfigurationError);
   });
+
+  /**
+   * Der Aufraeumer abgelaufener Einmal-Artefakte (2.89) laeuft, wenn ihn
+   * niemand abschaltet -- aber er braucht die Auth-Verbindung, weil nur
+   * `qkern_auth` die drei Tabellen sieht. Fehlt sie, sagt die Komposition es.
+   * Ein stilles Ueberspringen waere genau der Zustand, den 0062 offen benannt
+   * hat: ein Aufraeumer, den es gibt und der nie laeuft.
+   */
+  it("refuses the auth retention sweep without the auth database boundary", () => {
+    expect(() => createComputeRuntimeFromEnv({ ...base }))
+      .toThrow(/QKERN_AUTH_DATABASE_URL/);
+  });
+
+  it("lets an operator switch the auth retention sweep off, and then asks for nothing", () => {
+    expect(() => createComputeRuntimeFromEnv({
+      ...base,
+      QKERN_COMPUTE_AUTH_RETENTION_ENABLED: "false",
+      QKERN_COMPUTE_WORKER_ID: "worker id!",
+    })).toThrow(/worker identity/);
+  });
+
+  it("refuses an auth retention grace below a minute before opening a pool", () => {
+    // Null Sekunden Frist waere genau die Loeschung, gegen die die
+    // Begruendung des Aufraeumers argumentiert.
+    expect(() => createComputeRuntimeFromEnv({
+      ...base,
+      QKERN_AUTH_DATABASE_URL: "postgresql://qkern_auth_app:x@localhost:5432/qkern_control",
+      QKERN_COMPUTE_AUTH_RETENTION_GRACE_MS: "0",
+    })).toThrow(ConfigurationError);
+  });
 });
