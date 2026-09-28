@@ -7,7 +7,16 @@ import { setConsoleLocale } from "@/components/console/console-i18n";
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
 import { LOCALES } from "@/lib/i18n/locales";
 import { CONSOLE_DISPLAY_DEFAULTS } from "@/lib/console/display-settings";
-import { NAV } from "@/components/console/navigation";
+import { NAV, PLACEHOLDERS, type PlaceholderId } from "@/components/console/navigation";
+import type { Snapshot } from "@/lib/console/console-snapshot";
+import type { AuditEvent, Project } from "@/lib/types";
+import { ActivityView } from "@/components/console/activity-view";
+import { ApprovalView } from "@/components/console/approval-view";
+import { DatabaseView } from "@/components/console/database-view";
+import { OverviewView } from "@/components/console/overview-view";
+import { PlaceholderView } from "@/components/console/placeholder-view";
+import { SettingsView } from "@/components/console/settings-view";
+import { SqlView } from "@/components/console/sql-view";
 import { BillingSettingsView } from "@/components/console/billing-settings-view";
 import { DashboardSettingsView } from "@/components/console/dashboard-settings-view";
 import { InfrastructureView } from "@/components/console/infrastructure-view";
@@ -64,12 +73,13 @@ import { UsageSeriesView } from "@/components/console/usage-series-view";
  *
  * Nicht gerendert wird `console-app.tsx` selbst. Die Schale haengt an
  * `useRouter` aus `next/navigation` und damit an einem Router-Kontext, den es
- * hier nicht gibt; und die vierzehn Ansichten, die in ihr stehen statt in
- * einer eigenen Datei (Overview, TableView, SqlView, AuthView, StorageView,
- * ComputeView, LiveApiView, ActivityView, ApprovalView, UsageView,
- * BackupsView, SettingsView, PlaceholderView, DatabaseView), sind nicht
- * exportiert und von hier aus nicht erreichbar. Sie in eigene Dateien zu
- * ziehen waere ein eigener Schnitt.
+ * hier nicht gibt. Die dreizehn Ansichten, die bis hierher in ihr standen
+ * statt in einer eigenen Datei (Overview, TableView, SqlView, AuthView,
+ * StorageView, ComputeView, LiveApiView, ActivityView, ApprovalView,
+ * UsageView, SettingsView, PlaceholderView, DatabaseView), liegen jetzt
+ * daneben und werden wie alle anderen gerendert. Der Vertrag nannte
+ * urspruenglich vierzehn: `BackupsView` war da schon eine eigene Datei, und
+ * die Liste war an dieser Stelle einen Schnitt zu alt.
  *
  * Attribute werden nicht gelesen. Text, der nur in `placeholder`, `title` oder
  * `aria-label` steht, geht in die Pruefung auf deutsche Reste nicht ein.
@@ -119,6 +129,30 @@ const DEFAULT_PROPS = {
 } satisfies Parameters<typeof PitrView>[0];
 
 /**
+ * Die Schale holt einmal `/api/v1/console` und reicht das Ergebnis an die
+ * Ansichten weiter, die daraus leben. Hier steht dieselbe Antwort als feste
+ * Vorgabe: ein Projekt, ein Ereignis, keine offene Freigabe. Die Zahlen sind
+ * beliebig, die Form ist es nicht, denn sie kommt aus `lib/types`.
+ */
+const PROJECT: Project = {
+  id: PROJECT_ID, organizationId: "org_render_contract", name: "Render Contract", slug: "render-contract",
+  region: "eu-central-1", environment: ENVIRONMENT, status: "ready",
+  databaseSizeMb: 128, storageSizeMb: 2048, apiRequests: 4096, activeUsers: 12,
+};
+
+const AUDIT: AuditEvent[] = [{
+  id: "evt_render_contract", organizationId: PROJECT.organizationId, projectId: PROJECT_ID,
+  environment: ENVIRONMENT, actor: "Codex", action: "schema.read", resource: "public.orders",
+  status: "success", createdAt: "2026-01-02T03:04:05.000Z",
+}];
+
+const SNAPSHOT: Snapshot = {
+  user: { id: "usr_render_contract", email: "contract@example.com" },
+  organization: { id: PROJECT.organizationId, name: "Render Contract", slug: "render-contract" },
+  projects: [PROJECT], changeSets: [], approvals: [], audit: AUDIT,
+};
+
+/**
  * Alles, was mehr oder anderes braucht, steht an dieser einen Stelle. Der
  * Schluessel ist der Name der exportierten Komponente; der Vertrag verlangt
  * weiter unten, dass die Tabelle jede gefundene Komponente deckt, also faellt
@@ -128,7 +162,27 @@ const DEFAULT_PROPS = {
  * Menuepunkte mit vier Reihen, und alle vier werden gerendert.
  */
 const SPECIAL_PROPS: Record<string, ReactElement[]> = {
+  ActivityView: [
+    element(ActivityView, { audit: AUDIT, aiOnly: true }),
+    element(ActivityView, { audit: AUDIT, aiOnly: false }),
+  ],
+  ApprovalView: [element(ApprovalView, { ...DEFAULT_PROPS, approvals: SNAPSHOT.approvals, changes: SNAPSHOT.changeSets, reload: async () => {} })],
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],
+  DatabaseView: [element(DatabaseView, { project: PROJECT, navigate: () => {} })],
+  OverviewView: [element(OverviewView, { snapshot: SNAPSHOT, project: PROJECT, navigate: () => {} })],
+  // Jeder verbliebene Platzhalter, aus derselben Quelle wie die Navigation.
+  // Mit einer echten Seite als `view` gaebe diese Ansicht `null` zurueck und
+  // renderte nichts; sie ist genau fuer die Eintraege da, die es noch nicht
+  // gibt, und genau die stehen in `PLACEHOLDERS`.
+  PlaceholderView: (Object.keys(PLACEHOLDERS) as PlaceholderId[])
+    .map((view) => element(PlaceholderView, { view, navigate: () => {} })),
+  SettingsView: [element(SettingsView, { project: { name: PROJECT.name, id: PROJECT.id }, organizationId: PROJECT.organizationId })],
+  // Zweimal: der Menuepunkt "SQL Editor" und der Menuepunkt "Vorlagen"
+  // oeffnen dieselbe Ansicht, einmal mit zugeklappter und einmal mit
+  // aufgeklappter Vorlagenliste.
+  SqlView: [false, true].map((templatesOpen) => element(SqlView, {
+    ...DEFAULT_PROPS, reload: async () => {}, navigate: () => {}, templatesOpen,
+  })),
   // Zweimal: einmal mit den Vorgaben und einmal mit einer Einstellung, die
   // wirklich etwas verschiebt. Die Vorschau dieser Seite rechnet Datum,
   // Uhrzeit, Zahl und Betrag schon im ersten Durchlauf, also ist eine fremde
@@ -155,7 +209,7 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
 };
 
 /**
- * Diese vier Ansichten oeffnen im Ruhezustand und nicht im Ladezustand, und
+ * Diese zehn Ansichten oeffnen im Ruhezustand und nicht im Ladezustand, und
  * das ist jedes Mal richtig so:
  *
  *   DashboardSettingsView  Das Formular steht vollstaendig in den Requisiten;
@@ -166,9 +220,27 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
  *                          auf "Verbinden", nicht das Oeffnen der Seite.
  *   RealtimePoliciesView   Reiner Text: die Kanalrechte stehen als feste Regel
  *                          im Code, es gibt keine Quelle, die man fragen koennte.
+ *
+ * Und diese sechs kommen aus `console-app.tsx` und holen dort nichts, weil
+ * die Schale schon geholt hat oder weil es nichts zu holen gibt:
+ *
+ *   OverviewView           Kennzahlen, Aktivitaet und Freigaben stehen in den
+ *                          Requisiten; die eine Antwort holt die Schale.
+ *   ActivityView           Dieselben Ereignisse, dieselbe Antwort, nur anders
+ *                          gezeigt.
+ *   SettingsView           Name und IDs stehen in den Requisiten, und
+ *                          Speichern gibt es hier nicht.
+ *   DatabaseView           Reiner Text und ein Verweis auf den Table Editor:
+ *                          die Provisionierung ist nicht verbunden.
+ *   PlaceholderView        Ein Menuepunkt, den es noch nicht gibt, erklaert
+ *                          sich aus `PLACEHOLDERS`. Es gibt nichts zu fragen.
+ *   SqlView                Im Editorfeld steht eine Abfrage, und sie laeuft
+ *                          erst, wenn jemand den Knopf drueckt. Ein
+ *                          Ladezustand beim Oeffnen waere hier eine Luege.
  */
 const OPENS_IDLE = new Set([
   "DashboardSettingsView", "QueryInsightsView", "RealtimeInspectorView", "RealtimePoliciesView",
+  "OverviewView", "ActivityView", "SettingsView", "DatabaseView", "PlaceholderView", "SqlView",
 ]);
 
 /**
@@ -316,10 +388,26 @@ describe("console view render contract", () => {
 
     // Jede Ansicht haengt an der Console. Eine Datei, die niemand einbindet,
     // ist entweder tot oder vergessen; beides soll auffallen.
+    //
+    // Eine Seite (`-view.tsx`) haengt an der Schale selbst, denn sie ist ein
+    // Menuepunkt. Die beiden Bruchstuecke haengen an der Seite, in die sie
+    // gehoeren: `SidebarFlyout` an der Schale, `InvoicesCard` an
+    // `usage-view.tsx`, seit die Nutzung eine eigene Datei ist. Geprueft wird
+    // darum in der Schale und, nur fuer ein Bruchstueck, im ganzen Ordner.
     const app = await readFile(path.join(CONSOLE_DIR, "console-app.tsx"), "utf8");
+    const sources = new Map<string, string>();
+    for (const file of files) sources.set(file, await readFile(path.join(CONSOLE_DIR, file), "utf8"));
     for (const entry of found) {
-      expect(app, `${entry.file}: ${entry.name} wird in console-app.tsx nicht verwendet`)
-        .toContain(`<${entry.name}`);
+      if (isView(entry.file)) {
+        expect(app, `${entry.file}: ${entry.name} wird in console-app.tsx nicht verwendet`)
+          .toContain(`<${entry.name}`);
+        continue;
+      }
+      const users = [...sources.entries()]
+        .filter(([file, source]) => file !== entry.file && source.includes(`<${entry.name}`))
+        .map(([file]) => file);
+      expect(app.includes(`<${entry.name}`) ? [...users, "console-app.tsx"] : users,
+        `${entry.file}: ${entry.name} wird nirgends in components/console verwendet`).not.toEqual([]);
     }
 
     // Und jede Requisitentabelle deckt eine Komponente, die es wirklich gibt.
