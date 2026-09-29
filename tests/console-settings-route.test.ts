@@ -97,9 +97,11 @@ describe("console display settings route", () => {
       [{ language: "es" }, "Diese Sprache gibt es in der Console nicht."],
       [{ formatLocale: "de-AT" }, "Dieses Zahlen- und Datumsformat steht nicht zur Auswahl."],
       [{ timeZone: "Mars/Olympus" }, "Diese Zeitzone kennt die Laufzeit nicht."],
-      // Ein Platzhalter, der noch einer ist: "set-compute" stand hier bis 2.88
-      // und "storage-vectors" bis 2.93; beide sind seitdem echte Seiten.
-      [{ startView: "storage-analytics" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
+      // Einen Platzhalter gibt es seit 2.99 nicht mehr: "set-compute" stand
+      // hier bis 2.88, "storage-vectors" bis 2.93, "storage-analytics" bis
+      // 2.99; alle sind seitdem echte Seiten. Was bleibt, ist der Name, den
+      // es nicht gibt.
+      [{ startView: "storage-iceberg" }, "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden."],
       [{ theme: "sepia" }, "Dieses Aussehen gibt es nicht."],
       ["kein Objekt", "Aus dieser Eingabe lässt sich keine Darstellung bauen."],
     ] as const) {

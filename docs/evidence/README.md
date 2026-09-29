@@ -1783,3 +1783,25 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-29/welle18-local-run2.log` | Vitest lokal (Windows) | 2335 bestanden, exit 0, mit `--maxWorkers=3` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `slice-s3-*` und `data-api-joins-*`.
+
+## Läufe zum Slice `slice/s3complete` (29. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-29/slice-s3c-storage-run1.log` | versitygw und ClamAV | 10 von 10, exit 0 |
+| `2026-09-29/slice-s3c-storage-run2.log` | versitygw und ClamAV | 10 von 10, exit 0, Wiederholung |
+| `2026-09-29/slice-s3c-storage-mutation-chunksig.log` | Mutation: die Blocksignatur wird nicht geprüft | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-29/slice-s3c-storage-mutation-presign.log` | Mutation: Presigned URLs dürfen sieben Tage gelten | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-29/slice-s3c-local-run1.log` | Vitest lokal (Windows) | 2350 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die erste Mutation nimmt die Prüfung der Blocksignatur aus dem `aws-chunked`-Dekoder.
+Genau der Fall `(S3)` fällt an dem verfälschten Block: Der Endpunkt weist ihn noch
+ab, aber mit `400` statt `403`, weil die Prüfsumme im signierten Trailer als zweites
+Schloss greift. Ohne Trailer, wie im lokalen Fall, kommt der verfälschte Block mit
+`200` durch. Die Blocksignatur ist also das einzige Schloss, sobald ein Werkzeug
+`STREAMING-AWS4-HMAC-SHA256-PAYLOAD` ohne Trailer schickt.
+
+Die zweite Mutation hebt die Obergrenze einer Presigned URL von 15 Minuten auf sieben
+Tage. Genau der Fall `(S3-Client)` fällt: Das AWS SDK signiert eine Adresse mit
+`expiresIn: 3600`, und der Endpunkt nimmt sie an statt sie mit
+`AuthorizationQueryParametersError` abzuweisen.

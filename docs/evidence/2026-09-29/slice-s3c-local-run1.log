@@ -1,0 +1,10 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-realtime
+
+
+ Test Files  333 passed | 39 skipped (372)
+      Tests  2350 passed | 316 skipped (2666)
+   Start at  22:47:28
+   Duration  168.72s (transform 36.29s, setup 0ms, import 183.32s, tests 117.83s, environment 127ms)
+
+EXIT=0

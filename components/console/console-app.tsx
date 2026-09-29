@@ -85,6 +85,7 @@ import { RealtimeLogView } from "@/components/console/realtime-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
 import { VectorBucketsView } from "@/components/console/vector-buckets-view";
+import { AnalyticsBucketsView } from "@/components/console/analytics-buckets-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
 import { S3AccessView } from "@/components/console/s3-access-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
@@ -106,7 +107,6 @@ import { ActivityView } from "@/components/console/activity-view";
 import { ApprovalView } from "@/components/console/approval-view";
 import { UsageView } from "@/components/console/usage-view";
 import { SettingsView } from "@/components/console/settings-view";
-import { PlaceholderView } from "@/components/console/placeholder-view";
 import type { Locale } from "@/lib/i18n/locales";
 import { LOCALE_COOKIE } from "@/lib/i18n/locales";
 import {
@@ -354,6 +354,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "storage-s3": return <S3AccessView projectId={props.project.id} environment={props.environment}/>;
     case "storage-vectors": return <VectorBucketsView projectId={props.project.id} environment={props.environment}/>;
+    case "storage-analytics": return <AnalyticsBucketsView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-infrastructure": return <InfrastructureView projectId={props.project.id} environment={props.environment} region={props.project.region} status={props.project.status}/>;
     // Die letzten drei Platzhalter der Einstellungen (2.88). Jede Seite sagt
@@ -415,7 +416,10 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "int-wrappers": return <WrappersView projectId={props.project.id} environment={props.environment}/>;
     // Einstellungen -> Dashboard (2.55): die Darstellung der Console selbst.
     case "set-dashboard": return <DashboardSettingsView settings={props.display} onSaved={props.onDisplayChange}/>;
-    default: return <PlaceholderView view={props.view} navigate={props.navigate}/>;
+    // Seit 2.99 gibt es keinen Platzhalter mehr; jeder Menuepunkt steht oben.
+    // Ein Eintrag, der hier landet, ist ein Fehler in der Navigation, und die
+    // Console zeigt dafuer nichts statt etwas Erfundenes.
+    default: return null;
   }
 }
 

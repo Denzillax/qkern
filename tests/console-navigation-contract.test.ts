@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { NAV, NAV_ENTRIES, PLACEHOLDERS, REAL_VIEWS, groupOf, isPlaceholder, labelOf } from "@/components/console/navigation";
+import { NAV, NAV_ENTRIES, PLACEHOLDERS, REAL_VIEWS, groupOf, isPlaceholder, labelOf, type Placeholder } from "@/components/console/navigation";
 
 /**
  * Die Console-Navigation (2.0) bildet das Routen-Verzeichnis von Supabase
@@ -47,7 +47,8 @@ describe("console navigation contract", () => {
   });
 
   it("gives every placeholder a Supabase name, a backend verdict and a real explanation", () => {
-    for (const [id, entry] of Object.entries(PLACEHOLDERS)) {
+    // Seit 2.99 ist die Tabelle leer; die Pruefung bleibt fuer den naechsten Menuepunkt ohne Seite.
+    for (const [id, entry] of Object.entries(PLACEHOLDERS as Record<string, Placeholder>)) {
       expect(entry.supabase, id).toMatch(/\S/);
       expect(["vorhanden", "teilweise", "fehlt"]).toContain(entry.backend);
       expect(entry.note.length, `${id}: Erklaerung zu kurz`).toBeGreaterThanOrEqual(40);

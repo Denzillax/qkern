@@ -47,15 +47,17 @@ describe("console display settings", () => {
   it("refuses a value it cannot display instead of replacing it silently", () => {
     for (const body of [
       null, "de", [], { language: "es" }, { formatLocale: "de-AT" }, { timeZone: "Mars/Olympus" },
-      { timeZone: "" }, { startView: "storage-analytics" }, { startView: "does-not-exist" }, { theme: "sepia" },
+      { timeZone: "" }, { startView: "does-not-exist" }, { startView: "" }, { theme: "sepia" },
     ]) {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }
-    // Ein Platzhalter ist keine Startseite: Er zeigt keine Daten. Genommen
-    // wird `storage-analytics`, weil `logs-pooler` seit 2.84 eine echte Seite
-    // ist. Ein Beispiel muss mitwandern, sonst prueft es irgendwann das
-    // Gegenteil von dem, was es sagt.
-    expect(() => validateConsoleDisplaySettings({ startView: "storage-analytics" })).toThrow(ConsoleDisplayError);
+    // Ein Platzhalter waere keine Startseite, weil er keine Daten zeigt.
+    // Seit 2.99 gibt es keinen mehr; das Gegenbeispiel war bis dahin
+    // `storage-analytics`, davor `logs-pooler` (bis 2.84) und
+    // `storage-vectors` (bis 2.93). Jedes davon ist jetzt eine echte Seite
+    // und als Startseite erlaubt; was bleibt, ist der unbekannte Name.
+    expect(() => validateConsoleDisplaySettings({ startView: "nicht-verbunden" })).toThrow(ConsoleDisplayError);
+    expect(validateConsoleDisplaySettings({ startView: "storage-analytics" })).toMatchObject({ startView: "storage-analytics" });
     // "branches" war bis 2.81 ein Platzhalter und ist jetzt eine echte Seite;
     // als Startseite ist sie darum erlaubt. Dasselbe gilt seit 2.93 fuer
     // "storage-vectors", das hier bis dahin das Gegenbeispiel war.
