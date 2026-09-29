@@ -252,7 +252,11 @@ export const AUTH_OAUTH_NO_DISCOVERY =
 
 /** Die Liste je Client, und was sie nicht zeigt. */
 export const AUTH_OAUTH_GRANT_LIST =
-  "Je Client stehen unten seine Zustimmungen: wer zugestimmt hat, zu welchen Bereichen, seit wann, und ob die Zustimmung noch gilt. Kein Token, kein Code, keine Prüfsumme. Was eine Anwendung mit ihrem Zugang wirklich getan hat, steht nicht hier, sondern unter Auth und Audit-Log.";
+  "Je Client steht hier die Zahl seiner Zustimmungen. Wer zugestimmt hat, zu welchen Bereichen, seit wann und ob die Zustimmung noch gilt, steht unter Auth → Zustimmungen. Was eine Anwendung mit ihrem Zugang wirklich getan hat, steht unter Auth → Audit-Log.";
+
+/** Wo die ganze Liste steht (2.93). */
+export const AUTH_OAUTH_CONSENTS_OWN_PAGE =
+  "Die vollständige Liste steht unter Auth → Zustimmungen, nach Nutzer geordnet und mit den Token, die auf einer Zustimmung ausgegeben wurden. Dort wird auch eine einzelne Zustimmung zurückgenommen und ein einzelnes Token.";
 
 /** Und der Rand der Liste. */
 export const AUTH_OAUTH_GRANT_LIST_TRUNCATED =
@@ -326,6 +330,7 @@ export function authOAuthServerTexts(): string[] {
     AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW,
     AUTH_OAUTH_NO_SELF_SERVICE_REVOCATION,
     AUTH_OAUTH_GRANT_LIST,
+    AUTH_OAUTH_CONSENTS_OWN_PAGE,
     AUTH_OAUTH_GRANT_LIST_TRUNCATED,
     AUTH_OAUTH_PUBLIC_CLIENT,
     AUTH_OAUTH_WHY_NO_SECRET,

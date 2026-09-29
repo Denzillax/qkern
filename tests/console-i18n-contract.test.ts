@@ -44,6 +44,7 @@ import { missingLogTexts } from "@/lib/console/missing-log-texts";
 import { realtimeLogTexts } from "@/lib/console/realtime-log-texts";
 import { integrationsGraphqlTexts } from "@/lib/console/integrations-graphql-texts";
 import { authOAuthServerTexts } from "@/lib/console/auth-oauth-server-texts";
+import { authOAuthConsentsTexts } from "@/lib/console/auth-oauth-consents-texts";
 import { restoreToNewProjectTexts } from "@/lib/console/restore-to-new-project-texts";
 import { provisioningOrderTexts } from "@/lib/console/provisioning-order-texts";
 import { integrationsServicesTexts } from "@/lib/console/integrations-services-texts";
@@ -204,6 +205,9 @@ async function consoleKeys(): Promise<string[]> {
   // Auth → OAuth-Server (2.82) zeigt Bereiche, Auslässungen und die Gründe
   // einer Ablehnung über t(variable).
   for (const text of authOAuthServerTexts()) keys.add(text);
+  // Auth → Zustimmungen (2.93) zeigt die Liste je Nutzer, die ausgegebenen
+  // Token und den Unterschied zwischen den drei Widerrufen über t(variable).
+  for (const text of authOAuthConsentsTexts()) keys.add(text);
   // Datenbank → In neues Projekt wiederherstellen (2.87) zeigt die vier
   // Glieder der Kette, ihre Zustände und seine Ehrlichkeitssätze über
   // t(variable).

@@ -926,6 +926,68 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
     }
   }
 
+  /* ---------------------------------------------------------------- *
+   * Der Widerruf eines einzelnen Tokens (2.93)
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Die ausgegebenen Token dieser Umgebung, je mit Client und Adresse.
+   *
+   * `token_hash` steht **nicht** in der Auswahl, und das ist keine
+   * Sparsamkeit: Die Liste geht an eine Console, und was dort nicht hin muss,
+   * soll die Datenbank gar nicht erst herausgeben.
+   *
+   * Zwei INNER JOIN, wie bei den Zustimmungen: Ein Token ohne Client und eines
+   * ohne Nutzer gibt es in dieser Datenbank nicht.
+   */
+  async listOAuthTokens(
+    scope: ProjectAuthScope,
+    limit: number,
+  ): Promise<Array<ProjectAuthOAuthToken & { clientName: string; email: string }>> {
+    const result = await query(this.pool, `SELECT ${OAUTH_TOKEN_COLUMNS.split(", ")
+      .map((column) => `t.${column}`).join(", ")}, c.name AS client_name, u.email AS email
+      FROM project_auth_oauth_tokens t
+      JOIN project_auth_oauth_clients c ON c.id = t.client_id
+      JOIN project_auth_users u ON u.id = t.auth_user_id
+      WHERE t.organization_id = $1 AND t.project_id = $2 AND t.environment = $3
+      ORDER BY t.created_at DESC, t.id ASC
+      LIMIT $4`, [...scopeValues(scope), Math.max(0, Math.trunc(limit))]);
+    return result.rows.map((row) => {
+      const clientName = String(row.client_name);
+      if (!PROJECT_AUTH_OAUTH_CLIENT_NAME.test(clientName)) {
+        throw new InvalidRecordError("Invalid project auth oauth client.");
+      }
+      return { ...oauthTokenFromRow(row), clientName, email: String(row.email) };
+    });
+  }
+
+  /**
+   * Der Widerruf genau eines Tokens, und er ist ein DELETE.
+   *
+   * Der Unterschied zur Zustimmung steht in dieser einen Anweisung: Dort ein
+   * UPDATE auf einer Spalte, hier eine Zeile weniger. Ein Token gilt, weil
+   * seine Zeile existiert (0062), also braucht dieser Widerruf keine zweite
+   * Spalte und keine zusaetzliche Bedingung im heissen Weg; eine vergessene
+   * Bedingung waere ein Widerruf, der nicht wirkt.
+   *
+   * Der Code dahinter bleibt stehen und bleibt verbraucht. Aus ihm entsteht
+   * darum auch nach dem Widerruf kein zweites Token: `consumed_at` ist
+   * gesetzt, und `consumeOAuthCode` findet ihn nicht mehr.
+   *
+   * `RETURNING` und nicht `rowCount`, weil der Dienst den Nutzer und die
+   * Bereiche fuer die Audit-Zeile braucht und sie danach nicht mehr lesen
+   * koennte.
+   */
+  async revokeOAuthToken(
+    scope: ProjectAuthScope,
+    tokenId: string,
+  ): Promise<ProjectAuthOAuthToken | null> {
+    const result = await query(this.pool, `DELETE FROM project_auth_oauth_tokens
+      WHERE organization_id = $1 AND project_id = $2 AND environment = $3 AND id = $4
+      RETURNING ${OAUTH_TOKEN_COLUMNS}`, [...scopeValues(scope), tokenId]);
+    return result.rows[0] ? oauthTokenFromRow(result.rows[0]) : null;
+  }
+
   async findOAuthTokenByHash(
     scope: ProjectAuthScope,
     tokenHash: string,

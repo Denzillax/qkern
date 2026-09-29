@@ -2073,12 +2073,15 @@ Minute reicht für ein Token, das eine Stunde gilt.
 Knöpfen: Der Widerruf behält die Zeile, das Entfernen des Clients nimmt seine
 Zustimmungen wirklich mit.
 
-**Was die Console zeigt.** Unter **Auth → OAuth-Server** steht je Client, wer
-zugestimmt hat (E-Mail-Adresse), zu welchen Bereichen, seit wann, ob die
-Zustimmung noch gilt, und ein Knopf, der genau diese eine zurücknimmt, mit
-Vorschau davor. Kein Token, kein Code, keine Prüfsumme; was eine Anwendung mit
-ihrem Zugang wirklich getan hat, steht unter **Auth → Audit-Log**. Die Liste
-ist bei 200 Zeilen abgeschnitten, und die Seite sagt es dann.
+**Was die Console zeigt.** Seit `2.65.0` hat die Liste eine eigene Seite:
+**Auth → Zustimmungen**. Dort steht je Nutzer, welchem Client er was erlaubt
+hat, seit wann, ob die Zustimmung noch gilt, und ein Knopf, der genau diese
+eine zurücknimmt, mit Vorschau davor. Unter **Auth → OAuth-Server** steht
+daneben je Client nur noch die Zahl seiner Zustimmungen und der Verweis auf
+diese Seite; beide lesen dieselbe Antwort derselben Route. Kein Token, kein
+Code, keine Prüfsumme; was eine Anwendung mit ihrem Zugang wirklich getan hat,
+steht unter **Auth → Audit-Log**. Die Liste ist bei 200 Zeilen abgeschnitten,
+und die Seite sagt es dann.
 
 **Was diese Fläche weiterhin nicht hält.** Keine Zustimmungsseite von QKERN,
 siehe oben. Keinen Weg, auf dem ein Nutzer seine eigene Zustimmung selbst
@@ -2100,6 +2103,48 @@ unverändertem Zeitpunkt stehen bleibt. Dazu die Abweisung eines Anlaufs nach
 einem Bereich, dem niemand zugestimmt hat, die zweite Zustimmung, die dieselbe
 Zeile ist, der zweite Widerruf, der nichts mehr findet, und die Probe, dass
 weder `DELETE` noch ein Zurücksetzen des Widerrufs an der Datenbank vorbeikommt.
+
+### Ein einzelnes Token widerrufen
+
+Seit `2.65.0` lässt sich genau ein ausgegebenes Token zurücknehmen, über
+`DELETE /auth/admin/oauth-tokens/{tokenId}`.
+
+**Die Lücke davor.** Ein Token fiel nur zusammen mit etwas Grösserem: mit
+seiner Zustimmung, also mit allen Token derselben Erlaubnis, oder mit seinem
+Client, also mit allen Token aller Nutzer. Ein einzelnes Token in falschen
+Händen war nur zu stoppen, indem man einem Nutzer seine Erlaubnis nahm oder
+eine ganze Anwendung abschaltete.
+
+**Hier ist Widerruf wirklich Löschen**, und das ist der Unterschied zur
+Zustimmung. Ein Token gilt, weil eine Zeile existiert; fällt die Zeile, gilt es
+ab der nächsten Anfrage nicht mehr. Eine Spalte `revoked_at` am Token wäre eine
+zusätzliche Bedingung im heissen Weg, die jemand vergessen kann, während eine
+fehlende Zeile niemand vergessen kann. Das `DELETE`-Recht liegt seit `0063` bei
+`qkern_auth`, weil der Aufräumer abgelaufene Zeilen entfernt; dieser Widerruf
+braucht deshalb keine eigene Migration.
+
+**Die Zustimmung bleibt gültig.** Wer ein Token zurückzieht, sagt, dass dieses
+Geheimnis nichts mehr taugt. Die Anwendung darf sich mit derselben Erlaubnis
+ein neues holen. Wer das verhindern will, widerruft die Zustimmung. Der Code
+hinter dem widerrufenen Token bleibt verbraucht, aus ihm entsteht also kein
+zweites.
+
+**Die Spur bleibt.** Die Zustimmung steht weiter da, mit Nutzer, Bereichen und
+Zeitpunkt, und der Widerruf schreibt `project_auth.oauth_token.revoked` mit
+Nutzer und Bereichen. Das Token selbst landet nirgends in der Kette.
+
+**Was die Console zeigt.** Unter **Auth → Zustimmungen** stehen unter jeder
+Zustimmung die Token, die auf ihr ausgegeben wurden: wann, bis wann, zu welchen
+Bereichen, und je ein Knopf mit Vorschau. Abgelaufene stehen mit da, denn ihre
+Zeilen sind bis zum Aufräumer wirklich vorhanden. Wann ein Token zuletzt
+benutzt wurde, steht nirgends, weil die Prüfung den Zeitpunkt nicht schreibt.
+
+Zertifiziert ist das im Fall `(2.93)` in `tests/postgres.integration.test.ts`:
+zwei echte Token auf derselben Zustimmung, der Widerruf des einen, das andere
+gilt weiter, die Zeile ist wirklich weg, die Zustimmung steht unverändert, ein
+drittes Token entsteht danach ohne neue Zustimmung, der verbrauchte Code gibt
+kein zweites her, der zweite Widerruf findet nichts, und `DELETE` hat auf
+dieser Tabelle nur die Auth-Rolle.
 
 ## 7. Project Storage
 

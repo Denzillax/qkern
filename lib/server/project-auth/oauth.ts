@@ -205,6 +205,10 @@ export const PROJECT_AUTH_OAUTH_STATE = /^[A-Za-z0-9._~-]{1,256}$/;
 export const PROJECT_AUTH_OAUTH_BOUNDS = {
   clients: { max: 10 },
   consents: { max: 200 },
+  // Der Rand der Tokenliste in der Console (2.93). Dieselbe Bauart wie bei den
+  // Zustimmungen: Der Aufrufer fragt eines mehr an und sagt auf der Seite, dass
+  // die Liste abgeschnitten ist.
+  tokens: { max: 200 },
   redirectUris: { min: 1, max: 5 },
   redirectUriLength: 512,
   codeTtlSeconds: 60,

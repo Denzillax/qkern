@@ -380,6 +380,41 @@ export interface ProjectAuthRepository {
     now: Date,
   ): Promise<ProjectAuthOAuthCode | null>;
 
+  /**
+   * Die ausgegebenen Token dieser Umgebung, je mit Client und E-Mail-Adresse
+   * (2.93).
+   *
+   * Ohne die Pruefsumme und ohne das Token selbst: Die Liste ist da, damit ein
+   * Betreiber sieht, was gerade offen ist, und nicht, damit jemand daraus eine
+   * Anfrage baut.
+   *
+   * Dieselbe Ordnung und derselbe Rand wie bei den Zustimmungen: das juengste
+   * zuerst, bei gleichem Zeitpunkt nach der Kennung, und der Aufrufer fragt
+   * eines mehr an, als er zeigt.
+   */
+  listOAuthTokens(
+    scope: ProjectAuthScope,
+    limit: number,
+  ): Promise<Array<ProjectAuthOAuthToken & { clientName: string; email: string }>>;
+  /**
+   * Widerruft genau ein Token (2.93). `null` heisst: Es gab es in dieser
+   * Umgebung nicht.
+   *
+   * **Hier ist Widerruf wirklich Loeschen**, und das ist der Unterschied zur
+   * Zustimmung. Ein Token gilt, weil eine Zeile existiert (0062); faellt die
+   * Zeile, gilt es nicht mehr, und es braucht dafuer keine zweite Spalte und
+   * keine zusaetzliche Pruefung im heissen Weg. Was von diesem Token bleibt,
+   * ist die Zustimmung, an der es hing, und die Audit-Zeile des Widerrufs.
+   *
+   * Das Recht dazu liegt seit 0063 bei `qkern_auth`, weil der Aufraeumer
+   * abgelaufene Zeilen entfernt. Eine neue Migration braucht dieser Widerruf
+   * darum nicht.
+   */
+  revokeOAuthToken(
+    scope: ProjectAuthScope,
+    tokenId: string,
+  ): Promise<ProjectAuthOAuthToken | null>;
+
   /** Legt ein ausgegebenes Token an. `code_id` ist eindeutig (Migration 0062). */
   createOAuthToken(
     scope: ProjectAuthScope,
@@ -1036,6 +1071,31 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     };
     this.oauthTokens.set(token.tokenHash, { scope: { ...scope }, codeId: token.codeId, token: stored });
     return cloneOAuthToken(stored);
+  }
+
+  async listOAuthTokens(scope: ProjectAuthScope, limit: number) {
+    return [...this.oauthTokens.values()]
+      .filter((entry) => sameScope(entry.scope, scope))
+      .sort((left, right) => right.token.createdAt.getTime() - left.token.createdAt.getTime() ||
+        left.token.id.localeCompare(right.token.id))
+      .slice(0, Math.max(0, Math.trunc(limit)))
+      .map((entry) => {
+        const client = this.oauthClients.get(entry.token.clientId);
+        const user = this.users.get(entry.token.userId);
+        if (!client || !user) throw new Error("Invalid project auth oauth token.");
+        return { ...cloneOAuthToken(entry.token), clientName: client.client.name, email: user.email };
+      });
+  }
+
+  async revokeOAuthToken(scope: ProjectAuthScope, tokenId: string) {
+    for (const [key, entry] of this.oauthTokens) {
+      if (!sameScope(entry.scope, scope) || entry.token.id !== tokenId) continue;
+      // Wirklich weg, wie in der Datenbank: Ein Token gilt, weil eine Zeile
+      // existiert.
+      this.oauthTokens.delete(key);
+      return cloneOAuthToken(entry.token);
+    }
+    return null;
   }
 
   async findOAuthTokenByHash(scope: ProjectAuthScope, tokenHash: string) {
