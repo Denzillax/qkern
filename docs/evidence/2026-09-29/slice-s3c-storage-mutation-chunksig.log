@@ -1,0 +1,79 @@
+ Container qkern-slice-s3c-minio-1 Running 
+ Container qkern-slice-s3c-clamav-1 Running 
+ Container qkern-slice-s3c-certification-1 Creating 
+ Container qkern-slice-s3c-certification-1 Created 
+Attaching to certification-1
+ Container qkern-slice-s3c-clamav-1 Waiting 
+ Container qkern-slice-s3c-clamav-1 Healthy 
+ Container qkern-slice-s3c-certification-1 Starting 
+ Container qkern-slice-s3c-certification-1 Started 
+certification-1  | 
+certification-1  | added 312 packages, and audited 313 packages in 1m
+certification-1  | 
+certification-1  | 90 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 10 vulnerabilities (6 moderate, 3 high, 1 critical)
+certification-1  | 
+certification-1  | To address issues that do not require attention, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix --force
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New minor version of npm available! 11.5.1 -> 11.20.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0
+certification-1  | npm notice To update run: npm install -g npm@11.20.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@2.66.0 test:storage:provider
+certification-1  | > vitest run tests/project-storage-provider.integration.test.ts tests/project-storage-s3-endpoint.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+certification-1  |  [31m❯[39m tests/project-storage-s3-endpoint.integration.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1815[2mms[22m[39m
+certification-1  | [31m     [31m×[31m (S3) lets a valid pair write, list and read through SigV4, also aws-chunked with signed blocks, and refuses a tampered block, a revoked pair, a wrong signature, a foreign bucket and EICAR[39m[33m 873[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (S3-Client) is spoken to by the AWS SDK for JavaScript over HTTP: buffer put with header checksum, stream put as aws-chunked, list, head, get, range, copy, batch delete, presigned URL, and every refusal by name [33m 932[2mms[22m[39m
+certification-1  |  [32m✓[39m tests/project-storage-provider.integration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 6667[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m uploads, HEAD-verifies, scans and downloads a clean object [33m 1256[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m uploads an object in two resumable parts and rejects a tampered part [33m 626[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m serves a resumable upload through the full service path [33m 3548[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m keeps a multipart object quarantined when the declared checksum lies [33m 463[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m aborts an orphaned provider upload and spares the one a live reservation owns [33m 400[2mms[22m[39m
+certification-1  | 
+certification-1  | [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+certification-1  | 
+certification-1  | [41m[1m FAIL [22m[49m tests/project-storage-s3-endpoint.integration.test.ts[2m > [22mreal versitygw and ClamAV: the S3 endpoint[2m > [22m(S3) lets a valid pair write, list and read through SigV4, also aws-chunked with signed blocks, and refuses a tampered block, a revoked pair, a wrong signature, a foreign bucket and EICAR
+certification-1  | [31m[1mAssertionError[22m: expected 400 to be 403 // Object.is equality[39m
+certification-1  | 
+certification-1  | [32m- Expected[39m
+certification-1  | [31m+ Received[39m
+certification-1  | 
+certification-1  | [32m- 403[39m
+certification-1  | [31m+ 400[39m
+certification-1  | 
+certification-1  | [36m [2m❯[22m tests/project-storage-s3-endpoint.integration.test.ts:[2m138:32[22m[39m
+certification-1  |     [90m136|[39m       [35mreturn[39m copy[33m;[39m
+certification-1  |     [90m137|[39m     }))[33m;[39m
+certification-1  |     [90m138|[39m     [34mexpect[39m(tamperedPut[33m.[39mstatus)[33m.[39m[34mtoBe[39m([34m403[39m)[33m;[39m
+certification-1  |     [90m   |[39m                                [31m^[39m
+certification-1  |     [90m139|[39m     expect(await tamperedPut.text()).toContain("<Code>SignatureDoesNot…
+certification-1  |     [90m140|[39m     expect((await storage.listObjects(admin, scope, "cert-s3", {})).ob…
+certification-1  | 
+certification-1  | [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+certification-1  | 
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+certification-1  | [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m9 passed[39m[22m[90m (10)[39m
+certification-1  | [2m   Start at [22m 20:42:27
+certification-1  | [2m   Duration [22m 11.30s[2m (transform 7.73s, setup 0ms, import 9.36s, tests 8.48s, environment 2ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 1
+ Compose Stopping Aborting on container exit...
+ Container qkern-slice-s3c-certification-1 Stopping 
+ Container qkern-slice-s3c-certification-1 Stopped 
+
+EXIT=1

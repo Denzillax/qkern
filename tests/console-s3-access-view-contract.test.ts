@@ -48,9 +48,14 @@ describe("console S3 access view contract", () => {
     // Ein Paar ohne Geheimnis zaehlt nicht als gueltig.
     expect(source).toContain("!key.revokedAt && key.verifiable");
     // Die Operationen, die die Seite als fehlend nennt, sind die, die der
-    // Endpunkt mit 501 beantwortet.
-    for (const missing of ["Multipart", "Presigned", "Range", "CopyObject", "aws-chunked"]) {
+    // Endpunkt mit 501 beantwortet; die seit 2.99 gebauten stehen bei "Was geht".
+    for (const missing of ["Multipart", "ListObjects in Version 1", "ACLs", "Versionen", "Tags"]) {
       expect(S3_ACCESS_OPERATIONS_MISSING, missing).toContain(missing);
+      expect(S3_ACCESS_OPERATIONS_BUILT, missing).not.toContain(missing);
+    }
+    for (const built of ["Presigned", "Range", "CopyObject", "DeleteObjects", "aws-chunked", "15 Minuten"]) {
+      expect(S3_ACCESS_OPERATIONS_BUILT, built).toContain(built);
+      expect(S3_ACCESS_OPERATIONS_MISSING, built).not.toContain(built);
     }
   });
 

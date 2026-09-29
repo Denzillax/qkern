@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
-import { NAV, PLACEHOLDERS } from "@/components/console/navigation";
+import { NAV, PLACEHOLDERS, type Placeholder } from "@/components/console/navigation";
 import { securityAdvisorTexts } from "@/lib/console/security-advisor-texts";
 import { performanceAdvisorTexts } from "@/lib/console/performance-advisor-texts";
 import { cronLogTexts } from "@/lib/console/cron-log-texts";
@@ -51,6 +51,7 @@ import { integrationsServicesTexts } from "@/lib/console/integrations-services-t
 import { addonsTexts } from "@/lib/console/addons-texts";
 import { backupsTexts } from "@/lib/console/backups-texts";
 import { vectorBucketTexts } from "@/lib/console/vector-buckets-texts";
+import { analyticsBucketTexts } from "@/lib/console/analytics-buckets-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -71,7 +72,8 @@ async function consoleKeys(): Promise<string[]> {
     for (const match of source.matchAll(/(?<![A-Za-z0-9_])t\(("(?:[^"\\]|\\.)*")\)/g)) keys.add(JSON.parse(match[1]) as string);
   }
   for (const group of NAV) { keys.add(group.label); for (const child of group.children ?? []) keys.add(child.label); }
-  for (const entry of Object.values(PLACEHOLDERS)) { keys.add(entry.label); keys.add(entry.note); }
+  // Seit 2.99 leer; die Schleife bleibt fuer den naechsten Menuepunkt ohne Seite.
+  for (const entry of Object.values(PLACEHOLDERS as Record<string, Placeholder>)) { keys.add(entry.label); keys.add(entry.note); }
   // Die Texte des Sicherheitsberaters (2.39) kommen vom Server und laufen als t(variable) durch die Ansicht.
   for (const text of securityAdvisorTexts()) keys.add(text);
   // Dieselbe Lage beim Leistungsberater (2.40).
@@ -232,6 +234,10 @@ async function consoleKeys(): Promise<string[]> {
   // die Schritte, die es braeuchte, und seine Ehrlichkeitssaetze ueber
   // t(variable).
   for (const text of vectorBucketTexts()) keys.add(text);
+  // Storage -> Analytics-Buckets (2.99) zeigt sein Urteil ueber den Server,
+  // was der S3-Zugang kann, die Schritte, die es braeuchte, und seine
+  // Ehrlichkeitssaetze ueber t(variable).
+  for (const text of analyticsBucketTexts()) keys.add(text);
   return [...keys];
 }
 

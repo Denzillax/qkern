@@ -12,7 +12,16 @@ import {
 } from "@/lib/server/project-storage/s3-access-keys";
 import { ProjectStorageS3Endpoint } from "@/lib/server/project-storage/s3-endpoint";
 import { ProjectStorageS3SecretProtector } from "@/lib/server/project-storage/s3-secret-protector";
-import { sha256Hex, signSigV4Request } from "@/lib/server/project-storage/s3-sigv4";
+import {
+  checksumBase64,
+  encodeAwsChunkedBody,
+  presignSigV4Url,
+  sha256Hex,
+  signSigV4Request,
+  STREAMING_SIGNED_PAYLOAD,
+  STREAMING_SIGNED_PAYLOAD_TRAILER,
+  STREAMING_UNSIGNED_PAYLOAD_TRAILER,
+} from "@/lib/server/project-storage/s3-sigv4";
 import { ProjectStorageService } from "@/lib/server/project-storage/service";
 
 /**
@@ -39,7 +48,9 @@ async function harness() {
   const repository = new MemoryProjectStorageRepository();
   const provider = new MemoryProjectStorageProvider("https://objects.qkern.test", () => now);
   const bytesAtProvider = new Map<string, Buffer>();
-  const scanner: ProjectStorageScanner = { async scan() { return "clean"; } };
+  // Das Urteil laesst sich je Fall umstellen: `pending` legt ein Objekt in Quarantaene.
+  const verdict = { value: "clean" as "clean" | "pending" | "infected" };
+  const scanner: ProjectStorageScanner = { async scan() { return verdict.value; } };
   const storage = new ProjectStorageService({ repository, provider, scanner, now: () => now });
   const protector = new ProjectStorageS3SecretProtector(randomBytes(32));
   const keys = new ProjectStorageS3AccessKeyService({
@@ -70,8 +81,20 @@ async function harness() {
       return new Response("denied", { status: 403 });
     }
     const body = bytesAtProvider.get(providerKey);
-    return body ? new Response(new Uint8Array(body), { status: 200 }) : new Response(null, { status: 404 });
+    if (!body) return new Response(null, { status: 404 });
+    // Ein Provider, der Bereiche kann, antwortet mit 206; einer, der sie
+    // ignoriert, mit dem ganzen Objekt. Beide gibt es, beide werden gefahren.
+    const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get("range") ?? "");
+    if (range && providerRange.honours) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      return new Response(new Uint8Array(body.subarray(start, end + 1)), {
+        status: 206, headers: { "Content-Range": `bytes ${start}-${end}/${body.byteLength}` },
+      });
+    }
+    return new Response(new Uint8Array(body), { status: 200 });
   };
+  const providerRange = { honours: true };
   const endpoint = new ProjectStorageS3Endpoint({
     storage, keys, fetchFn, now: () => now, admit: async (target) => { admitted.push(target); },
     requestId: () => "req-1",
@@ -90,7 +113,48 @@ async function harness() {
     { ...admin }, foreignScope, { name: "open", readPolicy: "service", writePolicy: "service", allowedMimeTypes: ["text/plain"] });
   const expiresAt = new Date(now.getTime() + 24 * 3600_000).toISOString();
   const issued = await keys.create(admin, scope, { name: "Werkzeug", bucketIds: [open.id, locked.id], expiresAt });
-  return { endpoint, storage, keys, provider, repository, issued, open, locked, notMine, foreign, admitted, bytesAtProvider };
+  return { endpoint, storage, keys, provider, repository, issued, open, locked, notMine, foreign, admitted, bytesAtProvider, verdict, providerRange };
+}
+
+/**
+ * Eine PUT-Anfrage als `aws-chunked`, so wie die AWS-Werkzeuge sie ueber
+ * HTTP schicken: Kopfsignatur ueber die Wortform, dann die Bloecke, jeder
+ * an den vorigen gekettet.
+ */
+function chunked(issued: Issued, path: string, payload: Buffer, declared: string, options: {
+  chunkBytes?: number; trailers?: Record<string, string>; contentType?: string; tamper?: (body: Buffer) => Buffer; withContentLength?: boolean;
+} = {}): Request {
+  const url = new URL(`${ORIGIN}${path}`);
+  const scope = { date: now.toISOString().slice(0, 10).replace(/-/g, ""), region: "us-east-1" };
+  const build = (seed: string) => encodeAwsChunkedBody({
+    payload, declared, seedSignature: seed, amzDate: now.toISOString().replace(/[:-]|\.\d{3}/g, ""), scope,
+    secret: issued.secret, chunkBytes: options.chunkBytes ?? 4096, trailers: options.trailers,
+  });
+  const encodedLength = build("0".repeat(64)).byteLength;
+  const headers = signSigV4Request({
+    method: "PUT", url, payloadHash: declared,
+    headers: {
+      "content-type": options.contentType ?? "text/plain",
+      "content-encoding": "aws-chunked",
+      "x-amz-decoded-content-length": String(payload.byteLength),
+      ...(options.withContentLength === false ? {} : { "content-length": String(encodedLength) }),
+      ...(options.trailers ? { "x-amz-trailer": Object.keys(options.trailers).join(",") } : {}),
+    },
+    accessKeyId: issued.key.accessKeyId, secret: issued.secret, region: "us-east-1", now,
+  });
+  const seed = /Signature=([0-9a-f]{64})/.exec(headers.authorization)![1];
+  let body = build(seed);
+  expect(body.byteLength).toBe(encodedLength);
+  if (options.tamper) body = options.tamper(body);
+  return new Request(url, { method: "PUT", headers, body: new Uint8Array(body) });
+}
+
+/** Eine Presigned URL des Paars, mit der Uhr des Harness. */
+function presigned(issued: Issued, method: string, path: string, options: { expiresSeconds?: number; at?: Date; secret?: string } = {}): URL {
+  return presignSigV4Url({
+    method, url: new URL(`${ORIGIN}${path}`), accessKeyId: issued.key.accessKeyId,
+    secret: options.secret ?? issued.secret, region: "us-east-1", now: options.at ?? now, expiresSeconds: options.expiresSeconds ?? 300,
+  });
 }
 
 type Issued = Awaited<ReturnType<typeof harness>>["issued"];
@@ -295,24 +359,244 @@ describe("Project Storage S3 endpoint", () => {
   it("names what it does not implement instead of guessing", async () => {
     const { endpoint, issued } = await harness();
     const cases: Array<[Request, string]> = [
-      [s3(issued, "GET", "/s3/open?list-type=2&X-Amz-Signature=abc"), "NotImplemented"],
       [s3(issued, "GET", "/s3/open"), "NotImplemented"],
       [s3(issued, "PUT", "/s3/open/x.txt?uploadId=1&partNumber=1", { body: Buffer.from("x") }), "NotImplemented"],
       [s3(issued, "PUT", "/s3/new-bucket"), "NotImplemented"],
-      [s3(issued, "GET", "/s3/open/x.txt", { headers: { range: "bytes=0-1" } }), "NotImplemented"],
-      [s3(issued, "PUT", "/s3/open/copy.txt", { headers: { "x-amz-copy-source": "/open/x.txt", "content-length": "0" } }), "NotImplemented"],
       [s3(issued, "POST", "/s3/open/x.txt?uploads"), "NotImplemented"],
+      [s3(issued, "POST", "/s3/open"), "NotImplemented"],
+      [s3(issued, "PUT", "/s3/open/copy.txt", { headers: { "x-amz-copy-source": "/open/x.txt?versionId=3", "content-length": "0" } }), "NotImplemented"],
+      [s3(issued, "GET", "/s3/open/x.txt?versionId=3"), "NotImplemented"],
     ];
     for (const [request, code] of cases) {
       const response = await endpoint.handle(request);
       expect(response.status, request.url).toBe(501);
       expect(await errorCode(response), request.url).toBe(code);
     }
-    const chunked = s3(issued, "PUT", "/s3/open/x.txt", { body: Buffer.from("x") });
-    const streaming = new Request(chunked.url, { method: "PUT", headers: chunked.headers, body: new Uint8Array(1) });
-    streaming.headers.set("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD");
-    const response = await endpoint.handle(streaming);
-    expect(response.status).toBe(501);
-    expect(await response.text()).toContain("STREAMING");
+    // Signature Version 2 ist keine Luecke, sondern vorbei: gesagt, nicht geraten.
+    const v2 = await endpoint.handle(s3(issued, "GET", "/s3/open?list-type=2&AWSAccessKeyId=abc&Signature=def"));
+    expect(v2.status).toBe(400);
+  });
+
+  it("accepts aws-chunked bodies in all three forms and refuses a tampered chunk, a wrong trailer and a wrong header checksum without storing anything", async () => {
+    const { endpoint, issued, bytesAtProvider, storage } = await harness();
+    const payload = randomBytes(1000);
+    for (const [index, declared] of [STREAMING_SIGNED_PAYLOAD, STREAMING_SIGNED_PAYLOAD_TRAILER, STREAMING_UNSIGNED_PAYLOAD_TRAILER].entries()) {
+      const trailers = declared === STREAMING_SIGNED_PAYLOAD ? undefined : { "x-amz-checksum-crc64nvme": checksumBase64("x-amz-checksum-crc64nvme", payload) };
+      const put = await endpoint.handle(chunked(issued, `/s3/open/chunked-${index}.png`, payload, declared, { contentType: "image/png", trailers, chunkBytes: 300 }));
+      expect(put.status, `${declared}: ${await put.clone().text()}`).toBe(200);
+      const get = await endpoint.handle(s3(issued, "GET", `/s3/open/chunked-${index}.png`));
+      expect(Buffer.from(await get.arrayBuffer()).equals(payload), declared).toBe(true);
+      // Ohne Content-Length, wie bei Transfer-Encoding: chunked auf der Leitung.
+      const bare = await endpoint.handle(chunked(issued, `/s3/open/bare-${index}.png`, payload, declared, { contentType: "image/png", trailers, withContentLength: false }));
+      expect(bare.status, declared).toBe(200);
+      // Der Bucket hat 4 KiB Kontingent; was belegt ist, geht wieder weg.
+      for (const key of [`chunked-${index}.png`, `bare-${index}.png`]) {
+        expect((await endpoint.handle(s3(issued, "DELETE", `/s3/open/${key}`))).status).toBe(204);
+      }
+    }
+    const stored = (await storage.listObjects(admin, scope, "open", {})).objects.length;
+
+    // Ein Byte in einem signierten Block: die Kette reisst, nichts wird gespeichert.
+    const tampered = await endpoint.handle(chunked(issued, "/s3/open/tampered.png", payload, STREAMING_SIGNED_PAYLOAD, {
+      contentType: "image/png", tamper: (body) => { const copy = Buffer.from(body); copy[body.indexOf("\r\n") + 2 + 10] ^= 0xff; return copy; },
+    }));
+    expect(tampered.status).toBe(403);
+    expect(await errorCode(tampered)).toBe("SignatureDoesNotMatch");
+
+    // Unsignierte Bloecke, aber der Trailer sagt eine andere Summe: BadDigest.
+    const wrongTrailer = await endpoint.handle(chunked(issued, "/s3/open/wrong-trailer.png", payload, STREAMING_UNSIGNED_PAYLOAD_TRAILER, {
+      contentType: "image/png", trailers: { "x-amz-checksum-crc32": checksumBase64("x-amz-checksum-crc32", Buffer.from("andere bytes")) },
+    }));
+    expect(wrongTrailer.status).toBe(400);
+    expect(await errorCode(wrongTrailer)).toBe("BadDigest");
+
+    // Ein angekuendigter Trailer, der nicht kommt.
+    const missingTrailer = await endpoint.handle(chunked(issued, "/s3/open/missing-trailer.png", payload, STREAMING_UNSIGNED_PAYLOAD_TRAILER, {
+      contentType: "image/png", trailers: { "x-amz-checksum-crc32": checksumBase64("x-amz-checksum-crc32", payload) },
+      tamper: (body) => Buffer.from(body.toString("latin1").replace(/x-amz-checksum-crc32:[^\r]+\r\n/, ""), "latin1"),
+    }));
+    expect(missingTrailer.status).toBe(400);
+
+    // Dieselbe Pruefsumme als Header auf einem gewoehnlichen PUT: richtig geht, falsch faellt.
+    const rightHeader = await endpoint.handle(s3(issued, "PUT", "/s3/open/header-ok.png", {
+      body: payload, headers: { "content-type": "image/png", "x-amz-checksum-sha256": checksumBase64("x-amz-checksum-sha256", payload) },
+    }));
+    expect(rightHeader.status).toBe(200);
+    const wrongHeader = await endpoint.handle(s3(issued, "PUT", "/s3/open/header-bad.png", {
+      body: payload, headers: { "content-type": "image/png", "x-amz-checksum-crc32c": checksumBase64("x-amz-checksum-crc32c", Buffer.from("x")) },
+    }));
+    expect(wrongHeader.status).toBe(400);
+    expect(await errorCode(wrongHeader)).toBe("BadDigest");
+
+    // Die deklarierte Laenge zaehlt, nicht die auf der Leitung: 64 KiB gesagt, 1000 Bytes geschickt.
+    const lying = chunked(issued, "/s3/open/lying.png", payload, STREAMING_SIGNED_PAYLOAD, { contentType: "image/png" });
+    const lyingHeaders = new Headers(lying.headers);
+    lyingHeaders.set("x-amz-decoded-content-length", "65536");
+    const lyingResponse = await endpoint.handle(new Request(lying.url, { method: "PUT", headers: lyingHeaders, body: await lying.arrayBuffer() }));
+    expect([400, 403]).toContain(lyingResponse.status);
+
+    expect((await storage.listObjects(admin, scope, "open", {})).objects.length).toBe(stored + 1);
+    expect([...bytesAtProvider.keys()].filter((key) => /tampered|wrong|missing|header-bad|lying/.test(key))).toEqual([]);
+  });
+
+  it("serves a byte range with 206, whether the provider honours Range or not, and refuses one past the end", async () => {
+    const { endpoint, issued, providerRange } = await harness();
+    const payload = Buffer.from("0123456789abcdefghijklmnopqrstuvwxyz", "ascii");
+    await endpoint.handle(s3(issued, "PUT", "/s3/open/alphabet.txt", { body: payload, headers: { "content-type": "text/plain" } }));
+    const head = await endpoint.handle(s3(issued, "HEAD", "/s3/open/alphabet.txt"));
+    expect(head.headers.get("accept-ranges")).toBe("bytes");
+    for (const honours of [true, false]) {
+      providerRange.honours = honours;
+      const middle = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=10-15" } }));
+      expect(middle.status, String(honours)).toBe(206);
+      expect(middle.headers.get("content-range")).toBe("bytes 10-15/36");
+      expect(middle.headers.get("content-length")).toBe("6");
+      expect(await middle.text()).toBe("abcdef");
+      const tail = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=-3" } }));
+      expect(tail.status).toBe(206);
+      expect(await tail.text()).toBe("xyz");
+      const open = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=30-" } }));
+      expect(open.headers.get("content-range")).toBe("bytes 30-35/36");
+      expect(await open.text()).toBe("uvwxyz");
+      const beyond = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=10-999" } }));
+      expect(await beyond.text()).toBe("abcdefghijklmnopqrstuvwxyz");
+    }
+    const past = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=36-40" } }));
+    expect(past.status).toBe(416);
+    expect(await errorCode(past)).toBe("InvalidRange");
+    expect(past.headers.get("content-range")).toBe("bytes */36");
+    // Eine Form, die keine ist, gilt wie bei S3 als nicht vorhanden.
+    const odd = await endpoint.handle(s3(issued, "GET", "/s3/open/alphabet.txt", { headers: { range: "bytes=0-1,4-5" } }));
+    expect(odd.status).toBe(200);
+    expect(await odd.text()).toBe(payload.toString("ascii"));
+  });
+
+  it("copies within the bucket set through the same service, and cannot copy what a pair cannot read: a quarantined source, a foreign bucket, a missing key", async () => {
+    const { endpoint, issued, storage, keys, verdict, bytesAtProvider } = await harness();
+    const payload = Buffer.from("original", "utf8");
+    await endpoint.handle(s3(issued, "PUT", "/s3/open/src/a.txt", { body: payload, headers: { "content-type": "text/plain" } }));
+    const copy = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/b.txt", { headers: { "x-amz-copy-source": "/open/src/a.txt", "content-length": "0" } }));
+    expect(copy.status, await copy.clone().text()).toBe(200);
+    const copyXml = await copy.text();
+    expect(copyXml).toContain("<CopyObjectResult");
+    expect(copyXml).toContain("<ETag>");
+    expect(copy.headers.get("x-qkern-object-status")).toBe("clean");
+    const both = await storage.listObjects(admin, scope, "open", {});
+    expect(both.objects.map((object) => [object.key, object.contentType, object.sizeBytes, object.status]))
+      .toEqual([["dst/b.txt", "text/plain", 8, "clean"], ["src/a.txt", "text/plain", 8, "clean"]]);
+    expect(await (await endpoint.handle(s3(issued, "GET", "/s3/open/dst/b.txt"))).text()).toBe("original");
+    // Die Form ohne fuehrenden Schraegstrich und URL-kodiert, wie die SDKs sie schicken.
+    const encoded = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/c.txt", { headers: { "x-amz-copy-source": "open/src%2Fa.txt", "content-length": "0" } }));
+    expect(encoded.status).toBe(200);
+    // REPLACE nimmt den neuen Typ, sofern der Bucket ihn erlaubt.
+    const replaced = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/d.png", {
+      headers: { "x-amz-copy-source": "/open/src/a.txt", "x-amz-metadata-directive": "REPLACE", "content-type": "image/png", "content-length": "0" },
+    }));
+    expect(replaced.status).toBe(200);
+    expect((await storage.listObjects(admin, scope, "open", { prefix: "dst/d" })).objects[0].contentType).toBe("image/png");
+    // Auf sich selbst ohne neue Metadaten: S3 lehnt das ab, wir auch.
+    const self = await endpoint.handle(s3(issued, "PUT", "/s3/open/src/a.txt", { headers: { "x-amz-copy-source": "/open/src/a.txt", "content-length": "0" } }));
+    expect(self.status).toBe(400);
+    expect(await errorCode(self)).toBe("InvalidRequest");
+
+    // Ein Bucket ausserhalb des Satzes als Quelle: NoSuchBucket, und nichts entsteht.
+    const otherPair = await keys.create(admin, scope, { name: "anderes", bucketIds: [(await storage.listBuckets(admin, scope)).find((bucket) => bucket.name === "not-mine")!.id], expiresAt: new Date(now.getTime() + 3600_000).toISOString() });
+    await endpoint.handle(s3(otherPair, "PUT", "/s3/not-mine/theirs.txt", { body: Buffer.from("theirs"), headers: { "content-type": "text/plain" } }));
+    const foreignSource = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/stolen.txt", { headers: { "x-amz-copy-source": "/not-mine/theirs.txt", "content-length": "0" } }));
+    expect(foreignSource.status).toBe(404);
+    expect(await errorCode(foreignSource)).toBe("NoSuchBucket");
+    const foreignTarget = await endpoint.handle(s3(issued, "PUT", "/s3/not-mine/planted.txt", { headers: { "x-amz-copy-source": "/open/src/a.txt", "content-length": "0" } }));
+    expect(foreignTarget.status).toBe(404);
+    expect((await storage.listObjects(admin, scope, "not-mine", {})).objects.map((object) => object.key)).toEqual(["theirs.txt"]);
+    const missing = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/ghost.txt", { headers: { "x-amz-copy-source": "/open/src/nothing.txt", "content-length": "0" } }));
+    expect(missing.status).toBe(404);
+    expect(await errorCode(missing)).toBe("NoSuchKey");
+
+    // Eine Quelle in Quarantaene: fuer das Paar nicht da, also nicht kopierbar.
+    verdict.value = "pending";
+    const held = await endpoint.handle(s3(issued, "PUT", "/s3/open/src/held.txt", { body: Buffer.from("held"), headers: { "content-type": "text/plain" } }));
+    expect(held.status).toBe(200);
+    expect(held.headers.get("x-qkern-object-status")).toBe("quarantined");
+    verdict.value = "clean";
+    expect((await storage.listObjects(admin, scope, "open", { prefix: "src/held" })).objects[0].status).toBe("quarantined");
+    const quarantined = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/held-copy.txt", { headers: { "x-amz-copy-source": "/open/src/held.txt", "content-length": "0" } }));
+    expect(quarantined.status).toBe(404);
+    expect(await errorCode(quarantined)).toBe("NoSuchKey");
+    expect((await storage.listObjects(admin, scope, "open", { prefix: "dst/held" })).objects).toEqual([]);
+    expect([...bytesAtProvider.keys()].some((key) => key.includes("held-copy") || key.includes("stolen") || key.includes("planted") || key.includes("ghost"))).toBe(false);
+
+    // Eine Kopie mit Koerper ist keine Kopie.
+    const withBody = await endpoint.handle(s3(issued, "PUT", "/s3/open/dst/e.txt", { body: Buffer.from("x"), headers: { "x-amz-copy-source": "/open/src/a.txt" } }));
+    expect(withBody.status).toBe(400);
+  });
+
+  it("deletes many keys in one call, names each refusal and treats a missing key as deleted, like S3", async () => {
+    const { endpoint, issued, storage } = await harness();
+    for (const name of ["one", "two", "three"]) {
+      await endpoint.handle(s3(issued, "PUT", `/s3/open/batch/${name}.txt`, { body: Buffer.from(name), headers: { "content-type": "text/plain" } }));
+    }
+    const body = Buffer.from(`<?xml version="1.0"?><Delete xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Object><Key>batch/one.txt</Key></Object><Object><Key>batch/two.txt</Key></Object><Object><Key>batch/never.txt</Key></Object><Object><Key>../escape.txt</Key></Object></Delete>`);
+    const md5 = createHash("md5").update(body).digest("base64");
+    const response = await endpoint.handle(s3(issued, "POST", "/s3/open?delete", { body, headers: { "content-md5": md5, "content-type": "application/xml" } }));
+    expect(response.status, await response.clone().text()).toBe(200);
+    const xml = await response.text();
+    expect(xml).toContain("<Deleted><Key>batch/one.txt</Key></Deleted>");
+    expect(xml).toContain("<Deleted><Key>batch/two.txt</Key></Deleted>");
+    expect(xml).toContain("<Deleted><Key>batch/never.txt</Key></Deleted>");
+    // Ein Schluessel, den der Dienst verweigert, steht mit Grund da; die anderen gingen trotzdem.
+    expect(xml).toContain("<Error><Key>../escape.txt</Key><Code>InvalidArgument</Code>");
+    expect((await storage.listObjects(admin, scope, "open", {})).objects.map((object) => object.key)).toEqual(["batch/three.txt"]);
+
+    const quiet = await endpoint.handle(s3(issued, "POST", "/s3/open?delete", {
+      body: Buffer.from("<Delete><Quiet>true</Quiet><Object><Key>batch/three.txt</Key></Object></Delete>"),
+    }));
+    expect(await quiet.text()).not.toContain("<Deleted>");
+    expect((await storage.listObjects(admin, scope, "open", {})).objects).toEqual([]);
+
+    const wrongMd5 = await endpoint.handle(s3(issued, "POST", "/s3/open?delete", { body, headers: { "content-md5": createHash("md5").update("x").digest("base64") } }));
+    expect(wrongMd5.status).toBe(400);
+    expect(await errorCode(wrongMd5)).toBe("BadDigest");
+    const tooMany = Buffer.from(`<Delete>${"<Object><Key>k</Key></Object>".repeat(1001)}</Delete>`);
+    const refused = await endpoint.handle(s3(issued, "POST", "/s3/open?delete", { body: tooMany }));
+    expect(refused.status).toBe(400);
+    expect(await errorCode(refused)).toBe("MalformedXML");
+    const notMine = await endpoint.handle(s3(issued, "POST", "/s3/not-mine?delete", { body }));
+    expect(notMine.status).toBe(404);
+  });
+
+  it("honours a presigned URL for at most 15 minutes, bound to the pair, the method and the path", async () => {
+    const { endpoint, issued, keys, storage } = await harness();
+    const payload = Buffer.from("via presigned url", "utf8");
+    // PUT ueber die Adresse: der Koerper ist unsigniert, die Adresse traegt die Bindung.
+    const putUrl = presigned(issued, "PUT", "/s3/open/pre/signed.txt");
+    const put = await endpoint.handle(new Request(putUrl, { method: "PUT", headers: { "content-type": "text/plain", "content-length": String(payload.byteLength) }, body: new Uint8Array(payload) }));
+    expect(put.status, await put.clone().text()).toBe(200);
+    const getUrl = presigned(issued, "GET", "/s3/open/pre/signed.txt");
+    const get = await endpoint.handle(new Request(getUrl));
+    expect(get.status).toBe(200);
+    expect(await get.text()).toBe("via presigned url");
+    expect((await endpoint.handle(new Request(presigned(issued, "HEAD", "/s3/open/pre/signed.txt"), { method: "HEAD" }))).status).toBe(200);
+
+    // Die Adresse fuer GET oeffnet kein PUT und keinen anderen Schluessel.
+    const misuse = await endpoint.handle(new Request(getUrl, { method: "PUT", headers: { "content-length": "1" }, body: new Uint8Array(1) }));
+    expect(misuse.status).toBe(403);
+    expect(await errorCode(misuse)).toBe("SignatureDoesNotMatch");
+    const other = new URL(getUrl.toString());
+    other.pathname = "/s3/open/pre/other.txt";
+    expect(await errorCode(await endpoint.handle(new Request(other)))).toBe("SignatureDoesNotMatch");
+
+    // Laenger als 15 Minuten gibt es nicht, auch nicht mit gueltiger Signatur.
+    const week = await endpoint.handle(new Request(presigned(issued, "GET", "/s3/open/pre/signed.txt", { expiresSeconds: 3600 })));
+    expect(week.status).toBe(400);
+    expect(await errorCode(week)).toBe("AuthorizationQueryParametersError");
+    // Abgelaufen: die Uhr des Endpunkts steht auf `now`, die Adresse ist von vor 20 Minuten.
+    const stale = await endpoint.handle(new Request(presigned(issued, "GET", "/s3/open/pre/signed.txt", { at: new Date(now.getTime() - 20 * 60_000), expiresSeconds: 600 })));
+    expect(stale.status).toBe(403);
+    expect(await errorCode(stale)).toBe("AccessDenied");
+    // Falsches Geheimnis, widerrufenes Paar.
+    expect(await errorCode(await endpoint.handle(new Request(presigned(issued, "GET", "/s3/open/pre/signed.txt", { secret: "w".repeat(43) }))))).toBe("SignatureDoesNotMatch");
+    await keys.revoke(admin, scope, issued.key.id);
+    expect(await errorCode(await endpoint.handle(new Request(getUrl)))).toBe("InvalidAccessKeyId");
+    expect((await storage.listObjects(admin, scope, "open", {})).objects.map((object) => object.key)).toEqual(["pre/signed.txt"]);
   });
 });

@@ -210,16 +210,30 @@ Grossbuchstaben.
   `app/s3/route.ts`, `app/s3/[...path]/route.ts`) prueft SigV4 im Header
   (`s3-sigv4.ts`) und ruft ausschliesslich `ProjectStorageService` als
   **Service-Rolle** des Paars, beschraenkt auf den Bucket-Satz: ListBuckets,
-  HeadBucket, ListObjectsV2, Head/Get/Put/DeleteObject; PutObject ist
-  prepareUpload, Einloesen der Zusage beim Provider, completeUpload. **Was
-  fehlt, antwortet 501 und nennt sich**: Presigned URLs, aws-chunked
-  (`STREAMING-*`), Multipart, CopyObject, Range, ListObjects v1, Bucket anlegen
-  oder loeschen. Paare aus 2.59 bis 2.65 haben kein Chiffrat (`verifiable:
-  false`) und oeffnen nichts; die Seite sagt es je Paar. Zertifiziert im
-  Storage-Stack (`tests/project-storage-s3-endpoint.integration.test.ts`, echte
-  Signatur aus `node:crypto`, EICAR durch den Endpunkt) und im Fall `(2.96)`.
-  Mutationsprobe: Signaturvergleich auf `if (false)`, genau der S3-Fall fiel an
-  der gefaelschten Signatur (200 statt 403), die acht anderen blieben gruen.
+  HeadBucket, ListObjectsV2, Head/Get/Put/Copy/DeleteObject, DeleteObjects;
+  PutObject ist prepareUpload, Einloesen der Zusage beim Provider,
+  completeUpload; CopyObject ist Lesezusage der Quelle plus derselbe Weg.
+  Seit `2.99`: Presigned URLs (Query-Signatur, hoechstens 900 s), aws-chunked
+  in allen drei `STREAMING-*`-Formen mit Block- und Trailer-Signatur,
+  Pruefsummen `x-amz-checksum-*`, Range. **Was fehlt, antwortet 501 und nennt
+  sich**: Multipart, ListObjects v1, Bucket anlegen oder loeschen. Paare aus
+  2.59 bis 2.65 haben kein Chiffrat (`verifiable: false`) und oeffnen nichts;
+  die Seite sagt es je Paar. Zertifiziert im Storage-Stack
+  (`tests/project-storage-s3-endpoint.integration.test.ts`, echte Signatur aus
+  `node:crypto`, EICAR durch den Endpunkt) und im Fall `(2.96)`.
+  Mutationsprobe zu 2.96: Signaturvergleich auf `if (false)`, genau der S3-Fall
+  fiel an der gefaelschten Signatur (200 statt 403), die acht anderen blieben
+  gruen.
+- **Ein echter Client hat den Endpunkt gesehen (2.99).** Der zweite Fall in
+  derselben Datei faehrt `@aws-sdk/client-s3` (devDependency, exakt 3.1143.0,
+  mit `@aws-sdk/s3-request-presigner`) ueber eine HTTP-Bruecke aus `node:http`
+  auf 127.0.0.1 gegen `handle()`. Das SDK waehlt selbst: Pruefsumme im Header
+  bei einem Puffer, `aws-chunked` mit `STREAMING-UNSIGNED-PAYLOAD-TRAILER` bei
+  einem Strom. **Die AWS CLI und rclone haben ihn nicht gesehen**; beide
+  brauchten einen laufenden Next-Server im Zertifizierungsstack, und den gibt
+  es dort nicht. Mutationsproben zu 2.99: Blocksignatur ungeprueft, genau der
+  Fall `(S3)` fiel; Presigned-Obergrenze auf sieben Tage, genau der Fall
+  `(S3-Client)` fiel.
   **Nicht geprueft**: ein echter Client (aws cli, rclone) gegen einen laufenden
   Next-Server; die Pfadkodierung des Canonical Request stammt aus `request.url`
   und ist nur im Handler-Aufruf belegt.
@@ -440,8 +454,14 @@ Grossbuchstaben.
   ueber diese Projektumgebung liest (der Drill stellt die **Kontrollebene**
   wieder her), und sie rundete Sekunden auf Minuten, wodurch ein Rueckstand von
   29 Sekunden als "0" erschien. Beides ist berichtigt. Im Browser nicht gesehen
-- Neuester Slice: 2.62 Die letzten Platzhalter. Von den sechsundzwanzig
-  Platzhalterseiten, mit denen diese Sitzung begann, ist seit 2.93 **einer**
+- Seit 2.99 ist **kein** Platzhalter mehr uebrig: `storage-analytics` ist eine
+  ehrliche Seite (`components/console/analytics-buckets-view.tsx`,
+  `lib/console/analytics-buckets-texts.ts`): kein Katalog, keine Engine,
+  Multipart am S3-Endpunkt fehlt; das Urteil ueber den Server kommt aus
+  `/schema/extensions`. `placeholder-view.tsx` ist weg, `PLACEHOLDERS` bleibt
+  als leere Tabelle fuer den naechsten Menuepunkt ohne Seite.
+- Slice 2.62 Die letzten Platzhalter. Von den sechsundzwanzig
+  Platzhalterseiten, mit denen diese Sitzung begann, war seit 2.93 **einer**
   uebrig: `storage-analytics` (Iceberg). `storage-vectors` ist seit 2.93 eine
   echte Seite: Sie liest den Katalog und sagt, dass dieser Server keinen
   Vektortyp anbietet. Alles andere ist eine echte Seite, und wo es nichts zu

@@ -7,14 +7,13 @@ import { setConsoleLocale } from "@/components/console/console-i18n";
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
 import { LOCALES } from "@/lib/i18n/locales";
 import { CONSOLE_DISPLAY_DEFAULTS } from "@/lib/console/display-settings";
-import { NAV, PLACEHOLDERS, type PlaceholderId } from "@/components/console/navigation";
+import { NAV } from "@/components/console/navigation";
 import type { Snapshot } from "@/lib/console/console-snapshot";
 import type { AuditEvent, Project } from "@/lib/types";
 import { ActivityView } from "@/components/console/activity-view";
 import { ApprovalView } from "@/components/console/approval-view";
 import { DatabaseView } from "@/components/console/database-view";
 import { OverviewView } from "@/components/console/overview-view";
-import { PlaceholderView } from "@/components/console/placeholder-view";
 import { SettingsView } from "@/components/console/settings-view";
 import { SqlView } from "@/components/console/sql-view";
 import { BillingSettingsView } from "@/components/console/billing-settings-view";
@@ -107,7 +106,9 @@ import { Database } from "lucide-react";
  * UsageView, SettingsView, PlaceholderView, DatabaseView), liegen jetzt
  * daneben und werden wie alle anderen gerendert. Der Vertrag nannte
  * urspruenglich vierzehn: `BackupsView` war da schon eine eigene Datei, und
- * die Liste war an dieser Stelle einen Schnitt zu alt.
+ * die Liste war an dieser Stelle einen Schnitt zu alt. `PlaceholderView`
+ * gibt es seit 2.99 nicht mehr: Mit dem letzten Platzhalter ging auch die
+ * Ansicht, die ihn erklaert hat.
  *
  * Attribute werden nicht gelesen. Text, der nur in `placeholder`, `title` oder
  * `aria-label` steht, geht in die Pruefung auf deutsche Reste nicht ein.
@@ -215,12 +216,6 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],
   DatabaseView: [element(DatabaseView, { project: PROJECT, navigate: () => {} })],
   OverviewView: [element(OverviewView, { snapshot: SNAPSHOT, project: PROJECT, navigate: () => {} })],
-  // Jeder verbliebene Platzhalter, aus derselben Quelle wie die Navigation.
-  // Mit einer echten Seite als `view` gaebe diese Ansicht `null` zurueck und
-  // renderte nichts; sie ist genau fuer die Eintraege da, die es noch nicht
-  // gibt, und genau die stehen in `PLACEHOLDERS`.
-  PlaceholderView: (Object.keys(PLACEHOLDERS) as PlaceholderId[])
-    .map((view) => element(PlaceholderView, { view, navigate: () => {} })),
   SettingsView: [element(SettingsView, { project: { name: PROJECT.name, id: PROJECT.id }, organizationId: PROJECT.organizationId })],
   // Zweimal: der Menuepunkt "SQL Editor" und der Menuepunkt "Vorlagen"
   // oeffnen dieselbe Ansicht, einmal mit zugeklappter und einmal mit
@@ -277,15 +272,13 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
  *                          Speichern gibt es hier nicht.
  *   DatabaseView           Reiner Text und ein Verweis auf den Table Editor:
  *                          die Provisionierung ist nicht verbunden.
- *   PlaceholderView        Ein Menuepunkt, den es noch nicht gibt, erklaert
- *                          sich aus `PLACEHOLDERS`. Es gibt nichts zu fragen.
  *   SqlView                Im Editorfeld steht eine Abfrage, und sie laeuft
  *                          erst, wenn jemand den Knopf drueckt. Ein
  *                          Ladezustand beim Oeffnen waere hier eine Luege.
  */
 const OPENS_IDLE = new Set([
   "DashboardSettingsView", "QueryInsightsView", "RealtimeInspectorView", "RealtimePoliciesView",
-  "OverviewView", "ActivityView", "SettingsView", "DatabaseView", "PlaceholderView", "SqlView",
+  "OverviewView", "ActivityView", "SettingsView", "DatabaseView", "SqlView",
 ]);
 
 /**

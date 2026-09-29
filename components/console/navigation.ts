@@ -8,20 +8,23 @@ import {
  * Die Navigation der Console (2.0).
  *
  * Denzil wollte jeden Menüpunkt, den Supabase Studio hat, auch in QKERN
- * sehen — vorerst als Platzhalter, damit klar ist, was noch zu bauen ist.
+ * sehen, anfangs als Platzhalter, damit klar ist, was noch zu bauen ist.
  * Die Liste stammt aus dem Routen-Verzeichnis von Supabase Studio
  * (`apps/studio/pages/project/[ref]` im Repo supabase/supabase, Stand
  * 24. September 2026), nicht aus dem Gedächtnis.
  *
- * Jeder Platzhalter sagt drei Dinge: wie die Seite bei Supabase heisst, was
- * QKERN dazu im Backend schon hat, und was fehlt. Nichts davon ist
- * verbunden; die Ansicht zeigt keine erfundenen Daten.
+ * Seit 2.99 ist kein Platzhalter mehr übrig: Jeder Menüpunkt ist eine echte
+ * Seite, und wo QKERN die Sache nicht hat, sagt die Seite das aus dem
+ * Katalog, dem Repository oder der Datenbank heraus, statt es zu versprechen.
+ * `PLACEHOLDERS` bleibt als leere Tabelle, damit die Verträge der Seiten
+ * weiter fragen können, ob ein Eintrag ein Platzhalter ist; ein neuer
+ * Menüpunkt, der noch keine Seite hat, kommt wieder hier hinein.
  */
 
 export const REAL_VIEWS = [
   "overview", "database", "table", "sql", "auth", "storage", "compute", "api", "ai", "activity",
   "approvals", "logs", "monitoring", "backups", "settings", "int-queues",
-  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler", "int-graphql", "auth-oauth-server", "auth-oauth-consents", "db-backups-restore", "logs-realtime", "set-compute", "set-integrations", "set-addons", "storage-vectors",
+  "db-migrations", "compute-invocations", "compute-secrets", "realtime-inspector", "db-triggers", "db-functions", "db-indexes", "db-policies", "db-types", "db-extensions", "db-roles", "db-publications", "db-column-privileges", "db-schemas", "int-cron", "set-api-keys", "auth-providers", "auth-sessions", "auth-audit", "set-jwt", "storage-policies", "storage-settings", "set-api", "set-billing", "advisors-security", "advisors-performance", "advisors-health", "logs-cron", "obs-api", "obs-storage", "obs-functions", "obs-database", "obs-connections", "realtime-policies", "realtime-settings", "db-tables", "obs-auth", "logs-auth", "logs-storage", "obs-realtime", "auth-mfa", "int-database-webhooks", "logs-functions", "logs-postgrest", "auth-url", "auth-smtp", "auth-templates", "int-vault", "auth-rate-limits", "db-backups-pitr", "db-settings", "auth-protection", "auth-policies", "sql-templates", "set-log-drains", "set-dashboard", "logs-explorer", "obs-query-performance", "set-infrastructure", "obs-query-insights", "auth-performance", "logs-postgres", "int-wrappers", "db-pipelines", "set-webhooks", "storage-s3", "auth-hooks", "auth-passkeys", "branches", "auth-third-party", "compute-logs", "logs-api", "logs-pooler", "int-graphql", "auth-oauth-server", "auth-oauth-consents", "db-backups-restore", "logs-realtime", "set-compute", "set-integrations", "set-addons", "storage-vectors", "storage-analytics",
 ] as const;
 export type RealViewId = (typeof REAL_VIEWS)[number];
 
@@ -41,7 +44,10 @@ export const PLACEHOLDERS = {
   // neue Projekt.
   // Auth: der OAuth-Server ist seit 2.82 eine echte Seite.
   // Storage
-  "storage-analytics": { label: "Analytics-Buckets", supabase: "Storage → Analytics", backend: "fehlt", note: "Spaltenorientierte Ablage für grosse Auswertungen (Iceberg)." },
+  // Analytics-Buckets sind seit 2.99 eine echte Seite, die letzte, die ein
+  // Platzhalter war. Der Platzhalter sagte "Backend fehlt", und das stimmte;
+  // was genau fehlt (Katalog, Multipart am S3-Endpunkt, Engine), sagt die
+  // Seite jetzt selbst, das Dritte aus dem Katalog des Servers.
   // Vektor-Buckets sind seit 2.93 eine echte Seite. Der Platzhalter sagte
   // "Backend fehlt", und das war zu freundlich: Was fehlt, ist der Vektortyp
   // im Server, und ohne ihn hilft auch ein Backend nichts.
@@ -76,8 +82,6 @@ export type ViewId = RealViewId | PlaceholderId;
 export type NavChild = { id: ViewId; label: string };
 export type NavGroup = { id: ViewId; label: string; icon: typeof Database; children?: NavChild[] };
 
-const ph = (id: PlaceholderId): NavChild => ({ id, label: PLACEHOLDERS[id].label });
-
 export const NAV: NavGroup[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
   { id: "table", label: "Table Editor", icon: Table2 },
@@ -95,7 +99,7 @@ export const NAV: NavGroup[] = [
   ] },
   { id: "storage", label: "Storage", icon: Cloud, children: [
     { id: "storage", label: "Buckets" }, { id: "storage-policies", label: "Policies" }, { id: "storage-settings", label: "Einstellungen" }, { id: "storage-s3", label: "S3-Zugang" },
-    ph("storage-analytics"), { id: "storage-vectors", label: "Vektor-Buckets" },
+    { id: "storage-analytics", label: "Analytics-Buckets" }, { id: "storage-vectors", label: "Vektor-Buckets" },
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
     { id: "compute", label: "Functions, Cron, Webhooks" }, { id: "compute-secrets", label: "Secrets" }, { id: "compute-invocations", label: "Aufrufe" }, { id: "compute-logs", label: "Function-Logs" },

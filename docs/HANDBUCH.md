@@ -2327,18 +2327,31 @@ Was geht:
 - `HeadBucket`, `GetBucketLocation`.
 - `ListObjectsV2` mit `prefix`, `delimiter` (ein Zeichen), `max-keys`,
   `continuation-token`, `start-after`, `encoding-type=url`. Nur saubere Objekte.
-- `HeadObject`, `GetObject` (ganze Objekte; QKERN streamt die Bytes vom
-  Provider durch, die freigegebene Menge zählt als `storage_egress_bytes`).
+- `HeadObject`, `GetObject`, ganz oder als Bytebereich (`Range: bytes=…`,
+  Antwort `206` mit `Content-Range`; QKERN streamt die Bytes vom Provider
+  durch, die freigegebene Menge zählt als `storage_egress_bytes`).
 - `PutObject` in einem Stück bis 64 MiB. Ein vorhandener Schlüssel wird
   überschrieben; dazu löscht der Endpunkt das alte Objekt vor der Reservierung,
   und ein Leser dazwischen sieht kurz nichts.
-- `DeleteObject`.
+- `CopyObject` innerhalb des Bucket-Satzes (seit `2.99`): Quelle lesen wie
+  `GetObject`, Ziel schreiben wie `PutObject`, mit Scan. Was das Paar nicht
+  lesen darf (Quarantäne, fremder Bucket), lässt sich nicht kopieren; die Quelle
+  darf höchstens 64 MiB gross sein, weil die Bytes durch QKERN laufen.
+- `DeleteObject` und `DeleteObjects` (bis 1000 Schlüssel, jeder mit eigenem
+  Ergebnis in der Antwort).
+- Signatur im Header oder in der Adresse (Presigned URL, `X-Amz-Expires`
+  höchstens 900 Sekunden, dieselbe Grenze wie die signierten Zusagen).
+- Körper als SHA-256-Hex, `UNSIGNED-PAYLOAD` oder `aws-chunked` in den drei
+  Formen `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, dasselbe mit `-TRAILER` und
+  `STREAMING-UNSIGNED-PAYLOAD-TRAILER`; Blocksignaturen, Trailer-Signatur und
+  jede Prüfsumme in `x-amz-checksum-*` (CRC32, CRC32C, CRC64NVME, SHA-1,
+  SHA-256) werden nachgerechnet.
 
 Was nicht geht, und mit `501 NotImplemented` beim Namen genannt wird:
-Presigned URLs, Uploads in Stücken (`STREAMING-*` im Hash-Header, die AWS CLI
-tut das über HTTP), Multipart über S3, `CopyObject`, `Range`-Anfragen,
-`ListObjects` Version 1, `DeleteObjects`, Buckets anlegen oder löschen, ACLs,
-Versionen, Tags, virtuell gehostete Adressen (`bucket.host`).
+Multipart über S3 (die AWS CLI teilt ab 8 MiB von sich aus; dagegen hilft
+`multipart_threshold`), `ListObjects` Version 1, Buckets anlegen oder löschen,
+ACLs, Versionen, Tags, POST-Policy-Uploads, virtuell gehostete Adressen
+(`bucket.host`).
 
 **Wo das Geheimnis liegt.** Eine SigV4-Signatur ist eine HMAC-Kette aus dem
 Geheimnis, also braucht der Prüfer es. Seit Migration 0065 liegt es
@@ -2467,6 +2480,43 @@ Katalog über dieselbe Rolle, mit der die Console liest, das Scheitern von
 `CREATE EXTENSION vector`, die feste Grenze von `cube` bei 100 gegen 101
 Dimensionen, und einen Bucket, der unter Zeilensicherheit geschrieben und
 gelesen wird und dessen einzige Array-Spalte MIME-Typen hält.
+
+### Analytics-Buckets: kein Katalog, keine Engine
+
+Seit `2.99` ist **Storage → Analytics-Buckets** keine Platzhalterseite mehr,
+und damit ist der letzte Platzhalter der Console weg. Der Platzhalter sagte
+„Backend fehlt" und versprach eine „spaltenorientierte Ablage für grosse
+Auswertungen (Iceberg)". Bei Supabase ist das eine Ablage für Iceberg-Tabellen:
+Parquet-Dateien im Storage, ein Katalog nach der Iceberg-REST-Schnittstelle für
+Namensräume und Tabellen, Zugang mit S3-Schlüsseln, Abfragen über eine Engine
+ausserhalb der Datenbank.
+
+Nachgesehen, was QKERN davon hat:
+
+- Buckets halten Bytes (Migration 0025). Keine Tabelle kennt eine Spalte,
+  einen Namensraum oder einen Metadatenzeiger.
+- Der S3-Endpunkt `/s3` nimmt an, was ein Iceberg-Client an Dateien schreibt,
+  aber nur in einem Stück bis 64 MiB; Multipart über S3 antwortet mit 501.
+- Keine Route spricht die Iceberg-REST-Schnittstelle; `app/api` und
+  `lib/server` kennen weder `iceberg` noch `parquet`.
+- Keine Compose-Datei fährt eine Engine (Spark, Trino, DuckDB) oder einen
+  Katalogdienst.
+- Ob der PostgreSQL-Server eine Erweiterung anbietet, die Parquet oder Iceberg
+  liest (`pg_parquet`, `pg_duckdb`, `pg_mooncake`, `pg_lakehouse`,
+  `pg_analytics`, `parquet_s3_fdw`, `duckdb_fdw`), sagt die Seite nicht aus dem
+  Quelltext, sondern liest es bei jedem Öffnen aus `/schema/extensions`.
+
+Die Seite zeigt das Urteil aus dem Katalog, die Zahlen des S3-Zugangs, die
+Buckets, die es gibt, was ein Katalog wäre, und vier Schritte in der
+Reihenfolge, in der sie nötig wären: Migration und Route für den Katalog,
+Multipart am S3-Endpunkt, eine Engine, und ein Zugang mit denselben Grenzen
+wie die S3-Paare. Sie legt nichts an, ändert nichts und löscht nichts.
+
+Der Vertrag `console-analytics-buckets-view-contract` prüft die Aussagen über
+das Repository: Pfad und Grenze des S3-Endpunkts, dass Multipart dort mit 501
+antwortet, dass keine Compose-Datei eine Engine fährt und keine Migration und
+keine Route Iceberg kennt. Einen Fall gegen die echte Datenbank gibt es dafür
+nicht; darum behauptet die Seite im Quelltext nichts über das Image.
 
 ### Grenzen und Rechte in der Console
 
