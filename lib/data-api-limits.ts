@@ -14,6 +14,21 @@ export const DATA_API_LIMITS = {
   rowsMax: 100,
   maxFilters: 10,
   operators: ["eq", "neq", "gt", "gte", "lt", "lte", "in"] as const,
+  /**
+   * Eingebettete Beziehungen je Anfrage (2.66): `select=id,autor:autoren(name)`
+   * holt ueber einen Fremdschluessel die Zeilen der Nachbartabelle mit, eine
+   * Ebene tief. Jede Einbettung ist eine weitere Abfrage unter der RLS des
+   * Aufrufers; drei sind genug fuer eine Liste mit ihren Nachbarn und wenig
+   * genug, dass eine Anfrage die Datenbank nicht vervielfacht beschaeftigt.
+   */
+  maxEmbeds: 3,
+  /**
+   * Zeilen je Einbettung und Elternzeile, wenn der Fremdschluessel von der
+   * Nachbartabelle her zeigt (eins zu viele). Mehr werden beschnitten, und die
+   * Antwort nennt es als `truncated` an der Einbettung. Eine Einbettung von
+   * der anderen Seite (viele zu eins) liefert genau eine Zeile oder `null`.
+   */
+  maxEmbedRows: 20,
   keyClaims: { public: "anon", service: "service_role" } as const,
 } as const;
 

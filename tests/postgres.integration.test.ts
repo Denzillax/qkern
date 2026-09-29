@@ -165,6 +165,10 @@ import { ProjectAuthFunctionHooks } from "@/lib/server/project-auth/hooks-functi
 // derselben Tabelle, die die Console anzeigt.
 import { ProjectGraphqlService } from "@/lib/server/data-plane/graphql";
 import { DATA_API_GRAPHQL_LIMITS } from "@/lib/data-api-graphql-limits";
+// Eingebettete Beziehungen (2.66): dieselbe Grammatik, die die Route liest,
+// und dieselben Grenzen, die die Console zeigt.
+import { parseGeneratedSelect } from "@/lib/server/data-plane/generated-api";
+import { DATA_API_LIMITS } from "@/lib/data-api-limits";
 import { searchLogSources } from "@/lib/server/logs/log-explorer-search";
 import {
   authAuditFetcher,
@@ -10627,6 +10631,231 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       }
     } finally {
       await owner.query("DELETE FROM users WHERE id = $1", [tokenOwner]).catch(() => undefined);
+    }
+  }, 120_000);
+
+  it("(2.95) embeds neighbour rows over real foreign keys and shows exactly what the policy of the embedded table allows, refuses an unknown relation, a neighbour without row security and one embed too many", async () => {
+    // Eingebettete Beziehungen (2.66) gegen die echte Datenbank.
+    //
+    // Echt ist alles, worauf es ankommt: vier Tabellen mit echten
+    // Fremdschluesseln in der echten Projektdatenbank, echte Policies auf drei
+    // davon, die echte Leserolle des Projekts mit ihren echten Rechten und die
+    // echte `GeneratedDataApiService`. Gestellt sind nur die Aufloesung des
+    // Ziels und die Verbindung, wie in `(2.83)`.
+    //
+    // Die Zusage, um die es geht: Eine Einbettung liefert genau die Zeilen der
+    // Nachbartabelle, die deren **eigene** Policy dem Aufrufer erlaubt. Nicht
+    // die Zeilen, die die Policy der Basistabelle erlaubt haette, und nicht
+    // alle, die ueber den Schluessel erreichbar waeren. Der Fall baut darum
+    // absichtlich einen Beitrag, dessen Autor fuer den Besitzer des Beitrags
+    // unsichtbar ist, und einen Beitrag mit einem fremden Kommentar.
+    //
+    // Geprueft werden sieben Zusagen:
+    //
+    // 1. Die Schreibweise `autor:autoren(name),kommentare(text)` wird von
+    //    derselben Grammatik gelesen, die die Route benutzt.
+    // 2. `one`: Der Autor kommt als Zeile, wo seine Policy es erlaubt, und als
+    //    `null`, wo sie es nicht erlaubt, obwohl der Schluessel gesetzt ist.
+    // 3. `many`: Die Kommentare sind genau die eigenen; der fremde Kommentar
+    //    am eigenen Beitrag fehlt, obwohl er in derselben Tabelle steht.
+    // 4. Mehr Nachbarn als `maxEmbedRows` werden beschnitten, und die Antwort
+    //    sagt es an der Einbettung.
+    // 5. Der Nachbar sieht mit derselben Anfrage seinen Beitrag, dessen Autor
+    //    fuer ihn `null` ist.
+    // 6. Eine unbekannte Beziehung und eine Einbettung ueber der Grenze werden
+    //    abgewiesen; genau an der Grenze geht dieselbe Anfrage durch.
+    // 7. Eine Nachbartabelle ohne Zeilensicherheit wird mit demselben Code
+    //    abgewiesen wie eine Basistabelle ohne sie, obwohl die Leserolle sie
+    //    direkt lesen darf.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const schema = `joins_${randomUUID().replaceAll("-", "_")}`;
+    const joinsProject = randomUUID();
+    const joinsOrganization = randomUUID();
+    const scope = { projectId: joinsProject, environment: "development" as const };
+    const mine = randomUUID();
+    const neighbour = randomUUID();
+    const autorSichtbar = randomUUID();
+    const autorVerborgen = randomUUID();
+    const beitragEins = randomUUID();
+    const beitragZwei = randomUUID();
+    const beitragNachbar = randomUUID();
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".autoren (
+        id uuid PRIMARY KEY,
+        name text NOT NULL,
+        sichtbar_fuer text NOT NULL)`);
+      await owner.query(`CREATE TABLE "${schema}".beitraege (
+        id uuid PRIMARY KEY,
+        autor_id uuid NOT NULL REFERENCES "${schema}".autoren (id),
+        titel text NOT NULL,
+        besitzer text NOT NULL)`);
+      await owner.query(`CREATE TABLE "${schema}".kommentare (
+        id integer PRIMARY KEY,
+        beitrag_id uuid NOT NULL REFERENCES "${schema}".beitraege (id),
+        text text NOT NULL,
+        besitzer text NOT NULL)`);
+      // Der Gegenbeweis: eine Nachbartabelle ohne Zeilensicherheit, die die
+      // Leserolle direkt lesen darf.
+      await owner.query(`CREATE TABLE "${schema}".ohne_rls (
+        id uuid PRIMARY KEY,
+        beitrag_id uuid NOT NULL REFERENCES "${schema}".beitraege (id),
+        inhalt text NOT NULL)`);
+      for (const table of ["autoren", "beitraege", "kommentare"]) {
+        await owner.query(`ALTER TABLE "${schema}".${table} ENABLE ROW LEVEL SECURITY`);
+      }
+      await owner.query(`CREATE POLICY sichtbare_autoren ON "${schema}".autoren
+        FOR SELECT TO ${expectedRole}
+        USING (sichtbar_fuer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY eigene_beitraege ON "${schema}".beitraege
+        FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY eigene_kommentare ON "${schema}".kommentare
+        FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+
+      await owner.query(`INSERT INTO "${schema}".autoren (id, name, sichtbar_fuer) VALUES
+        ($1, 'Sichtbare Autorin', $3), ($2, 'Verborgener Autor', $4)`,
+      [autorSichtbar, autorVerborgen, mine, neighbour]);
+      // Beitrag eins: eigener Beitrag, sichtbare Autorin. Beitrag zwei: eigener
+      // Beitrag, aber der Autor ist nur fuer den Nachbarn sichtbar. Beitrag des
+      // Nachbarn: dessen Beitrag mit der Autorin, die nur fuer mich sichtbar ist.
+      await owner.query(`INSERT INTO "${schema}".beitraege (id, autor_id, titel, besitzer) VALUES
+        ($1, $4, 'a eins', $6), ($2, $5, 'b zwei', $6), ($3, $4, 'c nachbar', $7)`,
+      [beitragEins, beitragZwei, beitragNachbar, autorSichtbar, autorVerborgen, mine, neighbour]);
+      // Beitrag eins: zwei eigene Kommentare und ein fremder. Beitrag zwei:
+      // einer mehr als die Grenze, alle eigene.
+      await owner.query(`INSERT INTO "${schema}".kommentare (id, beitrag_id, text, besitzer) VALUES
+        (1, $1, 'mein erster', $2), (2, $1, 'mein zweiter', $2), (3, $1, 'der des Nachbarn', $3)`,
+      [beitragEins, mine, neighbour]);
+      for (let index = 0; index <= DATA_API_LIMITS.maxEmbedRows; index += 1) {
+        await owner.query(`INSERT INTO "${schema}".kommentare (id, beitrag_id, text, besitzer) VALUES ($1, $2, $3, $4)`,
+          [100 + index, beitragZwei, `kommentar ${index}`, mine]);
+      }
+      await owner.query(`INSERT INTO "${schema}".ohne_rls (id, beitrag_id, inhalt) VALUES ($1, $2, 'jeder sieht das')`,
+        [randomUUID(), beitragEins]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${joinsProject}` }) };
+      const generated = new GeneratedDataApiService(targets, connections);
+      const contextFor = (subject: string) => ({
+        organizationId: joinsOrganization,
+        actorRef: `project-api-key:${subject}`,
+        claims: { role: "authenticated" as const, subject },
+      });
+
+      // --- Zusage 1: die Grammatik der Route ------------------------------
+      const parsed = parseGeneratedSelect("id,titel,autor:autoren(name),kommentare(text)");
+      expect(parsed).toEqual({
+        select: ["id", "titel"],
+        embed: [
+          { alias: "autor", relation: "autoren", columns: ["name"] },
+          { alias: "kommentare", relation: "kommentare", columns: ["text"] },
+        ],
+      });
+
+      // --- Zusagen 2 bis 4: die eigene Liste mit beiden Einbettungen -------
+      const list = await generated.listRows(contextFor(mine), scope, {
+        schema, table: "beitraege", ...parsed!,
+        order: { column: "titel", direction: "asc" }, limit: 10,
+      });
+      expect(list.rowCount).toBe(2);
+      expect(list.hasMore).toBe(false);
+      // Beitrag eins: Autorin sichtbar, genau die zwei eigenen Kommentare in
+      // der Ordnung des Primaerschluessels. Der Kommentar des Nachbarn steht
+      // in derselben Tabelle am selben Beitrag und kommt nicht mit.
+      expect(list.rows[0]).toEqual({
+        id: beitragEins, titel: "a eins",
+        autor: { name: "Sichtbare Autorin" },
+        kommentare: [{ text: "mein erster" }, { text: "mein zweiter" }],
+      });
+      // Beitrag zwei: der Schluessel zeigt auf einen Autor, den die Policy
+      // der Autorentabelle mir nicht zeigt. Die Einbettung ist `null`, nicht
+      // die Zeile. Die Kommentare sind beschnitten.
+      expect(list.rows[1]).toMatchObject({ id: beitragZwei, titel: "b zwei", autor: null });
+      expect(list.rows[1]!.kommentare).toHaveLength(DATA_API_LIMITS.maxEmbedRows);
+      expect((list.rows[1]!.kommentare as Array<{ text: string }>)[0]).toEqual({ text: "kommentar 0" });
+      expect(list.embeds).toEqual([
+        { alias: "autor", relation: "autoren", kind: "one", constraint: "beitraege_autor_id_fkey", truncated: false },
+        { alias: "kommentare", relation: "kommentare", kind: "many", constraint: "kommentare_beitrag_id_fkey", truncated: true },
+      ]);
+      // Die Schluesselspalte `autor_id` wurde fuer die Einbettung gelesen und
+      // steht nicht in der Antwort, weil sie nicht bestellt war.
+      expect(Object.keys(list.rows[0]!)).toEqual(["id", "titel", "autor", "kommentare"]);
+      // Der Gegenbeweis aus der Datenbank: Der verborgene Autor existiert, und
+      // am ersten Beitrag haengen drei Kommentare. Was fehlt, fehlt wegen der
+      // Policy und nicht, weil es nicht da waere.
+      const autoren = await owner.query<{ name: string }>(
+        `SELECT name FROM "${schema}".autoren WHERE id = $1`, [autorVerborgen]);
+      expect(autoren.rows).toEqual([{ name: "Verborgener Autor" }]);
+      const kommentare = await owner.query<{ anzahl: string }>(
+        `SELECT count(*)::text AS anzahl FROM "${schema}".kommentare WHERE beitrag_id = $1`, [beitragEins]);
+      expect(kommentare.rows[0]!.anzahl).toBe("3");
+
+      // --- Zusage 5: der Nachbar --------------------------------------------
+      //
+      // Dieselbe Anfrage, ein anderes Subjekt: sein Beitrag, dessen Autorin
+      // fuer ihn unsichtbar ist, und keine Kommentare. Ohne diese Gegenprobe
+      // koennte das `null` oben auch aus einer Einbettung kommen, die nie
+      // etwas findet.
+      const theirs = await generated.listRows(contextFor(neighbour), scope, {
+        schema, table: "beitraege", ...parsed!, order: { column: "titel", direction: "asc" }, limit: 10,
+      });
+      expect(theirs.rows).toEqual([{ id: beitragNachbar, titel: "c nachbar", autor: null, kommentare: [] }]);
+      // Und ein Subjekt ohne Zeilen bekommt eine leere Liste, keine Einbettung
+      // und keinen Fehler.
+      const stranger = await generated.listRows(contextFor(randomUUID()), scope, {
+        schema, table: "beitraege", ...parsed!, limit: 10,
+      });
+      expect(stranger.rows).toEqual([]);
+      expect(stranger.embeds.map((embed) => embed.truncated)).toEqual([false, false]);
+
+      // --- Zusage 6: unbekannt und ueber der Grenze -------------------------
+      await expect(generated.listRows(contextFor(mine), scope, {
+        schema, table: "beitraege", embed: [{ alias: "rechnungen", relation: "rechnungen" }],
+      })).rejects.toMatchObject({ name: "GeneratedDataApiError", code: "GENERATED_DATA_API_INVALID_INPUT" });
+      // Eine Tabelle, die es gibt, aber ohne Schluessel zur Basistabelle, ist
+      // dieselbe Ablehnung: Die Antwort verraet nicht, ob der Name existiert.
+      await expect(generated.listRows(contextFor(mine), scope, {
+        schema, table: "autoren", embed: [{ alias: "kommentare", relation: "kommentare" }],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      const tooMany = Array.from({ length: DATA_API_LIMITS.maxEmbeds + 1 },
+        (_, index) => ({ alias: `a${index}`, relation: "autoren", columns: ["name"] }));
+      await expect(generated.listRows(contextFor(mine), scope, { schema, table: "beitraege", embed: tooMany }))
+        .rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      // Einer weniger, und dieselbe Anfrage geht durch: Die Grenze liegt an
+      // der Zahl, nicht an der Wiederholung derselben Beziehung.
+      const atLimit = await generated.listRows(contextFor(mine), scope, {
+        schema, table: "beitraege", select: ["titel"], embed: tooMany.slice(0, DATA_API_LIMITS.maxEmbeds),
+        order: { column: "titel", direction: "asc" },
+      });
+      expect(atLimit.embeds).toHaveLength(DATA_API_LIMITS.maxEmbeds);
+      expect(atLimit.rows[0]).toEqual({
+        titel: "a eins", a0: { name: "Sichtbare Autorin" }, a1: { name: "Sichtbare Autorin" }, a2: { name: "Sichtbare Autorin" },
+      });
+
+      // --- Zusage 7: die Nachbartabelle ohne Zeilensicherheit --------------
+      //
+      // Zuerst der Beweis, dass die Leserolle sie wirklich lesen darf: Sonst
+      // pruefte die Ablehnung gleich danach nur ein fehlendes Recht.
+      const direct = await projectApi.query<{ inhalt: string }>(`SELECT inhalt FROM "${schema}".ohne_rls`);
+      expect(direct.rows.map((row) => row.inhalt)).toEqual(["jeder sieht das"]);
+      await expect(generated.listRows(contextFor(mine), scope, {
+        schema, table: "beitraege", embed: [{ alias: "offen", relation: "ohne_rls", columns: ["inhalt"] }],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
     }
   }, 120_000);
 

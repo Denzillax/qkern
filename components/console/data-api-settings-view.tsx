@@ -26,7 +26,7 @@ type Environment = "development" | "staging" | "production";
 type SchemaTable = { name: string; kind: "table" | "partitioned_table" | "view" | "materialized_view"; rowSecurityEnabled: boolean };
 type SchemaState = { state: "loading" | "ready" | "not-ready" | "unavailable" | "error"; tables: SchemaTable[]; truncated: boolean; message: string };
 
-const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims } = DATA_API_LIMITS;
+const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims, maxEmbeds, maxEmbedRows } = DATA_API_LIMITS;
 
 type Payload = Record<string, unknown>;
 
@@ -134,11 +134,14 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
         <div><span>{t("Zeilen je Anfrage")}</span><strong>{rowsMin} {t("bis")} {rowsMax}</strong></div>
         <div><span>{t("Filter je Anfrage höchstens")}</span><strong>{maxFilters}</strong></div>
         <div><span>{t("Operatoren")}</span><code>{operators.join(", ")}</code></div>
+        <div><span>{t("Eingebettete Beziehungen je Anfrage höchstens")}</span><strong>{maxEmbeds}</strong></div>
+        <div><span>{t("Zeilen je Einbettung und Elternzeile höchstens")}</span><strong>{maxEmbedRows}</strong></div>
         <div><span>{t("Public Key setzt die Rolle")}</span><code>{keyClaims.public}</code></div>
         <div><span>{t("Service Key setzt die Rolle")}</span><code>{keyClaims.service}</code></div>
       </div>
       <p className="muted">{t("Row Level Security gilt für beide Schlüssel: Die Datenbankrolle der Data API umgeht RLS nie, die Rolle steht nur in den Claims.")}</p>
       <p className="muted">{t("Sensible Spalten werden nie zurückgegeben, gefiltert, sortiert oder geschrieben. Erkannt am Namen:")} {SENSITIVE_COLUMN_WORDS.join(", ")}.</p>
+      <p className="muted">{t("Eingebettete Beziehungen laufen über genau einen Fremdschlüssel im selben Schema, eine Ebene tief, lesend, und die Nachbartabelle braucht dieselbe Row Level Security wie die Tabelle selbst.")}</p>
       <p className="muted">{t("Diese Ansicht zeigt nur das Standardschema. Die Data API nimmt über ?schema= auch andere an, Systemschemata nie.")}</p>
       <p className="muted">{t("Weitere Schemata und eine eigene Zeilengrenze sind noch nicht verbunden.")}</p>
     </article>

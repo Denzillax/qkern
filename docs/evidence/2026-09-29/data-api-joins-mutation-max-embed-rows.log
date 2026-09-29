@@ -1,0 +1,222 @@
+ Network qkern-slice-joins_default Creating 
+ Network qkern-slice-joins_default Created 
+ Container qkern-slice-joins-vault-1 Creating 
+ Container qkern-slice-joins-postgres-1 Creating 
+ Container qkern-slice-joins-postgres-1 Created 
+ Container qkern-slice-joins-vault-1 Created 
+ Container qkern-slice-joins-vault-1 Starting 
+ Container qkern-slice-joins-postgres-1 Starting 
+ Container qkern-slice-joins-postgres-1 Started 
+ Container qkern-slice-joins-vault-1 Started 
+wait: postgres=starting vault=starting
+wait: postgres=healthy vault=starting
+wait: postgres=healthy vault=healthy
+postgres-1  | certification-init: applied 64 migrations
+ Container qkern-slice-joins-postgres-1 Running 
+ Container qkern-slice-joins-vault-1 Running 
+ Container qkern-slice-joins-certification-1 Creating 
+ Container qkern-slice-joins-certification-1 Created 
+Attaching to certification-1
+ Container qkern-slice-joins-postgres-1 Waiting 
+ Container qkern-slice-joins-vault-1 Waiting 
+ Container qkern-slice-joins-vault-1 Healthy 
+ Container qkern-slice-joins-postgres-1 Healthy 
+ Container qkern-slice-joins-certification-1 Starting 
+ Container qkern-slice-joins-certification-1 Started 
+certification-1  | vault-seed: one signing secret written
+certification-1  | 
+certification-1  | added 204 packages, and audited 205 packages in 14s
+certification-1  | 
+certification-1  | 58 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 10 vulnerabilities (6 moderate, 3 high, 1 critical)
+certification-1  | 
+certification-1  | To address issues that do not require attention, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix --force
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New major version of npm available! 11.17.0 -> 12.1.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+certification-1  | npm notice To update run: npm install -g npm@12.1.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@2.65.0 test:postgres
+certification-1  | > vitest run tests/postgres.integration.test.ts tests/postgres-incident-recovery.integration.test.ts tests/generated-data-postgres.integration.test.ts tests/project-auth-postgres.integration.test.ts tests/project-storage-postgres.integration.test.ts tests/project-queues-postgres.integration.test.ts tests/usage-metering-postgres.integration.test.ts tests/realtime-postgres.integration.test.ts tests/realtime-change-feed-postgres.integration.test.ts tests/realtime-change-chain-postgres.integration.test.ts tests/realtime-change-soak-postgres.integration.test.ts tests/project-queues-multi-instance.integration.test.ts tests/compute-cron-postgres.integration.test.ts tests/compute-webhook-postgres.integration.test.ts tests/compute-webhook-chain.integration.test.ts tests/compute-definitions-postgres.integration.test.ts tests/compute-functions-postgres.integration.test.ts tests/usage-emitters-postgres.integration.test.ts tests/migration-process-postgres.integration.test.ts tests/realtime-process-postgres.integration.test.ts tests/provisioning-port-postgres.integration.test.ts tests/migration-enqueue-postgres.integration.test.ts tests/sql-privilege-clause-contract.integration.test.ts tests/queue-connection-pressure-postgres.integration.test.ts tests/usage-billing-postgres.integration.test.ts tests/billing-invoice-postgres.integration.test.ts tests/data-plane-query-postgres.integration.test.ts tests/data-plane-triggers-postgres.integration.test.ts tests/data-plane-functions-postgres.integration.test.ts tests/data-plane-catalog-postgres.integration.test.ts tests/data-plane-catalog-wide-postgres.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  |  RUN  v4.1.10 /workspace/qkern
+certification-1  | 
+certification-1  |  ✓ tests/provisioning-port-postgres.integration.test.ts (6 tests) 496ms
+certification-1  |  ✓ tests/generated-data-postgres.integration.test.ts (9 tests) 847ms
+certification-1  |  ✓ tests/compute-webhook-postgres.integration.test.ts (10 tests) 975ms
+certification-1  |  ✓ tests/compute-definitions-postgres.integration.test.ts (9 tests) 627ms
+certification-1  |  ✓ tests/project-storage-postgres.integration.test.ts (8 tests) 753ms
+certification-1  |  ✓ tests/postgres-incident-recovery.integration.test.ts (6 tests) 1447ms
+certification-1  |  ✓ tests/realtime-postgres.integration.test.ts (7 tests) 1275ms
+certification-1  |  ✓ tests/project-queues-postgres.integration.test.ts (9 tests) 1260ms
+certification-1  | stdout | tests/sql-privilege-clause-contract.integration.test.ts > SQL privilege clause contract > finds statements to check
+certification-1  | privilege clause contract: 136 Anweisungen, 12 Spaltenlisten nicht auswertbar, 743 Platzhalter offen
+certification-1  | 
+certification-1  |  ✓ tests/compute-functions-postgres.integration.test.ts (13 tests) 1366ms
+certification-1  |      ✓ counts the places of one definition only  346ms
+certification-1  |  ✓ tests/realtime-change-feed-postgres.integration.test.ts (6 tests) 649ms
+certification-1  |  ✓ tests/migration-enqueue-postgres.integration.test.ts (3 tests) 471ms
+certification-1  |  ✓ tests/project-auth-postgres.integration.test.ts (4 tests) 1347ms
+certification-1  |      ✓ records auth events through the auth role into the intact platform audit chain (2.35)  408ms
+certification-1  |  ✓ tests/usage-billing-postgres.integration.test.ts (4 tests) 542ms
+certification-1  |  ✓ tests/compute-webhook-chain.integration.test.ts (6 tests) 1420ms
+certification-1  |      ✓ carries an enqueued event all the way to a verified, acknowledged delivery  313ms
+certification-1  | stderr | tests/realtime-change-soak-postgres.integration.test.ts > Realtime change soak PostgreSQL certification > delivers every change of a sustained writer without loss, gap or stall
+certification-1  | soak: 120 Aenderungen, p50 596 ms, p95 1673 ms, max 1730 ms
+certification-1  | 
+certification-1  | stderr | tests/realtime-change-soak-postgres.integration.test.ts > Realtime change soak PostgreSQL certification > delivers every change of a sustained writer without loss, gap or stall
+certification-1  | soak: 5 Buchungen fuer 120 Nachrichten
+certification-1  | 
+certification-1  |  ✓ tests/realtime-change-soak-postgres.integration.test.ts (1 test) 2773ms
+certification-1  |      ✓ delivers every change of a sustained writer without loss, gap or stall  2560ms
+certification-1  |  ✓ tests/data-plane-functions-postgres.integration.test.ts (1 test) 266ms
+certification-1  |  ✓ tests/data-plane-catalog-wide-postgres.integration.test.ts (4 tests) 667ms
+certification-1  |  ✓ tests/data-plane-catalog-postgres.integration.test.ts (3 tests) 423ms
+certification-1  |  ✓ tests/usage-emitters-postgres.integration.test.ts (20 tests) 2550ms
+certification-1  |      ✓ counts every simultaneous enqueue across queues exactly once  389ms
+certification-1  |      ✓ pages through every event exactly once  501ms
+certification-1  |  ✓ tests/usage-metering-postgres.integration.test.ts (4 tests) 489ms
+certification-1  |  ✓ tests/data-plane-triggers-postgres.integration.test.ts (1 test) 501ms
+certification-1  |  ✓ tests/queue-connection-pressure-postgres.integration.test.ts (1 test) 450ms
+certification-1  |      ✓ names an exhausted pool instead of calling it a queue conflict  304ms
+certification-1  |  ✓ tests/data-plane-query-postgres.integration.test.ts (2 tests) 366ms
+certification-1  |  ✓ tests/sql-privilege-clause-contract.integration.test.ts (2 tests) 3148ms
+certification-1  |      ✓ grants every write role the read right its clauses require  2711ms
+certification-1  |  ✓ tests/migration-process-postgres.integration.test.ts (3 tests) 7103ms
+certification-1  |      ✓ applies a queued statement to the real project database  3703ms
+certification-1  |      ✓ keeps a tampered statement out of the project database  1541ms
+certification-1  |      ✓ names the violated boundary condition without describing the database  1542ms
+certification-1  |  ✓ tests/realtime-change-chain-postgres.integration.test.ts (6 tests) 7927ms
+certification-1  |      ✓ keeps order and delivers each change exactly once under a burst  439ms
+certification-1  |      ✓ keeps every subscriber's subset correct with many subscribers at once  7084ms
+certification-1  |  ✓ tests/realtime-process-postgres.integration.test.ts (3 tests) 8358ms
+certification-1  |      ✓ serves a real client from the shipped process  5021ms
+certification-1  |      ✓ refuses production with an ephemeral log and names the condition  1365ms
+certification-1  |      ✓ serves a client on a public bind after the explicit opt-in  1829ms
+certification-1  |  ✓ tests/compute-cron-postgres.integration.test.ts (9 tests) 8697ms
+certification-1  |      ✓ produces exactly one message when two schedulers fire the same occurrence  352ms
+certification-1  |      ✓ dispatches from the shipped process  4379ms
+certification-1  |      ✓ reports ready while the cron loop is doing its rounds  1812ms
+certification-1  |      ✓ stops reporting ready when every definition fails  1607ms
+certification-1  |  ✓ tests/billing-invoice-postgres.integration.test.ts (6 tests) 8770ms
+certification-1  |      ✓ issues the closed month's invoice from the shipped process  1798ms
+certification-1  |      ✓ leaves the issued invoice untouched on a second run  2282ms
+certification-1  |      ✓ refuses an open period at its configuration boundary  600ms
+certification-1  |      ✓ issues exactly one invoice when two runs race for the same period  1035ms
+certification-1  |      ✓ numbers invoices gaplessly per organization and stamps the due date  2791ms
+certification-1  |  ✓ tests/project-queues-multi-instance.integration.test.ts (6 tests) 10056ms
+certification-1  |      ✓ claims every message exactly once across six competing instances  2845ms
+certification-1  |      ✓ gives a message to exactly one instance when many claim at the same moment  448ms
+certification-1  |      ✓ fences a vanished worker: the lease survives, the stale token does not  6214ms
+certification-1  |  ❯ tests/postgres.integration.test.ts (53 tests | 1 failed) 38416ms
+certification-1  |      ✓ runs the certification cluster with room for every declared pool 8ms
+certification-1  |      ✓ keeps global auth and tenant runtime privileges separated 90ms
+certification-1  |      ✓ enforces tenant isolation through a non-superuser runtime connection 28ms
+certification-1  |      ✓ discovers memberships only through the auth boundary 24ms
+certification-1  |      ✓ keeps audit chain order equal to (created_at, id) order under concurrent writers (2.36) 110ms
+certification-1  |      ✓ finds exactly the open table and the USING (true) policy through the real catalog (2.39) 180ms
+certification-1  |      ✓ finds the suspected missing index, the unused index, the bloat and the missing sample in real statistics (2.40)  11957ms
+certification-1  |      ✓ reads composite, self-referencing and cross-schema foreign keys through the project read role (2.41) 41ms
+certification-1  |      ✓ (2.42) reconstructs the cron log from the real dedupe verifier of an enqueued occurrence 46ms
+certification-1  |      ✓ (2.43) enqueues a dedupe key into a queue without a dedupe window against the real pair constraint 46ms
+certification-1  |      ✓ (2.44) reads a real catalog as a healthy database and a binding that points nowhere as degraded 29ms
+certification-1  |      ✓ (2.45) aggregates usage events written through the real service into the right hourly buckets 43ms
+certification-1  |      ✓ (2.46) counts the sessions of the project read role and carries no query text out of the database 31ms
+certification-1  |      ✓ (2.49) applies a console change set through the approval path and leaves the table as described 181ms
+certification-1  |      ✓ (2.47) aggregates project auth audit rows into buckets without carrying an address 27ms
+certification-1  |      ✓ (2.71) splits the failures of the real chain by action and says since when 28ms
+certification-1  |      ✓ (2.52) refuses a usable session without the second factor when the project requires it  300ms
+certification-1  |      ✓ (2.54) refuses a return target outside the allowed list of the project 212ms
+certification-1  |      ✓ (2.56) refuses the login attempt that crosses the limit and lets the next window through  681ms
+certification-1  |      ✓ (2.60) refuses a known leaked password at sign-up when the project requires it 297ms
+certification-1  |      ✓ (2.59) reports the roles and the TLS state of the project database without a connection string 27ms
+certification-1  |      ✓ (2.62) tells for a real table what a signed-in user may read and write 79ms
+certification-1  |      ✓ (2.61) runs every prepared template against a real catalog without writing 178ms
+certification-1  |      ✓ (2.57) proves the advisor rules that used to be unreachable 27ms
+certification-1  |      ✓ (2.67) shows what a query costs in the console without showing the query  1231ms
+certification-1  |      ✓ (2.50) turns a real table change into a signed webhook delivery 142ms
+certification-1  |      ✓ (2.63) forwards only the fields the console already shows 89ms
+certification-1  |      ✓ (2.55) lists function invocations with outcome and duration without the container output 29ms
+certification-1  |      ✓ (2.53) delivers a table change through the running bridge process  4363ms
+certification-1  |      ✓ (2.66) stores the console settings of a user and gives them back unchanged 118ms
+certification-1  |      ✓ (2.65) searches across the sources that have routes and says what it cannot reach 53ms
+certification-1  |      ✓ (2.64) forwards through the running collector process and continues after a restart  4574ms
+certification-1  |      ✓ (2.68) reads what this environment runs on from the real server and the real control plane 91ms
+certification-1  |      ✓ (2.69) explains a real query plan without executing the query  7809ms
+certification-1  |      ✓ (2.70) reports the state of the real database from counters that really move  996ms
+certification-1  |      ✓ (2.72) reads foreign data wrappers without carrying a foreign password out 42ms
+certification-1  |      ✓ (2.74) reads a real replication slot with its backlog and carries no connection secret out 99ms
+certification-1  |      ✓ (2.75) turns a real project event into a signed dashboard webhook delivery 102ms
+certification-1  |      ✓ (2.78) issues an S3 access key pair once, never again, and revokes without deleting 60ms
+certification-1  |      ✓ (2.77) calls the auth hooks of a real sign-in and refuses one that wants a reserved claim  684ms
+certification-1  |      ✓ (2.79) registers a real passkey, signs in with a real signature and refuses replay, wrong origin and a counter that runs backwards 190ms
+certification-1  |      ✓ (2.81) counts change sets, approvals and apply jobs per fixed environment under RLS 78ms
+certification-1  |      ✓ (2.80) accepts a real foreign token through the Data API under row security and refuses the four forgeries 155ms
+certification-1  |      ✓ (2.85) does not forward the same audit row again after a restart when the database sets the microseconds  1304ms
+certification-1  |      ✓ (2.83) answers a real GraphQL query under row security and refuses depth, a table without RLS and an alias trick 103ms
+certification-1  |      ✓ (2.82) issues an OAuth code with PKCE, redeems it once, reads with the token under row security and refuses replay, a wrong verifier, a foreign return target and an ungranted scope 249ms
+certification-1  |      ✓ (2.86) reads the realtime channels, keeps a counter past retention, counts the change feed backlog against the stored position and shows the neighbour nothing 113ms
+certification-1  |      ✓ (2.89) removes exactly the long-expired one-time artefacts, keeps the fresh ones, keeps a code whose token still lives, and lets only the auth role delete 63ms
+certification-1  |      ✓ (2.91) turns a real OAuth token into an MCP session with exactly the tools its scopes open, writes a row through it, and refuses an ungranted, an expired and a revoked token with the same answer 225ms
+certification-1  |      ✓ (2.92) records a consent as one row, issues a token on it, revokes exactly that consent so the token stops working while the row stays, and refuses a scope nobody consented to 181ms
+certification-1  |      ✓ (2.93) proves what the vector page claims: this server offers no vector type, CREATE EXTENSION vector fails, cube stops at its hard dimension limit, and a bucket written under row security has no place for an embedding 140ms
+certification-1  |      ✓ (2.94) revokes exactly one issued OAuth token so that token stops working while its consent, its neighbour token and the right to a new one all stay 170ms
+certification-1  |      × (2.95) embeds neighbour rows over real foreign keys and shows exactly what the policy of the embedded table allows, refuses an unknown relation, a neighbour without row security and one embed too many 98ms
+certification-1  | 
+certification-1  | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+certification-1  | 
+certification-1  |  FAIL  tests/postgres.integration.test.ts > PostgreSQL 17 role and RLS integration > (2.95) embeds neighbour rows over real foreign keys and shows exactly what the policy of the embedded table allows, refuses an unknown relation, a neighbour without row security and one embed too many
+certification-1  | AssertionError: expected [ { text: 'kommentar 0' }, …(20) ] to have a length of 20 but got 21
+certification-1  | 
+certification-1  | - Expected
+certification-1  | + Received
+certification-1  | 
+certification-1  | - 20
+certification-1  | + 21
+certification-1  | 
+certification-1  |  ❯ tests/postgres.integration.test.ts:10608:40
+certification-1  |     10606|       // die Zeile. Die Kommentare sind beschnitten.
+certification-1  |     10607|       expect(list.rows[1]).toMatchObject({ id: beitragZwei, titel: "b …
+certification-1  |     10608|       expect(list.rows[1]!.kommentare).toHaveLength(DATA_API_LIMITS.ma…
+certification-1  |        |                                        ^
+certification-1  |     10609|       expect((list.rows[1]!.kommentare as Array<{ text: string }>)[0])…
+certification-1  |     10610|       expect(list.embeds).toEqual([
+certification-1  | 
+certification-1  | ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+certification-1  | 
+certification-1  | 
+certification-1  |  Test Files  1 failed | 30 passed (31)
+certification-1  |       Tests  1 failed | 224 passed (225)
+certification-1  |    Start at  19:15:57
+certification-1  |    Duration  45.97s (transform 20.34s, setup 0ms, import 34.53s, tests 114.44s, environment 11ms)
+certification-1  | 
+[Kcertification-1 exited with code 1
+ Compose Stopping Aborting on container exit...
+ Container qkern-slice-joins-certification-1 Stopping 
+ Container qkern-slice-joins-certification-1 Stopped 
+
+ Container qkern-slice-joins-certification-1 Stopping 
+ Container qkern-slice-joins-certification-1 Stopped 
+ Container qkern-slice-joins-certification-1 Removing 
+ Container qkern-slice-joins-certification-1 Removed 
+ Container qkern-slice-joins-postgres-1 Stopping 
+ Container qkern-slice-joins-vault-1 Stopping 
+ Container qkern-slice-joins-postgres-1 Stopped 
+ Container qkern-slice-joins-postgres-1 Removing 
+ Container qkern-slice-joins-postgres-1 Removed 
+ Container qkern-slice-joins-vault-1 Stopped 
+ Container qkern-slice-joins-vault-1 Removing 
+ Container qkern-slice-joins-vault-1 Removed 
+ Network qkern-slice-joins_default Removing 
+ Network qkern-slice-joins_default Removed 
+EXIT=1
