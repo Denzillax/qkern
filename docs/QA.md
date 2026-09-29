@@ -6345,3 +6345,38 @@ dem erwarteten Ausfall.
 Nicht erbracht: Kein echter S3-Client hat den Endpunkt gesehen. Ueberschreiben
 per PutObject ist nicht atomar. Alte S3-Paare oeffnen nichts. Einbettung nur
 eine Ebene. Im Browser weiterhin nicht gesehen. Ein Platzhalter bleibt.
+
+## Welle neunzehn (2.67): geschrieben, gedruckt, und ein Protokoll, das es nie gab
+
+Drei Schnitte parallel an drei Sprossen: GraphQL schreibend ueber denselben Weg
+wie REST (Fall 2.97), der S3-Endpunkt fuer echte Clients mit aws-chunked,
+Range, CopyObject, DeleteObjects und Presigned URLs (Storage-Stack 9 auf 10,
+das AWS SDK hat ihn gesehen), und Inhaltslogs je Function-Aufruf (Fall 2.98,
+Migration 0069, Functions-Stack 27 auf 32). Der letzte Platzhalter der Console
+ist weg; von sechsundzwanzig sind null uebrig.
+
+Zwei Funde wiegen mehr als die drei Funktionen. **Das Aufrufprotokoll wurde im
+Betrieb nie geschrieben**: `createFunctionInvocationServiceFromEnv` gab den
+Logger seit 1.89.0 nie mit, und weil der Kettenfall ihn von Hand verdrahtete,
+war der Fall trotzdem gruen. Er prueft jetzt die Verdrahtung statt des
+Ergebnisses. **Fuenfzehn Textstellen behaupteten eine Ausgabe, die es nicht gibt**:
+Drei Agenten schrieben unabhaengig ihre Fallnummer in der dreistelligen Form,
+in der OpenAPI-Beschreibung, im Compute-Vertrag und im Handbuch. Die
+zweistellige Form `2.98` meint in diesem Projekt die Fallnummer und war
+richtig; ich habe sie anfangs mitgeaendert, 26 Stellen, und lasse sie stehen,
+weil sie in sichtbaren Texten ohnehin der bessere Stand ist. Der neue Vertrag
+`version-reference-contract` prueft die dreistellige Form und nur die Richtung,
+die immer falsch ist; er fand beim ersten Lauf vier weitere Stellen aus
+aelteren Ausgaben.
+
+Dazu an der REST-Flaeche: Eine von WITH CHECK abgewiesene Zeile kam als 503
+zurueck und war damit nicht von einem Ausfall zu unterscheiden. Jetzt 403.
+
+Checkpoint `2.67.0` am 29. September 2026: PostgreSQL 17 mit STACK von STACK
+zweimal, versitygw und ClamAV mit 10 von 10, Functions mit 32 von 32, alle
+exit 0; Lokal LOKAL bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
+`--maxWorkers=3`. Vier Mutationsproben auf dem gemergten Stand.
+
+Nicht erbracht: Im Browser weiterhin nicht gesehen. AWS CLI und rclone haben
+den S3-Endpunkt nicht gesehen, Multipart bleibt 501. Inhaltslogs erreichen
+keinen Log-Drain. GraphQL kennt kein Upsert. Keine Metrik fuer Schreibzeilen.

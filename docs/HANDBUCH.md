@@ -2445,7 +2445,7 @@ persistenten CDC/Event Log, horizontalen Fan-out oder Lasttests.
 
 ### Vektor-Buckets: kein Vektortyp, und darum keine Ablage
 
-Seit `2.93.0` ist **Storage → Vektor-Buckets** keine Platzhalterseite mehr. Der
+Seit `2.65.0` ist **Storage → Vektor-Buckets** keine Platzhalterseite mehr. Der
 Platzhalter sagte „Backend fehlt" und versprach eine „Ablage für Embeddings mit
 Ähnlichkeitssuche". Beides war zu freundlich: Was fehlt, ist der Vektortyp im
 Server, und ohne ihn hilft auch ein Backend nichts.
@@ -3530,7 +3530,7 @@ oder einen festen Fehlercode wie `FUNCTION_TIMEOUT`. Mehr nicht.
 **Was sie nicht trägt, und warum:**
 
 - **Keine Ausgabe des Containers in dieser Tabelle.** stdout und stderr
-  stehen nicht in `0045`. Bis `2.97.0` wurden sie gar nicht aufgehoben; seit
+  stehen nicht in `0045`. Bis `2.66.0` wurden sie gar nicht aufgehoben; seit
   `2.67.0` liegen sie je Aufruf in einer eigenen Tabelle (`0069`), mit harten
   Grenzen, und **Functions → Function-Logs** zeigt sie (siehe „Function-Logs:
   die Ausgabe des Containers“). Das Aufrufprotokoll bleibt das Protokoll des
@@ -4127,7 +4127,7 @@ Seit `2.63.0` räumt derselbe Compute-Prozess auf, was in Project Auth abgelaufe
 ist. Drei Tabellen halten Dinge, die genau einmal und nur kurz gelten:
 
 * `project_auth_one_time_tokens` (Bestätigungslink, Magic Link,
-  Passwort-Reset, OIDC-Zustand, MFA-Herausforderung und seit `2.79.0` die
+  Passwort-Reset, OIDC-Zustand, MFA-Herausforderung und seit `2.60.0` die
   Passkey-Herausforderungen),
 * `project_auth_oauth_codes`,
 * `project_auth_oauth_tokens`.
@@ -4274,7 +4274,7 @@ liest, kann den Aufruf nicht verstehen.
 schreibt, und jede Zeile auf `stdout`, die **kein JSON-Objekt** ist. `stdout`
 bleibt die Leitung zwischen Host und Container: Ein JSON-Objekt ist eine
 Nachricht (eine Bitte um Egress, das Ergebnis oder die blosse Antwort aus
-`1.22.0`), alles andere ist Log. Bis `2.97.0` beendete eine Nicht-JSON-Zeile
+`1.22.0`), alles andere ist Log. Bis `2.66.0` beendete eine Nicht-JSON-Zeile
 den Aufruf; ein `console.log("start")` war ein Fehler mit festem Code. Wer
 eine JSON-Zeile als Log will, schreibt sie auf `stderr`, denn auf `stdout`
 würde sie als Antwort gelesen. Jede Zeile trägt den Zeitpunkt, an dem sie den
@@ -4334,7 +4334,7 @@ Umgebung des Testlaufs erscheint auch im Log nicht. Der Postgres-Stack (Fall
 **Nebenbefund.** Die Fabrik `createFunctionInvocationServiceFromEnv`, über die
 Web-Route, Queue-Wirt und Auth-Hooks den Aufrufdienst bekommen, hat das
 Aufrufprotokoll seit `1.89.0` nie verdrahtet; nur der Kettenfall der
-Zertifizierung gab `invocationLog` von Hand mit. Im Betrieb hat bis `2.97.0`
+Zertifizierung gab `invocationLog` von Hand mit. Im Betrieb hat bis `2.66.0`
 kein Aufruf eine Zeile geschrieben. Seit `2.67.0` gibt die Fabrik das
 Repository als Protokoll mit, und ein Vertrag liest die Verdrahtung.
 
