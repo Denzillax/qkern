@@ -15,6 +15,7 @@ import {
 import {
   authAuditFetcher,
   functionInvocationFetcher,
+  functionOutputFetcher,
   storageObjectFetcher,
 } from "@/lib/server/logs/log-explorer-fetchers";
 import { adminProjectAuthScope } from "@/lib/server/project-auth/http";
@@ -40,6 +41,7 @@ import {
  *
  * * `auth_audit` → `adminProjectAuthScope` + `listAuditEvents` (`project_auth_admin`)
  * * `function_invocations` → `adminComputeContext` + `readFunctionInvocationLog` (`project_compute_admin`)
+ * * `function_output` → `adminComputeContext` + `readFunctionOutputLog` (`project_compute_admin`, seit 2.98)
  * * `storage_objects` → `adminProjectStorageContext` + `readObjectLog` (`project_storage_admin`)
  *
  * Daraus folgt die wichtigste Eigenschaft dieser Route: Sie **kann** nichts
@@ -103,6 +105,9 @@ export function createLogExplorerHandlers(services: {
           async () => (await adminProjectAuthScope(request, routeContext)).scope,
           services.auth, query),
         function_invocations: functionInvocationFetcher(
+          async () => await adminComputeContext(request, routeContext),
+          services.compute, query),
+        function_output: functionOutputFetcher(
           async () => await adminComputeContext(request, routeContext),
           services.compute, query),
         storage_objects: storageObjectFetcher(

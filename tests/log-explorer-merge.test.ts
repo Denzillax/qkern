@@ -162,13 +162,14 @@ describe("log explorer fan-out", () => {
     const result = await searchLogSources({
       auth_audit: paged([entry("auth_audit", "a", "2026-09-20T10:00:00.000Z")], 10),
       function_invocations: async () => { throw new LogExplorerSourceFailure("forbidden"); },
+      function_output: paged([entry("function_output", "o", "2026-09-20T09:30:00.000Z")], 10),
       storage_objects: paged([entry("storage_objects", "s", "2026-09-20T09:00:00.000Z")], 10),
     }, query());
 
-    expect(result.entries.map((item) => item.id)).toEqual(["a", "s"]);
+    expect(result.entries.map((item) => item.id)).toEqual(["a", "o", "s"]);
     const states = Object.fromEntries(result.sources.map((report) => [report.id, report.state]));
     expect(states).toEqual({
-      auth_audit: "ok", function_invocations: "forbidden", storage_objects: "ok",
+      auth_audit: "ok", function_invocations: "forbidden", function_output: "ok", storage_objects: "ok",
     });
     // Die Berichte folgen der festen Quellenliste, nicht der Antwortzeit.
     expect(result.sources.map((report) => report.id))

@@ -1,6 +1,8 @@
 /**
  * Die Texte der drei Logseiten aus 2.84, deutsch und an einer Stelle:
- * Functions -> Function-Logs, Logs -> API-Gateway und Logs -> Pooler.
+ * Functions -> Function-Logs, Logs -> API-Gateway und Logs -> Pooler. Die
+ * erste ist seit 2.98 keine Fehlanzeige mehr, sondern zeigt die Inhaltslogs;
+ * ihre Texte bleiben hier, weil die Ansicht sie ueber t(variable) zeigt.
  *
  * Gleiche Bauart wie `log-view-texts` (2.51): Der Schluessel ist der deutsche
  * Text, die Console uebersetzt ihn ueber ihren Katalog, und der Vertrag
@@ -26,44 +28,74 @@
  * ------------------------------------------------------------------ */
 
 /**
- * Der Platzhalter versprach „Ausgaben aus dem Container". Der Grund, warum es
- * sie nicht gibt, steht seit Migration 0045 im Quelltext und wird hier
- * woertlich vertreten, nicht umschrieben.
+ * Bis 2.97 sagte diese Seite, dass es die Ausgabe des Containers nicht gibt,
+ * und warum. Seit 2.98 gibt es sie: die Inhaltslogs aus Migration 0069, je
+ * Aufruf, mit harten Grenzen. Die Seite zeigt sie und sagt dazu, was die
+ * Grenzen sind und was QKERN mit den Zeilen nicht tut.
  */
 export const CONTAINER_LOG_TEXTS = {
   kicker: "FUNCTIONS",
-  title: "Function-Logs: was der Container gesagt hat, ist weg",
+  title: "Function-Logs: was der Container geschrieben hat",
   /** Der Satz, der die Seite eroeffnet. */
-  noOutput:
-    "Die Ausgabe des Containers gibt es nicht, und sie ist auch nicht bloss noch nicht gebaut. QKERN hebt stdout und stderr einer Function bewusst nicht auf. Migration 0045 schreibt den Grund selbst hin: Beides stammt aus fremdem Code und könnte alles enthalten, was die Function gesehen hat. Diese Seite zeigt darum, was wirklich da ist, und erfindet den Rest nicht.",
-  /** Warum stdout nicht einmal im Prinzip ein Log sein kann. */
+  intro:
+    "Seit 2.98 hebt QKERN auf, was ein Function-Container auf stdout und stderr schreibt: je Aufruf, Zeile für Zeile, mit dem Zeitpunkt, an dem die Zeile den Host erreicht hat, und dem Strom, aus dem sie kam. Die Zeilen liegen in einer eigenen Tabelle neben dem Aufrufprotokoll, unter denselben Rechten und mit derselben Aufbewahrung: Sie werden nie geändert und fallen mit der Function.",
+  /** Die drei Grenzen, mit Zahlen. */
+  limits:
+    "Drei Grenzen gelten je Aufruf, und alle drei stehen im Code und in der Migration gleich: höchstens 500 Zeilen, höchstens 64 KiB insgesamt und höchstens 2 KiB je Zeile. Eine längere Zeile wird abgeschnitten und trägt eine Markierung; was über die Zahl oder die Bytes hinausgeht, wird gezählt, aber nicht behalten. Ein abgeschnittenes Protokoll sagt das selbst, mit der Zahl der fehlenden Zeilen.",
+  /** stdout bleibt die Leitung; was Log ist und was nicht. */
   stdoutIsProtocol:
-    "stdout ist bei QKERN kein Ausgabekanal, sondern die Leitung: Host und Container sprechen darüber zeilenweise JSON, entweder eine Bitte um eine Ausgangsverbindung oder das Ergebnis des Aufrufs. Eine Zeile, die kein JSON ist, beendet den Aufruf mit einem festen Fehlercode. Eine Function kann auf stdout also gar nicht protokollieren, ohne ihren eigenen Aufruf abzubrechen.",
-  /** Was mit stderr wirklich passiert. Gezaehlt, nicht gelesen. */
-  stderrIsCounted:
-    "stderr wird gelesen, aber nie behalten: Der Host zählt die Bytes und kappt den Kanal bei 8 KiB, damit ein geschwätziger Container nicht den Speicher des Hosts frisst. Die Bytes selbst werden nie zu einer Zeichenkette zusammengesetzt, nirgends gespeichert und an niemanden weitergegeben. Es gibt keinen Puffer, in dem sie noch stünden.",
-  /** Und warum auch nachher nichts mehr da ist. */
-  containerIsGone:
-    "Nach dem Aufruf ist der Container weg. Er läuft mit --rm und wird danach zusätzlich mit docker rm --force entfernt. Ein späteres docker logs findet ihn nicht mehr, auch nicht auf dem Host, auf dem er lief.",
-  /** Was es stattdessen gibt: die Einsatzhistorie. */
+    "stdout bleibt die Leitung zwischen Host und Container: Eine Zeile, die als JSON-Objekt liest, ist eine Nachricht, also eine Bitte um eine Ausgangsverbindung oder das Ergebnis des Aufrufs. Jede andere stdout-Zeile und jede stderr-Zeile ist eine Logzeile. Wer eine JSON-Zeile als Log will, schreibt sie auf stderr, denn auf stdout würde sie als Antwort gelesen.",
+  /** Die Entscheidung zu den Geheimnissen, woertlich. */
+  secrets:
+    "QKERN streicht nichts aus den Zeilen, und das ist eine Entscheidung mit Grund: Es gibt nichts, wogegen es streichen könnte. Der Prozess, der den Container startet, kennt keinen Wert eines Geheimnisses. Er reicht nur Referenzen weiter, setzt keine Umgebungsvariable und gibt seine eigene Umgebung nicht durch. Ein Filter, der trotzdem nach etwas suchte, wäre eine Zusage ohne Deckung. Was eine Function aus einer vermittelten Ausgangsverbindung erhält und dann selbst ausgibt, verantwortet die Function, so wie den Inhalt ihrer Antwort.",
+  /** Was auch dieses Log nicht traegt. */
+  neverInIt:
+    "Auch dieses Log trägt nie die Nutzlast eines Aufrufs und nie den Wert eines Geheimnisses aus QKERN. Es trägt, was der Container von sich aus geschrieben hat, bis zur Grenze, und sonst nichts.",
+  /** Die Auswahl: Function, dann Aufruf. */
+  invocationsTitle: "Aufrufe dieser Function",
+  invocationsMeaning:
+    "Die Aufrufe kommen aus dem Aufrufprotokoll unter Logs → Functions, neueste zuerst, höchstens fünfzig. Gewählt wird ein Aufruf; darunter steht, was sein Container geschrieben hat.",
+  /** Die Ausgabe selbst. */
+  outputTitle: "Was der Container geschrieben hat",
+  outputEmpty:
+    "Dieser Aufruf hat nichts geschrieben: keine Zeile auf stdout, keine auf stderr. Das ist ein Befund über den Aufruf, kein Fehlen der Seite.",
+  outputTruncated:
+    "Dieses Protokoll ist abgeschnitten. Mindestens eine der drei Grenzen hat gegriffen; die Zahl der fehlenden Zeilen steht daneben, und eine gekürzte Zeile ist markiert.",
+  /** Was es sonst gibt: die Einsatzhistorie. */
   deploymentsTitle: "Welches Image gelaufen ist",
   deploymentsMeaning:
-    "Was der Container gesagt hat, ist weg. Welcher Container es war, steht fest: Jeder Einsatz einer Function hält seine Revision, das Image mit seinem sha256-Digest, wer eingesetzt hat und wann. Die Historie ist append-only, und eine Änderung des Images ohne ihre Zeile ist gar nicht ausdrückbar.",
+    "Jeder Einsatz einer Function hält seine Revision, das Image mit seinem sha256-Digest, wer eingesetzt hat und wann. Die Historie ist append-only, und eine Änderung des Images ohne ihre Zeile ist gar nicht ausdrückbar.",
   deploymentsLimit:
-    "Diese Liste sagt, was lief, nicht wie es lief. Ein Digest verrät nichts über einen einzelnen Aufruf, und aus ihm lässt sich keine Ausgabe rekonstruieren. Gezeigt werden die jüngsten Revisionen; die laufende steht oben.",
-  /** Der Verweis auf das Aufrufprotokoll. */
-  invocationsTitle: "Das Aufrufprotokoll gibt es",
-  invocationsMeaning:
-    "Je Aufruf schreibt QKERN eine Zeile mit Beginn, Dauer, Ausgang und entweder einem HTTP-Status oder einem festen Fehlercode. Sie steht unter Logs → Functions. Das ist kein Ersatz für die Ausgabe des Containers, und diese Seite tut nicht so, als wäre es einer: Ein Fehlercode sagt, dass es schiefging, nicht warum.",
-  /** Was ein Betreiber tun kann. Konkret. */
-  operatorTitle: "Wenn Sie die Ausgabe wirklich brauchen",
-  operatorSteps:
-    "Während ein Aufruf läuft, existiert der Container unter einem Namen, der mit qkern-fn- beginnt; das Präfix gibt es genau dafür. Wer auf dem Host sitzt, kann ihn in dieser Zeit sehen. Dauerhaft hinausschreiben kann nur der Docker-Dämon selbst: Ein Log-Treiber, der vor dem Lauf eingerichtet ist, trägt die Zeilen weg, solange der Container lebt. QKERN richtet ihn nicht ein und liest ihn nicht mit.",
+    "Diese Liste sagt, was lief, nicht wie es lief. Wie ein einzelner Aufruf lief, steht oben in seiner Ausgabe. Gezeigt werden die jüngsten Revisionen; die laufende steht oben.",
+  /** Was ein Betreiber tun kann. */
+  operatorTitle: "Nach draussen",
   operatorDrain:
-    "Ein Log-Drain kann das Aufrufprotokoll nach draussen tragen, die Ausgabe des Containers nicht. Die Quelle heisst function_invocations und führt genau die Felder, die Logs → Functions zeigt; sie hält sogar die Referenz des Aufrufers zurück. Einzurichten unter Einstellungen → Log-Drains.",
-  /** Was auch ein Ausbau nie zeigen wuerde. */
-  neverInIt:
-    "Auch ein Serverlog trüge nie die Nutzlast eines Aufrufs und nie den Wert eines Geheimnisses. Der Wert eines Geheimnisses erreicht den Prozess, der den Container startet, gar nicht; weitergegeben werden nur Referenzen.",
+    "Ein Log-Drain trägt das Aufrufprotokoll nach draussen, die Inhaltslogs nicht. Die Quelle heisst function_invocations und führt genau die Felder, die Logs → Functions zeigt. Die Zeilen eines Aufrufs bleiben in QKERN und werden nur hier und im Log-Explorer als Quelle Function-Ausgabe gelesen; dort erscheinen sie als Zahlen, nicht als Text.",
+} as const;
+
+/** Die Spalten der Ausgabe, jede mit ihrem Gegenstueck im Backend. */
+export const OUTPUT_COLUMNS = [
+  { label: "Zeitpunkt", meaning: "Wann die Zeile den Host erreicht hat. Der Container hat keine Uhr, der QKERN trauen müsste." },
+  { label: "Strom", meaning: "stdout oder stderr, so wie der Container geschrieben hat." },
+  { label: "Text", meaning: "Die Zeile, höchstens 2 KiB. Eine längere ist gekürzt und trägt die Markierung." },
+] as const;
+
+/** Die Spalten der Aufrufliste auf dieser Seite. */
+export const OUTPUT_INVOCATION_COLUMNS = [
+  { label: "Beginn", meaning: "Der Zeitpunkt des Aufrufs aus dem Aufrufprotokoll." },
+  { label: "Ausgang", meaning: "completed mit dem HTTP-Status oder failed mit dem festen Fehlercode." },
+  { label: "Dauer", meaning: "Gemessen vom Host, in Millisekunden." },
+] as const;
+
+/** Kurze Wörter, die die Ansicht ueber t(variable) zeigt. */
+export const OUTPUT_WORDS = {
+  cut: "gekürzt",
+  truncated: "abgeschnitten",
+  complete: "vollständig",
+  lines: "Zeilen",
+  dropped: "fehlende Zeilen",
+  bytes: "Bytes",
+  noOutputYet: "In dieser Umgebung ist kein Aufruf protokolliert. Sobald eine Function läuft, steht ihr Aufruf hier.",
 } as const;
 
 /** Die Spalten der Einsatzhistorie, jede mit ihrem Gegenstueck im Backend. */
@@ -173,6 +205,9 @@ export const MISSING_LOG_STATES = {
 export function missingLogTexts(): string[] {
   return [
     ...Object.values(CONTAINER_LOG_TEXTS),
+    ...OUTPUT_COLUMNS.flatMap((entry) => [entry.label, entry.meaning]),
+    ...OUTPUT_INVOCATION_COLUMNS.flatMap((entry) => [entry.label, entry.meaning]),
+    ...Object.values(OUTPUT_WORDS),
     ...DEPLOYMENT_COLUMNS.flatMap((entry) => [entry.label, entry.meaning]),
     ...Object.values(API_GATEWAY_LOG_TEXTS),
     ...Object.values(POOLER_LOG_TEXTS),

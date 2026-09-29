@@ -79,6 +79,12 @@ function harness(options: {
       calls.push({ method: "listInvocationLog", payload: query });
       return { rows: [], limit: query.limit, offset: query.offset, hasMore: false, counts: { completed: 0, failed: 0 } };
     },
+    async recordFunctionInvocationOutput() {},
+    async getInvocationOutput() { return null; },
+    async listOutputLog(_principal, _scope, query) {
+      calls.push({ method: "listOutputLog", payload: query });
+      return { rows: [], limit: query.limit, offset: query.offset, hasMore: false };
+    },
     async listCron() { return cron; },
     async createCron(_principal, _scope, input) {
       calls.push({ method: "createCron", payload: input });

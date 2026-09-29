@@ -39,19 +39,20 @@
  * geordneten Liste zusammenfuehrt. Es entsteht keine neue Lesestelle: Wer eine
  * Quelle heute nicht lesen darf, sieht sie auch hier nicht.
  *
- * ## Warum nur drei Quellen in der Liste stehen
+ * ## Warum nur vier Quellen in der Liste stehen
  *
  * Eine Quelle kommt in die gemischte Liste, wenn es fuer sie eine Leseroute
  * **ueber die ganze Umgebung** gibt und wenn ihre Zeilen Ereignisse mit einem
- * Zeitpunkt sind. Das trifft auf drei zu. Die uebrigen stehen in
- * `LOG_EXPLORER_OUT_OF_REACH`, mit dem Grund — nicht weil sie vergessen
- * wurden, sondern weil ein Suchfeld ueber ihnen eine Zusage waere, die die
- * Fläche nicht haelt.
+ * Zeitpunkt sind. Das trifft auf vier zu; die vierte, die Inhaltslogs der
+ * Functions, kam mit 2.98 dazu, als es sie und ihre Leseroute gab. Die
+ * uebrigen stehen in `LOG_EXPLORER_OUT_OF_REACH`, mit dem Grund — nicht weil
+ * sie vergessen wurden, sondern weil ein Suchfeld ueber ihnen eine Zusage
+ * waere, die die Fläche nicht haelt.
  */
 
 /** Die Quellen, die der Explorer wirklich mischt. */
 export const LOG_EXPLORER_SOURCES = [
-  "auth_audit", "function_invocations", "storage_objects",
+  "auth_audit", "function_invocations", "function_output", "storage_objects",
 ] as const;
 export type LogExplorerSourceId = (typeof LOG_EXPLORER_SOURCES)[number];
 
@@ -80,7 +81,14 @@ Readonly<Record<LogExplorerSourceId, LogExplorerSourceDefinition>> = Object.free
     label: "Function-Aufrufe",
     route: "compute/invocations",
     capability: "project_compute_admin",
-    meaning: "Je Aufruf ein Eintrag mit Beginn, Dauer, Ausgang und entweder einem HTTP-Status oder einem festen Fehlercode. Nicht die Ausgabe des Containers: QKERN speichert sie nicht.",
+    meaning: "Je Aufruf ein Eintrag mit Beginn, Dauer, Ausgang und entweder einem HTTP-Status oder einem festen Fehlercode. Die Ausgabe des Containers steht daneben in der Quelle Function-Ausgabe.",
+  }),
+  function_output: Object.freeze({
+    id: "function_output",
+    label: "Function-Ausgabe",
+    route: "compute/output",
+    capability: "project_compute_admin",
+    meaning: "Je Aufruf, der etwas geschrieben hat, ein Eintrag mit der Zahl der Zeilen auf stdout und stderr, den Bytes und ob abgeschnitten wurde. Die Zeilen selbst zeigt Functions → Function-Logs; hier steht nur, dass es sie gibt.",
   }),
   storage_objects: Object.freeze({
     id: "storage_objects",
@@ -106,10 +114,6 @@ export const LOG_EXPLORER_OUT_OF_REACH: ReadonlyArray<Readonly<{
   Object.freeze({
     label: "Cron-Vorkommen",
     reason: "Kein gespeichertes Log. Es wird bei jeder Anfrage aus dem Ausdruck und dem Dedupe-Fenster rekonstruiert, je Cron-Eintrag; der Zustand eines Vorkommens ändert sich danach noch.",
-  }),
-  Object.freeze({
-    label: "Ausgabe eines Function-Containers",
-    reason: "Wird nicht gespeichert. Migration 0045 hält stdout und stderr bewusst nicht; im Fehlerfall steht dort ein fester Code, nie ein Text.",
   }),
   Object.freeze({
     label: "Postgres-, Pooler-, Realtime- und API-Gateway-Log",

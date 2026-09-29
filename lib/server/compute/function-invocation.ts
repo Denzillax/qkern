@@ -6,6 +6,7 @@ import {
   type FunctionDefinitionRecord,
 } from "@/lib/server/compute/definitions";
 import { FunctionInvocationError, type FunctionInvoker } from "@/lib/server/compute/functions";
+import { FunctionOutputCollector } from "@/lib/server/compute/function-output";
 import type { FunctionInvocationResult } from "@/lib/server/compute/model";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
@@ -30,8 +31,15 @@ export type FunctionInvocationServiceOptions = {
   /**
    * Das Aufrufprotokoll (1.89). Ohne Port wird nichts protokolliert — und
    * nichts aendert sich am Verhalten des Aufrufs.
+   *
+   * Seit 2.98 kann der Port auch die Inhaltslogs aufnehmen. Dann sammelt der
+   * Dienst je Aufruf, was der Container auf stdout und stderr geschrieben
+   * hat, unter den Grenzen aus `function-output.ts`, und schreibt es nach
+   * der Zeile des Aufrufprotokolls. Ohne `recordFunctionInvocationOutput`
+   * wird die Ausgabe wie bis 2.97 verworfen.
    */
-  invocationLog?: Pick<ComputeDefinitionRepository, "recordFunctionInvocation">;
+  invocationLog?: Pick<ComputeDefinitionRepository, "recordFunctionInvocation"> &
+    Partial<Pick<ComputeDefinitionRepository, "recordFunctionInvocationOutput">>;
   /** Ein Protokollfehler stuerzt den Aufruf nicht; er wird hierher gemeldet. */
   onLogFailure?: (error: unknown) => void;
   now?: () => Date;
@@ -148,13 +156,17 @@ export class FunctionInvocationService {
 
     const startedAt = this.now();
     let outcome: { statusCode: number } | { errorCode: string } | null = null;
+    // Die Inhaltslogs (2.98): gesammelt wird nur, wenn jemand sie aufhebt.
+    // Sonst bleibt es beim Verwerfen, und der Sink kostet nichts.
+    const output = this.options.invocationLog?.recordFunctionInvocationOutput
+      ? new FunctionOutputCollector(this.now) : undefined;
     try {
       const result = await this.options.invoker.invoke(toDefinition(record), Object.freeze({
         id: invocationId,
         functionId: record.id,
         payload,
         requestedAt: startedAt.toISOString(),
-      }));
+      }), undefined, output);
       outcome = { statusCode: result.statusCode };
       return result;
     } catch (error) {
@@ -168,7 +180,8 @@ export class FunctionInvocationService {
       // Releases protokolliert nur noch Erfolge. Ein Protokollfehler stuerzt
       // den Aufruf nicht: Der Container ist gelaufen, seine Wirkung ist da.
       if (outcome && this.options.invocationLog) {
-        await this.options.invocationLog.recordFunctionInvocation(principal, scope, record.id, Object.freeze({
+        const log = this.options.invocationLog;
+        await log.recordFunctionInvocation(principal, scope, record.id, Object.freeze({
           invocationId,
           invokedBy: principal.actorRef,
           startedAt: startedAt.toISOString(),
@@ -176,7 +189,17 @@ export class FunctionInvocationService {
           outcome: "statusCode" in outcome ? "completed" as const : "failed" as const,
           statusCode: "statusCode" in outcome ? outcome.statusCode : null,
           errorCode: "errorCode" in outcome ? outcome.errorCode : null,
-        })).catch((error: unknown) => this.options.onLogFailure?.(error));
+        })).then(async () => {
+          // Die Inhaltslogs erst nach der Zeile des Aufrufs: Migration 0069
+          // bindet sie per Fremdschluessel daran. Auch ein gescheiterter oder
+          // abgebrochener Aufruf behaelt, was er bis dahin geschrieben hat;
+          // gerade dort ist die Ausgabe der einzige Hinweis auf das Warum.
+          // Ohne eine einzige Zeile wird keine Protokollzeile geschrieben.
+          if (output && log.recordFunctionInvocationOutput && !output.isEmpty()) {
+            await log.recordFunctionInvocationOutput(principal, scope, record.id, invocationId,
+              output.snapshot());
+          }
+        }).catch((error: unknown) => this.options.onLogFailure?.(error));
       }
       // Beide Zaehlungen muessen auch nach einem Timeout oder einem Absturz der
       // Sandbox fallen. Sonst waere die Function nach ein paar Fehlschlaegen

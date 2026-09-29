@@ -5,6 +5,7 @@ import type {
   FunctionInvocationResult,
 } from "@/lib/server/compute/model";
 import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
+import type { FunctionOutputSink } from "@/lib/server/compute/function-output";
 
 const NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 const ENTRYPOINT = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
@@ -25,7 +26,12 @@ export interface FunctionSandboxPort {
   invoke(
     definition: FunctionDefinition,
     invocation: FunctionInvocation,
-    options: { signal: AbortSignal },
+    /**
+     * `output` nimmt die Inhaltslogs (2.98) entgegen: jede Zeile, die der
+     * Container auf stderr schreibt, und jede Zeile auf stdout, die kein
+     * JSON-Objekt der Leitung ist. Ohne Sink wird beides verworfen.
+     */
+    options: { signal: AbortSignal; output?: FunctionOutputSink },
   ): Promise<FunctionInvocationResult>;
 }
 
@@ -60,6 +66,7 @@ export class FunctionInvoker {
     rawDefinition: FunctionDefinition,
     invocation: FunctionInvocation,
     signal?: AbortSignal,
+    output?: FunctionOutputSink,
   ): Promise<FunctionInvocationResult> {
     if (signal?.aborted) throw new FunctionInvocationError("FUNCTION_SANDBOX_FAILED");
     const definition = validateFunctionDefinition(rawDefinition);
@@ -75,6 +82,7 @@ export class FunctionInvoker {
       const result = await Promise.race([
         Promise.resolve().then(() => this.sandbox.invoke(definition, Object.freeze({ ...invocation, payload }), {
           signal: controller.signal,
+          output,
         })).catch(() => {
           throw new FunctionInvocationError(controller.signal.aborted && !signal?.aborted
             ? "FUNCTION_TIMEOUT" : "FUNCTION_SANDBOX_FAILED");

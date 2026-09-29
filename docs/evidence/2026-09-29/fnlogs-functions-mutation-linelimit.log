@@ -1,0 +1,90 @@
+
+> qkern-platform@2.66.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-fnlogs_default Creating 
+ Network qkern-slice-fnlogs_default Created 
+ Container qkern-slice-fnlogs-registry-1 Creating 
+ Container qkern-slice-fnlogs-postgres-1 Creating 
+ Container qkern-slice-fnlogs-registry-1 Created 
+ Container qkern-slice-fnlogs-postgres-1 Created 
+ Container qkern-slice-fnlogs-registry-1 Starting 
+ Container qkern-slice-fnlogs-postgres-1 Starting 
+ Container qkern-slice-fnlogs-registry-1 Started 
+ Container qkern-slice-fnlogs-postgres-1 Started 
+ Container qkern-slice-fnlogs-registry-1 Waiting 
+ Container qkern-slice-fnlogs-postgres-1 Waiting 
+ Container qkern-slice-fnlogs-registry-1 Healthy 
+ Container qkern-slice-fnlogs-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:0ced953e6db10894fe245a63edc88db06f3e8c4878f7f244c181cecce722b444 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-tables
+
+ ❯ tests/function-sandbox.integration.test.ts (21 tests | 1 failed) 34013ms
+     × cuts and counts beyond the limits and says so 1355ms
+ ❯ tests/function-chain.integration.test.ts (11 tests | 1 failed) 18682ms
+     × records a truncated content log honestly, with the limits of migration 0069 1576ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > records a truncated content log honestly, with the limits of migration 0069
+AssertionError: expected null to match object { Object (lineCount, stdoutLines, ...) }
+
+- Expected:
+{
+  "droppedLines": 101,
+  "lineCount": 500,
+  "stderrLines": 600,
+  "stdoutLines": 1,
+  "truncated": true,
+}
+
++ Received:
+null
+
+ ❯ tests/function-chain.integration.test.ts:186:27
+    184|     const [entry] = await definitions.listFunctionInvocations(admin, s…
+    185|     const stored = await definitions.readFunctionInvocationOutput(admi…
+    186|     expect(stored.output).toMatchObject({
+       |                           ^
+    187|       lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: …
+    188|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > cuts and counts beyond the limits and says so
+AssertionError: expected { lines: [ { …(4) }, …(600) ], …(6) } to match object { Object (lineCount, stdoutLines, ...) }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "droppedLines": 101,
+-   "lineCount": 500,
++   "droppedLines": 0,
++   "lineCount": 601,
+    "stderrLines": 600,
+    "stdoutLines": 1,
+    "truncated": true,
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:281:20
+    279|     expect(record.lines[0]).toMatchObject({ stream: "stdout", cut: tru…
+    280|     expect(Buffer.byteLength(record.lines[0]!.text, "utf8")).toBe(2_04…
+    281|     expect(record).toMatchObject({
+       |                    ^
+    282|       lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: …
+    283|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 30 passed (32)
+   Start at  22:31:11
+   Duration  55.02s (transform 764ms, setup 0ms, import 1.31s, tests 52.69s, environment 0ms)
+
+EXIT=1
+EXIT=1

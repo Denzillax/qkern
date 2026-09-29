@@ -90,9 +90,10 @@ describe.runIf(enabled)("Function chain certification", () => {
       repository,
       invocationLog: repository,
       invoker: {
-        async invoke(definition, request) {
+        async invoke(definition, request, _signal, output) {
           return await sandbox.invoke(definition, request, {
             signal: AbortSignal.timeout(definition.timeoutMs),
+            output,
           });
         },
       },
@@ -145,6 +146,48 @@ describe.runIf(enabled)("Function chain certification", () => {
     expect(entries[0]).toMatchObject({ outcome: "completed", statusCode: 200, errorCode: null, invokedBy: serviceRole.actorRef });
     expect(entries[0]!.durationMs).toBeGreaterThan(0);
     expect(JSON.stringify(entries)).not.toContain("logged");
+  });
+
+  /**
+   * Die Inhaltslogs (2.98) durch die ganze Kette: echter Container, echte
+   * Tabelle. Was der Container schrieb, steht nach dem Lauf in 0069, mit
+   * Strom und Reihenfolge, und das Aufrufprotokoll in 0045 traegt davon
+   * weiterhin nichts.
+   */
+  it("stores what the real container wrote next to the invocation log and reads it back", async () => {
+    const created = await define();
+    const result = await invocation.invoke(serviceRole, scope, created.name, { mode: "chatter" });
+    expect(result.statusCode).toBe(200);
+    const [entry] = await definitions.listFunctionInvocations(admin, scope, created.id);
+    expect(entry).toMatchObject({ outcome: "completed", statusCode: 200 });
+    expect(JSON.stringify(entry)).not.toContain("chatter");
+
+    const stored = await definitions.readFunctionInvocationOutput(admin, scope, entry!.invocationId);
+    expect(stored.functionName).toBe(created.name);
+    expect(stored.output?.lines.map((line) => [line.stream, line.text])).toEqual([
+      ["stdout", "chatter: start"],
+      ["stderr", "chatter: something to worry about"],
+      ["stdout", '["not","a","protocol","message"]'],
+      ["stderr", '{"level":"info","note":"json on stderr is a log line"}'],
+    ]);
+    expect(stored.output).toMatchObject({ lineCount: 4, stdoutLines: 2, stderrLines: 2, truncated: false });
+    // Und die Liste ueber die Umgebung kennt den Aufruf, ohne seine Zeilen.
+    const listed = await definitions.readFunctionOutputLog(admin, scope, { functionId: created.id });
+    expect(listed.rows).toHaveLength(1);
+    expect(listed.rows[0]).toMatchObject({ invocationId: entry!.invocationId, lineCount: 4 });
+    expect(JSON.stringify(listed)).not.toContain("chatter: start");
+  });
+
+  it("records a truncated content log honestly, with the limits of migration 0069", async () => {
+    const created = await define();
+    await invocation.invoke(serviceRole, scope, created.name, { mode: "flood-logs" });
+    const [entry] = await definitions.listFunctionInvocations(admin, scope, created.id);
+    const stored = await definitions.readFunctionInvocationOutput(admin, scope, entry!.invocationId);
+    expect(stored.output).toMatchObject({
+      lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: 101, truncated: true,
+    });
+    expect(stored.output?.lines[0]).toMatchObject({ stream: "stdout", cut: true });
+    expect(stored.output?.byteCount).toBeLessThanOrEqual(65_536);
   });
 
   it("still denies egress when the definition came from the database", async () => {

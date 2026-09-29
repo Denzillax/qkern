@@ -125,6 +125,29 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.98 **Inhaltslogs je Function-Aufruf.** Migration
+  `0069_project_function_invocation_output.sql` legt
+  `project_function_invocation_output` an: genau eine Zeile je Aufruf, per
+  Fremdschluessel an `project_function_invocations (organization_id,
+  invocation_id)` gebunden, `ON DELETE CASCADE`, RLS je Mandant, nur SELECT und
+  INSERT fuer die Laufzeit, die Zeilen als jsonb. Grenzen je Aufruf als CHECK
+  wie in `lib/server/compute/function-output.ts`: 500 Zeilen, 64 KiB, 2 KiB je
+  Zeile; darueber wird gezaehlt (`dropped_lines`) und `truncated` gesetzt. Die
+  Sandbox (`function-sandbox-docker.ts`) gibt jede stderr-Zeile und jede
+  stdout-Zeile, die kein JSON-Objekt ist, an einen `FunctionOutputSink`; eine
+  Nicht-JSON-Zeile beendet den Aufruf nicht mehr, und nur Leitungszeilen
+  zaehlen gegen die 256 KiB der Antwort. **Gestrichen wird nichts**: Der
+  Prozess kennt keinen Geheimniswert (nur Referenzen, kein `--env`, eigene
+  Umgebung bleibt draussen), ein Filter waere eine Zusage ohne Deckung.
+  Leserouten `compute/invocations/{invocationId}/output` und `compute/output`,
+  Ansicht Functions → Function-Logs, Quelle `function_output` im Log-Explorer.
+  **Nebenbefund**: `createFunctionInvocationServiceFromEnv` gab `invocationLog`
+  seit 1.89 nie mit; im Betrieb hat kein Aufruf je eine Zeile geschrieben.
+  Seit 2.98 verdrahtet, Vertrag `compute-definitions-runtime-invocation-log`.
+  Functions-Stack 32 Faelle (vorher 27), zweimal gruen, drei Mutationsproben
+  (Zeilengrenze aus: 2 fallen; stderr als stdout: 4 fallen; Canary per `--env`:
+  2 fallen). Postgres-Fall `(2.98)`, 231 gruen.
+
 - 2.94 **Die Zustimmungen haben
   eine Seite, und ein einzelnes Token faellt.** Zwei Luecken aus 2.92, und beide
   hingen zusammen. Die erste: Die Liste der Zustimmungen stand unter

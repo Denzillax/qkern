@@ -10,6 +10,7 @@ import {
   type CronOccurrenceMessageRow,
 } from "@/lib/server/compute/cron-occurrences";
 import { validateFunctionDefinition } from "@/lib/server/compute/functions";
+import type { FunctionOutputRecord } from "@/lib/server/compute/function-output";
 import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import type { Environment } from "@/lib/types";
@@ -184,6 +185,53 @@ export const FUNCTION_INVOCATION_LOG_LIMITS = Object.freeze({
   maxOffset: 10_000,
 });
 
+/**
+ * Die Inhaltslogs eines Aufrufs (2.98), wie sie die Route herausgibt: das
+ * Protokoll aus `function-output.ts` plus die Function und der Aufruf, zu dem
+ * es gehoert. `output` ist `null`, wenn der Aufruf nichts geschrieben hat;
+ * das ist ein eigener Zustand und kein 404.
+ */
+export type FunctionInvocationOutput = Readonly<{
+  invocationId: string;
+  functionId: string;
+  functionName: string;
+  startedAt: string;
+  outcome: "completed" | "failed";
+  output: FunctionOutputRecord | null;
+}>;
+
+/**
+ * Eine Zeile der Liste ueber alle Inhaltslogs einer Umgebung (2.98): nur die
+ * Zahlen, nie die Zeilen. Die Zeilen holt die Route je Aufruf.
+ */
+export type FunctionOutputLogRow = Readonly<{
+  invocationId: string;
+  functionId: string;
+  functionName: string;
+  startedAt: string;
+  recordedAt: string;
+  outcome: "completed" | "failed";
+  lineCount: number;
+  stdoutLines: number;
+  stderrLines: number;
+  byteCount: number;
+  truncated: boolean;
+  droppedLines: number;
+}>;
+
+export type FunctionOutputLogQuery = Readonly<{
+  functionId: string | null;
+  limit: number;
+  offset: number;
+}>;
+
+export type FunctionOutputLogPage = Readonly<{
+  rows: readonly FunctionOutputLogRow[];
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}>;
+
 export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -238,6 +286,18 @@ export interface ComputeDefinitionRepository {
   /** Das Aufrufprotokoll ueber alle Functions einer Umgebung (2.51). */
   listInvocationLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
     query: FunctionInvocationLogQuery): Promise<FunctionInvocationLogPage>;
+  /**
+   * Die Inhaltslogs eines Aufrufs (2.98), genau einmal je Aufruf und erst
+   * nach seiner Zeile im Aufrufprotokoll: Migration 0069 verlangt den Aufruf
+   * als Fremdschluessel.
+   */
+  recordFunctionInvocationOutput(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    functionId: string, invocationId: string, output: FunctionOutputRecord): Promise<void>;
+  /** `null`, wenn es den Aufruf in dieser Umgebung nicht gibt. */
+  getInvocationOutput(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    invocationId: string): Promise<FunctionInvocationOutput | null>;
+  listOutputLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    query: FunctionOutputLogQuery): Promise<FunctionOutputLogPage>;
   listFunctions(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope):
     Promise<FunctionDefinitionRecord[]>;
   createFunction(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
@@ -622,6 +682,46 @@ export class ComputeDefinitionService {
     }
     return await this.options.repository.listInvocationLog(principal, scope, Object.freeze({
       functionId, outcome, limit, offset,
+    }));
+  }
+
+  /**
+   * Die Inhaltslogs eines Aufrufs (2.98): die Leseflaeche von Functions →
+   * Function-Logs. Nur Admins. Ein unbekannter Aufruf ist ein 404; ein
+   * Aufruf ohne Ausgabe ist eine Antwort mit `output: null`.
+   */
+  async readFunctionInvocationOutput(principal: ProjectQueuePrincipal,
+    scope: ComputeDefinitionScope, invocationId: string): Promise<FunctionInvocationOutput> {
+    this.assertScope(principal, scope);
+    this.assertId(invocationId);
+    const record = await this.options.repository.getInvocationOutput(principal, scope, invocationId);
+    if (!record) throw new ComputeDefinitionError("COMPUTE_NOT_FOUND");
+    return record;
+  }
+
+  /**
+   * Die Liste aller Inhaltslogs einer Umgebung (2.98), neueste zuerst: die
+   * Quelle `function_output` des Log-Explorers. Dieselben Grenzen wie das
+   * Aufrufprotokoll, und wie dort wird die gefilterte Function nicht
+   * nachgeschlagen: Eine leere Seite ist die richtige Antwort auf einen
+   * Filter, kein 404.
+   */
+  async readFunctionOutputLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    input: { functionId?: string | null; limit?: number; offset?: number } = {},
+  ): Promise<FunctionOutputLogPage> {
+    this.assertScope(principal, scope);
+    const limit = input.limit ?? FUNCTION_INVOCATION_LOG_LIMITS.defaultLimit;
+    const offset = input.offset ?? 0;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > FUNCTION_INVOCATION_LOG_LIMITS.maxLimit ||
+        !Number.isSafeInteger(offset) || offset < 0 || offset > FUNCTION_INVOCATION_LOG_LIMITS.maxOffset) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    const functionId = input.functionId ?? null;
+    if (functionId !== null && !ID.test(functionId)) {
+      throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
+    }
+    return await this.options.repository.listOutputLog(principal, scope, Object.freeze({
+      functionId, limit, offset,
     }));
   }
 

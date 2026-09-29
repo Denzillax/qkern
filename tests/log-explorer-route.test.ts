@@ -49,6 +49,13 @@ const invocationRow = (over: Record<string, unknown> = {}) => ({
   statusCode: 200, errorCode: null, ...over,
 });
 
+const outputRow = (over: Record<string, unknown> = {}) => ({
+  invocationId: randomUUID(), functionId: "00000000-0000-4000-8000-000000000f01",
+  functionName: "bestellungen", startedAt: "2026-09-24T12:00:15.000Z",
+  recordedAt: "2026-09-24T12:00:15.500Z", outcome: "completed", lineCount: 3,
+  stdoutLines: 2, stderrLines: 1, byteCount: 120, truncated: false, droppedLines: 0, ...over,
+});
+
 const storageEntry = (over: Record<string, unknown> = {}) => ({
   id: randomUUID(), bucketId: randomUUID(), bucketName: "rechnungen", key: "2026/09/a.pdf",
   ownerSubject: "user:1", sizeBytes: 1_024, contentType: "application/pdf", status: "clean",
@@ -62,10 +69,15 @@ function services(over: {
     auth: (over.auth ?? {
       listAuditEvents: vi.fn().mockResolvedValue({ events: [], nextCursor: null }),
     }) as unknown as ProjectAuthService,
-    compute: (over.compute ?? {
-      readFunctionInvocationLog: vi.fn().mockResolvedValue({
-        rows: [], limit: 100, offset: 0, hasMore: false, counts: { completed: 0, failed: 0 },
+    compute: ({
+      readFunctionOutputLog: vi.fn().mockResolvedValue({
+        rows: [], limit: 100, offset: 0, hasMore: false,
       }),
+      ...(over.compute ?? {
+        readFunctionInvocationLog: vi.fn().mockResolvedValue({
+          rows: [], limit: 100, offset: 0, hasMore: false, counts: { completed: 0, failed: 0 },
+        }),
+      }) as object,
     }) as unknown as ComputeDefinitionService,
     storage: (over.storage ?? {
       readObjectLog: vi.fn().mockResolvedValue({
@@ -85,7 +97,7 @@ function call(projectId: string, token: string | null, search: string, given = s
 }
 
 describe("log explorer route", () => {
-  it("merges the three sources into one ordered list, newest first", async () => {
+  it("merges the four sources into one ordered list, newest first", async () => {
     const principal = await identity();
     const given = services({
       auth: { listAuditEvents: vi.fn().mockResolvedValue({ events: [auditEvent()], nextCursor: null }) },
@@ -93,6 +105,10 @@ describe("log explorer route", () => {
         readFunctionInvocationLog: vi.fn().mockResolvedValue({
           rows: [invocationRow()], limit: 100, offset: 0, hasMore: false,
           counts: { completed: 1, failed: 0 },
+        }),
+        // Die Inhaltslogs (2.98) als vierte Quelle, durch dieselbe Tuer.
+        readFunctionOutputLog: vi.fn().mockResolvedValue({
+          rows: [outputRow({ truncated: true, droppedLines: 7 })], limit: 100, offset: 0, hasMore: false,
         }),
       },
       storage: {
@@ -108,12 +124,17 @@ describe("log explorer route", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     const body = await response.json();
     expect(body.data.entries.map((entry: { source: string }) => entry.source))
-      .toEqual(["auth_audit", "function_invocations", "storage_objects"]);
+      .toEqual(["auth_audit", "function_invocations", "function_output", "storage_objects"]);
     expect(body.data.entries[1]).toMatchObject({
       action: "compute.function_invocation", subject: "bestellungen", outcome: "ok",
     });
+    // Die Ausgabe erscheint als Zahlen, nie als Zeilen.
+    expect(body.data.entries[2]).toMatchObject({
+      action: "compute.function_output", subject: "bestellungen", outcome: "ok",
+      detail: "stdout 2 · stderr 1 · 120 B · truncated",
+    });
     expect(body.data.sources.map((report: { id: string; state: string }) => report.state))
-      .toEqual(["ok", "ok", "ok"]);
+      .toEqual(["ok", "ok", "ok", "ok"]);
     // Die Antwort nennt je Quelle die vorhandene Route und ihre Rolle.
     expect(body.data.sources[0]).toMatchObject({
       route: "auth/admin/audit", capability: "project_auth_admin",
@@ -165,7 +186,8 @@ describe("log explorer route", () => {
     expect(body.data.entries).toHaveLength(1);
     expect(Object.fromEntries(body.data.sources.map(
       (report: { id: string; state: string }) => [report.id, report.state]))).toEqual({
-      auth_audit: "ok", function_invocations: "unavailable", storage_objects: "failed",
+      auth_audit: "ok", function_invocations: "unavailable", function_output: "ok",
+      storage_objects: "failed",
     });
   });
 
@@ -236,7 +258,8 @@ describe("log explorer route", () => {
     // endet in `forbidden`/`failed`, nicht in fremden Zeilen.
     const principal = await identity();
     const given = services({
-      auth: { listAuditEvents: vi.fn() }, compute: { readFunctionInvocationLog: vi.fn() },
+      auth: { listAuditEvents: vi.fn() },
+      compute: { readFunctionInvocationLog: vi.fn(), readFunctionOutputLog: vi.fn() },
       storage: { readObjectLog: vi.fn() },
     });
     const response = await call("not a project id", principal.token, "", given);

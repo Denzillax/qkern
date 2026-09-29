@@ -173,6 +173,7 @@ import { searchLogSources } from "@/lib/server/logs/log-explorer-search";
 import {
   authAuditFetcher,
   functionInvocationFetcher,
+  functionOutputFetcher,
   storageObjectFetcher,
 } from "@/lib/server/logs/log-explorer-fetchers";
 import { RequestAuthorizationError } from "@/lib/server/request-context";
@@ -4619,15 +4620,17 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       name: `explorer-probe-${randomUUID().slice(0, 8)}`, image, entrypoint: "handler.mjs",
       secretRefs: [], enabled: true,
     });
-    // Was ein Container drucken wuerde. 0045 speichert es nicht, und die
-    // gemischte Liste kann es darum auch nicht zeigen -- geprueft wird es
-    // trotzdem.
+    // Was ein Container drucken wuerde. Seit 2.98 speichert 0069 es als
+    // Inhaltslog, und die gemischte Liste zeigt davon die Zahlen, nie die
+    // Zeilen -- geprueft wird beides.
     const containerOutput = `stdout-${randomUUID()}`;
     const invocations = new PostgresComputeDefinitionRepository(control);
     const invoker = new FunctionInvocationService({
       repository: invocations, invocationLog: invocations,
       invoker: {
-        async invoke() {
+        async invoke(_definition, _invocation, _signal, output) {
+          output?.line("stdout", containerOutput);
+          output?.line("stderr", `warn ${containerOutput}`);
           return Object.freeze({ statusCode: 200, headers: {}, body: { printed: containerOutput } });
         },
       },
@@ -4668,6 +4671,8 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       auth_audit: authAuditFetcher(async () => scope, authService, search),
       function_invocations: functionInvocationFetcher(
         async () => ({ principal: admin, scope }), definitions, search),
+      function_output: functionOutputFetcher(
+        async () => ({ principal: admin, scope }), definitions, search),
       storage_objects: storageObjectFetcher(
         async () => { throw new RequestAuthorizationError(); },
         { readObjectLog: async () => { storageReads += 1; throw new Error("not expected"); } },
@@ -4682,12 +4687,15 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // der gemischten Liste nur als fehlende Zeile auf, und eine Zahl sagt
     // nicht, welche der drei nicht geantwortet hat.
     expect(Object.fromEntries(result.sources.map((report) => [report.id, report.state])))
-      .toEqual({ auth_audit: "ok", function_invocations: "ok", storage_objects: "forbidden" });
+      .toEqual({ auth_audit: "ok", function_invocations: "ok", function_output: "ok", storage_objects: "forbidden" });
 
-    // Vier echte Zeilen aus zwei Tabellen, in einer Liste.
-    expect(result.entries).toHaveLength(4);
+    // Sechs echte Zeilen aus drei Tabellen, in einer Liste.
+    expect(result.entries).toHaveLength(6);
     expect(result.entries.filter((entry) => entry.source === "auth_audit")).toHaveLength(2);
     expect(result.entries.filter((entry) => entry.source === "function_invocations")).toHaveLength(2);
+    expect(result.entries.filter((entry) => entry.source === "function_output")).toHaveLength(2);
+    expect(result.entries.find((entry) => entry.source === "function_output"))
+      .toMatchObject({ action: "compute.function_output", outcome: "ok", detail: expect.stringContaining("stdout 1 · stderr 1") });
 
     // Der Kern: Die Ordnung stimmt ueber die Tabellengrenze hinweg. Verglichen
     // wird gegen die Zeitpunkte, die die Datenbank selbst gesetzt hat.
@@ -4699,13 +4707,17 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
 
     // Die Zeilen tragen keine Ausgabe eines Containers und keine Adresse --
-    // `invoked_by` steht in 0045 und ist genau diese Adresse.
+    // `invoked_by` steht in 0045 und ist genau diese Adresse. Die Ausgabe
+    // liegt seit 2.98 in 0069; die gemischte Liste nennt nur ihre Zahlen.
     const shown = JSON.stringify(result.entries);
     expect(shown, "die Liste traegt die Ausgabe des Containers").not.toContain(containerOutput);
     expect(shown, "die Liste traegt die Adresse des Aufrufers").not.toContain(actorRef);
-    // Die Gegenprobe: Die Lesung selbst haette sie.
+    // Die Gegenprobe: Die Lesungen selbst haetten beides.
     const raw = await definitions.readFunctionInvocationLog(admin, scope, { limit: 10 });
     expect(raw.rows[0].invokedBy).toBe(actorRef);
+    const stored = await definitions.readFunctionInvocationOutput(admin, scope, raw.rows[0].invocationId);
+    expect(stored.output?.lines.map((line) => [line.stream, line.text]))
+      .toEqual([["stdout", containerOutput], ["stderr", `warn ${containerOutput}`]]);
 
     // Blaettern ueber die Quellgrenze hinweg: jede Zeile genau einmal.
     const seen: string[] = [];
@@ -4727,9 +4739,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(failedOnly.entries[0].action).toBe("project_auth.login.failed");
 
     // Und was der Explorer nicht erreicht, steht mit Grund da -- die
-    // Webhook-Zustellungen, die Nutzung, die Cron-Vorkommen, die
-    // Container-Ausgabe und die vier Logs ohne Backend.
-    expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(5);
+    // Webhook-Zustellungen, die Nutzung, die Cron-Vorkommen und die vier
+    // Logs ohne Backend. Die Container-Ausgabe stand bis 2.97 auch hier.
+    expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(4);
     expect(LOG_EXPLORER_OUT_OF_REACH.map((entry) => entry.label))
       .toEqual(expect.arrayContaining(["Webhook-Zustellungen", "Cron-Vorkommen"]));
 
@@ -10858,6 +10870,126 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await projectApi.end();
     }
   }, 120_000);
+
+  it("(2.98) keeps what a container wrote in its own table under the tenant, append-only, bounded by the checks of 0069, and drops it with the function", async () => {
+    // Die Inhaltslogs (2.98) gegen die echte Datenbank. Der Container ist
+    // ersetzt (der Functions-Stack belegt ihn); hier geht es um die Tabelle:
+    // Rechte, RLS je Mandant, die Bindung an das Aufrufprotokoll und die
+    // Grenzen als CHECK.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.42 und 2.55: Das
+    // Anlegen einer Function schreibt eine Audit-Zeile, und eine Organisation
+    // mit Audit-Zeilen laesst sich nicht mehr loeschen. organizationB bleibt
+    // unberuehrt und dient als der fremde Mandant, der nichts sehen darf.
+    const outputOwner = randomUUID();
+    const outputOrganization = randomUUID();
+    const outputProject = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [outputOwner, `fn-output-${outputOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Function Output', $2, $3)`, [outputOrganization, `fn-output-${outputOrganization}`, outputOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Function Output', $3, 'test', 'ready', $4)`,
+    [outputProject, outputOrganization, `fn-output-${outputProject}`, outputOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [outputOrganization, outputProject, `managed:${outputProject}`]);
+
+    const scope = { organizationId: outputOrganization, projectId: outputProject, environment: "development" as const };
+    const admin = { organizationId: outputOrganization, actorRef: `fn-output-${outputOwner}@qkern.test`, role: "admin" as const, subject: outputOwner };
+    const control = new PostgresControlPlane(runtime);
+    const repository = new PostgresComputeDefinitionRepository(control);
+    const definitions = new ComputeDefinitionService({ repository });
+    const probe = await definitions.createFunction(admin, scope, {
+      name: `output-probe-${randomUUID().slice(0, 8)}`,
+      image: `registry.example.com/qkern/probe@sha256:${"f".repeat(64)}`,
+      entrypoint: "handler.mjs", secretRefs: [], enabled: true,
+    });
+
+    // Der Aufrufdienst mit dem echten Repository als Protokoll; der
+    // "Container" schreibt, was ihm die Nutzlast sagt.
+    const secretLooking = `value-${randomUUID()}`;
+    const invoker = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      invoker: {
+        async invoke(_definition, invocation, _signal, output) {
+          const writes = (invocation.payload as { writes?: Array<["stdout" | "stderr", string]> }).writes ?? [];
+          for (const [stream, text] of writes) output?.line(stream, text);
+          return Object.freeze({ statusCode: 200, headers: {}, body: { ok: true } });
+        },
+      },
+    });
+    await invoker.invoke(admin, scope, probe.name, {
+      writes: [["stdout", "start"], ["stderr", `token=${secretLooking}`], ["stdout", "done"]],
+    });
+    await invoker.invoke(admin, scope, probe.name, { writes: [] });
+
+    // Lesen: die Zeilen des ersten Aufrufs, mit Strom und Reihenfolge; der
+    // zweite hat nichts geschrieben und antwortet mit null, nicht mit 404.
+    const log = await definitions.readFunctionInvocationLog(admin, scope, { functionId: probe.id });
+    expect(log.rows).toHaveLength(2);
+    const [silent, chatty] = log.rows;
+    const stored = await definitions.readFunctionInvocationOutput(admin, scope, chatty.invocationId);
+    expect(stored.functionName).toBe(probe.name);
+    expect(stored.output?.lines.map((line) => [line.stream, line.text, line.cut])).toEqual([
+      ["stdout", "start", false], ["stderr", `token=${secretLooking}`, false], ["stdout", "done", false],
+    ]);
+    expect(stored.output).toMatchObject({ lineCount: 3, stdoutLines: 2, stderrLines: 1, truncated: false, droppedLines: 0 });
+    for (const line of stored.output!.lines) {
+      expect(line.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+    expect((await definitions.readFunctionInvocationOutput(admin, scope, silent.invocationId)).output).toBeNull();
+    await expect(definitions.readFunctionInvocationOutput(admin, scope, randomUUID()))
+      .rejects.toMatchObject({ code: "COMPUTE_NOT_FOUND" });
+    // Die Liste ueber die Umgebung: ein Eintrag, nur der Aufruf mit Zeilen,
+    // und nie die Zeilen selbst.
+    const listed = await definitions.readFunctionOutputLog(admin, scope, {});
+    expect(listed.rows).toHaveLength(1);
+    expect(listed.rows[0]).toMatchObject({ invocationId: chatty.invocationId, lineCount: 3, stderrLines: 1, truncated: false });
+    expect(JSON.stringify(listed)).not.toContain(secretLooking);
+    // Das Aufrufprotokoll selbst traegt weiterhin keine Zeile.
+    expect(JSON.stringify(log)).not.toContain(secretLooking);
+
+    // RLS: Der fremde Mandant sieht keine Zeile, der eigene genau eine.
+    const countAs = async (organizationId: string) => Number((await withTenantTransaction(
+      runtime, { organizationId, readOnly: true },
+      (transaction) => transaction.query<{ total: string }>(
+        "SELECT count(*)::text AS total FROM project_function_invocation_output"),
+    )).rows[0]!.total);
+    expect(await countAs(organizationB)).toBe(0);
+    expect(await countAs(outputOrganization)).toBe(1);
+
+    // Append-only: Die Runtime-Rolle kann weder aendern noch loeschen.
+    await expect(withTenantTransaction(runtime, { organizationId: outputOrganization }, (transaction) =>
+      transaction.query("UPDATE project_function_invocation_output SET truncated = true"))).rejects.toBeTruthy();
+    await expect(withTenantTransaction(runtime, { organizationId: outputOrganization }, (transaction) =>
+      transaction.query("DELETE FROM project_function_invocation_output"))).rejects.toBeTruthy();
+
+    // Die Grenzen als CHECK, auch fuer den Eigentuemer: mehr als 500 Zeilen,
+    // ein Zaehler, der nicht zu den Zeilen passt, und ein Aufruf, den es im
+    // Protokoll nicht gibt.
+    const insert = (invocationId: string, lineCount: number, lines: unknown[], dropped = 0) => owner.query(
+      `INSERT INTO project_function_invocation_output
+         (organization_id, project_id, environment, function_id, invocation_id,
+          line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+       VALUES ($1, $2, 'development', $3, $4, $5, $6, 0, 0, $7, $8, $9::jsonb)`,
+      [outputOrganization, outputProject, probe.id, invocationId, lineCount, lineCount + dropped,
+        dropped > 0, dropped, JSON.stringify(lines)]);
+    const line = { at: "2026-09-29T10:00:00.000Z", stream: "stdout", text: "x", cut: false };
+    await expect(insert(silent.invocationId, 501, Array.from({ length: 501 }, () => line))).rejects.toThrow(/line_count/);
+    await expect(insert(silent.invocationId, 2, [line])).rejects.toThrow(/lines_shape/);
+    await expect(insert(randomUUID(), 1, [line])).rejects.toThrow(/foreign key/);
+    // Und genau einmal je Aufruf.
+    await expect(insert(chatty.invocationId, 1, [line])).rejects.toThrow(/unique|duplicate/i);
+
+    // Faellt die Function, faellt das Protokoll mit ihr, und die Ausgabe mit
+    // dem Protokoll: 0045 kaskadiert auf die Function, 0069 auf den Aufruf.
+    await definitions.deleteFunction(admin, scope, probe.id);
+    const left = await owner.query<{ total: string }>(
+      "SELECT count(*)::text AS total FROM project_function_invocation_output WHERE organization_id = $1",
+      [outputOrganization]);
+    expect(Number(left.rows[0]!.total)).toBe(0);
+  });
 
 });
 

@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import type { EgressOutcome, EgressRequest } from "@/lib/server/compute/function-egress";
+import {
+  DISCARDING_OUTPUT_SINK,
+  type FunctionOutputSink,
+} from "@/lib/server/compute/function-output";
 import { FunctionInvocationError, type FunctionSandboxPort } from "@/lib/server/compute/functions";
 import type {
   FunctionDefinition,
@@ -15,7 +19,12 @@ import type {
  */
 const PINNED_IMAGE = /^[a-z0-9][a-z0-9.:/_-]{1,254}[a-z0-9]@sha256:[0-9a-f]{64}$/;
 const MAX_OUTPUT_BYTES = 256 * 1024;
-const MAX_STDERR_BYTES = 8 * 1024;
+/**
+ * Laengste Zeile, die auf stderr abgewartet wird, bevor sie ohne Zeilenende
+ * als Zeile gilt. Ein Container, der nie ein Zeilenende schreibt, fuellt sonst
+ * den Speicher des Hosts, nicht seinen eigenen.
+ */
+const MAX_STDERR_LINE_BYTES = 8 * 1024;
 const REMOVE_TIMEOUT_MS = 10_000;
 
 /** Präfix jedes Sandbox-Containers, damit ein Betreiber Reste erkennen kann. */
@@ -69,6 +78,12 @@ export interface FunctionEgressHandler {
  * ausschliesslich die Referenzen aus der Definition. Der Prozess dieser Runtime
  * gibt seine eigene Umgebung nicht weiter; das prüft ein Canary-Fall der
  * Zertifizierung.
+ *
+ * **Inhaltslogs (2.98).** stderr und jede stdout-Zeile, die kein JSON-Objekt
+ * ist, gehen an den Sink aus `options.output`. Die Grenzen je Aufruf setzt
+ * der Sink, nicht diese Klasse. Gestrichen wird nichts: Dieser Prozess kennt
+ * keinen Wert eines Geheimnisses, den er streichen koennte (siehe
+ * `function-output.ts`).
  */
 export class DockerFunctionSandbox implements FunctionSandboxPort {
   private readonly docker: string;
@@ -99,7 +114,7 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
   async invoke(
     definition: FunctionDefinition,
     invocation: FunctionInvocation,
-    options: { signal: AbortSignal },
+    options: { signal: AbortSignal; output?: FunctionOutputSink },
   ): Promise<FunctionInvocationResult> {
     // Nur ein Registry-Bezug mit Digest. Bis Release 1.34 gab es hier einen
     // benannten Schalter, der zusätzlich eine lokale Image-Id zuliess — nötig,
@@ -132,7 +147,7 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
       egressOrigins: [...definition.egressOrigins],
     });
     return await this.run(container, this.args(definition, container), invoke, definition,
-      options.signal);
+      options.signal, options.output ?? DISCARDING_OUTPUT_SINK);
   }
 
   private args(definition: FunctionDefinition, container: string): string[] {
@@ -166,8 +181,16 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
    * Ergebnis — das war das Protokoll aus Release 1.22, und ein Image, das nichts
    * nach aussen ruft, muss dafür nicht angefasst werden.
    *
-   * `stderr` wird verworfen. Es stammt aus fremdem Code und könnte alles
-   * enthalten, was die Function gesehen hat.
+   * **Was Leitung ist und was Log (2.98).** Eine stdout-Zeile, die als
+   * JSON-Objekt liest, gehoert der Leitung: eine Bitte um Egress, das Ergebnis
+   * oder die blosse Antwort aus 1.22. Jede andere stdout-Zeile und jede
+   * stderr-Zeile ist eine Logzeile und geht an den Sink. Bis 2.97 beendete
+   * eine Nicht-JSON-Zeile den Aufruf; ein `console.log("start")` war damit ein
+   * Fehler mit festem Code. Wer eine JSON-Zeile als Log will, schreibt sie auf
+   * stderr, denn auf stdout wuerde sie als Antwort gelesen.
+   *
+   * Gegen die Antwortgrenze (256 KiB) zaehlen nur Leitungszeilen und der
+   * noch unvollstaendige Rest; Logzeilen begrenzt der Sink selbst.
    */
   private run(
     container: string,
@@ -175,6 +198,7 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
     input: string,
     definition: FunctionDefinition,
     signal: AbortSignal,
+    output: FunctionOutputSink,
   ): Promise<FunctionInvocationResult> {
     return new Promise<FunctionInvocationResult>((resolve, reject) => {
       const child = this.spawnFn(this.docker, args, {
@@ -186,8 +210,8 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
       });
 
       let pending = "";
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
+      let pendingStderr = "";
+      let protocolBytes = 0;
       let settled = false;
       let result: FunctionInvocationResult | null = null;
       const budget = this.options.egress?.budget();
@@ -225,10 +249,17 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
         try {
           message = JSON.parse(raw);
         } catch {
-          finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
+          message = null;
+        }
+        if (!message || typeof message !== "object" || Array.isArray(message)) {
+          // Kein JSON-Objekt: eine Logzeile, keine Nachricht der Leitung.
+          output.line("stdout", raw);
           return;
         }
-        if (!message || typeof message !== "object") {
+        protocolBytes += Buffer.byteLength(raw, "utf8");
+        if (protocolBytes > MAX_OUTPUT_BYTES) {
+          // Eine unbegrenzte Antwort wuerde diesen Prozess erschoepfen, nicht
+          // den Container.
           finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
           return;
         }
@@ -254,13 +285,7 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
       };
 
       child.stdout?.on("data", (chunk: Buffer) => {
-        stdoutBytes += chunk.byteLength;
-        if (stdoutBytes > MAX_OUTPUT_BYTES) {
-          // Eine unbegrenzte Antwort wuerde diesen Prozess erschoepfen, nicht
-          // den Container.
-          finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
-          return;
-        }
+        if (settled) return;
         pending += chunk.toString("utf8");
         let newline = pending.indexOf("\n");
         while (newline >= 0) {
@@ -269,16 +294,32 @@ export class DockerFunctionSandbox implements FunctionSandboxPort {
           handleMessage(line);
           newline = pending.indexOf("\n");
         }
+        if (pending.length > MAX_OUTPUT_BYTES) {
+          // Eine Zeile ohne Ende, groesser als jede erlaubte Antwort: Sie
+          // wuerde diesen Prozess erschoepfen, nicht den Container.
+          finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
+        }
       });
       child.stderr?.on("data", (chunk: Buffer) => {
-        stderrBytes += chunk.byteLength;
-        if (stderrBytes > MAX_STDERR_BYTES) child.stderr?.destroy();
+        if (settled) return;
+        pendingStderr += chunk.toString("utf8");
+        let newline = pendingStderr.indexOf("\n");
+        while (newline >= 0) {
+          output.line("stderr", pendingStderr.slice(0, newline));
+          pendingStderr = pendingStderr.slice(newline + 1);
+          newline = pendingStderr.indexOf("\n");
+        }
+        if (pendingStderr.length > MAX_STDERR_LINE_BYTES) {
+          output.line("stderr", pendingStderr);
+          pendingStderr = "";
+        }
       });
 
       child.on("error", () => finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED")));
       child.on("close", (code) => {
-        // Der letzte Abschnitt kann ohne Zeilenende enden.
+        // Der letzte Abschnitt kann ohne Zeilenende enden, auf beiden Kanaelen.
         handleMessage(pending);
+        if (pendingStderr.trim()) output.line("stderr", pendingStderr);
         if (code === 0 && result) finish(null, result);
         else finish(new FunctionInvocationError("FUNCTION_SANDBOX_FAILED"));
       });

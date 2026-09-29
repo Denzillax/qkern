@@ -1,0 +1,31 @@
+
+> qkern-platform@2.66.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-fnlogs_default Creating 
+ Network qkern-slice-fnlogs_default Created 
+ Container qkern-slice-fnlogs-registry-1 Creating 
+ Container qkern-slice-fnlogs-postgres-1 Creating 
+ Container qkern-slice-fnlogs-registry-1 Created 
+ Container qkern-slice-fnlogs-postgres-1 Created 
+ Container qkern-slice-fnlogs-postgres-1 Starting 
+ Container qkern-slice-fnlogs-registry-1 Starting 
+ Container qkern-slice-fnlogs-registry-1 Started 
+ Container qkern-slice-fnlogs-postgres-1 Started 
+ Container qkern-slice-fnlogs-postgres-1 Waiting 
+ Container qkern-slice-fnlogs-registry-1 Waiting 
+ Container qkern-slice-fnlogs-registry-1 Healthy 
+ Container qkern-slice-fnlogs-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:bae1b2b29fac1a198f1fa17982f5bb0695ad72e2bfe3a9dbd231ef4f2acfe9b2 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-tables
+
+
+ Test Files  2 passed (2)
+      Tests  32 passed (32)
+   Start at  22:29:14
+   Duration  56.95s (transform 416ms, setup 0ms, import 614ms, tests 55.82s, environment 0ms)
+
+EXIT=0
+EXIT=0

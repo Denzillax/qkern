@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MediatedFunctionEgress } from "@/lib/server/compute/function-egress";
+import { FunctionOutputCollector } from "@/lib/server/compute/function-output";
 import {
   DockerFunctionSandbox,
   SANDBOX_CONTAINER_PREFIX,
@@ -75,6 +76,7 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     payload: ProjectQueueJson,
     overrides: Partial<FunctionDefinition> = {},
     runner = sandbox,
+    output?: FunctionOutputCollector,
   ) {
     const target = definition(overrides);
     return await runner.invoke(target, Object.freeze({
@@ -82,7 +84,7 @@ describe.runIf(enabled)("Function sandbox certification", () => {
       functionId: target.id,
       payload,
       requestedAt: "2026-08-05T12:00:00.000Z",
-    }), { signal: AbortSignal.timeout(target.timeoutMs) });
+    }), { signal: AbortSignal.timeout(target.timeoutMs), output });
   }
 
   it("runs a function and returns its bounded result", async () => {
@@ -242,6 +244,57 @@ describe.runIf(enabled)("Function sandbox certification", () => {
     await expect(call({ mode: "flood" })).rejects.toMatchObject({
       code: "FUNCTION_SANDBOX_FAILED",
     });
+  });
+
+  /**
+   * Die Inhaltslogs (2.98) am echten Container: was `console.log` und
+   * `console.error` schreiben, kommt mit Strom und Reihenfolge beim Sink an,
+   * und eine Logzeile beendet den Aufruf nicht mehr.
+   */
+  it("hands what the container wrote to the sink, with stream and order", async () => {
+    const output = new FunctionOutputCollector();
+    const result = await call({ mode: "chatter" }, {}, sandbox, output);
+    expect(result.body).toMatchObject({ chattered: true });
+    const record = output.snapshot();
+    expect(record.lines.map((line) => [line.stream, line.text])).toEqual([
+      ["stdout", "chatter: start"],
+      ["stderr", "chatter: something to worry about"],
+      ["stdout", '["not","a","protocol","message"]'],
+      ["stderr", '{"level":"info","note":"json on stderr is a log line"}'],
+    ]);
+    expect(record).toMatchObject({ stdoutLines: 2, stderrLines: 2, truncated: false, droppedLines: 0 });
+    // Jede Zeile traegt den Zeitpunkt ihres Eintreffens, und die Zeitpunkte
+    // steigen mit der Reihenfolge.
+    const moments = record.lines.map((line) => line.at);
+    expect([...moments].sort()).toEqual(moments);
+  });
+
+  it("cuts and counts beyond the limits and says so", async () => {
+    const output = new FunctionOutputCollector();
+    const result = await call({ mode: "flood-logs" }, {}, sandbox, output);
+    expect(result.body).toMatchObject({ flooded: true });
+    const record = output.snapshot();
+    // Die lange Zeile ist gekuerzt und markiert; von 601 Zeilen sind 500
+    // behalten und 101 gezaehlt.
+    expect(record.lines[0]).toMatchObject({ stream: "stdout", cut: true });
+    expect(Buffer.byteLength(record.lines[0]!.text, "utf8")).toBe(2_048);
+    expect(record).toMatchObject({
+      lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: 101, truncated: true,
+    });
+    expect(record.lines.at(-1)?.text).toBe("line 498");
+  });
+
+  it("keeps the runtime environment out of the content log as well", async () => {
+    // Derselbe Canary wie oben, nur ueber das Log statt ueber die Antwort:
+    // Ein Wert, den der Prozess nicht hat, kann auch das Log nicht tragen.
+    // Das ist der Grund, warum QKERN nichts aus den Zeilen streicht.
+    const output = new FunctionOutputCollector();
+    await call({ mode: "log-environment" }, {}, sandbox, output);
+    const record = output.snapshot();
+    expect(record.lineCount).toBeGreaterThan(0);
+    const text = record.lines.map((line) => line.text).join("\n");
+    expect(text).not.toContain(CANARY);
+    expect(record.lines.some((line) => line.text.startsWith("QKERN_"))).toBe(false);
   });
 
   it("refuses a mutable image reference", async () => {
