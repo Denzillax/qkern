@@ -136,6 +136,42 @@ switch (mode) {
     process.stdout.write(`{"type":"result","statusCode":200,"headers":{},"body":{"pad":"${"x".repeat(400_000)}"}}\n`);
     break;
 
+  case "chatter": {
+    // Die Inhaltslogs (2.98): Logzeilen auf beiden Stroemen, wie eine echte
+    // Function sie schreibt, mit console.log und console.error. Zwischen den
+    // Zeilen eine kurze Pause, damit die Reihenfolge auf dem Host die des
+    // Schreibens ist; zwei Pipes halten sie sonst nicht ein.
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 60));
+    console.log("chatter: start");
+    await pause();
+    console.error("chatter: something to worry about");
+    await pause();
+    console.log(JSON.stringify(["not", "a", "protocol", "message"]));
+    await pause();
+    console.error(JSON.stringify({ level: "info", note: "json on stderr is a log line" }));
+    await pause();
+    reply({ chattered: true });
+    break;
+  }
+
+  case "flood-logs": {
+    // Ueber jede Grenze hinaus: eine Zeile von 5000 Zeichen (Zeilengrenze
+    // 2 KiB), danach 600 kurze Zeilen (Zeilenzahl 500). Erwartet wird, dass
+    // das Protokoll abgeschnitten ist und das auch sagt.
+    process.stdout.write(`${"L".repeat(5_000)}\n`);
+    for (let index = 0; index < 600; index += 1) process.stderr.write(`line ${index}\n`);
+    reply({ flooded: true });
+    break;
+  }
+
+  case "log-environment":
+    // Schreibt die ganze Umgebung ins Log. Der Canary-Fall prueft, dass der
+    // Wert aus der Umgebung des Testlaufs auch hier nicht auftaucht: Was der
+    // Prozess nicht hat, kann kein Log tragen.
+    for (const [key, value] of Object.entries(process.env)) console.error(`${key}=${value}`);
+    reply({ logged: Object.keys(process.env).length });
+    break;
+
   default:
     reply({ error: "unknown mode" }, 400);
 }

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "fnlogs-postgres-run1.log",
+  "commit": "9436cdfb4780be1f680590d5b460b2774f1a9f78",
+  "commitSubject": "release: 2.66.0 Die Schluessel oeffnen, die Nachbarn kommen mit",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 67,
+  "testFiles": "31 passed (31)",
+  "tests": "231 passed (231)",
+  "passed": 231,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

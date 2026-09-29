@@ -66,6 +66,19 @@ danach wird zu genau der geprüften Adresse verbunden. Der Name bleibt SNI und
 erwarteter Zertifikatsname. Ohne dieses Festhalten bliebe zwischen Prüfung und
 Verbindungsaufbau ein Rebinding-Fenster offen.
 
+Seit `2.98.0` hebt der Aufrufdienst die **Inhaltslogs** je Aufruf auf
+(Migration 0069): jede Zeile auf `stderr` und jede Zeile auf `stdout`, die kein
+JSON-Objekt der Leitung ist, mit Zeitpunkt des Eintreffens und Strom. Grenzen
+je Aufruf: 500 Zeilen, 64 KiB, 2 KiB je Zeile; darüber wird gezählt und
+abgeschnitten, und das Protokoll trägt `truncated`. Der Sandbox-Port nimmt
+dafür einen optionalen `output`-Sink; ohne ihn wird verworfen wie zuvor. Eine
+Nicht-JSON-Zeile auf `stdout` beendet den Aufruf seit `2.98.0` nicht mehr.
+QKERN streicht **nichts** aus den Zeilen: Der Prozess kennt keinen Wert eines
+Geheimnisses, den er streichen könnte (nur Referenzen, kein `--env`, eigene
+Umgebung bleibt draussen); was eine Function selbst ausgibt, verantwortet sie.
+Gelesen wird über `compute/invocations/{invocationId}/output` und die Liste
+`compute/output`, beide nur für Administratoren.
+
 Ein Production-Adapter muss zusätzlich ein Ephemeral-Disk-Limit und
 Kill-Evidenz liefern. Es gibt weiterhin keinen Deployment-Weg für Function-Images und keine
 Policy je Function für anonyme Aufrufe.

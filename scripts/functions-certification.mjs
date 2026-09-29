@@ -32,8 +32,13 @@ console.log(`Docker-Server ${version.stdout.trim()}`);
 // Definitionen im einen Stack und die Sandbox im anderen. Beide Haelften waren
 // belegt, die Naht dazwischen nicht — und genau an solchen Naehten hat dieser
 // Sprint mehrfach Fehler gefunden.
+// Der Projektname kommt aus COMPOSE_PROJECT_NAME, wenn gesetzt: So koennen
+// parallele Schnitte ihre Stacks am Praefix erkennen und nur die eigenen
+// abraeumen. Die veroeffentlichten Ports bleiben dieselben; zwei Stacks
+// gleichzeitig traegt die Maschine ohnehin nicht.
+const project = process.env.COMPOSE_PROJECT_NAME?.trim() || "qkern-functions-certification";
 const compose = [
-  "compose", "-p", "qkern-functions-certification",
+  "compose", "-p", project,
   "-f", "docker-compose.functions-certification.yml",
 ];
 

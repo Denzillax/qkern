@@ -1,0 +1,85 @@
+
+> qkern-platform@2.66.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-fnlogs_default Creating 
+ Network qkern-slice-fnlogs_default Created 
+ Container qkern-slice-fnlogs-registry-1 Creating 
+ Container qkern-slice-fnlogs-postgres-1 Creating 
+ Container qkern-slice-fnlogs-registry-1 Created 
+ Container qkern-slice-fnlogs-postgres-1 Created 
+ Container qkern-slice-fnlogs-postgres-1 Starting 
+ Container qkern-slice-fnlogs-registry-1 Starting 
+ Container qkern-slice-fnlogs-registry-1 Started 
+ Container qkern-slice-fnlogs-postgres-1 Started 
+ Container qkern-slice-fnlogs-registry-1 Waiting 
+ Container qkern-slice-fnlogs-postgres-1 Waiting 
+ Container qkern-slice-fnlogs-registry-1 Healthy 
+ Container qkern-slice-fnlogs-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:7b06edb62f629f6e00f6fa6624effa83e5f9704f277dc8d43a7a8c5ccfcfeba9 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-tables
+
+ ❯ tests/function-sandbox.integration.test.ts (21 tests | 2 failed) 28244ms
+     × keeps the runtime environment out of the container 676ms
+     × keeps the runtime environment out of the content log as well 649ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > keeps the runtime environment out of the container
+AssertionError: expected 'PATH=/usr/local/sbin:/usr/local/bin:/…' not to contain 'qkern-canary-e2f7a1c48b6d'
+
+- Expected
++ Received
+
+- qkern-canary-e2f7a1c48b6d
++ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++ HOSTNAME=4b955751aa14
++ QKERN_TEST_SECRET_CANARY=qkern-canary-e2f7a1c48b6d
++ NODE_VERSION=24.19.0
++ YARN_VERSION=1.22.22
++ HOME=/
+
+ ❯ tests/function-sandbox.integration.test.ts:107:40
+    105|     const result = await call({ mode: "environment" });
+    106|     const environment = (result.body as { environment: string[] }).env…
+    107|     expect(environment.join("\n")).not.toContain(CANARY);
+       |                                        ^
+    108|     expect(environment.some((entry) => entry.startsWith("QKERN_"))).to…
+    109|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > keeps the runtime environment out of the content log as well
+AssertionError: expected 'PATH=/usr/local/sbin:/usr/local/bin:/…' not to contain 'qkern-canary-e2f7a1c48b6d'
+
+- Expected
++ Received
+
+- qkern-canary-e2f7a1c48b6d
++ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++ HOSTNAME=5088bffa1afc
++ QKERN_TEST_SECRET_CANARY=qkern-canary-e2f7a1c48b6d
++ NODE_VERSION=24.19.0
++ YARN_VERSION=1.22.22
++ HOME=/
+
+ ❯ tests/function-sandbox.integration.test.ts:296:22
+    294|     expect(record.lineCount).toBeGreaterThan(0);
+    295|     const text = record.lines.map((line) => line.text).join("\n");
+    296|     expect(text).not.toContain(CANARY);
+       |                      ^
+    297|     expect(record.lines.some((line) => line.text.startsWith("QKERN_"))…
+    298|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 failed | 30 passed (32)
+   Start at  22:33:36
+   Duration  48.48s (transform 524ms, setup 0ms, import 799ms, tests 47.12s, environment 0ms)
+
+EXIT=1
+EXIT=1

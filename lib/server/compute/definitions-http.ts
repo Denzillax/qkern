@@ -20,6 +20,7 @@ export type ComputeDefinitionRouteContext = {
     databaseWebhookId?: string;
     logDrainId?: string;
     dashboardWebhookId?: string;
+    invocationId?: string;
   }>;
 };
 

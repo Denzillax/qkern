@@ -9,11 +9,15 @@ import {
   type FunctionDefinitionRecord,
   type FunctionInvocationLogPage,
   type FunctionInvocationLogQuery,
+  type FunctionInvocationOutput,
   type FunctionInvocationRecord,
+  type FunctionOutputLogPage,
+  type FunctionOutputLogQuery,
   type WebhookDefinitionRecord,
   type WebhookDeliveryRecord,
 } from "@/lib/server/compute/definitions";
 import type { CronOccurrenceMessageRow } from "@/lib/server/compute/cron-occurrences";
+import type { FunctionOutputLine, FunctionOutputRecord } from "@/lib/server/compute/function-output";
 import type { ProjectQueueJson, ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import type { Environment } from "@/lib/types";
 
@@ -312,6 +316,113 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [...scopeValues(scope), functionId, entry.invocationId, entry.invokedBy, entry.startedAt,
           entry.durationMs, entry.outcome, entry.statusCode, entry.errorCode]);
+    });
+  }
+
+  /**
+   * Die Inhaltslogs eines Aufrufs (2.98), eine Zeile je Aufruf.
+   *
+   * Die Zeilen liegen als jsonb in der Zeile, nicht als eigene Tabelle je
+   * Logzeile: Ein Aufruf schreibt sie auf einmal, ein Leser holt sie auf
+   * einmal, und die Grenzen (500 Zeilen, 64 KiB) halten die Zeile klein. Die
+   * Zahlen daneben sind fuer die Liste, die ohne die Zeilen auskommt.
+   */
+  async recordFunctionInvocationOutput(principal: ProjectQueuePrincipal,
+    scope: ComputeDefinitionScope, functionId: string, invocationId: string,
+    output: FunctionOutputRecord): Promise<void> {
+    await this.write(principal, async (database) => {
+      await database.query(
+        `INSERT INTO project_function_invocation_output
+           (organization_id, project_id, environment, function_id, invocation_id,
+            line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
+        [...scopeValues(scope), functionId, invocationId, output.lineCount, output.stdoutLines,
+          output.stderrLines, output.byteCount, output.truncated, output.droppedLines,
+          JSON.stringify(output.lines)]);
+    });
+  }
+
+  async getInvocationOutput(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    invocationId: string): Promise<FunctionInvocationOutput | null> {
+    return await this.read(principal, async (database) => {
+      // Der Aufruf zuerst: Ein Aufruf ohne Ausgabe ist ein eigener Zustand,
+      // kein Fehlen.
+      const result = await database.query<{
+        function_id: string; function_name: string; started_at: string;
+        outcome: "completed" | "failed";
+        line_count: number | null; stdout_lines: number | null; stderr_lines: number | null;
+        byte_count: number | null; truncated: boolean | null; dropped_lines: number | null;
+        lines: FunctionOutputLine[] | null;
+      }>(
+        `SELECT log.function_id, fn.name AS function_name, log.started_at::text AS started_at,
+                log.outcome, out.line_count, out.stdout_lines, out.stderr_lines, out.byte_count,
+                out.truncated, out.dropped_lines, out.lines
+         FROM project_function_invocations AS log
+         JOIN project_functions AS fn
+           ON fn.organization_id = log.organization_id AND fn.project_id = log.project_id
+          AND fn.environment = log.environment AND fn.id = log.function_id
+         LEFT JOIN project_function_invocation_output AS out
+           ON out.organization_id = log.organization_id AND out.invocation_id = log.invocation_id
+         WHERE log.organization_id = $1 AND log.project_id = $2 AND log.environment = $3
+           AND log.invocation_id = $4`,
+        [...scopeValues(scope), invocationId]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return Object.freeze({
+        invocationId, functionId: row.function_id, functionName: row.function_name,
+        startedAt: row.started_at, outcome: row.outcome,
+        output: row.line_count === null || row.lines === null ? null : Object.freeze({
+          lines: Object.freeze(row.lines.map((line) => Object.freeze({ ...line }))),
+          lineCount: row.line_count,
+          stdoutLines: row.stdout_lines ?? 0,
+          stderrLines: row.stderr_lines ?? 0,
+          byteCount: row.byte_count ?? 0,
+          truncated: row.truncated ?? false,
+          droppedLines: row.dropped_lines ?? 0,
+        }),
+      });
+    });
+  }
+
+  /**
+   * Alle Inhaltslogs einer Umgebung (2.98), neueste zuerst, ohne die Zeilen.
+   * `hasMore` aus einer Zeile mehr, wie beim Aufrufprotokoll.
+   */
+  async listOutputLog(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope,
+    query: FunctionOutputLogQuery): Promise<FunctionOutputLogPage> {
+    return await this.read(principal, async (database) => {
+      const page = await database.query<{
+        invocation_id: string; function_id: string; function_name: string; started_at: string;
+        recorded_at: string; outcome: "completed" | "failed"; line_count: number;
+        stdout_lines: number; stderr_lines: number; byte_count: number; truncated: boolean;
+        dropped_lines: number;
+      }>(
+        `SELECT out.invocation_id, out.function_id, fn.name AS function_name,
+                log.started_at::text AS started_at, out.recorded_at::text AS recorded_at,
+                log.outcome, out.line_count, out.stdout_lines, out.stderr_lines, out.byte_count,
+                out.truncated, out.dropped_lines
+         FROM project_function_invocation_output AS out
+         JOIN project_function_invocations AS log
+           ON log.organization_id = out.organization_id AND log.invocation_id = out.invocation_id
+         JOIN project_functions AS fn
+           ON fn.organization_id = out.organization_id AND fn.project_id = out.project_id
+          AND fn.environment = out.environment AND fn.id = out.function_id
+         WHERE out.organization_id = $1 AND out.project_id = $2 AND out.environment = $3
+           AND ($4::uuid IS NULL OR out.function_id = $4::uuid)
+         ORDER BY out.recorded_at DESC, out.invocation_id DESC
+         LIMIT $5 OFFSET $6`,
+        [...scopeValues(scope), query.functionId, query.limit + 1, query.offset]);
+      const rows = page.rows.slice(0, query.limit).map((row) => Object.freeze({
+        invocationId: row.invocation_id, functionId: row.function_id,
+        functionName: row.function_name, startedAt: row.started_at, recordedAt: row.recorded_at,
+        outcome: row.outcome, lineCount: row.line_count, stdoutLines: row.stdout_lines,
+        stderrLines: row.stderr_lines, byteCount: row.byte_count, truncated: row.truncated,
+        droppedLines: row.dropped_lines,
+      }));
+      return Object.freeze({
+        rows: Object.freeze(rows), limit: query.limit, offset: query.offset,
+        hasMore: page.rows.length > query.limit,
+      });
     });
   }
 

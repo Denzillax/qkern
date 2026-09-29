@@ -8,6 +8,8 @@ import {
   CONTAINER_LOG_TEXTS,
   DEPLOYMENT_COLUMNS,
   MISSING_LOG_STATES,
+  OUTPUT_COLUMNS,
+  OUTPUT_WORDS,
   POOLER_LOG_TEXTS,
   missingLogTexts,
 } from "@/lib/console/missing-log-texts";
@@ -15,8 +17,11 @@ import {
 /**
  * Die drei Logseiten aus 2.84 am Quelltext geprueft.
  *
- * Alle drei haben als Platzhalter ein Log versprochen, das es nicht gibt, und
- * alle drei sagen das jetzt selbst. Der Vertrag prueft nicht bloss, dass die
+ * Alle drei haben als Platzhalter ein Log versprochen, das es nicht gab, und
+ * alle drei sagten das dann selbst. Seit 2.98 gibt es das erste davon: die
+ * Inhaltslogs der Functions. Die Seite zeigt sie jetzt, und der Vertrag
+ * prueft, dass ihre Aussagen zu Grenzen, Leitung und Geheimnissen zum Code
+ * und zur Migration 0069 passen. Der Vertrag prueft nicht bloss, dass die
  * Saetze dastehen, sondern dass sie **stimmen**: Er liest die Stellen im
  * Backend, ueber die die Seiten eine Aussage machen, und faellt, sobald eine
  * Aussage nicht mehr zur Lage passt. Ein Pooler in den Compose-Dateien, eine
@@ -102,80 +107,109 @@ describe("console missing log views contract", () => {
   });
 
   // ---------------------------------------------------------------- //
-  // Function-Logs: die Ausgabe des Containers                         //
+  // Function-Logs: die Ausgabe des Containers (seit 2.98 vorhanden)   //
   // ---------------------------------------------------------------- //
 
-  it("says why the container output does not exist, and the reason matches migration 0045", async () => {
+  it("shows the content logs and says what their limits are, matching code and migration 0069", async () => {
     const view = await source(CONTAINER_VIEW);
-    for (const key of ["noOutput", "stdoutIsProtocol", "stderrIsCounted", "containerIsGone", "neverInIt"] as const) {
+    for (const key of ["intro", "limits", "stdoutIsProtocol", "secrets", "neverInIt",
+      "outputEmpty", "outputTruncated"] as const) {
       expect(view, key).toContain(`CONTAINER_LOG_TEXTS.${key}`);
     }
-    // Migration 0045 haelt die beiden Spalten wirklich nicht.
-    const migration = await source("db/migrations/0045_project_function_invocations.sql");
-    const columns = migration.slice(migration.indexOf("CREATE TABLE"), migration.indexOf("CREATE INDEX"));
+    // Die drei Grenzen stehen im Code, in der Migration und auf der Seite
+    // mit denselben Zahlen.
+    const limits = await source("lib/server/compute/function-output.ts");
+    expect(limits).toContain("maxBytes: 64 * 1024,");
+    expect(limits).toContain("maxLines: 500,");
+    expect(limits).toContain("maxLineBytes: 2 * 1024,");
+    const migration = await source("db/migrations/0069_project_function_invocation_output.sql");
+    expect(migration).toContain("line_count BETWEEN 0 AND 500");
+    expect(migration).toContain("byte_count BETWEEN 0 AND 65536");
+    expect(CONTAINER_LOG_TEXTS.limits).toContain("500 Zeilen");
+    expect(CONTAINER_LOG_TEXTS.limits).toContain("64 KiB");
+    expect(CONTAINER_LOG_TEXTS.limits).toContain("2 KiB je Zeile");
+    // Dieselbe Aufbewahrung wie das Aufrufprotokoll: keine UPDATE-, keine
+    // DELETE-Policy, und die Zeile faellt mit dem Aufruf.
+    expect(migration).not.toMatch(/FOR (UPDATE|DELETE)/);
+    expect(migration).toContain("REFERENCES project_function_invocations (organization_id, invocation_id)");
+    expect(migration).toContain("ON DELETE CASCADE");
+    // Migration 0045 bleibt, wie sie ist: Das Aufrufprotokoll traegt die
+    // Zeilen weiterhin nicht selbst.
+    const invocations = await source("db/migrations/0045_project_function_invocations.sql");
+    const columns = invocations.slice(invocations.indexOf("CREATE TABLE"), invocations.indexOf("CREATE INDEX"));
     for (const word of ["stdout", "stderr", "payload"]) {
       expect(columns.toLowerCase().includes(`  ${word} `), word).toBe(false);
     }
-    // Und sie schreibt den Grund, den die Seite vertritt, selbst hin.
-    expect(migration).toContain("Bewusst **nicht** protokolliert werden stdout und");
-    expect(CONTAINER_LOG_TEXTS.noOutput).toContain("Migration 0045");
-    expect(CONTAINER_LOG_TEXTS.noOutput).toContain("fremdem Code");
   });
 
   it("matches what the sandbox really does with stdout and stderr", async () => {
     const sandbox = await source("lib/server/compute/function-sandbox-docker.ts");
-    // stdout ist die JSON-Leitung, nicht ein Ausgabekanal: Eine Zeile, die
-    // kein JSON ist, beendet den Aufruf.
+    // stdout bleibt die Leitung: Ein JSON-Objekt ist eine Nachricht, alles
+    // andere geht als Logzeile an den Sink. stderr geht ganz an den Sink.
     expect(sandbox).toContain("JSON.parse(raw)");
-    expect(sandbox).toContain('new FunctionInvocationError("FUNCTION_SANDBOX_FAILED")');
-    expect(CONTAINER_LOG_TEXTS.stdoutIsProtocol).toContain("zeilenweise JSON");
-    // stderr wird gezaehlt und gekappt, nie gesammelt.
-    expect(sandbox).toContain("const MAX_STDERR_BYTES = 8 * 1024;");
-    expect(sandbox).toContain("if (stderrBytes > MAX_STDERR_BYTES) child.stderr?.destroy();");
-    expect(CONTAINER_LOG_TEXTS.stderrIsCounted).toContain("8 KiB");
-    // Der Container wird entfernt, also gibt es kein spaeteres docker logs.
+    expect(sandbox).toContain('output.line("stdout", raw);');
+    expect(sandbox).toContain('output.line("stderr", pendingStderr.slice(0, newline));');
+    expect(sandbox).not.toContain("child.stderr?.destroy()");
+    expect(CONTAINER_LOG_TEXTS.stdoutIsProtocol).toContain("JSON-Objekt");
+    expect(CONTAINER_LOG_TEXTS.stdoutIsProtocol).toContain("stderr");
+    // Gestrichen wird nichts, und der Grund steht im Code wie auf der Seite:
+    // Der Prozess kennt keinen Wert. Kein --env, nur Referenzen.
+    expect(sandbox).toContain("// Bewusst kein `--env`.");
+    expect(sandbox).toContain("secretRefs: [...definition.secretRefs],");
+    expect(sandbox).not.toMatch(/redact|streich\w*\(/i);
+    const output = await source("lib/server/compute/function-output.ts");
+    expect(output).toContain("QKERN streicht **keine** Werte aus den Zeilen");
+    expect(CONTAINER_LOG_TEXTS.secrets).toContain("streicht nichts");
+    expect(CONTAINER_LOG_TEXTS.secrets).toContain("kennt keinen Wert eines Geheimnisses");
+    // Der Container wird weiterhin entfernt; die Zeilen kommen aus dem Lauf,
+    // nicht aus einem spaeteren docker logs.
     expect(sandbox).toContain('"run", "--rm", "--interactive",');
-    expect(sandbox).toContain('["rm", "--force", "--volumes", container]');
-    expect(CONTAINER_LOG_TEXTS.containerIsGone).toContain("--rm");
-    // Das Praefix, das die Seite einem Betreiber nennt, stimmt.
-    expect(sandbox).toContain('export const SANDBOX_CONTAINER_PREFIX = "qkern-fn-";');
-    expect(CONTAINER_LOG_TEXTS.operatorSteps).toContain("qkern-fn-");
-    // Niemand liest die Ausgabe irgendwo aus.
     expect(sandbox).not.toContain("docker logs");
   });
 
-  it("shows the deployment history, the one real reading this placeholder yields", async () => {
+  it("reads the output through the routes that exist, and only those", async () => {
     const view = await source(CONTAINER_VIEW);
+    expect(view).toContain("${base}/invocations?function=${wanted}&limit=${INVOCATION_PAGE}&offset=0");
+    expect(view).toContain("${base}/invocations/${invocationId}/output");
     expect(view).toContain("${base}/functions/${wanted}/deployments");
-    expect(view).toContain("DEPLOYMENT_COLUMNS");
-    // Jede Spalte hat ein Gegenstueck in der Antwort der Route.
+    // Die Routen gibt es, sie lesen, und sie beschreiben sich in OpenAPI.
+    const output = await source("app/api/v1/projects/[projectId]/environments/[environment]/compute/invocations/[invocationId]/output/route.ts");
+    expect(output).toContain("readFunctionInvocationOutput");
+    expect(output).not.toMatch(/export const (POST|PUT|PATCH|DELETE)/);
+    const list = await source("app/api/v1/projects/[projectId]/environments/[environment]/compute/output/route.ts");
+    expect(list).toContain("readFunctionOutputLog");
+    expect(list).not.toMatch(/export const (POST|PUT|PATCH|DELETE)/);
+    // Jede Spalte der Ausgabe hat ein Gegenstueck in der Zeile des Sinks.
+    expect(OUTPUT_COLUMNS.map((column) => column.label)).toEqual(["Zeitpunkt", "Strom", "Text"]);
+    for (const field of ["line.at", "line.stream", "line.text", "line.cut"]) {
+      expect(view, field).toContain(field);
+    }
+    for (const field of ["output.lineCount", "output.stdoutLines", "output.stderrLines",
+      "output.byteCount", "output.truncated", "output.droppedLines"]) {
+      expect(view, field).toContain(field);
+    }
+    // Die Einsatzhistorie bleibt, mit ihren vier Feldern.
     expect(DEPLOYMENT_COLUMNS.map((column) => column.label)).toEqual([
       "Revision", "Image", "Eingesetzt von", "Eingesetzt am",
     ]);
     for (const field of ["entry.revision", "entry.image", "entry.deployedBy", "entry.deployedAt"]) {
       expect(view, field).toContain(field);
     }
-    // Die Route dahinter liest, und ihr GET traegt genau diese Felder.
-    const repository = await source("lib/server/compute/definitions-postgres-repository.ts");
-    const history = repository.slice(repository.indexOf("  async listFunctionDeployments("));
-    for (const column of ["revision", "image", "deployed_by", "deployed_at"]) {
-      expect(history, column).toContain(column);
-    }
-    // Und die Ansicht greift von einer Einsatzzeile genau diese vier Felder
-    // ab und kein fuenftes. Die Seite *nennt* stdout und stderr
-    // ausdruecklich; abgegriffen wird keines von beiden.
-    const body = await code(CONTAINER_VIEW);
-    const read = new Set([...body.matchAll(/\bentry\.([A-Za-z]+)/g)].map((match) => match[1]));
-    expect([...read].sort()).toEqual(["deployedAt", "deployedBy", "id", "image", "name", "revision"]);
   });
 
-  it("points from the container page to the invocation log and to the drain", async () => {
+  it("points from the container page to the invocation log, the explorer and the drain", async () => {
     expect(CONTAINER_LOG_TEXTS.invocationsMeaning).toContain("Logs → Functions");
     expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("function_invocations");
-    expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("Einstellungen → Log-Drains");
-    // Die Quelle, auf die verwiesen wird, gibt es im Drain wirklich.
+    expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("Function-Ausgabe");
+    // Die Drain-Quelle gibt es wirklich, und eine fuer die Zeilen gibt es
+    // wirklich nicht.
     const drains = await source("lib/console/log-drains.ts");
     expect(drains).toContain('"auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series",');
+    expect(drains).not.toContain("function_output");
+    // Der Explorer kennt die Quelle, unter genau dem Namen, den die Seite nennt.
+    const explorer = await source("lib/console/log-explorer.ts");
+    expect(explorer).toContain('label: "Function-Ausgabe"');
+    expect(explorer).toContain('route: "compute/output"');
   });
 
   // ---------------------------------------------------------------- //
@@ -339,8 +373,8 @@ describe("console missing log views contract", () => {
 
   it("keeps every honesty sentence long enough to be an explanation", () => {
     for (const text of [
-      CONTAINER_LOG_TEXTS.noOutput, CONTAINER_LOG_TEXTS.stdoutIsProtocol,
-      CONTAINER_LOG_TEXTS.stderrIsCounted, CONTAINER_LOG_TEXTS.neverInIt,
+      CONTAINER_LOG_TEXTS.intro, CONTAINER_LOG_TEXTS.limits,
+      CONTAINER_LOG_TEXTS.stdoutIsProtocol, CONTAINER_LOG_TEXTS.secrets,
       API_GATEWAY_LOG_TEXTS.noEdge, API_GATEWAY_LOG_TEXTS.counterLimit,
       API_GATEWAY_LOG_TEXTS.counterBlindSpot, API_GATEWAY_LOG_TEXTS.whatItWouldTake,
       POOLER_LOG_TEXTS.noPooler, POOLER_LOG_TEXTS.appPoolWhyNot,
@@ -377,7 +411,9 @@ describe("console missing log views contract", () => {
     for (const text of [
       ...Object.values(CONTAINER_LOG_TEXTS), ...Object.values(API_GATEWAY_LOG_TEXTS),
       ...Object.values(POOLER_LOG_TEXTS), ...Object.values(MISSING_LOG_STATES),
+      ...Object.values(OUTPUT_WORDS),
       ...DEPLOYMENT_COLUMNS.map((column) => column.meaning),
+      ...OUTPUT_COLUMNS.map((column) => column.meaning),
     ]) {
       expect(exported.has(text), text.slice(0, 40)).toBe(true);
     }

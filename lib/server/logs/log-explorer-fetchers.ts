@@ -48,6 +48,7 @@ export type LogExplorerDoor<T> = () => Promise<T>;
  */
 export type ProjectAuthAuditReader = Pick<ProjectAuthService, "listAuditEvents">;
 export type FunctionInvocationReader = Pick<ComputeDefinitionService, "readFunctionInvocationLog">;
+export type FunctionOutputReader = Pick<ComputeDefinitionService, "readFunctionOutputLog">;
 export type StorageObjectReader = Pick<ProjectStorageService, "readObjectLog">;
 
 /**
@@ -126,6 +127,44 @@ export function functionInvocationFetcher(
         subject: row.functionName,
         outcome: row.outcome === "completed" ? "ok" as const : "failed" as const,
         detail: `${row.durationMs} ms · ${row.statusCode ?? row.errorCode ?? "–"}`,
+      }));
+      return { entries, nextCursor: page.hasMore ? String(offset + limit) : null };
+    } catch (error) { throw logExplorerSourceFailure(error); }
+  };
+}
+
+type OutputDoor = LogExplorerDoor<{
+  principal: Parameters<ComputeDefinitionService["readFunctionOutputLog"]>[0];
+  scope: Parameters<ComputeDefinitionService["readFunctionOutputLog"]>[1];
+}>;
+
+/**
+ * Die Inhaltslogs (2.98), durch dieselbe Tuer wie das Aufrufprotokoll.
+ *
+ * Ein Eintrag je Aufruf, der etwas geschrieben hat; die Zeilen selbst bleiben
+ * draussen, denn `detail` ist ein kurzer getypter Zusatz und keine Nutzlast.
+ * Gemischt wird nach `recordedAt`, dem Zeitpunkt, an dem das Protokoll
+ * geschrieben wurde: Das ist das Ereignis, das diese Quelle hergibt.
+ */
+export function functionOutputFetcher(
+  door: OutputDoor,
+  service: FunctionOutputReader,
+  _query: LogExplorerQuery,
+): LogExplorerSourceFetcher {
+  return async ({ cursor, limit }) => {
+    try {
+      const { principal, scope } = await door();
+      const offset = cursor === null ? 0 : Number(cursor);
+      const page = await service.readFunctionOutputLog(principal, scope, { limit, offset });
+      const entries = page.rows.map((row) => Object.freeze({
+        source: "function_output" as const,
+        id: row.invocationId,
+        at: logExplorerMoment(row.recordedAt),
+        action: "compute.function_output",
+        subject: row.functionName,
+        outcome: row.outcome === "completed" ? "ok" as const : "failed" as const,
+        detail: `stdout ${row.stdoutLines} · stderr ${row.stderrLines} · ${row.byteCount} B` +
+          (row.truncated ? " · truncated" : ""),
       }));
       return { entries, nextCursor: page.hasMore ? String(offset + limit) : null };
     } catch (error) { throw logExplorerSourceFailure(error); }

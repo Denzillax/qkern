@@ -20,14 +20,14 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
-| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 64 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
+| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 65 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
 | Generated Data API | ja | ja — 18 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) , die Trigger-Liste aus dem Katalog (`2.9.0`), die Funktionsliste (`2.18.0`) sowie Indizes, Policies und Enum-Typen (`2.19.0`) und Erweiterungen, Rollen, Publikationen und Spaltenrechte (`2.20.0`) sowie Namen mit Grossbuchstaben (`2.26.0`) und ein Pflichtargument namens `valueOf` (`2.28.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP und echtes OIDC |
 | Object Storage | ja | ja — 8 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist); seit `2.96` ein S3-Endpunkt `/s3` mit SigV4, im Storage-Stack mit echter Signatur zertifiziert; seit `2.99` dazu Presigned URLs, `aws-chunked`, Range, CopyObject und DeleteObjects, und **ein echter Client hat den Endpunkt gesehen**: das AWS SDK für JavaScript über HTTP |
 | Project Queues | ja | ja — 9 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last; seit `1.88.0` mit Metrics-Export im Prometheus-Textformat |
 | Usage Metering | teilweise | teilweise — 34 Real-DB-Fälle; **alle sechs Metriken melden**, append-only Preisblatt mit Monatsprojektion (`1.67.0`) und ein Rechnungslauf, der abgeschlossene Monate als eigener Prozess fakturiert (`1.68.0`), mit REST-Lesefläche und belegtem Wettlauf zweier Läufe (`1.77.0`) und lückenlosem Nummernkreis samt Fälligkeit (`1.81.0`); keine Zahlungsanbindung |
 | Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
-| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 51 Real-DB-Fälle, dazu 27 im Functions-Lauf und 14 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess |
+| Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 51 Real-DB-Fälle, dazu 32 im Functions-Lauf und 14 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess; seit `2.98.0` Inhaltslogs je Aufruf am echten Container |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
 
@@ -44,10 +44,10 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung läuft seit `2.14.0` auch auf Windows (npm-cli.js direkt mit Node) und ist auf allen drei Runnern belegt (`2.15.0`) |
 | Fresh-Project-Smoke | **Linux, Windows und macOS auf GitHub-Runnern grün (`2.15.0`, Lauf 36163798505, archiviert unter `docs/evidence/2026-09-25/`)** |
-| **PostgreSQL-17-Zertifizierung** | **230 von 230 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
-| **versitygw-/ClamAV-Zertifizierung** | **10 von 10 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-s3c` mit zwei Mutationsproben (S3-Endpunkt, `2.99`, darunter ein echter S3-Client) — seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
+| **PostgreSQL-17-Zertifizierung** | **231 von 231 bestanden, exit 0, einmal allein auf dem Host im Slice-Lauf `qkern-slice-fnlogs`, davor 230 zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
+| **versitygw-/ClamAV-Zertifizierung** | **10 von 10 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-s3c` mit zwei Mutationsproben (S3-Endpunkt, `2.67.0`, darunter ein echter S3-Client) — seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **7 von 7 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider** |
-| **Functions gegen Docker plus PostgreSQL** | **27 von 27 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll am echten Container** |
+| **Functions gegen Docker plus PostgreSQL** | **32 von 32 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll, seit `2.98.0` mit Inhaltslogs am echten Container** |
 | **Webhook-Signatur gegen echten Vault** | **8 von 8 bestanden, exit 0, zweimal reproduziert** |
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **16 von 16 bestanden, exit 0, zweimal reproduziert** |
 | **Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv** | **1 von 1 bestanden, exit 0, zweimal reproduziert — seit `2.29.0`: verschlüsseltes Basisbackup über `sslmode=verify-full`, Wiederherstellung bis zu einem Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest belegt, Evidenz vom Produkt-Verifier geprüft; Mutation (Archiv aus) fällt** |

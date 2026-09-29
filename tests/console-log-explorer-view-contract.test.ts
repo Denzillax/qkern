@@ -94,9 +94,13 @@ describe("log explorer view contract", () => {
   it("shows what it cannot reach instead of leaving it out silently", async () => {
     const source = await view();
     expect(source).toContain("LOG_EXPLORER_OUT_OF_REACH.map");
-    // Jede der fuenf unerreichbaren Quellen hat einen Grund, keine bloss ein
-    // Etikett.
-    expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(5);
+    // Jede der vier unerreichbaren Quellen hat einen Grund, keine bloss ein
+    // Etikett. Bis 2.97 waren es fuenf; die Ausgabe des Containers ist seit
+    // 2.98 eine erreichbare Quelle.
+    expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(4);
+    expect(LOG_EXPLORER_OUT_OF_REACH.map((entry) => entry.label))
+      .not.toContain("Ausgabe eines Function-Containers");
+    expect(LOG_EXPLORER_SOURCES).toContain("function_output");
     for (const entry of LOG_EXPLORER_OUT_OF_REACH) {
       expect(entry.reason.length, entry.label).toBeGreaterThan(60);
     }

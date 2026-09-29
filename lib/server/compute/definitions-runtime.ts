@@ -88,10 +88,18 @@ export function createFunctionInvocationServiceFromEnv(
   if (runtimeModeFromEnv(env) !== "postgres") {
     throw new ConfigurationError("Function invocation requires the PostgreSQL runtime mode.");
   }
+  const repository = new PostgresComputeDefinitionRepository(
+    new PostgresControlPlane(getPostgresPool(env)),
+  );
   return new FunctionInvocationService({
-    repository: new PostgresComputeDefinitionRepository(
-      new PostgresControlPlane(getPostgresPool(env)),
-    ),
+    repository,
+    // Das Aufrufprotokoll (1.89) und die Inhaltslogs (2.98) am selben
+    // Repository. Bis 2.97 fehlte diese Zeile: Der Kettenfall verdrahtete das
+    // Protokoll von Hand, die drei Fabriken des Betriebs (Web-Route,
+    // Queue-Wirt, Auth-Hooks) nicht, und im Betrieb hat seit 1.89 kein Aufruf
+    // eine Zeile geschrieben. Der Vertrag `compute-definitions-runtime`
+    // prueft die Verdrahtung jetzt.
+    invocationLog: repository,
     usage: createUsageEmitterFromEnv("compute", env),
     // Geteilt statt prozesslokal. Ohne diesen Port waere die tatsaechliche
     // Obergrenze `maxConcurrency × Instanzen`.

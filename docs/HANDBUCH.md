@@ -1526,8 +1526,9 @@ kann, hat nicht geantwortet.
   Konto ohne mögliche Anmeldung nützt niemandem.
 - **Keinen Testknopf.** Ein Testaufruf mit erfundener Nutzlast belegt, dass ein
   Container antwortet, und nicht, dass eine Anmeldung durchkommt.
-- **Keinen Blick in die Ausgabe des Containers.** QKERN speichert `stdout` und
-  `stderr` einer Function nicht, hier so wenig wie sonst.
+- **Keinen Blick in die Ausgabe des Containers auf dieser Seite.** Was die
+  Function eines Punkts geschrieben hat, steht seit `2.98.0` unter
+  **Functions → Function-Logs**, je Aufruf und mit harten Grenzen.
 
 **Route und Audit.** `GET` und `PUT` auf
 `/api/v1/projects/{projectId}/environments/{environment}/auth/admin/hooks`,
@@ -3387,6 +3388,7 @@ geordneten Liste zusammenführt. Es entsteht keine neue Lesestelle.
 | --- | --- | --- |
 | `auth_audit` | `auth/admin/audit` | `project_auth_admin` |
 | `function_invocations` | `compute/invocations` | `project_compute_admin` |
+| `function_output` (seit `2.98.0`) | `compute/output` | `project_compute_admin` |
 | `storage_objects` | `storage/objects` | `project_storage_admin` |
 
 Wer eine Quelle heute nicht lesen darf, bekommt sie auch hier nicht: Sie
@@ -3413,7 +3415,6 @@ und die Antwort der Route tut es auch:
 - **Nutzung je Zeitfenster**: aggregierte Eimer, keine Ereignisse. Ein Eimer hat
   keinen Zeitpunkt, an dem etwas passiert wäre.
 - **Cron-Vorkommen**: kein gespeichertes Log, sondern je Anfrage rekonstruiert.
-- **Ausgabe eines Function-Containers**: wird nicht gespeichert (`0045`).
 - **Postgres-Serverlog**: liegt in Dateien neben dem Datenverzeichnis, auf die
   QKERN keinen Zugriff hat.
 - **Pooler- und API-Gateway-Log**: gibt es nicht, weil es weder einen Pooler
@@ -3528,12 +3529,12 @@ oder einen festen Fehlercode wie `FUNCTION_TIMEOUT`. Mehr nicht.
 
 **Was sie nicht trägt, und warum:**
 
-- **Keine Ausgabe des Containers.** stdout und stderr werden nicht
-  gespeichert. Sie stammen aus fremdem Code und könnten alles enthalten, was
-  die Function gesehen hat; das ist die Haltung aus `1.22.0` und sie gilt
-  weiter. Seit `2.61.0` ist **Functions → Function-Logs** trotzdem kein
-  Platzhalter mehr, sondern die Seite, die sagt, warum es diese Ausgabe nicht
-  gibt (siehe „Drei Logs, die es nicht gibt“).
+- **Keine Ausgabe des Containers in dieser Tabelle.** stdout und stderr
+  stehen nicht in `0045`. Bis `2.97.0` wurden sie gar nicht aufgehoben; seit
+  `2.98.0` liegen sie je Aufruf in einer eigenen Tabelle (`0069`), mit harten
+  Grenzen, und **Functions → Function-Logs** zeigt sie (siehe „Function-Logs:
+  die Ausgabe des Containers“). Das Aufrufprotokoll bleibt das Protokoll des
+  Aufrufs, nicht seines Inhalts.
 - **Keine Ausgangsverbindungen.** Jede Verbindung einer Function wird gegen
   ihre Allowlist geprüft, aber die Prüfung hinterlässt keine Zeile. Eine
   Liste der Ziele je Aufruf gibt es nicht, und diese Seite erfindet keine.
@@ -4260,6 +4261,83 @@ nicht; wer sie braucht, nimmt `/v1/projects/{projectId}/environments`, und auch
 dort ist sie keine Adresse. Worauf eine Umgebung läuft, steht unter
 Einstellungen → Infrastruktur und wird hier nicht wiederholt.
 
+### Function-Logs: die Ausgabe des Containers
+
+Seit `2.98.0` hebt QKERN auf, was ein Function-Container auf `stdout` und
+`stderr` schreibt: die **Inhaltslogs** je Aufruf, Migration `0069`. Bis dahin
+war **Functions → Function-Logs** die Seite, die erklärte, warum es diese
+Ausgabe nicht gibt (`2.61.0`, siehe unten). Die Erklärung stimmte, die
+Folgerung war zu grob: Wer im Aufrufprotokoll nur `FUNCTION_SANDBOX_FAILED`
+liest, kann den Aufruf nicht verstehen.
+
+**Was aufgehoben wird.** Je Aufruf jede Zeile, die der Container auf `stderr`
+schreibt, und jede Zeile auf `stdout`, die **kein JSON-Objekt** ist. `stdout`
+bleibt die Leitung zwischen Host und Container: Ein JSON-Objekt ist eine
+Nachricht (eine Bitte um Egress, das Ergebnis oder die blosse Antwort aus
+`1.22.0`), alles andere ist Log. Bis `2.97.0` beendete eine Nicht-JSON-Zeile
+den Aufruf; ein `console.log("start")` war ein Fehler mit festem Code. Wer
+eine JSON-Zeile als Log will, schreibt sie auf `stderr`, denn auf `stdout`
+würde sie als Antwort gelesen. Jede Zeile trägt den Zeitpunkt, an dem sie den
+Host erreicht hat (der Container hat keine Uhr, der QKERN trauen müsste), und
+ihren Strom.
+
+**Die Grenzen**, je Aufruf, in `lib/server/compute/function-output.ts` und in
+`0069` mit denselben Zahlen: höchstens **500 Zeilen**, höchstens **64 KiB**
+insgesamt, höchstens **2 KiB je Zeile**. Eine längere Zeile wird
+abgeschnitten und trägt `cut`; was über Zahl oder Bytes hinausgeht, wird
+gezählt (`droppedLines`), nicht behalten; sobald eine Grenze greift, steht
+`truncated` am Protokoll. Es tut nie so, als wäre es vollständig. Die Grenze
+von 256 KiB für die Antwort gilt weiterhin, aber nur für die Leitung: Logzeilen
+zählen nicht dagegen.
+
+**Wo es liegt.** In `project_function_invocation_output`, genau eine Zeile je
+Aufruf, gebunden per Fremdschlüssel an die Zeile des Aufrufprotokolls in
+`0045`. Dieselbe Aufbewahrung wie dort: append-only, keine `UPDATE`- und keine
+`DELETE`-Policy, RLS je Mandant, und wird die Function gelöscht, fällt das
+Protokoll und mit ihm die Ausgabe. Geschrieben wird die Ausgabe **nach** der
+Zeile des Aufrufs, auch bei einem gescheiterten oder abgebrochenen Aufruf,
+denn gerade dort ist sie der einzige Hinweis auf das Warum. Ein Aufruf ohne
+eine einzige Zeile bekommt keine Zeile. Ein Fehler beim Schreiben stürzt den
+Aufruf nicht, wie beim Aufrufprotokoll.
+
+**Geheimnisse: QKERN streicht nichts, und das ist eine Entscheidung.** Es gibt
+nichts, wogegen es streichen könnte. Der Prozess, der den Container startet,
+kennt keinen Wert eines Geheimnisses: Die Definition trägt nur Referenzen
+(`secretRefs`), der Container bekommt genau diese Referenzen über stdin,
+`--env` wird nie gesetzt, und die Umgebung des Prozesses bleibt draussen (nur
+`PATH` geht mit; der Canary-Fall der Zertifizierung prüft das jetzt auch über
+das Log). Ein Wert, den QKERN nicht hat, kann in keiner Zeile stehen, die
+QKERN von sich aus liefert. Ein Filter, der trotzdem nach etwas suchte, wäre
+eine Zusage ohne Deckung: Er suggerierte, QKERN hielte Geheimnisse aus dem
+Log, obwohl er den Wert gar nicht kennt, den er halten soll. Was eine Function
+aus einer vermittelten Ausgangsverbindung erhält und dann selbst ausgibt,
+verantwortet die Function, so wie den Inhalt ihrer Antwort. Die Seite sagt das
+wörtlich, der Code in `function-output.ts` auch.
+
+**Lesen.** `GET .../compute/invocations/{invocationId}/output` gibt die Zeilen
+eines Aufrufs (Admin, kein Parameter, unbekannter Aufruf 404, Aufruf ohne
+Ausgabe `output: null`). `GET .../compute/output` listet alle Inhaltslogs
+einer Umgebung, neueste zuerst, nur die Zahlen und nie die Zeilen; diese Route
+ist die Quelle `function_output` des Log-Explorers. Die Seite
+**Functions → Function-Logs** wählt Function und Aufruf und zeigt die Zeilen
+mit Zeitpunkt, Strom und Text, dazu die Zahlen und den Hinweis, wenn
+abgeschnitten wurde. Die Einsatzhistorie aus `2.61.0` bleibt darunter stehen.
+Ein Log-Drain trägt die Zeilen **nicht** nach draussen; seine Quelle
+`function_invocations` bleibt das Aufrufprotokoll.
+
+**Zertifiziert** im Functions-Stack am echten Container: eine Function, die
+auf beiden Strömen schreibt, kommt mit Strom und Reihenfolge an; eine, die
+über die Grenzen schreibt, wird abgeschnitten, und das Protokoll sagt es; die
+Umgebung des Testlaufs erscheint auch im Log nicht. Der Postgres-Stack (Fall
+`2.98`) belegt Rechte, RLS, die CHECKs und die Kaskade.
+
+**Nebenbefund.** Die Fabrik `createFunctionInvocationServiceFromEnv`, über die
+Web-Route, Queue-Wirt und Auth-Hooks den Aufrufdienst bekommen, hat das
+Aufrufprotokoll seit `1.89.0` nie verdrahtet; nur der Kettenfall der
+Zertifizierung gab `invocationLog` von Hand mit. Im Betrieb hat bis `2.97.0`
+kein Aufruf eine Zeile geschrieben. Seit `2.98.0` gibt die Fabrik das
+Repository als Protokoll mit, und ein Vertrag liest die Verdrahtung.
+
 ### Drei Logs, die es nicht gibt
 
 Seit `2.61.0` sind **Functions → Function-Logs**, **Logs → API-Gateway** und
@@ -4269,30 +4347,16 @@ doch eine echte Lesung, die die Frage wenigstens teilweise beantwortet? Einmal
 ja, zweimal nein. Der Unterschied zu `2.51.0` ist, dass hier zweimal nicht das
 Backend fehlt, sondern die Sache selbst.
 
-**Function-Logs: die Ausgabe gibt es nicht, das Image schon.** Der Platzhalter
-versprach „Ausgaben aus dem Container“. Migration `0045` hält `stdout` und
-`stderr` bewusst nicht und schreibt den Grund selbst hin: Beides stammt aus
-fremdem Code und könnte alles enthalten, was die Function gesehen hat. Die
-Sandbox macht daraus mehr als eine Haltung. `stdout` ist dort gar kein
-Ausgabekanal, sondern die Leitung: Host und Container sprechen darüber
-zeilenweise JSON, und eine Zeile, die kein JSON ist, beendet den Aufruf mit
-einem festen Fehlercode. Eine Function kann darauf also nicht protokollieren,
-ohne sich selbst abzubrechen. `stderr` wird gelesen, aber nur gezählt und bei
-8 KiB gekappt, damit ein geschwätziger Container nicht den Speicher des Hosts
-frisst; zu einer Zeichenkette wird es nie. Und der Container läuft mit `--rm`
-und wird danach mit `docker rm --force` entfernt, also findet auch ein
-späteres `docker logs` nichts mehr.
-
-Die echte Lesung, die dieser Platzhalter hergibt, ist eine andere Frage als
-die gestellte: Was der Container *sagte*, ist weg, welcher Container es *war*,
-steht fest. Die Seite zeigt deshalb die Einsatzhistorie aus Migration `0042`,
+**Function-Logs: bis `2.97.0` gab es die Ausgabe nicht, das Image schon.**
+Der Platzhalter versprach „Ausgaben aus dem Container“. Migration `0045`
+hält `stdout` und `stderr` nicht, mit dem Grund: Beides stammt aus fremdem
+Code und könnte alles enthalten, was die Function gesehen hat. Die Sandbox
+verwarf `stderr` nach 8 KiB, und eine Nicht-JSON-Zeile auf `stdout` beendete
+den Aufruf. Die Seite zeigte darum die Einsatzhistorie aus Migration `0042`,
 `GET .../compute/functions/{functionId}/deployments`: Revision, Image mit
-seinem `sha256`-Digest, wer eingesetzt hat und wann, neueste Revision zuerst.
-Die Historie ist append-only, und eine Image-Änderung ohne ihre Zeile ist auf
-Datenbankebene nicht ausdrückbar. Bis `2.61.0` hat keine Ansicht der Console
-diese Historie gelesen. Daneben steht die Zahl der protokollierten Aufrufe mit
-dem Verweis auf Logs → Functions, ausdrücklich nicht als Ersatz: Ein
-Fehlercode sagt, dass es schiefging, nicht warum.
+seinem `sha256`-Digest, wer eingesetzt hat und wann. Seit `2.98.0` gibt es
+die Ausgabe (siehe „Function-Logs: die Ausgabe des Containers“); die
+Einsatzhistorie bleibt auf der Seite, weil sie die andere Frage beantwortet.
 
 **API-Gateway: es fehlt nicht das Log, sondern der Rand.** Der Platzhalter
 versprach „jede Anfrage am Rand mit Status und Dauer“. Es gibt keinen Rand. Es
