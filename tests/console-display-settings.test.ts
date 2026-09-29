@@ -47,7 +47,7 @@ describe("console display settings", () => {
   it("refuses a value it cannot display instead of replacing it silently", () => {
     for (const body of [
       null, "de", [], { language: "es" }, { formatLocale: "de-AT" }, { timeZone: "Mars/Olympus" },
-      { timeZone: "" }, { startView: "storage-vectors" }, { startView: "does-not-exist" }, { theme: "sepia" },
+      { timeZone: "" }, { startView: "storage-analytics" }, { startView: "does-not-exist" }, { theme: "sepia" },
     ]) {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }
@@ -57,9 +57,12 @@ describe("console display settings", () => {
     // Gegenteil von dem, was es sagt.
     expect(() => validateConsoleDisplaySettings({ startView: "storage-analytics" })).toThrow(ConsoleDisplayError);
     // "branches" war bis 2.81 ein Platzhalter und ist jetzt eine echte Seite;
-    // als Startseite ist sie darum erlaubt.
+    // als Startseite ist sie darum erlaubt. Dasselbe gilt seit 2.93 fuer
+    // "storage-vectors", das hier bis dahin das Gegenbeispiel war.
     expect(validateConsoleDisplaySettings({ startView: "branches" }))
       .toEqual({ ...CONSOLE_DISPLAY_DEFAULTS, startView: "branches" });
+    expect(validateConsoleDisplaySettings({ startView: "storage-vectors" }))
+      .toEqual({ ...CONSOLE_DISPLAY_DEFAULTS, startView: "storage-vectors" });
     // Dasselbe gilt seit 2.83 fuer "int-graphql". Der Platzhalter ist weg, die
     // Seite liest echte Tabellen, und damit ist sie als Startseite erlaubt.
     expect(validateConsoleDisplaySettings({ startView: "int-graphql" }))

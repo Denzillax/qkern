@@ -24,6 +24,9 @@ import { GeneratedDataApiService } from "@/lib/server/data-plane/generated-api";
 // Datenbank -> Replikation (2.74): dieselbe reine Ableitung, mit der die
 // Ansicht aus Zustand und Konsument ihr Urteil ueber einen Slot macht.
 import { SLOT_STATE_TEXTS, slotState } from "@/lib/console/replication-texts";
+// Storage -> Vektor-Buckets (2.93): dieselben Angaben und dieselbe reine
+// Ableitung, aus denen die Seite ihr Urteil ueber den Server macht.
+import { VECTOR_FACTS, vectorVerdict } from "@/lib/console/vector-buckets-texts";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
@@ -9514,6 +9517,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
         return issued;
       };
+      // Seit 2.92 gibt es ohne Zustimmung keinen Code. Dieser Fall laeuft drei
+      // Bereichsmengen an, also stehen hier drei Zustimmungen. Befund aus dem
+      // Stack von slice/vectors: Der Schnitt 2.92 hat sie in `(2.90)`
+      // nachgetragen und hier vergessen, und der Fall ist seither gefallen.
+      for (const scopes of [["identity:read", "data:read"], ["data:write"], ["identity:read"]] as const) {
+        await service.grantOAuthConsent(scope, signedIn.accessToken, { clientId: "mcp-bridge", scopes: [...scopes] });
+      }
       const readToken = await issueToken(["identity:read", "data:read"]);
       const writeToken = await issueToken(["data:write"]);
       const identityToken = await issueToken(["identity:read"]);
@@ -10076,6 +10086,137 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(afterRevoke.consents).toHaveLength(2);
     } finally {
       await owner.query("DELETE FROM users WHERE id = $1", [consentOwner]).catch(() => undefined);
+    }
+  }, 120_000);
+
+  /**
+   * Storage -> Vektor-Buckets (2.93) gegen die echte Datenbank.
+   *
+   * Die Seite sagt, dass es hier keinen Vektortyp gibt. Das ist eine Aussage
+   * ueber den Server, und ein Vertrag am Quelltext kann sie nicht belegen:
+   * `pg_available_extensions` liest sich nur gegen einen laufenden Server, und
+   * ob `CREATE EXTENSION vector` wirklich scheitert, weiss nur er selbst.
+   *
+   * Vier Teile, in der Reihenfolge, in der die Seite sie zeigt:
+   *
+   *   1. Der Katalog, gelesen ueber denselben Dienst und dieselbe Rolle wie
+   *      die Console ihn liest. Aus genau dieser Liste faellt das Urteil, und
+   *      der Fall laesst es von derselben reinen Funktion faellen.
+   *   2. Der Server selbst: `CREATE EXTENSION vector` scheitert, und es gibt
+   *      keinen Typ dieses Namens im Katalog.
+   *   3. Der beschraenkte Ersatz: `cube` ist da, rechnet bis an seine feste
+   *      Grenze und weist die Dimension darueber zurueck. Die Grenze wird
+   *      nicht geglaubt, sondern vom Server geholt.
+   *   4. Was ein Bucket wirklich ist: eine Zeile unter Zeilensicherheit,
+   *      geschrieben und gelesen durch die Laufzeitrolle, mit genau einer
+   *      Array-Spalte, und die haelt MIME-Typen.
+   *
+   * Die Erweiterung `cube` wird am Ende wieder entfernt: Der Fall soll die
+   * Datenbank so hinterlassen, wie er sie vorgefunden hat.
+   */
+  it("(2.93) proves what the vector page claims: this server offers no vector type, CREATE EXTENSION vector fails, cube stops at its hard dimension limit, and a bucket written under row security has no place for an embedding", async () => {
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    const vectorUser = randomUUID();
+    const vectorOrganization = randomUUID();
+    const vectorProject = randomUUID();
+    try {
+      // --- 1. Der Katalog, gelesen wie die Console ihn liest --------------
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const catalogue = await service.inspectExtensions(
+        { organizationId: organizationA, actorRef: "console@qkern.test" },
+        { projectId: "certification-project", environment: "development" },
+      );
+      expect(catalogue.truncated).toBe(false);
+      const offered = new Map(catalogue.extensions.map((entry) => [entry.name, entry]));
+      expect(offered.size).toBeGreaterThan(40);
+      expect(offered.has(VECTOR_FACTS.extension)).toBe(false);
+      // Und keine andere Erweiterung bringt einen Vektortyp mit; die Seite
+      // sucht nicht nach einem zweiten Namen, weil es keinen gibt.
+      expect(catalogue.extensions.filter((entry) => /vector|embedding/iu.test(entry.name))).toEqual([]);
+      // Das Urteil faellt dieselbe reine Funktion wie in der Ansicht.
+      expect(vectorVerdict(offered.get(VECTOR_FACTS.extension)?.installedVersion ?? null,
+        offered.has(VECTOR_FACTS.extension))).toBe("missing");
+
+      // --- 2. Der Server sagt es selbst ----------------------------------
+      await expect(owner.query(`CREATE EXTENSION ${VECTOR_FACTS.extension}`))
+        .rejects.toThrow(/is not available/u);
+      const typeRow = await owner.query<{ found: number }>(
+        "SELECT count(*)::int AS found FROM pg_catalog.pg_type WHERE typname = $1", [VECTOR_FACTS.extension]);
+      expect(typeRow.rows[0].found).toBe(0);
+
+      // --- 3. Der Ersatz, und wo er fest aufhoert ------------------------
+      expect(offered.has(VECTOR_FACTS.fallbackExtension)).toBe(true);
+      await owner.query(`CREATE EXTENSION IF NOT EXISTS ${VECTOR_FACTS.fallbackExtension}`);
+      const withinLimit = await owner.query<{ ok: boolean }>(
+        "SELECT cube(array_fill(0::float8, ARRAY[$1::int])) IS NOT NULL AS ok",
+        [VECTOR_FACTS.fallbackMaxDimensions]);
+      expect(withinLimit.rows[0].ok).toBe(true);
+      await expect(owner.query(
+        "SELECT cube(array_fill(0::float8, ARRAY[$1::int]))",
+        [VECTOR_FACTS.fallbackMaxDimensions + 1])).rejects.toThrow(/too long/u);
+
+      // --- 4. Was ein Bucket wirklich haelt, unter Zeilensicherheit -------
+      await owner.query(
+        "INSERT INTO users (id, email, password_hash, status) VALUES ($1, $2, '$argon2id$integration-only', 'active')",
+        [vectorUser, `vector-buckets-${vectorUser}@qkern.test`]);
+      await owner.query(
+        "INSERT INTO organizations (id, name, slug, created_by) VALUES ($1, 'Vector Buckets 2.93', $2, $3)",
+        [vectorOrganization, `vector-buckets-${vectorOrganization}`, vectorUser]);
+      await owner.query(
+        `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+         VALUES ($1, $2, 'Vector Buckets 2.93', $3, 'test', 'ready', $4)`,
+        [vectorProject, vectorOrganization, `vector-buckets-${vectorProject}`, vectorUser]);
+      await owner.query(
+        `INSERT INTO project_environments (organization_id, project_id, environment, database_instance_ref)
+         VALUES ($1, $2, 'development', $3)`,
+        [vectorOrganization, vectorProject, `managed:${vectorProject}`]);
+
+      // Geschrieben durch die Laufzeitrolle, in der Tenant-Transaktion, die
+      // jede Schreibung des Produkts nimmt.
+      const written = await withTenantTransaction(runtime, { organizationId: vectorOrganization }, async (transaction) =>
+        (await transaction.query<{ name: string }>(
+          `INSERT INTO project_storage_buckets
+             (organization_id, project_id, environment, name, allowed_mime_types, max_object_bytes, quota_bytes)
+           VALUES ($1, $2, 'development', 'embeddings', ARRAY['application/json'], 1048576, 10485760)
+           RETURNING name`,
+          [vectorOrganization, vectorProject])).rows[0]);
+      expect(written.name).toBe("embeddings");
+
+      const mine = await withTenantTransaction(runtime, { organizationId: vectorOrganization, readOnly: true }, async (transaction) =>
+        (await transaction.query<{ name: string }>(
+          "SELECT name FROM project_storage_buckets WHERE project_id = $1", [vectorProject])).rows);
+      expect(mine).toEqual([{ name: "embeddings" }]);
+      // Der Nachbar sieht die Zeile nicht.
+      const neighbour = await withTenantTransaction(runtime, { organizationId: organizationB, readOnly: true }, async (transaction) =>
+        (await transaction.query<{ name: string }>(
+          "SELECT name FROM project_storage_buckets WHERE project_id = $1", [vectorProject])).rows);
+      expect(neighbour).toEqual([]);
+
+      // Und in der Zeile ist kein Platz fuer eine Einbettung: genau eine
+      // Array-Spalte, und die haelt Text.
+      const columns = (await owner.query<{ column_name: string; udt_name: string; data_type: string }>(
+        `SELECT column_name, udt_name, data_type FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'project_storage_buckets'
+          ORDER BY ordinal_position`)).rows;
+      expect(columns.length).toBeGreaterThan(10);
+      expect(columns.filter((column) => column.data_type === "ARRAY").map((column) => [column.column_name, column.udt_name]))
+        .toEqual([["allowed_mime_types", "_text"]]);
+      expect(columns.filter((column) => /vector|embedding|dimension|distance/iu.test(column.column_name))).toEqual([]);
+      expect(columns.filter((column) => /float|numeric|double/iu.test(column.udt_name))).toEqual([]);
+    } finally {
+      await owner.query(`DROP EXTENSION IF EXISTS ${VECTOR_FACTS.fallbackExtension}`).catch(() => undefined);
+      await owner.query("DELETE FROM organizations WHERE id = $1", [vectorOrganization]).catch(() => undefined);
+      await owner.query("DELETE FROM users WHERE id = $1", [vectorUser]).catch(() => undefined);
+      await projectApi.end().catch(() => undefined);
     }
   }, 120_000);
 

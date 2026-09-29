@@ -2311,6 +2311,45 @@ Der Prozess bindet ausschließlich Loopback und verweigert in dieser Version
 Neustart verloren. Das ist ein lokaler Funktionsdurchstich, kein Ersatz für TLS,
 persistenten CDC/Event Log, horizontalen Fan-out oder Lasttests.
 
+### Vektor-Buckets: kein Vektortyp, und darum keine Ablage
+
+Seit `2.93.0` ist **Storage → Vektor-Buckets** keine Platzhalterseite mehr. Der
+Platzhalter sagte „Backend fehlt" und versprach eine „Ablage für Embeddings mit
+Ähnlichkeitssuche". Beides war zu freundlich: Was fehlt, ist der Vektortyp im
+Server, und ohne ihn hilft auch ein Backend nichts.
+
+Nachgesehen, statt es zu glauben:
+
+- Der Zertifizierungsstack fährt `postgres:17-alpine`. Das Image bringt 59
+  Erweiterungen mit, `vector` ist keine davon.
+- `CREATE EXTENSION vector` endet dort mit `extension "vector" is not
+  available`; die Kontrolldatei fehlt schlicht.
+- Alpine 3.24 hat ein Paket `postgresql-pgvector` (0.8.1), aber es ist gegen
+  Alpines eigenes PostgreSQL 18 gebaut und landet unter `/usr/share/postgresql18`.
+  Der Server im Image ist ein selbst gebautes PostgreSQL 17 unter `/usr/local`
+  und kann es nicht laden.
+- Fünf Compose-Dateien fahren dasselbe Image. Ein Wechsel auf ein Image mit
+  pgvector betrifft jede davon und jeden Stack, der darauf zertifiziert.
+- Das nächste, was PostgreSQL selbst mitbringt, ist `cube`. Es rechnet
+  Abstände und hört bei 100 Dimensionen fest auf.
+- Ein Bucket ist eine Zeile in `project_storage_buckets` (Migration 0025) und
+  hält Bytes: Name, Rechte, MIME-Liste, Grössen, Kontingent, Aufbewahrung.
+  Keine Spalte für eine Dimension, kein Abstandsmass, kein Platz für eine
+  Einbettung.
+
+Was die Seite deshalb tut: Sie liest bei jedem Öffnen `/schema/extensions`,
+dieselbe Route wie **Datenbank → Erweiterungen**, und fällt ihr Urteil aus
+dieser Liste. Bietet ein Server die Erweiterung eines Tages an, dreht sich das
+Urteil von selbst, ohne dass jemand einen Satz umschreibt. Dazu zeigt sie die
+Buckets, die es wirklich gibt, und die vier Schritte, die es bis zu einer
+echten Ablage bräuchte. Sie legt nichts an, ändert nichts und löscht nichts.
+
+Der Zertifizierungsfall `(2.93)` prüft das gegen die echte Datenbank: den
+Katalog über dieselbe Rolle, mit der die Console liest, das Scheitern von
+`CREATE EXTENSION vector`, die feste Grenze von `cube` bei 100 gegen 101
+Dimensionen, und einen Bucket, der unter Zeilensicherheit geschrieben und
+gelesen wird und dessen einzige Array-Spalte MIME-Typen hält.
+
 ### Grenzen und Rechte in der Console
 
 Seit `2.47.0` zeigen **Realtime → Einstellungen** und **Realtime → Rechte**, was
