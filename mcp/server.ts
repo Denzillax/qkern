@@ -448,7 +448,9 @@ function generatedDataToolError(error: unknown) {
       ? "The table is not ready for the generated data API."
       : code === "GENERATED_DATA_API_TABLE_NOT_FOUND" || code === "GENERATED_DATA_API_FORBIDDEN"
         ? "The table was not found."
-        : "The generated data API is unavailable.";
+        : code === "GENERATED_DATA_API_POLICY_REJECTED"
+          ? "A row-level security policy rejected the write."
+          : "The generated data API is unavailable.";
   return { isError: true, ...text({ error: code, message }) };
 }
 

@@ -68,6 +68,12 @@ export function routeError(error: unknown) {
     if (error.code === "GENERATED_DATA_API_READ_ONLY") {
       return noStore({ error: "Views are read-only", code: error.code }, 405);
     }
+    // Eine Policy hat eine Zeile abgewiesen (2.97): ein Fehler der Anfrage und
+    // kein Ausfall, darum 403 und nicht 503. Welche Policy, sagt die Antwort
+    // nicht; das stuende einem Aufrufer mit Public Key nicht zu.
+    if (error.code === "GENERATED_DATA_API_POLICY_REJECTED") {
+      return noStore({ error: "A row-level security policy rejected the write", code: error.code }, 403);
+    }
     if (error.code === "GENERATED_DATA_API_NOT_READY" ||
         error.code === "GENERATED_DATA_API_RLS_REQUIRED" ||
         error.code === "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED") {

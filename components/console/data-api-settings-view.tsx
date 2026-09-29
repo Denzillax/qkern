@@ -26,7 +26,7 @@ type Environment = "development" | "staging" | "production";
 type SchemaTable = { name: string; kind: "table" | "partitioned_table" | "view" | "materialized_view"; rowSecurityEnabled: boolean };
 type SchemaState = { state: "loading" | "ready" | "not-ready" | "unavailable" | "error"; tables: SchemaTable[]; truncated: boolean; message: string };
 
-const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims, maxEmbeds, maxEmbedRows } = DATA_API_LIMITS;
+const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims, maxEmbeds, maxEmbedRows, mutationRowsMax, mutationsMax } = DATA_API_LIMITS;
 
 type Payload = Record<string, unknown>;
 
@@ -136,6 +136,8 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
         <div><span>{t("Operatoren")}</span><code>{operators.join(", ")}</code></div>
         <div><span>{t("Eingebettete Beziehungen je Anfrage höchstens")}</span><strong>{maxEmbeds}</strong></div>
         <div><span>{t("Zeilen je Einbettung und Elternzeile höchstens")}</span><strong>{maxEmbedRows}</strong></div>
+        <div><span>{t("Zeilen je Einfügen und je GraphQL-Mutation höchstens")}</span><strong>{mutationRowsMax}</strong></div>
+        <div><span>{t("GraphQL-Mutationen je Anfrage höchstens, alle in einer Transaktion")}</span><strong>{mutationsMax}</strong></div>
         <div><span>{t("Public Key setzt die Rolle")}</span><code>{keyClaims.public}</code></div>
         <div><span>{t("Service Key setzt die Rolle")}</span><code>{keyClaims.service}</code></div>
       </div>

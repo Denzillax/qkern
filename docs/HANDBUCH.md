@@ -3681,16 +3681,15 @@ Was die Seite auch nicht sagt: ob der Server drüben erreichbar ist, ob das
 Konto dort gilt und welche Tabellen es dort gibt. Sie liest den Katalog hier
 und öffnet keine Verbindung nach aussen.
 
-### GraphQL: lesend über dem Schema, mit harten Grenzen
+### GraphQL: über dem Schema, mit harten Grenzen, lesend und schreibend
 
 Seit `2.61.0` ist **Integrationen → GraphQL** keine Platzhalterseite mehr. Der
 alte Platzhalter sagte: „GraphQL-Schnittstelle über dem Schema. Die Data API
-ist REST.“ Gebaut ist jetzt ein **lesender Ausschnitt** davon, und der
-Ausschnitt ist klein mit Absicht.
+ist REST.“ Gebaut ist ein **Ausschnitt** davon, seit `2.97` mit Mutationen, und
+der Ausschnitt ist klein mit Absicht.
 
-**Nur Abfragen.** Es gibt keine Mutationen und keine Subscriptions. Geschrieben
-wird über die Data API, und zwar dort allein. Ein zweiter Schreibweg wäre eine
-zweite Rechteprüfung, und die zweite ist immer die, die jemand vergisst.
+**Abfragen und Mutationen, keine Subscriptions.** Laufende Änderungen laufen
+über Realtime, und das ist ein eigener Transport mit eigenen Rechten.
 
 **Das Schema entsteht aus dem Katalog.** Es gibt keine gepflegte Schemadatei.
 Bei jeder Anfrage liest die Fläche denselben Katalog, aus dem auch das
@@ -3701,11 +3700,14 @@ Schema: Tabellen ohne Zeilensicherheit, Tabellen ohne Primärschlüssel, Views,
 Spalten ohne Leserecht und Spalten, deren Name auf Passwort, Secret, Token,
 Cookie, Key oder Authorization deutet.
 
-**Jede Abfrage läuft unter der Zeilensicherheit des Aufrufers**, über genau
-denselben Weg wie die Data API: dieselbe Projektrolle ohne `BYPASSRLS`,
-dieselbe Lese-Transaktion, dieselben Ansprüche in `request.jwt.claims`. Jedes
-Feld der obersten Ebene wird auf genau eine Zeilenlesung der Data API
-abgebildet. Es gibt hier keine zweite Stelle, an der Ansprüche gesetzt werden.
+**Jede Abfrage und jede Mutation läuft unter der Zeilensicherheit des
+Aufrufers**, über genau denselben Weg wie die Data API: dieselbe Projektrolle
+ohne `BYPASSRLS`, dieselbe Transaktion (lesend für Abfragen, schreibend für
+Mutationen), dieselben Ansprüche in `request.jwt.claims`. Jedes Feld der
+obersten Ebene einer Abfrage wird auf genau eine Zeilenlesung der Data API
+abgebildet, jede Mutation auf denselben Schreibweg, den `POST`, `PATCH` und
+`DELETE` auf `/rows` nehmen. Es gibt hier keine zweite Stelle, an der Ansprüche
+gesetzt werden, und keine zweite Rechteprüfung.
 
 Zwei Endpunkte:
 
@@ -3713,8 +3715,12 @@ Zwei Endpunkte:
 - `POST /api/v1/projects/{projectId}/environments/{environment}/graphql`
 
 `GET` gibt das Schema: Typen, SDL, Grenzen und den Ausschnitt der Sprache.
-`POST` nimmt `{ "query": "…", "schema": "public" }` und führt genau eine
-Abfrage aus. Ohne `schema=` gilt `public`, wie bei der Data API.
+`POST` nimmt `{ "query": "…", "schema": "public" }` und führt genau ein
+Dokument aus, eine Abfrage oder eine Mutation. Ohne `schema=` gilt `public`,
+wie bei der Data API. Eine Mutation verlangt an derselben Tür dasselbe wie ein
+`POST` auf `/rows`: den Schreibbereich eines OAuth-Tokens, die Fähigkeit
+`project_data_mutate` einer Console-Sitzung. Die Route liest am Dokument ab, ob
+sie schreibt, und verlangt das Recht, bevor die Datenbank etwas davon sieht.
 
 Beispiel mit einem bereits einmalig kopierten Key:
 
@@ -3740,13 +3746,67 @@ Sprache, die dieser Ausschnitt nicht verantworten will. `after` nimmt den
 Cursor aus einer vorigen Antwort; ein `offset` gibt es nicht, weil eine Seite
 über `offset` Zeilen überspringt, sobald sich darunter etwas ändert.
 
-**Was bewusst fehlt**, jedes mit eigenem Ablehnungsgrund: Mutationen,
-Subscriptions, Fragmente (benannt wie inline), Variablen, Direktiven,
-Introspektion, Enum-Werte, Eingabeobjekte, Block-Zeichenketten, mehrere
-Operationen in einem Dokument, Beziehungen zwischen Tabellen, Views und
-Aggregate. Fragmente fehlen nicht aus Bequemlichkeit: Ohne sie gibt es auch
-keine Fragment-Rekursion zu begrenzen, und eine Begrenzung, die es nicht
-braucht, kann auch nicht danebenliegen.
+**Mutationen (`2.97`).** Drei Formen, benannt wie bei pg_graphql, mit dem
+Tabellennamen so, wie er im Katalog steht:
+
+```graphql
+mutation Anlegen {
+  neu: insertIntonotizenCollection(objects: [
+    { besitzer: "…", inhalt: "meine dritte", menge: 3 }
+  ]) { affectedCount records { id inhalt } }
+  updatenotizenCollection(set: { inhalt: "gross" }, where: ["menge:gte:5"], atMost: 10) {
+    affectedCount
+  }
+  deleteFromnotizenCollection(where: ["inhalt:eq:gross", "menge:lte:7"]) {
+    affectedCount records { id }
+  }
+}
+```
+
+`objects` nimmt eine Liste flacher Objekte, jede Zeile mit denselben Spalten;
+`set` ein flaches Objekt ohne Spalten des Primärschlüssels; `where` dieselben
+Filter wie eine Abfrage, `spalte:operator:wert`; `atMost` eine engere
+Obergrenze getroffener Zeilen. Jede Mutation antwortet mit `affectedCount` und
+`records`, beides mit Alias, und `records` nimmt dieselben Spalten wie ein
+Tabellenfeld.
+
+Drei Zusagen tragen das:
+
+- **Alle Mutationen einer Anfrage laufen in einer Transaktion.** Fällt eine,
+  auch an einer Policy, wirkt keine. Eine Zeile, die `WITH CHECK` abweist,
+  antwortet mit `403` und `GENERATED_DATA_API_POLICY_REJECTED`, und die
+  Mutation davor ist mit zurückgerollt. Bis `2.96` fiel eine abgewiesene Zeile
+  auch an der REST-Fläche unter „unavailable“; seit `2.97` hat sie diesen Code,
+  an beiden Flächen.
+- **Ändern und Löschen verlangen eine Bedingung.** Ohne `where` wird die
+  Mutation mit `filter_required` abgewiesen, bevor die Datenbank etwas sieht.
+  Eine Mutation ohne Bedingung träfe jede Zeile, die die Policy hergibt, und
+  das meint kein Formular.
+- **Eine Mutation steht nur im Schema, wo die Projektrolle das Recht hat.**
+  `type Mutation` nennt je Tabelle die Formen, für die die Rolle `INSERT`,
+  `UPDATE` oder `DELETE` hat, dazu `input <Tabelle>InsertInput` und
+  `input <Tabelle>UpdateInput` mit den Spalten, die die Data API annimmt: kein
+  Eingabefeld trägt ein `!`, weil ein `DEFAULT` in der Tabelle entscheidet, ob
+  eine Spalte fehlen darf, und den kennt die Fläche nicht. Eine Tabelle ohne
+  Zeilensicherheit hat keine Mutation, und die Ablehnung heisst
+  `unknown_mutation`, aus demselben Grund wie bei einer Abfrage.
+
+Was in der Mutation steht, entscheidet die Form; was durchkommt, entscheidet
+die Policy in der Datenbank. Der Zertifizierungsfall `(2.97)` fährt das gegen
+die echte Datenbank ab: eine Mutation, die genau die Zeilen des Aufrufers
+schreibt und dieselben wie der REST-Weg; eine abgewiesene Zeile, die die ganze
+Anfrage zurückrollt; eine Bedingung über `atMost`, die die ganze Anfrage
+zurückrollt; eine Tabelle ohne Zeilensicherheit, ein fehlender Filter und eine
+überschrittene Grenze, jedes abgewiesen; und die Zählung, die für ein
+Schreiben keine Lesung meldet.
+
+**Was bewusst fehlt**, jedes mit eigenem Ablehnungsgrund: Subscriptions,
+Fragmente (benannt wie inline), Variablen, Direktiven, Introspektion,
+Enum-Werte, Eingabeobjekte als Filter, Objekte in Objekten,
+Block-Zeichenketten, mehrere Operationen in einem Dokument, Beziehungen
+zwischen Tabellen, Views, Aggregate und ein Upsert. Fragmente fehlen nicht aus
+Bequemlichkeit: Ohne sie gibt es auch keine Fragment-Rekursion zu begrenzen,
+und eine Begrenzung, die es nicht braucht, kann auch nicht danebenliegen.
 
 **Die Grenzen sind hart und greifen vor der Datenbank.** GraphQL lässt den
 Aufrufer die Form der Antwort bestimmen; ohne Grenzen ist eine einzige Anfrage
@@ -3754,7 +3814,7 @@ genug, um die Datenbank beliebig lange zu beschäftigen.
 
 | Grenze | Wert | Warum |
 | --- | --- | --- |
-| Tiefe | 2 | Tabelle und Spalten, mehr gibt es nicht zu holen |
+| Tiefe | 2 | Tabelle und Spalten, mehr gibt es nicht zu holen; eine Mutation hat eine Ebene mehr für `records` |
 | Felder je Abfrage | 60 | jedes Vorkommen einzeln, **Aliasse zählen mit** |
 | Tabellen je Abfrage | 5 | jedes Vorkommen ist eine eigene Lesung |
 | Zeilen je Feld | 100 | dieselbe Obergrenze wie die Data API |
@@ -3762,6 +3822,8 @@ genug, um die Datenbank beliebig lange zu beschäftigen.
 | Zeilen ohne `limit` | 20 | Vorgabe wie bei der Data API |
 | Filter je Feld | 10 | dieselbe Zahl wie bei der Data API |
 | Zeichen der Abfrage | 8192 | vor dem ersten Token geprüft |
+| Mutationen je Anfrage | 5 | alle in einer Transaktion; in `lib/data-api-limits.ts`, wie die REST-Grenze |
+| Zeilen je Mutation | 25 | eingefügte Zeilen wie getroffene Zeilen; mehr rollen die Transaktion zurück |
 
 Ohne die Regel, dass Aliasse mitzählen, wäre `a: id b: id c: id` ein Weg, die
 Feldgrenze zu umgehen, ohne sie zu verletzen. Aliasse bleiben
@@ -3790,10 +3852,11 @@ verriete die Existenz einer Tabelle, die dieser Aufrufer nicht lesen darf. Wer
 den echten Grund braucht, liest ihn an der Data API, die ihn mit
 `GENERATED_DATA_API_RLS_REQUIRED` nennt, oder in der Console.
 
-Die Console-Seite führt Abfragen aus und sonst nichts. Sie legt nichts an,
-ändert nichts und kann die Fläche auch nicht ein- oder ausschalten: Sie hängt
-an derselben Freigabe wie die Data API
-(`QKERN_GENERATED_DATA_API_ENABLED=true`). Abfragen werden nicht gespeichert,
+Die Console-Seite führt aus, was dort steht, auch eine Mutation: dann als
+angemeldeter Mensch mit dem Anspruch `authenticated`, unter der Policy der
+Tabelle und in einer Transaktion. Ein- oder ausschalten kann die Seite die
+Fläche nicht; sie hängt an derselben Freigabe wie die Data API
+(`QKERN_GENERATED_DATA_API_ENABLED=true`). Dokumente werden nicht gespeichert,
 es gibt keine Historie und keine Freigabe an andere.
 
 ### Replikation: der Rückstand eines Slots

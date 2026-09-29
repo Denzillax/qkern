@@ -6,19 +6,21 @@ import type {
   GeneratedDataApiPort,
   GeneratedDataContext,
   GeneratedDataFilter,
+  GeneratedMutation,
   GeneratedTable,
 } from "@/lib/server/data-plane/generated-api";
 import type { ProjectDataPlaneScope } from "@/lib/server/data-plane/service";
 
 /**
- * Die lesende GraphQL-Fläche über dem Projektschema (2.83).
+ * Die GraphQL-Fläche über dem Projektschema (2.83 lesend, 2.97 schreibend).
  *
- * **Was sie ist.** Ein sehr kleiner Ausschnitt von GraphQL, der auf genau eine
- * Sache abbildet: `listRows` der generierten Data API, einmal je Feld der
- * obersten Ebene. Es entsteht kein zweiter Weg in die Datenbank, keine zweite
- * Stelle, an der Ansprüche gesetzt werden, und keine zweite Rechteprüfung. Der
- * Aufrufer sieht hier genau die Zeilen, die er über die REST-Fläche auch sähe,
- * weil es dieselbe Fläche ist.
+ * **Was sie ist.** Ein sehr kleiner Ausschnitt von GraphQL, der auf genau zwei
+ * Dinge abbildet: `listRows` der generierten Data API, einmal je Feld einer
+ * Abfrage, und `mutateRows` derselben Data API, einmal je Mutation. Es
+ * entsteht kein zweiter Weg in die Datenbank, keine zweite Stelle, an der
+ * Ansprüche gesetzt werden, und keine zweite Rechteprüfung. Der Aufrufer sieht
+ * hier genau die Zeilen, die er über die REST-Fläche auch sähe, und schreibt
+ * genau die, die er dort auch schreiben könnte, weil es dieselbe Fläche ist.
  *
  * **Warum ohne Bibliothek.** Eine GraphQL-Bibliothek bringt die ganze Sprache
  * mit: Fragmente, Variablen, Direktiven, Introspektion, Eingabetypen,
@@ -28,9 +30,14 @@ import type { ProjectDataPlaneScope } from "@/lib/server/data-plane/service";
  * Ausschnitt hier ist so klein, dass der Parser in eine Datei passt und jede
  * Ablehnung einen Namen hat.
  *
- * **Nur Abfragen.** Es gibt keine Mutationen. Geschrieben wird über die Data
- * API; ein zweiter Schreibweg wäre eine zweite Rechteprüfung, und die zweite
- * ist immer die, die jemand vergisst.
+ * **Mutationen, seit 2.97.** `insertInto<Tabelle>Collection`,
+ * `update<Tabelle>Collection` und `deleteFrom<Tabelle>Collection`, benannt wie
+ * bei pg_graphql. Alle Mutationen einer Anfrage laufen in **einer**
+ * Transaktion der Data API: Fällt eine, auch an einer Policy, wirkt keine.
+ * Ändern und Löschen verlangen eine Bedingung; eine Mutation ohne `where`
+ * träfe jede Zeile, die die Policy hergibt, und das meint kein Formular. Die
+ * Zeilen je Mutation und die Mutationen je Anfrage stehen in
+ * `lib/data-api-limits.ts`, weil die REST-Fläche dieselbe Zahl kennt.
  *
  * Was der Ausschnitt kennt und was ihm bewusst fehlt, steht bei
  * `PROJECT_GRAPHQL_GRAMMAR` unten in einem Stück.
@@ -54,7 +61,6 @@ export type ProjectGraphqlRejection =
   | "syntax_error"
   | "unexpected_end"
   | "multiple_operations"
-  | "mutation_not_supported"
   | "subscription_not_supported"
   | "fragment_not_supported"
   | "variable_not_supported"
@@ -63,6 +69,8 @@ export type ProjectGraphqlRejection =
   | "block_string_not_supported"
   | "enum_not_supported"
   | "object_argument_not_supported"
+  | "nested_object_not_supported"
+  | "object_fields_exceeded"
   | "nested_list_not_supported"
   | "depth_exceeded"
   | "fields_exceeded"
@@ -80,7 +88,13 @@ export type ProjectGraphqlRejection =
   | "filter_invalid"
   | "filters_exceeded"
   | "unknown_table"
-  | "unknown_field";
+  | "unknown_field"
+  /** Mutationen (2.97): der Name passt auf keine der drei Formen, oder die Tabelle hat sie nicht. */
+  | "unknown_mutation"
+  | "mutations_exceeded"
+  | "mutation_rows_exceeded"
+  | "filter_required"
+  | "argument_required";
 
 /**
  * Eine abgewiesene Abfrage.
@@ -91,7 +105,7 @@ export type ProjectGraphqlRejection =
  */
 export class ProjectGraphqlError extends Error {
   constructor(readonly reason: ProjectGraphqlRejection, readonly at?: string) {
-    super("The GraphQL query was refused.");
+    super("The GraphQL document was refused.");
     this.name = "ProjectGraphqlError";
   }
 }
@@ -123,17 +137,18 @@ export const PROJECT_GRAPHQL_GRAMMAR = {
     "scalar_arguments",
     "string_lists",
     "comments",
+    "mutations",
+    "row_objects",
   ] as const,
   /** Was er abweist, jedes mit eigenem Grund. */
   refused: [
-    "mutation",
     "subscription",
     "fragments",
     "variables",
     "directives",
     "introspection",
     "enum_values",
-    "input_objects",
+    "filter_objects",
     "block_strings",
     "multiple_operations",
     "relations",
@@ -266,7 +281,10 @@ function readNumber(source: string, start: number): { value: number; next: numbe
  * Zerlegung in Felder
  * ------------------------------------------------------------------ */
 
-type ArgumentValue = string | number | boolean | null | Array<string | number | boolean | null>;
+type Scalar = string | number | boolean | null;
+/** Ein Eingabeobjekt: eine Zeile oder eine Zuweisung, nur mit skalaren Werten (2.97). */
+type ObjectValue = Record<string, Scalar>;
+type ArgumentValue = Scalar | Scalar[] | ObjectValue | ObjectValue[];
 
 type ParsedField = {
   /** Der Name in der Antwort: der Alias, sonst der Feldname. */
@@ -287,6 +305,12 @@ class Parser {
   private position = 0;
   /** Jedes Feld einzeln, Aliasse eingeschlossen. Genau das ist die Grenze. */
   private fieldCount = 0;
+  /**
+   * Was das Dokument ist. Eine Mutation darf Eingabeobjekte tragen und eine
+   * Ebene mehr (`records { spalte }`); eine Abfrage darf beides nicht. Der
+   * Modus steht fest, sobald das erste Wort gelesen ist.
+   */
+  private kind: "query" | "mutation" = "query";
 
   constructor(private readonly tokens: Token[]) {}
 
@@ -327,15 +351,17 @@ class Parser {
    * Zaehlungen koennten verschieden ausfallen, und dann waere eine davon die
    * Grenze und die andere die Zahl in der Antwort.
    */
-  parseDocument(): { operationName: string | null; fields: ParsedField[]; fieldCount: number } {
+  parseDocument(): {
+    kind: "query" | "mutation"; operationName: string | null; fields: ParsedField[]; fieldCount: number;
+  } {
     let operationName: string | null = null;
     const first = this.peek();
     if (first.kind === "eof") refuse("query_empty");
     if (first.kind === "name") {
-      if (first.value === "mutation") refuse("mutation_not_supported");
       if (first.value === "subscription") refuse("subscription_not_supported");
       if (first.value === "fragment") refuse("fragment_not_supported");
-      if (first.value !== "query") refuse("syntax_error");
+      if (first.value !== "query" && first.value !== "mutation") refuse("syntax_error");
+      this.kind = first.value;
       this.position += 1;
       if (this.peek().kind === "name") operationName = this.expectName();
       // Eine Variablendefinition steht genau hier. Sie bekommt ihren eigenen
@@ -357,7 +383,12 @@ class Parser {
       if (trailing.kind === "punct" && trailing.value === "{") refuse("multiple_operations");
       refuse("syntax_error");
     }
-    return { operationName, fields, fieldCount: this.fieldCount };
+    return { kind: this.kind, operationName, fields, fieldCount: this.fieldCount };
+  }
+
+  /** Die Tiefe, die dieses Dokument haben darf: bei einer Mutation eine mehr, für `records`. */
+  private maxDepth(): number {
+    return DATA_API_GRAPHQL_LIMITS.maxDepth + (this.kind === "mutation" ? 1 : 0);
   }
 
   private parseSelectionSet(depth: number): ParsedField[] {
@@ -400,7 +431,7 @@ class Parser {
     if (this.atPunct("@")) refuse("directive_not_supported", name);
     let selection: ParsedField[] | null = null;
     if (this.atPunct("{")) {
-      if (depth + 1 > DATA_API_GRAPHQL_LIMITS.maxDepth) refuse("depth_exceeded", name);
+      if (depth + 1 > this.maxDepth()) refuse("depth_exceeded", name);
       selection = this.parseSelectionSet(depth + 1);
     }
     return { responseKey, name, argumentsByName, selection };
@@ -423,22 +454,37 @@ class Parser {
     return values;
   }
 
-  private parseValue(inList: boolean): ArgumentValue {
+  private parseValue(inList: boolean, inObject = false): ArgumentValue {
     const token = this.peek();
     if (token.kind === "eof") refuse("unexpected_end");
     if (token.kind === "punct" && token.value === "$") refuse("variable_not_supported");
-    if (token.kind === "punct" && token.value === "{") refuse("object_argument_not_supported");
+    if (token.kind === "punct" && token.value === "{") {
+      // Ein Eingabeobjekt. In einer Abfrage gibt es keines: Ein Filter ist
+      // eine Zeichenkette. In einer Mutation ist es eine Zeile oder eine
+      // Zuweisung, flach, mit skalaren Werten; ein Objekt im Objekt wäre eine
+      // Beziehung, und Beziehungen gibt es an dieser Fläche nicht.
+      if (this.kind !== "mutation") refuse("object_argument_not_supported");
+      if (inObject) refuse("nested_object_not_supported");
+      return this.parseObject();
+    }
     if (token.kind === "punct" && token.value === "[") {
       if (inList) refuse("nested_list_not_supported");
+      if (inObject) refuse("nested_object_not_supported");
       this.position += 1;
-      const entries: Array<string | number | boolean | null> = [];
+      const entries: Array<Scalar | ObjectValue> = [];
       while (!this.atPunct("]")) {
         if (this.peek().kind === "eof") refuse("unexpected_end");
-        entries.push(this.parseValue(true) as string | number | boolean | null);
-        if (entries.length > DATA_API_GRAPHQL_LIMITS.maxListEntries) refuse("list_too_long");
+        const entry = this.parseValue(true) as Scalar | ObjectValue;
+        entries.push(entry);
+        // Zwei Grenzen, je nachdem, was in der Liste steht: Zeichenketten sind
+        // Filter, Objekte sind Zeilen, und Zeilen je Mutation haben ihre
+        // eigene Zahl in lib/data-api-limits.ts.
+        if (entry !== null && typeof entry === "object") {
+          if (entries.length > DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation) refuse("mutation_rows_exceeded");
+        } else if (entries.length > DATA_API_GRAPHQL_LIMITS.maxListEntries) refuse("list_too_long");
       }
       this.expectPunct("]");
-      return entries;
+      return entries as Scalar[] | ObjectValue[];
     }
     this.position += 1;
     if (token.kind === "number") return token.value;
@@ -452,6 +498,30 @@ class Parser {
       refuse("enum_not_supported", token.value);
     }
     refuse("syntax_error");
+  }
+
+  /** Ein flaches Eingabeobjekt, `{ spalte: wert … }`, nur in einer Mutation. */
+  private parseObject(): ObjectValue {
+    this.expectPunct("{");
+    const value: ObjectValue = {};
+    let count = 0;
+    while (!this.atPunct("}")) {
+      if (this.peek().kind === "eof") refuse("unexpected_end");
+      const name = this.expectName();
+      this.expectPunct(":");
+      const entry = this.parseValue(false, true);
+      if (Object.hasOwn(value, name)) refuse("duplicate_argument", name);
+      // `__proto__` und Verwandte sind keine Spaltennamen und würden das
+      // Objekt selbst verändern; die Grammatik der Data API lässt sie nicht
+      // zu, und hier fallen sie, bevor sie ein Schlüssel werden.
+      if (!DATA_IDENTIFIER.test(name) || name.startsWith("__")) refuse("unknown_field", name);
+      value[name] = entry as Scalar;
+      count += 1;
+      if (count > DATA_API_GRAPHQL_LIMITS.maxObjectFields) refuse("object_fields_exceeded");
+    }
+    this.expectPunct("}");
+    if (count === 0) refuse("syntax_error");
+    return value;
   }
 }
 
@@ -475,6 +545,7 @@ export type ProjectGraphqlFieldPlan = {
 };
 
 export type ProjectGraphqlPlan = {
+  kind: "query";
   operationName: string | null;
   fields: ProjectGraphqlFieldPlan[];
   /** Alle Felder zusammen, Aliasse einzeln gezählt. */
@@ -483,18 +554,48 @@ export type ProjectGraphqlPlan = {
   rowBudget: number;
 };
 
+/** Die Spalten hinter `records`, wie bei einem Tabellenfeld: jede einmal gelesen, Aliasse einzeln. */
+export type ProjectGraphqlRecordsPlan = {
+  responseKey: string;
+  columns: string[];
+  selection: Array<{ responseKey: string; column: string }>;
+};
+
+/** Eine Mutation der obersten Ebene, fertig für `mutateRows` (2.97). */
+export type ProjectGraphqlMutationFieldPlan = {
+  responseKey: string;
+  table: string;
+  mutation: GeneratedMutation;
+  /** Der Antwortschlüssel für `affectedCount`, oder null, wenn er nicht verlangt ist. */
+  affectedCount: string | null;
+  records: ProjectGraphqlRecordsPlan | null;
+};
+
+export type ProjectGraphqlMutationPlan = {
+  kind: "mutation";
+  operationName: string | null;
+  mutations: ProjectGraphqlMutationFieldPlan[];
+  fieldCount: number;
+  /** Alle Zeilen, die die Anfrage höchstens schreibt: eingefügte plus `atMost` je Bedingung. */
+  rowBudget: number;
+};
+
+export type ProjectGraphqlDocumentPlan = ProjectGraphqlPlan | ProjectGraphqlMutationPlan;
+
 /**
  * Aus dem Text ein Plan, ohne die Datenbank zu berühren.
  *
- * Die Reihenfolge ist Absicht: Form, dann Grenzen, dann erst der Katalog. Eine
- * Abfrage, die zu tief ist oder zu viele Felder holt, kostet so keine
- * Verbindung und keine Katalogabfrage.
+ * Die Reihenfolge ist Absicht: Form, dann Grenzen, dann erst der Katalog. Ein
+ * Dokument, das zu tief ist oder zu viele Felder holt, kostet so keine
+ * Verbindung und keine Katalogabfrage. Die Route ruft das hier zuerst, weil sie
+ * am Plan abliest, ob sie Schreibrechte verlangen muss.
  */
-export function planProjectGraphqlQuery(query: string): ProjectGraphqlPlan {
+export function planProjectGraphqlDocument(query: string): ProjectGraphqlDocumentPlan {
   if (typeof query !== "string") refuse("invalid_argument", "query");
   if (Buffer.byteLength(query, "utf8") > DATA_API_GRAPHQL_LIMITS.maxQueryBytes) refuse("query_too_large");
   if (query.trim().length === 0) refuse("query_empty");
   const document = new Parser(tokenize(query)).parseDocument();
+  if (document.kind === "mutation") return planMutation(document);
   if (document.fields.length > DATA_API_GRAPHQL_LIMITS.maxTables) refuse("tables_exceeded");
 
   // Die Feldzahl kommt aus dem Parser, der sie beim Lesen fuehrt und dort
@@ -505,15 +606,7 @@ export function planProjectGraphqlQuery(query: string): ProjectGraphqlPlan {
   for (const field of document.fields) {
     if (!DATA_IDENTIFIER.test(field.name)) refuse("unknown_table", field.name);
     if (!field.selection) refuse("selection_required", field.name);
-    const selection: Array<{ responseKey: string; column: string }> = [];
-    for (const column of field.selection) {
-      if (column.selection) refuse("depth_exceeded", column.name);
-      // Ein Argument auf einer Spalte wäre eine Zusage, die es nicht gibt: Es
-      // gibt keine Feldauflöser hier, nur `SELECT spalte`.
-      if (column.argumentsByName.size > 0) refuse("column_arguments_not_supported", column.name);
-      if (!DATA_IDENTIFIER.test(column.name)) refuse("unknown_field", column.name);
-      selection.push({ responseKey: column.responseKey, column: column.name });
-    }
+    const selection = columnSelection(field.selection);
     const plan = fieldArguments(field);
     rowBudget += plan.limit;
     fields.push({
@@ -527,7 +620,127 @@ export function planProjectGraphqlQuery(query: string): ProjectGraphqlPlan {
     });
   }
   if (rowBudget > DATA_API_GRAPHQL_LIMITS.maxRowsPerQuery) refuse("rows_exceeded");
-  return { operationName: document.operationName, fields, fieldCount, rowBudget };
+  return { kind: "query", operationName: document.operationName, fields, fieldCount, rowBudget };
+}
+
+/** Die Spalten einer Auswahl: Blätter ohne Argumente, jedes ein gültiger Name. */
+function columnSelection(fields: ParsedField[]): Array<{ responseKey: string; column: string }> {
+  const selection: Array<{ responseKey: string; column: string }> = [];
+  for (const column of fields) {
+    if (column.selection) refuse("depth_exceeded", column.name);
+    // Ein Argument auf einer Spalte wäre eine Zusage, die es nicht gibt: Es
+    // gibt keine Feldauflöser hier, nur `SELECT spalte`.
+    if (column.argumentsByName.size > 0) refuse("column_arguments_not_supported", column.name);
+    if (!DATA_IDENTIFIER.test(column.name)) refuse("unknown_field", column.name);
+    selection.push({ responseKey: column.responseKey, column: column.name });
+  }
+  return selection;
+}
+
+/** Die drei Formen einer Mutation, benannt wie bei pg_graphql: der Tabellenname steht in der Mitte. */
+const MUTATION_NAME = /^(insertInto|update|deleteFrom)(.+)Collection$/;
+
+/**
+ * Der Plan einer Mutation (2.97).
+ *
+ * Alles hier ist Form: Name, Argumente, Auswahl, Grenzen. Ob die Tabelle die
+ * Mutation hat und ob eine Spalte existiert, sagt erst der Katalog in
+ * `execute`; ob eine Zeile durchkommt, sagt erst die Policy in der Datenbank.
+ */
+function planMutation(document: {
+  operationName: string | null; fields: ParsedField[]; fieldCount: number;
+}): ProjectGraphqlMutationPlan {
+  if (document.fields.length > DATA_API_GRAPHQL_LIMITS.maxMutationsPerRequest) refuse("mutations_exceeded");
+  const mutations: ProjectGraphqlMutationFieldPlan[] = [];
+  let rowBudget = 0;
+  for (const field of document.fields) {
+    const match = MUTATION_NAME.exec(field.name);
+    if (!match || !DATA_IDENTIFIER.test(match[2]!)) refuse("unknown_mutation", field.name);
+    const kind = match[1] === "insertInto" ? "insert" : match[1] === "update" ? "update" : "delete";
+    const table = match[2]!;
+    if (!field.selection) refuse("selection_required", field.name);
+
+    // Die Auswahl: `affectedCount` und `records { spalte }`, beide mit Alias,
+    // keines mit Argumenten, und sonst nichts.
+    let affectedCount: string | null = null;
+    let records: ProjectGraphqlRecordsPlan | null = null;
+    for (const entry of field.selection) {
+      if (entry.argumentsByName.size > 0) refuse("column_arguments_not_supported", entry.name);
+      if (entry.name === "affectedCount") {
+        if (entry.selection) refuse("depth_exceeded", entry.name);
+        if (affectedCount !== null) refuse("duplicate_response_key", entry.responseKey);
+        affectedCount = entry.responseKey;
+        continue;
+      }
+      if (entry.name === "records") {
+        if (!entry.selection) refuse("selection_required", entry.name);
+        if (records !== null) refuse("duplicate_response_key", entry.responseKey);
+        const selection = columnSelection(entry.selection);
+        records = {
+          responseKey: entry.responseKey,
+          columns: [...new Set(selection.map((column) => column.column))],
+          selection,
+        };
+        continue;
+      }
+      refuse("unknown_field", `${field.name}.${entry.name}`);
+    }
+
+    const mutation = mutationArguments(kind, table, field);
+    rowBudget += mutation.kind === "insert" ? mutation.rows.length
+      : (mutation.atMost ?? DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation);
+    mutations.push({ responseKey: field.responseKey, table, mutation, affectedCount, records });
+  }
+  return { kind: "mutation", operationName: document.operationName, mutations, fieldCount: document.fieldCount, rowBudget };
+}
+
+/** Die Argumente einer Mutation, je Form die eigenen; alles andere ist unbekannt. */
+function mutationArguments(kind: "insert" | "update" | "delete", table: string, field: ParsedField): GeneratedMutation {
+  const raw = field.argumentsByName;
+  const allowed: readonly string[] = kind === "insert" ? ["objects"] : kind === "update"
+    ? ["set", "where", "atMost"] : ["where", "atMost"];
+  for (const name of raw.keys()) {
+    if (!(DATA_API_GRAPHQL_LIMITS.mutationArguments as readonly string[]).includes(name)) refuse("unknown_argument", name);
+    if (!allowed.includes(name)) refuse("unknown_argument", name);
+  }
+  if (kind === "insert") {
+    if (!raw.has("objects")) refuse("argument_required", "objects");
+    const value = raw.get("objects");
+    const rows = Array.isArray(value) ? value : [value];
+    if (rows.length === 0) refuse("invalid_argument", "objects");
+    if (rows.length > DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation) refuse("mutation_rows_exceeded");
+    if (!rows.every(isObjectValue)) refuse("invalid_argument", "objects");
+    return { kind: "insert", table, rows: rows.map((row) => ({ ...row })) };
+  }
+  // Ändern und Löschen: ohne Bedingung nicht. Das ist die eine Ablehnung, die
+  // ein Aufrufer nicht umgehen können soll, und sie hat darum einen eigenen
+  // Namen statt "Argument fehlt".
+  if (!raw.has("where")) refuse("filter_required", field.name);
+  const whereValue = raw.get("where");
+  const entries = Array.isArray(whereValue) ? whereValue : [whereValue];
+  if (entries.length === 0) refuse("filter_required", field.name);
+  if (entries.length > DATA_API_GRAPHQL_LIMITS.maxFiltersPerField) refuse("filters_exceeded");
+  const filters: GeneratedDataFilter[] = [];
+  for (const entry of entries) {
+    if (typeof entry !== "string") refuse("invalid_argument", "where");
+    filters.push(parseFilter(entry));
+  }
+  let atMost: number | undefined;
+  if (raw.has("atMost")) {
+    const value = raw.get("atMost");
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) refuse("invalid_argument", "atMost");
+    if (value > DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation) refuse("mutation_rows_exceeded");
+    atMost = value;
+  }
+  if (kind === "delete") return { kind: "delete", table, filters, ...(atMost !== undefined ? { atMost } : {}) };
+  if (!raw.has("set")) refuse("argument_required", "set");
+  const set = raw.get("set");
+  if (!isObjectValue(set)) refuse("invalid_argument", "set");
+  return { kind: "update", table, filters, values: { ...set }, ...(atMost !== undefined ? { atMost } : {}) };
+}
+
+function isObjectValue(value: unknown): value is ObjectValue {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Die fünf Argumente eines Feldes der obersten Ebene, geprüft. */
@@ -632,6 +845,16 @@ export type ProjectGraphqlType = {
   /** Der Name der Tabelle, und damit der Name des Typs und des Feldes. */
   name: string;
   fields: ProjectGraphqlFieldType[];
+  /**
+   * Die Spalten, die eine Zeile beim Einfügen tragen darf (2.97): einfügbar für
+   * die Projektrolle, nicht sensibel, keine Identitäts- und keine berechnete
+   * Spalte. Leer, wenn die Rolle nicht einfügen darf.
+   */
+  insertFields: ProjectGraphqlFieldType[];
+  /** Die Spalten, die `set` nennen darf: änderbar, nicht sensibel, nicht im Primärschlüssel. */
+  updateFields: ProjectGraphqlFieldType[];
+  /** Welche der drei Mutationen diese Tabelle hat; das entscheiden die Tabellenrechte der Rolle. */
+  mutations: { insert: boolean; update: boolean; delete: boolean };
 };
 
 export type ProjectGraphqlSchema = {
@@ -670,17 +893,41 @@ export function projectGraphqlTypes(tables: GeneratedTable[]): ProjectGraphqlTyp
   for (const table of tables) {
     if (!exposableName(table.name)) continue;
     const primaryKey = new Set(table.primaryKey);
-    const fields = table.columns
-      .filter((column) => column.selectable && !column.sensitive && exposableName(column.name))
-      .map((column) => ({
-        name: column.name,
-        type: graphqlScalar(column.dataType, primaryKey.has(column.name)),
-        nullable: column.nullable && !primaryKey.has(column.name),
-        primaryKey: primaryKey.has(column.name),
-        dataType: column.dataType,
-      }));
+    const fieldOf = (column: GeneratedTable["columns"][number]): ProjectGraphqlFieldType => ({
+      name: column.name,
+      type: graphqlScalar(column.dataType, primaryKey.has(column.name)),
+      nullable: column.nullable && !primaryKey.has(column.name),
+      primaryKey: primaryKey.has(column.name),
+      dataType: column.dataType,
+    });
+    const usable = table.columns.filter((column) => !column.sensitive && exposableName(column.name));
+    const fields = usable.filter((column) => column.selectable).map(fieldOf);
     if (fields.length === 0) continue;
-    types.push({ name: table.name, fields });
+    // Die Eingabefelder folgen denselben Regeln, nach denen die Data API ein
+    // Einfügen und ein Ändern annimmt; eine Spalte, die hier steht und dort
+    // fällt, wäre eine Zusage ohne Deckung. Dazu dieselbe Regel wie im
+    // generierten OpenAPI-Dokument: Das Schema nennt nur Spalten, die die
+    // Rolle auch lesen darf. Eine Spalte mit Schreibrecht ohne Leserecht
+    // nähme die REST-Fläche an; hier bliebe sie ein unbekanntes Feld, weil
+    // ein Name im Schema sonst mehr verriete als die Leseroute daneben.
+    const insertFields = usable
+      .filter((column) => column.selectable && column.insertable && !column.identity && !column.generated)
+      .map(fieldOf);
+    const updateFields = usable
+      .filter((column) => column.selectable && column.updateable && !column.identity && !column.generated &&
+        !primaryKey.has(column.name))
+      .map(fieldOf);
+    types.push({
+      name: table.name,
+      fields,
+      insertFields,
+      updateFields,
+      mutations: {
+        insert: table.canInsert === true && insertFields.length > 0,
+        update: table.canUpdate === true && updateFields.length > 0,
+        delete: table.canDelete === true,
+      },
+    });
   }
   return types.sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -689,14 +936,32 @@ export function projectGraphqlTypes(tables: GeneratedTable[]): ProjectGraphqlTyp
 export function projectGraphqlSdl(types: ProjectGraphqlType[]): string {
   const argumentList = "limit: Int, orderBy: String, direction: String, where: [String!], after: String";
   const lines: string[] = [];
-  lines.push("# QKERN, lesende GraphQL-Flaeche ueber dem Projektschema.");
-  lines.push("# Nur Abfragen. Geschrieben wird ueber die Data API.");
-  lines.push("# Jedes Feld ist eine Lesung unter der Zeilensicherheit des Aufrufers.");
+  lines.push("# QKERN, GraphQL-Flaeche ueber dem Projektschema.");
+  lines.push("# Jedes Abfragefeld ist eine Lesung, jede Mutation ein Schreiben der Data API,");
+  lines.push("# beides unter der Zeilensicherheit des Aufrufers. Alle Mutationen einer Anfrage");
+  lines.push("# laufen in einer Transaktion: faellt eine, wirkt keine.");
   lines.push("");
   lines.push("type Query {");
   for (const type of types) lines.push(`  ${type.name}(${argumentList}): [${type.name}!]!`);
   if (types.length === 0) lines.push("  # Keine Tabelle dieses Schemas erfuellt die Bedingungen.");
   lines.push("}");
+  const writable = types.filter((type) => type.mutations.insert || type.mutations.update || type.mutations.delete);
+  if (writable.length > 0) {
+    lines.push("");
+    lines.push("type Mutation {");
+    for (const type of writable) {
+      if (type.mutations.insert) {
+        lines.push(`  insertInto${type.name}Collection(objects: [${type.name}InsertInput!]!): ${type.name}MutationResponse!`);
+      }
+      if (type.mutations.update) {
+        lines.push(`  update${type.name}Collection(set: ${type.name}UpdateInput!, where: [String!]!, atMost: Int): ${type.name}MutationResponse!`);
+      }
+      if (type.mutations.delete) {
+        lines.push(`  deleteFrom${type.name}Collection(where: [String!]!, atMost: Int): ${type.name}MutationResponse!`);
+      }
+    }
+    lines.push("}");
+  }
   for (const type of types) {
     lines.push("");
     lines.push(`type ${type.name} {`);
@@ -704,6 +969,28 @@ export function projectGraphqlSdl(types: ProjectGraphqlType[]): string {
       lines.push(`  ${field.name}: ${field.type}${field.nullable ? "" : "!"}`);
     }
     lines.push("}");
+    if (type.mutations.insert || type.mutations.update || type.mutations.delete) {
+      lines.push("");
+      lines.push(`type ${type.name}MutationResponse {`);
+      lines.push("  affectedCount: Int!");
+      lines.push(`  records: [${type.name}!]!`);
+      lines.push("}");
+    }
+    // Kein Feld der Eingabetypen traegt ein `!`: Ob eine Spalte beim Einfuegen
+    // fehlen darf, entscheidet ihr DEFAULT in der Tabelle, und den kennt diese
+    // Flaeche nicht. Ein `!` waere eine Zusage, die die Tabelle nicht haelt.
+    if (type.mutations.insert) {
+      lines.push("");
+      lines.push(`input ${type.name}InsertInput {`);
+      for (const field of type.insertFields) lines.push(`  ${field.name}: ${field.type}`);
+      lines.push("}");
+    }
+    if (type.mutations.update) {
+      lines.push("");
+      lines.push(`input ${type.name}UpdateInput {`);
+      for (const field of type.updateFields) lines.push(`  ${field.name}: ${field.type}`);
+      lines.push("}");
+    }
   }
   return `${lines.join("\n")}\n`;
 }
@@ -722,6 +1009,7 @@ export type ProjectGraphqlFieldResult = {
 };
 
 export type ProjectGraphqlResult = {
+  kind: "query";
   data: Record<string, Array<Record<string, unknown>>>;
   fields: ProjectGraphqlFieldResult[];
   fieldCount: number;
@@ -729,13 +1017,32 @@ export type ProjectGraphqlResult = {
   operationName: string | null;
 };
 
+export type ProjectGraphqlMutationFieldResult = {
+  responseKey: string;
+  table: string;
+  kind: "insert" | "update" | "delete";
+  affectedCount: number;
+};
+
+/** Das Ergebnis einer Mutation (2.97): je Feld `affectedCount` und `records`, unter den Aliassen des Aufrufers. */
+export type ProjectGraphqlMutationResult = {
+  kind: "mutation";
+  data: Record<string, Record<string, unknown>>;
+  mutations: ProjectGraphqlMutationFieldResult[];
+  fieldCount: number;
+  rowBudget: number;
+  operationName: string | null;
+};
+
+export type ProjectGraphqlDocumentResult = ProjectGraphqlResult | ProjectGraphqlMutationResult;
+
 /**
  * Die Fläche selbst.
  *
  * Sie hält keine Verbindung und kein Wissen über die Datenbank. Alles, was sie
- * über das Schema weiss, kommt aus `listReadableTables`, und alles, was sie
- * liest, geht durch `listRows`. So gibt es keinen zweiten Weg, an dem eine
- * Prüfung fehlen könnte.
+ * über das Schema weiss, kommt aus `listReadableTables`, alles, was sie liest,
+ * geht durch `listRows`, und alles, was sie schreibt, durch `mutateRows`. So
+ * gibt es keinen zweiten Weg, an dem eine Prüfung fehlen könnte.
  */
 export class ProjectGraphqlService {
   constructor(private readonly data: GeneratedDataApiPort) {}
@@ -757,16 +1064,23 @@ export class ProjectGraphqlService {
     };
   }
 
-  /** Eine Abfrage, unter der Zeilensicherheit des Aufrufers. */
+  /**
+   * Ein Dokument, unter der Zeilensicherheit des Aufrufers.
+   *
+   * Nimmt den Text oder einen fertigen Plan: Die Route plant zuerst, weil sie
+   * am Plan abliest, ob sie Schreibrechte verlangen muss, und gibt den Plan
+   * dann hierher, statt den Text ein zweites Mal zu lesen.
+   */
   async execute(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
     schema: string,
-    query: string,
-  ): Promise<ProjectGraphqlResult> {
-    const plan = planProjectGraphqlQuery(query);
+    document: string | ProjectGraphqlDocumentPlan,
+  ): Promise<ProjectGraphqlDocumentResult> {
+    const plan = typeof document === "string" ? planProjectGraphqlDocument(document) : document;
     const types = projectGraphqlTypes(await this.data.listReadableTables(context, scope, schema));
     const byName = new Map(types.map((type) => [type.name, type]));
+    if (plan.kind === "mutation") return this.mutate(context, scope, schema, plan, byName);
     // Erst den ganzen Plan gegen den Katalog prüfen, dann lesen. Sonst hätte
     // eine Abfrage mit einem falschen Feld im letzten Block schon vier
     // Lesungen bezahlt, deren Ergebnis niemand bekommt.
@@ -816,8 +1130,92 @@ export class ProjectGraphqlService {
       });
     }
     return {
+      kind: "query",
       data,
       fields: results,
+      fieldCount: plan.fieldCount,
+      rowBudget: plan.rowBudget,
+      operationName: plan.operationName,
+    };
+  }
+
+  /**
+   * Die Mutationen einer Anfrage, in einer Transaktion der Data API (2.97).
+   *
+   * Erst der ganze Plan gegen den Katalog, dann ein einziger Aufruf von
+   * `mutateRows`. Die Ablehnungen hier sind Form und Katalog: unbekannte
+   * Mutation, unbekannte Spalte. Was die Datenbank entscheidet, entscheidet
+   * sie für alle Mutationen zusammen; eine Policy, die die dritte Zeile
+   * abweist, lässt auch die erste nicht stehen.
+   */
+  private async mutate(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    schema: string,
+    plan: ProjectGraphqlMutationPlan,
+    byName: Map<string, ProjectGraphqlType>,
+  ): Promise<ProjectGraphqlMutationResult> {
+    for (const field of plan.mutations) {
+      const type = byName.get(field.table);
+      // Eine Tabelle ohne Zeilensicherheit oder ohne das Recht steht nicht im
+      // Schema, und die Ablehnung heisst darum „unbekannt“: Der Unterschied
+      // würde verraten, dass die Tabelle existiert, wie bei einer Abfrage.
+      if (!type || !type.mutations[field.mutation.kind]) refuse("unknown_mutation", field.responseKey);
+      const columns = new Set(type.fields.map((entry) => entry.name));
+      if (field.records) {
+        for (const column of field.records.columns) {
+          if (!columns.has(column)) refuse("unknown_field", `${field.table}.${column}`);
+        }
+      }
+      if (field.mutation.kind === "insert") {
+        const insertable = new Set(type.insertFields.map((entry) => entry.name));
+        for (const row of field.mutation.rows) {
+          for (const column of Object.keys(row)) {
+            if (!insertable.has(column)) refuse("unknown_field", `${field.table}.${column}`);
+          }
+        }
+        continue;
+      }
+      for (const filter of field.mutation.filters) {
+        if (!columns.has(filter.column)) refuse("unknown_field", `${field.table}.${filter.column}`);
+      }
+      if (field.mutation.kind === "update") {
+        const updateable = new Set(type.updateFields.map((entry) => entry.name));
+        for (const column of Object.keys(field.mutation.values)) {
+          if (!updateable.has(column)) refuse("unknown_field", `${field.table}.${column}`);
+        }
+      }
+    }
+
+    const batch = await this.data.mutateRows(context, scope, {
+      schema,
+      mutations: plan.mutations.map((field) => field.mutation),
+    });
+    const data: Record<string, Record<string, unknown>> = {};
+    const results: ProjectGraphqlMutationFieldResult[] = [];
+    plan.mutations.forEach((field, index) => {
+      const result = batch.results[index];
+      if (!result) refuse("invalid_argument", field.responseKey);
+      const entry: Record<string, unknown> = {};
+      if (field.affectedCount !== null) entry[field.affectedCount] = result.rowCount;
+      if (field.records) {
+        const records = field.records;
+        entry[records.responseKey] = result.rows.map((row) => Object.fromEntries(
+          records.selection.map((column) => [column.responseKey, row[column.column] ?? null]),
+        ));
+      }
+      data[field.responseKey] = entry;
+      results.push({
+        responseKey: field.responseKey,
+        table: field.table,
+        kind: field.mutation.kind,
+        affectedCount: result.rowCount,
+      });
+    });
+    return {
+      kind: "mutation",
+      data,
+      mutations: results,
       fieldCount: plan.fieldCount,
       rowBudget: plan.rowBudget,
       operationName: plan.operationName,

@@ -29,6 +29,20 @@ export const DATA_API_LIMITS = {
    * der anderen Seite (viele zu eins) liefert genau eine Zeile oder `null`.
    */
   maxEmbedRows: 20,
+  /**
+   * Zeilen je Mutation (2.97). Beim Einfuegen die Zeilen in `objects`, beim
+   * Aendern und Loeschen die Zeilen, die die Bedingung trifft: Trifft sie
+   * mehr, wird die Mutation abgewiesen und die ganze Transaktion
+   * zurueckgerollt. Dieselbe Zahl gilt fuer ein Einfuegen ueber REST.
+   */
+  mutationRowsMax: 25,
+  /**
+   * Mutationen je GraphQL-Anfrage (2.97). Alle laufen in einer Transaktion:
+   * Faellt eine, wirkt keine. Fuenf reichen fuer ein Formular mit seinen
+   * Nebenzeilen und sind wenig genug, dass eine Anfrage keine Massenaenderung
+   * an der Grenze vorbei traegt.
+   */
+  mutationsMax: 5,
   keyClaims: { public: "anon", service: "service_role" } as const,
 } as const;
 

@@ -52,6 +52,21 @@ export const DATA_API_GRAPHQL_LIMITS = {
   maxListEntries: 20,
   /** Die Argumente, die ein Feld der obersten Ebene kennt. */
   arguments: ["limit", "orderBy", "direction", "where", "after"] as const,
+  /**
+   * Mutationen je Anfrage (2.97), aus derselben Tabelle wie die REST-Grenze.
+   * Alle Mutationen einer Anfrage laufen in einer Transaktion.
+   */
+  maxMutationsPerRequest: DATA_API_LIMITS.mutationsMax,
+  /** Zeilen je Mutation: eingefuegte Zeilen wie getroffene Zeilen beim Aendern und Loeschen. */
+  maxRowsPerMutation: DATA_API_LIMITS.mutationRowsMax,
+  /**
+   * Felder in einem Eingabeobjekt, also Spalten je Zeile. Dieselbe Zahl, die
+   * die Data API je Tabelle hoechstens kennt; ein Objekt darueber ist keine
+   * Zeile einer bedienbaren Tabelle.
+   */
+  maxObjectFields: 100,
+  /** Die Argumente einer Mutation: `objects` beim Einfuegen, `set` beim Aendern, `where` und `atMost` bei beiden Bedingungen. */
+  mutationArguments: ["objects", "set", "where", "atMost"] as const,
 } as const;
 
 export type DataApiGraphqlArgument = (typeof DATA_API_GRAPHQL_LIMITS.arguments)[number];

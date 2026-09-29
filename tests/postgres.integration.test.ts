@@ -8464,8 +8464,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(described.sdl).toContain("  menge: Int!");
       expect(described.sdl).not.toContain("api_token");
       expect(described.sdl).not.toContain("ohne_rls");
-      // Kein Schreibweg im Schema. Was nicht im Schema steht, wird nicht
-      // versprochen, und es gibt dahinter auch nichts.
+      // Kein Schreibweg im Schema, weil die Leserolle hier nur SELECT hat: Eine
+      // Mutation (2.97) steht nur dort, wo die Rolle das Recht dazu hat. Was
+      // nicht im Schema steht, wird nicht versprochen.
+      expect(described.types[0]!.mutations).toEqual({ insert: false, update: false, delete: false });
       expect(described.sdl).not.toContain("type Mutation");
       expect(described.sdl).not.toContain("type Subscription");
 
@@ -8479,6 +8481,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         gefiltert: notizen(where: ["menge:gte:9"]) { inhalt }
       }`;
       const answer = await graphql.execute(contextFor(mine), scope, schema, query);
+      if (answer.kind !== "query") throw new Error("eine Abfrage erwartet");
       expect(answer.operationName).toBe("Meine");
       // Genau die eigenen zwei Zeilen, in der genannten Ordnung. Die Zeile des
       // Nachbarn liegt in derselben Tabelle und kommt nicht mit.
@@ -8569,6 +8572,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         (_, index) => `a${index}: menge`,
       ).join(" ");
       const accepted = await graphql.execute(contextFor(mine), scope, schema, `{ notizen { ${atBudget} } }`);
+      if (accepted.kind !== "query") throw new Error("eine Abfrage erwartet");
       expect(accepted.fieldCount).toBe(DATA_API_GRAPHQL_LIMITS.maxFields);
       expect(accepted.data.notizen).toHaveLength(2);
       // Gelesen wurde die Spalte trotzdem genau einmal, und jeder Alias traegt
@@ -8588,6 +8592,274 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       }
       expect(new Set((accepted.data.notizen ?? []).map((row) => Object.values(row)[0])))
         .toEqual(new Set([7, 9]));
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
+  it("(2.97) writes through GraphQL exactly the rows the policy allows, rolls the whole request back on one rejected row and refuses a table without RLS, a missing filter and an exceeded limit", async () => {
+    // GraphQL schreibend (2.97) gegen die echte Datenbank.
+    //
+    // Echt ist, worauf es ankommt: Schema und Tabellen in der echten
+    // Projektdatenbank, die echten Policies fuer SELECT, INSERT, UPDATE und
+    // DELETE, die echte Projektrolle mit ihren echten Rechten, die echte
+    // `GeneratedDataApiService` und darueber `ProjectGraphqlService`. Gestellt
+    // sind nur die Aufloesung des Ziels, die Verbindung und der Usage-Emitter,
+    // der hier mitschreibt statt zu buchen.
+    //
+    // Der Fall prueft sieben Zusagen an einem Stueck:
+    //
+    // 1. Das Schema traegt die drei Mutationen, weil die Rolle die Rechte hat;
+    //    die sensible Spalte, der Primaerschluessel in `set` und die Tabelle
+    //    ohne Zeilensicherheit stehen nicht darin.
+    // 2. Eine Mutation schreibt genau die Zeilen, die die Policy erlaubt, und
+    //    dieselben, die der REST-Weg schreiben wuerde: Einfuegen, Aendern mit
+    //    Filter, Loeschen mit Filter, mit `affectedCount` und `records`.
+    // 3. Der Nachbar trifft mit derselben Bedingung nur seine Zeile.
+    // 4. Eine Zeile, die die Policy abweist, rollt die ganze Anfrage zurueck,
+    //    auch die Mutation davor, die fuer sich genommen erlaubt war.
+    // 5. Eine Bedingung, die mehr Zeilen trifft als `atMost`, rollt die ganze
+    //    Anfrage zurueck; das ist die Grenze in der Datenbank.
+    // 6. Eine Tabelle ohne Zeilensicherheit, ein fehlender Filter und eine
+    //    ueberschrittene Grenze werden abgewiesen, jedes mit eigenem Grund und
+    //    ohne dass die Datenbank etwas davon sieht.
+    // 7. Die Usage-Zaehlung: Ein Schreiben ist kein Lesen. Weder die
+    //    GraphQL-Mutation noch das REST-Gegenstueck melden
+    //    `database_row_reads`, und die Zeilen im Ergebnis sind genau die, die
+    //    die Datenbank haelt.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const schema = `graphqlw_${randomUUID().replaceAll("-", "_")}`;
+    const writeProject = randomUUID();
+    const writeOrganization = randomUUID();
+    const scope = { projectId: writeProject, environment: "development" as const };
+    const mine = randomUUID();
+    const neighbour = randomUUID();
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".notizen (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        besitzer text NOT NULL,
+        inhalt text NOT NULL,
+        menge integer NOT NULL DEFAULT 0,
+        api_token text NOT NULL DEFAULT 'geheim')`);
+      await owner.query(`ALTER TABLE "${schema}".notizen ENABLE ROW LEVEL SECURITY`);
+      // Vier Policies, eine je Handlung, alle an das Subjekt gebunden. Die
+      // WITH-CHECK-Klauseln sind der Punkt: Sie weisen eine Zeile ab, die einem
+      // anderen gehoeren soll, und genau das rollt spaeter die Anfrage zurueck.
+      await owner.query(`CREATE POLICY lesen ON "${schema}".notizen FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY einfuegen ON "${schema}".notizen FOR INSERT TO ${expectedRole}
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY aendern ON "${schema}".notizen FOR UPDATE TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY loeschen ON "${schema}".notizen FOR DELETE TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE TABLE "${schema}".ohne_rls (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inhalt text NOT NULL)`);
+      await owner.query(`INSERT INTO "${schema}".notizen (besitzer, inhalt, menge) VALUES
+        ($1, 'meine erste', 7), ($1, 'meine zweite', 9), ($2, 'die des Nachbarn', 11)`, [mine, neighbour]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${writeProject}` }) };
+      // Ein Emitter, der jede Meldung festhaelt und alles durchlaesst. Was er
+      // sieht, ist die Usage-Zaehlung dieser Flaeche; was er nicht sieht, gibt
+      // es nicht.
+      const metered: Array<{ metric: string; quantity?: number }> = [];
+      const usage = { admit: async (_scope: unknown, input: { metric: string; quantity?: number }) => {
+        metered.push({ metric: input.metric, quantity: input.quantity });
+        return { admitted: true, metric: input.metric, mode: "observe" as const, used: 0n, limit: null, remaining: null };
+      } } as unknown as ConstructorParameters<typeof GeneratedDataApiService>[2];
+      const generated = new GeneratedDataApiService(targets, connections, usage);
+      const graphql = new ProjectGraphqlService(generated);
+      const contextFor = (subject: string) => ({
+        organizationId: writeOrganization,
+        actorRef: `project-api-key:${subject}`,
+        claims: { role: "authenticated" as const, subject },
+      });
+      const held = async (where: string, values: string[] = []) => {
+        const result = await owner.query<{ besitzer: string; inhalt: string; menge: number }>(
+          `SELECT besitzer, inhalt, menge FROM "${schema}".notizen WHERE ${where} ORDER BY menge`, values);
+        return result.rows;
+      };
+      const mutate = async (subject: string, document: string) => {
+        const result = await graphql.execute(contextFor(subject), scope, schema, document);
+        if (result.kind !== "mutation") throw new Error("eine Mutation erwartet");
+        return result;
+      };
+
+      // --- Zusage 1: das Schema traegt die Mutationen ---------------------
+      const described = await graphql.describe(contextFor(mine), scope, schema);
+      expect(described.types.map((type) => type.name)).toEqual(["notizen"]);
+      expect(described.types[0]!.mutations).toEqual({ insert: true, update: true, delete: true });
+      expect(described.sdl).toContain("type Mutation {");
+      expect(described.sdl).toContain("  insertIntonotizenCollection(objects: [notizenInsertInput!]!): notizenMutationResponse!");
+      expect(described.sdl).toContain("  updatenotizenCollection(set: notizenUpdateInput!, where: [String!]!, atMost: Int): notizenMutationResponse!");
+      expect(described.sdl).toContain("  deleteFromnotizenCollection(where: [String!]!, atMost: Int): notizenMutationResponse!");
+      expect(described.types[0]!.insertFields.map((field) => field.name)).toEqual(["id", "besitzer", "inhalt", "menge"]);
+      expect(described.types[0]!.updateFields.map((field) => field.name)).toEqual(["besitzer", "inhalt", "menge"]);
+      expect(described.sdl).not.toContain("api_token");
+      expect(described.sdl).not.toContain("ohne_rls");
+      // Die Grenzen der Antwort sind die Grenzen der Tabelle, die die Console zeigt.
+      expect(described.limits.maxRowsPerMutation).toBe(DATA_API_LIMITS.mutationRowsMax);
+      expect(described.limits.maxMutationsPerRequest).toBe(DATA_API_LIMITS.mutationsMax);
+
+      // --- Zusage 2: einfuegen, aendern, loeschen unter der Policy --------
+      const inserted = await mutate(mine, `mutation Anlegen {
+        neu: insertIntonotizenCollection(objects: [
+          { besitzer: "${mine}", inhalt: "meine dritte", menge: 3 },
+          { besitzer: "${mine}", inhalt: "meine vierte", menge: 4 }
+        ]) { anzahl: affectedCount records { inhalt menge nochmal: menge } }
+      }`);
+      expect(inserted.operationName).toBe("Anlegen");
+      expect(inserted.data.neu).toEqual({ anzahl: 2, records: [
+        { inhalt: "meine dritte", menge: 3, nochmal: 3 },
+        { inhalt: "meine vierte", menge: 4, nochmal: 4 },
+      ] });
+      expect(inserted.mutations).toEqual([{ responseKey: "neu", table: "notizen", kind: "insert", affectedCount: 2 }]);
+      expect(inserted.rowBudget).toBe(2);
+      // Dieselbe Zeile ueber den REST-Weg, mit denselben Anspruechen: Beide
+      // Wege legen die Zeile an, beide geben dieselbe Form zurueck. Waere hier
+      // ein zweiter Weg, koennte er anders antworten.
+      const rest = await generated.insertRows(contextFor(mine), scope, {
+        schema, table: "notizen", rows: [{ besitzer: mine, inhalt: "meine fuenfte", menge: 5 }],
+      });
+      expect(rest.rowCount).toBe(1);
+      expect(rest.rows[0]).toMatchObject({ inhalt: "meine fuenfte", menge: 5 });
+      expect(Object.keys(rest.rows[0]!).sort()).toEqual(["besitzer", "id", "inhalt", "menge"]);
+      expect((await held("besitzer = $1", [mine])).map((row) => row.menge)).toEqual([3, 4, 5, 7, 9]);
+
+      // Aendern mit Filter: Die Bedingung `menge:gte:5` trifft drei eigene
+      // Zeilen und die des Nachbarn; die Policy laesst nur die eigenen durch,
+      // und `affectedCount` sagt drei und nicht vier.
+      const updated = await mutate(mine, `mutation {
+        updatenotizenCollection(set: { inhalt: "gross" }, where: ["menge:gte:5"]) {
+          affectedCount records { menge inhalt }
+        }
+      }`);
+      // RETURNING verspricht keine Ordnung; verglichen wird die Menge.
+      const byMenge = (rows: unknown) => [...(rows as Array<{ menge: number }>)].sort((a, b) => a.menge - b.menge);
+      const updatedAnswer = updated.data.updatenotizenCollection as { affectedCount: number; records: unknown };
+      expect(updatedAnswer.affectedCount).toBe(3);
+      expect(byMenge(updatedAnswer.records)).toEqual([
+        { menge: 5, inhalt: "gross" }, { menge: 7, inhalt: "gross" }, { menge: 9, inhalt: "gross" },
+      ]);
+      expect(await held("besitzer = $1", [neighbour])).toEqual([{ besitzer: neighbour, inhalt: "die des Nachbarn", menge: 11 }]);
+
+      // Loeschen mit Filter, und die Zeilen kommen ein letztes Mal zurueck.
+      const deleted = await mutate(mine, `mutation {
+        weg: deleteFromnotizenCollection(where: ["inhalt:eq:gross", "menge:lte:7"]) { affectedCount records { menge } }
+      }`);
+      const deletedAnswer = deleted.data.weg as { affectedCount: number; records: unknown };
+      expect(deletedAnswer.affectedCount).toBe(2);
+      expect(byMenge(deletedAnswer.records)).toEqual([{ menge: 5 }, { menge: 7 }]);
+      expect((await held("besitzer = $1", [mine])).map((row) => row.menge)).toEqual([3, 4, 9]);
+
+      // --- Zusage 3: der Nachbar trifft nur seine Zeile --------------------
+      const neighbourUpdate = await mutate(neighbour, `mutation {
+        updatenotizenCollection(set: { menge: 12 }, where: ["menge:gte:0"]) { affectedCount records { inhalt } }
+      }`);
+      expect(neighbourUpdate.data.updatenotizenCollection).toEqual({ affectedCount: 1, records: [{ inhalt: "die des Nachbarn" }] });
+      expect((await held("besitzer = $1", [mine])).map((row) => row.menge)).toEqual([3, 4, 9]);
+      // Und ein Fremder, dem nichts gehoert, trifft nichts: null Zeilen, kein
+      // Fehler. Die Policy filtert, sie weist beim Aendern nicht ab.
+      const stranger = await mutate(randomUUID(), `mutation {
+        deleteFromnotizenCollection(where: ["menge:gte:0"]) { affectedCount }
+      }`);
+      expect(stranger.data.deleteFromnotizenCollection).toEqual({ affectedCount: 0 });
+
+      // --- Zusage 4: eine abgewiesene Zeile rollt alles zurueck -----------
+      //
+      // Zwei Mutationen in einer Anfrage. Die erste ist fuer sich erlaubt und
+      // wuerde eine Zeile anlegen. Die zweite will eine Zeile fuer den Nachbarn
+      // anlegen, und WITH CHECK weist sie ab. Danach gibt es auch die erste
+      // Zeile nicht: Die Data API hat die Transaktion zurueckgerollt, und der
+      // Fehler sagt, dass eine Policy gegriffen hat, nicht dass etwas ausfiel.
+      await expect(mutate(mine, `mutation {
+        erst: insertIntonotizenCollection(objects: [{ besitzer: "${mine}", inhalt: "bleibt nicht", menge: 1 }]) { affectedCount }
+        dann: insertIntonotizenCollection(objects: [{ besitzer: "${neighbour}", inhalt: "fremd", menge: 2 }]) { affectedCount }
+      }`)).rejects.toMatchObject({ name: "GeneratedDataApiError", code: "GENERATED_DATA_API_POLICY_REJECTED" });
+      expect(await held("inhalt IN ('bleibt nicht', 'fremd')")).toEqual([]);
+      // Dieselbe Zusage fuer das Aendern: `set` auf einen fremden Besitzer
+      // faellt an WITH CHECK, und die Mutation davor wirkt nicht.
+      await expect(mutate(mine, `mutation {
+        erst: updatenotizenCollection(set: { inhalt: "umbenannt" }, where: ["menge:eq:3"]) { affectedCount }
+        dann: updatenotizenCollection(set: { besitzer: "${neighbour}" }, where: ["menge:eq:4"]) { affectedCount }
+      }`)).rejects.toMatchObject({ code: "GENERATED_DATA_API_POLICY_REJECTED" });
+      expect((await held("besitzer = $1", [mine])).map((row) => row.inhalt)).toEqual(["meine dritte", "meine vierte", "gross"]);
+
+      // --- Zusage 5: die Grenze in der Datenbank rollt zurueck -------------
+      //
+      // `atMost: 1`, und die Bedingung trifft drei eigene Zeilen. Die Aenderung
+      // ist da schon geschehen, RETURNING zaehlt sie, die Zahl stimmt nicht,
+      // und die Transaktion faellt samt der Einfuegung davor.
+      await expect(mutate(mine, `mutation {
+        erst: insertIntonotizenCollection(objects: [{ besitzer: "${mine}", inhalt: "vorher", menge: 0 }]) { affectedCount }
+        dann: updatenotizenCollection(set: { inhalt: "zu viele" }, where: ["menge:gte:0"], atMost: 1) { affectedCount }
+      }`)).rejects.toMatchObject({ code: "GENERATED_DATA_API_BOUNDARY_REJECTED" });
+      expect(await held("inhalt IN ('vorher', 'zu viele')")).toEqual([]);
+
+      // --- Zusage 6: abgewiesen, bevor die Datenbank etwas sieht ----------
+      //
+      // Zuerst der Beweis, dass `ohne_rls` da ist und die Rolle hinein
+      // schreiben darf; sonst pruefte die Ablehnung nur einen fehlenden Namen.
+      await projectApi.query(`INSERT INTO "${schema}".ohne_rls (inhalt) VALUES ('direkt')`);
+      expect((await projectApi.query(`SELECT count(*)::int AS n FROM "${schema}".ohne_rls`)).rows[0]).toEqual({ n: 1 });
+      // Die Data API nennt den Grund; die GraphQL-Flaeche kennt die Mutation
+      // nicht, weil sie nicht verraten soll, dass die Tabelle existiert.
+      await expect(generated.mutateRows(contextFor(mine), scope, { schema, mutations: [
+        { kind: "insert", table: "ohne_rls", rows: [{ inhalt: "ueber die api" }] },
+      ] })).rejects.toMatchObject({ code: "GENERATED_DATA_API_RLS_REQUIRED" });
+      await expect(mutate(mine, `mutation { insertIntoohne_rlsCollection(objects: [{ inhalt: "x" }]) { affectedCount } }`))
+        .rejects.toMatchObject({ name: "ProjectGraphqlError", reason: "unknown_mutation" });
+      expect((await projectApi.query(`SELECT count(*)::int AS n FROM "${schema}".ohne_rls`)).rows[0]).toEqual({ n: 1 });
+      // Ohne Bedingung nicht, und zwar schon im Plan.
+      await expect(mutate(mine, `mutation { deleteFromnotizenCollection { affectedCount } }`))
+        .rejects.toMatchObject({ reason: "filter_required" });
+      await expect(mutate(mine, `mutation { updatenotizenCollection(set: { menge: 0 }) { affectedCount } }`))
+        .rejects.toMatchObject({ reason: "filter_required" });
+      // Und die Data API selbst, falls jemand einen zweiten Aufrufer baut.
+      await expect(generated.mutateRows(contextFor(mine), scope, { schema, mutations: [
+        { kind: "delete", table: "notizen", filters: [] },
+      ] })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      // Die Grenzen: mehr Zeilen als erlaubt, mehr Mutationen als erlaubt.
+      const tooManyRows = Array.from({ length: DATA_API_LIMITS.mutationRowsMax + 1 },
+        () => `{ besitzer: "${mine}", inhalt: "zu viel", menge: 0 }`).join(", ");
+      await expect(mutate(mine, `mutation { insertIntonotizenCollection(objects: [${tooManyRows}]) { affectedCount } }`))
+        .rejects.toMatchObject({ reason: "mutation_rows_exceeded" });
+      const tooMany = Array.from({ length: DATA_API_LIMITS.mutationsMax + 1 },
+        (_, index) => `m${index}: deleteFromnotizenCollection(where: ["menge:eq:${100 + index}"]) { affectedCount }`).join(" ");
+      await expect(mutate(mine, `mutation { ${tooMany} }`)).rejects.toMatchObject({ reason: "mutations_exceeded" });
+      // Die sensible Spalte und der Primaerschluessel in `set` sind unbekannte Felder.
+      await expect(mutate(mine, `mutation { updatenotizenCollection(set: { api_token: "neu" }, where: ["menge:eq:3"]) { affectedCount } }`))
+        .rejects.toMatchObject({ reason: "unknown_field", at: "notizen.api_token" });
+      await expect(mutate(mine, `mutation { updatenotizenCollection(set: { id: "${randomUUID()}" }, where: ["menge:eq:3"]) { affectedCount } }`))
+        .rejects.toMatchObject({ reason: "unknown_field", at: "notizen.id" });
+      expect(await held("inhalt = 'zu viel'")).toEqual([]);
+      expect((await held("besitzer = $1", [mine])).map((row) => row.menge)).toEqual([3, 4, 9]);
+
+      // --- Zusage 7: die Zaehlung ------------------------------------------
+      //
+      // Bis hierher hat kein Schreiben eine Lesung gemeldet: weder die
+      // Mutationen noch das REST-Einfuegen. Eine Lesung meldet, und zwar genau
+      // die Zeilen, die sie liefert. So ist die Zaehlung dieser Flaeche
+      // dieselbe wie die der REST-Flaeche, weil es dieselbe Flaeche ist.
+      expect(metered).toEqual([]);
+      const read = await graphql.execute(contextFor(mine), scope, schema, '{ notizen(orderBy: "menge") { menge } }');
+      if (read.kind !== "query") throw new Error("eine Abfrage erwartet");
+      expect(read.data.notizen).toEqual([{ menge: 3 }, { menge: 4 }, { menge: 9 }]);
+      expect(metered).toEqual([{ metric: "database_row_reads", quantity: 3 }]);
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();
