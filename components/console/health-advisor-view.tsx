@@ -55,9 +55,9 @@ function subsystemTitle(id: HealthSubsystemId): string {
   return text ? t(text.title) : id;
 }
 
-export function HealthAdvisorView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function HealthAdvisorView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/advisors/health`;
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [overall, setOverall] = useState<HealthState>("unknown");
   const [counts, setCounts] = useState<Partial<Record<HealthState, number>>>({});
   const [subsystems, setSubsystems] = useState<Subsystem[]>([]);

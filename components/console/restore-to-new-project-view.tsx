@@ -49,9 +49,9 @@ const STEP_ICONS: Record<RestoreChainStep, typeof ShieldCheck> = {
   binding: Link2Off,
 };
 
-export function RestoreToNewProjectView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function RestoreToNewProjectView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const [overview, setOverview] = useState<PointInTimeRecoveryOverview | null>(null);
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene
   // Ladung setzt keinen Zustand mehr.

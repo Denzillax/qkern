@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, GitBranch, Radio, RefreshCw, Satellite, Waypoints } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatNumber } from "@/components/console/console-display";
+import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
   CREATE_STEPS,
@@ -65,16 +66,9 @@ type Replication = {
 type ViewState = "loading" | "ready" | "disabled" | "unavailable" | "error";
 
 /** Bytes lesbar, ohne eine Genauigkeit vorzutäuschen, die die Messung nicht hat. */
-function bytes(value: number): string {
-  if (value < 1024) return `${formatNumber(value)} B`;
-  if (value < 1024 * 1024) return `${formatNumber(Math.round(value / 1024))} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${formatNumber(Math.round(value / (1024 * 1024)))} MiB`;
-  return `${formatNumber(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
-}
-
-export function ReplicationView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function ReplicationView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const [data, setData] = useState<Replication | null>(null);
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene
   // Ladung setzt keinen Zustand mehr.
@@ -151,7 +145,7 @@ export function ReplicationView({ projectId, environment }: { projectId: string;
       <div><span>{t("PUBLIKATIONEN")}</span><strong>{formatNumber(publications.length)}</strong><small>{t("in dieser Datenbank")}</small></div>
       <div><span>{t("ABONNEMENTS")}</span><strong>{formatNumber(subscriptions.length)}</strong><small>{t("holen von aussen")}</small></div>
       <div><span>{t("SLOTS")}</span><strong>{formatNumber(slots.length)}</strong><small>{t("angelegt")}</small></div>
-      <div><span>{t("RÜCKSTAND")}</span><strong>{bytes(retained)}</strong><small>{holding === slots.length ? t("festgehaltenes WAL") : t("über die Slots mit Position")}</small></div>
+      <div><span>{t("RÜCKSTAND")}</span><strong>{formatBytes(retained)}</strong><small>{holding === slots.length ? t("festgehaltenes WAL") : t("über die Slots mit Position")}</small></div>
     </article>}
 
     {data && <article className="console-card span-2">
@@ -173,11 +167,11 @@ export function ReplicationView({ projectId, environment }: { projectId: string;
             </small>
             <div className="log-row">
               <span>{t("Rückstand")}</span>
-              <span>{slot.retainedBytes === null ? t("keine Position reserviert") : bytes(slot.retainedBytes)}</span>
+              <span>{slot.retainedBytes === null ? t("keine Position reserviert") : formatBytes(slot.retainedBytes)}</span>
             </div>
             <div className="log-row">
               <span>{t("Restfrist")}</span>
-              <span>{slot.safeBytes === null ? t("keine Grenze gesetzt") : bytes(slot.safeBytes)}</span>
+              <span>{slot.safeBytes === null ? t("keine Grenze gesetzt") : formatBytes(slot.safeBytes)}</span>
             </div>
             <p className="muted">{t(judgement.explains)}</p>
           </div>

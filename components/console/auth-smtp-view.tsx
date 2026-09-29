@@ -45,9 +45,9 @@ type Settings = {
   authenticated: boolean;
 };
 
-export function AuthSmtpView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthSmtpView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/mail`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

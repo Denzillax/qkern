@@ -27,10 +27,10 @@ type IncidentItem = {
 
 const when = (iso: string) => formatMoment(iso);
 
-export function MigrationsView({ projectId, environment, changeSets }: { projectId: string; environment: Environment; changeSets: ChangeSet[] }) {
+export function MigrationsView({ projectId, environment, changeSets, initialState }: { projectId: string; environment: Environment; changeSets: ChangeSet[]; initialState?: "loading" | "ready" | "error" }) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [incidents, setIncidents] = useState<IncidentItem[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {

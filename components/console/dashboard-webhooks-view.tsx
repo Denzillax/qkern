@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, KeyRound, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatMoment } from "@/components/console/console-display";
+import { formatMomentOrRaw, positionMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
   DASHBOARD_EVENT_DEFINITIONS,
@@ -76,30 +76,13 @@ type Notification = {
   webhookId: string; kind: DashboardEventKind; position: string; notifiedAt: string;
 };
 
-function formatTime(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : formatMoment(parsed);
-}
-
-/**
- * Die Position ist `<zeitpunkt>#<id>` und undurchsichtig. Gezeigt wird ihr
- * Zeitanteil: Er sagt einem Menschen, bis wann gemeldet ist. Die Id dahinter ist
- * die Kennung eines Audit-Eintrags und beantwortet keine Frage, die in dieser
- * Ansicht jemand stellt.
- */
-function positionTime(position: string): string {
-  const separator = position.indexOf("#");
-  return formatTime(separator < 1 ? position : position.slice(0, separator));
-}
-
-export function DashboardWebhooksView({ projectId, environment }: {
-  projectId: string; environment: Environment;
-}) {
+export function DashboardWebhooksView({ projectId, environment, initialState }: {
+  projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [hooks, setHooks] = useState<DashboardWebhookRecord[]>([]);
   const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({});
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const [name, setName] = useState("");
@@ -234,7 +217,7 @@ export function DashboardWebhooksView({ projectId, environment }: {
       <div><span>{t("FASSUNG")}</span><strong>{DASHBOARD_WEBHOOK_SCHEMA_VERSION}</strong><small>{t("Schema der Meldung")}</small></div>
       <div>
         <span>{t("ZULETZT GEMELDET")}</span>
-        <strong>{newestNotification ? formatTime(newestNotification) : t("noch nie")}</strong>
+        <strong>{newestNotification ? formatMomentOrRaw(newestNotification) : t("noch nie")}</strong>
         <small>{newestNotification
           ? t("durch den Sammler im Compute-Prozess")
           : t("kein Ereignis gemeldet")}</small>
@@ -282,15 +265,15 @@ export function DashboardWebhooksView({ projectId, environment }: {
         <div>
           <strong>{hook.name}</strong>
           <small>{hook.kinds.map((kind) => t(DASHBOARD_EVENT_TEXTS[kind].label)).join(", ")} → {hook.url}</small>
-          <small>{t("Signaturgeheimnis:")} {hook.signingSecretRef} · {t("angelegt")} {formatTime(hook.createdAt)}</small>
+          <small>{t("Signaturgeheimnis:")} {hook.signingSecretRef} · {t("angelegt")} {formatMomentOrRaw(hook.createdAt)}</small>
           <small>{notifications.filter((entry) => entry.webhookId === hook.webhookId).length === 0
             ? t("noch nie gemeldet")
             : notifications.filter((entry) => entry.webhookId === hook.webhookId).map((entry) =>
-              `${t(DASHBOARD_EVENT_TEXTS[entry.kind].label)} ${t("gemeldet bis")} ${positionTime(entry.position)} · ${formatTime(entry.notifiedAt)}`).join(" · ")}</small>
+              `${t(DASHBOARD_EVENT_TEXTS[entry.kind].label)} ${t("gemeldet bis")} ${positionMoment(entry.position)} · ${formatMomentOrRaw(entry.notifiedAt)}`).join(" · ")}</small>
           <small>{(deliveries[hook.id] ?? []).length === 0
             ? t("noch keine Meldung")
             : (deliveries[hook.id] ?? []).map((delivery) =>
-              `${delivery.eventType} ${t(STATUS_LABELS[delivery.status])}${delivery.lastFailureCode ? ` (${delivery.lastFailureCode})` : ""} · ${formatTime(delivery.occurredAt)}`).join(" · ")}</small>
+              `${delivery.eventType} ${t(STATUS_LABELS[delivery.status])}${delivery.lastFailureCode ? ` (${delivery.lastFailureCode})` : ""} · ${formatMomentOrRaw(delivery.occurredAt)}`).join(" · ")}</small>
         </div>
         <span className={hook.enabled ? "secure" : "muted"}>{hook.enabled ? t("aktiv") : t("abgeschaltet")}</span>
         <button className="plain-button" onClick={() => void toggle(hook)}>

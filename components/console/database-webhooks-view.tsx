@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { KeyRound, Plus, RefreshCw, ShieldCheck, Table2, Webhook } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatMoment } from "@/components/console/console-display";
+import { formatMomentOrRaw } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
   DATABASE_WEBHOOK_EVENTS,
+  DATABASE_WEBHOOK_EVENT_LABELS,
   DATABASE_WEBHOOK_SCHEMA,
   DatabaseWebhookError,
   validateDatabaseWebhook,
@@ -60,12 +61,6 @@ type State = "loading" | "ready" | "unavailable" | "error";
  */
 type BridgeState = { position: number; updatedAt: string } | null;
 
-const EVENT_LABELS: Record<DatabaseWebhookEvent, string> = {
-  insert: "Einfügen (insert)",
-  update: "Ändern (update)",
-  delete: "Löschen (delete)",
-};
-
 const STATUS_LABELS: Record<Delivery["status"], string> = {
   pending: "wartet",
   in_flight: "unterwegs",
@@ -73,21 +68,13 @@ const STATUS_LABELS: Record<Delivery["status"], string> = {
   dead_lettered: "aufgegeben",
 };
 
-function formatTime(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : formatMoment(parsed);
-}
-
-export function DatabaseWebhooksView({ projectId, environment }: {
-  projectId: string; environment: Environment;
-}) {
+export function DatabaseWebhooksView({ projectId, environment, initialState }: {
+  projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [hooks, setHooks] = useState<DatabaseWebhookRecord[]>([]);
   const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({});
   const [bridge, setBridge] = useState<BridgeState>(null);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const [name, setName] = useState("");
@@ -210,7 +197,7 @@ export function DatabaseWebhooksView({ projectId, environment }: {
       <div><span>{t("ABGESCHALTET")}</span><strong>{hooks.filter((hook) => !hook.enabled).length}</strong><small>{t("warten")}</small></div>
       <div>
         <span>{t("BRÜCKE ZULETZT")}</span>
-        <strong>{bridge ? formatTime(bridge.updatedAt) : t("noch nie")}</strong>
+        <strong>{bridge ? formatMomentOrRaw(bridge.updatedAt) : t("noch nie")}</strong>
         <small>{bridge
           ? `${t("gelesen bis Position")} ${bridge.position}`
           : t("kein Änderungs-Feed gelesen")}</small>
@@ -241,12 +228,12 @@ export function DatabaseWebhooksView({ projectId, environment }: {
         <span className="bucket-icon"><Table2 size={16}/></span>
         <div>
           <strong>{hook.name}</strong>
-          <small>{hook.schema}.{hook.table} · {hook.events.map((event) => t(EVENT_LABELS[event])).join(", ")} → {hook.url}</small>
-          <small>{t("Signaturgeheimnis:")} {hook.signingSecretRef} · {t("angelegt")} {formatTime(hook.createdAt)}</small>
+          <small>{hook.schema}.{hook.table} · {hook.events.map((event) => t(DATABASE_WEBHOOK_EVENT_LABELS[event])).join(", ")} → {hook.url}</small>
+          <small>{t("Signaturgeheimnis:")} {hook.signingSecretRef} · {t("angelegt")} {formatMomentOrRaw(hook.createdAt)}</small>
           <small>{(deliveries[hook.id] ?? []).length === 0
             ? t("noch keine Zustellung")
             : (deliveries[hook.id] ?? []).map((delivery) =>
-              `${delivery.eventType} ${t(STATUS_LABELS[delivery.status])}${delivery.lastFailureCode ? ` (${delivery.lastFailureCode})` : ""} · ${formatTime(delivery.occurredAt)}`).join(" · ")}</small>
+              `${delivery.eventType} ${t(STATUS_LABELS[delivery.status])}${delivery.lastFailureCode ? ` (${delivery.lastFailureCode})` : ""} · ${formatMomentOrRaw(delivery.occurredAt)}`).join(" · ")}</small>
         </div>
         <span className={hook.enabled ? "secure" : "muted"}>{hook.enabled ? t("aktiv") : t("abgeschaltet")}</span>
         <button className="plain-button" onClick={() => void toggle(hook)}>
@@ -269,7 +256,7 @@ export function DatabaseWebhooksView({ projectId, environment }: {
           <span>{t("Ereignisse")}</span>
           {DATABASE_WEBHOOK_EVENTS.map((event) => <label key={event}>
             <input type="checkbox" checked={events.includes(event)}
-              onChange={(changed) => toggleEvent(event, changed.target.checked)}/> {t(EVENT_LABELS[event])}
+              onChange={(changed) => toggleEvent(event, changed.target.checked)}/> {t(DATABASE_WEBHOOK_EVENT_LABELS[event])}
           </label>)}
         </div>
         <label>{t("Ziel (öffentliches HTTPS)")}

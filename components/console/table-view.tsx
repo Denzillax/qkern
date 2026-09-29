@@ -26,12 +26,12 @@ type LiveRows = {
 /** Ein Zellenwert als Text; `null` bleibt sichtbar `null` und wird nicht leer. */
 function formatCell(value:unknown){if(value===null)return "null";if(typeof value==="object")return JSON.stringify(value);return String(value)}
 
-export function TableView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function TableView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading"|"ready"|"unavailable"|"error" }) {
   const [tables,setTables]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
   const [data,setData]=useState<LiveRows|null>(null);
   const [query,setQuery]=useState("");
-  const [state,setState]=useState<"loading"|"ready"|"unavailable"|"error">("loading");
+  const [state, setState] = useState<"loading"|"ready"|"unavailable"|"error">(initialState ?? "loading");
   const [message,setMessage]=useState("");
   const [insertOpen,setInsertOpen]=useState(false);
   const [insertDraft,setInsertDraft]=useState("{\n  \"id\": \"\"\n}");

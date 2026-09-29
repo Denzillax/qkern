@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CircleGauge, Database, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { CircleGauge, RefreshCw, ShieldCheck } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { EmptyState, ErrorState } from "@/components/console/console-parts";
 import { formatDecimal, formatNumber } from "@/components/console/console-display";
 import { InvoicesCard } from "@/components/console/invoices-card";
 
@@ -23,12 +24,10 @@ type UsageProjection = {
   }>;
 };
 
-function EmptyState({icon:Icon,title,text}:{icon:typeof Database;title:string;text:string}){return <div className="empty-state"><Icon size={28}/><h3>{title}</h3><p>{text}</p></div>}
-function ErrorState({message,retry}:{message:string;retry:()=>void}){return <div className="error-state"><X size={30}/><h3>{t("Console-Daten konnten nicht geladen werden")}</h3><p>{message}</p><button className="button small" onClick={retry}>{t("Noch einmal")}</button></div>}
 
-export function UsageView({projectId,environment}:{projectId:string;environment:Environment}) {
+export function UsageView({projectId,environment, initialState}:{projectId:string;environment:Environment; initialState?: "loading"|"ready"|"disabled"|"error" }) {
   const [projection,setProjection]=useState<UsageProjection|null>(null);
-  const [state,setState]=useState<"loading"|"ready"|"disabled"|"error">("loading");
+  const [state, setState] = useState<"loading"|"ready"|"disabled"|"error">(initialState ?? "loading");
   const load=useCallback(async()=>{
     setState("loading");
     try {
@@ -42,7 +41,7 @@ export function UsageView({projectId,environment}:{projectId:string;environment:
   useEffect(()=>{void load();},[load]);
   if(state==="loading")return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Die Nutzung wird geladen…")}</h3></div>;
   if(state==="disabled")return <EmptyState icon={CircleGauge} title={t("Usage Metering ist deaktiviert")} text="Aktiviere QKERN_USAGE_METERING_ENABLED und die dauerhafte Runtime-Persistenz, um echte Monatswerte zu sehen."/>;
-  if(state==="error"||!projection)return <ErrorState message="Die Usage-Projektion konnte nicht geladen werden." retry={()=>void load()}/>;
+  if(state==="error"||!projection)return <ErrorState message={t("Die Usage-Projektion konnte nicht geladen werden.")} retry={()=>void load()}/>;
   return <>
     <div className="product-preview-notice"><ShieldCheck size={16}/><div><strong>{t("Nutzung, nur lesend")}</strong><span>{projection.period} · an den Tenant gebunden · Preise und Limits ändert die Console nicht</span></div></div>
     <div className="metric-grid monitoring-grid">

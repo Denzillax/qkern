@@ -11,6 +11,7 @@ import { QKERNLogo, QKERNSymbol } from "@/components/brand";
 import { displayWorkspaceName } from "@/lib/console/workspace-name";
 import { NAV, NAV_ENTRIES, groupOf, isPlaceholder, type ViewId } from "@/components/console/navigation";
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
+import { CheckIcon, ErrorState } from "@/components/console/console-parts";
 import { setConsoleDisplaySettings } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
@@ -490,6 +491,4 @@ function AIBridge({ projectId, environment, reload, navigate }: { projectId: str
 
 function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: ViewId) => void }){const [query,setQuery]=useState("");const matches=NAV_ENTRIES.filter(item=>`${item.group} ${item.label} ${t(item.group)} ${t(item.label)}`.toLowerCase().includes(query.toLowerCase())).slice(0,12);return <div className="command-overlay" onMouseDown={onClose}><div className="command-palette" onMouseDown={e=>e.stopPropagation()}><div className="command-input"><Search size={18}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("Console durchsuchen…")}/><button onClick={onClose}>ESC</button></div><div className="command-results"><span>{t("NAVIGATION")}</span>{matches.map(item=>{const Icon=groupOf(item.id).icon;return <button key={`${item.group}-${item.id}`} onClick={()=>{onNavigate(item.id);onClose();}}><Icon size={16}/>{item.group===item.label?t(item.label):`${t(item.group)} · ${t(item.label)}`}<Command size={13}/></button>})}</div></div></div>}
 function LoadingState(){return <div className="loading-grid">{Array.from({length:8}).map((_,i)=><i key={i}/>)}</div>}
-function ErrorState({message,retry}:{message:string;retry:()=>void}){return <div className="error-state"><X size={30}/><h3>{t("Console-Daten konnten nicht geladen werden")}</h3><p>{message}</p><button className="button small" onClick={retry}>{t("Noch einmal")}</button></div>}
-function CheckIcon(){return <span className="check-icon">✓</span>}
 function ArrowIcon(){return <span aria-hidden>→</span>}

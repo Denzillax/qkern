@@ -52,8 +52,8 @@ type Settings = {
 };
 
 
-export function RealtimeSettingsView({ projectId, environment }: { projectId: string; environment: Environment }) {
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+export function RealtimeSettingsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "error" }) {
+  const [state, setState] = useState<"loading" | "ready" | "error">(initialState ?? "loading");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

@@ -57,9 +57,9 @@ function onDeleteLabel(action: string): string | null {
   }
 }
 
-export function SchemaVisualizerView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function SchemaVisualizerView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [tables, setTables] = useState<SchemaTable[]>([]);
   const [foreignKeys, setForeignKeys] = useState<ForeignKey[]>([]);
   const [tablesTruncated, setTablesTruncated] = useState(false);

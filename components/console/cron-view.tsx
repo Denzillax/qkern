@@ -17,10 +17,10 @@ import { StableLabel } from "@/components/stable-label";
 type Environment = "development" | "staging" | "production";
 type CronJob = { id: string; name: string; expression: string; queue: string; enabled: boolean; lastDispatchedAt: string | null };
 
-export function CronView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function CronView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [jobs, setJobs] = useState<CronJob[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {

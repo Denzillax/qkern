@@ -62,9 +62,9 @@ type RateLimits = {
 
 const KINDS: AuthRateLimitKindId[] = ["sign_in", "mail", "refresh"];
 
-export function AuthRateLimitsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthRateLimitsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/rate-limits`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<RateLimits | null>(null);
   const [draft, setDraft] = useState<Limits | null>(null);
   const [message, setMessage] = useState("");

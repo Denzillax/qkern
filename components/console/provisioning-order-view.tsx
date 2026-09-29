@@ -80,8 +80,8 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-export function ProvisioningOrderView({ projectId, environment }: { projectId: string; environment: Environment }) {
-  const [state, setState] = useState<ViewState>("loading");
+export function ProvisioningOrderView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [job, setJob] = useState<Job | null>(null);
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene

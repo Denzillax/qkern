@@ -55,11 +55,11 @@ function actorLabel(event: AuditEvent): string {
   return `${t("App-Nutzer")} · ${shortRef(event.actorRef)}`;
 }
 
-export function AuthAuditView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthAuditView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/audit`;
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [more, setMore] = useState(false);
   // Nur die juengste Anfrage darf den Zustand setzen: ein "Neu laden"

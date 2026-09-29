@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Fingerprint, RefreshCw, TriangleAlert } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
+import { formatNumber, formatPercent } from "@/components/console/console-display";
+import { formatBucketMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
   authFailureRanking,
@@ -68,12 +69,10 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-const moment = (value: string, bucket: Bucket) => formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
-
-export function AuthPerformanceView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthPerformanceView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/audit/series`;
   const [bucket, setBucket] = useState<Bucket>("hour");
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [series, setSeries] = useState<Series | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -156,7 +155,7 @@ export function AuthPerformanceView({ projectId, environment }: { projectId: str
 
       <p className="risk medium">{t(AUTH_PERFORMANCE_NO_DURATION)}</p>
       <p className="muted">{t(AUTH_PERFORMANCE_SOURCE)}</p>
-      <p className="muted">{windowText} {series && <>{moment(series.windowStart, bucket)} {t("bis")} {moment(series.windowEnd, bucket)}</>}</p>
+      <p className="muted">{windowText} {series && <>{formatBucketMoment(series.windowStart, bucket)} {t("bis")} {formatBucketMoment(series.windowEnd, bucket)}</>}</p>
       {series?.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Zahlen unten decken nicht das ganze Fenster ab.")}</p>}
 
       {ranking.length === 0 && <p className="muted">{t("Im Fenster ist keine Handlung gescheitert. Das ist eine Aussage über das Fenster, nicht über die Anmeldung überhaupt.")}</p>}
@@ -169,7 +168,7 @@ export function AuthPerformanceView({ projectId, environment }: { projectId: str
           <span>{formatNumber(row.total)}</span>
           <span className="risk medium">{formatNumber(row.failed)}</span>
           <span>{formatPercent(row.share)}</span>
-          <time>{moment(row.firstFailureStart, bucket)}</time>
+          <time>{formatBucketMoment(row.firstFailureStart, bucket)}</time>
         </div>)}
       </div>}
       {ranking.length > 0 && <p className="muted">{t(AUTH_PERFORMANCE_WINDOW_EDGE)}</p>}
@@ -185,7 +184,7 @@ export function AuthPerformanceView({ projectId, environment }: { projectId: str
           <span>{t("Abschnitt")}</span><span>{t("Handlungen")}</span><span>{t("Fehlschläge")}</span><span>{t("Anteil")}</span>
         </div>
         {active.map((entry) => <div className="log-row" key={entry.start}>
-          <time>{moment(entry.start, bucket)}</time>
+          <time>{formatBucketMoment(entry.start, bucket)}</time>
           <span>{formatNumber(entry.total)}</span>
           <span className={entry.failed === 0 ? "muted" : "risk medium"}>{formatNumber(entry.failed)}</span>
           <span>{formatPercent(authFailureShare(entry))}</span>

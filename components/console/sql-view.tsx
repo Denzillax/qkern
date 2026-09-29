@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Database, Play, Plus, ShieldCheck, Terminal, X } from "lucide-react";
+import { BookOpen, Play, Plus, ShieldCheck, Terminal, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { EmptyState } from "@/components/console/console-parts";
 import { StableLabel } from "@/components/stable-label";
 import type { ViewId } from "@/components/console/navigation";
 import { classifySqlRisk, isReadOnlySql } from "@/lib/security";
@@ -18,9 +19,6 @@ import {
  * drueckt ein Mensch.
  */
 type Environment = "development" | "staging" | "production";
-
-/** Der leere Zustand des Ergebnisfeldes, wie er in der Schale stand. */
-function EmptyState({icon:Icon,title,text}:{icon:typeof Database;title:string;text:string}){return <div className="empty-state"><Icon size={28}/><h3>{title}</h3><p>{text}</p></div>}
 
 export function SqlView({ projectId, environment, reload, navigate, templatesOpen }: { projectId: string; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; templatesOpen: boolean }) {
   const [sql, setSql] = useState("SELECT table_name, table_type\nFROM information_schema.tables\nWHERE table_schema = 'public'\nORDER BY table_name\nLIMIT 20");

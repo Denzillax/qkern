@@ -12,10 +12,10 @@ import { t } from "@/components/console/console-i18n";
 type Environment = "development" | "staging" | "production";
 type Publication = { name: string; owner: string; publishInsert: boolean; publishUpdate: boolean; publishDelete: boolean; publishTruncate: boolean; allTables: boolean; tables: string[] };
 
-export function PublicationsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function PublicationsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [publications, setPublications] = useState<Publication[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {

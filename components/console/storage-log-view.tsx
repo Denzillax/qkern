@@ -64,7 +64,11 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 
 const moment = (value: string) => formatMoment(value);
 
-/** Bytes in der Einheit, in der ein Mensch sie liest; die genaue Zahl bleibt im Titel. */
+/**
+ * Bytes in der Einheit, in der ein Mensch sie liest; die genaue Zahl bleibt im
+ * Titel. Bleibt eigen und nimmt nicht `formatBytes` aus `console-format`: Das
+ * Protokoll zeigt eine Nachkommastelle, die Kennzahlen runden ganzzahlig.
+ */
 function size(bytes: number): string {
   const units = ["B", "KiB", "MiB", "GiB"];
   let value = bytes;
@@ -73,11 +77,11 @@ function size(bytes: number): string {
   return `${unit === 0 ? formatDecimal(value, 0) : formatDecimal(value, 1)} ${units[unit]}`;
 }
 
-export function StorageLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function StorageLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/storage/objects`;
   const [bucket, setBucket] = useState<string>(ALL);
   const [status, setStatus] = useState<StorageLogStatusId | "">(ALL);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [data, setData] = useState<Data | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

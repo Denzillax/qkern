@@ -34,9 +34,9 @@ const seconds = (value: number) => value < 60
   ? `${formatNumber(value)} s`
   : `${formatDecimal(value / 60, 1)} min`;
 
-export function PitrView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function PitrView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "error" }) {
   const [overview, setOverview] = useState<PointInTimeRecoveryOverview | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {

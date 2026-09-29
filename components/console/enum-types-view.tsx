@@ -12,10 +12,10 @@ import { t } from "@/components/console/console-i18n";
 type Environment = "development" | "staging" | "production";
 type EnumType = { name: string; labels: string[] };
 
-export function EnumTypesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function EnumTypesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [types, setTypes] = useState<EnumType[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 

@@ -45,9 +45,9 @@ type Policy = {
   algorithms: Array<{ type: "public-key"; alg: number }>;
 };
 
-export function AuthPasskeysView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthPasskeysView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/passkeys`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

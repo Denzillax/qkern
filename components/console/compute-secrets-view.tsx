@@ -45,11 +45,11 @@ function statusLabel(status: SecretStatus): string {
 }
 const STATUS_CLASS: Record<SecretStatus, string> = { present: "secure", missing: "risk high", forbidden: "risk medium" };
 
-export function ComputeSecretsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function ComputeSecretsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ListState }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [functions, setFunctions] = useState<FunctionItem[]>([]);
   const [selected, setSelected] = useState("");
-  const [listState, setListState] = useState<ListState>("loading");
+  const [listState, setListState] = useState<ListState>(initialState ?? "loading");
   const [listMessage, setListMessage] = useState("");
   const [secrets, setSecrets] = useState<SecretState>({ state: "idle", secrets: [], checkedAt: "", message: "" });
 

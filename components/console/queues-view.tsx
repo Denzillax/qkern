@@ -29,11 +29,11 @@ type DeadLetter = { id: string; queue: string; attempt: number; failureCode: str
 
 type LoadState = "loading" | "ready" | "unavailable" | "error";
 
-export function QueuesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function QueuesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: LoadState }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/queues`;
   const [queues, setQueues] = useState<QueueItem[]>([]);
   const [status, setStatus] = useState<Record<string, QueueStatus>>({});
-  const [state, setState] = useState<LoadState>("loading");
+  const [state, setState] = useState<LoadState>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [deadLetters, setDeadLetters] = useState<DeadLetter[]>([]);

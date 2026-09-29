@@ -85,9 +85,9 @@ type Access = {
 /** `disabled` heisst: Die Data Plane ist abgeschaltet. Das ist kein Fehler, sondern eine Entscheidung. */
 type ViewState = "loading" | "ready" | "disabled" | "unavailable" | "error";
 
-export function AuthPoliciesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthPoliciesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/auth/access?schema=public`;
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [access, setAccess] = useState<Access | null>(null);
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene

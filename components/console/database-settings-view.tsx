@@ -53,9 +53,9 @@ type Settings = {
 /** `disabled` heisst: Die Data Plane ist abgeschaltet. Das ist kein Fehler, sondern eine Entscheidung. */
 type ViewState = "loading" | "ready" | "disabled" | "unavailable" | "error";
 
-export function DatabaseSettingsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function DatabaseSettingsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/database/settings`;
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene

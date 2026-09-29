@@ -49,9 +49,9 @@ function statusLabel(status: VaultReferenceStatusId): string {
   return t(VAULT_REFERENCE_STATUS[status]?.label ?? "unbekannt");
 }
 
-export function VaultOverviewView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function VaultOverviewView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/compute/secrets`;
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [rows, setRows] = useState<ReferenceRow[]>([]);
   const [counts, setCounts] = useState<Counts>(EMPTY);
   const [checkedAt, setCheckedAt] = useState("");

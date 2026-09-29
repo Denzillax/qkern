@@ -18,11 +18,11 @@ type Draft = { maxMiB: string; quotaMiB: string; mimeTypes: string; retentionDay
 const MIB = 1024 * 1024;
 const draftOf = (bucket: Bucket): Draft => ({ maxMiB: String(Math.max(1, Math.round(bucket.maxObjectBytes / MIB))), quotaMiB: String(Math.max(1, Math.round(bucket.quotaBytes / MIB))), mimeTypes: bucket.allowedMimeTypes.join(", "), retentionDays: bucket.retentionDays === null ? "" : String(bucket.retentionDays) });
 
-export function StorageSettingsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function StorageSettingsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const endpoint = `/api/v1/projects/${projectId}/environments/${environment}/storage/buckets`;
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
 

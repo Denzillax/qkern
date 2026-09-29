@@ -92,9 +92,9 @@ function claimList(raw: string): string[] {
   return raw.split(",").map((entry) => entry.trim()).filter(Boolean);
 }
 
-export function AuthHooksView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthHooksView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/hooks`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<HookSettings | null>(null);
   const [signInFunction, setSignInFunction] = useState("");
   const [signInTimeout, setSignInTimeout] = useState(0);

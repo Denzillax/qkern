@@ -81,8 +81,8 @@ type Reading = {
 
 type State = "loading" | "ready" | "error";
 
-export function RealtimeLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
-  const [state, setState] = useState<State>("loading");
+export function RealtimeLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [reading, setReading] = useState<Reading | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);

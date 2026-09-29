@@ -12,10 +12,10 @@ import { t } from "@/components/console/console-i18n";
 type Environment = "development" | "staging" | "production";
 type Privilege = { table: string; column: string; grantee: string; privileges: Array<{ type: "select" | "insert" | "update" | "references"; grantable: boolean }> };
 
-export function ColumnPrivilegesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function ColumnPrivilegesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [privileges, setPrivileges] = useState<Privilege[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 

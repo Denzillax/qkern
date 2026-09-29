@@ -110,9 +110,9 @@ function audienceList(raw: string): string[] {
   return raw.split(",").map((entry) => entry.trim()).filter(Boolean);
 }
 
-export function AuthThirdPartyView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthThirdPartyView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/third-party`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<ThirdParty | null>(null);
   const [name, setName] = useState("");
   const [issuer, setIssuer] = useState("");

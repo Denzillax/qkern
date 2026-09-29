@@ -41,9 +41,9 @@ type Targets = {
   updatedAt: string | null;
 };
 
-export function AuthReturnTargetsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthReturnTargetsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/return-targets`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<Targets | null>(null);
   const [draft, setDraft] = useState("");
   const [message, setMessage] = useState("");
