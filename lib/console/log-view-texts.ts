@@ -55,7 +55,7 @@ export const FUNCTION_LOG_HONESTY =
  * gibt. Er steht ausdruecklich auf der Seite, nicht nur im Handbuch.
  */
 export const FUNCTION_LOG_CONTAINER_OUTPUT =
-  "Was die Function auf stdout oder stderr geschrieben hat, steht nicht in dieser Tabelle. Seit 2.98 hebt QKERN es je Aufruf in einer eigenen Tabelle auf, mit harten Grenzen, und zeigt es unter Functions → Function-Logs. Diese Seite bleibt das Protokoll des Aufrufs, nicht seines Inhalts.";
+  "Was die Function auf stdout oder stderr geschrieben hat, steht nicht in dieser Tabelle. Seit 2.67.0 hebt QKERN es je Aufruf in einer eigenen Tabelle auf, mit harten Grenzen, und zeigt es unter Functions → Function-Logs. Diese Seite bleibt das Protokoll des Aufrufs, nicht seines Inhalts.";
 
 export const FUNCTION_LOG_NO_EGRESS =
   "Ausgangsverbindungen stehen nicht im Protokoll. Jede Verbindung einer Function wird gegen ihre Allowlist geprüft, aber die Prüfung hinterlässt keine Zeile; eine Liste der Ziele je Aufruf gibt es deshalb nicht. Ein eigenes Ende steht ebenfalls nicht da: Es ergibt sich aus Beginn plus Dauer.";

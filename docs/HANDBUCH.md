@@ -1527,7 +1527,7 @@ kann, hat nicht geantwortet.
 - **Keinen Testknopf.** Ein Testaufruf mit erfundener Nutzlast belegt, dass ein
   Container antwortet, und nicht, dass eine Anmeldung durchkommt.
 - **Keinen Blick in die Ausgabe des Containers auf dieser Seite.** Was die
-  Function eines Punkts geschrieben hat, steht seit `2.98.0` unter
+  Function eines Punkts geschrieben hat, steht seit `2.67.0` unter
   **Functions → Function-Logs**, je Aufruf und mit harten Grenzen.
 
 **Route und Audit.** `GET` und `PUT` auf
@@ -3388,7 +3388,7 @@ geordneten Liste zusammenführt. Es entsteht keine neue Lesestelle.
 | --- | --- | --- |
 | `auth_audit` | `auth/admin/audit` | `project_auth_admin` |
 | `function_invocations` | `compute/invocations` | `project_compute_admin` |
-| `function_output` (seit `2.98.0`) | `compute/output` | `project_compute_admin` |
+| `function_output` (seit `2.67.0`) | `compute/output` | `project_compute_admin` |
 | `storage_objects` | `storage/objects` | `project_storage_admin` |
 
 Wer eine Quelle heute nicht lesen darf, bekommt sie auch hier nicht: Sie
@@ -3531,7 +3531,7 @@ oder einen festen Fehlercode wie `FUNCTION_TIMEOUT`. Mehr nicht.
 
 - **Keine Ausgabe des Containers in dieser Tabelle.** stdout und stderr
   stehen nicht in `0045`. Bis `2.97.0` wurden sie gar nicht aufgehoben; seit
-  `2.98.0` liegen sie je Aufruf in einer eigenen Tabelle (`0069`), mit harten
+  `2.67.0` liegen sie je Aufruf in einer eigenen Tabelle (`0069`), mit harten
   Grenzen, und **Functions → Function-Logs** zeigt sie (siehe „Function-Logs:
   die Ausgabe des Containers“). Das Aufrufprotokoll bleibt das Protokoll des
   Aufrufs, nicht seines Inhalts.
@@ -4263,7 +4263,7 @@ Einstellungen → Infrastruktur und wird hier nicht wiederholt.
 
 ### Function-Logs: die Ausgabe des Containers
 
-Seit `2.98.0` hebt QKERN auf, was ein Function-Container auf `stdout` und
+Seit `2.67.0` hebt QKERN auf, was ein Function-Container auf `stdout` und
 `stderr` schreibt: die **Inhaltslogs** je Aufruf, Migration `0069`. Bis dahin
 war **Functions → Function-Logs** die Seite, die erklärte, warum es diese
 Ausgabe nicht gibt (`2.61.0`, siehe unten). Die Erklärung stimmte, die
@@ -4329,13 +4329,13 @@ Ein Log-Drain trägt die Zeilen **nicht** nach draussen; seine Quelle
 auf beiden Strömen schreibt, kommt mit Strom und Reihenfolge an; eine, die
 über die Grenzen schreibt, wird abgeschnitten, und das Protokoll sagt es; die
 Umgebung des Testlaufs erscheint auch im Log nicht. Der Postgres-Stack (Fall
-`2.98`) belegt Rechte, RLS, die CHECKs und die Kaskade.
+`2.67.0`) belegt Rechte, RLS, die CHECKs und die Kaskade.
 
 **Nebenbefund.** Die Fabrik `createFunctionInvocationServiceFromEnv`, über die
 Web-Route, Queue-Wirt und Auth-Hooks den Aufrufdienst bekommen, hat das
 Aufrufprotokoll seit `1.89.0` nie verdrahtet; nur der Kettenfall der
 Zertifizierung gab `invocationLog` von Hand mit. Im Betrieb hat bis `2.97.0`
-kein Aufruf eine Zeile geschrieben. Seit `2.98.0` gibt die Fabrik das
+kein Aufruf eine Zeile geschrieben. Seit `2.67.0` gibt die Fabrik das
 Repository als Protokoll mit, und ein Vertrag liest die Verdrahtung.
 
 ### Drei Logs, die es nicht gibt
@@ -4354,7 +4354,7 @@ Code und könnte alles enthalten, was die Function gesehen hat. Die Sandbox
 verwarf `stderr` nach 8 KiB, und eine Nicht-JSON-Zeile auf `stdout` beendete
 den Aufruf. Die Seite zeigte darum die Einsatzhistorie aus Migration `0042`,
 `GET .../compute/functions/{functionId}/deployments`: Revision, Image mit
-seinem `sha256`-Digest, wer eingesetzt hat und wann. Seit `2.98.0` gibt es
+seinem `sha256`-Digest, wer eingesetzt hat und wann. Seit `2.67.0` gibt es
 die Ausgabe (siehe „Function-Logs: die Ausgabe des Containers“); die
 Einsatzhistorie bleibt auf der Seite, weil sie die andere Frage beantwortet.
 

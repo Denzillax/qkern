@@ -18,7 +18,7 @@ import {
  * Functions → Function-Logs (2.98): die Inhaltslogs je Aufruf.
  *
  * Bis 2.97 war diese Seite die ehrliche Antwort auf einen Platzhalter: Die
- * Ausgabe des Containers gab es nicht, und die Seite sagte, warum. Seit 2.98
+ * Ausgabe des Containers gab es nicht, und die Seite sagte, warum. Seit 2.67.0
  * gibt es sie, aus Migration 0069, und die Seite zeigt sie:
  *
  * 1. Function waehlen (aus `compute/functions`).

@@ -1,7 +1,7 @@
 /**
  * Die Texte der drei Logseiten aus 2.84, deutsch und an einer Stelle:
  * Functions -> Function-Logs, Logs -> API-Gateway und Logs -> Pooler. Die
- * erste ist seit 2.98 keine Fehlanzeige mehr, sondern zeigt die Inhaltslogs;
+ * erste ist seit 2.67.0 keine Fehlanzeige mehr, sondern zeigt die Inhaltslogs;
  * ihre Texte bleiben hier, weil die Ansicht sie ueber t(variable) zeigt.
  *
  * Gleiche Bauart wie `log-view-texts` (2.51): Der Schluessel ist der deutsche
@@ -29,7 +29,7 @@
 
 /**
  * Bis 2.97 sagte diese Seite, dass es die Ausgabe des Containers nicht gibt,
- * und warum. Seit 2.98 gibt es sie: die Inhaltslogs aus Migration 0069, je
+ * und warum. Seit 2.67.0 gibt es sie: die Inhaltslogs aus Migration 0069, je
  * Aufruf, mit harten Grenzen. Die Seite zeigt sie und sagt dazu, was die
  * Grenzen sind und was QKERN mit den Zeilen nicht tut.
  */
@@ -38,7 +38,7 @@ export const CONTAINER_LOG_TEXTS = {
   title: "Function-Logs: was der Container geschrieben hat",
   /** Der Satz, der die Seite eroeffnet. */
   intro:
-    "Seit 2.98 hebt QKERN auf, was ein Function-Container auf stdout und stderr schreibt: je Aufruf, Zeile für Zeile, mit dem Zeitpunkt, an dem die Zeile den Host erreicht hat, und dem Strom, aus dem sie kam. Die Zeilen liegen in einer eigenen Tabelle neben dem Aufrufprotokoll, unter denselben Rechten und mit derselben Aufbewahrung: Sie werden nie geändert und fallen mit der Function.",
+    "Seit 2.67.0 hebt QKERN auf, was ein Function-Container auf stdout und stderr schreibt: je Aufruf, Zeile für Zeile, mit dem Zeitpunkt, an dem die Zeile den Host erreicht hat, und dem Strom, aus dem sie kam. Die Zeilen liegen in einer eigenen Tabelle neben dem Aufrufprotokoll, unter denselben Rechten und mit derselben Aufbewahrung: Sie werden nie geändert und fallen mit der Function.",
   /** Die drei Grenzen, mit Zahlen. */
   limits:
     "Drei Grenzen gelten je Aufruf, und alle drei stehen im Code und in der Migration gleich: höchstens 500 Zeilen, höchstens 64 KiB insgesamt und höchstens 2 KiB je Zeile. Eine längere Zeile wird abgeschnitten und trägt eine Markierung; was über die Zahl oder die Bytes hinausgeht, wird gezählt, aber nicht behalten. Ein abgeschnittenes Protokoll sagt das selbst, mit der Zahl der fehlenden Zeilen.",

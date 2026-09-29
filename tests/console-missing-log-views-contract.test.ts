@@ -18,7 +18,7 @@ import {
  * Die drei Logseiten aus 2.84 am Quelltext geprueft.
  *
  * Alle drei haben als Platzhalter ein Log versprochen, das es nicht gab, und
- * alle drei sagten das dann selbst. Seit 2.98 gibt es das erste davon: die
+ * alle drei sagten das dann selbst. Seit 2.67.0 gibt es das erste davon: die
  * Inhaltslogs der Functions. Die Seite zeigt sie jetzt, und der Vertrag
  * prueft, dass ihre Aussagen zu Grenzen, Leitung und Geheimnissen zum Code
  * und zur Migration 0069 passen. Der Vertrag prueft nicht bloss, dass die
@@ -107,7 +107,7 @@ describe("console missing log views contract", () => {
   });
 
   // ---------------------------------------------------------------- //
-  // Function-Logs: die Ausgabe des Containers (seit 2.98 vorhanden)   //
+  // Function-Logs: die Ausgabe des Containers (seit 2.67.0 vorhanden)   //
   // ---------------------------------------------------------------- //
 
   it("shows the content logs and says what their limits are, matching code and migration 0069", async () => {

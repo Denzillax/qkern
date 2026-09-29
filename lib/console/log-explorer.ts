@@ -44,7 +44,7 @@
  * Eine Quelle kommt in die gemischte Liste, wenn es fuer sie eine Leseroute
  * **ueber die ganze Umgebung** gibt und wenn ihre Zeilen Ereignisse mit einem
  * Zeitpunkt sind. Das trifft auf vier zu; die vierte, die Inhaltslogs der
- * Functions, kam mit 2.98 dazu, als es sie und ihre Leseroute gab. Die
+ * Functions, kam mit 2.67.0 dazu, als es sie und ihre Leseroute gab. Die
  * uebrigen stehen in `LOG_EXPLORER_OUT_OF_REACH`, mit dem Grund — nicht weil
  * sie vergessen wurden, sondern weil ein Suchfeld ueber ihnen eine Zusage
  * waere, die die Fläche nicht haelt.

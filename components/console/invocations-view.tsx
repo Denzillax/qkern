@@ -8,7 +8,7 @@ import { formatMoment } from "@/components/console/console-display";
 /**
  * Function-Aufrufe in der Console (2.7). Die Route gibt es seit 1.89:
  * Beginn, Dauer, Ausgang, Statuscode oder fester Fehlercode je Aufruf,
- * neueste zuerst, ohne stdout/stderr (die stehen seit 2.98 unter
+ * neueste zuerst, ohne stdout/stderr (die stehen seit 2.67.0 unter
  * Function-Logs) — was der Container gesehen hat,
  * bleibt im Container.
  */

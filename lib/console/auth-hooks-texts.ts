@@ -153,7 +153,7 @@ export const AUTH_HOOKS_NO_FAIL_OPEN_SWITCH =
 
 /** Keine Einsicht in das, was der Hook getan hat. */
 export const AUTH_HOOKS_NO_OUTPUT =
-  "Kein Blick in die Ausgabe des Containers auf dieser Seite. Was die Function eines Punkts geschrieben hat, steht seit 2.98 unter Functions → Function-Logs, je Aufruf und mit harten Grenzen. Hier steht nur, welcher Punkt welche Function ruft.";
+  "Kein Blick in die Ausgabe des Containers auf dieser Seite. Was die Function eines Punkts geschrieben hat, steht seit 2.67.0 unter Functions → Function-Logs, je Aufruf und mit harten Grenzen. Hier steht nur, welcher Punkt welche Function ruft.";
 
 /** Der Hinweis, wenn es keinen Aufrufweg gibt. */
 export const AUTH_HOOKS_NO_INVOCATION_PATH =

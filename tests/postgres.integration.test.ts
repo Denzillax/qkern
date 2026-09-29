@@ -4620,7 +4620,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       name: `explorer-probe-${randomUUID().slice(0, 8)}`, image, entrypoint: "handler.mjs",
       secretRefs: [], enabled: true,
     });
-    // Was ein Container drucken wuerde. Seit 2.98 speichert 0069 es als
+    // Was ein Container drucken wuerde. Seit 2.67.0 speichert 0069 es als
     // Inhaltslog, und die gemischte Liste zeigt davon die Zahlen, nie die
     // Zeilen -- geprueft wird beides.
     const containerOutput = `stdout-${randomUUID()}`;
@@ -4708,7 +4708,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
     // Die Zeilen tragen keine Ausgabe eines Containers und keine Adresse --
     // `invoked_by` steht in 0045 und ist genau diese Adresse. Die Ausgabe
-    // liegt seit 2.98 in 0069; die gemischte Liste nennt nur ihre Zahlen.
+    // liegt seit 2.67.0 in 0069; die gemischte Liste nennt nur ihre Zahlen.
     const shown = JSON.stringify(result.entries);
     expect(shown, "die Liste traegt die Ausgabe des Containers").not.toContain(containerOutput);
     expect(shown, "die Liste traegt die Adresse des Aufrufers").not.toContain(actorRef);

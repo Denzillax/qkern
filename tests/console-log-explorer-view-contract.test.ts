@@ -96,7 +96,7 @@ describe("log explorer view contract", () => {
     expect(source).toContain("LOG_EXPLORER_OUT_OF_REACH.map");
     // Jede der vier unerreichbaren Quellen hat einen Grund, keine bloss ein
     // Etikett. Bis 2.97 waren es fuenf; die Ausgabe des Containers ist seit
-    // 2.98 eine erreichbare Quelle.
+    // 2.67.0 eine erreichbare Quelle.
     expect(LOG_EXPLORER_OUT_OF_REACH.length).toBeGreaterThanOrEqual(4);
     expect(LOG_EXPLORER_OUT_OF_REACH.map((entry) => entry.label))
       .not.toContain("Ausgabe eines Function-Containers");

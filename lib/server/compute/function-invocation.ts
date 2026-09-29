@@ -32,7 +32,7 @@ export type FunctionInvocationServiceOptions = {
    * Das Aufrufprotokoll (1.89). Ohne Port wird nichts protokolliert — und
    * nichts aendert sich am Verhalten des Aufrufs.
    *
-   * Seit 2.98 kann der Port auch die Inhaltslogs aufnehmen. Dann sammelt der
+   * Seit 2.67.0 kann der Port auch die Inhaltslogs aufnehmen. Dann sammelt der
    * Dienst je Aufruf, was der Container auf stdout und stderr geschrieben
    * hat, unter den Grenzen aus `function-output.ts`, und schreibt es nach
    * der Zeile des Aufrufprotokolls. Ohne `recordFunctionInvocationOutput`

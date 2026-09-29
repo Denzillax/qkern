@@ -143,7 +143,7 @@ Grossbuchstaben.
   Ansicht Functions → Function-Logs, Quelle `function_output` im Log-Explorer.
   **Nebenbefund**: `createFunctionInvocationServiceFromEnv` gab `invocationLog`
   seit 1.89 nie mit; im Betrieb hat kein Aufruf je eine Zeile geschrieben.
-  Seit 2.98 verdrahtet, Vertrag `compute-definitions-runtime-invocation-log`.
+  Seit 2.67.0 verdrahtet, Vertrag `compute-definitions-runtime-invocation-log`.
   Functions-Stack 32 Faelle (vorher 27), zweimal gruen, drei Mutationsproben
   (Zeilengrenze aus: 2 fallen; stderr als stdout: 4 fallen; Canary per `--env`:
   2 fallen). Postgres-Fall `(2.98)`, 231 gruen.

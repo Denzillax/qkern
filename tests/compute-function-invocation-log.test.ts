@@ -125,7 +125,7 @@ describe("function invocation log", () => {
     expect(outputs).toHaveLength(0);
   });
 
-  it("discards the output when the log port cannot keep it, as before 2.98", async () => {
+  it("discards the output when the log port cannot keep it, as before 2.67.0", async () => {
     const { service, entries, outputs } = harness({ withoutOutputPort: true, writes: [["stdout", "lost"]] });
     await service.invoke(serviceRole, scope, record.name, {});
     expect(entries).toHaveLength(1);
