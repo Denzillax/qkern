@@ -5,6 +5,8 @@ import { createGeneratedTableHandlers } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/tables/[table]/rows/route";
 import { createGeneratedOpenApiHandler } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/generated-openapi/route";
+import { createProjectGraphqlHandlers } from
+  "@/app/api/v1/projects/[projectId]/environments/[environment]/graphql/route";
 import { SESSION_COOKIE_NAME } from "@/lib/server/auth/http";
 import { authRuntime } from "@/lib/server/auth/runtime";
 import type { GeneratedDataApiPort } from "@/lib/server/data-plane/generated-api";
@@ -33,6 +35,22 @@ function dataApi() {
       rows: [{ id: "1" }], rowCount: 1,
     }),
     updateRow: vi.fn(), deleteRow: vi.fn(),
+    // Die GraphQL-Flaeche (2.97): Der Katalog gibt eine Tabelle mit allen
+    // Rechten her, und ein Stapel schreibt ueber `mutateRows`.
+    listReadableTables: vi.fn().mockResolvedValue([{
+      schema: "public", name: "orders", kind: "table", rowSecurityEnabled: true, primaryKey: ["id"],
+      canInsert: true, canUpdate: true, canDelete: true,
+      columns: [
+        { name: "id", dataType: "uuid", nullable: false, identity: false, generated: false, sensitive: false,
+          primaryKeyPosition: 1, selectable: true, insertable: true, updateable: true },
+        { name: "status", dataType: "text", nullable: false, identity: false, generated: false, sensitive: false,
+          primaryKeyPosition: null, selectable: true, insertable: true, updateable: true },
+      ],
+    }]),
+    mutateRows: vi.fn().mockResolvedValue({ source: "postgres", results: [{
+      source: "postgres", table: { schema: "public", name: "orders", rowSecurityEnabled: true, primaryKey: ["id"], columns: [] },
+      rows: [{ id: "1", status: "paid" }], rowCount: 1,
+    }] }),
     generateOpenApi: vi.fn().mockResolvedValue({ openapi: "3.1.0", paths: {} }),
   } as unknown as GeneratedDataApiPort;
 }
@@ -123,6 +141,63 @@ describe("generated data routes", () => {
       { projectId: "project-1", environment: "development", table: "orders" },
       { schema: "public", table: "orders", rows: [{ id: "1" }] },
     );
+  });
+
+  it("takes a GraphQL mutation through the same door as a row write and hands it to mutateRows as one batch", async () => {
+    // Die Route liest am Dokument ab, ob sie schreibt (2.97). Eine Mutation mit
+    // dem Sitzungscookie verlangt darum denselben Ursprung wie ein POST auf
+    // /rows, und ohne ihn faellt sie, bevor der Dienst etwas sieht.
+    const principal = await identity();
+    const service = dataApi();
+    const handlers = createProjectGraphqlHandlers(async () => service);
+    const graphqlRoute = { params: Promise.resolve({ projectId: "project-1", environment: "development" }) };
+    const mutation = `mutation { updateordersCollection(set: { status: "paid" }, where: ["id:eq:1"]) { affectedCount records { id } } }`;
+    const denied = await handlers.POST(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/graphql",
+      { method: "POST", headers: {
+        cookie: `${SESSION_COOKIE_NAME}=${principal.token}`, origin: "https://attacker.test",
+        "content-type": "application/json",
+      }, body: JSON.stringify({ query: mutation }) },
+    ), graphqlRoute);
+    expect(denied.status).toBe(403);
+    expect(service.mutateRows).not.toHaveBeenCalled();
+
+    const response = await handlers.POST(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/graphql",
+      { method: "POST", headers: {
+        cookie: `${SESSION_COOKIE_NAME}=${principal.token}`, origin: "https://qkern.test",
+        "content-type": "application/json",
+      }, body: JSON.stringify({ query: mutation }) },
+    ), graphqlRoute);
+    expect(response.status).toBe(200);
+    // Ein Aufruf, ein Stapel, dieselben Ansprueche wie an der Zeilenroute.
+    expect(service.mutateRows).toHaveBeenCalledTimes(1);
+    expect(service.mutateRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorRef: principal.user.email,
+        claims: { role: "authenticated", subject: principal.user.id },
+      }),
+      { projectId: "project-1", environment: "development" },
+      { schema: "public", mutations: [{ kind: "update", table: "orders", values: { status: "paid" },
+        filters: [{ column: "id", operator: "eq", value: 1 }] }] },
+    );
+    const payload = await response.json();
+    expect(payload.data.kind).toBe("mutation");
+    expect(payload.data.data).toEqual({ updateordersCollection: { affectedCount: 1, records: [{ id: "1" }] } });
+    expect(service.listRows).not.toHaveBeenCalled();
+
+    // Ohne Bedingung faellt die Mutation im Plan, mit Grund, und der Dienst
+    // wird nicht gerufen.
+    const unconditioned = await handlers.POST(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/graphql",
+      { method: "POST", headers: {
+        cookie: `${SESSION_COOKIE_NAME}=${principal.token}`, origin: "https://qkern.test",
+        "content-type": "application/json",
+      }, body: JSON.stringify({ query: "mutation { deleteFromordersCollection { affectedCount } }" }) },
+    ), graphqlRoute);
+    expect(unconditioned.status).toBe(400);
+    expect(await unconditioned.json()).toMatchObject({ reason: "filter_required" });
+    expect(service.mutateRows).toHaveBeenCalledTimes(1);
   });
 
   it("serves schema-generated OpenAPI through the same scoped authentication", async () => {

@@ -1,20 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { DATA_API_GRAPHQL_LIMITS } from "@/lib/data-api-graphql-limits";
+import { DATA_API_LIMITS } from "@/lib/data-api-limits";
 import {
   PROJECT_GRAPHQL_GRAMMAR,
   ProjectGraphqlError,
-  planProjectGraphqlQuery,
+  planProjectGraphqlDocument,
   projectGraphqlSdl,
   projectGraphqlTypes,
+  type ProjectGraphqlMutationPlan,
+  type ProjectGraphqlPlan,
 } from "@/lib/server/data-plane/graphql";
 import type { GeneratedTable } from "@/lib/server/data-plane/generated-api";
 
 /**
- * Der Ausschnitt der Sprache, den die GraphQL-Flaeche kennt (2.83).
+ * Der Ausschnitt der Sprache, den die GraphQL-Flaeche kennt (2.83, Mutationen
+ * seit 2.97).
  *
  * Ohne Datenbank: Der Parser ist rein, und genau darum ist er einzeln
- * pruefbar. Der Fall (2.83) in `postgres.integration.test.ts` fuegt dazu, was
- * nur die echte Datenbank zeigen kann, naemlich die Zeilensicherheit.
+ * pruefbar. Die Faelle (2.83) und (2.97) in `postgres.integration.test.ts`
+ * fuegen dazu, was nur die echte Datenbank zeigen kann, naemlich die
+ * Zeilensicherheit und das Zurueckrollen.
  *
  * Geprueft wird hier jede Ablehnung mit ihrem Namen. Ein gemeinsames
  * "syntax error" waere fuer den Aufrufer unbrauchbar und fuer diesen Test
@@ -23,12 +28,24 @@ import type { GeneratedTable } from "@/lib/server/data-plane/generated-api";
  */
 function reason(query: string): string {
   try {
-    planProjectGraphqlQuery(query);
+    planProjectGraphqlDocument(query);
     return "accepted";
   } catch (error) {
     if (!(error instanceof ProjectGraphqlError)) throw error;
     return error.reason;
   }
+}
+
+function planQuery(query: string): ProjectGraphqlPlan {
+  const plan = planProjectGraphqlDocument(query);
+  if (plan.kind !== "query") throw new Error("eine Abfrage erwartet");
+  return plan;
+}
+
+function planMutation(query: string): ProjectGraphqlMutationPlan {
+  const plan = planProjectGraphqlDocument(query);
+  if (plan.kind !== "mutation") throw new Error("eine Mutation erwartet");
+  return plan;
 }
 
 function table(name: string, columns: Array<Partial<GeneratedTable["columns"][number]> & { name: string }>): GeneratedTable {
@@ -37,6 +54,9 @@ function table(name: string, columns: Array<Partial<GeneratedTable["columns"][nu
     name,
     kind: "table",
     rowSecurityEnabled: true,
+    canInsert: true,
+    canUpdate: true,
+    canDelete: true,
     primaryKey: columns.filter((column) => column.primaryKeyPosition !== undefined).map((column) => column.name),
     columns: columns.map((column) => ({
       dataType: "text", nullable: true, identity: false, generated: false, sensitive: false,
@@ -47,7 +67,7 @@ function table(name: string, columns: Array<Partial<GeneratedTable["columns"][nu
 
 describe("project graphql subset", () => {
   it("plans a query with aliases, arguments and a filter", () => {
-    const plan = planProjectGraphqlQuery(
+    const plan = planQuery(
       `query Bestellungen {
          offen: orders(limit: 5, orderBy: "created_at", direction: "desc", where: ["status:eq:open"]) {
            id
@@ -74,7 +94,7 @@ describe("project graphql subset", () => {
   });
 
   it("accepts the shorthand form, comments and a JSON filter value", () => {
-    const plan = planProjectGraphqlQuery('# die offenen\n{ orders(where: ["total:gte:100", "paid:eq:true"]) { id } }');
+    const plan = planQuery('# die offenen\n{ orders(where: ["total:gte:100", "paid:eq:true"]) { id } }');
     expect(plan.operationName).toBeNull();
     expect(plan.rowBudget).toBe(DATA_API_GRAPHQL_LIMITS.defaultRowsPerField);
     expect(plan.fields[0]!.filters).toEqual([
@@ -84,7 +104,6 @@ describe("project graphql subset", () => {
   });
 
   it("names every part of the language it does not serve", () => {
-    expect(reason("mutation { insert_orders { id } }")).toBe("mutation_not_supported");
     expect(reason("subscription { orders { id } }")).toBe("subscription_not_supported");
     expect(reason("fragment F on orders { id }")).toBe("fragment_not_supported");
     expect(reason("{ ...F }")).toBe("fragment_not_supported");
@@ -96,6 +115,9 @@ describe("project graphql subset", () => {
     expect(reason("{ orders { __typename } }")).toBe("introspection_not_supported");
     expect(reason("{ tarnung: __type { name } }")).toBe("introspection_not_supported");
     expect(reason("{ orders(where: { status: \"open\" }) { id } }")).toBe("object_argument_not_supported");
+    // Auch in einer Mutation ist ein Filter eine Zeichenkette und kein Objekt.
+    expect(reason('mutation { updateordersCollection(set: { total: 1 }, where: { id: 1 }) { affectedCount } }'))
+      .toBe("invalid_argument");
     expect(reason("{ orders(direction: DESC, orderBy: \"id\") { id } }")).toBe("enum_not_supported");
     expect(reason('{ orders(where: """status:eq:open""") { id } }')).toBe("block_string_not_supported");
     expect(reason("{ orders { id } } { orders { id } }")).toBe("multiple_operations");
@@ -205,9 +227,35 @@ describe("project graphql subset", () => {
     expect(sdl).not.toContain("api_token");
     expect(sdl).not.toContain("intern");
     expect(sdl).not.toContain("__heimlich");
-    // Kein Mutationstyp im Schema. Was nicht im Schema steht, wird auch nicht
-    // versprochen.
+    // Der Mutationstyp (2.97) steht im Schema, weil die Rolle die Rechte hat,
+    // mit den drei Formen und ihren Eingabetypen. Die sensible Spalte und die
+    // Spalte ohne Leserecht stehen auch dort nicht.
+    expect(sdl).toContain("type Mutation {");
+    expect(sdl).toContain("  insertIntoordersCollection(objects: [ordersInsertInput!]!): ordersMutationResponse!");
+    expect(sdl).toContain("  updateordersCollection(set: ordersUpdateInput!, where: [String!]!, atMost: Int): ordersMutationResponse!");
+    expect(sdl).toContain("  deleteFromordersCollection(where: [String!]!, atMost: Int): ordersMutationResponse!");
+    expect(sdl).toContain("type ordersMutationResponse {\n  affectedCount: Int!\n  records: [orders!]!\n}");
+    // Kein `!` an einem Eingabefeld: Ob eine Spalte fehlen darf, entscheidet
+    // ihr DEFAULT, und den kennt die Flaeche nicht.
+    expect(sdl).toContain("input ordersInsertInput {\n  id: ID\n  anzahl: String\n  menge: Int\n  bezahlt: Boolean\n  gewicht: Float\n}");
+    // Der Primaerschluessel steht nicht in der Zuweisung.
+    expect(sdl).toContain("input ordersUpdateInput {\n  anzahl: String\n  menge: Int\n  bezahlt: Boolean\n  gewicht: Float\n}");
+  });
+
+  it("leaves a mutation out of the schema when the role lacks the right", () => {
+    const readOnly = { ...table("orders", [{ name: "id", primaryKeyPosition: 1 }, { name: "menge" }]),
+      canInsert: false, canUpdate: false, canDelete: false };
+    const types = projectGraphqlTypes([readOnly]);
+    expect(types[0]!.mutations).toEqual({ insert: false, update: false, delete: false });
+    const sdl = projectGraphqlSdl(types);
     expect(sdl).not.toContain("type Mutation");
+    expect(sdl).not.toContain("Input");
+    // Nur loeschen: dann gibt es genau die eine Form und keinen Eingabetyp.
+    const deleteOnly = { ...readOnly, canDelete: true };
+    const deleteSdl = projectGraphqlSdl(projectGraphqlTypes([deleteOnly]));
+    expect(deleteSdl).toContain("type Mutation {\n  deleteFromordersCollection(");
+    expect(deleteSdl).not.toContain("insertInto");
+    expect(deleteSdl).not.toContain("Input");
   });
 
   it("says that a schema without a single usable table is empty", () => {
@@ -216,10 +264,107 @@ describe("project graphql subset", () => {
     expect(sdl).not.toContain("type Mutation");
   });
 
+  it("plans the three mutations with their arguments, aliases and records", () => {
+    const plan = planMutation(`mutation Schreiben {
+      neu: insertIntoordersCollection(objects: [{ total: 10, status: "open" }, { total: 20, status: "open" }]) {
+        anzahl: affectedCount
+        records { id nochmal: id total }
+      }
+      updateordersCollection(set: { status: "paid" }, where: ["status:eq:open", "total:gte:10"], atMost: 2) {
+        affectedCount
+      }
+      deleteFromordersCollection(where: "id:eq:7") { records { id } }
+    }`);
+    expect(plan.operationName).toBe("Schreiben");
+    expect(plan.mutations).toHaveLength(3);
+    const [insert, update, remove] = plan.mutations;
+    expect(insert!.responseKey).toBe("neu");
+    expect(insert!.table).toBe("orders");
+    expect(insert!.mutation).toEqual({ kind: "insert", table: "orders",
+      rows: [{ total: 10, status: "open" }, { total: 20, status: "open" }] });
+    expect(insert!.affectedCount).toBe("anzahl");
+    expect(insert!.records).toEqual({ responseKey: "records", columns: ["id", "total"],
+      selection: [{ responseKey: "id", column: "id" }, { responseKey: "nochmal", column: "id" },
+        { responseKey: "total", column: "total" }] });
+    expect(update!.mutation).toEqual({ kind: "update", table: "orders", values: { status: "paid" }, atMost: 2,
+      filters: [{ column: "status", operator: "eq", value: "open" }, { column: "total", operator: "gte", value: 10 }] });
+    expect(update!.records).toBeNull();
+    expect(remove!.mutation).toEqual({ kind: "delete", table: "orders",
+      filters: [{ column: "id", operator: "eq", value: 7 }] });
+    expect(remove!.affectedCount).toBeNull();
+    // Drei Mutationen, dazu affectedCount, records und drei Spalten, affectedCount,
+    // records und eine Spalte: jedes Vorkommen einzeln.
+    expect(plan.fieldCount).toBe(11);
+    // Zwei eingefuegte, hoechstens zwei geaenderte, hoechstens die Vorgabe geloeschte.
+    expect(plan.rowBudget).toBe(2 + 2 + DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation);
+  });
+
+  it("refuses an update or a delete without a condition, and everything else a mutation cannot mean", () => {
+    // Die eine Ablehnung, die niemand umgehen koennen soll: ohne `where`
+    // traefe die Mutation jede Zeile, die die Policy hergibt.
+    expect(reason("mutation { updateordersCollection(set: { status: \"paid\" }) { affectedCount } }")).toBe("filter_required");
+    expect(reason("mutation { deleteFromordersCollection { affectedCount } }")).toBe("filter_required");
+    expect(reason("mutation { deleteFromordersCollection(where: []) { affectedCount } }")).toBe("filter_required");
+    expect(reason("mutation { updateordersCollection(where: [\"id:eq:1\"]) { affectedCount } }")).toBe("argument_required");
+    expect(reason("mutation { insertIntoordersCollection { affectedCount } }")).toBe("argument_required");
+    expect(reason("mutation { insertIntoordersCollection(objects: []) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [1]) { affectedCount } }")).toBe("invalid_argument");
+    // Der Name muss eine der drei Formen sein.
+    expect(reason("mutation { orders(objects: [{ id: 1 }]) { affectedCount } }")).toBe("unknown_mutation");
+    expect(reason("mutation { upsertordersCollection(objects: [{ id: 1 }]) { affectedCount } }")).toBe("unknown_mutation");
+    // Die Auswahl kennt affectedCount und records, sonst nichts.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { id } }")).toBe("unknown_field");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records } }")).toBe("selection_required");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { affectedCount { x } } }")).toBe("depth_exceeded");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { id { x } } } }")).toBe("depth_exceeded");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) }")).toBe("selection_required");
+    // Argumente je Form.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], where: [\"id:eq:1\"]) { affectedCount } }")).toBe("unknown_argument");
+    expect(reason("mutation { deleteFromordersCollection(where: [\"id:eq:1\"], set: { a: 1 }) { affectedCount } }")).toBe("unknown_argument");
+    expect(reason("mutation { deleteFromordersCollection(where: [\"id:eq:1\"], limit: 1) { affectedCount } }")).toBe("unknown_argument");
+    expect(reason("mutation { deleteFromordersCollection(where: [\"id:eq:1\"], atMost: 0) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason(`mutation { deleteFromordersCollection(where: ["id:eq:1"], atMost: ${DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation + 1}) { affectedCount } }`))
+      .toBe("mutation_rows_exceeded");
+    // Eine Zeile ist flach.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ kunde: { name: \"x\" } }]) { affectedCount } }")).toBe("nested_object_not_supported");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ tags: [1, 2] }]) { affectedCount } }")).toBe("nested_object_not_supported");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1, id: 2 }]) { affectedCount } }")).toBe("duplicate_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ __proto__: 1 }]) { affectedCount } }")).toBe("unknown_field");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ }]) { affectedCount } }")).toBe("syntax_error");
+    // Variablen, Direktiven und ein zweites Dokument werden auch hier abgewiesen.
+    expect(reason("mutation ($a: Int) { insertIntoordersCollection(objects: [{ id: $a }]) { affectedCount } }")).toBe("variable_not_supported");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) @x { affectedCount } }")).toBe("directive_not_supported");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { affectedCount } } { orders { id } }")).toBe("multiple_operations");
+  });
+
+  it("keeps the mutation limits: mutations per request, rows per mutation, fields per object", () => {
+    const many = Array.from(
+      { length: DATA_API_GRAPHQL_LIMITS.maxMutationsPerRequest + 1 },
+      (_, index) => `m${index}: deleteFromordersCollection(where: ["id:eq:${index}"]) { affectedCount }`,
+    ).join(" ");
+    expect(reason(`mutation { ${many} }`)).toBe("mutations_exceeded");
+    const atLimit = Array.from(
+      { length: DATA_API_GRAPHQL_LIMITS.maxMutationsPerRequest },
+      (_, index) => `m${index}: deleteFromordersCollection(where: ["id:eq:${index}"]) { affectedCount }`,
+    ).join(" ");
+    expect(reason(`mutation { ${atLimit} }`)).toBe("accepted");
+    const rows = Array.from({ length: DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation + 1 }, () => "{ total: 1 }").join(", ");
+    expect(reason(`mutation { insertIntoordersCollection(objects: [${rows}]) { affectedCount } }`)).toBe("mutation_rows_exceeded");
+    const fields = Array.from({ length: DATA_API_GRAPHQL_LIMITS.maxObjectFields + 1 }, (_, index) => `c${index}: 1`).join(", ");
+    expect(reason(`mutation { insertIntoordersCollection(objects: [{ ${fields} }]) { affectedCount } }`)).toBe("object_fields_exceeded");
+    // Ein einzelnes Objekt statt einer Liste ist eine Zeile.
+    const single = planMutation("mutation { insertIntoordersCollection(objects: { total: 1 }) { affectedCount } }");
+    expect(single.mutations[0]!.mutation).toEqual({ kind: "insert", table: "orders", rows: [{ total: 1 }] });
+    // Die Grenzen selbst kommen aus der Tabelle, die auch die REST-Flaeche liest.
+    expect(DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation).toBe(DATA_API_LIMITS.mutationRowsMax);
+    expect(DATA_API_GRAPHQL_LIMITS.maxMutationsPerRequest).toBe(DATA_API_LIMITS.mutationsMax);
+  });
+
   it("keeps the described grammar and what the parser does in step", () => {
     // Die Console zeigt diese Listen. Ein Eintrag, den es im Parser nicht gibt,
     // waere eine Zusage auf der Seite ohne Deckung im Code.
-    expect(PROJECT_GRAPHQL_GRAMMAR.refused).toContain("mutation");
+    expect(PROJECT_GRAPHQL_GRAMMAR.accepted).toContain("mutations");
+    expect(PROJECT_GRAPHQL_GRAMMAR.refused).not.toContain("mutation");
     expect(PROJECT_GRAPHQL_GRAMMAR.refused).toContain("introspection");
     expect(PROJECT_GRAPHQL_GRAMMAR.accepted).toContain("aliases");
     expect(new Set(PROJECT_GRAPHQL_GRAMMAR.accepted).size).toBe(PROJECT_GRAPHQL_GRAMMAR.accepted.length);

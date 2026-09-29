@@ -1,5 +1,6 @@
 /**
- * Die Texte von Integrationen -> GraphQL (2.83), deutsch und an einer Stelle.
+ * Die Texte von Integrationen -> GraphQL (2.83, Mutationen seit 2.97), deutsch
+ * und an einer Stelle.
  *
  * Gleiche Bauart wie `auth-third-party-texts` (2.80) und `wrappers-texts`
  * (2.72): Der Schluessel ist der deutsche Text, die Console uebersetzt ihn ueber
@@ -12,7 +13,8 @@
  *
  * Der Platzhalter, den diese Seite ersetzt, sagte: "GraphQL-Schnittstelle ueber
  * dem Schema. Die Data API ist REST." Gebaut ist jetzt ein Ausschnitt davon,
- * und die Texte hier sagen, welcher und was bewusst fehlt.
+ * lesend und schreibend, und die Texte hier sagen, welcher und was bewusst
+ * fehlt.
  */
 
 import type { ProjectGraphqlAccepted, ProjectGraphqlRefused } from "@/lib/server/data-plane/graphql";
@@ -21,17 +23,17 @@ import type { ProjectGraphqlAccepted, ProjectGraphqlRefused } from "@/lib/server
  * Was diese Fläche ist
  * ------------------------------------------------------------------ */
 
-/** Was hier steht, in einem Satz. */
+/** Was hier steht, in zwei Sätzen. */
 export const GRAPHQL_WHAT =
-  "Diese Fläche beantwortet GraphQL-Abfragen über den Tabellen Ihres Projektschemas. Sie liest, und sie liest nur: Jede Abfrage wird auf dieselben Lesungen abgebildet, die die Data API auch macht.";
+  "Diese Fläche beantwortet GraphQL-Abfragen über den Tabellen Ihres Projektschemas und nimmt seit 2.97 auch Mutationen an. Jede Abfrage wird auf dieselben Lesungen abgebildet, die die Data API macht, und jede Mutation auf dieselben Schreibvorgänge.";
 
-/** Warum es keine Mutationen gibt. */
-export const GRAPHQL_NO_MUTATIONS =
-  "Es gibt keine Mutationen. Geschrieben wird über die Data API, und zwar dort allein. Ein zweiter Schreibweg wäre eine zweite Rechteprüfung, und die zweite ist immer die, die jemand vergisst.";
+/** Die drei Mutationen und ihre Klammer. */
+export const GRAPHQL_MUTATIONS =
+  "Mutationen gibt es in drei Formen, benannt wie bei pg_graphql: insertInto<Tabelle>Collection, update<Tabelle>Collection und deleteFrom<Tabelle>Collection. Alle Mutationen einer Anfrage laufen in einer Transaktion der Data API. Fällt eine, auch an einer Policy, wirkt keine. Ändern und Löschen verlangen eine Bedingung in where.";
 
 /** Der Weg in die Datenbank. */
 export const GRAPHQL_SAME_PATH =
-  "Jede Abfrage läuft unter der Zeilensicherheit des Aufrufers, über genau denselben Weg wie die Data API: dieselbe Projektrolle ohne BYPASSRLS, dieselbe Lese-Transaktion, dieselben Ansprüche in request.jwt.claims. Es gibt hier keine zweite Stelle, an der Ansprüche gesetzt werden.";
+  "Jede Abfrage und jede Mutation läuft unter der Zeilensicherheit des Aufrufers, über genau denselben Weg wie die Data API: dieselbe Projektrolle ohne BYPASSRLS, dieselbe Transaktion, lesend für Abfragen und schreibend für Mutationen, dieselben Ansprüche in request.jwt.claims. Es gibt hier keine zweite Stelle, an der Ansprüche gesetzt werden.";
 
 /** Woher das Schema kommt. */
 export const GRAPHQL_SCHEMA_FROM_CATALOG =
@@ -55,7 +57,11 @@ export const GRAPHQL_WHY_LIMITS =
 
 /** Die Tiefe. */
 export const GRAPHQL_LIMIT_DEPTH =
-  "Zwei Ebenen, und mehr gibt es nicht zu holen: die Tabelle und ihre Spalten. Es gibt an dieser Fläche keine Beziehungen zwischen Tabellen, also wäre eine dritte Ebene entweder leer oder ein Feld auf einem Wert.";
+  "Zwei Ebenen, und mehr gibt es nicht zu holen: die Tabelle und ihre Spalten. Es gibt an dieser Fläche keine Beziehungen zwischen Tabellen, also wäre eine dritte Ebene entweder leer oder ein Feld auf einem Wert. Eine Mutation hat eine Ebene mehr, weil records ihre Spalten trägt.";
+
+/** Die Grenzen einer Mutation. */
+export const GRAPHQL_LIMIT_MUTATIONS =
+  "Je Anfrage gilt eine Zahl von Mutationen und je Mutation eine Zahl von Zeilen: beim Einfügen die Zeilen in objects, beim Ändern und Löschen die Zeilen, die die Bedingung trifft. Trifft sie mehr, wird die Mutation abgewiesen und die Transaktion zurückgerollt. atMost setzt eine engere Grenze.";
 
 /** Die Felder, und warum Aliasse mitzählen. */
 export const GRAPHQL_LIMIT_FIELDS =
@@ -91,18 +97,19 @@ export const GRAPHQL_ACCEPTED_TEXTS: Record<ProjectGraphqlAccepted, string> = {
   scalar_arguments: "Argumente mit Zahl, Zeichenkette, true, false und null.",
   string_lists: "Listen von Zeichenketten als Argumentwert, für where.",
   comments: "Kommentare mit # bis zum Zeilenende.",
+  mutations: "Mutationen: insertInto<Tabelle>Collection(objects: […]), update<Tabelle>Collection(set: {…}, where: […]) und deleteFrom<Tabelle>Collection(where: […]), mit affectedCount und records in der Antwort.",
+  row_objects: "Flache Eingabeobjekte als Zeile oder Zuweisung in einer Mutation, nur mit Zahl, Zeichenkette, true, false und null.",
 };
 
 /** Was er abweist, je Eintrag mit Grund. */
 export const GRAPHQL_REFUSED_TEXTS: Record<ProjectGraphqlRefused, string> = {
-  mutation: "Mutationen. Geschrieben wird über die Data API; ein zweiter Schreibweg wäre eine zweite Rechteprüfung.",
   subscription: "Subscriptions. Laufende Änderungen laufen über Realtime, und das ist ein eigener Transport mit eigenen Rechten.",
   fragments: "Fragmente, benannt wie inline. Ohne sie gibt es auch keine Fragment-Rekursion zu begrenzen, und eine Begrenzung, die es nicht braucht, kann auch nicht danebenliegen.",
   variables: "Variablen und Variablendefinitionen. Werte stehen in der Abfrage; in SQL landen sie ohnehin als Parameter.",
   directives: "Direktiven wie @include und @skip. Sie ändern, welche Felder wirklich geholt werden, und eine Grenze, die vor der Auswertung zählt, zählte dann das Falsche.",
   introspection: "__schema, __type und __typename. Das Schema steht an der eigenen Route.",
   enum_values: "Enum-Werte. Es gibt an dieser Fläche keinen Enum-Typ, also gäbe es auch keinen, gegen den geprüft würde.",
-  input_objects: "Eingabeobjekte als Argument, also where: { … }. Ein Filter ist stattdessen eine Zeichenkette in derselben Form wie der Parameter filter der Data API.",
+  filter_objects: "Eingabeobjekte als Filter, also where: { … }. Ein Filter ist eine Zeichenkette in derselben Form wie der Parameter filter der Data API, in Abfragen wie in Mutationen.",
   block_strings: "Block-Zeichenketten mit drei Anführungszeichen.",
   multiple_operations: "Mehrere Operationen in einem Dokument. Ohne Operationsnamen in der Anfrage wäre nicht entscheidbar, welche gemeint ist.",
   relations: "Beziehungen zwischen Tabellen. Ein Feld, das die zugehörigen Zeilen einer anderen Tabelle nachlädt, ist genau die Abfrage, die je Zeile eine weitere Lesung auslöst.",
@@ -123,6 +130,14 @@ export const GRAPHQL_ARGUMENT_TEXTS: Record<string, string> = {
   after: "Der Cursor aus einer vorigen Antwort. Es gibt kein offset: Eine Seite über offset überspringt Zeilen, sobald sich darunter etwas ändert.",
 };
 
+/** Was ein Argument einer Mutation tut (2.97). */
+export const GRAPHQL_MUTATION_ARGUMENT_TEXTS: Record<string, string> = {
+  objects: "Die Zeilen, die eingefügt werden, als Liste flacher Objekte. Jede Zeile nennt dieselben Spalten.",
+  set: "Die Zuweisung beim Ändern, ein flaches Objekt. Spalten des Primärschlüssels stehen nicht darin.",
+  where: "Die Bedingung beim Ändern und Löschen, Pflicht, in derselben Form wie bei einer Abfrage.",
+  atMost: "Wie viele Zeilen die Bedingung höchstens treffen darf. Trifft sie mehr, wird die Mutation abgewiesen und die Transaktion zurückgerollt.",
+};
+
 /* ------------------------------------------------------------------ *
  * Die Gründe einer Ablehnung
  * ------------------------------------------------------------------ */
@@ -134,7 +149,6 @@ export const GRAPHQL_REJECTIONS: Record<string, string> = {
   syntax_error: "Die Abfrage lässt sich nicht lesen.",
   unexpected_end: "Die Abfrage hört mitten in einem Ausdruck auf; eine Klammer fehlt.",
   multiple_operations: "Das Dokument enthält mehr als eine Operation. Hier läuft genau eine.",
-  mutation_not_supported: "Mutationen gibt es hier nicht. Geschrieben wird über die Data API.",
   subscription_not_supported: "Subscriptions gibt es hier nicht. Laufende Änderungen laufen über Realtime.",
   fragment_not_supported: "Fragmente gibt es hier nicht, weder benannt noch inline.",
   variable_not_supported: "Variablen gibt es hier nicht. Schreiben Sie die Werte in die Abfrage.",
@@ -144,6 +158,8 @@ export const GRAPHQL_REJECTIONS: Record<string, string> = {
   enum_not_supported: "Enum-Werte gibt es hier nicht. Nennen Sie den Wert als Zeichenkette.",
   object_argument_not_supported: "Ein Objekt als Argumentwert gibt es hier nicht. Ein Filter ist eine Zeichenkette.",
   nested_list_not_supported: "Eine Liste in einer Liste gibt es hier nicht.",
+  nested_object_not_supported: "Ein Objekt in einem Objekt oder eine Liste in einem Objekt gibt es hier nicht. Eine Zeile ist flach.",
+  object_fields_exceeded: "Das Eingabeobjekt hat mehr Felder als eine Zeile haben kann.",
   depth_exceeded: "Die Abfrage ist tiefer als die zwei Ebenen, die es gibt.",
   fields_exceeded: "Die Abfrage holt mehr Felder als erlaubt. Aliasse zählen einzeln mit.",
   tables_exceeded: "Die Abfrage nennt mehr Tabellen als erlaubt. Auch zwei Aliasse auf dieselbe Tabelle sind zwei Lesungen.",
@@ -161,15 +177,20 @@ export const GRAPHQL_REJECTIONS: Record<string, string> = {
   filters_exceeded: "Mehr Filter an einem Feld als erlaubt.",
   unknown_table: "Diese Tabelle steht nicht im Schema dieser Fläche.",
   unknown_field: "Dieses Feld steht nicht im Schema dieser Fläche.",
+  unknown_mutation: "Diese Mutation gibt es nicht. Eine Tabelle hat sie nur, wenn sie im Schema steht und die Projektrolle das Recht dazu hat.",
+  mutations_exceeded: "Die Anfrage enthält mehr Mutationen als erlaubt.",
+  mutation_rows_exceeded: "Die Mutation nennt oder trifft mehr Zeilen als erlaubt.",
+  filter_required: "Ändern und Löschen brauchen eine Bedingung in where. Ohne sie träfe die Mutation jede Zeile, die die Policy hergibt.",
+  argument_required: "Ein Pflichtargument fehlt: objects beim Einfügen, set beim Ändern.",
 };
 
 /* ------------------------------------------------------------------ *
  * Was die Seite nicht kann
  * ------------------------------------------------------------------ */
 
-/** Die Seite schreibt nicht. */
-export const GRAPHQL_PAGE_READ_ONLY =
-  "Diese Seite führt Abfragen aus und sonst nichts. Sie legt nichts an, sie ändert nichts, und sie kann auch nichts einschalten oder abschalten: Die Fläche hängt an derselben Freigabe wie die Data API.";
+/** Die Seite führt aus, was da steht, auch eine Mutation. */
+export const GRAPHQL_PAGE_WRITES =
+  "Diese Seite führt aus, was Sie hier eingeben, auch eine Mutation. Sie schreibt dann als angemeldeter Mensch der Console mit dem Anspruch authenticated, unter der Policy Ihrer Tabelle und in einer Transaktion. Ein- oder ausschalten kann die Seite die Fläche nicht; sie hängt an derselben Freigabe wie die Data API.";
 
 /** Wer die Seite gerade ist. */
 export const GRAPHQL_CONSOLE_ROLE =
@@ -181,13 +202,13 @@ export const GRAPHQL_NO_HISTORY =
 
 /** Keine Kostenrechnung vor der Abfrage. */
 export const GRAPHQL_NO_COST_ESTIMATE =
-  "Es gibt keine Schätzung der Kosten vor dem Lauf. Die Grenzen begrenzen, was eine Abfrage höchstens holt; sie sagen nicht, wie lange die Datenbank dafür braucht. Dafür gibt es das Zeitlimit der Lese-Transaktion, und das gilt hier wie überall.";
+  "Es gibt keine Schätzung der Kosten vor dem Lauf. Die Grenzen begrenzen, was eine Abfrage höchstens holt; sie sagen nicht, wie lange die Datenbank dafür braucht. Dafür gibt es das Zeitlimit der Transaktion, und das gilt hier wie überall.";
 
 /** Alle Texte dieses Moduls, fuer den Vertrag `console-i18n-contract`. */
 export function integrationsGraphqlTexts(): string[] {
   return [
     GRAPHQL_WHAT,
-    GRAPHQL_NO_MUTATIONS,
+    GRAPHQL_MUTATIONS,
     GRAPHQL_SAME_PATH,
     GRAPHQL_SCHEMA_FROM_CATALOG,
     GRAPHQL_SCHEMA_OMISSIONS,
@@ -196,16 +217,18 @@ export function integrationsGraphqlTexts(): string[] {
     GRAPHQL_LIMIT_DEPTH,
     GRAPHQL_LIMIT_FIELDS,
     GRAPHQL_LIMIT_ROWS,
+    GRAPHQL_LIMIT_MUTATIONS,
     GRAPHQL_SEQUENTIAL,
     GRAPHQL_NO_INTROSPECTION,
     GRAPHQL_OWN_PARSER,
-    GRAPHQL_PAGE_READ_ONLY,
+    GRAPHQL_PAGE_WRITES,
     GRAPHQL_CONSOLE_ROLE,
     GRAPHQL_NO_HISTORY,
     GRAPHQL_NO_COST_ESTIMATE,
     ...Object.values(GRAPHQL_ACCEPTED_TEXTS),
     ...Object.values(GRAPHQL_REFUSED_TEXTS),
     ...Object.values(GRAPHQL_ARGUMENT_TEXTS),
+    ...Object.values(GRAPHQL_MUTATION_ARGUMENT_TEXTS),
     ...Object.values(GRAPHQL_REJECTIONS),
   ];
 }

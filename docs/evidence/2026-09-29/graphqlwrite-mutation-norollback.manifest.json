@@ -1,0 +1,19 @@
+{
+  "stack": "postgres",
+  "log": "graphqlwrite-mutation-norollback.log",
+  "commit": "9436cdfb4780be1f680590d5b460b2774f1a9f78",
+  "commitSubject": "release: 2.66.0 Die Schluessel oeffnen, die Nachbarn kommen mit",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 66,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 230 passed (231)",
+  "passed": 230,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

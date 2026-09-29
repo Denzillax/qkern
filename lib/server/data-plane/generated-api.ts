@@ -22,7 +22,10 @@ const IDENTIFIER = DATA_IDENTIFIER;
 const SENSITIVE_COLUMN = new RegExp(SENSITIVE_COLUMN_PATTERN, "i");
 const MAX_ROWS = DATA_API_LIMITS.rowsMax;
 const MIN_ROWS = DATA_API_LIMITS.rowsMin;
-const MAX_INSERT_ROWS = 25;
+// Zeilen je Mutation (2.97): dieselbe Zahl fuer ein Einfuegen ueber REST und
+// fuer jede Mutation der GraphQL-Flaeche, in lib/data-api-limits.ts genannt.
+const MAX_INSERT_ROWS = DATA_API_LIMITS.mutationRowsMax;
+const MAX_MUTATIONS = DATA_API_LIMITS.mutationsMax;
 const MAX_COLUMNS = 100;
 const MAX_FILTERS = DATA_API_LIMITS.maxFilters;
 const MAX_EMBEDS = DATA_API_LIMITS.maxEmbeds;
@@ -101,6 +104,14 @@ export type GeneratedTable = {
   rowSecurityEnabled: boolean;
   primaryKey: string[];
   columns: GeneratedTableColumn[];
+  /**
+   * Die Tabellenrechte der Projektrolle (2.97), damit die GraphQL-Flaeche ihr
+   * Schema aus demselben Katalog baut: Eine Mutation steht nur dort, wo die
+   * Rolle das Recht dazu hat. Ob eine Zeile durchkommt, entscheidet die Policy.
+   */
+  canInsert: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
 };
 
 /**
@@ -162,6 +173,22 @@ export type GeneratedMutationResult = {
   rows: Array<Record<string, unknown>>;
   rowCount: number;
 };
+
+/**
+ * Eine Mutation im Stapel (2.97): einfuegen, aendern mit Bedingung, loeschen
+ * mit Bedingung. Aendern und Loeschen verlangen mindestens einen Filter; ein
+ * Stapel ohne Bedingung aendert nie die ganze Tabelle. `atMost` ist die
+ * Obergrenze getroffener Zeilen, hoechstens `DATA_API_LIMITS.mutationRowsMax`.
+ */
+export type GeneratedMutation =
+  | { kind: "insert"; table: string; rows: Array<Record<string, unknown>> }
+  | { kind: "update"; table: string; filters: GeneratedDataFilter[]; values: Record<string, unknown>; atMost?: number }
+  | { kind: "delete"; table: string; filters: GeneratedDataFilter[]; atMost?: number };
+
+export type GeneratedMutationBatchInput = { schema: string; mutations: GeneratedMutation[] };
+
+/** Ein Ergebnis je Mutation, in der Reihenfolge des Stapels; alle aus einer Transaktion. */
+export type GeneratedMutationBatchResult = { source: "postgres"; results: GeneratedMutationResult[] };
 
 export type GeneratedAggregateFunction = "count" | "sum" | "avg" | "min" | "max";
 export type GeneratedAggregate = { fn: GeneratedAggregateFunction; column?: string };
@@ -230,6 +257,18 @@ export interface GeneratedDataApiPort {
     scope: ProjectDataPlaneScope,
     input: { schema: string; table: string; match: Record<string, unknown> },
   ): Promise<GeneratedMutationResult>;
+  /**
+   * Mehrere Mutationen in **einer** Transaktion (2.97), fuer die GraphQL-Flaeche.
+   *
+   * Derselbe Schreibweg wie `insertRows`, `updateRow` und `deleteRow`: dieselbe
+   * Rolle, dieselben Ansprueche, dieselbe Grenzpruefung je Tabelle. Neu ist
+   * nur die Klammer: Faellt eine Mutation, auch an einer Policy, wirkt keine.
+   */
+  mutateRows(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedMutationBatchInput,
+  ): Promise<GeneratedMutationBatchResult>;
   generateOpenApi(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
@@ -262,7 +301,15 @@ export type GeneratedDataApiErrorCode =
   | "GENERATED_DATA_API_RLS_REQUIRED"
   | "GENERATED_DATA_API_READ_ONLY"
   | "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED"
-  | "GENERATED_DATA_API_FORBIDDEN";
+  | "GENERATED_DATA_API_FORBIDDEN"
+  /**
+   * Eine Policy hat eine Zeile abgewiesen (2.97): `WITH CHECK` beim Einfuegen
+   * oder Aendern. Bis 2.96 fiel das unter "unavailable", und ein Aufrufer
+   * konnte einen abgelehnten Datensatz nicht von einer fehlenden Verbindung
+   * unterscheiden. Der Code sagt nur, dass eine Policy gegriffen hat, nicht
+   * welche.
+   */
+  | "GENERATED_DATA_API_POLICY_REJECTED";
 
 /** Cause-free by design: connection details, SQL and driver diagnostics stay internal. */
 export class GeneratedDataApiError extends Error {
@@ -971,44 +1018,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     input: { schema: string; table: string; rows: Array<Record<string, unknown>> },
   ): Promise<GeneratedMutationResult> {
     assertRequest(context, scope, input.schema, input.table);
-    if (!Array.isArray(input.rows) || input.rows.length < 1 || input.rows.length > MAX_INSERT_ROWS ||
-        byteLength(input.rows) > MAX_INPUT_BYTES || input.rows.some((row) => !isPlainRecord(row))) {
-      throw invalidInput();
-    }
-    return this.run(context, scope, true, async (client) => {
-      const table = await this.loadTable(client, input.schema, input.table);
-      assertTableBoundary(table, "insert");
-      const byName = new Map(table.columns.map((column) => [column.name, column]));
-      const columns = Object.keys(input.rows[0]).sort();
-      if (columns.length > MAX_COLUMNS || input.rows.some((row) => Object.keys(row).sort().join("\0") !== columns.join("\0")) ||
-          columns.some((name) => {
-            const column = byName.get(name);
-            return !column?.insertable || column.sensitive || column.identity || column.generated;
-          }) || input.rows.some((row) => columns.some((name) => !isDataValue(row[name])))) {
-        throw invalidInput();
-      }
-      const returning = safeReturningColumns(table);
-      let result;
-      if (columns.length === 0) {
-        if (input.rows.length !== 1) throw invalidInput();
-        result = await client.query<Record<string, unknown>>(
-          `INSERT INTO ${qualified(input.schema, input.table)} DEFAULT VALUES RETURNING ${returning.map(quoted).join(", ")}`,
-        );
-      } else {
-        const values: SqlValue[] = [];
-        const tuples = input.rows.map((row) => `(${columns.map((name) => {
-          values.push(row[name] as SqlValue);
-          return `$${values.length}`;
-        }).join(", ")})`);
-        result = await client.query<Record<string, unknown>>(
-          `INSERT INTO ${qualified(input.schema, input.table)} (${columns.map(quoted).join(", ")})
-           VALUES ${tuples.join(", ")}
-           RETURNING ${returning.map(quoted).join(", ")}`,
-          values,
-        );
-      }
-      return mutationResult(table, result.rows, MAX_INSERT_ROWS);
-    });
+    assertInsertInput(input.rows);
+    return this.run(context, scope, true, (client) => this.insertWithin(client, input.schema, input.table, input.rows));
   }
 
   async updateRow(
@@ -1020,31 +1031,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     if (!isPlainRecord(input.match) || !isPlainRecord(input.values) || byteLength(input) > MAX_INPUT_BYTES) {
       throw invalidInput();
     }
-    return this.run(context, scope, true, async (client) => {
-      const table = await this.loadTable(client, input.schema, input.table);
-      assertTableBoundary(table, "update");
-      assertPrimaryKeyMatch(table, input.match);
-      const byName = new Map(table.columns.map((column) => [column.name, column]));
-      const columns = Object.keys(input.values).sort();
-      if (columns.length < 1 || columns.length > MAX_COLUMNS || columns.some((name) => {
-        const column = byName.get(name);
-        return !column?.updateable || column.sensitive || column.identity || column.generated ||
-          column.primaryKeyPosition !== null || !isDataValue(input.values[name]);
-      })) throw invalidInput();
-      const values: SqlValue[] = [];
-      const assignments = columns.map((name) => {
-        values.push(input.values[name] as SqlValue);
-        return `${quoted(name)} = $${values.length}`;
-      });
-      const match = primaryKeySql(table, input.match, values);
-      const returning = safeReturningColumns(table);
-      const result = await client.query<Record<string, unknown>>(
-        `UPDATE ${qualified(input.schema, input.table)} SET ${assignments.join(", ")}
-         WHERE ${match} RETURNING ${returning.map(quoted).join(", ")}`,
-        values,
-      );
-      return mutationResult(table, result.rows, 1);
-    });
+    return this.run(context, scope, true, (client) =>
+      this.updateWithin(client, input.schema, input.table, { match: input.match }, input.values, 1));
   }
 
   async deleteRow(
@@ -1054,20 +1042,164 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
   ): Promise<GeneratedMutationResult> {
     assertRequest(context, scope, input.schema, input.table);
     if (!isPlainRecord(input.match) || byteLength(input) > MAX_INPUT_BYTES) throw invalidInput();
+    return this.run(context, scope, true, (client) =>
+      this.deleteWithin(client, input.schema, input.table, { match: input.match }, 1));
+  }
+
+  async mutateRows(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedMutationBatchInput,
+  ): Promise<GeneratedMutationBatchResult> {
+    assertRequest(context, scope, input.schema);
+    // Alle Formpruefungen vor der Datenbank: Ein Stapel, dessen dritte Mutation
+    // keine Bedingung hat, soll die ersten beiden nicht erst ausfuehren und
+    // dann zurueckrollen. Das Zurueckrollen ist die Zusage fuer den Fall, den
+    // erst die Datenbank entscheidet, etwa eine Policy; die Form entscheidet
+    // sich hier.
+    if (!Array.isArray(input.mutations) || input.mutations.length < 1 ||
+        input.mutations.length > MAX_MUTATIONS || byteLength(input.mutations) > MAX_INPUT_BYTES) {
+      throw invalidInput();
+    }
+    for (const mutation of input.mutations) {
+      if (!isPlainRecord(mutation) || !safeIdentifier(mutation.table)) throw invalidInput();
+      if (mutation.kind === "insert") {
+        assertInsertInput(mutation.rows);
+        continue;
+      }
+      if (mutation.kind !== "update" && mutation.kind !== "delete") throw invalidInput();
+      // Aendern und Loeschen ohne Bedingung gibt es hier nicht. Eine Mutation
+      // ohne Filter traefe jede Zeile, die die Policy hergibt, und "jede
+      // Zeile" ist nie das, was ein Formular meint.
+      if (!Array.isArray(mutation.filters) || mutation.filters.length < 1 ||
+          mutation.filters.length > MAX_FILTERS || !mutation.filters.every(isFilter)) {
+        throw invalidInput();
+      }
+      if (mutation.atMost !== undefined &&
+          (!Number.isSafeInteger(mutation.atMost) || mutation.atMost < 1 || mutation.atMost > MAX_INSERT_ROWS)) {
+        throw invalidInput();
+      }
+      if (mutation.kind === "update" && !isPlainRecord(mutation.values)) throw invalidInput();
+    }
     return this.run(context, scope, true, async (client) => {
-      const table = await this.loadTable(client, input.schema, input.table);
-      assertTableBoundary(table, "delete");
-      assertPrimaryKeyMatch(table, input.match);
+      const results: GeneratedMutationResult[] = [];
+      // Der Reihe nach, in einer Transaktion. Jede Mutation nimmt denselben
+      // Helfer wie ihr REST-Gegenstueck; es gibt keinen zweiten Schreibweg.
+      for (const mutation of input.mutations) {
+        if (mutation.kind === "insert") {
+          results.push(await this.insertWithin(client, input.schema, mutation.table, mutation.rows));
+        } else if (mutation.kind === "update") {
+          results.push(await this.updateWithin(client, input.schema, mutation.table,
+            { filters: mutation.filters }, mutation.values, mutation.atMost ?? MAX_INSERT_ROWS));
+        } else {
+          results.push(await this.deleteWithin(client, input.schema, mutation.table,
+            { filters: mutation.filters }, mutation.atMost ?? MAX_INSERT_ROWS));
+        }
+      }
+      return { source: "postgres" as const, results };
+    });
+  }
+
+  /** Das Einfuegen selbst, innerhalb einer Schreibtransaktion; von REST und GraphQL geteilt. */
+  private async insertWithin(
+    client: SqlPoolClient,
+    schema: string,
+    tableName: string,
+    rows: Array<Record<string, unknown>>,
+  ): Promise<GeneratedMutationResult> {
+    const table = await this.loadTable(client, schema, tableName);
+    assertTableBoundary(table, "insert");
+    const byName = new Map(table.columns.map((column) => [column.name, column]));
+    const columns = Object.keys(rows[0]!).sort();
+    if (columns.length > MAX_COLUMNS || rows.some((row) => Object.keys(row).sort().join("\0") !== columns.join("\0")) ||
+        columns.some((name) => {
+          const column = byName.get(name);
+          return !column?.insertable || column.sensitive || column.identity || column.generated;
+        }) || rows.some((row) => columns.some((name) => !isDataValue(row[name])))) {
+      throw invalidInput();
+    }
+    const returning = safeReturningColumns(table);
+    let result;
+    if (columns.length === 0) {
+      if (rows.length !== 1) throw invalidInput();
+      result = await client.query<Record<string, unknown>>(
+        `INSERT INTO ${qualified(schema, tableName)} DEFAULT VALUES RETURNING ${returning.map(quoted).join(", ")}`,
+      );
+    } else {
       const values: SqlValue[] = [];
-      const match = primaryKeySql(table, input.match, values);
-      const returning = safeReturningColumns(table);
-      const result = await client.query<Record<string, unknown>>(
-        `DELETE FROM ${qualified(input.schema, input.table)} WHERE ${match}
+      const tuples = rows.map((row) => `(${columns.map((name) => {
+        values.push(row[name] as SqlValue);
+        return `$${values.length}`;
+      }).join(", ")})`);
+      result = await client.query<Record<string, unknown>>(
+        `INSERT INTO ${qualified(schema, tableName)} (${columns.map(quoted).join(", ")})
+         VALUES ${tuples.join(", ")}
          RETURNING ${returning.map(quoted).join(", ")}`,
         values,
       );
-      return mutationResult(table, result.rows, 1);
+    }
+    return mutationResult(table, result.rows, MAX_INSERT_ROWS);
+  }
+
+  /**
+   * Das Aendern selbst. `target` ist entweder der Primaerschluessel (REST) oder
+   * eine Liste von Filtern (GraphQL, 2.97); die Bedingung entsteht aus
+   * demselben `filterSql` wie beim Lesen, und `maximum` Zeilen duerfen es
+   * hoechstens sein. Mehr getroffene Zeilen sind ein Fehler, und der Fehler
+   * rollt die Transaktion zurueck: RETURNING zaehlt, was geaendert wurde, und
+   * die Aenderung wirkt nur, wenn die Zahl stimmt.
+   */
+  private async updateWithin(
+    client: SqlPoolClient,
+    schema: string,
+    tableName: string,
+    target: MutationTarget,
+    values: Record<string, unknown>,
+    maximum: number,
+  ): Promise<GeneratedMutationResult> {
+    const table = await this.loadTable(client, schema, tableName);
+    assertTableBoundary(table, "update");
+    const byName = new Map(table.columns.map((column) => [column.name, column]));
+    const columns = Object.keys(values).sort();
+    if (columns.length < 1 || columns.length > MAX_COLUMNS || columns.some((name) => {
+      const column = byName.get(name);
+      return !column?.updateable || column.sensitive || column.identity || column.generated ||
+        column.primaryKeyPosition !== null || !isDataValue(values[name]);
+    })) throw invalidInput();
+    const parameters: SqlValue[] = [];
+    const assignments = columns.map((name) => {
+      parameters.push(values[name] as SqlValue);
+      return `${quoted(name)} = $${parameters.length}`;
     });
+    const where = mutationTargetSql(table, target, parameters);
+    const returning = safeReturningColumns(table);
+    const result = await client.query<Record<string, unknown>>(
+      `UPDATE ${qualified(schema, tableName)} SET ${assignments.join(", ")}
+       WHERE ${where} RETURNING ${returning.map(quoted).join(", ")}`,
+      parameters,
+    );
+    return mutationResult(table, result.rows, maximum);
+  }
+
+  /** Das Loeschen selbst, mit derselben Bedingung und derselben Obergrenze wie das Aendern. */
+  private async deleteWithin(
+    client: SqlPoolClient,
+    schema: string,
+    tableName: string,
+    target: MutationTarget,
+    maximum: number,
+  ): Promise<GeneratedMutationResult> {
+    const table = await this.loadTable(client, schema, tableName);
+    assertTableBoundary(table, "delete");
+    const parameters: SqlValue[] = [];
+    const where = mutationTargetSql(table, target, parameters);
+    const returning = safeReturningColumns(table);
+    const result = await client.query<Record<string, unknown>>(
+      `DELETE FROM ${qualified(schema, tableName)} WHERE ${where}
+       RETURNING ${returning.map(quoted).join(", ")}`,
+      parameters,
+    );
+    return mutationResult(table, result.rows, maximum);
   }
 
   async generateOpenApi(
@@ -1569,6 +1701,13 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     } catch (error) {
       if (started) await client.query("ROLLBACK").catch(() => undefined);
       if (error instanceof GeneratedDataApiError) throw error;
+      // 42501 ist insufficient_privilege, und genau so meldet PostgreSQL eine
+      // Zeile, die an WITH CHECK scheitert. In einer Schreibtransaktion ist das
+      // die Antwort der Policy und kein Ausfall; die Transaktion ist oben
+      // schon zurueckgerollt, also wirkt nichts aus ihr.
+      if (write && isPolicyRejection(error)) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_POLICY_REJECTED", { cause: error });
+      }
       throw new GeneratedDataApiError("GENERATED_DATA_API_UNAVAILABLE");
     } finally {
       client.release();
@@ -1602,6 +1741,9 @@ export class DisabledGeneratedDataApi implements GeneratedDataApiPort {
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope,
     _input: { schema: string; table: string; match: Record<string, unknown> },
   ): Promise<GeneratedMutationResult> { return this.disabled(); }
+  async mutateRows(
+    _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedMutationBatchInput,
+  ): Promise<GeneratedMutationBatchResult> { return this.disabled(); }
   async generateOpenApi(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _schema: string,
   ): Promise<Record<string, unknown>> { return this.disabled(); }
@@ -1719,6 +1861,9 @@ function publicTable(table: InternalTable): GeneratedTable {
     rowSecurityEnabled: table.rowSecurityEnabled,
     primaryKey: [...table.primaryKey],
     columns: table.columns.filter((column) => !column.sensitive).map((column) => ({ ...column })),
+    canInsert: table.canInsert,
+    canUpdate: table.canUpdate,
+    canDelete: table.canDelete,
   };
 }
 
@@ -1872,6 +2017,42 @@ function primaryKeySql(table: InternalTable, match: Record<string, unknown>, val
     values.push(value as SqlValue);
     return `${quoted(name)} = $${values.length}`;
   }).join(" AND ");
+}
+
+/** Worauf eine Aenderung zielt: der Primaerschluessel (REST) oder Filter (GraphQL, 2.97). */
+type MutationTarget = { match: Record<string, unknown> } | { filters: GeneratedDataFilter[] };
+
+/**
+ * Die WHERE-Bedingung einer Mutation. Filter gehen durch dieselbe Pruefung und
+ * dasselbe `filterSql` wie beim Lesen: nur waehlbare, nicht sensible Spalten,
+ * nur die bekannten Operatoren, jeder Wert als Parameter. Ohne Bedingung gibt
+ * es keine Aenderung; eine leere Liste ist hier ein Fehler und kein "alle".
+ */
+function mutationTargetSql(table: InternalTable, target: MutationTarget, values: SqlValue[]): string {
+  if ("match" in target) {
+    assertPrimaryKeyMatch(table, target.match);
+    return primaryKeySql(table, target.match, values);
+  }
+  if (target.filters.length < 1 || target.filters.length > MAX_FILTERS) throw invalidInput();
+  const byName = new Map(table.columns.map((column) => [column.name, column]));
+  for (const filter of target.filters) {
+    const column = byName.get(filter.column);
+    if (!column?.selectable || column.sensitive || !isFilter(filter)) throw invalidInput();
+  }
+  return target.filters.map((filter) => filterSql(filter, values)).join(" AND ");
+}
+
+/** Die Form eines Einfuegens, vor der Datenbank; von `insertRows` und `mutateRows` geteilt. */
+function assertInsertInput(rows: unknown): asserts rows is Array<Record<string, unknown>> {
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > MAX_INSERT_ROWS ||
+      byteLength(rows) > MAX_INPUT_BYTES || rows.some((row) => !isPlainRecord(row))) {
+    throw invalidInput();
+  }
+}
+
+/** Ein Treiberfehler mit SQLSTATE 42501: die Policy hat die Zeile abgewiesen. */
+function isPolicyRejection(error: unknown): boolean {
+  return Boolean(error) && typeof error === "object" && (error as { code?: unknown }).code === "42501";
 }
 
 type Cursor = { v: 1; schema: string; table: string; order: string[]; direction: "asc" | "desc"; values: unknown[] };

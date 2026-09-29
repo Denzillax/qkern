@@ -12,13 +12,15 @@ import {
   GRAPHQL_CONSOLE_ROLE,
   GRAPHQL_LIMIT_DEPTH,
   GRAPHQL_LIMIT_FIELDS,
+  GRAPHQL_LIMIT_MUTATIONS,
   GRAPHQL_LIMIT_ROWS,
+  GRAPHQL_MUTATION_ARGUMENT_TEXTS,
+  GRAPHQL_MUTATIONS,
   GRAPHQL_NO_COST_ESTIMATE,
   GRAPHQL_NO_HISTORY,
   GRAPHQL_NO_INTROSPECTION,
-  GRAPHQL_NO_MUTATIONS,
   GRAPHQL_OWN_PARSER,
-  GRAPHQL_PAGE_READ_ONLY,
+  GRAPHQL_PAGE_WRITES,
   GRAPHQL_REFUSED_TEXTS,
   GRAPHQL_REJECTIONS,
   GRAPHQL_SAME_PATH,
@@ -31,12 +33,12 @@ import {
 } from "@/lib/console/integrations-graphql-texts";
 
 /**
- * Integrationen → GraphQL (2.83), an der Stelle, an der bis hierher der
- * Platzhalter stand.
+ * Integrationen → GraphQL (2.83, Mutationen seit 2.97), an der Stelle, an der
+ * bis 2.82 der Platzhalter stand.
  *
  * Der Platzhalter sagte: „GraphQL-Schnittstelle über dem Schema. Die Data API
- * ist REST.“ Gebaut ist ein lesender Ausschnitt davon, und die Seite sagt in
- * derselben Höhe, was er kann und was ihm fehlt: keine Mutationen, keine
+ * ist REST.“ Gebaut ist ein Ausschnitt davon, lesend und schreibend, und die
+ * Seite sagt in derselben Höhe, was er kann und was ihm fehlt: keine
  * Fragmente, keine Variablen, keine Direktiven, keine Introspektion, keine
  * Beziehungen.
  *
@@ -55,7 +57,13 @@ type SchemaField = {
   dataType: string;
 };
 
-type SchemaType = { name: string; fields: SchemaField[] };
+type SchemaType = {
+  name: string;
+  fields: SchemaField[];
+  insertFields: SchemaField[];
+  updateFields: SchemaField[];
+  mutations: { insert: boolean; update: boolean; delete: boolean };
+};
 
 type GraphqlSchema = {
   schema: string;
@@ -73,9 +81,24 @@ type GraphqlFieldResult = {
   nextCursor: string | null;
 };
 
+type GraphqlMutationResult = {
+  responseKey: string;
+  table: string;
+  kind: "insert" | "update" | "delete";
+  affectedCount: number;
+};
+
 type GraphqlResult = {
+  kind: "query";
   data: Record<string, Array<Record<string, unknown>>>;
   fields: GraphqlFieldResult[];
+  fieldCount: number;
+  rowBudget: number;
+  operationName: string | null;
+} | {
+  kind: "mutation";
+  data: Record<string, Record<string, unknown>>;
+  mutations: GraphqlMutationResult[];
   fieldCount: number;
   rowBudget: number;
   operationName: string | null;
@@ -206,7 +229,7 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
     <article className="console-card span-2">
       <div className="card-head">
         <div><span>{t("INTEGRATIONEN")} · {environment.toUpperCase()}</span>
-          <h3>{t("GraphQL über dem Projektschema, lesend")}</h3></div>
+          <h3>{t("GraphQL über dem Projektschema")}</h3></div>
         <div>
           <button className="secondary-button" onClick={() => void load(false)} disabled={refreshing || running}>
             <RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")}
@@ -215,35 +238,35 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
         </div>
       </div>
       <p className="muted">{t(GRAPHQL_WHAT)}</p>
-      <p className="muted">{t(GRAPHQL_NO_MUTATIONS)}</p>
+      <p className="muted">{t(GRAPHQL_MUTATIONS)}</p>
       <p className="muted">{t(GRAPHQL_SAME_PATH)}</p>
       <p className="muted">{t(GRAPHQL_OWN_PARSER)}</p>
       <div className="log-row">
-        <span className="secure"><ShieldCheck size={15}/> {t("Jede Abfrage läuft unter der Zeilensicherheit des Aufrufers.")}</span>
+        <span className="secure"><ShieldCheck size={15}/> {t("Jede Abfrage und jede Mutation läuft unter der Zeilensicherheit des Aufrufers.")}</span>
         <small>{t(GRAPHQL_CONSOLE_ROLE)}</small>
       </div>
     </article>
 
     <article className="console-card span-2">
-      <div className="card-head"><div><span>{t("ABFRAGE")}</span>
-        <h3>{t("Eine Abfrage, hier ausgeführt")}</h3></div><Braces size={18}/></div>
+      <div className="card-head"><div><span>{t("DOKUMENT")}</span>
+        <h3>{t("Eine Abfrage oder eine Mutation, hier ausgeführt")}</h3></div><Braces size={18}/></div>
       <textarea value={query} spellCheck={false} maxLength={limits.maxQueryBytes}
-        aria-label={t("GraphQL-Abfrage")}
+        aria-label={t("GraphQL-Dokument")}
         onChange={(event) => { setQuery(event.target.value); setRefusal(""); }}/>
       <div className="card-head">
         <div><span className="muted">{t(GRAPHQL_NO_HISTORY)}</span></div>
         <div>
           <button className="button small" type="button" onClick={() => void run()}
             disabled={running || query.trim() === ""}>
-            <Play size={13}/> <StableLabel current={running ? t("Läuft…") : t("Abfrage ausführen")}
-              variants={tAll("Läuft…", "Abfrage ausführen")}/>
+            <Play size={13}/> <StableLabel current={running ? t("Läuft…") : t("Ausführen")}
+              variants={tAll("Läuft…", "Ausführen")}/>
           </button>
         </div>
       </div>
       {refusal && <p className="risk medium">{refusal}</p>}
     </article>
 
-    {result !== null && <article className="console-card span-2">
+    {result !== null && result.kind === "query" && <article className="console-card span-2">
       <div className="card-head"><div><span>{t("ERGEBNIS")}</span>
         <h3>{result.operationName ?? t("Ohne Namen")}</h3></div></div>
       <div className="detail-list">
@@ -259,6 +282,27 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
         <code>{field.table}</code>
         <span>{formatNumber(field.rowCount)}</span>
         <span className="muted">{field.hasMore ? t("ja, weiter mit after") : t("nein")}</span>
+      </div>)}
+      <pre>{JSON.stringify(result.data, null, 2)}</pre>
+    </article>}
+
+    {result !== null && result.kind === "mutation" && <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("ERGEBNIS DER MUTATION")}</span>
+        <h3>{result.operationName ?? t("Ohne Namen")}</h3></div></div>
+      <div className="detail-list">
+        <div><span>{t("Gezählte Felder")}</span><strong>{formatNumber(result.fieldCount)}</strong></div>
+        <div><span>{t("Höchstens geschriebene Zeilen")}</span><strong>{formatNumber(result.rowBudget)}</strong></div>
+        <div><span>{t("Mutationen")}</span><strong>{formatNumber(result.mutations.length)}</strong></div>
+      </div>
+      <p className="muted">{t("Alle Mutationen dieser Anfrage sind in einer Transaktion geschrieben worden. Was hier steht, gilt.")}</p>
+      <div className="log-row log-header">
+        <span>{t("Feld")}</span><span>{t("Tabelle")}</span><span>{t("Art")}</span><span>{t("Betroffene Zeilen")}</span>
+      </div>
+      {result.mutations.map((mutation) => <div className="log-row" key={mutation.responseKey}>
+        <code>{mutation.responseKey}</code>
+        <code>{mutation.table}</code>
+        <code>{mutation.kind}</code>
+        <span>{formatNumber(mutation.affectedCount)}</span>
       </div>)}
       <pre>{JSON.stringify(result.data, null, 2)}</pre>
     </article>}
@@ -305,10 +349,13 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
         <div><span>{t("Zeilen ohne Angabe")}</span><strong>{formatNumber(limits.defaultRowsPerField)}</strong></div>
         <div><span>{t("Filter je Feld")}</span><strong>{formatNumber(limits.maxFiltersPerField)}</strong></div>
         <div><span>{t("Zeichen der Abfrage")}</span><strong>{formatNumber(limits.maxQueryBytes)}</strong></div>
+        <div><span>{t("Mutationen je Anfrage")}</span><strong>{formatNumber(limits.maxMutationsPerRequest)}</strong></div>
+        <div><span>{t("Zeilen je Mutation")}</span><strong>{formatNumber(limits.maxRowsPerMutation)}</strong></div>
       </div>
       <p className="muted">{t(GRAPHQL_LIMIT_DEPTH)}</p>
       <p className="muted">{t(GRAPHQL_LIMIT_FIELDS)}</p>
       <p className="muted">{t(GRAPHQL_LIMIT_ROWS)}</p>
+      <p className="muted">{t(GRAPHQL_LIMIT_MUTATIONS)}</p>
       <p className="muted">{t(GRAPHQL_SEQUENTIAL)}</p>
       <p className="muted">{t(GRAPHQL_NO_INTROSPECTION)}</p>
       <p className="muted">{t(GRAPHQL_NO_COST_ESTIMATE)}</p>
@@ -339,7 +386,16 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
         <code>{name}</code>
         <small>{t(GRAPHQL_ARGUMENT_TEXTS[name] ?? name)}</small>
       </div>)}
-      <p className="muted">{t(GRAPHQL_PAGE_READ_ONLY)}</p>
+    </article>
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("ARGUMENTE EINER MUTATION")}</span>
+        <h3>{t("Was an einer Mutation steht")}</h3></div></div>
+      {limits.mutationArguments.map((name) => <div className="log-row" key={name}>
+        <code>{name}</code>
+        <small>{t(GRAPHQL_MUTATION_ARGUMENT_TEXTS[name] ?? name)}</small>
+      </div>)}
+      <p className="muted">{t(GRAPHQL_PAGE_WRITES)}</p>
     </article>
   </div>;
 }
