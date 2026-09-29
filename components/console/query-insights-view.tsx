@@ -51,10 +51,10 @@ function reasonFor(code: unknown, fallback: string): string {
   return fallback;
 }
 
-export function QueryInsightsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function QueryInsightsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const [sql, setSql] = useState(EXAMPLE);
   const [plan, setPlan] = useState<QueryPlanReading | null>(null);
-  const [state, setState] = useState<State>("idle");
+  const [state, setState] = useState<State>(initialState ?? "idle");
   const [message, setMessage] = useState("");
 
   async function explain() {

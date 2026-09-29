@@ -14,10 +14,10 @@ import { formatMoment } from "@/components/console/console-display";
 type Environment = "development" | "staging" | "production";
 type ApiKey = { id: string; name: string; kind: "public" | "service"; prefix: string; expiresAt: string; revokedAt: string | null; createdAt: string };
 
-export function ApiKeysView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function ApiKeysView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/api-keys`;
   const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [secret, setSecret] = useState("");
 

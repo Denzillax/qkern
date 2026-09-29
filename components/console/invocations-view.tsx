@@ -15,12 +15,12 @@ type Environment = "development" | "staging" | "production";
 type FunctionItem = { id: string; name: string; entrypoint: string; timeoutMs: number; memoryMiB: number; enabled: boolean };
 type Invocation = { invocationId: string; invokedBy: string; startedAt: string; durationMs: number; outcome: "completed" | "failed"; statusCode: number | null; errorCode: string | null };
 
-export function InvocationsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function InvocationsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [functions, setFunctions] = useState<FunctionItem[]>([]);
   const [selected, setSelected] = useState("");
   const [invocations, setInvocations] = useState<Invocation[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const loadInvocations = useCallback(async (id: string) => {

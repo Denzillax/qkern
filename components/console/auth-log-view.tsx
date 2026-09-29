@@ -69,10 +69,10 @@ function actorLabel(entry: Entry): string {
   return t(AUTH_LOG_ACTOR_TEXTS[id]);
 }
 
-export function AuthLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/audit`;
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);

@@ -13,10 +13,10 @@ import { formatDay } from "@/components/console/console-display";
 type Environment = "development" | "staging" | "production";
 type Role = { name: string; superuser: boolean; createDatabase: boolean; createRole: boolean; inherit: boolean; login: boolean; replication: boolean; bypassRowSecurity: boolean; connectionLimit: number | null; validUntil: string | null };
 
-export function RolesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function RolesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 

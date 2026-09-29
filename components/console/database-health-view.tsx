@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Database, FileWarning, HardDrive, RefreshCw, ShieldCheck, Timer } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
+import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import { cacheHitRatio } from "@/lib/console/database-activity-texts";
 import {
@@ -80,13 +81,6 @@ type Health = {
 type ViewState = "loading" | "ready" | "disabled" | "unavailable" | "error";
 
 /** Bytes lesbar, ohne eine Genauigkeit vorzutäuschen, die der Zähler nicht hat. */
-function bytes(value: number): string {
-  if (value < 1024) return `${formatNumber(Math.round(value))} B`;
-  if (value < 1024 * 1024) return `${formatNumber(Math.round(value / 1024))} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${formatNumber(Math.round(value / (1024 * 1024)))} MiB`;
-  return `${formatNumber(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
-}
-
 /** Millisekunden lesbar. Aufgerundet wird nie, damit keine Zeit entsteht, die nicht gemessen wurde. */
 function duration(milliseconds: number): string {
   if (milliseconds < 1000) return `${formatNumber(milliseconds)} ms`;
@@ -94,8 +88,8 @@ function duration(milliseconds: number): string {
   return `${formatNumber(Math.floor(milliseconds / 60_000))} min`;
 }
 
-export function DatabaseHealthView({ projectId, environment }: { projectId: string; environment: Environment }) {
-  const [state, setState] = useState<ViewState>("loading");
+export function DatabaseHealthView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [health, setHealth] = useState<Health | null>(null);
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene
@@ -229,8 +223,8 @@ export function DatabaseHealthView({ projectId, environment }: { projectId: stri
         <div><strong className={database.tempFiles > 0 ? "risk medium" : undefined}>{formatNumber(database.tempFiles)}</strong>
           <p className="muted">{t("Sortierungen und Verknüpfungen, die auf die Platte ausweichen mussten")}</p></div>
       </div>
-      <div className="log-row"><span>{t("Menge auf der Platte")}</span><code>{bytes(database.tempBytes)}</code></div>
-      <div className="log-row"><span>{t("Im Mittel je Datei")}</span><code>{averageTemp === null ? "–" : bytes(averageTemp)}</code></div>
+      <div className="log-row"><span>{t("Menge auf der Platte")}</span><code>{formatBytes(database.tempBytes)}</code></div>
+      <div className="log-row"><span>{t("Im Mittel je Datei")}</span><code>{averageTemp === null ? "–" : formatBytes(averageTemp)}</code></div>
       <p className="muted">{t("Welche Abfrage die Dateien geschrieben hat, sagt dieser Zähler nicht. Er zählt für die ganze Datenbank.")}</p>
     </article>}
 

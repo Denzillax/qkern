@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatMoment } from "@/components/console/console-display";
+import { CheckIcon, EmptyState } from "@/components/console/console-parts";
+import { formatHourMinute } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import type {
   Approval, AutomationMode, ChangeSet, Environment, ProjectAutomationPolicy, Risk,
@@ -14,9 +15,6 @@ import type {
  * die Change Sets stehen in den Requisiten; die Regel der Automatik holt
  * diese Seite beim Oeffnen selbst.
  */
-function formatTime(value: string) { return formatMoment(value, "hourMinute"); }
-function EmptyState({icon:Icon,title,text}:{icon:typeof Database;title:string;text:string}){return <div className="empty-state"><Icon size={28}/><h3>{title}</h3><p>{text}</p></div>}
-function CheckIcon(){return <span className="check-icon">✓</span>}
 
 export function ApprovalView({ projectId, environment, approvals, changes, reload }: { projectId: string; environment: Environment; approvals: Approval[]; changes: ChangeSet[]; reload: () => Promise<void> }) {
   const [busy,setBusy]=useState("");
@@ -25,10 +23,16 @@ export function ApprovalView({ projectId, environment, approvals, changes, reloa
   return <div className="approval-list">
     <AutomationPolicyPanel projectId={projectId} environment={environment}/>
     {scopedApprovals.length===0&&<EmptyState icon={ShieldCheck} title={t("Keine offenen Freigaben")} text={t("Riskante Änderungen von Agenten und aus der Console landen hier.")}/>}
-    {scopedApprovals.map(approval=>{const change=changes.find(item=>item.id===approval.changeSetId);return <article className="console-card approval-card" key={approval.id}><div className="approval-top"><span className={`risk ${approval.risk}`}>Risiko {approval.risk}</span><span>{approval.environment}</span><time>{formatTime(approval.createdAt)}</time></div><h2>{approval.action}</h2><p>Angefragt von {approval.requestedBy}. Nichts wurde angewendet.</p>{change&&<><div className="approval-detail-grid"><div><span>{t("BETROFFENE RESSOURCE")}</span><strong>{change.projectId}</strong></div><div><span>{t("CHANGE SET")}</span><strong>{change.id}</strong></div><div><span>{t("STATUS")}</span><strong>{approval.status}</strong></div></div><div className="approval-diff">{change.diff.map(line=><code key={line}>{line}</code>)}</div><div className="test-chips">{change.tests.map(test=><span key={test}><CheckIcon/>{test}</span>)}</div></>}{approval.status==="pending"?<div className="approval-actions"><button className="ghost-button" disabled={busy===approval.id} onClick={()=>decide(approval.id,"rejected")}>{t("Ablehnen")}</button><button className="button" disabled={busy===approval.id} onClick={()=>decide(approval.id,"approved")}>{t("Einmal freigeben")}</button></div>:<div className={`decision-banner ${approval.status}`}>Entscheidung: {approval.status}</div>}</article>})}
+    {scopedApprovals.map(approval=>{const change=changes.find(item=>item.id===approval.changeSetId);return <article className="console-card approval-card" key={approval.id}><div className="approval-top"><span className={`risk ${approval.risk}`}>Risiko {approval.risk}</span><span>{approval.environment}</span><time>{formatHourMinute(approval.createdAt)}</time></div><h2>{approval.action}</h2><p>Angefragt von {approval.requestedBy}. Nichts wurde angewendet.</p>{change&&<><div className="approval-detail-grid"><div><span>{t("BETROFFENE RESSOURCE")}</span><strong>{change.projectId}</strong></div><div><span>{t("CHANGE SET")}</span><strong>{change.id}</strong></div><div><span>{t("STATUS")}</span><strong>{approval.status}</strong></div></div><div className="approval-diff">{change.diff.map(line=><code key={line}>{line}</code>)}</div><div className="test-chips">{change.tests.map(test=><span key={test}><CheckIcon/>{test}</span>)}</div></>}{approval.status==="pending"?<div className="approval-actions"><button className="ghost-button" disabled={busy===approval.id} onClick={()=>decide(approval.id,"rejected")}>{t("Ablehnen")}</button><button className="button" disabled={busy===approval.id} onClick={()=>decide(approval.id,"approved")}>{t("Einmal freigeben")}</button></div>:<div className={`decision-banner ${approval.status}`}>Entscheidung: {approval.status}</div>}</article>})}
   </div>;
 }
 
+/**
+ * Ohne `initialState`-Naht: Der Zustand dieses Panels kennt kein `ready`;
+ * er laeuft ueber `idle`, `saving` und `saved`. Die Ansicht selbst nimmt ihre
+ * Freigaben aus den Requisiten. Der Render-Vertrag faehrt darum fuer die
+ * Freigaben nur den ersten Durchlauf.
+ */
 function AutomationPolicyPanel({ projectId, environment }: { projectId: string; environment: Environment }) {
   const [policy,setPolicy]=useState<ProjectAutomationPolicy|null>(null);
   const [mode,setMode]=useState<AutomationMode>("manual");

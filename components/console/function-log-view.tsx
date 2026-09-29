@@ -57,11 +57,11 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 }
 
 
-export function FunctionLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function FunctionLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
   const [functions, setFunctions] = useState<FunctionItem[]>([]);
   const [page, setPage] = useState<LogPage | null>(null);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [functionFilter, setFunctionFilter] = useState("");

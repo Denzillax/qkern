@@ -199,7 +199,19 @@ export type DatabaseWebhookRecord = Readonly<{
   createdAt: string;
 }>;
 
+/**
+ * Die drei Ereignisse, wie sie in der Ansicht stehen. Sie liegen hier und
+ * nicht in der Ansicht, damit der Uebersetzungsvertrag sie sieht: Er sammelt
+ * die Texte der Module, und ein `t(TABELLE[schluessel])` in einer Ansicht
+ * findet er nicht.
+ */
+export const DATABASE_WEBHOOK_EVENT_LABELS: Record<DatabaseWebhookEvent, string> = {
+  insert: "Einfügen (insert)",
+  update: "Ändern (update)",
+  delete: "Löschen (delete)",
+};
+
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */
 export function databaseWebhookTexts(): string[] {
-  return Object.values(DATABASE_WEBHOOK_REASONS);
+  return [...Object.values(DATABASE_WEBHOOK_REASONS), ...Object.values(DATABASE_WEBHOOK_EVENT_LABELS)];
 }

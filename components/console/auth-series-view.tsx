@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Fingerprint, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatMoment, formatNumber } from "@/components/console/console-display";
+import { formatNumber } from "@/components/console/console-display";
+import { formatBucketMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import { buildUsageSeriesChart } from "@/lib/console/usage-series-chart";
 import {
@@ -61,12 +62,10 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-const moment = (value: string, bucket: Bucket) => formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
-
-export function AuthSeriesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthSeriesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/audit/series`;
   const [bucket, setBucket] = useState<Bucket>("hour");
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [series, setSeries] = useState<Series | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -150,7 +149,7 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
 
       <p className="muted">{t(AUTH_SERIES_HONESTY)}</p>
       <p className="muted">{t(AUTH_SERIES_CANNOT_SHOW)}</p>
-      <p className="muted">{windowText} {series && <>{moment(series.windowStart, bucket)} – {moment(series.windowEnd, bucket)}</>}</p>
+      <p className="muted">{windowText} {series && <>{formatBucketMoment(series.windowStart, bucket)} – {formatBucketMoment(series.windowEnd, bucket)}</>}</p>
       {series?.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Reihe zeigt nicht jeden Abschnitt des Fensters.")}</p>}
       {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
 
@@ -165,7 +164,7 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
             <rect x={bar.x} y={bar.accepted.y} width={bar.width} height={bar.accepted.height} fill="currentColor" opacity={0.75}/>
             <rect x={bar.x} y={bar.rejected.y} width={bar.width} height={bar.rejected.height} fill="var(--qkern-surface)" stroke="currentColor" strokeWidth={1}/>
           </g>)}
-          {chart.labels.map((entry) => <text key={entry.start} x={entry.x} y={chart.baselineY + 16} textAnchor="middle" className="usage-series-label">{moment(entry.start, bucket)}</text>)}
+          {chart.labels.map((entry) => <text key={entry.start} x={entry.x} y={chart.baselineY + 16} textAnchor="middle" className="usage-series-label">{formatBucketMoment(entry.start, bucket)}</text>)}
         </svg>
       </div>}
       {!chart.empty && <p className="muted">{t("Gefüllt gezeichnet sind die gelungenen Handlungen, umrandet darüber die gescheiterten. Ein Abschnitt ohne Eintrag ist eine Lücke, kein fehlender Wert.")}</p>}
@@ -179,7 +178,7 @@ export function AuthSeriesView({ projectId, environment }: { projectId: string; 
           <span>{t("Abschnitt")}</span><span>{t("Handlungen")}</span><span>{t("Erfolgreich")}</span><span>{t("Fehlversuche")}</span>
         </div>
         {series?.buckets.map((entry) => <div className="log-row" key={entry.start}>
-          <time>{moment(entry.start, bucket)}</time>
+          <time>{formatBucketMoment(entry.start, bucket)}</time>
           <span>{formatNumber(entry.total)}</span>
           <span>{formatNumber(entry.succeeded)}</span>
           <span className={entry.failed === 0 ? "muted" : "risk medium"}>{formatNumber(entry.failed)}</span>

@@ -16,11 +16,11 @@ type ReadPolicy = "private" | "authenticated" | "owner" | "public" | "service";
 type WritePolicy = "private" | "authenticated" | "owner" | "service";
 type Bucket = { id: string; name: string; readPolicy: ReadPolicy; writePolicy: WritePolicy; allowedMimeTypes: string[]; maxObjectBytes: number; quotaBytes: number; retentionDays: number | null };
 
-export function StoragePoliciesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function StoragePoliciesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const endpoint = `/api/v1/projects/${projectId}/environments/${environment}/storage/buckets`;
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [drafts, setDrafts] = useState<Record<string, { readPolicy: ReadPolicy; writePolicy: WritePolicy }>>({});
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
 

@@ -91,9 +91,9 @@ function StateRow({ label, explains, tone, count }: { label: string; explains: s
   </div>;
 }
 
-export function BranchFlowView(props: { projectId: string; environment: Environment }) {
+export function BranchFlowView(props: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const { projectId, environment } = props;
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(props.initialState ?? "loading");
   const [flows, setFlows] = useState<EnvironmentFlow[] | null>(null);
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene

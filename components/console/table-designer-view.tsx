@@ -66,14 +66,13 @@ function defaultsFor(type: TableColumnTypeId): readonly TableColumnDefaultId[] {
   return TABLE_COLUMN_TYPES[type]?.defaults ?? ["none"];
 }
 
-export function TableDesignerView({ projectId, environment, navigate, reload }: {
+export function TableDesignerView({ projectId, environment, navigate, reload, initialState }: {
   projectId: string;
   environment: Environment;
   navigate: (view: "approvals") => void;
-  reload: () => Promise<void>;
-}) {
+  reload: () => Promise<void>; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [tables, setTables] = useState<SchemaTable[]>([]);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

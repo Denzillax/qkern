@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Boxes, Clock, HardDrive, MapPin, Puzzle, RefreshCw, Server } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
+import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
   BINDING_STATE_TEXTS,
@@ -63,13 +64,6 @@ type Extension = { name: string; installedVersion: string | null; schema: string
 type ViewState = "loading" | "ready" | "disabled" | "unavailable" | "error";
 
 /** Bytes lesbar, ohne eine Genauigkeit vorzutäuschen, die die Messung nicht hat. */
-function bytes(value: number): string {
-  if (value < 1024) return `${formatNumber(value)} B`;
-  if (value < 1024 * 1024) return `${formatNumber(Math.round(value / 1024))} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${formatNumber(Math.round(value / (1024 * 1024)))} MiB`;
-  return `${formatNumber(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
-}
-
 async function readJson(url: string, signal: AbortSignal): Promise<{ status: number; payload: Record<string, unknown> }> {
   try {
     const response = await fetch(url, { cache: "no-store", signal });
@@ -87,9 +81,10 @@ export function InfrastructureView(props: {
   environment: Environment;
   region: string;
   status: string;
+  initialState?: ViewState;
 }) {
   const { projectId, environment, region } = props;
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(props.initialState ?? "loading");
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [bindings, setBindings] = useState<Binding[] | null>(null);
   const [extensions, setExtensions] = useState<Extension[] | null>(null);
@@ -190,7 +185,7 @@ export function InfrastructureView(props: {
       <div className="card-head"><div><span>{t("GRÖSSE")}</span><h3>{t("Diese Datenbank")}</h3></div><HardDrive size={18}/></div>
       <div className="bucket-row">
         <span className="bucket-icon"><HardDrive size={16}/></span>
-        <div><strong>{bytes(runtime.sizeBytes)}</strong><p className="muted">{t("gemessen im Moment des Aufrufs")}</p></div>
+        <div><strong>{formatBytes(runtime.sizeBytes)}</strong><p className="muted">{t("gemessen im Moment des Aufrufs")}</p></div>
       </div>
       <div className="log-row"><span>{t("Bytes")}</span><span>{formatNumber(runtime.sizeBytes)}</span></div>
       <p className="muted">{t(SIZE_SOURCE_NOTE)}</p>

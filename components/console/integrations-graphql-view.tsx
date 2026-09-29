@@ -89,9 +89,9 @@ function firstQuery(types: SchemaType[]): string {
   return `{\n  ${first.name}(limit: 5) {\n    ${columns}\n  }\n}\n`;
 }
 
-export function IntegrationsGraphqlView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function IntegrationsGraphqlView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/graphql`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [schema, setSchema] = useState<GraphqlSchema | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

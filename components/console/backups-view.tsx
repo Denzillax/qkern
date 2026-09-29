@@ -45,9 +45,9 @@ type Environment = "development" | "staging" | "production";
 
 type ViewState = "loading" | "ready" | "error";
 
-export function BackupsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function BackupsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ViewState }) {
   const [overview, setOverview] = useState<PointInTimeRecoveryOverview | null>(null);
-  const [state, setState] = useState<ViewState>("loading");
+  const [state, setState] = useState<ViewState>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   // Jede Ladung bekommt einen eigenen AbortController; eine abgebrochene
   // Ladung setzt keinen Zustand mehr.

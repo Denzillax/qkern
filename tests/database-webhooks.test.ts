@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DATABASE_WEBHOOK_EVENTS,
+  DATABASE_WEBHOOK_EVENT_LABELS,
   DATABASE_WEBHOOK_REASONS,
   DATABASE_WEBHOOK_SCHEMA,
   DatabaseWebhookError,
@@ -174,9 +175,16 @@ describe("database webhook definition", () => {
     }
   });
 
-  it("offers every reason to the translation contract", () => {
-    expect(databaseWebhookTexts()).toEqual(Object.values(DATABASE_WEBHOOK_REASONS));
-    for (const text of databaseWebhookTexts()) expect(text.length).toBeGreaterThan(20);
+  it("offers every reason and every event label to the translation contract", () => {
+    // Seit 2.65 stehen auch die drei Ereignisnamen hier und nicht in der
+    // Ansicht: Der Uebersetzungsvertrag sammelt die Texte der Module, und ein
+    // `t(TABELLE[schluessel])` in einer Ansicht findet er nicht.
+    expect(databaseWebhookTexts()).toEqual([
+      ...Object.values(DATABASE_WEBHOOK_REASONS),
+      ...Object.values(DATABASE_WEBHOOK_EVENT_LABELS),
+    ]);
+    for (const text of Object.values(DATABASE_WEBHOOK_REASONS)) expect(text.length).toBeGreaterThan(20);
+    for (const text of Object.values(DATABASE_WEBHOOK_EVENT_LABELS)) expect(text.length).toBeGreaterThan(5);
   });
 });
 

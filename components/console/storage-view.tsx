@@ -18,12 +18,17 @@ type ProjectStorageBucketItem = {
   createdAt: string; updatedAt: string;
 };
 
-/** Bytes mit Einheit, ueber `console-display` gerechnet wie ueberall sonst. */
+/**
+ * Bytes mit Einheit, ueber `console-display` gerechnet wie ueberall sonst.
+ * Bleibt eigen und nimmt nicht `formatBytes` aus `console-format`: Die
+ * Buckets zeigen Kontingente dezimal gestuft (KB, MB, GB) und mit
+ * Nachkommastellen, die Kennzahlen dort binaer und ganzzahlig.
+ */
 function formatBytes(value:number){if(value<1024)return `${value} B`;const units=["KB","MB","GB","TB","PB"];let amount=value/1024;let index=0;while(amount>=1024&&index<units.length-1){amount/=1024;index+=1;}return `${amount>=10?formatDecimal(amount,1):formatDecimal(amount,2)} ${units[index]}`;}
 
-export function StorageView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function StorageView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading"|"ready"|"unavailable"|"error" }) {
   const [buckets,setBuckets]=useState<ProjectStorageBucketItem[]>([]);
-  const [state,setState]=useState<"loading"|"ready"|"unavailable"|"error">("loading");
+  const [state, setState] = useState<"loading"|"ready"|"unavailable"|"error">(initialState ?? "loading");
   const [message,setMessage]=useState("");
   const endpoint=`/api/v1/projects/${projectId}/environments/${environment}/storage/buckets`;
   const load=useCallback(async()=>{setState("loading");setMessage("");try{const response=await fetch(endpoint,{cache:"no-store"});const payload=await response.json();if(response.status===503){setBuckets([]);setState("unavailable");setMessage(payload.error??t("Project Storage ist für diese Umgebung deaktiviert."));return;}if(!response.ok)throw new Error(payload.error??t("Storage nicht verfügbar"));setBuckets(payload.data as ProjectStorageBucketItem[]);setState("ready");}catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:t("Storage nicht verfügbar"));}},[endpoint]);

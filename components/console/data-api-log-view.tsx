@@ -51,18 +51,23 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-/** Mengen sind Dezimalstrings und koennen ueber MAX_SAFE_INTEGER hinausgehen. */
+/**
+ * Mengen sind Dezimalstrings und koennen ueber MAX_SAFE_INTEGER hinausgehen.
+ * `usage-series-view` hat ein `amount` mit demselben Namen, das vorher prueft,
+ * ob der String eine Zahl ist; hier kommt der Wert aus einer Zaehlspalte und
+ * ist es immer.
+ */
 function amount(value: string): string {
   return formatCount(value);
 }
 
 
-export function DataApiLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function DataApiLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
   const [series, setSeries] = useState<Series | null>(null);
   const [readiness, setReadiness] = useState<DataApiReadiness | "loading">("loading");
   const [exposed, setExposed] = useState<string[]>([]);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);

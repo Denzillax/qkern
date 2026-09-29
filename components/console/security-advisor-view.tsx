@@ -34,6 +34,10 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
+// Gleich gebaut wie im Leistungsberater, aber nicht dieselbe Sache: Die
+// Stufen, die Objektarten und die Regeltabelle gehoeren jeder Seite fuer
+// sich, und eine gemeinsame Fassung wuerde die beiden Berater aneinander
+// binden, ohne dass sie etwas teilen.
 function severityLabel(severity: SecuritySeverity): string {
   switch (severity) {
     case "high": return t("Hoch");
@@ -59,9 +63,9 @@ function ruleTitle(rule: SecurityRuleId): string {
   return text ? t(text.title) : rule;
 }
 
-export function SecurityAdvisorView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function SecurityAdvisorView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/advisors/security`;
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [findings, setFindings] = useState<Finding[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [checkedAt, setCheckedAt] = useState("");

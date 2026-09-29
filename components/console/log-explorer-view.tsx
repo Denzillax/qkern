@@ -126,12 +126,12 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-export function LogExplorerView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function LogExplorerView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/logs/search`;
   const key = storageKey(projectId, environment);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [result, setResult] = useState<Result | null>(null);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);

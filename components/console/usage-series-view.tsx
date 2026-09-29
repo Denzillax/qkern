@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
-import { formatCount, formatMoment } from "@/components/console/console-display";
+import { formatCount } from "@/components/console/console-display";
+import { formatBucketMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import { buildUsageSeriesChart } from "@/lib/console/usage-series-chart";
 import {
@@ -68,14 +69,10 @@ function amount(value: string): string {
     : value;
 }
 
-const moment = (value: string, bucket: Bucket) =>
-  formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
-
-export function UsageSeriesView({ view, projectId, environment }: {
+export function UsageSeriesView({ view, projectId, environment, initialState }: {
   view: UsageSeriesViewId;
   projectId: string;
-  environment: Environment;
-}) {
+  environment: Environment; initialState?: State }) {
   const definition: UsageSeriesViewText = USAGE_SERIES_VIEWS[view];
   const base = `/api/v1/projects/${projectId}/environments/${environment}/usage/series`;
   const [chosen, setMetric] = useState<UsageSeriesMetricId>(definition.metrics[0]);
@@ -84,7 +81,7 @@ export function UsageSeriesView({ view, projectId, environment }: {
   // nicht gehoert. Dann gilt wieder die erste der Seite.
   const metric = definition.metrics.includes(chosen) ? chosen : definition.metrics[0];
   const [bucket, setBucket] = useState<Bucket>("hour");
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [series, setSeries] = useState<Series | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -162,7 +159,7 @@ export function UsageSeriesView({ view, projectId, environment }: {
 
       <p className="muted">{t(USAGE_SERIES_HONESTY)}</p>
       <p className="muted">{t(definition.cannotShow)}</p>
-      <p className="muted">{windowText} {series && <>{moment(series.windowStart, bucket)} – {moment(series.windowEnd, bucket)}</>}</p>
+      <p className="muted">{windowText} {series && <>{formatBucketMoment(series.windowStart, bucket)} – {formatBucketMoment(series.windowEnd, bucket)}</>}</p>
       {series?.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Reihe zeigt nicht jeden Abschnitt des Fensters.")}</p>}
       {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
 
@@ -177,7 +174,7 @@ export function UsageSeriesView({ view, projectId, environment }: {
             <rect x={bar.x} y={bar.accepted.y} width={bar.width} height={bar.accepted.height} fill="currentColor" opacity={0.75}/>
             <rect x={bar.x} y={bar.rejected.y} width={bar.width} height={bar.rejected.height} fill="var(--qkern-surface)" stroke="currentColor" strokeWidth={1}/>
           </g>)}
-          {chart.labels.map((entry) => <text key={entry.start} x={entry.x} y={chart.baselineY + 16} textAnchor="middle" className="usage-series-label">{moment(entry.start, bucket)}</text>)}
+          {chart.labels.map((entry) => <text key={entry.start} x={entry.x} y={chart.baselineY + 16} textAnchor="middle" className="usage-series-label">{formatBucketMoment(entry.start, bucket)}</text>)}
         </svg>
       </div>}
       {!chart.empty && <p className="muted">{t("Gefüllt gezeichnet ist die angenommene Menge, umrandet darüber die abgelehnte. Ein Abschnitt ohne Ereignis ist eine Lücke, kein fehlender Wert.")}</p>}
@@ -191,7 +188,7 @@ export function UsageSeriesView({ view, projectId, environment }: {
           <span>{t("Abschnitt")}</span><span>{t("Angenommen")}</span><span>{t("Abgelehnt")}</span><span>{t("Ereignisse")}</span>
         </div>
         {series?.buckets.map((entry) => <div className="log-row" key={entry.start}>
-          <time>{moment(entry.start, bucket)}</time>
+          <time>{formatBucketMoment(entry.start, bucket)}</time>
           <span>{amount(entry.accepted)}</span>
           <span className={entry.rejected === "0" ? "muted" : "risk medium"}>{amount(entry.rejected)}</span>
           <code>{entry.events}</code>

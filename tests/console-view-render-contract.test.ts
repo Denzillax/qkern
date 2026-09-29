@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { createElement, type ReactElement } from "react";
+import { cloneElement, createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setConsoleLocale } from "@/components/console/console-i18n";
@@ -26,6 +26,8 @@ import { PitrView } from "@/components/console/pitr-view";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { TableDesignerView } from "@/components/console/table-designer-view";
 import { UsageSeriesView } from "@/components/console/usage-series-view";
+import { CheckIcon, EmptyState, ErrorState } from "@/components/console/console-parts";
+import { Database } from "lucide-react";
 
 /**
  * Jede Ansicht der Console wird wenigstens einmal gerendert (2.63).
@@ -61,12 +63,38 @@ import { UsageSeriesView } from "@/components/console/usage-series-view";
  *      Satz, dann ist er an `t()` vorbeigeschrieben worden, und kein
  *      Uebersetzer bekommt ihn je zu sehen.
  *
+ * DIE SPAETEREN ZUSTAENDE (2.65)
+ *
+ * `renderToStaticMarkup` fuehrt `useEffect` nicht aus. Bis 2.64 endete der
+ * Vertrag darum beim Ladezustand, und was eine Ansicht nach dem Laden zeigt,
+ * hat nie jemand gesehen: der fertige Zustand, der Fehlerzustand, der leere
+ * Zustand. Genau dort steht viel Text, und ein deutscher Satz, der an `t()`
+ * vorbeigeschrieben wurde, faellt niemandem auf.
+ *
+ * Es gab zwei Wege. Der erste: eine Testbibliothek, die einen echten
+ * Renderdurchlauf mit Effekten fahren kann. Das heisst `jsdom` und ein
+ * Testrenderer, also mindestens zwei neue Abhaengigkeiten fuer eine Suite,
+ * die heute in einem nackten Node-Prozess laeuft, und zusaetzlich eine
+ * gefaelschte `fetch`-Antwort je Ansicht, damit ueberhaupt etwas geladen
+ * wird. Der zweite: die Ansicht so bauen, dass ihr erster Zustand von aussen
+ * gesetzt werden kann. Gewaehlt ist der zweite. Er kostet keine
+ * Abhaengigkeit, er macht die Naht im Quelltext sichtbar statt sie im Test zu
+ * verstecken, und er prueft, was er behauptet: nicht "der Effekt ist
+ * gelaufen", sondern "dieser Zustand sieht so aus".
+ *
+ * Die Naht ist eine einzige optionale Requisite `initialState`, die den
+ * Anfangswert des Zustands einer Ansicht setzt. 71 der 91 Ansichten haben
+ * dieselbe Bauart (`state` plus `message`) und tragen sie; die uebrigen holen
+ * beim Oeffnen nichts oder halten ihren Zustand anders, und denen wurde
+ * nichts angehaengt. Gefahren werden `ready` und `error` in allen vier
+ * Sprachen.
+ *
  * WAS DIESER VERTRAG AUSDRUECKLICH NICHT PRUEFT
  *
- * Ein Rendern ohne Effekte ist kein Browserbesuch. `renderToStaticMarkup`
- * fuehrt `useEffect` nicht aus. Alles, was eine Ansicht erst nach dem Laden
- * zeigt, bleibt hier ungesehen: der fertige Zustand, der Fehlerzustand, der
- * leere Zustand, jede Tabelle mit echten Zeilen. Es laufen ausserdem keine
+ * Ein Rendern ohne Effekte ist kein Browserbesuch. `ready` ohne Daten ist der
+ * leere Zustand; eine Tabelle mit echten Zeilen bleibt ungesehen, denn dafuer
+ * muesste jede Ansicht ausserdem ihre Daten von aussen bekommen, und das
+ * waere je Ansicht eine eigene Vorgabe. Es laufen ausserdem keine
  * Ereignisse (kein Klick, keine Eingabe), es gibt kein Layout und keine
  * Stylesheets, also faellt kein abgeschnittener Text und kein kaputtes Raster
  * auf, und `useRef` auf ein DOM-Element bleibt leer.
@@ -103,6 +131,16 @@ const CONSOLE_DIR = path.resolve(process.cwd(), "components/console");
  * Vertrag nicht prueft.
  */
 const NOT_A_VIEW = new Set(["console-app.tsx"]);
+
+/**
+ * Die eine Datei im Ordner, die mehrere Komponenten exportiert (2.65).
+ *
+ * `console-parts.tsx` sammelt die kleinen Bausteine, die nach dem Ausziehen
+ * der dreizehn Ansichten in mehreren Dateien gleich dastanden. Sie ist keine
+ * Seite, also gilt die Regel "genau eine Komponente je Datei" fuer sie nicht;
+ * gerendert wird dafuer jeder Baustein einzeln.
+ */
+const PARTS = "console-parts.tsx";
 
 /**
  * Requisiten kommen aus den Typen, nicht aus der Fantasie: `element` ruft die
@@ -166,6 +204,13 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
     element(ActivityView, { audit: AUDIT, aiOnly: true }),
     element(ActivityView, { audit: AUDIT, aiOnly: false }),
   ],
+  // Die gemeinsamen Bausteine aus `console-parts.tsx`. Titel und Text von
+  // `EmptyState` kommen von der aufrufenden Ansicht und laufen dort durch
+  // `t()`; hier stehen englische Platzhalter, damit die Pruefung auf deutsche
+  // Reste den Baustein misst und nicht die Vorgabe des Tests.
+  CheckIcon: [element(CheckIcon, {})],
+  EmptyState: [element(EmptyState, { icon: Database, title: "Nothing", text: "Nothing has arrived yet." })],
+  ErrorState: [element(ErrorState, { message: "boom", retry: () => {} })],
   ApprovalView: [element(ApprovalView, { ...DEFAULT_PROPS, approvals: SNAPSHOT.approvals, changes: SNAPSHOT.changeSets, reload: async () => {} })],
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],
   DatabaseView: [element(DatabaseView, { project: PROJECT, navigate: () => {} })],
@@ -293,6 +338,52 @@ function visibleTexts(markup: string): string[] {
  */
 const GERMAN_MARKER = /[äöüÄÖÜß]|(?<![A-Za-zÀ-ÿ])(und|oder|nicht|wird|werden|kein|keine|einen|dieser|diese|dieses|mit|von|dem|den|der|die|das)(?![A-Za-zÀ-ÿ])/u;
 
+/**
+ * Die Texte einer englisch gerenderten Ansicht, die kein Uebersetzer je
+ * gesehen hat. Zwei Faelle, beide aus derselben Ursache: der Text ist nicht
+ * durch `t()` gelaufen.
+ */
+function germanLeftovers(markup: string): string[] {
+  const english = CONSOLE_TRANSLATIONS.en;
+  const translated = new Set(Object.values(english));
+  return visibleTexts(markup).filter((text) => {
+    // Erster Fall: der Text ist genau ein Schluessel, dessen englische Fassung
+    // anders lautet. Dann kann er nicht durch `t()` gelaufen sein.
+    if (english[text] !== undefined && english[text] !== text) return true;
+    // Zweiter Fall: der Text sieht deutsch aus und ist keine der englischen
+    // Fassungen. Das faengt einen Satz, den niemand je in die Tabelle
+    // eingetragen hat.
+    return GERMAN_MARKER.test(text) && !translated.has(text);
+  });
+}
+
+/**
+ * Die beiden Zustaende, die jede Ansicht mit Naht kennt. `ready` ohne Daten
+ * ist zugleich der leere Zustand; ein dritter Name dafuer waere eine Luege.
+ */
+const PHASES = ["ready", "error"] as const;
+
+/**
+ * Eine Ansicht, deren fertiger Zustand nicht am Zustand allein haengt.
+ *
+ * `QueryInsightsView` zeigt den Plan einer Abfrage erst, wenn einer da ist
+ * (`state === "ready" && plan !== null`). Ein gesetztes `ready` ohne Plan
+ * sieht dort genauso aus wie der Ruhezustand, und ein Fall, der nichts
+ * Neues zeigt, prueft auch nichts. Ihr Fehlerzustand steht fuer sich und
+ * wird gefahren.
+ */
+const NO_READY_WITHOUT_DATA = new Set(["QueryInsightsView"]);
+
+/** Die Dateien, deren Ansicht ihren ersten Zustand von aussen nimmt. */
+async function seamed(): Promise<Set<string>> {
+  const found = new Set<string>();
+  for (const file of await discovered()) {
+    const source = await readFile(path.join(CONSOLE_DIR, file), "utf8");
+    if (/initialState\s*\?\?/u.test(source)) found.add(file);
+  }
+  return found;
+}
+
 type Case = { component: string; file: string; index: number; element: ReactElement };
 
 async function discovered(): Promise<string[]> {
@@ -316,10 +407,11 @@ async function components(): Promise<Array<{ file: string; name: string; compone
     const stem = file.replace(/\.tsx$/u, "");
     const module = (await import(`../components/console/${stem}.tsx`)) as Record<string, unknown>;
     const names = Object.keys(module).filter((name) => typeof module[name] === "function" && /^[A-Z]/u.test(name));
-    expect(names, `${file} exportiert nicht genau eine Komponente`).toHaveLength(1);
-    found.push({ file, name: names[0], component: module[names[0]] as (props: never) => unknown });
+    if (file === PARTS) expect(names.length, `${PARTS} traegt keine gemeinsamen Bausteine mehr`).toBeGreaterThan(1);
+    else expect(names, `${file} exportiert nicht genau eine Komponente`).toHaveLength(1);
+    for (const name of names) found.push({ file, name, component: module[name] as (props: never) => unknown });
   }
-  return found.sort((a, b) => a.file.localeCompare(b.file));
+  return found.sort((a, b) => (a.file === b.file ? a.name.localeCompare(b.name) : a.file.localeCompare(b.file)));
 }
 
 async function cases(): Promise<Case[]> {
@@ -356,6 +448,13 @@ function render(made: ReactElement): { markup: string; complaints: string[]; thr
   }
 }
 
+/**
+ * Jeder Fall rendert Dutzende Ansichten in vier Sprachen. Fuenf Sekunden, die
+ * Vorgabe von vitest, reichen dafuer auf keiner Maschine, auf der noch etwas
+ * anderes laeuft.
+ */
+const BUDGET = 60_000;
+
 describe("console view render contract", () => {
   const realFetch = globalThis.fetch;
 
@@ -383,7 +482,7 @@ describe("console view render contract", () => {
     // merkt. Die Untergrenze haelt den Stand fest, den es beim Bau dieses
     // Vertrags gab: sie faellt, wenn jemand Ansichten entfernt, ohne sie hier
     // zu nennen.
-    expect(found.map((entry) => entry.file)).toEqual(files);
+    expect([...new Set(found.map((entry) => entry.file))]).toEqual(files);
     expect(files.length).toBeGreaterThanOrEqual(79);
 
     // Jede Ansicht haengt an der Console. Eine Datei, die niemand einbindet,
@@ -414,7 +513,7 @@ describe("console view render contract", () => {
     const names = new Set(found.map((entry) => entry.name));
     for (const name of Object.keys(SPECIAL_PROPS)) expect(names, `${name} steht in SPECIAL_PROPS, aber nicht im Verzeichnis`).toContain(name);
     for (const name of OPENS_IDLE) expect(names, `${name} steht in OPENS_IDLE, aber nicht im Verzeichnis`).toContain(name);
-  });
+  }, BUDGET);
 
   it("rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React", async () => {
     const built = await cases();
@@ -435,7 +534,7 @@ describe("console view render contract", () => {
       }
     }
     expect(broken.join("\n")).toBe("");
-  });
+  }, BUDGET);
 
   it("zeigt im ersten Durchlauf etwas und nicht eine leere Seite", async () => {
     setConsoleLocale("de");
@@ -448,12 +547,15 @@ describe("console view render contract", () => {
       // kann. Eine Ansicht, die beim Oeffnen nur ein Icon, eine Ziffer oder
       // einen Bindestrich zeigt, faellt hier; die meisten stehen mit ihrer
       // einen Zeile Ladezustand da, und das ist genau richtig so.
+      // `CheckIcon` ist ein einzelnes Haekchen und sonst nichts; von einem
+      // Glyphen eine Seite Text zu verlangen waere sinnlos.
+      if (made.component === "CheckIcon") continue;
       if (!texts.some((text) => /\p{L}/u.test(text))) {
         thin.push(`${made.component}#${made.index} zeigt kein lesbares Wort: ${JSON.stringify(texts)}`);
       }
     }
     expect(thin.join("\n")).toBe("");
-  });
+  }, BUDGET);
 
   it("zeigt im ersten Durchlauf einen Ladezustand, wo eine Ansicht beim Oeffnen etwas holt", async () => {
     setConsoleLocale("de");
@@ -467,28 +569,66 @@ describe("console view render contract", () => {
       if (!loading) silent.push(`${made.component}#${made.index} zeigt beim Oeffnen keinen Ladezustand: ${texts.slice(0, 6).join(" | ")}`);
     }
     expect(silent.join("\n")).toBe("");
-  });
+  }, BUDGET);
 
   it("zeigt in einer fremden Sprache keinen deutschen Text, den der Uebersetzer nie gesehen hat", async () => {
-    const english = CONSOLE_TRANSLATIONS.en;
-    const translated = new Set(Object.values(english));
     setConsoleLocale("en");
     const leftovers: string[] = [];
     for (const made of await cases()) {
       const { markup, thrown } = render(made.element);
       if (thrown !== null) { leftovers.push(`${made.component}#${made.index} wirft beim Rendern: ${thrown}`); continue; }
-      for (const text of visibleTexts(markup)) {
-        // Erster Fall: der Text ist genau ein Schluessel, dessen englische
-        // Fassung anders lautet. Dann kann er nicht durch `t()` gelaufen sein.
-        const knownKey = english[text] !== undefined && english[text] !== text;
-        // Zweiter Fall: der Text sieht deutsch aus und ist keine der
-        // englischen Fassungen. Das faengt einen Satz, den niemand je in die
-        // Tabelle eingetragen hat.
-        const looksGerman = GERMAN_MARKER.test(text) && !translated.has(text);
-        if (knownKey || looksGerman) leftovers.push(`${made.component}#${made.index}: ${text}`);
-      }
+      for (const text of germanLeftovers(markup)) leftovers.push(`${made.component}#${made.index}: ${text}`);
     }
     setConsoleLocale("de");
     expect(leftovers.join("\n")).toBe("");
-  });
+  }, BUDGET);
+
+  it("zeigt den fertigen, den leeren und den Fehlerzustand in jeder Sprache", async () => {
+    const seams = await seamed();
+    const built = await cases();
+    const broken: string[] = [];
+    let checked = 0;
+
+    for (const made of built) {
+      if (!seams.has(made.file)) continue;
+      setConsoleLocale("de");
+      const first = render(made.element);
+      for (const phase of PHASES) {
+        if (phase === "ready" && NO_READY_WITHOUT_DATA.has(made.component)) continue;
+        // Dieselben Requisiten wie im Ladefall, nur mit gesetztem Zustand.
+        // Der eine Zwang ist hier noetig, weil `cases()` alle Ansichten in
+        // einer Tabelle haelt und ihre Props-Typen darum nicht mehr
+        // auseinanderhaelt; `tsc` sieht die Requisite trotzdem in der Ansicht.
+        const made2 = cloneElement(made.element, { initialState: phase } as never);
+        for (const locale of LOCALES) {
+          setConsoleLocale(locale);
+          const { markup, complaints, thrown } = render(made2);
+          if (thrown !== null) { broken.push(`${made.component} [${phase}/${locale}#${made.index}] wirft: ${thrown}`); continue; }
+          if (complaints.length > 0) broken.push(`${made.component} [${phase}/${locale}#${made.index}]: ${complaints.join(" / ")}`);
+          const texts = visibleTexts(markup);
+          if (!texts.some((text) => /\p{L}/u.test(text))) {
+            broken.push(`${made.component} [${phase}/${locale}#${made.index}] zeigt kein lesbares Wort`);
+          }
+          if (locale === "de" && markup === first.markup) {
+            // Die Naht wirkt nicht: die Ansicht zeigt mit gesetztem Zustand
+            // dasselbe wie beim Laden. Dann prueft dieser Fall nichts, und
+            // das soll nicht unbemerkt bleiben.
+            broken.push(`${made.component} [${phase}#${made.index}] sieht aus wie der Ladezustand`);
+          }
+          if (locale === "en") {
+            for (const text of germanLeftovers(markup)) broken.push(`${made.component} [${phase}#${made.index}]: ${text}`);
+          }
+        }
+        checked += 1;
+      }
+    }
+    setConsoleLocale("de");
+    expect(broken.join("\n")).toBe("");
+    // Zwei Untergrenzen, damit die Pruefung nicht stillschweigend weniger
+    // sieht. Die erste zaehlt die Ansichten mit Naht: Wer sie aus einer
+    // einzigen Ansicht entfernt, faellt hier auf. Die zweite zaehlt die
+    // wirklich gefahrenen Faelle.
+    expect(seams.size, "Ansichten mit gesetztem ersten Zustand").toBeGreaterThanOrEqual(71);
+    expect(checked).toBeGreaterThanOrEqual(136);
+  }, BUDGET);
 });

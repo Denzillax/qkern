@@ -151,12 +151,12 @@ function targetList(raw: string): string[] {
   return raw.split(/[\s,]+/).map((entry) => entry.trim()).filter(Boolean);
 }
 
-export function AuthOAuthServerView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthOAuthServerView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/oauth-clients`;
   // Die Zustimmungen kommen in derselben Antwort wie die Clients; nur ihr
   // Widerruf hat eine eigene Adresse.
   const consentRoute = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/oauth-consents`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<OAuthServer | null>(null);
   const [name, setName] = useState("");
   const [targetsRaw, setTargetsRaw] = useState("");

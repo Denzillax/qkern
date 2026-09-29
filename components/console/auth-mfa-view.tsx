@@ -41,9 +41,9 @@ type Policy = {
   factors: AuthMfaFactorId[];
 };
 
-export function AuthMfaView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthMfaView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/mfa`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);

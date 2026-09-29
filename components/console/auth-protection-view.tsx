@@ -75,9 +75,9 @@ type PasswordProtection = {
   updatedAt: string | null;
 };
 
-export function AuthProtectionView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthProtectionView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const route = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/password-protection`;
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [data, setData] = useState<PasswordProtection | null>(null);
   const [draft, setDraft] = useState<Protection | null>(null);
   const [message, setMessage] = useState("");

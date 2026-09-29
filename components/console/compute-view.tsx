@@ -24,13 +24,13 @@ type WebhookDeliveryItem={id:string;eventType:string;status:"pending"|"in_flight
  * ein neues Anlegen. Diese Entscheidung liegt als Spaltenrecht in der
  * Datenbank, nicht in dieser Ansicht.
  */
-export function ComputeView({projectId,environment}:{projectId:string;environment:Environment}) {
+export function ComputeView({projectId,environment, initialState}:{projectId:string;environment:Environment; initialState?: "loading"|"ready"|"unavailable"|"error" }) {
   const [cron,setCron]=useState<CronDefinitionItem[]>([]);
   const [webhooks,setWebhooks]=useState<WebhookDefinitionItem[]>([]);
   const [functions,setFunctions]=useState<FunctionDefinitionItem[]>([]);
   const [deliveries,setDeliveries]=useState<WebhookDeliveryItem[]>([]);
   const [selected,setSelected]=useState<string|null>(null);
-  const [state,setState]=useState<"loading"|"ready"|"unavailable"|"error">("loading");
+  const [state, setState] = useState<"loading"|"ready"|"unavailable"|"error">(initialState ?? "loading");
   const [message,setMessage]=useState("");
   const base=`/api/v1/projects/${projectId}/environments/${environment}/compute`;
 
@@ -92,7 +92,7 @@ export function ComputeView({projectId,environment}:{projectId:string;environmen
 
   return <div className="module-grid">
     <article className="console-card span-2"><div className="card-head"><div><span>FUNCTIONS · {environment.toUpperCase()}</span><h3>{t("Ausführung in der Sandbox")}</h3></div><button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> {t("Neue Function")}</button></div>
-      {functions.length===0&&<p className="muted">Noch keine Functions. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.</p>}
+      {functions.length===0&&<p className="muted">{t("Noch keine Functions. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.")}</p>}
       {functions.map(fn=><div className="bucket-row" key={fn.id}><span className="bucket-icon"><Blocks size={16}/></span>
         <div><strong>{fn.name}</strong><small>{fn.entrypoint} · {fn.memoryMiB} MiB · {fn.timeoutMs} ms · {fn.egressOrigins.length?`${fn.egressOrigins.length} Ausgangsziele (noch nicht ausführbar)`:t("kein Ausgang")}{fn.secretRefs.length?` · ${fn.secretRefs.length} Secret-Referenzen`:""}</small></div>
         <span className={fn.enabled?"secure":"muted"}>{fn.enabled?t("aktiv"):t("pausiert")}</span>

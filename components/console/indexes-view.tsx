@@ -12,10 +12,10 @@ import { t } from "@/components/console/console-i18n";
 type Environment = "development" | "staging" | "production";
 type Index = { name: string; table: string; accessMethod: string; unique: boolean; primary: boolean; valid: boolean; columns: string[]; definition: string; predicate: string | null };
 
-export function IndexesView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function IndexesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 

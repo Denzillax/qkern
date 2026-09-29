@@ -15,10 +15,10 @@ type Fn = {
   returnType: string | null; returnsSet: boolean; volatility: "immutable" | "stable" | "volatile"; securityDefiner: boolean;
 };
 
-export function FunctionsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function FunctionsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const [functions, setFunctions] = useState<Fn[]>([]);
   const [truncated, setTruncated] = useState(false);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 

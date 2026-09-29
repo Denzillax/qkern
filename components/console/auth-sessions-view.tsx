@@ -18,12 +18,12 @@ type Environment = "development" | "staging" | "production";
 type AppUser = { id: string; email: string; status: "active" | "disabled" };
 type Session = { id: string; familyId: string; assurance: "aal1" | "aal2"; createdAt: string; expiresAt: string; replacedBySessionId: string | null };
 
-export function AuthSessionsView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function AuthSessionsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/auth/admin/users`;
   const [users, setUsers] = useState<AppUser[]>([]);
   const [selected, setSelected] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
   // Jede Ladeanfrage bekommt eine Nummer; nur die juengste darf den Zustand

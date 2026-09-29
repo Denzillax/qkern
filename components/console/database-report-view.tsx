@@ -3,6 +3,7 @@
 import { Database, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
+import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import { useDatabaseActivity, type Environment } from "@/components/console/database-activity-source";
 import { cacheHitRatio, connectionLoad, DATABASE_REPORT_HONESTY } from "@/lib/console/database-activity-texts";
@@ -20,13 +21,6 @@ import { cacheHitRatio, connectionLoad, DATABASE_REPORT_HONESTY } from "@/lib/co
  */
 
 /** Bytes lesbar, ohne eine Genauigkeit vorzutäuschen, die der Zähler nicht hat. */
-function bytes(value: number): string {
-  if (value < 1024) return `${formatNumber(value)} B`;
-  if (value < 1024 * 1024) return `${formatNumber(Math.round(value / 1024))} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${formatNumber(Math.round(value / (1024 * 1024)))} MiB`;
-  return `${formatNumber(Math.round(value / (1024 * 1024 * 1024)))} GiB`;
-}
-
 export function DatabaseReportView({ projectId, environment }: { projectId: string; environment: Environment }) {
   const source = useDatabaseActivity(projectId, environment);
   const { state, activity, refreshing } = source;
@@ -82,7 +76,7 @@ export function DatabaseReportView({ projectId, environment }: { projectId: stri
       <div className="log-row"><span>{t("Blöcke von der Platte")}</span><code>{formatNumber(database.blocksRead)}</code><small>{t("mussten gelesen werden; das Betriebssystem kann sie trotzdem gecacht haben")}</small></div>
       <div className="log-row"><span>{t("Deadlocks")}</span><code className={database.deadlocks > 0 ? "risk medium" : undefined}>{formatNumber(database.deadlocks)}</code><small>{t("gegenseitig blockierte Transaktionen, die die Datenbank aufgelöst hat")}</small></div>
       <div className="log-row"><span>{t("Temporäre Dateien")}</span><code>{formatNumber(database.tempFiles)}</code><small>{t("Sortierungen, die nicht in den Arbeitsspeicher passten")}</small></div>
-      <div className="log-row"><span>{t("Temporäre Bytes")}</span><code>{bytes(database.tempBytes)}</code><small>{t("Menge, die dabei auf die Platte ging")}</small></div>
+      <div className="log-row"><span>{t("Temporäre Bytes")}</span><code>{formatBytes(database.tempBytes)}</code><small>{t("Menge, die dabei auf die Platte ging")}</small></div>
     </article>
 
     <article className="console-card span-2">

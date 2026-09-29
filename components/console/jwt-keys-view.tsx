@@ -13,10 +13,10 @@ import { t } from "@/components/console/console-i18n";
 type Environment = "development" | "staging" | "production";
 type Jwk = { kid: string; kty: string; crv?: string; alg?: string; use?: string; x?: string };
 
-export function JwtKeysView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function JwtKeysView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const url = `/api/v1/projects/${projectId}/environments/${environment}/auth/.well-known/jwks.json`;
   const [keys, setKeys] = useState<Jwk[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async () => {

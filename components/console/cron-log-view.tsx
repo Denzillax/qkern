@@ -54,9 +54,9 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 const moment = (value: string) =>
   formatMoment(value);
 
-export function CronLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function CronLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute/cron`;
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [definitions, setDefinitions] = useState<CronDefinition[]>([]);
   const [selected, setSelected] = useState("");
   const [log, setLog] = useState<CronLog | null>(null);

@@ -60,10 +60,10 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
   }
 }
 
-export function ApiGatewayLogView({ projectId, environment }: { projectId: string; environment: Environment }) {
+export function ApiGatewayLogView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
   const [series, setSeries] = useState<Series | null>(null);
-  const [state, setState] = useState<State>("loading");
+  const [state, setState] = useState<State>(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);
