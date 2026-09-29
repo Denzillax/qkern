@@ -8,7 +8,7 @@ import { StableLabel } from "@/components/stable-label";
 
 type Environment = "development" | "staging" | "production";
 type FunctionDefinitionItem={id:string;name:string;image:string;entrypoint:string;timeoutMs:number;memoryMiB:number;egressOrigins:string[];secretRefs:string[];enabled:boolean};
-type CronDefinitionItem={id:string;name:string;expression:string;queue:string;enabled:boolean;lastDispatchedAt:string|null};
+type CronDefinitionItem={id:string;name:string;expression:string;queue:string;enabled:boolean;timeZone?:string;lastDispatchedAt:string|null};
 type WebhookDefinitionItem={id:string;name:string;url:string;eventTypes:string[];signingSecretRef:string;timeoutMs:number;maxAttempts:number;enabled:boolean};
 type WebhookDeliveryItem={id:string;eventType:string;status:"pending"|"in_flight"|"delivered"|"dead_lettered";attemptCount:number;lastFailureCode:string|null;settledAt:string|null};
 
@@ -55,9 +55,10 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
     const payload=await response.json().catch(()=>({}));setMessage(payload.error??t("Die Änderung wurde abgelehnt."));return false;}
 
   async function createCron(){const name=window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"),"nightly-report");if(!name)return;
-    const expression=window.prompt(t("Ausdruck in UTC: */N * * * * oder M H * * *"),"*/15 * * * *");if(!expression)return;
+    const expression=window.prompt(t("Ausdruck: fünf Felder, Namen wie MON-FRI oder JAN, oder ein Kürzel wie @daily"),"*/15 * * * *");if(!expression)return;
+    const timeZone=window.prompt(t("Zeitzone des Zeitplans (IANA-Name wie Europe/Berlin)"),"UTC");if(timeZone===null)return;
     const queue=window.prompt(t("Bestehende Projekt-Queue"),"email_jobs");if(!queue)return;
-    await mutate("/cron",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),expression:expression.trim(),queue:queue.trim()})});}
+    await mutate("/cron",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),expression:expression.trim(),queue:queue.trim(),timeZone:timeZone.trim()||"UTC"})});}
 
   async function createWebhook(){const name=window.prompt(t("Name des Webhooks (Kleinbuchstaben, Ziffern, Bindestrich)"),"order-events");if(!name)return;
     const url=window.prompt(t("Exaktes öffentliches HTTPS-Ziel, ohne Query und Fragment"),"https://receiver.example.com/hooks");if(!url)return;
@@ -104,7 +105,7 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
       {message&&<p className="muted">{message}</p>}
       {cron.length===0&&<p className="muted">{t("Noch keine Cron-Jobs. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")}</p>}
       {cron.map(job=><div className="bucket-row" key={job.id}><span className="bucket-icon"><Zap size={16}/></span>
-        <div><strong>{job.name}</strong><small>{job.expression} UTC → {job.queue} · {job.lastDispatchedAt?`zuletzt ${formatMoment(job.lastDispatchedAt)}`:t("noch nie eingereiht")}</small></div>
+        <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone??"UTC"} → {job.queue} · {job.lastDispatchedAt?`zuletzt ${formatMoment(job.lastDispatchedAt)}`:t("noch nie eingereiht")}</small></div>
         <span className={job.enabled?"secure":"muted"}>{job.enabled?t("aktiv"):t("pausiert")}</span>
         <button className="plain-button" onClick={()=>void mutate(`/cron/${job.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!job.enabled})})}><StableLabel current={job.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
         <button className="icon-button" onClick={()=>{if(window.confirm(`Cron-Job ${job.name} löschen? Ausdruck und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.`))void mutate(`/cron/${job.id}`,{method:"DELETE"});}} aria-label={`${job.name} löschen`}><Trash2 size={14}/></button></div>)}

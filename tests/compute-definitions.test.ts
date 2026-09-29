@@ -25,7 +25,7 @@ const webhookId = "22222222-2222-4222-8222-222222222222";
 function cronRecord(overrides: Partial<CronDefinitionRecord> = {}): CronDefinitionRecord {
   return Object.freeze({
     ...scope, id: cronId, name: "nightly-report", expression: "0 3 * * *",
-    queue: "report_jobs", payload: {}, enabled: true, lastDispatchedAt: null,
+    queue: "report_jobs", payload: {}, enabled: true, timeZone: "UTC", lastDispatchedAt: null,
     createdAt: "2026-08-05T00:00:00.000Z", ...overrides,
   });
 }
@@ -165,6 +165,23 @@ describe("ComputeDefinitionService — cron", () => {
       await expect(service.createCron(admin, scope, {
         name: "nightly-report", expression, queue: "report_jobs",
       })).rejects.toBeInstanceOf(ComputeDefinitionError);
+    }
+  });
+
+  it("stores the time zone as given, defaults it to UTC and refuses one Intl does not know", async () => {
+    const { service, calls } = harness({ queues: ["report_jobs"] });
+    await service.createCron(admin, scope, {
+      name: "nightly-report", expression: "0 3 * * MON-FRI", queue: "report_jobs", timeZone: "Europe/Berlin",
+    });
+    expect(calls[0]?.payload).toMatchObject({ expression: "0 3 * * MON-FRI", timeZone: "Europe/Berlin" });
+    await service.createCron(admin, scope, {
+      name: "nightly-report", expression: "@daily", queue: "report_jobs",
+    });
+    expect(calls[1]?.payload).toMatchObject({ expression: "@daily", timeZone: "UTC" });
+    for (const timeZone of ["Mars/Olympus", "+02:00", "", "x".repeat(65)]) {
+      await expect(service.createCron(admin, scope, {
+        name: "nightly-report", expression: "0 3 * * *", queue: "report_jobs", timeZone,
+      }), timeZone).rejects.toBeInstanceOf(ComputeDefinitionError);
     }
   });
 

@@ -97,6 +97,43 @@ describe.runIf(enabled)("Compute definitions PostgreSQL certification", () => {
     expect(paused.expression).toBe("*/15 * * * *");
   });
 
+  /**
+   * Die Zeitzone (2.66) als Spalte: gespeichert wie angegeben, `UTC` ohne
+   * Angabe, ein Name, den `Intl` nicht kennt, kommt gar nicht erst in die
+   * Datenbank, und die Laufzeitrolle darf sie so wenig aendern wie den
+   * Ausdruck, denn beides zusammen ist der Plan.
+   */
+  it("stores the time zone of a cron definition, defaults it to UTC and keeps it immutable", async () => {
+    const zoned = await service.createCron(admin, scope, {
+      name: uniqueName("berlin"), expression: "30 2 * * MON-FRI", queue: "report_jobs",
+      timeZone: "Europe/Berlin",
+    });
+    expect(zoned.timeZone).toBe("Europe/Berlin");
+    expect(zoned.expression).toBe("30 2 * * MON-FRI");
+    const listed = (await service.listCron(admin, scope)).find((entry) => entry.id === zoned.id);
+    expect(listed?.timeZone).toBe("Europe/Berlin");
+
+    const plain = await service.createCron(admin, scope, {
+      name: uniqueName("plain"), expression: "@daily", queue: "report_jobs",
+    });
+    expect(plain.timeZone).toBe("UTC");
+    expect(plain.expression).toBe("@daily");
+
+    await expect(service.createCron(admin, scope, {
+      name: uniqueName("nowhere"), expression: "30 2 * * *", queue: "report_jobs",
+      timeZone: "Mars/Olympus",
+    })).rejects.toMatchObject({ code: "COMPUTE_INVALID_INPUT" });
+    await expect(service.createCron(admin, scope, {
+      name: uniqueName("offset"), expression: "30 2 * * *", queue: "report_jobs",
+      timeZone: "+02:00",
+    })).rejects.toMatchObject({ code: "COMPUTE_INVALID_INPUT" });
+
+    const runtime = pool();
+    await expect(runtime.query(
+      "UPDATE project_cron_definitions SET time_zone='UTC' WHERE id=$1", [zoned.id],
+    )).rejects.toMatchObject({ message: expect.stringContaining("permission denied") });
+  });
+
   it("refuses a second definition with the same name", async () => {
     // Die Eindeutigkeit liegt als Constraint in der Datenbank, nicht als
     // Vorabpruefung im Dienst: Zwei gleichzeitige Anfragen wuerden eine solche

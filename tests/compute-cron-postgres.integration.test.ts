@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CronDispatcher } from "@/lib/server/compute/cron";
+import { CronDispatcher, cronOccurrenceDedupeKey } from "@/lib/server/compute/cron";
 import { PostgresCronRepository } from "@/lib/server/compute/cron-postgres-repository";
 import { CronScheduler } from "@/lib/server/compute/cron-scheduler";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
@@ -9,7 +9,7 @@ import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
-import { ProjectQueueService } from "@/lib/server/project-queues/service";
+import { ProjectQueueService, projectQueueDedupeKeyHash } from "@/lib/server/project-queues/service";
 
 /**
  * Cron gegen echtes PostgreSQL, bis in die Queue hinein.
@@ -55,17 +55,46 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     };
   }
 
-  async function defineCron(queue: string, expression: string, lastDispatchedAt: Date | null) {
+  async function defineCron(
+    queue: string, expression: string, lastDispatchedAt: Date | null, timeZone?: string,
+  ) {
     const id = randomUUID();
+    // Ohne Zeitzone wie jede Definition von vor 2.66: Die Spalte bekommt den
+    // Vorgabewert der Migration 0066, und der Fall prueft damit auch den.
     await owner.query(
-      `INSERT INTO project_cron_definitions
-         (id, organization_id, project_id, environment, name, expression, queue, payload,
-          last_dispatched_at)
-       VALUES ($1,$2,$3,'development',$4,$5,$6,$7,$8)`,
+      timeZone === undefined
+        ? `INSERT INTO project_cron_definitions
+             (id, organization_id, project_id, environment, name, expression, queue, payload,
+              last_dispatched_at)
+           VALUES ($1,$2,$3,'development',$4,$5,$6,$7,$8)`
+        : `INSERT INTO project_cron_definitions
+             (id, organization_id, project_id, environment, name, expression, queue, payload,
+              last_dispatched_at, time_zone)
+           VALUES ($1,$2,$3,'development',$4,$5,$6,$7,$8,$9)`,
       [id, organizationId, projectId, `cron-${id.slice(0, 8)}`, expression, queue,
-        { task: "run" }, lastDispatchedAt],
+        { task: "run" }, lastDispatchedAt, ...(timeZone === undefined ? [] : [timeZone])],
     );
     return id;
+  }
+
+  async function messageCount(queue: string) {
+    const messages = await owner.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM project_queue_messages
+        WHERE organization_id=$1 AND queue_id=(SELECT id FROM project_queues
+          WHERE organization_id=$1 AND name=$2)`,
+      [organizationId, queue],
+    );
+    return messages.rows[0]?.count ?? 0;
+  }
+
+  async function progressOf(id: string) {
+    const progress = await owner.query<{ last_dispatched_at: Date; time_zone: string }>(
+      "SELECT last_dispatched_at, time_zone FROM project_cron_definitions WHERE id=$1", [id],
+    );
+    return {
+      lastDispatchedAt: new Date(progress.rows[0].last_dispatched_at).toISOString(),
+      timeZone: progress.rows[0].time_zone,
+    };
   }
 
   beforeAll(async () => {
@@ -147,6 +176,110 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
       [organizationId, queue],
     );
     expect(messages.rows[0]?.count).toBe(1);
+  });
+
+  /**
+   * Namen und Kuerzel (2.66) durch Scheduler, Datenbankfortschritt und Queue.
+   * "30 6 * * MON-FRI" am Montag, 3. August 2026, Fortschritt 06:00, jetzt
+   * 06:31 -> genau das 06:30-Vorkommen; "30 6 * * SAT,SUN" mit Fortschritt
+   * Sonntag 06:30 -> nichts, der naechste Termin ist Samstag; "@hourly" mit
+   * Fortschritt 05:00 -> genau 06:00. Die Zeilen tragen dabei den Vorgabewert
+   * `UTC`, denn sie wurden ohne Zeitzone angelegt, wie jede Definition von
+   * vor 2.66. Die Mutationsprobe verschiebt jeden Wochentagsnamen um eins;
+   * dann ist Montag kein Werktag mehr und zugleich ein Wochenendtag, und
+   * dieser Fall faellt an beiden Plaenen, zusammen mit seinem lokalen Zwilling.
+   */
+  it("dispatches a weekday-name expression and an @ shortcut through the real progress", async () => {
+    const node = instance();
+    const queue = `cron-names-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 3600 });
+    const weekdays = await defineCron(queue, "30 6 * * MON-FRI", new Date("2026-08-03T06:00:00.000Z"));
+    const weekend = await defineCron(queue, "30 6 * * SAT,SUN", new Date("2026-08-02T06:30:00.000Z"));
+    const hourly = await defineCron(queue, "@hourly", new Date("2026-08-03T05:00:00.000Z"));
+
+    const scheduler = new CronScheduler({
+      repository: node.repository, dispatcher: node.dispatcher,
+      now: () => new Date("2026-08-03T06:31:00.000Z"),
+    });
+    const result = await scheduler.run(service, scope);
+    expect(result.failed).toBe(0);
+    expect(await progressOf(weekdays)).toEqual({ lastDispatchedAt: "2026-08-03T06:30:00.000Z", timeZone: "UTC" });
+    expect(await progressOf(weekend)).toEqual({ lastDispatchedAt: "2026-08-02T06:30:00.000Z", timeZone: "UTC" });
+    expect(await progressOf(hourly)).toEqual({ lastDispatchedAt: "2026-08-03T06:00:00.000Z", timeZone: "UTC" });
+    // Zwei Nachrichten: 06:30 vom Werktagsplan, 06:00 vom Stundenplan.
+    expect(await messageCount(queue)).toBe(2);
+  });
+
+  /**
+   * Eine Zeitzone je Zeitplan (2.66) durch Scheduler, Datenbank und Queue, am
+   * Tag des Sommerzeitbeginns. "30 2 * * *" in Europe/Berlin, Fortschritt am
+   * 28. Maerz 2026 um 02:30 Berlin (01:30Z), jetzt 29. Maerz 01:05Z: Die 02:30
+   * dieses Tages gibt es nicht, die Uhr springt um 01:00Z von 02:00 auf 03:00,
+   * und genau in diesem Moment feuert der Plan. Der Dedupe-Schluessel in der
+   * Queue traegt diesen UTC-Moment. Die Mutationsprobe laesst die Zeitzone
+   * ungelesen; dann rechnet der Plan 02:30Z, das ist noch nicht faellig, und
+   * der Fall faellt.
+   */
+  it("dispatches a zoned schedule through the real progress across the missing hour", async () => {
+    const node = instance();
+    const queue = `cron-zone-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 3600 });
+    const id = await defineCron(queue, "30 2 * * *", new Date("2026-03-28T01:30:00.000Z"), "Europe/Berlin");
+
+    const scheduler = new CronScheduler({
+      repository: node.repository, dispatcher: node.dispatcher,
+      now: () => new Date("2026-03-29T01:05:00.000Z"),
+    });
+    const result = await scheduler.run(service, scope);
+    expect(result.failed).toBe(0);
+    expect(result.dispatched).toBe(1);
+    expect(await progressOf(id)).toEqual({ lastDispatchedAt: "2026-03-29T01:00:00.000Z", timeZone: "Europe/Berlin" });
+    expect(await messageCount(queue)).toBe(1);
+
+    // Die Nachricht ist ueber den Schluessel des UTC-Moments wiederzufinden.
+    const verifier = projectQueueDedupeKeyHash(cronOccurrenceDedupeKey(id, new Date("2026-03-29T01:00:00.000Z")));
+    const found = await owner.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM project_queue_messages
+        WHERE organization_id=$1 AND dedupe_key_hash=$2`, [organizationId, verifier],
+    );
+    expect(found.rows[0]?.count).toBe(1);
+
+    // Ein zweiter Lauf am naechsten Tag: 02:30 Sommerzeit ist 00:30Z, nicht 01:30Z.
+    const nextDay = new CronScheduler({
+      repository: node.repository, dispatcher: node.dispatcher,
+      now: () => new Date("2026-03-30T00:31:00.000Z"),
+    });
+    expect((await nextDay.run(service, scope)).failed).toBe(0);
+    expect((await progressOf(id)).lastDispatchedAt).toBe("2026-03-30T00:30:00.000Z");
+    expect(await messageCount(queue)).toBe(2);
+  });
+
+  /**
+   * Die Sonderformen (2.66, Schritt d) durch Scheduler, Datenbank und Queue:
+   * "0 6 L * *" am 31. August 2026, Fortschritt am 31. Juli, jetzt 31. August
+   * 06:01 -> genau das Vorkommen am Monatsletzten; "0 6 * * FRI#3" mit
+   * Fortschritt am 17. Juli (dritter Freitag) -> der 21. August, also am 31.
+   * laengst faellig und nachgeholt; "0 6 15W * *" mit Fortschritt am 15. Juli
+   * (Mittwoch) -> der 14. August, denn der 15. ist ein Samstag.
+   */
+  it("dispatches L, # and W schedules through the real progress", async () => {
+    const node = instance();
+    const queue = `cron-special-${randomUUID().slice(0, 8)}`;
+    await node.queues.createQueue(admin, scope, { name: queue, dedupeWindowSeconds: 3600 });
+    const last = await defineCron(queue, "0 6 L * *", new Date("2026-07-31T06:00:00.000Z"));
+    const third = await defineCron(queue, "0 6 * * FRI#3", new Date("2026-07-17T06:00:00.000Z"));
+    const nearest = await defineCron(queue, "0 6 15W * *", new Date("2026-07-15T06:00:00.000Z"));
+
+    const scheduler = new CronScheduler({
+      repository: node.repository, dispatcher: node.dispatcher,
+      now: () => new Date("2026-08-31T06:01:00.000Z"),
+    });
+    const result = await scheduler.run(service, scope);
+    expect(result.failed).toBe(0);
+    expect((await progressOf(last)).lastDispatchedAt).toBe("2026-08-31T06:00:00.000Z");
+    expect((await progressOf(third)).lastDispatchedAt).toBe("2026-08-21T06:00:00.000Z");
+    expect((await progressOf(nearest)).lastDispatchedAt).toBe("2026-08-14T06:00:00.000Z");
+    expect(await messageCount(queue)).toBe(3);
   });
 
   it("produces exactly one message when two schedulers fire the same occurrence", async () => {

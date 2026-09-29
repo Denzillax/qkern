@@ -404,7 +404,16 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
       expect(status, `Prozessausgabe: ${runner.output().slice(-600)}`).toBe("failed");
       expect(await jobError(jobId)).toBe("INVALID_MIGRATION_FENCE");
 
-      // Der Name der Bedingung steht im Prozesslog.
+      // Der Name der Bedingung steht im Prozesslog — aber erst **nach** dem
+      // Statuswechsel: `finishFailure` schreibt die Zeile, nachdem `markFailed`
+      // festgeschrieben hat. Wer im selben Moment liest, in dem die Datenbank
+      // `failed` sagt, kann den Puffer noch leer vorfinden; ein
+      // Zertifizierungslauf unter Speicherdruck hat genau das getroffen.
+      // Deshalb innerhalb **derselben** Frist auf die Zeile warten, statt einen
+      // Zeitpunkt zu messen.
+      while (Date.now() < deadline && !runner.output().includes("owner_has_memberships")) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       expect(runner.output()).toContain("failedChecks");
       expect(runner.output()).toContain("owner_has_memberships");
 

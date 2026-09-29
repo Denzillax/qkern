@@ -38,7 +38,7 @@ const LONG_WINDOW = 86_400;
 function definition(overrides: Partial<CronDefinitionRecord> = {}): CronDefinitionRecord {
   return Object.freeze({
     ...scope, id: cronId, name: "nightly-report", expression: "*/15 * * * *",
-    queue: "report_jobs", payload: { secret: "kundendaten" }, enabled: true,
+    queue: "report_jobs", payload: { secret: "kundendaten" }, enabled: true, timeZone: "UTC",
     lastDispatchedAt: null, createdAt: "2026-08-04T06:00:00.000Z", ...overrides,
   });
 }

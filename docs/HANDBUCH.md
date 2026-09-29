@@ -2583,8 +2583,8 @@ und offene Grenzen:
 Alpha 4 stellt noch keine Function-Management-UI bereit. Adapter-Entwickler
 verwenden `lib/server/compute`: Function-Sandbox, Webhook-Signer/Transport und
 Cron→Queue sind dependency-injizierte Ports. Production-Adapter müssen digest-
-gepinnt, non-root, ressourcenbegrenzt und netzwerkisoliert sein. Cron läuft in UTC;
-Webhook-Secrets werden nur über Referenzen an einen Signer übergeben. Vollständiger
+gepinnt, non-root, ressourcenbegrenzt und netzwerkisoliert sein. Cron rechnet in
+der Zeitzone des Zeitplans, ohne Angabe in UTC; Webhook-Secrets werden nur über Referenzen an einen Signer übergeben. Vollständiger
 Vertrag und bewusst offene Adapter: [COMPUTE_CONTRACTS.md](COMPUTE_CONTRACTS.md).
 
 ### 9.2 TypeScript SDK
@@ -2739,10 +2739,16 @@ $env:QKERN_COMPUTE_DEFINITIONS_ENABLED="true"
 npm run dev
 ```
 
-Ein Cron-Job braucht einen Ausdruck, den der Scheduler versteht (`*/N * * * *`
-oder `M H * * *` in UTC), und eine **bereits vorhandene** Projekt-Queue. Beides
-wird beim Anlegen geprüft; ohne diese Prüfung entstünde ein Zeitplan, der bei
-jedem Vorkommen scheitert und dabei aussieht, als liefe er.
+Ein Cron-Job braucht einen Ausdruck, den der Scheduler versteht, und eine
+**bereits vorhandene** Projekt-Queue. Der Ausdruck hat fünf Felder mit `*`,
+`*/N`, `a`, `a-b`, `a-b/N` und Listen; Monat und Wochentag nehmen auch Namen
+(`MON-FRI`, `JAN,JUL`), und `@daily`, `@hourly`, `@weekly`, `@monthly`,
+`@yearly` stehen für je einen solchen Ausdruck. Dazu kommt seit `2.66.0` eine
+IANA-Zeitzone (`Europe/Berlin`); leer heisst UTC. Ein Plan mit fester Stunde
+feuert am Tag des Sommerzeitwechsels genau einmal, auch wenn es die Stunde
+zweimal oder gar nicht gibt. Ausdruck, Zeitzone und Queue werden beim Anlegen
+geprüft; ohne diese Prüfung entstünde ein Zeitplan, der bei jedem Vorkommen
+scheitert und dabei aussieht, als liefe er.
 
 Ein Webhook braucht ein exaktes öffentliches HTTPS-Ziel auf Port 443 ohne Query
 und Fragment sowie die **Referenz** des Signaturschlüssels — niemals den

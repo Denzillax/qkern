@@ -22,7 +22,7 @@ type DefinitionDatabase = Pick<PostgresControlPlane, "withTenant">;
 type CronRow = {
   id: string; organization_id: string; project_id: string; environment: Environment;
   name: string; expression: string; queue: string; payload: ProjectQueueJson;
-  enabled: boolean; last_dispatched_at: Date | null; created_at: Date;
+  enabled: boolean; time_zone: string; last_dispatched_at: Date | null; created_at: Date;
 };
 
 type WebhookRow = {
@@ -54,7 +54,7 @@ type FunctionRow = {
 };
 
 const CRON_COLUMNS = `id, organization_id, project_id, environment, name, expression, queue,
-  payload, enabled, last_dispatched_at, created_at`;
+  payload, enabled, time_zone, last_dispatched_at, created_at`;
 const FUNCTION_COLUMNS = `id, organization_id, project_id, environment, name, runtime, image,
   entrypoint, timeout_ms, memory_mib, max_concurrency, egress_origins, secret_refs, enabled,
   created_at`;
@@ -86,15 +86,17 @@ export class PostgresComputeDefinitionRepository implements ComputeDefinitionRep
 
   async createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
     name: string; expression: string; queue: string; payload: ProjectQueueJson; enabled: boolean;
+    timeZone: string;
   }) {
     return await asConflict(this.write(principal, async (database) => {
       const result = await database.query<CronRow>(
         `INSERT INTO project_cron_definitions
-           (organization_id, project_id, environment, name, expression, queue, payload, enabled)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (organization_id, project_id, environment, name, expression, queue, payload, enabled,
+            time_zone)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING ${CRON_COLUMNS}`,
         [...scopeValues(scope), input.name, input.expression, input.queue,
-          input.payload as never, input.enabled],
+          input.payload as never, input.enabled, input.timeZone],
       );
       const row = result.rows[0];
       if (!row) throw new ComputeDefinitionError("COMPUTE_CONFLICT");
@@ -541,6 +543,7 @@ function toCron(row: CronRow): CronDefinitionRecord {
     queue: row.queue,
     payload: row.payload,
     enabled: row.enabled,
+    timeZone: row.time_zone,
     lastDispatchedAt: row.last_dispatched_at === null
       ? null : new Date(row.last_dispatched_at).toISOString(),
     createdAt: new Date(row.created_at).toISOString(),

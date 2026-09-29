@@ -52,4 +52,6 @@ export type CronDefinition = ComputeScope & Readonly<{
   queue: string;
   payload: ProjectQueueJson;
   enabled: boolean;
+  /** IANA-Zeitzone des Zeitplans (2.66). Fehlt sie, rechnet der Plan in UTC. */
+  timeZone?: string;
 }>;

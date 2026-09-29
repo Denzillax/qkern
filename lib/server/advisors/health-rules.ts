@@ -49,6 +49,8 @@ type Unavailable = { unavailable: HealthReasonId };
 /** Eine Cron-Definition, so weit die Regel sie braucht. Nutzlast und Queue bleiben draussen. */
 export type HealthCronDefinition = {
   expression: string;
+  /** IANA-Zeitzone des Plans; fehlt sie, UTC. */
+  timeZone?: string;
   enabled: boolean;
   createdAt: string;
   lastDispatchedAt: string | null;
@@ -122,8 +124,8 @@ export function countStaleCron(definitions: readonly HealthCronDefinition[], now
     const created = new Date(definition.createdAt);
     if (Number.isNaN(created.getTime())) continue;
     try {
-      const first = nextCronOccurrence(definition.expression, created);
-      const second = nextCronOccurrence(definition.expression, first);
+      const first = nextCronOccurrence(definition.expression, created, definition.timeZone);
+      const second = nextCronOccurrence(definition.expression, first, definition.timeZone);
       if (second.getTime() <= now.getTime()) stale += 1;
     } catch {
       continue;

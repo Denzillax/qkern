@@ -15,7 +15,7 @@ import { StableLabel } from "@/components/stable-label";
  * Datenbank.
  */
 type Environment = "development" | "staging" | "production";
-type CronJob = { id: string; name: string; expression: string; queue: string; enabled: boolean; lastDispatchedAt: string | null };
+type CronJob = { id: string; name: string; expression: string; queue: string; enabled: boolean; timeZone?: string; lastDispatchedAt: string | null };
 
 export function CronView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
@@ -43,9 +43,11 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
   }
   async function create() {
     const name = window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"), "nightly-report"); if (!name) return;
-    const expression = window.prompt(t("Ausdruck in UTC: */N * * * * oder M H * * *"), "*/15 * * * *"); if (!expression) return;
+    const expression = window.prompt(t("Ausdruck: fünf Felder, Namen wie MON-FRI oder JAN, oder ein Kürzel wie @daily"), "*/15 * * * *"); if (!expression) return;
+    // Die Zeitzone gehoert zum Plan (2.66). Leer heisst UTC, wie bei jedem Plan von vorher.
+    const timeZone = window.prompt(t("Zeitzone des Zeitplans (IANA-Name wie Europe/Berlin)"), "UTC"); if (timeZone === null) return;
     const queue = window.prompt(t("Bestehende Projekt-Queue"), "email_jobs"); if (!queue) return;
-    await mutate("/cron", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), expression: expression.trim(), queue: queue.trim() }) });
+    await mutate("/cron", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), expression: expression.trim(), queue: queue.trim(), timeZone: timeZone.trim() || "UTC" }) });
   }
 
   if (state === "loading") return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Cron-Jobs werden geladen…")}</h3></div>;
@@ -62,12 +64,12 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
       {message && <p className="muted">{message}</p>}
       {jobs.length === 0 && <p className="muted">{t("Noch keine Cron-Jobs. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")}</p>}
       {jobs.map((job) => <div className="bucket-row" key={job.id}><span className="bucket-icon"><Clock3 size={16}/></span>
-        <div><strong>{job.name}</strong><small>{job.expression} UTC → {job.queue} · {job.lastDispatchedAt ? `${t("zuletzt")} ${formatMoment(job.lastDispatchedAt)}` : t("noch nie eingereiht")}</small></div>
+        <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone ?? "UTC"} → {job.queue} · {job.lastDispatchedAt ? `${t("zuletzt")} ${formatMoment(job.lastDispatchedAt)}` : t("noch nie eingereiht")}</small></div>
         <span className={job.enabled ? "secure" : "muted"}>{job.enabled ? t("aktiv") : t("pausiert")}</span>
         <button className="plain-button" onClick={() => void mutate(`/cron/${job.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !job.enabled }) })}><StableLabel current={job.enabled ? t("Pausieren") : t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
         <button className="icon-button" onClick={() => { if (window.confirm(`${t("Cron-Job löschen?")} ${job.name}`)) void mutate(`/cron/${job.id}`, { method: "DELETE" }); }} aria-label={`${job.name} ${t("löschen")}`}><Trash2 size={14}/></button>
       </div>)}
-      <p className="muted">{t("Ausdruck und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.")}</p>
+      <p className="muted">{t("Ausdruck, Zeitzone und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.")}</p>
     </article>
   </div>;
 }

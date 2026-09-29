@@ -16,6 +16,8 @@ const createSchema = z.object({
   queue: z.string().trim().regex(/^[a-z][a-z0-9_-]{2,62}$/),
   payload: z.unknown().optional(),
   enabled: z.boolean().optional(),
+  // Die Form prueft der Dienst mit `Intl`; hier nur die Grenzen.
+  timeZone: z.string().trim().min(1).max(64).optional(),
 }).strict();
 
 export function createComputeCronHandlers(service: ComputeDefinitionService) {
@@ -38,6 +40,7 @@ export function createComputeCronHandlers(service: ComputeDefinitionService) {
           queue: body.data.queue,
           payload: body.data.payload as never,
           enabled: body.data.enabled,
+          timeZone: body.data.timeZone,
         });
         return computeNoStore({ data: created }, 201);
       } catch (error) { return computeRouteError(error); }

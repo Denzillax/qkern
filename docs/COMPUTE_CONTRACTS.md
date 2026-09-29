@@ -107,12 +107,34 @@ falschen Form. Gegen ein eingespeistes `fetch` war davon nichts zu sehen.
 
 ## Cron
 
-Der aktuelle UTC-Vertrag akzeptiert bewusst nur `*/N * * * *` mit 1 bis 59
-Minuten oder einen festen täglichen Ausdruck `M H * * *`. Eine exakte Occurrence
-wird mit dem deterministischen Dedupe-Key
+Ein Zeitplan ist ein Fünf-Feld-Ausdruck (Minute, Stunde, Tag, Monat,
+Wochentag) mit `*`, `*/N`, `a`, `a-b`, `a-b/N` und Listen daraus; das ist seit
+`1.87.0` die ganze klassische Grammatik. Seit `2.66.0` gelten im Monatsfeld
+auch `JAN` bis `DEC` und im Wochentagsfeld `SUN` bis `SAT`, gross oder klein,
+auch in Bereichen und Listen (`MON-FRI`, `JAN,JUL`). Die Kürzel `@yearly`,
+`@annually`, `@monthly`, `@weekly`, `@daily`, `@midnight` und `@hourly` stehen
+für je einen Fünf-Feld-Ausdruck. Dazu die Sonderformen, jede allein in ihrem
+Feld: im Tagesfeld `L` (letzter Tag des Monats), `LW` (letzter Werktag) und
+`NW` (der Werktag, der dem N. am nächsten liegt, im selben Monat); im
+Wochentagsfeld `NL` (letzter N-Wochentag des Monats) und `N#K` (der K.
+N-Wochentag), N als Zahl oder Name.
+
+Jeder Zeitplan trägt eine IANA-Zeitzone (`Europe/Berlin`); ohne Angabe ist es
+`UTC`, und jede Definition von vor `2.66.0` steht auf `UTC`. Die Felder werden
+als Wanduhr dieser Zone gelesen, die Rechnung macht `Intl` ohne fremde
+Bibliothek. Beim Sommerzeitwechsel gilt die Regel von Vixie-Cron: Ein Plan mit
+fester Stunde (`30 2 * * *`) meint einen Termin am Tag. Gibt es die Wanduhrzeit
+zweimal, zählt sie einmal, beim ersten Mal; gibt es sie nicht, feuert der Plan
+in dem Moment, in dem die Uhr darüber hinwegspringt. Ein Plan ohne feste Stunde
+(`*/30 * * * *`) ist ein Takt und folgt der echten Zeit. Ein Versatz wie
+`+02:00` wird abgewiesen, denn er nähme die Sommerzeit gerade nicht mit.
+
+Eine exakte Occurrence wird mit dem deterministischen Dedupe-Key
 `cron:<definition-id>:<scheduled-at-iso>` in eine vorhandene Project Queue
-geschrieben. Crash/Retry nach erfolgreichem Enqueue erzeugt dadurch keine zweite
-Nachricht. Tenant, Service Role, Schedule und Queue bleiben serverseitig gebunden.
+geschrieben; der Zeitpunkt darin ist immer der UTC-Moment, auch bei einem Plan
+mit Zeitzone. Crash/Retry nach erfolgreichem Enqueue erzeugt dadurch keine
+zweite Nachricht. Tenant, Service Role, Schedule und Queue bleiben serverseitig
+gebunden.
 
 Diese Zusage hängt am Dedupe-Fenster der Zielqueue. Hat die Queue
 `dedupe_window_seconds = 0`, ist ihre Deduplizierung abgeschaltet: Der
@@ -149,7 +171,7 @@ Seit `1.21.0` verwalten REST und Console beide Definitionsarten unter
 `project_compute_admin` haben nur `owner` und `administrator`; wer sie nicht hat,
 erhält 404 statt 403.
 
-**Nur `enabled` ist änderbar.** Ausdruck, Queue, Nutzlast, Ziel-URL und
+**Nur `enabled` ist änderbar.** Ausdruck, Zeitzone, Queue, Nutzlast, Ziel-URL und
 Signaturreferenz sind unveränderlich; eine Änderung ist ein Löschen und ein neues
 Anlegen. Die Grenze liegt als Spaltenrecht in den Migrationen 0031 und 0032, nicht
 als Prüfung im Dienst — ein zweiter Schreiber könnte eine Prüfung umgehen, das
