@@ -138,6 +138,7 @@ import {
   type ProjectAuthOAuthExchangeRejection,
   type ProjectAuthOAuthIdentity,
   type ProjectAuthOAuthRefusal,
+  type ProjectAuthOAuthToken,
 } from "@/lib/server/project-auth/oauth";
 import {
   hashProjectAuthToken,
@@ -447,6 +448,28 @@ export type PublicProjectAuthOAuthServer = {
   }>;
   /** Ob die Liste der Zustimmungen am Rand abgeschnitten wurde. */
   consentsTruncated: boolean;
+  /**
+   * Die ausgegebenen Token dieser Umgebung (2.93), je mit Client, Nutzer,
+   * Bereichen, Zeitpunkt und Ablauf.
+   *
+   * Ohne das Token und ohne seine Pruefsumme. Was hier steht, reicht, um zu
+   * sehen, was offen ist, und zu nichts sonst; die abgelaufenen sind daran zu
+   * erkennen, dass ihr Ablauf in der Vergangenheit liegt, und sie werden
+   * mitgezeigt, weil ihre Zeilen bis zum Aufraeumer wirklich noch da sind.
+   */
+  tokens: Array<{
+    id: string;
+    clientId: string;
+    clientName: string;
+    userId: string;
+    email: string;
+    consentId: string | null;
+    scopes: string[];
+    createdAt: string;
+    expiresAt: string;
+  }>;
+  /** Ob die Liste der Token am Rand abgeschnitten wurde. */
+  tokensTruncated: boolean;
   scopes: readonly string[];
   /** Die Rolle, die jedes Token dieses Ablaufs in der Zeilensicherheit bekommt. */
   role: string;
@@ -1350,13 +1373,16 @@ export class ProjectAuthService {
    * Antwort sagen kann, dass sie abgeschnitten ist.
    */
   private async oauthServerView(scope: ProjectAuthScope): Promise<PublicProjectAuthOAuthServer> {
-    const [clients, consents] = await Promise.all([
+    const [clients, consents, tokens] = await Promise.all([
       this.dependencies.repository.listOAuthClients(scope),
       this.dependencies.repository.listOAuthConsents(
         scope, PROJECT_AUTH_OAUTH_BOUNDS.consents.max + 1,
       ),
+      this.dependencies.repository.listOAuthTokens(
+        scope, PROJECT_AUTH_OAUTH_BOUNDS.tokens.max + 1,
+      ),
     ]);
-    return publicOAuthServer(clients, consents);
+    return publicOAuthServer(clients, consents, tokens);
   }
 
   /**
@@ -1487,6 +1513,54 @@ export class ProjectAuthService {
       scope, action: "project_auth.oauth_consent.revoked",
       actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
       resourceRef: `project_auth_oauth_consent:${revoked.id}`,
+      status: "succeeded",
+      metadata: { user: revoked.userId, scopes: revoked.scopes.join(" ") },
+    });
+    return this.oauthServerView(scope);
+  }
+
+  /**
+   * Genau ein Token widerrufen (2.93).
+   *
+   * **Die Luecke, die das schliesst.** Bis hierher fiel ein Token nur zusammen
+   * mit etwas Groesserem: mit dem Widerruf seiner Zustimmung, also mit allen
+   * Token derselben Erlaubnis, oder mit dem Entfernen des Clients, also mit
+   * allen Token aller Nutzer. Ein einzelnes Token, das in falsche Haende
+   * geraten ist, war damit nur zu stoppen, indem man einem Nutzer seine
+   * Erlaubnis nahm oder eine ganze Anwendung abschaltete.
+   *
+   * **Und er ist ein Loeschen, anders als beim Widerruf einer Zustimmung.** Ein
+   * Token gilt, weil eine Zeile existiert; faellt die Zeile, gilt es nicht
+   * mehr. Die Spur bleibt trotzdem: die Zustimmung, an der es hing, steht
+   * weiter da, und der Widerruf schreibt eine Audit-Zeile mit Nutzer, Client
+   * und Bereichen. Eine Spalte `revoked_at` am Token waere eine zweite
+   * Bedingung im heissen Weg, die jemand vergessen kann; eine fehlende Zeile
+   * kann niemand vergessen.
+   *
+   * **Die Zustimmung bleibt gueltig**, und das ist keine Nachlaessigkeit: Wer
+   * ein Token zurueckzieht, sagt, dass dieses Geheimnis nichts mehr taugt,
+   * nicht, dass der Nutzer seine Erlaubnis zurueckgenommen hat. Die Anwendung
+   * darf sich darum ein neues holen. Wer beides will, widerruft die
+   * Zustimmung; die Seite sagt diesen Unterschied an beiden Knoepfen.
+   *
+   * Ein zweiter Widerruf desselben Tokens ist `RESOURCE_NOT_FOUND`, wie bei der
+   * Zustimmung: Es ist nichts mehr da, was zurueckzunehmen waere.
+   */
+  async revokeOAuthToken(
+    scope: ProjectAuthScope,
+    tokenId: string,
+    admin?: ProjectAuthAdminActor,
+  ): Promise<PublicProjectAuthOAuthServer> {
+    assertScope(scope);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tokenId)) {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+    const revoked = await this.dependencies.repository.revokeOAuthToken(scope, tokenId);
+    if (!revoked) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    await this.recordAudit({
+      scope, action: "project_auth.oauth_token.revoked",
+      actorType: admin ? "admin" : "system", actorRef: admin ? admin.id : "system",
+      resourceRef: `project_auth_oauth_token:${revoked.id}`,
       status: "succeeded",
       metadata: { user: revoked.userId, scopes: revoked.scopes.join(" ") },
     });
@@ -3275,8 +3349,10 @@ function publicOAuthServer(
   // dass die Liste abgeschnitten ist. Ein Zaehler ueber die ganze Tabelle waere
   // eine zweite Abfrage fuer eine Zahl, die niemand braucht.
   consents: ReadonlyArray<ProjectAuthOAuthConsent & { clientName: string; email: string }> = [],
+  tokens: ReadonlyArray<ProjectAuthOAuthToken & { clientName: string; email: string }> = [],
 ): PublicProjectAuthOAuthServer {
   const shown = consents.slice(0, PROJECT_AUTH_OAUTH_BOUNDS.consents.max);
+  const shownTokens = tokens.slice(0, PROJECT_AUTH_OAUTH_BOUNDS.tokens.max);
   return {
     clients: clients.map((client) => ({
       id: client.id, name: client.name,
@@ -3290,6 +3366,14 @@ function publicOAuthServer(
       revokedAt: consent.revokedAt === null ? null : consent.revokedAt.toISOString(),
     })),
     consentsTruncated: consents.length > shown.length,
+    tokens: shownTokens.map((token) => ({
+      id: token.id, clientId: token.clientId, clientName: token.clientName,
+      userId: token.userId, email: token.email, consentId: token.consentId,
+      scopes: [...token.scopes],
+      createdAt: token.createdAt.toISOString(),
+      expiresAt: token.expiresAt.toISOString(),
+    })),
+    tokensTruncated: tokens.length > shownTokens.length,
     scopes: [...PROJECT_AUTH_OAUTH_SCOPES],
     role: PROJECT_AUTH_OAUTH_ROLE,
     forbiddenRole: PROJECT_AUTH_OAUTH_FORBIDDEN_ROLE,

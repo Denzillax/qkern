@@ -15,6 +15,7 @@ import {
   AUTH_OAUTH_CONSENT_PROVES_NOT,
   AUTH_OAUTH_CONSENT_REQUIRED,
   AUTH_OAUTH_CONSENT_SAME_TWICE,
+  AUTH_OAUTH_CONSENTS_OWN_PAGE,
   AUTH_OAUTH_CONSTANT_TIME,
   AUTH_OAUTH_DATA_API_ONLY,
   AUTH_OAUTH_DISABLED_USER,
@@ -166,10 +167,6 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
-  // Getrennt vom Entfernen eines Clients, weil es zwei verschiedene Dinge sind:
-  // Das eine nimmt eine Zustimmung zurueck und laesst ihre Zeile stehen, das
-  // andere nimmt den Client samt allen Zustimmungen mit.
-  const [revoking, setRevoking] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
 
   const load = useCallback(async (initial: boolean) => {
@@ -247,22 +244,6 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
       setData(payload.data as OAuthServer);
       setMessage("");
     } catch { setMessage(t("Der OAuth-Client konnte nicht entfernt werden.")); }
-    finally { setSaving(false); }
-  }
-
-  async function revoke(consentId: string) {
-    setRevoking(null);
-    setSaving(true);
-    try {
-      const response = await fetch(`${consentRoute}/${consentId}`, { method: "DELETE" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.data) {
-        setMessage(explain(payload, t("Die Zustimmung konnte nicht widerrufen werden.")));
-        return;
-      }
-      setData(payload.data as OAuthServer);
-      setMessage("");
-    } catch { setMessage(t("Die Zustimmung konnte nicht widerrufen werden.")); }
     finally { setSaving(false); }
   }
 
@@ -370,38 +351,6 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
         </div>
         {data.consents.filter((consent) => consent.clientId === client.id).length === 0 &&
           <small className="muted">{t("Diesem Client hat noch niemand zugestimmt.")}</small>}
-        {data.consents.filter((consent) => consent.clientId === client.id).map((consent) =>
-          <div className="log-row" key={consent.id}>
-            <span className={consent.revokedAt === null ? "secure" : "muted"}>
-              {consent.revokedAt === null ? <ShieldCheck size={15}/> : <ShieldOff size={15}/>} {consent.email}
-            </span>
-            <code>{consent.scopes.join(" ")}</code>
-            {/* Zwei Schlüssel und nicht einer: Auf Deutsch ist "Widerrufen"
-                zugleich der Knopf und der Zustand, in anderen Sprachen sind das
-                zwei verschiedene Wörter. */}
-            <small>{consent.revokedAt === null
-              ? `${t("Zugestimmt am")} ${formatMoment(consent.grantedAt)}`
-              : `${t("Widerrufen am")} ${formatMoment(consent.revokedAt)}`}</small>
-            {consent.revokedAt === null && <button className="plain-button" onClick={() => { setMessage(""); setRevoking(consent.id); }} disabled={saving}>
-              <Trash2 size={14}/> <StableLabel current={t("Widerrufen")} variants={tAll("Widerrufen")}/>
-            </button>}
-          </div>)}
-        {data.consents.filter((consent) => consent.clientId === client.id)
-          .filter((consent) => consent.id === revoking)
-          .map((consent) => <div className="console-card preview-card" key={consent.id}>
-            <div className="card-head"><div><span>{t("VORSCHAU")}</span><h3>{t("Zustimmung widerrufen")}</h3></div><ShieldAlert size={18}/></div>
-            <p className="risk medium">{t("Der Widerruf wirkt sofort. Die Token dieser Zustimmung gelten ab der nächsten Anfrage nicht mehr.")}</p>
-            <div className="log-row"><span className="muted">{t("Nutzer")}</span><code>{consent.email}</code></div>
-            <div className="log-row"><span className="muted">{t("Bereiche")}</span><code>{consent.scopes.join(" ")}</code></div>
-            <div className="log-row"><span className="muted">{t("Zugestimmt")}</span><small>{formatMoment(consent.grantedAt)}</small></div>
-            <p className="muted">{t(AUTH_OAUTH_REVOCATION_KEEPS_THE_ROW)}</p>
-            <div className="log-row">
-              <button className="secondary-button" onClick={() => void revoke(consent.id)} disabled={saving}>
-                <StableLabel current={saving ? t("Wird widerrufen…") : t("Jetzt widerrufen")} variants={tAll("Wird widerrufen…", "Jetzt widerrufen")}/>
-              </button>
-              <button className="plain-button" onClick={() => setRevoking(null)} disabled={saving}>{t("Abbrechen")}</button>
-            </div>
-          </div>)}
         {removing === client.id && <div className="console-card preview-card">
           <div className="card-head"><div><span>{t("VORSCHAU")}</span><h3>{t("Client entfernen")}</h3></div><ShieldAlert size={18}/></div>
           <p className="risk medium">{t("Entfernen wirkt sofort. Alle Token dieses Clients fallen, von allen Nutzern, auch die noch gültigen.")}</p>
@@ -556,6 +505,7 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
         <span>{t("Davon noch gültig")}</span>
         <small>{formatNumber(data.consents.filter((consent) => consent.revokedAt === null).length)}</small>
       </div>
+      <p className="muted">{t(AUTH_OAUTH_CONSENTS_OWN_PAGE)}</p>
       {data.consentsTruncated && <p className="risk medium">{t(AUTH_OAUTH_GRANT_LIST_TRUNCATED)}</p>}
     </article>
 

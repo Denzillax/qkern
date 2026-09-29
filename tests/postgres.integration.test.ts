@@ -10220,6 +10220,238 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+  it("(2.94) revokes exactly one issued OAuth token so that token stops working while its consent, its neighbour token and the right to a new one all stay", async () => {
+    // Der Widerruf genau eines Tokens (2.94), gegen die echte Datenbank.
+    //
+    // Echt ist alles, worauf es ankommt: der Nutzer und seine Anmeldung ueber
+    // den echten Dienst, der Client, die Zustimmung, zwei getrennt ausgegebene
+    // Token, der Widerruf des einen, die Audit-Kette und die Rechte, die
+    // PostgreSQL auf `project_auth_oauth_tokens` vergibt.
+    //
+    // Die Luecke, die dieser Fall belegt: Bis 2.92 fiel ein Token nur zusammen
+    // mit etwas Groesserem, mit seiner Zustimmung oder mit seinem Client. Ein
+    // einzelnes Token war nur zu stoppen, indem man einem Nutzer seine
+    // Erlaubnis nahm oder eine ganze Anwendung abschaltete.
+    //
+    // Geprueft werden fuenf Zusagen:
+    //
+    // 1. Der Widerruf trifft genau ein Token; das zweite derselben Zustimmung
+    //    gilt weiter.
+    // 2. Die Zeile ist wirklich weg, und die Zustimmung steht unveraendert da.
+    // 3. Die Erlaubnis bleibt bestehen: Auf derselben Zustimmung entsteht
+    //    danach ein neues Token, ohne dass jemand erneut zustimmt.
+    // 4. Aus dem verbrauchten Code des widerrufenen Tokens entsteht kein
+    //    zweites.
+    // 5. Was die Console bekommt, traegt kein Token und keine Pruefsumme, und
+    //    das Loeschrecht hat nur die Auth-Rolle.
+    const tokenOwner = randomUUID();
+    const tokenOrganization = randomUUID();
+    const tokenProject = randomUUID();
+    const scope = {
+      organizationId: tokenOrganization, projectId: tokenProject,
+      environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [tokenOwner, `token-owner-${tokenOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'OAuth Token 2.94', $2, $3)`,
+    [tokenOrganization, `oauth-token-${tokenOrganization}`, tokenOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'OAuth Token 2.94', $3, 'test', 'ready', $4)`,
+    [tokenProject, tokenOrganization, `oauth-token-${tokenProject}`, tokenOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [tokenOrganization, tokenProject, `managed:${tokenProject}`]);
+
+    const signingKey = generateKeyPairSync("ed25519").privateKey;
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-93", privateKey: signingKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 17)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const home = "https://app.test/oauth/zurueck";
+
+    try {
+      // --- Der Nutzer, der Client und die eine Zustimmung -----------------
+      const email = `token-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const userId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+
+      await service.createOAuthClient(scope, {
+        name: "token-app", redirectUris: [home], scopes: ["identity:read", "data:read"],
+      }, { id: tokenOwner });
+      const consent = await service.grantOAuthConsent(scope, signedIn.accessToken, {
+        clientId: "token-app", scopes: ["data:read"],
+      });
+
+      // Zwei Durchlaeufe desselben Ablaufs auf derselben Zustimmung, jeder mit
+      // eigenem Prueftext. Zwei Token, damit der Widerruf des einen am anderen
+      // zu messen ist; ein einzelnes haette nicht gezeigt, dass er genau trifft.
+      const issue = async () => {
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+          clientId: "token-app", redirectUri: home, scopes: ["data:read"],
+          codeChallenge: challenge,
+        });
+        const issued = await service.exchangeOAuthCode(scope, {
+          clientId: "token-app", code: granted.code, redirectUri: home, codeVerifier: verifier,
+        });
+        return { code: granted.code, verifier, accessToken: issued.accessToken };
+      };
+      const erstes = await issue();
+      const zweites = await issue();
+      expect(erstes.accessToken).not.toBe(zweites.accessToken);
+      expect(await service.verifyOAuthToken(scope, erstes.accessToken)).toMatchObject({ ok: true });
+      expect(await service.verifyOAuthToken(scope, zweites.accessToken)).toMatchObject({ ok: true });
+
+      const countOf = async (table: string) => (await auth.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM ${table}
+          WHERE organization_id = $1 AND project_id = $2`,
+        [tokenOrganization, tokenProject])).rows[0].count;
+      expect(await countOf("project_auth_oauth_tokens")).toBe("2");
+
+      // --- Was die Console sieht, bevor etwas widerrufen ist --------------
+      //
+      // Die Kennung eines Tokens kommt aus dieser Liste und nirgendwo sonst:
+      // Der Betreiber hat das Token selbst nie gesehen, also muss die Seite ihm
+      // etwas geben, worauf er zeigen kann.
+      const vorher = await service.listOAuthClients(scope);
+      expect(vorher.tokensTruncated).toBe(false);
+      expect(vorher.tokens).toHaveLength(2);
+      for (const shown of vorher.tokens) {
+        expect(shown).toMatchObject({
+          clientName: "token-app", userId, email, scopes: ["data:read"],
+          consentId: consent.consentId,
+        });
+        expect(shown.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      }
+      // Kein Token, kein Code, kein Prueftext in dem, was die Seite bekommt.
+      const payload = JSON.stringify(vorher);
+      for (const geheim of [erstes.accessToken, zweites.accessToken, erstes.code, zweites.code, erstes.verifier, zweites.verifier]) {
+        expect(payload).not.toContain(geheim);
+      }
+
+      // Welche Zeile zu welchem Token gehoert, entscheidet die Datenbank und
+      // nicht die Reihenfolge der Liste: gefragt wird ueber die Pruefsumme, die
+      // dieser Fall selbst rechnet.
+      const hashOf = (token: string) => createHash("sha256").update(token, "utf8").digest("base64url");
+      const idOf = async (token: string) => (await auth.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_oauth_tokens
+          WHERE organization_id = $1 AND project_id = $2 AND token_hash = $3`,
+        [tokenOrganization, tokenProject, hashOf(token)])).rows[0]?.id;
+      const erstesId = await idOf(erstes.accessToken);
+      expect(vorher.tokens.map((shown) => shown.id)).toContain(erstesId);
+
+      // --- Zusage 1: der Widerruf trifft genau eines ----------------------
+      const nachher = await service.revokeOAuthToken(scope, erstesId!, { id: tokenOwner });
+      expect(await service.verifyOAuthToken(scope, erstes.accessToken))
+        .toEqual({ ok: false, reason: "unknown" });
+      // Und das Nachbartoken derselben Zustimmung gilt unveraendert weiter.
+      expect(await service.verifyOAuthToken(scope, zweites.accessToken)).toMatchObject({ ok: true });
+      expect(nachher.tokens).toHaveLength(1);
+      expect(nachher.tokens[0].id).not.toBe(erstesId);
+
+      // --- Zusage 2: die Zeile ist weg, die Zustimmung steht -------------
+      expect(await countOf("project_auth_oauth_tokens")).toBe("1");
+      const zustimmung = await auth.query<{ id: string; revoked: string | null }>(
+        `SELECT id::text AS id,
+                CASE WHEN revoked_at IS NULL THEN NULL ELSE 'widerrufen' END AS revoked
+           FROM project_auth_oauth_consents
+          WHERE organization_id = $1 AND project_id = $2`,
+        [tokenOrganization, tokenProject]);
+      expect(zustimmung.rows).toEqual([{ id: consent.consentId, revoked: null }]);
+      expect(nachher.consents).toHaveLength(1);
+      expect(nachher.consents[0]).toMatchObject({ id: consent.consentId, revokedAt: null });
+
+      // --- Zusage 3: die Erlaubnis traegt weiter -------------------------
+      //
+      // Ohne diese Pruefung waere nicht zu sehen, dass der Widerruf eines
+      // Tokens etwas anderes ist als der Widerruf einer Zustimmung: Beide
+      // machten ein Token ungueltig, nur haette der eine zusaetzlich verboten,
+      // ein neues zu holen.
+      const drittes = await issue();
+      expect(await service.verifyOAuthToken(scope, drittes.accessToken)).toMatchObject({ ok: true });
+      expect(await countOf("project_auth_oauth_tokens")).toBe("2");
+
+      // --- Zusage 4: aus dem verbrauchten Code kommt kein zweites ---------
+      //
+      // Der Code des widerrufenen Tokens steht noch da und ist verbraucht. Waere
+      // er das nicht, koennte der Widerruf mit demselben Code rueckgaengig
+      // gemacht werden, und dann waere er keiner.
+      // `TOKEN_REPLAYED` und nicht `INVALID_TOKEN`: Ein Code, den es nicht
+      // gibt, ein abgelaufener und ein zweites Einloesen sind fuer den Aufrufer
+      // derselbe Ausgang, und dieser eine traegt im Audit seinen eigenen Namen.
+      await expect(service.exchangeOAuthCode(scope, {
+        clientId: "token-app", code: erstes.code, redirectUri: home, codeVerifier: erstes.verifier,
+      })).rejects.toMatchObject({ code: "TOKEN_REPLAYED" });
+      expect(await countOf("project_auth_oauth_tokens")).toBe("2");
+
+      // --- Zusage 5: zweimal widerrufen geht nicht, und ein Unsinn auch nicht
+      await expect(service.revokeOAuthToken(scope, erstesId!, { id: tokenOwner }))
+        .rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+      await expect(service.revokeOAuthToken(scope, "kein-bezeichner", { id: tokenOwner }))
+        .rejects.toMatchObject({ code: "INVALID_INPUT" });
+      // Ein Token einer fremden Umgebung ist hier nichts: Die Kennung gibt es,
+      // die Zeile steht in einem anderen Projekt, und die Abfrage findet sie
+      // nicht.
+      await expect(service.revokeOAuthToken(
+        { ...scope, environment: "production" }, erstesId!, { id: tokenOwner },
+      )).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+
+      // --- Zusage 6: das Loeschrecht hat nur die Auth-Rolle ---------------
+      const privileges = await owner.query<{ rolname: string; may_delete: boolean; may_update: boolean }>(
+        `SELECT role.rolname,
+                has_table_privilege(role.rolname, 'project_auth_oauth_tokens', 'DELETE') AS may_delete,
+                has_any_column_privilege(role.rolname, 'project_auth_oauth_tokens', 'UPDATE') AS may_update
+           FROM (VALUES (1, 'qkern_auth'), (2, 'qkern_runtime'), (3, 'qkern_worker')) AS role(ord, rolname)
+          ORDER BY role.ord`);
+      // UPDATE gibt es auf dieser Tabelle fuer niemanden: Ein ausgegebenes
+      // Token aendert sich nicht, es faellt oder es laeuft ab.
+      expect(privileges.rows).toEqual([
+        { rolname: "qkern_auth", may_delete: true, may_update: false },
+        { rolname: "qkern_runtime", may_delete: false, may_update: false },
+        { rolname: "qkern_worker", may_delete: false, may_update: false },
+      ]);
+
+      // --- Zusage 7: die Spur ---------------------------------------------
+      const auditRows = await owner.query<{ action: string; metadata: string }>(
+        `SELECT action, redacted_metadata::text AS metadata FROM audit_logs
+          WHERE organization_id = $1`, [tokenOrganization]);
+      const actions = auditRows.rows.map((row) => String(row.action));
+      expect(actions.filter((action) => action === "project_auth.oauth_token.revoked")).toHaveLength(1);
+      // Der Widerruf hat die Zustimmung nicht angefasst, also steht dazu auch
+      // keine Zeile da.
+      expect(actions.filter((action) => action === "project_auth.oauth_consent.revoked")).toHaveLength(0);
+      const serialised = JSON.stringify(auditRows.rows);
+      for (const geheim of [erstes.accessToken, zweites.accessToken, drittes.accessToken, erstes.code, erstes.verifier]) {
+        expect(serialised).not.toContain(geheim);
+      }
+    } finally {
+      await owner.query("DELETE FROM users WHERE id = $1", [tokenOwner]).catch(() => undefined);
+    }
+  }, 120_000);
+
 });
 
 /**

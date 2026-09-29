@@ -95,6 +95,48 @@ Grossbuchstaben.
   verwaisen waere schlimmer als eine wachsende Tabelle. Fall `(2.89)` in
   `tests/postgres.integration.test.ts`.
 
+- 2.94 **Die Zustimmungen haben
+  eine Seite, und ein einzelnes Token faellt.** Zwei Luecken aus 2.92, und beide
+  hingen zusammen. Die erste: Die Liste der Zustimmungen stand unter
+  `auth-oauth-server` nach Client geordnet. Die Frage eines Betreibers geht
+  aber vom Menschen aus, und nach Client geordnet ist sie nur zu beantworten,
+  indem man alle Clients durchgeht. Neu ist darum die Seite **Auth →
+  Zustimmungen** (`auth-oauth-consents`,
+  `components/console/auth-oauth-consents-view.tsx`), nach Nutzer geordnet, mit
+  demselben Widerruf und mit dem, was 2.92 gar nicht zeigte: den ausgegebenen
+  Token. Beide Seiten lesen **dieselbe** Antwort derselben Route
+  (`GET /auth/admin/oauth-clients`); eine zweite Route fuer dieselben Zeilen
+  waere eine zweite Stelle, an der eine Zustimmung anders aussehen koennte. Der
+  OAuth-Server behaelt die Zahl je Client und verweist. **Was die Seite nicht
+  ist**: die Seite des Nutzers. Ein Nutzer sieht seine eigenen Erlaubnisse
+  weiterhin nirgends, denn das waere eine Seite hinter seiner eigenen Anmeldung
+  im Browser, und der Satz steht auf der Seite. Die zweite Luecke: **Widerruf
+  genau eines Tokens**, `DELETE /auth/admin/oauth-tokens/{tokenId}`, dazu
+  `revokeOAuthToken` in Dienst und Repository und `listOAuthTokens` fuer die
+  Liste. Hier ist der Widerruf **wirklich ein Loeschen**, anders als bei der
+  Zustimmung: Ein Token gilt, weil eine Zeile existiert, also braucht es keine
+  Spalte `revoked_at` und keine zusaetzliche Bedingung im heissen Weg. Das
+  `DELETE`-Recht liegt seit 0063 bei `qkern_auth`, **keine neue Migration**.
+  Die Zustimmung bleibt dabei gueltig, die Anwendung darf sich ein neues Token
+  holen, und der verbrauchte Code gibt keines mehr her. Fall `(2.94)` in
+  `tests/postgres.integration.test.ts`. **Nebenbefund**: Der Fall `(2.91)` war
+  auf diesem Zweig rot, seit `slice/consent` hereingezogen wurde. Er ist aelter
+  als der Zwang zur Zustimmung aus 2.92 und holte sich einen Code ohne eine;
+  seit 2.92 gibt `authorizeOAuth` dafuer keinen mehr heraus. Der Fall grantet
+  jetzt zuerst. **Zertifiziert** im Stack `qkern-slice-consentui`
+  (`docker-compose.certification.yml`, je Lauf frisch): 31 Dateien, 223 Faelle
+  gruen, `postgres.integration` 51 Faelle (vorher 50 und 222). **Zwei
+  Mutationsproben**, jede in einem eigenen frischen Lauf: `AND id = $4` im
+  `DELETE` des Token-Widerrufs zu `AND id <> $4`, und im Dienst der Wurf
+  `RESOURCE_NOT_FOUND` bei fehlender Zeile durch ein stilles Zurueckgeben
+  ersetzt. Beide Male fiel genau ein Fall, 2.94, und sonst keiner: einmal, weil
+  das widerrufene Token noch galt (Zeile 10231), einmal, weil der zweite
+  Widerruf aufloeste statt abzulehnen (Zeile 10273). `STATUS.md` zaehlt fuer
+  den Control-Plane-Block jetzt 61 Real-DB-Faelle; der Vertrag
+  `status-module-counts-contract` verlangt die Zahl, ein Slice kann die Datei
+  also nicht auslassen. Die Seite wurde nicht im Browser geoeffnet; belegt ist ihr
+  erster Renderdurchlauf ueber `console-view-render-contract`, nicht der Klick.
+
 - 2.92 **Eine Zustimmung ist eine Zeile.** Migration `0064_project_auth_oauth_consents.sql` legt
   `project_auth_oauth_consents` an (Nutzer, Client, Bereiche, `granted_at`,
   `revoked_at`) und haengt `consent_id` an Codes und Token. Damit schliessen sich
