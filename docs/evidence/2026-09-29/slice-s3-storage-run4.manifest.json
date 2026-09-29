@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "slice-s3-storage-run4.log",
+  "commit": "9e01d31836174758dbb153c5224429002646e780",
+  "commitSubject": "release: 2.65.0 Nach Nutzer geordnet, ohne Vektortyp, in jedem Zustand",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "9 passed (9)",
+  "passed": 9,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

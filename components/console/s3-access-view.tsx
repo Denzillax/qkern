@@ -1,29 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, KeyRound, Plus, RefreshCw, ShieldAlert, Trash2, X } from "lucide-react";
+import { Copy, KeyRound, Plug, Plus, RefreshCw, ShieldAlert, Trash2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
-  S3_ACCESS_LIMIT,
+  S3_ACCESS_ENDPOINT,
   S3_ACCESS_NO_BUCKETS,
+  S3_ACCESS_NO_SERVER_KEY,
+  S3_ACCESS_NOT_VERIFIABLE,
   S3_ACCESS_ONE_TIME,
+  S3_ACCESS_OPERATIONS_BUILT,
+  S3_ACCESS_OPERATIONS_MISSING,
   S3_ACCESS_REVOKE_MEANING,
+  S3_ACCESS_ROLE,
+  S3_ACCESS_SECRET_AT_REST,
   S3_ACCESS_WHAT,
   S3_ACCESS_WHY_NO_PROVIDER_KEYS,
-  S3_ACCESS_WHY_NO_SIGNATURE_CHECK,
   S3AccessError,
   validateS3AccessDraft,
 } from "@/lib/console/s3-access-texts";
 
 /**
- * Storage, S3-Zugang in der Console (2.78).
+ * Storage, S3-Zugang in der Console (2.78, Endpunkt 2.96).
  *
  * Die Ansicht gibt Schlüsselpaare aus, zeigt das Geheimnis genau einmal und
- * widerruft. Was sie nicht kann, steht als erster Absatz auf der Seite und
- * nicht als Fussnote: Heute nimmt kein Endpunkt ein solches Paar an. Ein Paar,
- * das aussieht wie ein Zugang und keiner ist, wäre schlimmer als gar keines.
+ * widerruft. Seit 2.96 nimmt der Endpunkt /s3 ein Paar an; die Seite nennt
+ * die Adresse, die Rolle des Paars und jede Operation, die geht oder fehlt.
+ * Ein Paar ohne hinterlegtes Geheimnis steht in der Liste mit genau diesem
+ * Satz, damit niemand es in ein Werkzeug einträgt und dort rät.
  */
 type Environment = "development" | "staging" | "production";
 type State = "loading" | "ready" | "unavailable" | "error";
@@ -36,8 +42,9 @@ type AccessKey = {
   expiresAt: string;
   revokedAt: string | null;
   createdAt: string;
+  verifiable: boolean;
 };
-type Issued = { accessKeyId: string; secret: string };
+type Issued = { accessKeyId: string; secret: string; verifiable: boolean };
 
 const EXPIRY_DAYS = [30, 90, 180, 365] as const;
 
@@ -55,6 +62,10 @@ export function S3AccessView({ projectId, environment, initialState }: { project
   // Genau einmal gezeigt: Der Wert lebt in diesem Zustand und wird nie neu
   // geladen. Wer die Seite verlässt, sieht ihn nicht wieder.
   const [issued, setIssued] = useState<Issued | null>(null);
+  // Die Adresse des Endpunkts ist die Adresse dieser Console plus /s3; sie
+  // steht erst im Browser fest, darum nach dem ersten Rendern.
+  const [endpointUrl, setEndpointUrl] = useState("");
+  useEffect(() => { setEndpointUrl(`${window.location.origin}/s3`); }, []);
 
   const load = useCallback(async () => {
     setMessage("");
@@ -117,7 +128,7 @@ export function S3AccessView({ projectId, environment, initialState }: { project
         setSubmitMessage(payload.error ?? t("Das Schlüsselpaar wurde abgelehnt."));
         return;
       }
-      setIssued({ accessKeyId: String(payload.data?.accessKeyId ?? ""), secret: String(payload.secret ?? "") });
+      setIssued({ accessKeyId: String(payload.data?.accessKeyId ?? ""), secret: String(payload.secret ?? ""), verifiable: payload.data?.verifiable === true });
       setName(""); setSelected([]);
       await load();
     } finally { setSubmitting(false); }
@@ -148,22 +159,29 @@ export function S3AccessView({ projectId, environment, initialState }: { project
     </div>;
   }
 
-  const live = keys.filter((key) => !key.revokedAt);
+  // Gueltig heisst: nicht widerrufen und mit hinterlegtem Geheimnis. Ein Paar
+  // ohne Geheimnis nimmt der Endpunkt nicht an, also zaehlt es hier nicht.
+  const live = keys.filter((key) => !key.revokedAt && key.verifiable);
+  const revokedCount = keys.filter((key) => key.revokedAt).length;
   const bucketName = (bucketId: string) => buckets.find((bucket) => bucket.id === bucketId)?.name ?? t("entfernter Bucket");
 
   return <div className="module-grid">
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("S3-ZUGANG")}</span><h3>{t("Schlüsselpaare für")} {environment}</h3></div>
         <button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> <StableLabel current={t("Neu laden")} variants={tAll("Neu laden")}/></button></div>
-      <p className="risk high"><ShieldAlert size={14}/> {t(S3_ACCESS_LIMIT)}</p>
+      <p><Plug size={14}/> {t(S3_ACCESS_ENDPOINT)}</p>
+      {endpointUrl && <p><code>{endpointUrl}</code></p>}
       <p>{t(S3_ACCESS_WHAT)}</p>
+      <p>{t(S3_ACCESS_ROLE)}</p>
+      <p className="muted">{t(S3_ACCESS_OPERATIONS_BUILT)}</p>
+      <p className="muted"><ShieldAlert size={14}/> {t(S3_ACCESS_OPERATIONS_MISSING)}</p>
+      <p className="muted">{t(S3_ACCESS_SECRET_AT_REST)}</p>
       <p className="muted">{t(S3_ACCESS_WHY_NO_PROVIDER_KEYS)}</p>
-      <p className="muted">{t(S3_ACCESS_WHY_NO_SIGNATURE_CHECK)}</p>
     </article>
 
     <article className="console-card auth-overview">
-      <div><span>{t("GÜLTIGE PAARE")}</span><strong>{live.length}</strong><small>{t("erklärt, noch nicht angenommen")}</small></div>
-      <div><span>{t("WIDERRUFEN")}</span><strong>{keys.length - live.length}</strong><small>{t("gelten nicht mehr")}</small></div>
+      <div><span>{t("GÜLTIGE PAARE")}</span><strong>{live.length}</strong><small>{t("nehmen den Endpunkt an")}</small></div>
+      <div><span>{t("WIDERRUFEN")}</span><strong>{revokedCount}</strong><small>{t("gelten nicht mehr")}</small></div>
       <div><span>{t("BUCKETS")}</span><strong>{buckets.length}</strong><small>{t("in dieser Umgebung")}</small></div>
     </article>
 
@@ -200,6 +218,7 @@ export function S3AccessView({ projectId, environment, initialState }: { project
           <strong>{t(S3_ACCESS_ONE_TIME)}</strong>
           <code>{issued.accessKeyId}</code>
           <code>{issued.secret}</code>
+          {!issued.verifiable && <p className="risk high"><ShieldAlert size={14}/> {t(S3_ACCESS_NO_SERVER_KEY)}</p>}
         </div>
         <button onClick={() => void navigator.clipboard.writeText(issued.secret)}><Copy size={14}/> {t("Kopieren")}</button>
         <button onClick={() => setIssued(null)} aria-label={t("Schliessen")}><X size={14}/></button>
@@ -214,7 +233,8 @@ export function S3AccessView({ projectId, environment, initialState }: { project
         {keys.map((key) => <div key={key.id}>
           <span className="key-kind secure"><KeyRound size={13}/></span>
           <div><strong>{key.name}</strong><code>{key.accessKeyId}</code>
-            <small>{key.bucketIds.map(bucketName).join(", ")}</small></div>
+            <small>{key.bucketIds.map(bucketName).join(", ")}</small>
+            {!key.verifiable && !key.revokedAt && <small className="risk high">{t(S3_ACCESS_NOT_VERIFIABLE)}</small>}</div>
           <span>{key.revokedAt
             ? `${t("widerrufen")} ${formatMoment(key.revokedAt, "date")}`
             : `${t("läuft ab")} ${formatMoment(key.expiresAt, "date")}`}</span>

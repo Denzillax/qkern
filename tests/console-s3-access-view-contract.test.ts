@@ -2,21 +2,28 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  S3_ACCESS_LIMIT,
+  S3_ACCESS_ENDPOINT,
+  S3_ACCESS_NO_SERVER_KEY,
+  S3_ACCESS_NOT_VERIFIABLE,
+  S3_ACCESS_OPERATIONS_BUILT,
+  S3_ACCESS_OPERATIONS_MISSING,
+  S3_ACCESS_ROLE,
+  S3_ACCESS_SECRET_AT_REST,
   S3_ACCESS_WHY_NO_PROVIDER_KEYS,
-  S3_ACCESS_WHY_NO_SIGNATURE_CHECK,
   s3AccessTexts,
   validateS3AccessDraft,
 } from "@/lib/console/s3-access-texts";
 
 /**
- * Die Ansicht Storage, S3-Zugang (2.78) muss ihre Grenze zeigen.
+ * Die Ansicht Storage, S3-Zugang (2.78, Endpunkt 2.96) muss ihre Grenzen zeigen.
  *
- * Der Slice gibt Schluesselpaare aus, die heute kein Endpunkt annimmt. Das ist
- * vertretbar, solange die Seite es sagt. Faellt der Satz irgendwann weg, sieht
- * die Seite aus wie ein fertiger Zugang, und genau dann soll dieser Vertrag
- * fallen. Dazu haelt er die Wege fest, die die Ansicht abfragt: Ein Weg, der
- * ein Geheimnis zurueckbringen koennte, ist keiner.
+ * Seit 2.96 nimmt der Endpunkt /s3 ein Paar an. Die Seite muss sagen, wo er
+ * haengt, als wer ein Paar handelt, welche Operationen gehen und welche mit
+ * 501 antworten, und sie muss ein Paar ohne hinterlegtes Geheimnis als
+ * solches zeigen. Faellt einer dieser Saetze weg, sieht die Seite aus wie
+ * ein vollstaendiger S3-Dienst, und genau dann soll dieser Vertrag fallen.
+ * Dazu haelt er die Wege fest, die die Ansicht abfragt: Ein Weg, der ein
+ * Geheimnis zurueckbringen koennte, ist keiner.
  */
 const VIEW = path.resolve(process.cwd(), "components/console/s3-access-view.tsx");
 
@@ -25,15 +32,25 @@ async function view(): Promise<string> {
 }
 
 describe("console S3 access view contract", () => {
-  it("names the limit and both reasons on the page itself", async () => {
+  it("names the endpoint, the role of a pair, what works, what answers 501 and where the secret lies", async () => {
     const source = await view();
-    for (const text of [S3_ACCESS_LIMIT, S3_ACCESS_WHY_NO_PROVIDER_KEYS, S3_ACCESS_WHY_NO_SIGNATURE_CHECK]) {
+    const constants = {
+      S3_ACCESS_ENDPOINT, S3_ACCESS_ROLE, S3_ACCESS_OPERATIONS_BUILT, S3_ACCESS_OPERATIONS_MISSING,
+      S3_ACCESS_SECRET_AT_REST, S3_ACCESS_WHY_NO_PROVIDER_KEYS, S3_ACCESS_NO_SERVER_KEY, S3_ACCESS_NOT_VERIFIABLE,
+    };
+    for (const constant of Object.keys(constants)) {
       // Der Text steht als Konstante im Modul und laeuft ueber t(variable);
       // gepruft wird, dass die Ansicht ihn wirklich rendert.
-      const constant = Object.entries({
-        S3_ACCESS_LIMIT, S3_ACCESS_WHY_NO_PROVIDER_KEYS, S3_ACCESS_WHY_NO_SIGNATURE_CHECK,
-      }).find(([, value]) => value === text)![0];
       expect(source, constant).toContain(`t(${constant})`);
+    }
+    // Die Adresse des Endpunkts kommt aus dem Browser und endet auf /s3.
+    expect(source).toContain("`${window.location.origin}/s3`");
+    // Ein Paar ohne Geheimnis zaehlt nicht als gueltig.
+    expect(source).toContain("!key.revokedAt && key.verifiable");
+    // Die Operationen, die die Seite als fehlend nennt, sind die, die der
+    // Endpunkt mit 501 beantwortet.
+    for (const missing of ["Multipart", "Presigned", "Range", "CopyObject", "aws-chunked"]) {
+      expect(S3_ACCESS_OPERATIONS_MISSING, missing).toContain(missing);
     }
   });
 
@@ -73,7 +90,7 @@ describe("console S3 access view contract", () => {
   it("offers every text of the module for translation", async () => {
     // Der i18n-Vertrag liest diese Liste; sie darf nicht leer laufen, wenn ein
     // Text aus dem Modul verschwindet.
-    expect(s3AccessTexts().length).toBeGreaterThanOrEqual(11);
+    expect(s3AccessTexts().length).toBeGreaterThanOrEqual(16);
     expect(new Set(s3AccessTexts()).size).toBe(s3AccessTexts().length);
   });
 

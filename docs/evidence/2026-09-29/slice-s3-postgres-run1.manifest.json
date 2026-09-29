@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "slice-s3-postgres-run1.log",
+  "commit": "9e01d31836174758dbb153c5224429002646e780",
+  "commitSubject": "release: 2.65.0 Nach Nutzer geordnet, ohne Vektortyp, in jedem Zustand",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 65,
+  "testFiles": "31 passed (31)",
+  "tests": "225 passed (225)",
+  "passed": 225,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
