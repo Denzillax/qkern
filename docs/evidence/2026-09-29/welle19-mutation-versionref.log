@@ -1,8 +1,8 @@
 
  RUN  v4.1.10 C:/Projekte/qkern/code/qkern
 
- ❯ tests/version-reference-contract.test.ts (1 test | 1 failed) 3698ms
-     × never names a release that has not shipped 3691ms
+ ❯ tests/version-reference-contract.test.ts (1 test | 1 failed) 1148ms
+     × never names a release that has not shipped 1146ms
 
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
 
@@ -17,20 +17,20 @@ AssertionError: expected [ Array(1) ] to deeply equal []
 +   "docs\\HANDBUCH.md:2448: 2.99.0 in \"Seit `2.99.0` ist **Storage → Vektor-Buckets** keine Platzhalterseite mehr. Der\"",
 + ]
 
- ❯ tests/version-reference-contract.test.ts:90:19
-     88|       }
-     89|     }
-     90|     expect(found).toEqual([]);
+ ❯ tests/version-reference-contract.test.ts:98:19
+     96|       }
+     97|     }
+     98|     expect(found).toEqual([]);
        |                   ^
-     91|   });
-     92| });
+     99|   });
+    100| });
 
 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
 
 
  Test Files  1 failed (1)
       Tests  1 failed (1)
-   Start at  23:08:18
-   Duration  4.41s (transform 105ms, setup 0ms, import 167ms, tests 3.70s, environment 0ms)
+   Start at  23:12:29
+   Duration  1.42s (transform 36ms, setup 0ms, import 52ms, tests 1.15s, environment 0ms)
 
 EXIT=1

@@ -26,7 +26,9 @@ import { describe, expect, it } from "vitest";
  * Nicht geprueft werden `docs/RELEASE_*.md` (die aktuelle Note nennt ihre
  * eigene, noch nicht gesetzte Nummer, solange die Version am Ende des
  * Release-Schnitts steigt), `docs/evidence/` (archivierte Logs werden nie
- * bearbeitet) und `node_modules`.
+ * bearbeitet), `node_modules` und **diese Datei selbst**: Ein Vertrag, der den
+ * Fehler beschreibt, den er verhindert, muss ihn benennen duerfen. Beim ersten
+ * Lauf ist er genau darueber gefallen.
  */
 
 /** `1.90.0`, `2.67.0`: drei Zahlen, in Backticks oder nackt. */
@@ -56,6 +58,7 @@ async function files(dir: string): Promise<string[]> {
     if (entry.isDirectory()) { out.push(...await files(full)); continue; }
     if (!READ.has(path.extname(entry.name))) continue;
     if (entry.name.startsWith("RELEASE_")) continue;
+    if (entry.name === "version-reference-contract.test.ts") continue;
     out.push(full);
   }
   return out;
