@@ -1,5 +1,5 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
-import { nextCronOccurrence } from "@/lib/server/compute/cron";
+import { CRON_DEFAULT_TIME_ZONE, nextCronOccurrence, validateCronTimeZone } from "@/lib/server/compute/cron";
 import {
   buildCronOccurrenceLog,
   cronOccurrenceCandidates,
@@ -27,6 +27,8 @@ export type CronDefinitionRecord = ComputeDefinitionScope & Readonly<{
   queue: string;
   payload: ProjectQueueJson;
   enabled: boolean;
+  /** IANA-Zeitzone, in der der Ausdruck gelesen wird; `UTC` fuer jeden Plan von vor 2.66. */
+  timeZone: string;
   lastDispatchedAt: string | null;
   createdAt: string;
 }>;
@@ -94,6 +96,8 @@ export type CronDefinitionInput = {
   queue: string;
   payload?: ProjectQueueJson;
   enabled?: boolean;
+  /** IANA-Zeitzone (`Europe/Berlin`). Ohne Angabe UTC. */
+  timeZone?: string;
 };
 
 export type WebhookDefinitionInput = {
@@ -184,6 +188,7 @@ export interface ComputeDefinitionRepository {
   listCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope): Promise<CronDefinitionRecord[]>;
   createCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, input: {
     name: string; expression: string; queue: string; payload: ProjectQueueJson; enabled: boolean;
+    timeZone: string;
   }): Promise<CronDefinitionRecord>;
   getCron(principal: ProjectQueuePrincipal, scope: ComputeDefinitionScope, id: string):
     Promise<CronDefinitionRecord | null>;
@@ -318,9 +323,11 @@ export class ComputeDefinitionService {
       throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT");
     }
     // Derselbe Parser, den der Scheduler benutzt. Ein Ausdruck, den er nicht
-    // versteht, darf gar nicht erst entstehen.
+    // versteht, darf gar nicht erst entstehen; dasselbe gilt fuer die Zeitzone.
+    let timeZone: string;
     try {
-      nextCronOccurrence(input.expression, new Date(0));
+      timeZone = validateCronTimeZone(input.timeZone ?? CRON_DEFAULT_TIME_ZONE);
+      nextCronOccurrence(input.expression, new Date(0), timeZone);
     } catch (cause) {
       throw new ComputeDefinitionError("COMPUTE_INVALID_INPUT", { cause });
     }
@@ -335,7 +342,7 @@ export class ComputeDefinitionService {
 
     return await this.options.repository.createCron(principal, scope, {
       name: input.name, expression: input.expression.trim(), queue: input.queue, payload,
-      enabled: input.enabled ?? true,
+      enabled: input.enabled ?? true, timeZone,
     });
   }
 

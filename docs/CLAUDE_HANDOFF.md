@@ -95,6 +95,36 @@ Grossbuchstaben.
   verwaisen waere schlimmer als eine wachsende Tabelle. Fall `(2.89)` in
   `tests/postgres.integration.test.ts`.
 
+- 2.66 **Cron liest Namen, Kuerzel, eine Zeitzone und die Sonderformen.**
+  Migration `0065_project_cron_time_zone.sql` haengt `time_zone text NOT NULL
+  DEFAULT 'UTC'` an `project_cron_definitions`; das UPDATE-Recht der Laufzeit
+  bleibt bei `last_dispatched_at`, `enabled`, `updated_at`, die Zeitzone ist wie
+  der Ausdruck Teil des Plans. Der Parser (`lib/server/compute/cron.ts`) nimmt
+  jetzt `JAN..DEC` und `SUN..SAT` in Monat und Wochentag, auch in Bereichen und
+  Listen, die Kuerzel `@yearly @annually @monthly @weekly @daily @midnight
+  @hourly`, dazu `L`, `LW`, `NW` im Tagesfeld und `NL`, `N#K` im
+  Wochentagsfeld, jede Sonderform allein in ihrem Feld. Die Zeitzone rechnet
+  `Intl` ohne fremde Bibliothek: Wanduhr als "falsche UTC", Versatz je
+  Wanduhrtag, an einem Wechseltag eine Suche nach dem Sprung. **Sommerzeit wie
+  Vixie-Cron**: feste Stunde heisst ein Termin am Tag (doppelte Stunde zaehlt
+  einmal, beim ersten Mal; fehlende Stunde feuert im Moment des Sprungs),
+  Stunde `*` heisst Takt und folgt der echten Zeit. **Der Dedupe-Schluessel
+  bestehender Plaene ist unveraendert**: Der UTC-Pfad wurde nicht angefasst,
+  und der Fall "keeps the dedupe key of every pre-2.66 expression identical to
+  the recorded value" vergleicht acht Ausdruecke gegen Schluessel, die mit dem
+  Parser von 9e01d31 berechnet wurden, einmal ohne Zeitzone und einmal mit dem
+  Vorgabewert `UTC`. Stack: `compute-cron-postgres` 12 Faelle (vorher 9),
+  `compute-definitions-postgres` 10 (vorher 9), 228 Faelle gruen. **Zwei
+  Mutationsproben**, je ein frischer Lauf: Zeitzone ignoriert, es fiel genau der
+  Fall ueber die fehlende Stunde (1 von 228); jeder Wochentagsname um eins
+  verschoben, es fielen genau der Namensfall und der Sonderformenfall (2 von
+  228). Der Namensfall steht absichtlich auf einem Montag, denn ein Dienstag
+  liegt auch in einem um eins verschobenen `MON-FRI`. **Offen**: Die Console
+  fragt die Zeitzone in einem `prompt` ab, ohne Liste; `L` im Wochentagsfeld
+  allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
+  `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
+  gewollt und dort nicht erklaert.
+
 - 2.94 **Die Zustimmungen haben
   eine Seite, und ein einzelnes Token faellt.** Zwei Luecken aus 2.92, und beide
   hingen zusammen. Die erste: Die Liste der Zustimmungen stand unter

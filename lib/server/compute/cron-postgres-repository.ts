@@ -16,6 +16,7 @@ type CronRow = {
   queue: string;
   payload: ProjectQueueJson;
   enabled: boolean;
+  time_zone: string;
   last_dispatched_at: Date | null;
 };
 
@@ -36,7 +37,7 @@ export class PostgresCronRepository implements CronRepository {
     return await this.withTenant(principal, true, async (database) => {
       const result = await database.query<CronRow>(
         `SELECT id, organization_id, project_id, environment, name, expression, queue,
-                payload, enabled, last_dispatched_at
+                payload, enabled, time_zone, last_dispatched_at
            FROM project_cron_definitions
           WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND enabled
           ORDER BY name`,
@@ -85,6 +86,7 @@ function toProgress(row: CronRow): CronProgress {
     queue: row.queue,
     payload: row.payload,
     enabled: row.enabled,
+    timeZone: row.time_zone,
     lastDispatchedAt: row.last_dispatched_at === null ? null : new Date(row.last_dispatched_at),
   };
 }

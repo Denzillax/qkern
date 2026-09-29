@@ -96,7 +96,9 @@ export type CronOccurrenceCandidate = Readonly<{ occurredAt: Date; dedupeKeyHash
  * Verifikator kommt aus demselben Modul wie beim Einreihen. Zwei Parser oder
  * zwei Hashes waeren zwei Wahrheiten.
  */
-export function cronOccurrenceCandidates(definition: { id: string; expression: string }, window: {
+export function cronOccurrenceCandidates(definition: {
+  id: string; expression: string; timeZone?: string;
+}, window: {
   from: Date; to: Date; limit: number;
 }): CronOccurrenceCandidate[] {
   const times: Date[] = [];
@@ -105,7 +107,7 @@ export function cronOccurrenceCandidates(definition: { id: string; expression: s
   // genau auf `from` gehoert dazu.
   let cursor = new Date(window.from.getTime() - 60_000);
   for (let index = 0; index < MAX_ENUMERATED; index += 1) {
-    const next = nextCronOccurrence(definition.expression, cursor);
+    const next = nextCronOccurrence(definition.expression, cursor, definition.timeZone);
     if (next.getTime() > window.to.getTime()) break;
     times.push(next);
     cursor = next;

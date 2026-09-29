@@ -108,7 +108,7 @@ export class CronScheduler {
     let cursor = definition.lastDispatchedAt ?? new Date(now.getTime() - 60_000);
 
     for (let index = 0; index < this.maxCatchUp; index += 1) {
-      const next = nextCronOccurrence(definition.expression, cursor);
+      const next = nextCronOccurrence(definition.expression, cursor, definition.timeZone);
       if (next > now) break;
       occurrences.push(next);
       cursor = next;

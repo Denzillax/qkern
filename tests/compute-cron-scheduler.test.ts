@@ -55,6 +55,25 @@ function dispatcher(fail = false) {
   };
 }
 
+describe("cron scheduler with a time zone", () => {
+  it("computes due occurrences on the wall clock of the definition's zone", async () => {
+    // 02:30 Berlin im August ist 00:30Z. Fortschritt gestern 00:30Z, jetzt
+    // 00:31Z: genau ein Vorkommen, und zwar 00:30Z, nicht 02:30Z.
+    const store = repository([definition({
+      expression: "30 2 * * *", timeZone: "Europe/Berlin",
+      lastDispatchedAt: new Date("2026-08-04T00:30:00.000Z"),
+    })]);
+    const sink = dispatcher();
+    const scheduler = new CronScheduler({
+      repository: store.repository, dispatcher: sink,
+      now: () => new Date("2026-08-05T00:31:00.000Z"),
+    });
+    const result = await scheduler.run(principal, scope);
+    expect(result).toEqual({ dispatched: 1, skipped: 0, failed: 0 });
+    expect(sink.dispatched.map((entry) => entry.at.toISOString())).toEqual(["2026-08-05T00:30:00.000Z"]);
+  });
+});
+
 describe("cron migration", () => {
   it("keeps expression, queue and payload immutable through the grant", () => {
     // Eine Aenderung erfolgt ueber Loeschen und Neuanlegen und damit ueber den
