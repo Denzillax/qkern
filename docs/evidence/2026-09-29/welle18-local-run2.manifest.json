@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle18-local-run2.log",
+  "commit": "5a6ac727b5abeab0c6eec0eb24c78d4c6ceef51c",
+  "commitSubject": "merge: Cron-Grammatik aus slice/cronnames",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "332 passed | 39 skipped (371)",
+  "tests": "2335 passed | 315 skipped (2650)",
+  "passed": 2335,
+  "failed": 0,
+  "skipped": 315,
+  "images": []
+}

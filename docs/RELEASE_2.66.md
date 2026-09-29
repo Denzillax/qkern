@@ -8,9 +8,9 @@ der dritte macht den Cron-Prozess so vollständig wie pg_cron.
 
 - Der S3-Endpunkt `/s3` nimmt die Schlüsselpaare aus 2.59 an, prüft SigV4 und ruft denselben Storage-Dienst wie die REST-Routen.
 - Die Data API bettet Nachbarzeilen über Fremdschlüssel ein, eine Ebene tief, unter der RLS beider Tabellen.
-- CRON_PLATZHALTER
+- Der Cron-Prozess versteht Monats- und Wochentagsnamen, die `@`-Kürzel, `L`, `W` und `#`, und jeder Zeitplan trägt eine Zeitzone.
 - Der Migrationsprozess-Fall wartet auf seine Logzeile innerhalb derselben Frist, statt einen Zeitpunkt zu messen.
-- PostgreSQL-Zertifizierung von 224 auf STACK_PLATZHALTER Fälle, Storage-Stack von 8 auf 9, lokale Suite von 2309 auf LOKAL.
+- PostgreSQL-Zertifizierung von 224 auf 230 Fälle, Storage-Stack von 8 auf 9, lokale Suite von 2309 auf 2335.
 
 ## Der S3-Endpunkt
 
@@ -54,23 +54,44 @@ Ebene. MCP und GraphQL kennen keine Einbettung.
 
 ## Cron
 
-CRON_ABSCHNITT
+Der Fünf-Feld-Parser liest jetzt JAN bis DEC und SUN bis SAT in Monat und
+Wochentag, auch in Bereichen und Listen, dazu `@yearly`, `@annually`,
+`@monthly`, `@weekly`, `@daily`, `@midnight` und `@hourly`. Im Tagesfeld gehen
+`L`, `LW` und `NW`, im Wochentagsfeld `NL` und `N#K`, jeweils einzeln, nicht in
+Listen.
+
+Jeder Zeitplan trägt eine IANA-Zeitzone (Migration 0066, Vorgabe `UTC`), und
+die Rechnung macht `Intl` ohne fremde Bibliothek. Sommerzeit wie Vixie-Cron:
+Eine feste Stunde heisst ein Termin am Tag, die doppelte Stunde zählt einmal,
+die fehlende feuert im Moment des Sprungs; Stunde `*` heisst Takt nach echter
+Zeit. Beides ist mit Europe/Berlin am 29. März und am 25. Oktober 2026
+getestet, lokal und im Stack.
+
+**Der Dedupe-Schlüssel bestehender Zeitpläne bleibt gleich**, sonst feuerte
+jeder Zeitplan nach dem Deploy einmal doppelt. Der UTC-Pfad ist textlich
+unverändert, und ein Fall vergleicht die Schlüssel von acht Ausdrücken gegen
+Werte, die mit dem Parser von 2.65.0 aufgezeichnet wurden, einmal ohne
+Zeitzone und einmal mit dem Vorgabewert der Migration.
+
+Nebenbei: Die OpenAPI-Beschreibung des Zeitplans nannte seit 1.87 nur `*/N`
+und `M H`. Sie sagt jetzt, was der Parser kann.
 
 ## Belege
 
 | Lauf | Manifest |
 | --- | --- |
-| PostgreSQL 17, STACK_PLATZHALTER/STACK_PLATZHALTER, exit 0 | `docs/evidence/2026-09-29/welle18-run1.manifest.json` |
-| PostgreSQL 17, STACK_PLATZHALTER/STACK_PLATZHALTER, exit 0 | `docs/evidence/2026-09-29/welle18-run2.manifest.json` |
+| PostgreSQL 17, 230/230, exit 0 | `docs/evidence/2026-09-29/welle18-run1.manifest.json` |
+| PostgreSQL 17, 230/230, exit 0 | `docs/evidence/2026-09-29/welle18-run2.manifest.json` |
 | versitygw und ClamAV, 9/9, exit 0 | `docs/evidence/2026-09-29/welle18-storage.manifest.json` |
 | Mutation der Signaturvergleich nimmt jede Signatur, exit 1 | `docs/evidence/2026-09-29/welle18-mutation-sigv4.manifest.json` |
 | Mutation die Nachbartabelle geht an der Tür vorbei, exit 1 | `docs/evidence/2026-09-29/welle18-mutation-embedboundary.manifest.json` |
-| CRON_PROBE |
-| Vitest lokal LOKAL/LOKAL, exit 0 | `docs/evidence/2026-09-29/welle18-local-run1.manifest.json` |
-| Vitest lokal LOKAL/LOKAL, exit 0 | `docs/evidence/2026-09-29/welle18-local-run2.manifest.json` |
+| Mutation die Zeitzone wird ignoriert, exit 1 | `docs/evidence/2026-09-29/welle18-mutation-crontz.manifest.json` |
+| Functions gegen Docker plus PostgreSQL, 27/27, exit 0 | `docs/evidence/2026-09-29/welle18-functions.manifest.json` |
+| Vitest lokal 2335/2335, exit 0 | `docs/evidence/2026-09-29/welle18-local-run1.manifest.json` |
+| Vitest lokal 2335/2335, exit 0 | `docs/evidence/2026-09-29/welle18-local-run2.manifest.json` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben unter
-`slice-s3-*`, `data-api-joins-*` und CRON_EVIDENZ.
+`slice-s3-*`, `data-api-joins-*` und den Läufen des Cron-Agenten in seinem Worktree.
 
 ## Nachtrag zum Verfahren
 
@@ -85,8 +106,12 @@ die Logzeile, nachdem `markFailed` festgeschrieben hat, und wer im selben
 Moment liest, sieht den Puffer leer. Der Fall wartet jetzt innerhalb
 derselben Frist auf die Zeile.
 
-**Ein Agent hat "erledigt in 2.96" geschrieben, wo 2.66.0 gemeint war.**
-Fallnummer und Releasenummer sehen sich zu ähnlich; beim Merge berichtigt.
+**Zwei Schnitte vergaben dieselbe Migrationsnummer.** S3 und Cron legten beide
+`0065` an; auf jedem Zweig war die Nummer beim Anlegen frei. Die Cron-Migration
+heisst seit dem Merge `0066`. Dieselbe Klasse wie die doppelte Fallnummer in
+2.65, und derselbe Grund: Parallele Arbeit sieht die Nachbarn nicht. Ein Agent
+schrieb ausserdem "erledigt in 2.96", wo 2.66.0 gemeint war; Fallnummer und
+Releasenummer sehen sich zu ähnlich.
 
 ## Ehrlich offen
 
@@ -94,6 +119,6 @@ Fallnummer und Releasenummer sehen sich zu ähnlich; beim Merge berichtigt.
 - **Überschreiben per PutObject ist Löschen plus Anlegen**, nicht atomar. Scheitert der Upload beim Anbieter, bleibt die Reservierung bis zum Ablauf des Grants stehen.
 - **Alte S3-Paare öffnen nichts.** Wer sie braucht, gibt neue aus.
 - **Einbettung nur eine Ebene, nur über genau einen Fremdschlüssel**, und nicht über MCP oder GraphQL.
-- CRON_OFFEN
+- **Die Console fragt die Zeitzone per `prompt` ohne Liste.** `L` allein im Wochentagsfeld gibt es nicht, Sonderformen nur einzeln.
 - **Im Browser nicht gesehen**, weiterhin.
 - **Ein Platzhalter bleibt**: Analytics-Buckets.

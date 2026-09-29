@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV, Mutation: der Signaturvergleich nimmt jede Signatur",
+  "log": "welle18-mutation-sigv4.log",
+  "commit": "5a6ac727b5abeab0c6eec0eb24c78d4c6ceef51c",
+  "commitSubject": "merge: Cron-Grammatik aus slice/cronnames",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 8 passed (9)",
+  "passed": 8,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

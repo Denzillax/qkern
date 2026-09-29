@@ -6315,3 +6315,33 @@ Ausfall.
 Nicht erbracht: Im Browser weiterhin nicht gesehen; `ready` ohne Daten ist der
 leere Zustand, eine Tabelle mit Zeilen sieht der Vertrag nicht. Ein Nutzer
 sieht seine eigenen Zustimmungen nirgends. Ein Platzhalter bleibt.
+
+## Welle achtzehn (2.66): die Schluessel oeffnen, die Nachbarn kommen mit
+
+Drei Schnitte parallel an drei Sprossen der Leiter, die seit 1.91 dort
+standen: der S3-Endpunkt `/s3` mit SigV4 gegen die Paare aus 2.59 (Fall 2.96,
+Storage-Stack 8 auf 9, Migration 0065), eingebettete Beziehungen der Data API
+ueber Fremdschluessel unter der RLS beider Tabellen (Fall 2.95, Grenzen 3 und
+20), und der Cron-Prozess mit Namen, `@`-Kuerzeln, `L`/`W`/`#` und einer
+Zeitzone je Zeitplan (Migration 0066, Dedupe-Schluessel bewiesen stabil).
+
+Drei Stacks gleichzeitig waren zum vierten Mal einer zu viel: 1,1 GiB frei, ein
+Testcontainer 18 Minuten ohne Testzeile, ein `npm ci` 14 Minuten, ClamAV und
+Vault nicht healthy. Die Agenten bekamen eine Reihenfolge und wiederholten
+jeden Lauf mit fremdem Zeitfall. Kein Budget erhoeht. Der einzige echte
+Wettlauf dabei ist der Migrationsprozess-Fall: Die Logzeile kommt nach dem
+Statuswechsel, und der Fall wartet jetzt innerhalb derselben Frist auf sie.
+
+Beim Zusammenfuehren vergaben S3 und Cron beide die Migration 0065; Cron
+heisst jetzt 0066. STATUS zaehlt 63 Faelle in der Control Plane, 51 im
+Compute-Block.
+
+Checkpoint `2.66.0` am 29. September 2026: PostgreSQL 17 mit 230 von 230
+zweimal, versitygw und ClamAV mit 9 von 9, Functions mit 27 von 27, alle
+exit 0; Lokal 2335 bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
+`--maxWorkers=3`. Drei Mutationsproben auf dem gemergten Stand, jede mit genau
+dem erwarteten Ausfall.
+
+Nicht erbracht: Kein echter S3-Client hat den Endpunkt gesehen. Ueberschreiben
+per PutObject ist nicht atomar. Alte S3-Paare oeffnen nichts. Einbettung nur
+eine Ebene. Im Browser weiterhin nicht gesehen. Ein Platzhalter bleibt.

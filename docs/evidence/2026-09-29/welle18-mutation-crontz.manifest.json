@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: die Zeitzone wird ignoriert",
+  "log": "welle18-mutation-crontz.log",
+  "commit": "5a6ac727b5abeab0c6eec0eb24c78d4c6ceef51c",
+  "commitSubject": "merge: Cron-Grammatik aus slice/cronnames",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 66,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 229 passed (230)",
+  "passed": 229,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

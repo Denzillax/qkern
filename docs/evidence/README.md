@@ -1767,3 +1767,19 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-29/welle17-mutation-errorstate.log` | Mutation: deutscher Text im Fehlerzustand an `t()` vorbei | **5 von 6, exit 1 – absichtlich** |
 | `2026-09-29/welle17-local-run1.log` | Vitest lokal (Windows) | 2309 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-29/welle17-local-run2.log` | Vitest lokal (Windows) | 2309 bestanden, exit 0, mit `--maxWorkers=3` |
+
+## Läufe zu Release 2.66 (29. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-29/welle18-run1.log` | PostgreSQL 17 | 230 von 230, exit 0 |
+| `2026-09-29/welle18-run2.log` | PostgreSQL 17 | 230 von 230, exit 0, Wiederholung |
+| `2026-09-29/welle18-storage.log` | versitygw und ClamAV | 9 von 9, exit 0 |
+| `2026-09-29/welle18-functions.log` | Functions gegen Docker plus PostgreSQL | 27 von 27, exit 0 |
+| `2026-09-29/welle18-mutation-embedboundary.log` | Mutation: die Nachbartabelle geht an der Tür vorbei | **229 von 230, exit 1 – absichtlich** |
+| `2026-09-29/welle18-mutation-crontz.log` | Mutation: die Zeitzone wird ignoriert | **229 von 230, exit 1 – absichtlich** |
+| `2026-09-29/welle18-mutation-sigv4.log` | Mutation: der Signaturvergleich nimmt jede Signatur | **8 von 9, exit 1 – absichtlich** |
+| `2026-09-29/welle18-local-run1.log` | Vitest lokal (Windows) | 2335 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-29/welle18-local-run2.log` | Vitest lokal (Windows) | 2335 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `slice-s3-*` und `data-api-joins-*`.

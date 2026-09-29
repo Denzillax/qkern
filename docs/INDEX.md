@@ -36,7 +36,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
 | [SLICE_BERATERREGELN.md](SLICE_BERATERREGELN.md) | Regeln, die nie liefen (Schnitt aus 2.52.0, früher fälschlich RELEASE_2.57.md) |
-| [RELEASE_2.65.md](RELEASE_2.65.md) | Aktueller Release: Nach Nutzer geordnet, ohne Vektortyp, in jedem Zustand |
+| [RELEASE_2.66.md](RELEASE_2.66.md) | Aktueller Release: Die Schlüssel öffnen, die Nachbarn kommen mit |
+| [RELEASE_2.65.md](RELEASE_2.65.md) | Nach Nutzer geordnet, ohne Vektortyp, in jedem Zustand |
 | [RELEASE_2.64.md](RELEASE_2.64.md) | Zustimmung, Riegel, ausgezogen |
 | [RELEASE_2.63.md](RELEASE_2.63.md) | Gerendert, aufgeräumt, kein toter Knopf |
 | [RELEASE_2.62.md](RELEASE_2.62.md) | Die letzten Platzhalter |

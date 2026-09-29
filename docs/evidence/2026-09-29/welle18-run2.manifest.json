@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle18-run2.log",
+  "commit": "5a6ac727b5abeab0c6eec0eb24c78d4c6ceef51c",
+  "commitSubject": "merge: Cron-Grammatik aus slice/cronnames",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 66,
+  "testFiles": "31 passed (31)",
+  "tests": "230 passed (230)",
+  "passed": 230,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
