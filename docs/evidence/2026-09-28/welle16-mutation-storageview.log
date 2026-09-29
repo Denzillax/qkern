@@ -1,0 +1,170 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/console-view-render-contract.test.ts (5 tests | 4 failed) 1666ms
+     × rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React 369ms
+     × zeigt im ersten Durchlauf etwas und nicht eine leere Seite 43ms
+     × zeigt im ersten Durchlauf einen Ladezustand, wo eine Ansicht beim Oeffnen etwas holt 27ms
+     × zeigt in einer fremden Sprache keinen deutschen Text, den der Uebersetzer nie gesehen hat 37ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React
+AssertionError: expected 'StorageView [de#0] wirft: Cannot read…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ StorageView [de#0] wirft: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
++ StorageView [en#0] wirft: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
++ StorageView [fr#0] wirft: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
++ StorageView [it#0] wirft: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
+
+ ❯ tests/console-view-render-contract.test.ts:437:31
+    435|       }
+    436|     }
+    437|     expect(broken.join("\n")).toBe("");
+       |                               ^
+    438|   });
+    439|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt im ersten Durchlauf etwas und nicht eine leere Seite
+AssertionError: expected 'StorageView#0 wirft beim Rendern: Can…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ StorageView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
+
+ ❯ tests/console-view-render-contract.test.ts:455:29
+    453|       }
+    454|     }
+    455|     expect(thin.join("\n")).toBe("");
+       |                             ^
+    456|   });
+    457|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt im ersten Durchlauf einen Ladezustand, wo eine Ansicht beim Oeffnen etwas holt
+AssertionError: expected 'StorageView#0 wirft beim Rendern: Can…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ StorageView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
+
+ ❯ tests/console-view-render-contract.test.ts:469:31
+    467|       if (!loading) silent.push(`${made.component}#${made.index} zeigt…
+    468|     }
+    469|     expect(silent.join("\n")).toBe("");
+       |                               ^
+    470|   });
+    471|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/console-view-render-contract.test.ts > console view render contract > zeigt in einer fremden Sprache keinen deutschen Text, den der Uebersetzer nie gesehen hat
+AssertionError: expected 'StorageView#0 wirft beim Rendern: Can…' to be '' // Object.is equality
+
+- Expected
++ Received
+
++ StorageView#0 wirft beim Rendern: Cannot read properties of undefined (reading 'usedBytes')
++ TypeError: Cannot read properties of undefined (reading 'usedBytes')
++     at StorageView (C:/Projekte/qkern/code/qkern/components/console/storage-view.tsx:33:25)
++     at Object.react_stack_bottom_frame (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9808:18)
++     at renderWithHooks (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5062:19)
++     at renderElement (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5497:23)
++     at retryNode (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:6428:21)
++     at performWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:7435:17)
++     at startWork (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8270:7)
++     at renderToStringImpl (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8380:7)
++     at process.env.NODE_ENV.exports.renderToStaticMarkup (C:\Projekte\qkern\code\qkern\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:9861:14)
++     at render (C:/Projekte/qkern/code/qkern/tests/console-view-render-contract.test.ts:347:22)
+
+ ❯ tests/console-view-render-contract.test.ts:492:34
+    490|     }
+    491|     setConsoleLocale("de");
+    492|     expect(leftovers.join("\n")).toBe("");
+       |                                  ^
+    493|   });
+    494| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  20:04:26
+   Duration  2.53s (transform 1.46s, setup 0ms, import 746ms, tests 1.67s, environment 0ms)
+
+EXIT=1

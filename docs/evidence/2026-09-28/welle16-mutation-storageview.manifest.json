@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: Feldzugriff auf den ersten Bucket",
+  "log": "welle16-mutation-storageview.log",
+  "commit": "e5d040fb27027e2e4cb8fb052ddd906214494d1d",
+  "commitSubject": "merge: Zustimmung aus slice/consent",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "4 failed | 1 passed (5)",
+  "passed": 1,
+  "failed": 4,
+  "skipped": 0,
+  "images": []
+}

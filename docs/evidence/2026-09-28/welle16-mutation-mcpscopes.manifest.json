@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: die freie Abfrage steht unter data:read",
+  "log": "welle16-mutation-mcpscopes.log",
+  "commit": "e5d040fb27027e2e4cb8fb052ddd906214494d1d",
+  "commitSubject": "merge: Zustimmung aus slice/consent",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 64,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 221 passed (222)",
+  "passed": 221,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

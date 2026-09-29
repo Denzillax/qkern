@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.63.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.64.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -95,8 +95,7 @@ Grossbuchstaben.
   verwaisen waere schlimmer als eine wachsende Tabelle. Fall `(2.89)` in
   `tests/postgres.integration.test.ts`.
 
-- Neu in diesem Zweig: 2.92 (Zweig `slice/consent`) **Eine Zustimmung ist eine
-  Zeile.** Migration `0064_project_auth_oauth_consents.sql` legt
+- 2.92 **Eine Zustimmung ist eine Zeile.** Migration `0064_project_auth_oauth_consents.sql` legt
   `project_auth_oauth_consents` an (Nutzer, Client, Bereiche, `granted_at`,
   `revoked_at`) und haengt `consent_id` an Codes und Token. Damit schliessen sich
   die drei offenen Punkte aus 2.82 als **eine** Sache: Widerruf je Zustimmung
@@ -127,6 +126,36 @@ Grossbuchstaben.
   `POST /auth/oauth/consents` und
   `DELETE /auth/admin/oauth-consents/{consentId}`. Zertifiziert im Fall
   `(2.92)`.
+
+- 2.91 **Der Riegel im Remote-MCP-Server steht jetzt vor OAuth statt vor dem
+  Transport.** Ueber OAuth erreichbar sind vier Werkzeuge: Lesen unter
+  `data:read`, Einfuegen, Aendern und Loeschen unter `data:write`. Die uebrigen
+  zwoelf werden fuer eine solche Sitzung gar nicht erst angemeldet und fehlen
+  schon in der Werkzeugliste: Die freie Abfrage und die Schemaliste lesen an der
+  Zeilensicherheit vorbei, waehrend `data:read` das Lesen **unter** ihr zusagt,
+  und fuer Control Plane, Storage, Queues und die beiden Migrationswerkzeuge gibt
+  es keinen Bereich, der sie beschreibt. Die Tabelle steht in
+  `mcp/tool-scopes.ts`; ein Werkzeugname ohne Eintrag wirft beim Start. Der
+  Mandant kommt vollstaendig aus dem Projekt-Key, die Prozessumgebung gilt auf
+  diesem Weg nicht. Der statische Bearer bleibt, aber nur lokal. Zertifiziert im
+  Fall `(2.91)`.
+
+- **Dreizehn Konsolenansichten liegen jetzt in eigenen Dateien** unter
+  `components/console/`, und der Render-Vertrag aus 2.63 erreicht sie. Der Umzug
+  allein war folgenlos; gefunden hat er vier Fehler im ersten Renderdurchlauf:
+  Monitoring zeigte acht leere Kaesten und kein Wort, die Live-API behauptete
+  "Nicht eingerichtet", bevor sie gefragt hatte, die Freigaben sagten "Regel wird
+  geladen" im Perfekt, und sieben Texte liefen nie durch `t()`. **Offen**: Nach
+  dem Ausziehen liegen kleine Helfer mehrfach herum (`EmptyState`, `ErrorState`,
+  `formatTime`, `CheckIcon`).
+
+- **Befund aus dem Zusammenfuehren, fuer die naechste parallele Runde.** Die
+  Schnitte zu 2.91 und 2.92 waren jeder fuer sich gruen und zusammen rot:
+  `(2.91)` faehrt einen OAuth-Ablauf ganz durch und kannte die neue
+  Zustimmungsregel nicht, weil es ihn im Zustimmungs-Worktree nicht gab. Gefallen
+  ist erst der zusammengefuehrte Stand, mit `consent_missing`. Der
+  Zertifizierungslauf gehoert deshalb **nach** das Zusammenfuehren.
+
 
 - Neu in diesem Zweig: 2.82 (Zweig `slice/oauthserver`) **QKERN gibt selbst
   Token aus: Authorization Code mit PKCE, und nur das.** Der Platzhalter
@@ -285,7 +314,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.63.0`
+- Paketversion: `2.64.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

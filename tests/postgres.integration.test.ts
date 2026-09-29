@@ -9501,6 +9501,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const issueToken = async (scopes: Array<"identity:read" | "data:read" | "data:write">) => {
         const verifier = randomBytes(32).toString("base64url");
         const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        // Seit `(2.92)` steht vor jedem Anlauf eine Zustimmung. Sie gehoert
+        // hierher und nicht einmal vorweg, weil jeder Durchlauf eine andere
+        // Bereichsmenge anlaeuft und genau verglichen wird.
+        await service.grantOAuthConsent(scope, signedIn.accessToken, { clientId: "mcp-bridge", scopes });
         const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
           clientId: "mcp-bridge", redirectUri: home, scopes, codeChallenge: challenge, state: null,
         });

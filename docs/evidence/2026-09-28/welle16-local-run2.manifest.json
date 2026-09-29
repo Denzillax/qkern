@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle16-local-run2.log",
+  "commit": "e5d040fb27027e2e4cb8fb052ddd906214494d1d",
+  "commitSubject": "merge: Zustimmung aus slice/consent",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "328 passed | 38 skipped (366)",
+  "tests": "2301 passed | 306 skipped (2607)",
+  "passed": 2301,
+  "failed": 0,
+  "skipped": 306,
+  "images": []
+}

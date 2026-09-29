@@ -1741,3 +1741,16 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-27/welle15-local-run1.log` | Vitest lokal (Windows) | 2300 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-27/welle15-local-run2.log` | Vitest lokal (Windows) | 2300 bestanden, exit 0, mit `--maxWorkers=3` |
 
+
+## Läufe zu Release 2.64 (28. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-28/welle16-run1.log` | PostgreSQL 17 | 222 von 222, exit 0 |
+| `2026-09-28/welle16-run2.log` | PostgreSQL 17 | 222 von 222, exit 0, Wiederholung am 29. September auf leerer Maschine |
+| `2026-09-28/welle16-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-28/welle16-mutation-mcpscopes.log` | Mutation: die freie Abfrage steht unter `data:read` | **221 von 222, exit 1 – absichtlich** |
+| `2026-09-28/welle16-mutation-consent.log` | Mutation: eine widerrufene Zustimmung gilt weiter | **221 von 222, exit 1 – absichtlich** |
+| `2026-09-28/welle16-mutation-storageview.log` | Mutation: Feldzugriff auf den ersten Bucket | **1 von 5, exit 1 – absichtlich** |
+| `2026-09-28/welle16-local-run1.log` | Vitest lokal (Windows) | 2301 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-28/welle16-local-run2.log` | Vitest lokal (Windows) | 2301 bestanden, exit 0, mit `--maxWorkers=3` |

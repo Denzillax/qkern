@@ -6242,3 +6242,36 @@ Nicht erbracht: Im Browser weiterhin nicht gesehen. Vierzehn Ansichten liegen
 in `console-app.tsx` und werden vom Vertrag nicht erreicht. Zwei Platzhalter
 bleiben. QKERN hat weiterhin keinen Weg, ein Backup einer Projektdatenbank
 anzustossen.
+
+## Welle sechzehn (2.64): Zustimmung, Riegel, ausgezogen
+
+Drei Schnitte parallel in drei Worktrees, danach nacheinander zusammengefuehrt.
+Die Zustimmung als Zeile in `project_auth_oauth_consents` (Migration 0064), der
+Riegel im Remote-MCP-Server, der jetzt vor OAuth statt vor dem Transport steht,
+und dreizehn Konsolenansichten, die aus `console-app.tsx` in eigene Dateien
+gezogen sind.
+
+Der Umzug der Ansichten hat vier Fehler gezeigt, die vorher niemand sehen
+konnte, weil der Render-Vertrag aus 2.63 diese Seiten nicht erreichte:
+Monitoring zeigte beim Oeffnen acht leere Kaesten und kein Wort, die Live-API
+behauptete "Nicht eingerichtet", bevor sie gefragt hatte, die Freigaben sagten
+"Regel wird geladen" im Perfekt, und sieben Texte liefen nie durch `t()`.
+
+Der Befund des Zusammenfuehrens: Zwei Schnitte waren jeder fuer sich gruen und
+zusammen rot. Der Fall `(2.91)` aus dem MCP-Schnitt faehrt einen OAuth-Ablauf
+ganz durch; der Zustimmungsschnitt hat die Regel eingefuehrt, dass es ohne
+Zustimmung keinen Code gibt. `(2.91)` gab es in seinem Worktree nicht, also
+konnte er sie nicht kennen. Gefallen ist erst der zusammengefuehrte Stand, mit
+`consent_missing`. Die Rechnung fuer parallele Arbeit war billig, weil der
+Zertifizierungslauf nach dem Zusammenfuehren steht und nicht davor.
+
+Checkpoint `2.64.0` am 29. September 2026: PostgreSQL 17 mit 222 von 222,
+der zweite Lauf einen Tag spaeter auf leerer Maschine,
+Mailpit und Dex mit 7 von 7, alle exit 0; Lokal 2301 bestanden, 0
+fehlgeschlagen, zweimal reproduziert mit `--maxWorkers=3`. Drei Mutationsproben
+gefahren, jede hat genau die erwarteten Faelle fallen lassen.
+
+Nicht erbracht: Niemand hat eine Zustimmungsseite gesehen, und ein Nutzer kann
+seine eigene Zustimmung nicht selbst zuruecknehmen. Ein einzelnes Token laesst
+sich nicht widerrufen. Im Browser weiterhin nicht gesehen. Zwei Platzhalter
+bleiben.
