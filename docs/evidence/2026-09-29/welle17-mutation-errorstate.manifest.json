@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: deutscher Text im Fehlerzustand an t() vorbei",
+  "log": "welle17-mutation-errorstate.log",
+  "commit": "11bc281f521ff6db3953fa47307a4cbfc8d46b6e",
+  "commitSubject": "merge: Zustimmung sichtbar aus slice/consentui",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 5 passed (6)",
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

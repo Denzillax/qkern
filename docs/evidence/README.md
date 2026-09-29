@@ -1754,3 +1754,16 @@ Dateien, dieselben Erwartungen, weniger Arbeiter.
 | `2026-09-28/welle16-mutation-storageview.log` | Mutation: Feldzugriff auf den ersten Bucket | **1 von 5, exit 1 – absichtlich** |
 | `2026-09-28/welle16-local-run1.log` | Vitest lokal (Windows) | 2301 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-09-28/welle16-local-run2.log` | Vitest lokal (Windows) | 2301 bestanden, exit 0, mit `--maxWorkers=3` |
+
+## Läufe zu Release 2.65 (29. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-29/welle17-run1.log` | PostgreSQL 17 | 224 von 224, exit 0 |
+| `2026-09-29/welle17-run2.log` | PostgreSQL 17 | 224 von 224, exit 0, Wiederholung |
+| `2026-09-29/welle17-auth.log` | Mailpit und Dex | 7 von 7, exit 0 |
+| `2026-09-29/welle17-mutation-tokenrevoke.log` | Mutation: der Widerruf trifft jedes andere Token | **223 von 224, exit 1 – absichtlich** |
+| `2026-09-29/welle17-mutation-vectors.log` | Mutation: die Grenze von cube steht auf 99 | **5 von 6, exit 1 – absichtlich** |
+| `2026-09-29/welle17-mutation-errorstate.log` | Mutation: deutscher Text im Fehlerzustand an `t()` vorbei | **5 von 6, exit 1 – absichtlich** |
+| `2026-09-29/welle17-local-run1.log` | Vitest lokal (Windows) | 2309 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-29/welle17-local-run2.log` | Vitest lokal (Windows) | 2309 bestanden, exit 0, mit `--maxWorkers=3` |

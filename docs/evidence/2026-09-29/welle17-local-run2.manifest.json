@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle17-local-run2.log",
+  "commit": "11bc281f521ff6db3953fa47307a4cbfc8d46b6e",
+  "commitSubject": "merge: Zustimmung sichtbar aus slice/consentui",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "329 passed | 38 skipped (367)",
+  "tests": "2309 passed | 308 skipped (2617)",
+  "passed": 2309,
+  "failed": 0,
+  "skipped": 308,
+  "images": []
+}

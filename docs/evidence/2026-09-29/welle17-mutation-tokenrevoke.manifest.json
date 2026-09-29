@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der Widerruf trifft jedes andere Token",
+  "log": "welle17-mutation-tokenrevoke.log",
+  "commit": "11bc281f521ff6db3953fa47307a4cbfc8d46b6e",
+  "commitSubject": "merge: Zustimmung sichtbar aus slice/consentui",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 64,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 223 passed (224)",
+  "passed": 223,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

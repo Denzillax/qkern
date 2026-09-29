@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle17-run1.log",
+  "commit": "11bc281f521ff6db3953fa47307a4cbfc8d46b6e",
+  "commitSubject": "merge: Zustimmung sichtbar aus slice/consentui",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 64,
+  "testFiles": "31 passed (31)",
+  "tests": "224 passed (224)",
+  "passed": 224,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `2.64.0`, 29. September 2026. Diese Datei wird bei jedem Release
+> Stand: `2.65.0`, 29. September 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert. Zwischen `1.91.0` und `2.64.0` ist
 > das nicht geschehen; die Leiter stand 73 Releases lang auf dem Stand vom
 > 24. September. Was in dieser Zeit dazugekommen ist, steht jetzt hier, und
@@ -24,16 +24,16 @@ statt Tiefe.
 | Fähigkeit | Supabase | QKERN heute | Was fehlt |
 | --- | --- | --- | --- |
 | Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`); Einstellungen, Rollen und TLS-Zustand lesbar (`2.53.0`); Replikation mit Publikationen, Abonnements und Slot-Rückstand lesbar (`2.58.0`); drei feste Umgebungen mit echten Zahlen (`2.60.0`) | ein Broker, der wirklich Datenbanken einrichtet (die Provisioniererrolle hat `NOCREATEDB`, im Produktquelltext steht kein `CREATE DATABASE`); freie Zweige; Wiederherstellung in ein neues Projekt (drei von vier Gliedern fehlen, `2.62.0`) |
-| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social, Passkeys, Hooks | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE gegen zwei getrennte Gegenstellen, JWKS; Sitzungen sehen und beenden (`2.34.0`); Audit-Kette in Zeitreihenfolge (`2.35.0`, `2.36.0`); MFA-Erzwingung mit Einrichtungsschein (`2.50.0`); Rate Limits in der Datenbank (`2.52.0`); Leckliste lokal (`2.53.0`); Auth-Hooks, die geschlossen fallen (`2.59.0`); Passkeys mit WebAuthn ohne fremde Bibliothek (`2.60.0`); fremde Aussteller an der Data API (`2.60.0`); eigener OAuth-Server mit PKCE (`2.61.0`) und Zustimmung als Zeile (`2.64.0`); Aufräumer für abgelaufene Artefakte (`2.63.0`) | SAML, SMS, kommerzielle Provider mit echten Konten; eine Zustimmungsseite, die ein Mensch sieht; Widerruf je Token |
+| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social, Passkeys, Hooks | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE gegen zwei getrennte Gegenstellen, JWKS; Sitzungen sehen und beenden (`2.34.0`); Audit-Kette in Zeitreihenfolge (`2.35.0`, `2.36.0`); MFA-Erzwingung mit Einrichtungsschein (`2.50.0`); Rate Limits in der Datenbank (`2.52.0`); Leckliste lokal (`2.53.0`); Auth-Hooks, die geschlossen fallen (`2.59.0`); Passkeys mit WebAuthn ohne fremde Bibliothek (`2.60.0`); fremde Aussteller an der Data API (`2.60.0`); eigener OAuth-Server mit PKCE (`2.61.0`) und Zustimmung als Zeile (`2.64.0`); Zustimmungen nach Nutzer geordnet mit Widerruf je Token (`2.65.0`); Aufräumer für abgelaufene Artefakte (`2.63.0`) | SAML, SMS, kommerzielle Provider mit echten Konten; eine Seite, auf der ein Nutzer seine **eigenen** Erlaubnisse sieht |
 | Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate, eingebettete Joins; GraphQL | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; `security_invoker`-Views (`1.71.0`), RPC (`1.72.0`), Aggregate unter RLS (`1.86.0`); der ganze Katalog lesbar: Trigger, Funktionen, Indizes, Policies, Enums, Erweiterungen, Rollen, Publikationen, Spaltenrechte (`2.9.0` bis `2.20.0`); Namen mit Grossbuchstaben (`2.26.0`, `2.33.0`); GraphQL lesend mit harten Grenzen, ohne fremde Bibliothek (`2.61.0`); ein OpenAPI-Vertrag über Pfade und Verben in beide Richtungen (`2.59.0`) | eingebettete Joins; GraphQL schreibend |
-| Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN, S3-Protokoll, Analytics- und Vektor-Buckets | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle gegen versitygw/ClamAV; Multipart/Resumable (`1.70.0`); Regeln und Grenzen je Bucket (`2.27.0`); Scanner-Log (`2.49.0`); S3-Schlüsselpaare, genau einmal gezeigt und widerrufbar (`2.59.0`) | Bildtransformation, CDN; **die S3-Schlüssel öffnen heute noch nichts**, es gibt keinen S3-Endpunkt; Analytics-Buckets (Iceberg) und Vektor-Buckets sind die letzten zwei Platzhalter der Console |
+| Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN, S3-Protokoll, Analytics- und Vektor-Buckets | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle gegen versitygw/ClamAV; Multipart/Resumable (`1.70.0`); Regeln und Grenzen je Bucket (`2.27.0`); Scanner-Log (`2.49.0`); S3-Schlüsselpaare, genau einmal gezeigt und widerrufbar (`2.59.0`) | Bildtransformation, CDN; **die S3-Schlüssel öffnen heute noch nichts**, es gibt keinen S3-Endpunkt; kein Vektortyp im Stack-Image, die Seite dazu sagt es aus dem Katalog (`2.65.0`); Analytics-Buckets (Iceberg) sind der letzte Platzhalter der Console |
 | Realtime | Broadcast, Presence, CDC, produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay, zertifiziert mit zwei Instanzen; Tor mit benannten Bedingungen statt Production-Verbot (`1.73.0`); Grenzen und Rechtematrix in der Console (`2.47.0`); Berichte und Log (`2.49.0`, `2.62.0`) | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence und History; Lastprofil jenseits Soak; das Log kennt nur Broadcasts, nicht die zugestellten Änderungen |
 | Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf; Image-Deployments mit Historie und Rollback (`1.74.0`); Aufrufprotokoll je Function (`1.89.0`); Secrets nur als Referenz (`2.38.0`); Datenbank-Webhooks über den Change Feed als eigener Prozess (`2.50.0`, `2.51.0`); Dashboard-Webhooks über dieselbe Kette (`2.58.0`) | Inhaltslogs (stdout/stderr); Scope-Entdeckung statt `SCOPES_JSON`; Zustellung ist at-least-once |
 | Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`); Metrics im Prometheus-Textformat (`1.88.0`); Console (`2.6.0`) | **vor** Supabase-Stand; offen nur Tracing |
 | Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`); die ganze Fünf-Feld-Grammatik (`1.87.0`); Log mit vier Zuständen und benanntem Dedupe-Schlüssel (`2.42.0`) | Namen (JAN, MON), `@daily`, `L`/`W`/`#`; Zeitzonen jenseits UTC |
 | Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden; Preisblatt und Monatsprojektion (`1.67.0`); Rechnungslauf als Prozess (`1.68.0`) mit lückenlosem Nummernkreis (`1.81.0`); Console liest Rechnungen (`1.82.0`, `2.37.0`); Verlauf über 48 Stunden oder 90 Tage, aggregiert in der Datenbank (`2.45.0`) | Zahlungsanbindung; Add-ons (eine Rechnungszeile hat kein Feld für eine Bezeichnung, `2.62.0`) |
 | Observability | Logs je Dienst, Explorer, Query Performance, Advisors, Berichte | Advisors Sicherheit, Leistung, Gesundheit (`2.39.0`, `2.40.0`, `2.44.0`); Berichte für Datenbank, Verbindungen, Auth, Realtime (`2.45.0` bis `2.49.0`); Log-Explorer über die drei Quellen mit Leseroute (`2.55.0`); Log-Drains als Prozess mit dauerhafter Position (`2.54.0`, `2.55.0`); `pg_stat_statements` ohne Abfragetext (`2.56.0`); Postgres-Zustand aus den Statistiksichten (`2.57.0`) | ein Serverlog von PostgreSQL; Function-Inhaltslogs; API-Gateway- und Pooler-Zahlen (die Seiten sagen ehrlich, dass es keine gibt, `2.61.0`) |
-| Console/Dashboard | vollflächig, im Browser | das Menü von Supabase (`2.0.0`) in vier Sprachen (`2.3.0`); Darstellung je Person in der Datenbank (`2.55.0`); von 26 Platzhaltern sind 2 übrig (`2.37.0` bis `2.62.0`); Table Editor schreibend über Change Sets (`2.48.0`); read-only SQL-Editor mit Vorlagen (`1.75.0`, `2.54.0`); Render-Vertrag für jede Ansicht in vier Sprachen (`2.63.0`), erreicht seit `2.64.0` alle Ansichten | **im Browser nie gesehen**, in keinem Release; der Render-Vertrag läuft ohne Effekte, also bleiben fertiger, leerer und Fehlerzustand ungesehen; zwei Platzhalter |
+| Console/Dashboard | vollflächig, im Browser | das Menü von Supabase (`2.0.0`) in vier Sprachen (`2.3.0`); Darstellung je Person in der Datenbank (`2.55.0`); von 26 Platzhaltern sind 2 übrig (`2.37.0` bis `2.62.0`); Table Editor schreibend über Change Sets (`2.48.0`); read-only SQL-Editor mit Vorlagen (`1.75.0`, `2.54.0`); Render-Vertrag für jede Ansicht in vier Sprachen (`2.63.0`), erreicht seit `2.64.0` alle Ansichten und fährt seit `2.65.0` auch `ready` und `error` | **im Browser nie gesehen**, in keinem Release; eine Tabelle mit echten Zeilen sieht der Vertrag nicht; ein Platzhalter |
 | Remote-MCP | MCP-Server mit OAuth | Remote-MCP über OAuth, vier Werkzeuge nach Bereichen, zwölf gar nicht angemeldet (`2.64.0`); statischer Bearer nur lokal | Werkzeuge für Control Plane, Storage, Queues und Migrationen haben keinen Bereich, der sie beschreibt |
 | SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI; Fresh-Smoke auf Linux, Windows und macOS auf GitHub-Runnern (`2.15.0`); Tarball-Prüfung auf allen drei (`2.14.0`, `2.15.0`) | Registry-Publishing; Upgrade-E2E |
 | Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv, bis zu einem Zeitpunkt, Evidenz vom Produkt-Verifier geprüft (`2.29.0`); PITR-Seite mit Drill-Evidenz (`2.53.0`, `2.63.0`) | **im Grunde alles**: Der Drill stellt die Kontrollebene wieder her, nicht eine Projektdatenbank; QKERN kann kein Backup einer Projektdatenbank anstossen und führt keinen Katalog seiner Backups; Provider-Onboarding, HA, Support. **Grösste Lücke, nicht im Docker-Stack zertifizierbar.** |
@@ -48,18 +48,19 @@ OAuth-Server mit Zustimmung und der MCP-Riegel.
 
 Was auf dieser Maschine noch geht, in dieser Reihenfolge:
 
-1. **Console: die Zustände nach dem Laden prüfen**, fertiger, leerer und
-   Fehlerzustand in vier Sprachen, ohne neue Abhängigkeit. Danach ist der
-   Satz „im Browser nie gesehen" zwar noch wahr, aber kleiner.
-2. **Auth: eine Zustimmungsseite, die ein Mensch sieht, und Widerruf je
-   Token.**
-3. **Storage: Vektor-Buckets**, falls `pgvector` im Stack-Image ist; sonst
-   die ehrliche Seite.
+1. ~~Console: die Zustände nach dem Laden prüfen~~ **erledigt in `2.65.0`**
+   (`ready` und `error` in vier Sprachen, ohne neue Abhängigkeit).
+2. ~~Auth: Zustimmungsseite und Widerruf je Token~~ **erledigt in `2.65.0`**;
+   die Seite gehört dem Betreiber, nicht dem Nutzer.
+3. ~~Storage: Vektor-Buckets~~ **erledigt in `2.65.0`** als ehrliche Seite:
+   kein `pgvector` im Stack-Image.
 4. **Data API: eingebettete Joins**, der letzte Abstand zu PostgREST.
 5. **Storage: ein S3-Endpunkt**, damit die Schlüssel aus `2.59.0` etwas
    öffnen.
 6. **Cron: Namen, `@daily`, Zeitzonen.**
-7. **Auth: SAML.** SMS braucht einen echten Anbieter und liegt dahinter.
+7. **Storage: Analytics-Buckets**, der letzte Platzhalter, wahrscheinlich
+   als ehrliche Seite wie die Vektoren.
+8. **Auth: SAML.** SMS braucht einen echten Anbieter und liegt dahinter.
 
 Was Infrastruktur ausserhalb dieser Maschine braucht, und an dem der
 Abbau hier endet:

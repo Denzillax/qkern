@@ -6286,3 +6286,32 @@ diese Datei, und genau darum ist es niemandem aufgefallen; dieselbe Klasse wie
 die veraltete Empfaenger-Zahl in 2.63. Am 29. September nachgefuehrt, mit
 einer Reihenfolge fuer das, was auf dieser Maschine noch geht, und einer
 Liste dessen, was Infrastruktur ausserhalb braucht.
+
+## Welle siebzehn (2.65): nach Nutzer geordnet, ohne Vektortyp, in jedem Zustand
+
+Drei Schnitte parallel, drei Agenten am Wochenlimit gestorben, drei
+Nachfolger haben den ungesicherten Stand in den Worktrees zuerst gelesen und
+dann zu Ende gefuehrt. Jeder fand etwas: eine Konstante auf 101 statt 100,
+eine falsche Begruendung zu Alpine, einen Text, der eine Liste versprach, die
+es dort nicht mehr gab. Der Konsolen-Stand war fehlerfrei, nur nie gefahren.
+
+Die Zustimmungen haben eine Seite nach Nutzer, mit den ausgegebenen Token, und
+ein einzelnes Token faellt (Fall 2.94). Die Vektor-Seite liest ihr Urteil bei
+jedem Oeffnen aus dem Katalog: kein `pgvector` im Image (Fall 2.93). Der
+Render-Vertrag faehrt jede Ansicht auch in `ready` und `error`, ueber eine
+`initialState`-Naht an 71 von 91 Ansichten, ohne neue Abhaengigkeit; sieben
+Doppelungen der Console liegen an einer Stelle.
+
+Beim Zusammenfuehren nannten beide Schnitte ihren Fall (2.93) und setzten die
+Fallzahl auf 60. Der Token-Widerruf heisst jetzt (2.94), die Zahl steht auf
+61.
+
+Checkpoint `2.65.0` am 29. September 2026: PostgreSQL 17 mit 224 von 224
+zweimal, Mailpit und Dex mit 7 von 7, alle exit 0; Lokal 2309 bestanden, 0
+fehlgeschlagen, zweimal reproduziert mit `--maxWorkers=3`. Drei
+Mutationsproben auf dem gemergten Stand, jede mit genau dem erwarteten
+Ausfall.
+
+Nicht erbracht: Im Browser weiterhin nicht gesehen; `ready` ohne Daten ist der
+leere Zustand, eine Tabelle mit Zeilen sieht der Vertrag nicht. Ein Nutzer
+sieht seine eigenen Zustimmungen nirgends. Ein Platzhalter bleibt.
