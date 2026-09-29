@@ -52,6 +52,17 @@ import {
   PostgresProjectStorageS3AccessKeyStore,
   ProjectStorageS3AccessKeyService,
 } from "@/lib/server/project-storage/s3-access-keys";
+// S3-Endpunkt (2.96): das Geheimnis liegt verschluesselt in der Zeile, und
+// eine SECURITY-DEFINER-Funktion holt ein gueltiges Paar ohne Organisation.
+import { ProjectStorageS3SecretProtector } from "@/lib/server/project-storage/s3-secret-protector";
+import { ProjectStorageS3Endpoint } from "@/lib/server/project-storage/s3-endpoint";
+import { sha256Hex, signSigV4Request } from "@/lib/server/project-storage/s3-sigv4";
+import { MemoryProjectStorageRepository } from "@/lib/server/project-storage/repository";
+import {
+  MemoryProjectStorageProvider,
+  QuarantineOnlyProjectStorageScanner,
+} from "@/lib/server/project-storage/provider";
+import { ProjectStorageService } from "@/lib/server/project-storage/service";
 import { PostgresChangeSetApplyService } from "@/lib/server/migrations/services";
 import { PostgresMigrationQueue } from "@/lib/server/migrations/postgres-queue";
 import { PostgresProjectDatabaseExecutor } from "@/lib/server/migrations/postgres-executor";
@@ -6506,17 +6517,22 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'project_storage_s3_access_keys'`);
     const columnNames = columns.rows.map((row) => String(row.column_name));
-    // Genau eine Spalte trifft das Muster, und sie traegt den Hash. Kaeme je
-    // eine zweite hinzu, die den Wert aufnehmen koennte, faellt dieser Fall.
-    expect(columnNames.filter((name) => /secret|token|password|key_material/.test(name)))
-      .toEqual(["secret_hash"]);
+    // Zwei Spalten treffen das Muster: der Hash aus 0059 und seit 0065 das
+    // Chiffrat (2.96). Eine Spalte fuer den Klartext gibt es weiterhin nicht,
+    // und ohne Schluessel in der Umgebung bleibt das Chiffrat leer.
+    expect(columnNames.filter((name) => /secret|token|password|key_material/.test(name)).sort())
+      .toEqual(["secret_ciphertext", "secret_hash"]);
+    const ciphertext = await owner.query<{ secret_ciphertext: string | null }>(
+      `SELECT secret_ciphertext FROM project_storage_s3_access_keys WHERE id = $1`, [issued.key.id]);
+    expect(ciphertext.rows[0]?.secret_ciphertext).toBeNull();
+    expect(issued.key.verifiable).toBe(false);
 
     // --- Zusage 2: die Liste kennt es nicht --------------------------------
     const listed = await service.list(principal, scope);
     expect(listed).toHaveLength(1);
     expect(Object.keys(listed[0]).sort()).toEqual([
       "accessKeyId", "bucketIds", "createdAt", "environment", "expiresAt",
-      "id", "name", "projectId", "revokedAt",
+      "id", "name", "projectId", "revokedAt", "verifiable",
     ]);
     const listedJson = JSON.stringify(listed);
     expect(listedJson).not.toContain(issued.secret);
@@ -6578,6 +6594,168 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(String(row.metadata)).not.toContain(issued.secret);
       expect(String(row.metadata)).not.toContain(secretHash);
     }
+  }, 120_000);
+  it("(2.96) keeps the S3 secret as a ciphertext the runtime role can write once, hands a valid pair to the endpoint without a tenant, and lets a real SigV4 request pass exactly while the pair is neither revoked nor expired", async () => {
+    // Der S3-Endpunkt (2.96) gegen die echte Datenbank.
+    //
+    // Der Storage-Stack belegt den Weg der Bytes: Signatur, Provider, Scanner.
+    // Was er nicht sehen kann, steht hier: wie das Geheimnis in der Zeile
+    // liegt, wer es lesen darf, und ob die Funktion aus 0065 ein Paar wirklich
+    // nur solange hergibt, wie es gilt. Gelaufen wird der Produktweg mit der
+    // Laufzeitrolle: `PostgresProjectStorageS3AccessKeyStore` mit Pool, der
+    // Schutz aus s3-secret-protector.ts, derselbe Dienst wie die Route, und
+    // der Endpunkt selbst mit einer echten Signatur aus node:crypto gegen die
+    // Zeile in der Datenbank. Der Storage-Dienst dahinter ist hier nicht
+    // noetig: Der Fall endet an der Frage, ob die Signatur gilt, und die
+    // beantwortet ListBuckets gegen ein leeres Memory-Repository genauso.
+    //
+    // Sechs Zusagen:
+    //   1. Die Zeile traegt ein Chiffrat, und weder Chiffrat noch Hash sind
+    //      das Geheimnis; das Chiffrat kommt mit dem Schluessel der Umgebung
+    //      zurueck zum Geheimnis und mit einem fremden nicht.
+    //   2. Die Funktion holt das Paar ueber den oeffentlichen Teil ohne
+    //      Organisation, mit Bucket-Satz; eine fremde Organisation sieht die
+    //      Zeile durch die RLS nicht, die Funktion trotzdem.
+    //   3. Die Laufzeitrolle darf die Funktion rufen, `PUBLIC` nicht, und das
+    //      Chiffrat nach dem Anlegen nicht mehr aendern; der Waechter aus 0059
+    //      weist es auch dem Eigentuemer ab.
+    //   4. Eine echte SigV4-Signatur mit dem ausgegebenen Geheimnis kommt
+    //      durch, mit einem falschen nicht.
+    //   5. Nach dem Widerruf gibt die Funktion nichts mehr her, und dieselbe
+    //      Signatur faellt.
+    //   6. Ein abgelaufenes Paar gibt die Funktion nicht her.
+    const keyOwner = randomUUID();
+    const keyOrganization = randomUUID();
+    const strangerOrganization = randomUUID();
+    const keyProject = randomUUID();
+    const actorRef = `s3-endpoint-${keyOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [keyOwner, actorRef]);
+    for (const [organization, name] of [[keyOrganization, "S3 Endpoint"], [strangerOrganization, "S3 Stranger"]] as const) {
+      await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+        VALUES ($1, $2, $3, $4)`, [organization, name, `s3-endpoint-${organization}`, keyOwner]);
+      await owner.query(`INSERT INTO organization_members
+        (organization_id, user_id, role, is_personal_workspace)
+        VALUES ($1, $2, 'owner', false)`, [organization, keyOwner]);
+    }
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'S3 Endpoint', $3, 'test', 'ready', $4)`,
+    [keyProject, keyOrganization, `s3-endpoint-${keyProject}`, keyOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [keyOrganization, keyProject, `managed:${keyProject}`]);
+
+    const scope = {
+      organizationId: keyOrganization, projectId: keyProject, environment: "development" as const,
+    };
+    const principal = {
+      organizationId: keyOrganization, actorRef, role: "admin" as const, subject: keyOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+    const buckets = new PostgresProjectStorageRepository(control);
+    const protector = new ProjectStorageS3SecretProtector(Buffer.alloc(32, 7));
+    const store = new PostgresProjectStorageS3AccessKeyStore(control, runtime);
+    const service = new ProjectStorageS3AccessKeyService({ store, buckets, protector });
+
+    const bucketAt = new Date();
+    const bucket = await buckets.createBucket(principal, {
+      ...scope, id: randomUUID(), name: `s3ep-${randomUUID().slice(0, 8)}`,
+      readPolicy: "service", writePolicy: "service", allowedMimeTypes: ["text/plain"],
+      maxObjectBytes: 1_024, quotaBytes: 8_192, usedBytes: 0, reservedBytes: 0,
+      retentionDays: null, createdAt: bucketAt, updatedAt: bucketAt,
+    });
+    const issued = await service.create(principal, scope, {
+      name: "Endpunkt", bucketIds: [bucket.id],
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000).toISOString(),
+    });
+    expect(issued.key.verifiable).toBe(true);
+
+    // --- Zusage 1: Chiffrat in der Zeile, rueckrechenbar nur mit dem Schluessel
+    const row = await owner.query<{ secret_hash: string; secret_ciphertext: string }>(
+      `SELECT secret_hash, secret_ciphertext FROM project_storage_s3_access_keys WHERE id = $1`, [issued.key.id]);
+    expect(row.rows[0]?.secret_hash).toBe(hashS3AccessKeySecret(issued.secret));
+    expect(row.rows[0]?.secret_ciphertext).toMatch(/^v1\./);
+    expect(row.rows[0]?.secret_ciphertext).not.toContain(issued.secret);
+    expect(protector.decrypt(row.rows[0]!.secret_ciphertext, issued.key.accessKeyId)).toBe(issued.secret);
+    expect(() => new ProjectStorageS3SecretProtector(Buffer.alloc(32, 8))
+      .decrypt(row.rows[0]!.secret_ciphertext, issued.key.accessKeyId)).toThrow();
+    // An den oeffentlichen Teil gebunden: unter einer anderen Kennung ist es kein Chiffrat.
+    expect(() => protector.decrypt(row.rows[0]!.secret_ciphertext, "QKERNS3AAAAAAAAAAAAAAAAA")).toThrow();
+
+    // --- Zusage 2: die Funktion kennt keine Organisation, die RLS schon ------
+    const found = await store.findActiveByAccessKeyId(issued.key.accessKeyId, new Date());
+    expect(found).toMatchObject({
+      id: issued.key.id, organizationId: keyOrganization, projectId: keyProject,
+      environment: "development", bucketIds: [bucket.id],
+    });
+    expect(found?.secretCiphertext).toBe(row.rows[0]?.secret_ciphertext);
+    const throughStranger = await withTenantTransaction(runtime, { organizationId: strangerOrganization, actorRef },
+      (transaction) => transaction.query(
+        `SELECT count(*)::int AS n FROM project_storage_s3_access_keys WHERE access_key_id = $1`,
+        [issued.key.accessKeyId]));
+    expect(throughStranger.rows[0]?.n).toBe(0);
+    expect(await store.findActiveByAccessKeyId("QKERNS3AAAAAAAAAAAAAAAAA", new Date())).toBeNull();
+
+    // --- Zusage 3: Rechte und Waechter --------------------------------------
+    const rights = await owner.query<Record<string, boolean>>(
+      `SELECT has_function_privilege('qkern_runtime', 'qkern_authenticate_project_storage_s3_access_key(text)', 'EXECUTE') AS runtime_may_call,
+              has_function_privilege('qkern_auth', 'qkern_authenticate_project_storage_s3_access_key(text)', 'EXECUTE') AS auth_may_call,
+              has_column_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'secret_ciphertext', 'UPDATE') AS may_rewrite_ciphertext,
+              has_column_privilege('qkern_runtime', 'project_storage_s3_access_keys', 'secret_ciphertext', 'INSERT') AS may_insert_ciphertext`);
+    expect(rights.rows[0]).toMatchObject({
+      runtime_may_call: true, auth_may_call: false, may_rewrite_ciphertext: false, may_insert_ciphertext: true,
+    });
+    await expect(owner.query(
+      `UPDATE project_storage_s3_access_keys SET secret_ciphertext = $2 WHERE id = $1`,
+      [issued.key.id, protector.encrypt("x".repeat(43), issued.key.accessKeyId)],
+    )).rejects.toMatchObject({ code: "55000" });
+
+    // --- Zusage 4: eine echte Signatur gegen die Zeile ----------------------
+    const s3 = new ProjectStorageS3Endpoint({
+      storage: new ProjectStorageService({
+        repository: new MemoryProjectStorageRepository(),
+        provider: new MemoryProjectStorageProvider(),
+        scanner: new QuarantineOnlyProjectStorageScanner(),
+      }),
+      keys: service,
+    });
+    const signed = (secret: string) => {
+      const url = new URL("http://qkern.certification.test/s3");
+      const headers = signSigV4Request({
+        method: "GET", url, payloadHash: sha256Hex(""), accessKeyId: issued.key.accessKeyId,
+        secret, region: "us-east-1", now: new Date(),
+      });
+      return new Request(url, { method: "GET", headers });
+    };
+    const accepted = await s3.handle(signed(issued.secret));
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
+    expect(await accepted.text()).toContain("<ListAllMyBucketsResult");
+    const forged = await s3.handle(signed("x".repeat(43)));
+    expect(forged.status).toBe(403);
+    expect(await forged.text()).toContain("<Code>SignatureDoesNotMatch</Code>");
+
+    // --- Zusage 5: Widerruf schliesst die Funktion und damit den Endpunkt ---
+    await service.revoke(principal, scope, issued.key.id);
+    const fromFunction = await runtime.query(
+      `SELECT key_id FROM qkern_authenticate_project_storage_s3_access_key($1)`, [issued.key.accessKeyId]);
+    expect(fromFunction.rows).toHaveLength(0);
+    expect(await store.findActiveByAccessKeyId(issued.key.accessKeyId, new Date())).toBeNull();
+    const afterRevoke = await s3.handle(signed(issued.secret));
+    expect(afterRevoke.status).toBe(403);
+    expect(await afterRevoke.text()).toContain("<Code>InvalidAccessKeyId</Code>");
+
+    // --- Zusage 6: abgelaufen ist nicht gueltig ----------------------------
+    const shortLived = await service.create(principal, scope, {
+      name: "Kurz", bucketIds: [bucket.id],
+      expiresAt: new Date(Date.now() + 6 * 60 * 1_000).toISOString(),
+    });
+    expect(await store.findActiveByAccessKeyId(shortLived.key.accessKeyId, new Date())).not.toBeNull();
+    // Die Funktion prueft gegen now() der Datenbank; der Ablauf laesst sich
+    // nicht vorziehen (Waechter), also stellt der Fall die Uhr des Dienstes vor.
+    expect(await service.authenticate(shortLived.key.accessKeyId, new Date(Date.now() + 7 * 60 * 1_000))).toBeNull();
+    expect(await service.authenticate(shortLived.key.accessKeyId, new Date())).not.toBeNull();
   }, 120_000);
   it("(2.77) calls the auth hooks of a real sign-in and refuses one that wants a reserved claim", async () => {
     // Die ganze Kette der Auth-Hooks (2.77) an einem Stueck, gegen die echte

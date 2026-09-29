@@ -2251,77 +2251,117 @@ benötigen zusätzlich das App-JWT in `Authorization` und den Projekt-Key in
 `X-QKERN-Key`. Provider-Key, persistierter Completion-Verifier und Object-Checksum
 werden nicht in öffentlichen Object-Antworten ausgegeben.
 
-### S3-Zugang: ausgegebene Schlüssel, die noch nichts öffnen
+### S3-Zugang: ausgegebene Schlüssel und der Endpunkt `/s3`
 
 Seit `2.59.0` ist **Storage → S3-Zugang** keine Platzhalterseite mehr. Die Seite
 gibt Schlüsselpaare aus, zeigt das Geheimnis genau einmal und widerruft sie.
+Seit `2.96` nimmt der Endpunkt `/s3` ein solches Paar an.
 
-**Der erste Absatz der Seite ist die Grenze, und er steht dort mit Absicht:
-Kein Endpunkt von QKERN nimmt ein solches Paar heute an.** Wer es in `aws s3`
-oder ein anderes Werkzeug einträgt, bekommt keine Verbindung. Ein Paar ist eine
-Erklärung darüber, wer auf welche Buckets welcher Umgebung zugreifen soll und
-bis wann. Es ist noch kein Zugang.
+**Der Endpunkt.** Er hängt an derselben Adresse wie die Console, unter `/s3`,
+pfadadressiert: `/s3/{bucket}/{schlüssel}`. Ein Werkzeug bekommt drei Angaben:
+die Adresse der Console mit dem Anhang `/s3` als Endpunkt-URL, den öffentlichen
+Teil (`QKERNS3…`) als Access Key und das Geheimnis als Secret. Die Region ist
+frei wählbar; QKERN rechnet mit der, die der Client in den Credential-Scope
+schreibt. Mit der AWS CLI heisst das zum Beispiel
+`aws --endpoint-url https://qkern.example/s3 s3 ls s3://mein-bucket/`, mit
+`s3.addressing_style = path` in der Konfiguration. Geprüft wird AWS Signature
+Version 4 im Header `Authorization`; der Header `x-amz-content-sha256` trägt den
+SHA-256 des Körpers oder `UNSIGNED-PAYLOAD`.
 
-Für diesen Zustand gibt es zwei Gründe, und jeder von beiden schliesst einen der
-denkbaren Wege aus.
+**Als wer ein Paar handelt.** Ein Paar ist die **Service-Rolle** seiner
+Umgebung, beschränkt auf seinen Bucket-Satz. Es liest Buckets mit der Leseregel
+`public` oder `service`, es schreibt in Buckets mit der Schreibregel `service`.
+Ein Bucket mit der Regel `private` bleibt ihm verschlossen wie jedem Aufrufer
+ausser der Console, und er antwortet dem Paar wie ein unbekannter Bucket
+(`404 NoSuchBucket`); dasselbe gilt für einen Bucket ausserhalb des Satzes.
+Ein Paar ist eine Zugangsart, kein Administrator, und darum gelten die
+Regeln auch für das Paar.
 
-**Beim Objektspeicher selbst lässt sich kein Paar anlegen.** Der Anschluss in
-`lib/server/project-storage/provider.ts` kennt signierte Zusagen, `HEAD`,
-`DELETE` und die Multipart-Verben, aber keine Operation für Zugangsdaten; IAM
-und STS gibt es dort nicht. Schwerer wiegt die Ablage: QKERN legt jedes Objekt
-jeder Organisation in **einen** Bucket des Anbieters, den aus
-`QKERN_PROJECT_STORAGE_S3_BUCKET`, und trennt allein über das Präfix
-`organisation/projekt/umgebung/bucket/upload/schlüssel`. Ein QKERN-Bucket ist
-eine Zeile in `project_storage_buckets` und kein Bucket des Anbieters. Ein Paar
-beim Anbieter wäre darum ein Zugang zum Speicher aller Kunden, und die Rechte
-liessen sich je Bucket gar nicht trennen. Der Zertifizierungsstack bestätigt das
-Bild: versitygw läuft mit genau einem Wurzelkonto auf einem posix-Backend.
+**Kein zweiter Weg an den Regeln vorbei.** Der Endpunkt ruft denselben
+`ProjectStorageService` wie die REST-Routen und hat keinen eigenen Weg zum
+Objektspeicher. `PutObject` ist die Kette `prepareUpload`, Einlösen der
+signierten Zusage beim Provider, `completeUpload`, also Bucket-Regel,
+MIME-Liste, Grösse, Quota, `HEAD`-Abgleich, Virenprüfung und Quarantäne in
+derselben Reihenfolge wie im Browser-Upload. Die Antwort auf `PutObject` trägt
+`x-qkern-object-status: clean|quarantined`; ein Objekt in Quarantäne ist über
+S3 nicht lesbar (`404 NoSuchKey`), ein vom Scanner abgewiesenes Objekt antwortet
+mit `422 QkernObjectRejected` und liegt nirgends. Jede Anfrage läuft durch
+dieselbe Zulassung (`api_requests`) wie eine REST-Anfrage.
 
-**Gegen QKERN selbst lässt sich das Paar nicht prüfen, solange nur der Hash
-gespeichert ist.** Eine SigV4-Signatur wird nachgerechnet, und die Rechnung ist
-eine HMAC-Kette aus dem Geheimnis. Wer prüfen will, braucht das Geheimnis oder
-einen daraus abgeleiteten Signierschlüssel, der nur einen Tag und eine Region
-gilt und für den nächsten Tag wieder das Geheimnis verlangt. Gespeichert wird
-hier ein SHA-256-Hash, und aus einem Hash kommt kein HMAC. Entweder QKERN behält
-das Geheimnis, oder es prüft keine Signatur. Dieser Stand behält es nicht, also
-gibt es keinen Prüfweg. Ein halb geprüfter Signaturweg wäre schlechter als kein
-Zugang.
+Was geht:
 
-Was die Seite deshalb hält:
+- `ListBuckets` (`GET /s3`): die Buckets des Satzes, die die Service-Rolle sieht.
+- `HeadBucket`, `GetBucketLocation`.
+- `ListObjectsV2` mit `prefix`, `delimiter` (ein Zeichen), `max-keys`,
+  `continuation-token`, `start-after`, `encoding-type=url`. Nur saubere Objekte.
+- `HeadObject`, `GetObject` (ganze Objekte; QKERN streamt die Bytes vom
+  Provider durch, die freigegebene Menge zählt als `storage_egress_bytes`).
+- `PutObject` in einem Stück bis 64 MiB. Ein vorhandener Schlüssel wird
+  überschrieben; dazu löscht der Endpunkt das alte Objekt vor der Reservierung,
+  und ein Leser dazwischen sieht kurz nichts.
+- `DeleteObject`.
+
+Was nicht geht, und mit `501 NotImplemented` beim Namen genannt wird:
+Presigned URLs, Uploads in Stücken (`STREAMING-*` im Hash-Header, die AWS CLI
+tut das über HTTP), Multipart über S3, `CopyObject`, `Range`-Anfragen,
+`ListObjects` Version 1, `DeleteObjects`, Buckets anlegen oder löschen, ACLs,
+Versionen, Tags, virtuell gehostete Adressen (`bucket.host`).
+
+**Wo das Geheimnis liegt.** Eine SigV4-Signatur ist eine HMAC-Kette aus dem
+Geheimnis, also braucht der Prüfer es. Seit Migration 0065 liegt es
+AES-256-GCM-verschlüsselt in `secret_ciphertext`, gebunden an den öffentlichen
+Teil, mit dem Schlüssel aus `QKERN_PROJECT_STORAGE_S3_KEY_ENCRYPTION_KEY` (32
+Byte, hex oder base64url). Der Schlüssel liegt nie in der Datenbank; wer nur
+die Tabelle liest, liest Chiffrate. `secret_hash` bleibt als eindeutige
+Kennung und als zweite Prüfung nach dem Entschlüsseln. Ohne gesetzten Schlüssel
+entstehen weiterhin Paare, aber ohne Chiffrat: Die Liste trägt je Paar
+`verifiable: false`, die Seite sagt es, und der Endpunkt antwortet
+`403 InvalidAccessKeyId`. Alle Paare aus `2.59.0` bis `2.65.0` sind solche
+Paare; wer den Endpunkt nutzen will, legt ein neues an. In Produktion ist ein
+fehlender Schlüssel bei eingeschaltetem Storage ein Konfigurationsfehler.
+
+**Wie der Endpunkt das Paar findet.** Eine S3-Anfrage trägt keine Organisation,
+`withTenant` verlangt eine. Die SECURITY-DEFINER-Funktion
+`qkern_authenticate_project_storage_s3_access_key(text)` holt genau eine Zeile
+über den öffentlichen Teil, nur wenn sie weder widerrufen noch abgelaufen ist
+und ein Chiffrat trägt, mit dem Bucket-Satz als Array. Ausführen darf sie die
+Laufzeitrolle, sonst niemand. Widerruf wirkt damit sofort auch am Endpunkt.
+
+Was die Seite weiter hält:
 
 - **Genau einmal gezeigt.** Die Antwort auf `POST` ist die einzige Stelle, an
-  der das Geheimnis vorkommt. Gespeichert wird `secret_hash`, und eine Spalte
-  für den Wert gibt es nicht. Die Liste kennt ihn nicht und kann ihn nicht
-  kennen; der Zertifizierungsfall `(2.78)` prüft das gegen die echte Datenbank.
+  der das Geheimnis im Klartext vorkommt. Keine Route gibt es wieder her; der
+  Zertifizierungsfall `(2.78)` prüft das gegen die echte Datenbank, `(2.96)`
+  prüft das Chiffrat, die Funktion und eine echte Signatur.
 - **Umgebung und Bucket-Satz statt Projekt.** Ein Paar hängt an einer
-  Projektumgebung und an einem Satz Buckets, höchstens zwanzig. Der Satz steht
-  in `project_storage_s3_access_key_buckets` mit einem echten Fremdschlüssel,
-  also greift das Löschen eines Buckets durch, statt eine Nummer stehen zu
-  lassen, die auf nichts zeigt.
-- **Widerruf ist nicht löschen.** Er wirkt sofort und lässt die Zeile mit ihrem
-  Zeitpunkt in der Liste stehen, weil die Spur erhalten bleiben soll. Ausgedrückt
-  ist das über die Rechte: Die Laufzeitrolle hat auf
+  Projektumgebung und an einem Satz Buckets, höchstens zwanzig, in
+  `project_storage_s3_access_key_buckets` mit echtem Fremdschlüssel.
+- **Widerruf ist nicht löschen.** Die Laufzeitrolle hat auf
   `project_storage_s3_access_keys` kein `DELETE`, nur `UPDATE (revoked_at)`, und
-  ein Trigger lässt den Zeitpunkt nur einmal setzen. Ein zweiter Widerruf
-  verschiebt ihn nicht.
-- **Kein Wert in Log, Audit oder Fehlermeldung.** Die Audit-Einträge
-  `project.storage.s3_access_key.created` und `.revoked` tragen den öffentlichen
-  Teil, die Zahl der Buckets und den Ablauf. Meldungen der Datenbank werden nicht
-  weitergetragen, weil sie Tabellen und Werte nennen.
-- **Der öffentliche Teil sieht nach QKERN aus.** Er beginnt mit `QKERNS3` und
-  nicht mit der Form eines Provider-Schlüssels. Ein Paar, das aussieht wie ein
-  Zugang zum Objektspeicher und keiner ist, wäre genau die Unehrlichkeit, die
-  diese Seite vermeidet.
+  der Trigger lässt weder den Zeitpunkt zweimal noch das Chiffrat je setzen.
+- **Kein Wert in Log, Audit oder Fehlermeldung.** S3-Fehlerantworten nennen
+  Code und Grund, nie das Geheimnis, nie den Hash, nie eine Meldung der
+  Datenbank.
+- **Der öffentliche Teil sieht nach QKERN aus.** Er beginnt mit `QKERNS3`.
 
-Die Routen, alle nur für Eigentümer oder Administratoren und alle am
-Storage-Schalter der Umgebung:
+Beim Objektspeicher selbst lässt sich weiterhin kein Paar anlegen: Der
+Anschluss kennt keine Operation für Zugangsdaten, und alle Objekte aller
+Organisationen liegen in einem Provider-Bucket, getrennt nur über das Präfix.
+Der Endpunkt steht darum vor dem Provider.
+
+Die Routen der Verwaltung, alle nur für Eigentümer oder Administratoren und alle
+am Storage-Schalter der Umgebung:
 
 - `GET|POST /api/v1/projects/{projectId}/environments/{environment}/storage/s3-keys`
 - `DELETE .../storage/s3-keys/{keyId}` als Widerruf
 
-Wer hier weiterbaut, entscheidet **zuerst**, wo das Geheimnis liegen soll. Ohne
-diese Entscheidung gibt es keinen Prüfweg, und ohne Prüfweg bleibt der Satz auf
-der Seite richtig.
+Zertifiziert im Storage-Stack (`npm run test:storage:docker`,
+`tests/project-storage-s3-endpoint.integration.test.ts`): Ein gültiges Paar
+schreibt durch den Endpunkt, ClamAV sieht die Bytes, das Objekt ist sauber und
+kommt über `GetObject` byteidentisch zurück; ein widerrufenes Paar, eine
+falsche Signatur, eine auf einen anderen Pfad verschobene Signatur und ein
+fremder Bucket fallen; EICAR wird abgewiesen. Die Signaturen rechnet der Fall
+selbst aus `node:crypto`.
 
 ## 8. Realtime lokal testen
 

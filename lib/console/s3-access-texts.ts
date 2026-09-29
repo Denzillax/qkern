@@ -1,25 +1,40 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
 
 /**
- * Texte und Eingabepruefung der Ansicht Storage, S3-Zugang (2.78).
+ * Texte und Eingabepruefung der Ansicht Storage, S3-Zugang (2.78, Endpunkt 2.96).
  *
- * Die Ansicht gibt Schluesselpaare aus und verwaltet sie. Sie kann nicht
- * versprechen, dass ein fremdes Werkzeug damit spricht, und darum steht der
- * Grund hier als Text und nicht als Fussnote.
+ * Die Ansicht gibt Schluesselpaare aus und verwaltet sie. Seit 2.96 nimmt der
+ * Endpunkt `/s3` ein Paar an. Was er kann und was nicht, steht hier als Text
+ * auf der Seite, damit niemand eine Operation ausprobieren muss, um zu
+ * erfahren, dass sie fehlt.
  */
 
 export const S3_ACCESS_WHAT =
-  "Ein Schlüsselpaar erklärt, wer auf welche Buckets dieser Umgebung zugreifen soll und bis wann. Das Geheimnis erscheint beim Anlegen genau einmal; gespeichert wird nur sein Hash.";
+  "Ein Schlüsselpaar erklärt, wer auf welche Buckets dieser Umgebung zugreifen soll und bis wann. Das Geheimnis erscheint beim Anlegen genau einmal. Gespeichert werden sein Hash und ein verschlüsseltes Abbild, mit dem der Endpunkt eine Signatur nachrechnen kann.";
 
-/** Die Grenze, wörtlich. Sie steht oben auf der Seite, nicht im Kleingedruckten. */
-export const S3_ACCESS_LIMIT =
-  "Kein Endpunkt von QKERN nimmt ein solches Paar heute an. Wer es in ein fremdes Werkzeug einträgt, bekommt keine Verbindung. Das Paar ist eine Erklärung und noch kein Zugang.";
+/** Der Endpunkt, woertlich. Er steht oben auf der Seite. */
+export const S3_ACCESS_ENDPOINT =
+  "Der Endpunkt hängt an dieser Adresse unter /s3, pfadadressiert, mit Signatur Version 4 im Header. Ein Werkzeug bekommt diese Adresse mit dem Anhang /s3 als Endpunkt, den öffentlichen Teil als Access Key und das Geheimnis als Secret. Die Region ist frei wählbar, denn QKERN prüft sie nicht.";
+
+export const S3_ACCESS_ROLE =
+  "Ein Paar handelt als Service-Rolle seiner Umgebung, beschränkt auf seinen Bucket-Satz. Es liest Buckets mit der Leseregel public oder service und schreibt in Buckets mit der Schreibregel service. Ein Bucket mit der Regel private bleibt auch mit Paar geschlossen und antwortet wie ein unbekannter Bucket.";
+
+export const S3_ACCESS_OPERATIONS_BUILT =
+  "Was geht: Buckets auflisten, Objekte auflisten (ListObjectsV2 mit Präfix und Trennzeichen), HEAD, lesen, schreiben in einem Stück bis 64 MiB, löschen. Jeder Schreibvorgang läuft durch dieselbe Prüfung wie die REST-Routen: Regel des Buckets, MIME-Liste, Grösse, Quota, Virenprüfung. Ein Objekt ist erst lesbar, wenn der Scanner es freigegeben hat.";
+
+export const S3_ACCESS_OPERATIONS_MISSING =
+  "Was nicht geht: Multipart-Uploads über S3, Presigned URLs, Range-Anfragen, CopyObject, ListObjects in Version 1, Buckets anlegen oder löschen, ACLs, Versionen, Tags. Jede dieser Operationen antwortet mit 501 und nennt sich beim Namen. Uploads in Stücken (aws-chunked, STREAMING im Hash-Header) antworten ebenfalls mit 501; das Werkzeug muss den SHA-256 des ganzen Körpers senden oder UNSIGNED-PAYLOAD.";
 
 export const S3_ACCESS_WHY_NO_PROVIDER_KEYS =
   "Beim Objektspeicher selbst lässt sich kein Paar anlegen. QKERN spricht intern S3, aber der Anschluss kennt keine Operation für Zugangsdaten, und er legt alle Objekte aller Projekte in einen einzigen Bucket des Anbieters. Getrennt wird dort allein über das Präfix des Schlüssels. Ein Paar beim Anbieter wäre darum ein Zugang zum Speicher aller Kunden und nicht zu diesen Buckets.";
 
-export const S3_ACCESS_WHY_NO_SIGNATURE_CHECK =
-  "Gegen QKERN selbst lässt sich das Paar nicht prüfen, solange nur der Hash gespeichert ist. Eine S3-Signatur wird nachgerechnet, und die Rechnung braucht das Geheimnis; aus einem Hash kommt es nicht zurück. Entweder QKERN behält das Geheimnis, oder es prüft keine Signatur. Dieser Schnitt behält es nicht.";
+export const S3_ACCESS_SECRET_AT_REST =
+  "Der Endpunkt rechnet die Signatur nach, und die Rechnung braucht das Geheimnis. QKERN behält es deshalb, verschlüsselt mit einem Schlüssel aus der Umgebung des Servers, der nie in der Datenbank liegt. Paare aus der Zeit vor dem Endpunkt haben kein solches Abbild und öffnen nichts; die Liste zeigt es je Paar.";
+
+export const S3_ACCESS_NO_SERVER_KEY =
+  "Dieser Server hat keinen Schlüssel für die Ablage des Geheimnisses. Das Paar ist ausgegeben, aber der Endpunkt nimmt es nicht an. Der Betreiber setzt QKERN_PROJECT_STORAGE_S3_KEY_ENCRYPTION_KEY und legt danach ein neues Paar an.";
+
+export const S3_ACCESS_NOT_VERIFIABLE = "öffnet nichts, kein Geheimnis hinterlegt";
 
 export const S3_ACCESS_ONE_TIME =
   "Jetzt kopieren, danach zeigt es niemand mehr. Auch die Liste kennt es nicht.";
@@ -91,9 +106,14 @@ export function s3AccessTexts(): string[] {
   return [
     ...Object.values(S3_ACCESS_REASONS),
     S3_ACCESS_WHAT,
-    S3_ACCESS_LIMIT,
+    S3_ACCESS_ENDPOINT,
+    S3_ACCESS_ROLE,
+    S3_ACCESS_OPERATIONS_BUILT,
+    S3_ACCESS_OPERATIONS_MISSING,
     S3_ACCESS_WHY_NO_PROVIDER_KEYS,
-    S3_ACCESS_WHY_NO_SIGNATURE_CHECK,
+    S3_ACCESS_SECRET_AT_REST,
+    S3_ACCESS_NO_SERVER_KEY,
+    S3_ACCESS_NOT_VERIFIABLE,
     S3_ACCESS_ONE_TIME,
     S3_ACCESS_REVOKE_MEANING,
     S3_ACCESS_NO_BUCKETS,

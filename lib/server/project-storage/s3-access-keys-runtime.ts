@@ -7,6 +7,7 @@ import {
   PostgresProjectStorageS3AccessKeyStore,
   ProjectStorageS3AccessKeyService,
 } from "@/lib/server/project-storage/s3-access-keys";
+import { projectStorageS3SecretProtectorFromEnv } from "@/lib/server/project-storage/s3-secret-protector";
 import { ProjectStorageError } from "@/lib/server/project-storage/service";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
 
@@ -21,16 +22,22 @@ export function createProjectStorageS3AccessKeyService(
   if (env.QKERN_PROJECT_STORAGE_ENABLED !== "true") {
     throw new ProjectStorageError("PROJECT_STORAGE_DISABLED");
   }
+  // Ohne Schluessel in der Umgebung entstehen Paare ohne Chiffrat (2.96): Die
+  // Liste sagt es je Paar, und der Endpunkt nimmt sie nicht an.
+  const protector = projectStorageS3SecretProtectorFromEnv(env);
   if (runtimeModeFromEnv(env) === "memory") {
     return new ProjectStorageS3AccessKeyService({
       store: new MemoryProjectStorageS3AccessKeyStore(),
       buckets: new MemoryProjectStorageRepository(),
+      protector,
     });
   }
-  const control = new PostgresControlPlane(getPostgresPool(env));
+  const pool = getPostgresPool(env);
+  const control = new PostgresControlPlane(pool);
   return new ProjectStorageS3AccessKeyService({
-    store: new PostgresProjectStorageS3AccessKeyStore(control),
+    store: new PostgresProjectStorageS3AccessKeyStore(control, pool),
     buckets: new PostgresProjectStorageRepository(control),
+    protector,
   });
 }
 

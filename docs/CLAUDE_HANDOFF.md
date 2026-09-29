@@ -169,6 +169,31 @@ Grossbuchstaben.
   `DELETE /auth/admin/oauth-consents/{consentId}`. Zertifiziert im Fall
   `(2.92)`.
 
+- 2.96 **Die S3-Schluessel oeffnen etwas.** Migration
+  `0065_project_storage_s3_access_key_secrets.sql` haengt `secret_ciphertext`
+  an `project_storage_s3_access_keys` (AES-256-GCM, Schluessel aus
+  `QKERN_PROJECT_STORAGE_S3_KEY_ENCRYPTION_KEY`, AAD ist der oeffentliche Teil)
+  und legt `qkern_authenticate_project_storage_s3_access_key(text)` an, eine
+  SECURITY-DEFINER-Funktion nur fuer `qkern_runtime`, die ein Paar ueber den
+  oeffentlichen Teil holt, solange es weder widerrufen noch abgelaufen ist. Der
+  Endpunkt `/s3` (`lib/server/project-storage/s3-endpoint.ts`,
+  `app/s3/route.ts`, `app/s3/[...path]/route.ts`) prueft SigV4 im Header
+  (`s3-sigv4.ts`) und ruft ausschliesslich `ProjectStorageService` als
+  **Service-Rolle** des Paars, beschraenkt auf den Bucket-Satz: ListBuckets,
+  HeadBucket, ListObjectsV2, Head/Get/Put/DeleteObject; PutObject ist
+  prepareUpload, Einloesen der Zusage beim Provider, completeUpload. **Was
+  fehlt, antwortet 501 und nennt sich**: Presigned URLs, aws-chunked
+  (`STREAMING-*`), Multipart, CopyObject, Range, ListObjects v1, Bucket anlegen
+  oder loeschen. Paare aus 2.59 bis 2.65 haben kein Chiffrat (`verifiable:
+  false`) und oeffnen nichts; die Seite sagt es je Paar. Zertifiziert im
+  Storage-Stack (`tests/project-storage-s3-endpoint.integration.test.ts`, echte
+  Signatur aus `node:crypto`, EICAR durch den Endpunkt) und im Fall `(2.96)`.
+  Mutationsprobe: Signaturvergleich auf `if (false)`, genau der S3-Fall fiel an
+  der gefaelschten Signatur (200 statt 403), die acht anderen blieben gruen.
+  **Nicht geprueft**: ein echter Client (aws cli, rclone) gegen einen laufenden
+  Next-Server; die Pfadkodierung des Canonical Request stammt aus `request.url`
+  und ist nur im Handler-Aufruf belegt.
+
 - 2.91 **Der Riegel im Remote-MCP-Server steht jetzt vor OAuth statt vor dem
   Transport.** Ueber OAuth erreichbar sind vier Werkzeuge: Lesen unter
   `data:read`, Einfuegen, Aendern und Loeschen unter `data:write`. Die uebrigen
@@ -2112,6 +2137,11 @@ Lauf beweist nicht, dass der Aufbau deterministisch ist.
   Datenbank abschneidet.
 - Usage-Zähler nicht als Rechnung darstellen, solange Tarife/Reconciliation fehlen.
 - Service Role ist kein PostgreSQL-/RLS-Privilegien-Bypass.
+- Der S3-Endpunkt `/s3` (2.96) ruft ausschliesslich `ProjectStorageService`;
+  kein eigener Weg zum Provider, keine Admin-Rolle fuer ein Schluesselpaar. Das
+  Geheimnis eines Paars liegt nur als AES-GCM-Chiffrat in `secret_ciphertext`,
+  der Schluessel dazu nur in `QKERN_PROJECT_STORAGE_S3_KEY_ENCRYPTION_KEY`.
+  Keine Route und kein Log gibt Geheimnis oder Chiffrat heraus.
 - Historische `docs/RELEASE_*.md` niemals nachträglich ändern.
 - Niemals dauerhaft `GRANT qkern_ledger_owner TO …` in einem Test: Die Rolle
   ist clusterweit, und der Migrationszaun verlangt sie ohne jede

@@ -5,7 +5,9 @@ import type {
   ProjectStorageScope,
 } from "@/lib/server/project-storage/model";
 import type { ProjectStorageRepository } from "@/lib/server/project-storage/repository";
+import type { ProjectStorageS3SecretProtector } from "@/lib/server/project-storage/s3-secret-protector";
 import { ProjectStorageError } from "@/lib/server/project-storage/service";
+import type { SqlPool } from "@/lib/server/db/sql";
 import type { Environment } from "@/lib/types";
 
 /**
@@ -20,16 +22,18 @@ import type { Environment } from "@/lib/types";
  * Provider waere darum ein Zugang zum Speicher aller Mandanten, nicht zu einem
  * Bucket.
  *
- * Ein Paar gegen QKERN selbst zu pruefen ginge kryptografisch nicht mit der
- * Zusage dieses Moduls. Eine SigV4-Signatur wird nachgerechnet, und die
- * Rechnung ist eine HMAC-Kette aus dem Geheimnis; aus dem hier gespeicherten
- * SHA-256-Hash laesst sich kein HMAC rechnen. Wer prueft, muss das Geheimnis
- * behalten. Dieses Modul behaelt es nicht, also prueft es nicht.
+ * Ein Paar gegen QKERN selbst zu pruefen ging bis 2.65 nicht: Eine
+ * SigV4-Signatur wird nachgerechnet, die Rechnung ist eine HMAC-Kette aus dem
+ * Geheimnis, und gespeichert war nur der SHA-256-Hash. Seit 2.96 gibt es den
+ * Endpunkt `/s3`, und darum behaelt dieses Modul das Geheimnis: verschluesselt
+ * in `secret_ciphertext` (AES-256-GCM, Schluessel aus der Umgebung, siehe
+ * s3-secret-protector.ts). Der Hash bleibt als eindeutige Kennung. Ohne
+ * gesetzten Schluessel entsteht ein Paar ohne Chiffrat; es oeffnet nichts, und
+ * die Liste sagt es je Paar ueber `verifiable`.
  *
- * Was dieses Modul deshalb ist: die Ausgabe und die Verwaltung. Ein Paar sagt,
- * wer auf welche Buckets welcher Umgebung duerfen soll und bis wann, es wird
- * genau einmal gezeigt und ist widerrufbar. Es gibt heute keinen Endpunkt, der
- * ein solches Paar annimmt, und die Console sagt genau diesen Satz.
+ * Nach aussen geht weiterhin nur der oeffentliche Teil. Das Geheimnis verlaesst
+ * das Modul genau zweimal: einmal beim Anlegen an den Aufrufer, und bei jeder
+ * Anfrage an den Endpunkt entschluesselt in den Signaturvergleich.
  */
 
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -56,6 +60,8 @@ export type ProjectStorageS3AccessKey = ProjectStorageScope & {
  */
 export type StoredProjectStorageS3AccessKey = ProjectStorageS3AccessKey & {
   secretHash: string;
+  /** Das verschluesselte Geheimnis; `null` bei Paaren ohne Schluessel in der Umgebung (vor 2.96). */
+  secretCiphertext: string | null;
   createdBy: string;
 };
 
@@ -64,7 +70,24 @@ export type PublicProjectStorageS3AccessKey =
     expiresAt: string;
     revokedAt: string | null;
     createdAt: string;
+    /** Ob der Endpunkt eine Signatur dieses Paars nachrechnen kann. */
+    verifiable: boolean;
   };
+
+/** Ein gueltiges Paar, wie der Endpunkt es fuer den Signaturvergleich braucht. */
+export type AuthenticatedProjectStorageS3AccessKey = {
+  id: string;
+  accessKeyId: string;
+  scope: ProjectStorageScope;
+  bucketIds: string[];
+  secret: string;
+  expiresAt: Date;
+};
+
+export interface ProjectStorageS3AccessKeyAuthenticator {
+  /** `null` fuer unbekannt, widerrufen, abgelaufen oder ohne Chiffrat. Nie ein Grund nach aussen. */
+  authenticate(accessKeyId: string, now: Date): Promise<AuthenticatedProjectStorageS3AccessKey | null>;
+}
 
 export type CreateProjectStorageS3AccessKeyInput = {
   name: string;
@@ -87,19 +110,27 @@ export interface ProjectStorageS3AccessKeyStore {
     scope: ProjectStorageScope,
     keyId: string,
   ): Promise<StoredProjectStorageS3AccessKey>;
+  /**
+   * Der Weg des Endpunkts: ueber alle Mandanten, denn vor dem Signaturvergleich
+   * kennt niemand die Organisation. Nur nicht widerrufene, nicht abgelaufene
+   * Zeilen; sonst `null`.
+   */
+  findActiveByAccessKeyId(accessKeyId: string, now: Date): Promise<StoredProjectStorageS3AccessKey | null>;
 }
 
 export type ProjectStorageS3AccessKeyDependencies = {
   store: ProjectStorageS3AccessKeyStore;
   /** Nur `listBuckets` wird gebraucht: der Bucket-Satz muss in die Umgebung passen. */
   buckets: Pick<ProjectStorageRepository, "listBuckets">;
+  /** Ohne Schutz entstehen Paare ohne Chiffrat, die nichts oeffnen. */
+  protector?: ProjectStorageS3SecretProtector;
   now?: () => Date;
   id?: () => string;
   accessKeyId?: () => string;
   secret?: () => string;
 };
 
-export class ProjectStorageS3AccessKeyService {
+export class ProjectStorageS3AccessKeyService implements ProjectStorageS3AccessKeyAuthenticator {
   private readonly now: () => Date;
   private readonly id: () => string;
   private readonly accessKeyId: () => string;
@@ -163,6 +194,9 @@ export class ProjectStorageS3AccessKeyService {
       accessKeyId,
       bucketIds,
       secretHash: hashS3AccessKeySecret(secret),
+      secretCiphertext: this.dependencies.protector
+        ? this.dependencies.protector.encrypt(secret, accessKeyId)
+        : null,
       expiresAt,
       revokedAt: null,
       createdBy: principal.subject,
@@ -185,6 +219,31 @@ export class ProjectStorageS3AccessKeyService {
     if (!/^[A-Za-z0-9-]{1,64}$/.test(keyId)) throw new ProjectStorageError("STORAGE_RESOURCE_NOT_FOUND");
     return publicS3AccessKey(await this.dependencies.store.revoke(principal, scope, keyId));
   }
+
+  /**
+   * Fuer den Endpunkt: aus dem oeffentlichen Teil das Paar, wenn es gilt.
+   * Widerrufen, abgelaufen, unbekannt und ohne Chiffrat antworten gleich mit
+   * `null`; der Grund bleibt hier, weil eine S3-Antwort ihn nicht braucht und
+   * ein Angreifer ihn nicht bekommen soll.
+   */
+  async authenticate(accessKeyId: string, now: Date = this.now()): Promise<AuthenticatedProjectStorageS3AccessKey | null> {
+    if (!ACCESS_KEY_ID.test(accessKeyId) || !this.dependencies.protector) return null;
+    const record = await this.dependencies.store.findActiveByAccessKeyId(accessKeyId, now);
+    if (!record || record.revokedAt || record.expiresAt <= now || !record.secretCiphertext) return null;
+    let secret: string;
+    try {
+      secret = this.dependencies.protector.decrypt(record.secretCiphertext, record.accessKeyId);
+    } catch { return null; }
+    if (hashS3AccessKeySecret(secret) !== record.secretHash) return null;
+    return {
+      id: record.id,
+      accessKeyId: record.accessKeyId,
+      scope: { organizationId: record.organizationId, projectId: record.projectId, environment: record.environment },
+      bucketIds: [...record.bucketIds],
+      secret,
+      expiresAt: record.expiresAt,
+    };
+  }
 }
 
 /**
@@ -205,6 +264,7 @@ export function publicS3AccessKey(
     expiresAt: record.expiresAt.toISOString(),
     revokedAt: record.revokedAt ? record.revokedAt.toISOString() : null,
     createdAt: record.createdAt.toISOString(),
+    verifiable: record.secretCiphertext !== null,
   };
 }
 
@@ -271,13 +331,43 @@ export class MemoryProjectStorageS3AccessKeyStore implements ProjectStorageS3Acc
     record.revokedAt ??= new Date();
     return { ...record, bucketIds: [...record.bucketIds] };
   }
+
+  async findActiveByAccessKeyId(accessKeyId: string, now: Date): Promise<StoredProjectStorageS3AccessKey | null> {
+    const record = [...this.records.values()].find((candidate) => candidate.accessKeyId === accessKeyId);
+    if (!record || record.revokedAt || record.expiresAt <= now) return null;
+    return { ...record, bucketIds: [...record.bucketIds] };
+  }
 }
 
 const KEY_COLUMNS = `id, organization_id, project_id, environment, name, access_key_id,
-                     secret_hash, expires_at, revoked_at, created_by, created_at`;
+                     secret_hash, secret_ciphertext, expires_at, revoked_at, created_by, created_at`;
 
 export class PostgresProjectStorageS3AccessKeyStore implements ProjectStorageS3AccessKeyStore {
-  constructor(private readonly database: Pick<PostgresControlPlane, "withTenant">) {}
+  /**
+   * `pool` traegt den Weg des Endpunkts. Er laeuft nicht durch `withTenant`,
+   * weil vor dem Signaturvergleich keine Organisation feststeht; die Funktion
+   * `qkern_authenticate_project_storage_s3_access_key` (Migration 0065) ist
+   * SECURITY DEFINER, gibt nur gueltige Zeilen her und ist der einzige Weg an
+   * der RLS vorbei. Ohne Pool gibt es diesen Weg nicht.
+   */
+  constructor(
+    private readonly database: Pick<PostgresControlPlane, "withTenant">,
+    private readonly pool?: Pick<SqlPool, "query">,
+  ) {}
+
+  async findActiveByAccessKeyId(accessKeyId: string, now: Date): Promise<StoredProjectStorageS3AccessKey | null> {
+    if (!this.pool || !ACCESS_KEY_ID.test(accessKeyId)) return null;
+    const result = await this.pool.query(
+      `SELECT key_id AS id, organization_id, project_id, environment, name, access_key_id,
+              secret_hash, secret_ciphertext, expires_at, revoked_at, created_by, created_at, bucket_ids
+         FROM qkern_authenticate_project_storage_s3_access_key($1)`,
+      [accessKeyId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const record = s3AccessKeyFromRow(row);
+    return record.revokedAt || record.expiresAt <= now ? null : record;
+  }
 
   list(
     principal: ProjectStoragePrincipal,
@@ -328,11 +418,12 @@ export class PostgresProjectStorageS3AccessKeyStore implements ProjectStorageS3A
         inserted = await repositories.transaction.query(
           `INSERT INTO project_storage_s3_access_keys
              (id, organization_id, project_id, environment, name, access_key_id,
-              secret_hash, expires_at, created_by, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              secret_hash, secret_ciphertext, expires_at, created_by, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            RETURNING ${KEY_COLUMNS}`,
           [input.id, scope.organizationId, scope.projectId, scope.environment, input.name,
-            input.accessKeyId, input.secretHash, input.expiresAt, input.createdBy, input.createdAt],
+            input.accessKeyId, input.secretHash, input.secretCiphertext, input.expiresAt,
+            input.createdBy, input.createdAt],
         );
         for (const bucketId of input.bucketIds) {
           await repositories.transaction.query(
@@ -427,6 +518,7 @@ function s3AccessKeyFromRow(row: Record<string, unknown>): StoredProjectStorageS
     accessKeyId: String(row.access_key_id),
     bucketIds: (Array.isArray(row.bucket_ids) ? row.bucket_ids : []).map((value) => String(value)),
     secretHash: String(row.secret_hash),
+    secretCiphertext: row.secret_ciphertext ? String(row.secret_ciphertext) : null,
     expiresAt: new Date(row.expires_at as string | Date),
     revokedAt: row.revoked_at ? new Date(row.revoked_at as string | Date) : null,
     createdBy: String(row.created_by),
