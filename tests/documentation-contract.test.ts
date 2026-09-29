@@ -47,4 +47,16 @@ describe("living documentation contract", () => {
     expect(compute).toContain("DNS-Pinning");
     expect(agents).toMatch(/Always\s+keep `STATUS\.md` honest/);
   });
+
+  it("keeps the parity ladder on the released version", async () => {
+    // PARITAET.md promises to move with every release that changes a row. It
+    // stood still from 1.91.0 to 2.64.0, 73 releases, because nothing read its
+    // header. The header now has to name the version package.json ships.
+    const [ladder, packageJson] = await Promise.all([
+      read("docs/PARITAET.md"),
+      read("package.json").then((text) => JSON.parse(text) as { version: string }),
+    ]);
+    const stand = /^> Stand: `([0-9]+\.[0-9]+\.[0-9]+)`/m.exec(ladder);
+    expect(stand?.[1]).toBe(packageJson.version);
+  });
 });
