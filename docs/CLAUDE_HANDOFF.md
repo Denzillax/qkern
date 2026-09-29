@@ -315,9 +315,19 @@ Grossbuchstaben.
   wieder her), und sie rundete Sekunden auf Minuten, wodurch ein Rueckstand von
   29 Sekunden als "0" erschien. Beides ist berichtigt. Im Browser nicht gesehen
 - Neuester Slice: 2.62 Die letzten Platzhalter. Von den sechsundzwanzig
-  Platzhalterseiten, mit denen diese Sitzung begann, sind **zwei** uebrig:
-  `storage-analytics` (Iceberg) und `storage-vectors`. Alles andere ist eine
-  echte Seite, und wo es nichts zu zeigen gibt, sagt die Seite das mit Grund.
+  Platzhalterseiten, mit denen diese Sitzung begann, ist seit 2.93 **einer**
+  uebrig: `storage-analytics` (Iceberg). `storage-vectors` ist seit 2.93 eine
+  echte Seite: Sie liest den Katalog und sagt, dass dieser Server keinen
+  Vektortyp anbietet. Alles andere ist eine echte Seite, und wo es nichts zu
+  zeigen gibt, sagt die Seite das mit Grund. Zwei Dinge aus dem Schnitt 2.93,
+  die stimmen muessen, wenn jemand die Seite weiterbaut: Alpine 3.24 hat ein
+  Paket `postgresql-pgvector`, aber es ist gegen Alpines PostgreSQL 18 gebaut
+  und dem selbst gebauten PostgreSQL 17 im Image nutzlos; ein erster Entwurf
+  der Seite behauptete, es gebe gar keines, und setzte die Grenze von `cube`
+  auf 101; sie liegt bei 100. Die Sonde am Image hat beides gezeigt. Im
+  Stack fiel waehrend einer Mutationsprobe einmal `(2.52)` mit dem
+  5-Sekunden-Timeout der Vorgabe, im gruenen Lauf davor nicht; der Fall hat
+  keinen eigenen Timeout und ist unter Last knapp.
 
   **Drei Befunde, die ein naechster Agent kennen sollte.** Erstens: **QKERN
   fuehrt keinen Katalog seiner Backups.** Keine der 62 Migrationen legt eine

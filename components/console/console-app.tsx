@@ -82,6 +82,7 @@ import { PoolerLogView } from "@/components/console/pooler-log-view";
 import { RealtimeLogView } from "@/components/console/realtime-log-view";
 import { JwtKeysView } from "@/components/console/jwt-keys-view";
 import { StoragePoliciesView } from "@/components/console/storage-policies-view";
+import { VectorBucketsView } from "@/components/console/vector-buckets-view";
 import { StorageSettingsView } from "@/components/console/storage-settings-view";
 import { S3AccessView } from "@/components/console/s3-access-view";
 import { DataApiSettingsView } from "@/components/console/data-api-settings-view";
@@ -349,6 +350,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "storage-policies": return <StoragePoliciesView projectId={props.project.id} environment={props.environment}/>;
     case "storage-settings": return <StorageSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "storage-s3": return <S3AccessView projectId={props.project.id} environment={props.environment}/>;
+    case "storage-vectors": return <VectorBucketsView projectId={props.project.id} environment={props.environment}/>;
     case "set-api": return <DataApiSettingsView projectId={props.project.id} environment={props.environment}/>;
     case "set-infrastructure": return <InfrastructureView projectId={props.project.id} environment={props.environment} region={props.project.region} status={props.project.status}/>;
     // Die letzten drei Platzhalter der Einstellungen (2.88). Jede Seite sagt

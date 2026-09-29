@@ -49,6 +49,7 @@ import { provisioningOrderTexts } from "@/lib/console/provisioning-order-texts";
 import { integrationsServicesTexts } from "@/lib/console/integrations-services-texts";
 import { addonsTexts } from "@/lib/console/addons-texts";
 import { backupsTexts } from "@/lib/console/backups-texts";
+import { vectorBucketTexts } from "@/lib/console/vector-buckets-texts";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -223,6 +224,10 @@ async function consoleKeys(): Promise<string[]> {
   // Befund zu Produktweg und Pruefweg, die Schritte eines Betreibers und
   // seine Ehrlichkeitssaetze ueber t(variable).
   for (const text of backupsTexts()) keys.add(text);
+  // Storage -> Vektor-Buckets (2.93) zeigt sein Urteil ueber den Server,
+  // die Schritte, die es braeuchte, und seine Ehrlichkeitssaetze ueber
+  // t(variable).
+  for (const text of vectorBucketTexts()) keys.add(text);
   return [...keys];
 }
 
