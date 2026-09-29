@@ -1,54 +1,80 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `1.91.0`, 24. September 2026. Diese Datei wird bei jedem Release
-> nachgeführt, das eine Zeile verändert.
+> Stand: `2.64.0`, 29. September 2026. Diese Datei wird bei jedem Release
+> nachgeführt, das eine Zeile verändert. Zwischen `1.91.0` und `2.64.0` ist
+> das nicht geschehen; die Leiter stand 73 Releases lang auf dem Stand vom
+> 24. September. Was in dieser Zeit dazugekommen ist, steht jetzt hier, und
+> `docs/QA.md` nennt den Ausfall.
 
 „QKERN auf Supabase-Niveau in einem Rutsch" ist keine Aufgabe, sondern ein
-Missverständnis über Software: Diese Sprint hat **achtmal** ein Modul gefunden,
-das gebaut, dokumentiert und als Bibliothek grün war — und im Betrieb nichts
+Missverständnis über Software: Ein Sprint hat **achtmal** ein Modul gefunden,
+das gebaut, dokumentiert und als Bibliothek grün war, und im Betrieb nichts
 tat. Ein Rutsch erzeugt genau solche Module, nur flächendeckend. Was es
 stattdessen gibt: diese Leiter. Jede Zeile nennt, was steht, was fehlt und was
-der nächste belastbare Slice wäre. Abgebaut wird sie in der Reihenfolge unten —
-jeder Schritt zertifiziert gegen echte Dienste, mit Mutationsprobe, zweimal
-reproduziert.
+der nächste belastbare Slice wäre. Jeder Schritt zertifiziert gegen echte
+Dienste, mit Mutationsprobe, zweimal reproduziert.
 
 **Messvorschrift:** „steht" heisst *implementiert und zertifiziert* im Sinn von
-`STATUS.md` — gegen echte Dienste gelaufen, Lauf archiviert. Nichts anderes
-zählt.
+`STATUS.md`: gegen echte Dienste gelaufen, Lauf archiviert. Nichts anderes
+zählt. Ein Wert in Prozent steht hier absichtlich nicht; er misst Fläche
+statt Tiefe.
 
 ## Die Leiter
 
 | Fähigkeit | Supabase | QKERN heute | Was fehlt |
 | --- | --- | --- | --- |
-| Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`) | ein Broker, der wirklich Datenbanken einrichtet; Betrieb (unten) |
-| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE, JWKS — zertifiziert gegen echtes SMTP und echtes OIDC | seit `1.76.0` ist der Provider-Katalog gegen zwei echte, getrennte OIDC-Gegenstellen belegt; offen: kommerzielle Provider-Eigenheiten (echte Konten), SAML, SMS |
-| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; seit `1.71.0` lesende `security_invoker`-Views, seit `1.72.0` RPC ueber SECURITY-INVOKER-Funktionen, seit `1.80.0` beschreibt das OpenAPI-Dokument beide nach denselben Grenzen; seit `1.86.0` Aggregate (count/sum/avg/min/max, gruppiert) unter der RLS des Aufrufers | eingebettete Joins |
-| Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle — gegen echtes MinIO/ClamAV; seit `1.70.0` Multipart/Resumable ueber den ganzen Dienstweg, Ganzdatei-Pruefsumme vom Virenscanner verifiziert; seit `1.78.0` räumt der Lifecycle verfallene Reservierungen und Provider-Waisen ab | Bildtransformation, CDN |
-| Realtime | Broadcast, Presence, CDC — produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay — zertifiziert mit zwei Instanzen; Prozessnachweis (`1.57.0`) | seit `1.73.0` ersetzt ein Tor mit benannten Bedingungen das Production-Verbot; offen: belegter Production-Start gegen SSL-PostgreSQL, persistente Presence/History, Lastprofil jenseits Soak |
-| Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf | seit `1.74.0` Image-Deployments mit erzwungener Historie und Rollback; seit `1.89.0` ein Aufrufprotokoll je Function (Beginn, Dauer, Ausgang, Code — kein stdout/stderr); offen: Inhaltslogs, Scope-Entdeckung statt `SCOPES_JSON` |
-| Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`); seit `1.88.0` Metrics-Export im Prometheus-Textformat | **vor** Supabase-Stand; offen nur Tracing |
-| Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`); seit `1.87.0` die ganze Fünf-Feld-Grammatik | Namen (JAN, MON), `@daily`, `L`/`W`/`#`; Zeitzonen jenseits UTC |
-| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden, Quotas mit `enforce`, Projektion in REST/Console; seit `1.67.0` append-only Preisblatt und Monatsprojektion in Geld; seit `1.68.0` fakturiert ein eigener Prozess abgeschlossene Monate idempotent — seit `1.77.0` mit REST-Lesefläche und belegtem Wettlauf; seit `1.81.0` lückenloser Nummernkreis je Organisation mit Fälligkeit; seit `1.82.0` liest die Console die Rechnungen | Zahlungsanbindung |
-| Console/Dashboard | vollflächig | Table Editor, Change Sets, Queues, Usage, Compute-Verwaltung; seit `1.75.0` ein echter Read-only-SQL-Editor (die vorige Fassung war eine Attrappe) | Auth-/Storage-/Realtime-Flächen vertiefen, Logs |
-| SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI, Fresh-Smoke Linux | Registry-Publishing, Windows/macOS-Evidenz, Upgrade-E2E |
-| Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Nachweisverträge und Provisioning-Sicherheitsverträge | im Grunde alles: Provider-Onboarding, HA, PITR, Restore-Drills — **grösste Lücke, nicht im Docker-Stack zertifizierbar** |
+| Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`); Einstellungen, Rollen und TLS-Zustand lesbar (`2.53.0`); Replikation mit Publikationen, Abonnements und Slot-Rückstand lesbar (`2.58.0`); drei feste Umgebungen mit echten Zahlen (`2.60.0`) | ein Broker, der wirklich Datenbanken einrichtet (die Provisioniererrolle hat `NOCREATEDB`, im Produktquelltext steht kein `CREATE DATABASE`); freie Zweige; Wiederherstellung in ein neues Projekt (drei von vier Gliedern fehlen, `2.62.0`) |
+| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social, Passkeys, Hooks | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE gegen zwei getrennte Gegenstellen, JWKS; Sitzungen sehen und beenden (`2.34.0`); Audit-Kette in Zeitreihenfolge (`2.35.0`, `2.36.0`); MFA-Erzwingung mit Einrichtungsschein (`2.50.0`); Rate Limits in der Datenbank (`2.52.0`); Leckliste lokal (`2.53.0`); Auth-Hooks, die geschlossen fallen (`2.59.0`); Passkeys mit WebAuthn ohne fremde Bibliothek (`2.60.0`); fremde Aussteller an der Data API (`2.60.0`); eigener OAuth-Server mit PKCE (`2.61.0`) und Zustimmung als Zeile (`2.64.0`); Aufräumer für abgelaufene Artefakte (`2.63.0`) | SAML, SMS, kommerzielle Provider mit echten Konten; eine Zustimmungsseite, die ein Mensch sieht; Widerruf je Token |
+| Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate, eingebettete Joins; GraphQL | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; `security_invoker`-Views (`1.71.0`), RPC (`1.72.0`), Aggregate unter RLS (`1.86.0`); der ganze Katalog lesbar: Trigger, Funktionen, Indizes, Policies, Enums, Erweiterungen, Rollen, Publikationen, Spaltenrechte (`2.9.0` bis `2.20.0`); Namen mit Grossbuchstaben (`2.26.0`, `2.33.0`); GraphQL lesend mit harten Grenzen, ohne fremde Bibliothek (`2.61.0`); ein OpenAPI-Vertrag über Pfade und Verben in beide Richtungen (`2.59.0`) | eingebettete Joins; GraphQL schreibend |
+| Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN, S3-Protokoll, Analytics- und Vektor-Buckets | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle gegen versitygw/ClamAV; Multipart/Resumable (`1.70.0`); Regeln und Grenzen je Bucket (`2.27.0`); Scanner-Log (`2.49.0`); S3-Schlüsselpaare, genau einmal gezeigt und widerrufbar (`2.59.0`) | Bildtransformation, CDN; **die S3-Schlüssel öffnen heute noch nichts**, es gibt keinen S3-Endpunkt; Analytics-Buckets (Iceberg) und Vektor-Buckets sind die letzten zwei Platzhalter der Console |
+| Realtime | Broadcast, Presence, CDC, produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay, zertifiziert mit zwei Instanzen; Tor mit benannten Bedingungen statt Production-Verbot (`1.73.0`); Grenzen und Rechtematrix in der Console (`2.47.0`); Berichte und Log (`2.49.0`, `2.62.0`) | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence und History; Lastprofil jenseits Soak; das Log kennt nur Broadcasts, nicht die zugestellten Änderungen |
+| Edge Functions | Deploy, Logs, Marktplatz | Functions/Cron/Webhooks als Verträge: digest-gepinnte Images, Egress-Policy, Vault-Signatur, Kette Queue→Container in einem Lauf; Image-Deployments mit Historie und Rollback (`1.74.0`); Aufrufprotokoll je Function (`1.89.0`); Secrets nur als Referenz (`2.38.0`); Datenbank-Webhooks über den Change Feed als eigener Prozess (`2.50.0`, `2.51.0`); Dashboard-Webhooks über dieselbe Kette (`2.58.0`) | Inhaltslogs (stdout/stderr); Scope-Entdeckung statt `SCOPES_JSON`; Zustellung ist at-least-once |
+| Queues | pgmq, neu | Scope-Isolation, Dedupe, Leases, Fencing, Dead Letters, Multi-Instanz unter Last, arbeitender Wirt (`1.44.0`); Metrics im Prometheus-Textformat (`1.88.0`); Console (`2.6.0`) | **vor** Supabase-Stand; offen nur Tracing |
+| Cron | pg_cron-basiert | eigener Prozess, dispatcht zertifiziert (`1.45.0`); die ganze Fünf-Feld-Grammatik (`1.87.0`); Log mit vier Zuständen und benanntem Dedupe-Schlüssel (`2.42.0`) | Namen (JAN, MON), `@daily`, `L`/`W`/`#`; Zeitzonen jenseits UTC |
+| Usage/Billing | Preise, Rechnungen, Zahlung | alle sechs Metriken melden; Preisblatt und Monatsprojektion (`1.67.0`); Rechnungslauf als Prozess (`1.68.0`) mit lückenlosem Nummernkreis (`1.81.0`); Console liest Rechnungen (`1.82.0`, `2.37.0`); Verlauf über 48 Stunden oder 90 Tage, aggregiert in der Datenbank (`2.45.0`) | Zahlungsanbindung; Add-ons (eine Rechnungszeile hat kein Feld für eine Bezeichnung, `2.62.0`) |
+| Observability | Logs je Dienst, Explorer, Query Performance, Advisors, Berichte | Advisors Sicherheit, Leistung, Gesundheit (`2.39.0`, `2.40.0`, `2.44.0`); Berichte für Datenbank, Verbindungen, Auth, Realtime (`2.45.0` bis `2.49.0`); Log-Explorer über die drei Quellen mit Leseroute (`2.55.0`); Log-Drains als Prozess mit dauerhafter Position (`2.54.0`, `2.55.0`); `pg_stat_statements` ohne Abfragetext (`2.56.0`); Postgres-Zustand aus den Statistiksichten (`2.57.0`) | ein Serverlog von PostgreSQL; Function-Inhaltslogs; API-Gateway- und Pooler-Zahlen (die Seiten sagen ehrlich, dass es keine gibt, `2.61.0`) |
+| Console/Dashboard | vollflächig, im Browser | das Menü von Supabase (`2.0.0`) in vier Sprachen (`2.3.0`); Darstellung je Person in der Datenbank (`2.55.0`); von 26 Platzhaltern sind 2 übrig (`2.37.0` bis `2.62.0`); Table Editor schreibend über Change Sets (`2.48.0`); read-only SQL-Editor mit Vorlagen (`1.75.0`, `2.54.0`); Render-Vertrag für jede Ansicht in vier Sprachen (`2.63.0`), erreicht seit `2.64.0` alle Ansichten | **im Browser nie gesehen**, in keinem Release; der Render-Vertrag läuft ohne Effekte, also bleiben fertiger, leerer und Fehlerzustand ungesehen; zwei Platzhalter |
+| Remote-MCP | MCP-Server mit OAuth | Remote-MCP über OAuth, vier Werkzeuge nach Bereichen, zwölf gar nicht angemeldet (`2.64.0`); statischer Bearer nur lokal | Werkzeuge für Control Plane, Storage, Queues und Migrationen haben keinen Bereich, der sie beschreibt |
+| SDK/CLI | npm, weit | typisiertes SDK, secretfreie CLI; Fresh-Smoke auf Linux, Windows und macOS auf GitHub-Runnern (`2.15.0`); Tarball-Prüfung auf allen drei (`2.14.0`, `2.15.0`) | Registry-Publishing; Upgrade-E2E |
+| Betrieb (Managed) | HA, PITR, Backups, Restore, Support | Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv, bis zu einem Zeitpunkt, Evidenz vom Produkt-Verifier geprüft (`2.29.0`); PITR-Seite mit Drill-Evidenz (`2.53.0`, `2.63.0`) | **im Grunde alles**: Der Drill stellt die Kontrollebene wieder her, nicht eine Projektdatenbank; QKERN kann kein Backup einer Projektdatenbank anstossen und führt keinen Katalog seiner Backups; Provider-Onboarding, HA, Support. **Grösste Lücke, nicht im Docker-Stack zertifizierbar.** |
 
 ## Reihenfolge des Abbaus
 
-1. ~~Billing: Preisblatt und Monatsprojektion~~ — **erledigt in `1.67.0`.**
-2. ~~Billing: Rechnungslauf als Prozess mit Periodenabschluss~~ — **erledigt in `1.68.0`.**
-3. ~~Storage: Multipart/Resumable~~ — **erledigt in `1.70.0`** (Provider-Schicht `1.69.0`, Dienstweg `1.70.0`).
-4. ~~Data API: Views und RPC~~ — **erledigt** (Views `1.71.0`, RPC `1.72.0`; seit `1.80.0` beschreibt auch das OpenAPI-Dokument beide nach denselben Grenzen).
-5. ~~Realtime: Production-Binding mit begründeter Aufhebung des Verbots~~ — **erledigt in `1.73.0`** (Tor statt Verbot; der belegte Production-Start braucht SSL-PostgreSQL und liegt bei Sprosse 10).
-6. ~~Compute: Image-Deployment-Fluss~~ — **erledigt in `1.74.0`.**
-7. **SDK/CLI: Registry-Publishing und Multi-OS-Evidenz über CI — nächster Slice (braucht CI-Infrastruktur ausserhalb dieser Maschine).**
-8. ~~Auth: erster Social-Provider gegen echte Gegenstelle~~ — **erledigt in `1.76.0`** (zwei getrennte Dex-Provider; kommerzielle Anbieter brauchen echte Konten; seit `1.83.0` ist die Provider-Auswahl für Console und Admin-Fläche aufzählbar; seit `1.84.0` auch pre-auth für die App als Login-Chooser; seit `1.85.0` sagt jeder Provider, ob er `email_verified` liefern muss oder der Operator bürgt).
-9. ~~Console: SQL-Editor (read-only beginnend)~~ — **erledigt in `1.75.0`**; die vorige Fassung zeigte hartkodierte Beispielzeilen und rief die Route nie.
-10. Betrieb: PITR-/Restore-Drill gegen echtes WAL-Archiv — der erste Schritt,
-    der eine Infrastruktur ausserhalb des Wegwerfstacks braucht.
+Erledigt seit `1.67.0`: Preisblatt und Projektion, Rechnungslauf,
+Multipart/Resumable, Views und RPC, Realtime-Tor, Image-Deployments, erster
+Social-Provider, SQL-Editor, Multi-OS-Evidenz über CI (`2.15.0`), Backup und
+Restore lokal (`2.29.0`), 24 von 26 Platzhaltern, der Render-Vertrag, der
+OAuth-Server mit Zustimmung und der MCP-Riegel.
+
+Was auf dieser Maschine noch geht, in dieser Reihenfolge:
+
+1. **Console: die Zustände nach dem Laden prüfen**, fertiger, leerer und
+   Fehlerzustand in vier Sprachen, ohne neue Abhängigkeit. Danach ist der
+   Satz „im Browser nie gesehen" zwar noch wahr, aber kleiner.
+2. **Auth: eine Zustimmungsseite, die ein Mensch sieht, und Widerruf je
+   Token.**
+3. **Storage: Vektor-Buckets**, falls `pgvector` im Stack-Image ist; sonst
+   die ehrliche Seite.
+4. **Data API: eingebettete Joins**, der letzte Abstand zu PostgREST.
+5. **Storage: ein S3-Endpunkt**, damit die Schlüssel aus `2.59.0` etwas
+   öffnen.
+6. **Cron: Namen, `@daily`, Zeitzonen.**
+7. **Auth: SAML.** SMS braucht einen echten Anbieter und liegt dahinter.
+
+Was Infrastruktur ausserhalb dieser Maschine braucht, und an dem der
+Abbau hier endet:
+
+- ein Broker, der wirklich Datenbanken einrichtet, gegen einen echten
+  Anbieter;
+- ein Backup einer Projektdatenbank und ein Restore-Drill dagegen;
+- der Production-Start von Realtime gegen SSL-PostgreSQL;
+- Registry-Publishing des SDK;
+- kommerzielle Auth-Provider mit echten Konten;
+- CDN und Bildtransformation;
+- Zahlungsanbindung.
 
 ## Was diese Datei nicht ist
 
 Kein Versprechen und kein Fortschrittsbalken. Ein einzelner Prozentwert wurde
 in `1.9` aus gutem Grund abgeschafft: Er mass Fläche statt Tiefe. Diese Leiter
-misst Tiefe — Zeile für Zeile, mit Belegen in `docs/evidence/`.
+misst Tiefe, Zeile für Zeile, mit Belegen in `docs/evidence/`.

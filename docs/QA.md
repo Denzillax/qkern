@@ -6275,3 +6275,14 @@ Nicht erbracht: Niemand hat eine Zustimmungsseite gesehen, und ein Nutzer kann
 seine eigene Zustimmung nicht selbst zuruecknehmen. Ein einzelnes Token laesst
 sich nicht widerrufen. Im Browser weiterhin nicht gesehen. Zwei Platzhalter
 bleiben.
+
+## Nachtrag nach 2.64: die Leiter stand 73 Releases still
+
+`docs/PARITAET.md` sagt von sich, sie werde bei jedem Release nachgefuehrt,
+das eine Zeile veraendert. Sie stand auf `1.91.0` vom 24. September, waehrend
+Passkeys, der OAuth-Server mit Zustimmung, GraphQL, der Log-Explorer, der
+Backup-Drill und vierundzwanzig Konsolenseiten dazukamen. Kein Vertrag prueft
+diese Datei, und genau darum ist es niemandem aufgefallen; dieselbe Klasse wie
+die veraltete Empfaenger-Zahl in 2.63. Am 29. September nachgefuehrt, mit
+einer Reihenfolge fuer das, was auf dieser Maschine noch geht, und einer
+Liste dessen, was Infrastruktur ausserhalb braucht.
