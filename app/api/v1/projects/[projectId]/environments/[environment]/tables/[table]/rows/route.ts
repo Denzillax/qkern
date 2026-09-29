@@ -5,6 +5,7 @@ import { z } from "zod";
 import { csrfRejected, hasTrustedOrigin, safeJson } from "@/lib/server/auth/http";
 import {
   GeneratedDataApiError,
+  parseGeneratedSelect,
   type GeneratedDataApiPort,
   type GeneratedDataFilter,
 } from "@/lib/server/data-plane/generated-api";
@@ -83,9 +84,11 @@ function parseListQuery(request: NextRequest) {
   if (singleton.some((key) => request.nextUrl.searchParams.getAll(key).length > 1)) return null;
   const schema = schemaName.safeParse(request.nextUrl.searchParams.get("schema") ?? "public");
   if (!schema.success) return null;
+  // `select` traegt seit 2.66 auch Einbettungen (`autor:autoren(name)`); die
+  // Grammatik liegt beim Dienst, damit Route und Dokument dasselbe meinen.
   const selectRaw = request.nextUrl.searchParams.get("select");
-  const select = selectRaw === null ? undefined : selectRaw.split(",").map((value) => value.trim());
-  if (select?.some((value) => !value)) return null;
+  const parsedSelect = selectRaw === null ? { embed: [] } : parseGeneratedSelect(selectRaw);
+  if (!parsedSelect) return null;
   const filters: GeneratedDataFilter[] = [];
   for (const encoded of request.nextUrl.searchParams.getAll("filter")) {
     const first = encoded.indexOf(":");
@@ -105,7 +108,8 @@ function parseListQuery(request: NextRequest) {
   if (limitRaw !== null && (!/^\d{1,3}$/.test(limitRaw) || !Number.isSafeInteger(limit))) return null;
   return {
     schema: schema.data,
-    select,
+    select: parsedSelect.select,
+    embed: parsedSelect.embed,
     filters,
     order: orderMatch ? { column: orderMatch[1], direction: orderMatch[2] as "asc" | "desc" } : undefined,
     cursor: request.nextUrl.searchParams.get("cursor") ?? undefined,

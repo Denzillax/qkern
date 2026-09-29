@@ -69,6 +69,23 @@ describe("generated data routes", () => {
       { headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` } },
     ), route);
     expect(invalid.status).toBe(400);
+
+    // Einbettungen (2.66) kommen als eigener Teil der Eingabe beim Dienst an;
+    // eine Klammer in der Klammer ist schon an der Route ein 400.
+    const embedded = await handlers.GET(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/tables/orders/rows?select=id,customer:customers(name),items()",
+      { headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` } },
+    ), route);
+    expect(embedded.status).toBe(200);
+    expect(service.listRows).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
+      select: ["id"],
+      embed: [{ alias: "customer", relation: "customers", columns: ["name"] }, { alias: "items", relation: "items" }],
+    }));
+    const nested = await handlers.GET(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/tables/orders/rows?select=id,items(order(id))",
+      { headers: { cookie: `${SESSION_COOKIE_NAME}=${principal.token}` } },
+    ), route);
+    expect(nested.status).toBe(400);
   });
 
   it("requires same-origin for cookie writes but permits an exact scoped project key without Origin", async () => {

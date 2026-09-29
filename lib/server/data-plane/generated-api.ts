@@ -25,6 +25,12 @@ const MIN_ROWS = DATA_API_LIMITS.rowsMin;
 const MAX_INSERT_ROWS = 25;
 const MAX_COLUMNS = 100;
 const MAX_FILTERS = DATA_API_LIMITS.maxFilters;
+const MAX_EMBEDS = DATA_API_LIMITS.maxEmbeds;
+const MAX_EMBED_ROWS = DATA_API_LIMITS.maxEmbedRows;
+/** Fremdschluessel an einer Tabelle, die der Katalog fuer eine Anfrage hergibt; mehr ist ein Grenzfall. */
+const MAX_EMBED_FOREIGN_KEYS = 200;
+/** PostgreSQL erlaubt 32 Spalten je Schluessel; dieselbe Zahl wie in service.ts. */
+const MAX_FOREIGN_KEY_COLUMNS = 32;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_INPUT_BYTES = 64 * 1024;
 
@@ -97,10 +103,41 @@ export type GeneratedTable = {
   columns: GeneratedTableColumn[];
 };
 
+/**
+ * Eine eingebettete Beziehung (2.66): `autor:autoren(name)` in `select`.
+ *
+ * `relation` ist der Name der Nachbartabelle im selben Schema. Welche Seite
+ * des Fremdschluessels gemeint ist, entscheidet der Katalog: Zeigt der
+ * Schluessel von der Basistabelle auf die Nachbartabelle, kommt eine Zeile
+ * oder `null`; zeigt er von der Nachbartabelle her, kommt eine Liste. Gibt es
+ * mehr als einen Schluessel zwischen den beiden Tabellen, wird die Einbettung
+ * als mehrdeutig abgewiesen; ein Hinweis auf den Schluessel, wie PostgREST ihn
+ * kennt, gibt es hier nicht.
+ */
+export type GeneratedEmbed = {
+  /** Der Schluessel in der Antwortzeile; ohne `alias:` der Name der Beziehung. */
+  alias: string;
+  relation: string;
+  /** Spalten der Nachbartabelle; fehlt die Liste, alle waehlbaren, nicht sensiblen. */
+  columns?: string[];
+};
+
+export type GeneratedEmbedResult = {
+  alias: string;
+  relation: string;
+  /** `one`: der Schluessel zeigt von der Basistabelle weg; `many`: er zeigt auf sie. */
+  kind: "one" | "many";
+  /** Der Name des Fremdschluessels, ueber den die Einbettung lief. */
+  constraint: string;
+  /** Mindestens eine Elternzeile hatte mehr als `DATA_API_LIMITS.maxEmbedRows` Nachbarn. */
+  truncated: boolean;
+};
+
 export type GeneratedListInput = {
   schema: string;
   table: string;
   select?: string[];
+  embed?: GeneratedEmbed[];
   filters?: GeneratedDataFilter[];
   order?: { column: string; direction: "asc" | "desc" };
   cursor?: string;
@@ -115,6 +152,8 @@ export type GeneratedListResult = {
   hasMore: boolean;
   nextCursor: string | null;
   maxRows: number;
+  /** Eine Angabe je Einbettung aus `select`, in der Reihenfolge der Anfrage; leer ohne Einbettung. */
+  embeds: GeneratedEmbedResult[];
 };
 
 export type GeneratedMutationResult = {
@@ -327,6 +366,152 @@ const METADATA_SQL = `
     AND NOT attribute.attisdropped
   ORDER BY relation.relname ASC, attribute.attnum ASC
   LIMIT $3`;
+
+/**
+ * Die Fremdschluessel an einer Tabelle, in beide Richtungen (2.66).
+ *
+ * Dieselbe Katalogabfrage wie `FOREIGN_KEYS_SQL` in service.ts (2.41), auf
+ * eine Tabelle verengt: Schluessel, die von ihr weg zeigen, und Schluessel,
+ * die auf sie zeigen. `unnest ... WITH ORDINALITY` haelt die Reihenfolge der
+ * Spalten fest, damit bei `FOREIGN KEY (b, a) REFERENCES p (y, x)` `b` zu `y`
+ * gehoert und nicht zu `x`.
+ *
+ * Beide Seiten muessen im abgefragten Schema liegen. Ein Schluessel in ein
+ * anderes Schema bleibt draussen: Die Einbettung nennt nur einen Tabellennamen,
+ * und ein Name ohne Schema waere zwischen zwei Schemas nicht eindeutig.
+ */
+const EMBED_FOREIGN_KEYS_SQL = `
+  SELECT fk.conname AS constraint_name,
+         relation.relname AS table_name,
+         referenced.relname AS referenced_table,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(fk.conkey) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = fk.conrelid AND attribute.attnum = key.attnum), ARRAY[]::text[]) AS columns,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(fk.confkey) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = fk.confrelid AND attribute.attnum = key.attnum), ARRAY[]::text[]) AS referenced_columns
+  FROM pg_catalog.pg_constraint AS fk
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = fk.conrelid
+  JOIN pg_catalog.pg_namespace AS fk_namespace ON fk_namespace.oid = relation.relnamespace
+  JOIN pg_catalog.pg_class AS referenced ON referenced.oid = fk.confrelid
+  JOIN pg_catalog.pg_namespace AS referenced_namespace ON referenced_namespace.oid = referenced.relnamespace
+  WHERE fk.contype = 'f'
+    AND fk_namespace.nspname = $1
+    AND referenced_namespace.nspname = $1
+    AND (relation.relname = $2 OR referenced.relname = $2)
+  ORDER BY fk.conname ASC
+  LIMIT $3`;
+
+type EmbedForeignKeyRow = {
+  constraint_name: string;
+  table_name: string;
+  referenced_table: string;
+  columns: string[];
+  referenced_columns: string[];
+};
+
+type EmbedForeignKey = {
+  name: string;
+  table: string;
+  columns: string[];
+  referencedTable: string;
+  referencedColumns: string[];
+};
+
+/**
+ * Eine Einbettung, nachdem Katalog und Rechte gesprochen haben: welcher
+ * Schluessel, welche Richtung, welche Spalten auf beiden Seiten.
+ */
+type ResolvedEmbed = {
+  embed: GeneratedEmbed;
+  target: InternalTable;
+  kind: "one" | "many";
+  constraint: string;
+  /** Spalten der Basistabelle, ueber die verknuepft wird. */
+  localKey: string[];
+  /** Spalten der Nachbartabelle, die `localKey` gegenueberstehen. */
+  remoteKey: string[];
+  /** Die Spalten, die der Aufrufer von der Nachbartabelle bekommt. */
+  columns: string[];
+};
+
+const SELECT_EMBED = new RegExp(
+  `^(?:(${DATA_IDENTIFIER_PATTERN}):)?(${DATA_IDENTIFIER_PATTERN})\\((.*)\\)$`);
+
+/**
+ * Liest den `select`-Parameter der Zeilenliste (2.66).
+ *
+ * Bis 2.65 war er eine Liste von Spaltennamen. Seit 2.66 darf ein Eintrag
+ * eine Einbettung sein, in der Schreibweise von PostgREST:
+ * `select=id,titel,autor:autoren(name),kommentare(text)`. Genau eine Ebene:
+ * Eine Klammer in einer Klammer ist keine tiefere Einbettung, sondern ein
+ * Fehler des Aufrufs. `*` steht fuer alle waehlbaren, nicht sensiblen Spalten,
+ * allein oder in einer Einbettung; neben benannten Spalten ist es ein Fehler,
+ * weil dann unklar waere, was gemeint ist.
+ *
+ * Gibt `null` zurueck, wenn der Text nicht zur Grammatik gehoert. Was zurueck
+ * kommt, ist geprueft in der Form, nicht in der Sache: Ob eine Spalte oder
+ * eine Beziehung existiert, entscheidet `listRows` gegen den Katalog.
+ */
+export function parseGeneratedSelect(text: string): { select?: string[]; embed: GeneratedEmbed[] } | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const character of text) {
+    if (character === "(") {
+      depth += 1;
+      if (depth > 1) return null;
+    } else if (character === ")") {
+      depth -= 1;
+      if (depth < 0) return null;
+    }
+    if (character === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (depth !== 0) return null;
+  parts.push(current);
+
+  const select: string[] = [];
+  const embed: GeneratedEmbed[] = [];
+  let star = false;
+  for (const raw of parts) {
+    const part = raw.trim();
+    if (!part) return null;
+    if (part === "*") {
+      if (star) return null;
+      star = true;
+      continue;
+    }
+    const match = SELECT_EMBED.exec(part);
+    if (match) {
+      const relation = match[2]!;
+      const inner = match[3]!.trim();
+      const columns = inner === "" || inner === "*"
+        ? undefined
+        : inner.split(",").map((value) => value.trim());
+      if (columns?.some((value) => !safeIdentifier(value)) || (columns && new Set(columns).size !== columns.length)) {
+        return null;
+      }
+      embed.push({ alias: match[1] ?? relation, relation, ...(columns ? { columns } : {}) });
+      continue;
+    }
+    if (!safeIdentifier(part)) return null;
+    select.push(part);
+  }
+  if (star && select.length > 0) return null;
+  if (!star && select.length === 0 && embed.length === 0) return null;
+  // Ein Alias, der mit einer Spalte oder einem anderen Alias zusammenfaellt,
+  // wuerde in der Antwortzeile einen Wert ueberschreiben, und zwar still.
+  const keys = [...select, ...embed.map((entry) => entry.alias)];
+  if (new Set(keys).size !== keys.length) return null;
+  return { ...(star || select.length === 0 ? {} : { select }), embed };
+}
 
 /**
  * Eine Funktion, wie der Aufrufweg sie sehen darf.
@@ -560,10 +745,21 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
   ): Promise<GeneratedListResult> {
     assertRequest(context, scope, input.schema, input.table);
     const limit = input.limit ?? 20;
+    const embeds = input.embed ?? [];
+    // Die Zahl der Einbettungen faellt vor der Datenbank: Jede weitere waere
+    // eine weitere Abfrage, und die Grenze soll die Arbeit sparen und nicht
+    // erst das Ergebnis verwerfen.
     if (!Number.isSafeInteger(limit) || limit < MIN_ROWS || limit > MAX_ROWS ||
         (input.select?.length ?? 0) > MAX_COLUMNS ||
-        (input.filters?.length ?? 0) > MAX_FILTERS) {
+        (input.filters?.length ?? 0) > MAX_FILTERS ||
+        !Array.isArray(embeds) || embeds.length > MAX_EMBEDS) {
       throw invalidInput();
+    }
+    for (const embed of embeds) {
+      if (!isPlainRecord(embed) || !safeIdentifier(embed.alias) || !safeIdentifier(embed.relation) ||
+          (embed.columns !== undefined && (!Array.isArray(embed.columns) || embed.columns.length > MAX_COLUMNS))) {
+        throw invalidInput();
+      }
     }
 
     return this.run(context, scope, false, async (client) => {
@@ -601,6 +797,12 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       const orderColumns = [primaryOrder, ...table.primaryKey.filter((name) => name !== primaryOrder)];
       if (orderColumns.some((name) => !isSortableDataType(byName.get(name)!.dataType))) throw invalidInput();
 
+      // Die Einbettungen werden aufgeloest, bevor eine Zeile gelesen ist: Eine
+      // unbekannte Beziehung, eine Nachbartabelle ohne Zeilensicherheit oder
+      // ein Alias auf einer Spalte weisen die ganze Anfrage ab, nicht nur den
+      // Teil in der Klammer.
+      const resolvedEmbeds = await this.resolveEmbeds(client, input.schema, table, embeds, selectedNames);
+
       const values: SqlValue[] = [];
       const where: string[] = [];
       for (const filter of filters) {
@@ -616,7 +818,12 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         where.push(`(${orderColumns.map(quoted).join(", ")}) ${comparator} (${placeholders.join(", ")})`);
       }
 
-      const queryColumns = [...new Set([...selectedNames, ...orderColumns])];
+      // Die Schluesselspalten der Einbettungen werden mitgelesen, auch wenn der
+      // Aufrufer sie nicht bestellt hat, und wie die Sortierspalten nur
+      // intern benutzt; in die Antwort kommen sie nur, wenn sie in `select`
+      // stehen.
+      const embedKeyColumns = resolvedEmbeds.flatMap((resolved) => resolved.localKey);
+      const queryColumns = [...new Set([...selectedNames, ...orderColumns, ...embedKeyColumns])];
       const sql = `SELECT ${queryColumns.map(quoted).join(", ")}
         FROM ${qualified(input.schema, input.table)}
         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -624,7 +831,22 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         LIMIT ${limit + 1}`;
       const result = await client.query<Record<string, unknown>>(sql, values);
       const selected = result.rows.slice(0, limit);
-      const rows = boundedRows(selected.map((row) => projectRow(row, selectedNames)), MAX_RESPONSE_BYTES);
+      const projected = selected.map((row) => projectRow(row, selectedNames));
+      const embedResults: GeneratedEmbedResult[] = [];
+      for (const resolved of resolvedEmbeds) {
+        const loaded = await this.loadEmbed(client, input.schema, resolved, selected);
+        for (const [index, row] of projected.entries()) {
+          row[resolved.embed.alias] = loaded.byRow[index];
+        }
+        embedResults.push({
+          alias: resolved.embed.alias,
+          relation: resolved.embed.relation,
+          kind: resolved.kind,
+          constraint: resolved.constraint,
+          truncated: loaded.truncated,
+        });
+      }
+      const rows = boundedRows(projected, MAX_RESPONSE_BYTES);
       if (selected.length > 0 && rows.length === 0) {
         throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
       }
@@ -632,14 +854,21 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       const cursorSource = rows.length > 0 ? selected[rows.length - 1] : undefined;
       // Gemessen wird, was der Aufrufer tatsächlich bekommt — nicht, was die
       // Abfrage geholt hat. Die eine Zeile über dem Limit dient nur dazu,
-      // `hasMore` zu bestimmen, und verlässt QKERN nie.
-      await this.meterRowReads(context, scope, rows.length);
+      // `hasMore` zu bestimmen, und verlässt QKERN nie. Eingebettete Zeilen
+      // zaehlen mit: Sie sind gelesene Zeilen, auch wenn sie in einer anderen
+      // Zeile stecken.
+      const embeddedRowCount = rows.reduce((sum, row) => sum + resolvedEmbeds.reduce((inner, resolved) => {
+        const value = row[resolved.embed.alias];
+        return inner + (Array.isArray(value) ? value.length : value ? 1 : 0);
+      }, 0), 0);
+      await this.meterRowReads(context, scope, rows.length + embeddedRowCount);
       return {
         source: "postgres",
         table: publicTable(table),
         rows,
         rowCount: rows.length,
         hasMore,
+        embeds: embedResults,
         // Ein View bekommt keinen Cursor: Ohne eindeutige Ordnung wuerde er
         // Zeilen ueberspringen oder doppeln, und beides still.
         nextCursor: table.kind === "table" && hasMore && cursorSource
@@ -980,6 +1209,208 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       const relations = await this.loadTables(client, schema);
       return relations.filter(listableTable).map(publicTable);
     });
+  }
+
+  /**
+   * Loest die Einbettungen einer Liste gegen den Katalog auf (2.66).
+   *
+   * Fuer jede Einbettung muss es zwischen Basistabelle und Nachbartabelle
+   * genau einen Fremdschluessel im Schema geben. Zeigt er von der Basistabelle
+   * weg, ist die Einbettung `one`; zeigt er auf sie, `many`. Zwei Schluessel,
+   * gleich in welcher Richtung, sind mehrdeutig und werden abgewiesen, und
+   * eine Tabelle, die auf sich selbst zeigt, faellt damit ebenfalls.
+   *
+   * Die Nachbartabelle geht durch dieselbe Tuer wie die Basistabelle:
+   * `assertTableBoundary(..., "select")`. Ohne Zeilensicherheit gibt es
+   * `GENERATED_DATA_API_RLS_REQUIRED`, ohne Leserecht `_FORBIDDEN`. Die
+   * Mutationsprobe dieses Schnitts nimmt genau diese Zeile heraus.
+   */
+  private async resolveEmbeds(
+    client: SqlPoolClient,
+    schema: string,
+    table: InternalTable,
+    embeds: GeneratedEmbed[],
+    selectedNames: string[],
+  ): Promise<ResolvedEmbed[]> {
+    if (embeds.length === 0) return [];
+    // Ein View traegt keine Fremdschluessel; eine Einbettung an ihm hat nichts,
+    // woran sie haengen koennte.
+    if (table.kind !== "table") throw invalidInput();
+    const taken = new Set(selectedNames);
+    for (const embed of embeds) {
+      if (taken.has(embed.alias)) throw invalidInput();
+      taken.add(embed.alias);
+    }
+    const foreignKeys = await this.loadEmbedForeignKeys(client, schema, table.name);
+    const byName = new Map(table.columns.map((column) => [column.name, column]));
+    const resolved: ResolvedEmbed[] = [];
+    for (const embed of embeds) {
+      const candidates = foreignKeys.filter((fk) =>
+        (fk.table === table.name && fk.referencedTable === embed.relation) ||
+        (fk.referencedTable === table.name && fk.table === embed.relation));
+      if (candidates.length !== 1) {
+        // Unbekannt oder mehrdeutig: Beides ist ein Fehler des Aufrufs, und
+        // die Antwort sagt nicht, welches von beiden. Der Unterschied verriete,
+        // ob eine Tabelle dieses Namens existiert.
+        throw new GeneratedDataApiError("GENERATED_DATA_API_INVALID_INPUT", {
+          cause: new Error(candidates.length === 0 ? "unknown relation" : "ambiguous relation"),
+        });
+      }
+      const fk = candidates[0]!;
+      const kind: "one" | "many" = fk.table === table.name ? "one" : "many";
+      const localKey = kind === "one" ? fk.columns : fk.referencedColumns;
+      const remoteKey = kind === "one" ? fk.referencedColumns : fk.columns;
+      const target = await this.loadTable(client, schema, embed.relation);
+      assertTableBoundary(target, "select");
+      if (target.kind !== "table") throw invalidInput();
+      // Eine Liste braucht eine Ordnung, sonst waere der Schnitt bei
+      // maxEmbedRows Zufall; die Ordnung ist der Primaerschluessel der
+      // Nachbartabelle, wie bei der Liste selbst.
+      if (kind === "many" && target.primaryKey.length === 0) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_PRIMARY_KEY_REQUIRED");
+      }
+      const targetByName = new Map(target.columns.map((column) => [column.name, column]));
+      const usable = (columns: Map<string, GeneratedTableColumn>, name: string) => {
+        const column = columns.get(name);
+        return Boolean(column && column.selectable && !column.sensitive);
+      };
+      // Die Schluesselspalten werden auf beiden Seiten gelesen; eine sensible
+      // oder nicht lesbare Schluesselspalte macht die Einbettung unmoeglich,
+      // nicht nur unvollstaendig.
+      if (localKey.some((name) => !usable(byName, name)) || remoteKey.some((name) => !usable(targetByName, name))) {
+        throw invalidInput();
+      }
+      if (kind === "many" && target.primaryKey.some((name) =>
+        !usable(targetByName, name) || !isSortableDataType(targetByName.get(name)!.dataType))) {
+        throw invalidInput();
+      }
+      const columns = embed.columns
+        ? uniqueIdentifiers(embed.columns)
+        : target.columns.filter((column) => column.selectable && !column.sensitive).map((column) => column.name);
+      if (columns.length === 0 || columns.some((name) => !usable(targetByName, name))) throw invalidInput();
+      resolved.push({ embed, target, kind, constraint: fk.name, localKey, remoteKey, columns });
+    }
+    return resolved;
+  }
+
+  private async loadEmbedForeignKeys(client: SqlPoolClient, schema: string, table: string): Promise<EmbedForeignKey[]> {
+    const result = await client.query<EmbedForeignKeyRow>(
+      EMBED_FOREIGN_KEYS_SQL, [schema, table, MAX_EMBED_FOREIGN_KEYS + 1]);
+    if (result.rows.length > MAX_EMBED_FOREIGN_KEYS) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+    }
+    return result.rows.map((row) => {
+      const names = (value: unknown): value is string[] => Array.isArray(value) &&
+        value.length >= 1 && value.length <= MAX_FOREIGN_KEY_COLUMNS && value.every(safeIdentifier);
+      if (!safeIdentifier(row.constraint_name) || !safeIdentifier(row.table_name) ||
+          !safeIdentifier(row.referenced_table) || !names(row.columns) || !names(row.referenced_columns) ||
+          // Ein Fremdschluessel hat auf beiden Seiten gleich viele Spalten.
+          // Stimmt das nicht, hat die Abfrage eine verloren, und die Zuordnung
+          // waere falsch.
+          row.columns.length !== row.referenced_columns.length) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+          cause: new Error("foreign key row rejected"),
+        });
+      }
+      return {
+        name: row.constraint_name,
+        table: row.table_name,
+        columns: row.columns,
+        referencedTable: row.referenced_table,
+        referencedColumns: row.referenced_columns,
+      };
+    });
+  }
+
+  /**
+   * Liest die Nachbarzeilen einer aufgeloesten Einbettung (2.66).
+   *
+   * Eine Abfrage je Einbettung, in derselben Transaktion und unter denselben
+   * Anspruechen wie die Liste: `WHERE (schluessel) IN (...)` ueber die
+   * Schluesselwerte der gelesenen Zeilen. Die Zeilensicherheit der
+   * Nachbartabelle gilt damit von PostgreSQL her; es gibt keinen Weg an ihr
+   * vorbei, weil es keine zweite Verbindung und keine zweite Rolle gibt.
+   *
+   * `many` begrenzt je Elternzeile mit `row_number()` ueber den
+   * Primaerschluessel der Nachbartabelle und liest eine Zeile mehr, um
+   * `truncated` sagen zu koennen. `one` braucht keine Grenze: Die Zielspalten
+   * eines Fremdschluessels sind eindeutig.
+   */
+  private async loadEmbed(
+    client: SqlPoolClient,
+    schema: string,
+    resolved: ResolvedEmbed,
+    parents: Array<Record<string, unknown>>,
+  ): Promise<{ byRow: unknown[]; truncated: boolean }> {
+    const empty = resolved.kind === "many" ? () => [] as unknown[] : () => null;
+    const parentKeys = parents.map((row) => {
+      const values = resolved.localKey.map((name) => row[name]);
+      return values.some((value) => value === null || value === undefined) ? null : values;
+    });
+    const distinct = new Map<string, unknown[]>();
+    for (const key of parentKeys) {
+      if (key) distinct.set(embedKey(key), key);
+    }
+    if (distinct.size === 0) return { byRow: parents.map(empty), truncated: false };
+
+    const values: SqlValue[] = [];
+    const tuples = [...distinct.values()].map((key) => {
+      const placeholders = key.map((value) => {
+        if (!isScalarDataValue(value) && !(value instanceof Date)) {
+          throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+            cause: new Error("unsupported foreign key value"),
+          });
+        }
+        values.push(value as SqlValue);
+        return `$${values.length}`;
+      });
+      return placeholders.length === 1 ? placeholders[0]! : `(${placeholders.join(", ")})`;
+    });
+    const keyList = resolved.remoteKey.length === 1
+      ? quoted(resolved.remoteKey[0]!)
+      : `(${resolved.remoteKey.map(quoted).join(", ")})`;
+    const readColumns = [...new Set([...resolved.remoteKey, ...resolved.columns, ...resolved.target.primaryKey])];
+    const target = qualified(schema, resolved.target.name);
+
+    let rows: Array<Record<string, unknown>>;
+    if (resolved.kind === "one") {
+      const result = await client.query<Record<string, unknown>>(
+        `SELECT ${readColumns.map(quoted).join(", ")} FROM ${target} WHERE ${keyList} IN (${tuples.join(", ")})`,
+        values);
+      rows = result.rows;
+    } else {
+      const rank = "__qkern_embed_rank";
+      const result = await client.query<Record<string, unknown>>(
+        `SELECT * FROM (
+           SELECT ${readColumns.map(quoted).join(", ")},
+                  row_number() OVER (PARTITION BY ${resolved.remoteKey.map(quoted).join(", ")}
+                                     ORDER BY ${resolved.target.primaryKey.map((name) => `${quoted(name)} ASC`).join(", ")}) AS "${rank}"
+           FROM ${target}
+           WHERE ${keyList} IN (${tuples.join(", ")})
+         ) AS "__qkern_embed" WHERE "${rank}" <= ${MAX_EMBED_ROWS + 1}`,
+        values);
+      rows = result.rows;
+    }
+    // Mehr Zeilen, als die Grenze je Elternzeile mal Eltern zulaesst, kann
+    // die Abfrage nicht liefern; kommt es doch vor, ist die Annahme falsch.
+    if (rows.length > distinct.size * (resolved.kind === "one" ? 1 : MAX_EMBED_ROWS + 1)) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+    }
+
+    const grouped = new Map<string, Array<Record<string, unknown>>>();
+    for (const row of rows) {
+      const key = embedKey(resolved.remoteKey.map((name) => row[name]));
+      grouped.set(key, [...(grouped.get(key) ?? []), projectRow(row, resolved.columns)]);
+    }
+    let truncated = false;
+    const byRow = parentKeys.map((key) => {
+      if (!key) return empty();
+      const matched = grouped.get(embedKey(key)) ?? [];
+      if (resolved.kind === "one") return matched[0] ?? null;
+      if (matched.length > MAX_EMBED_ROWS) truncated = true;
+      return matched.slice(0, MAX_EMBED_ROWS);
+    });
+    return { byRow, truncated };
   }
 
   private async loadTable(client: SqlPoolClient, schema: string, table: string): Promise<InternalTable> {
@@ -1375,6 +1806,23 @@ function normalizeDataValue(value: unknown, depth = 0): unknown {
     return output;
   }
   return String(value);
+}
+
+/**
+ * Der Schluessel einer Elternzeile fuer die Zuordnung der Nachbarzeilen (2.66).
+ *
+ * Beide Seiten kommen vom Treiber, aber nicht zwingend im selben Typ: Ein
+ * `integer` kommt als Zahl, ein `bigint` als Zeichenkette, und ein
+ * Fremdschluessel darf die beiden verbinden. Verglichen wird darum der Text
+ * jedes Werts und nicht der Wert selbst.
+ */
+function embedKey(values: unknown[]): string {
+  return JSON.stringify(values.map((value) => {
+    if (value instanceof Date) return value.toISOString();
+    if (value instanceof Uint8Array) return Buffer.from(value).toString("hex");
+    if (value !== null && typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }));
 }
 
 function projectRow(row: Record<string, unknown>, columns: string[]): Record<string, unknown> {

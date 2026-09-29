@@ -752,6 +752,39 @@ wie für Tabellennamen, also auch Großbuchstaben wie in `schema=Shop`. Die
 Schreibweise zählt: `Shop` und `shop` sind zwei Schemas. Systemschemas (`pg_*`,
 `information_schema`, `qkern_internal`) lehnt die API ab.
 
+**Eingebettete Beziehungen (seit 2.66).** `select` nimmt neben Spalten auch
+Nachbartabellen in der Schreibweise von PostgREST:
+`select=id,titel,autor:autoren(name),kommentare(text)`. Eine Beziehung ist der
+Name einer Tabelle im selben Schema, die mit der abgefragten über genau einen
+Fremdschlüssel verbunden ist. Zeigt der Schlüssel von der abgefragten Tabelle
+auf die Nachbartabelle (`beitraege.autor_id → autoren.id`), steht unter dem
+Alias eine Zeile oder `null`. Zeigt er von der Nachbartabelle her
+(`kommentare.beitrag_id → beitraege.id`), steht dort eine Liste, geordnet nach
+dem Primärschlüssel der Nachbartabelle. Ohne `alias:` heisst der Schlüssel in
+der Antwort wie die Beziehung; leere Klammern oder `*` in der Klammer holen alle
+lesbaren, nicht sensiblen Spalten der Nachbartabelle. Steht in `select` nur eine
+Einbettung und keine Spalte, kommen alle Spalten der Tabelle mit.
+
+Die Grenzen stehen in `lib/data-api-limits.ts` und die Console zeigt sie unter
+Einstellungen → Data API: höchstens 3 Einbettungen je Anfrage (`maxEmbeds`) und
+höchstens 20 Zeilen je Einbettung und Elternzeile (`maxEmbedRows`); mehr wird
+beschnitten und die Antwort sagt es an der Einbettung mit `truncated: true`.
+Genau eine Ebene: Eine Klammer in einer Klammer ist ein `400`, ebenso eine
+unbekannte Beziehung, ein Alias, der mit einer Spalte zusammenfällt, oder zwei
+Fremdschlüssel zwischen denselben Tabellen, weil dann nicht feststeht, welcher
+gemeint ist. Eine Tabelle, die auf sich selbst zeigt, fällt aus demselben
+Grund. Fremdschlüssel in ein anderes Schema kennt die Einbettung nicht.
+
+Die Nachbartabelle geht durch dieselbe Tür wie die Tabelle selbst: Sie braucht
+Row Level Security (`409`, `GENERATED_DATA_API_RLS_REQUIRED`) und lesbare, nicht
+sensible Schlüsselspalten auf beiden Seiten. Jede eingebettete Zeile wird in
+derselben Transaktion, mit derselben Rolle und denselben Claims gelesen wie die
+Zeilen der Liste; der Aufrufer sieht in der Einbettung genau die Zeilen, die die
+Policy der Nachbartabelle ihm erlaubt, und eine nicht sichtbare Elternzeile
+steht als `null`. Die Antwort führt je Einbettung `alias`, `relation`, `kind`
+(`one` oder `many`), den Namen des Fremdschlüssels und `truncated`. Geschrieben
+wird über eine Einbettung nie; `POST`, `PATCH` und `DELETE` kennen sie nicht.
+
 Beispiel mit einem bereits einmalig kopierten Key:
 
 ```powershell
