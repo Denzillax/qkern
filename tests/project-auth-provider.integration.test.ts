@@ -4,10 +4,20 @@ import type { PasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
-import { ProjectAuthSamlCatalog, type ProjectAuthSamlProvider } from "@/lib/server/project-auth/saml";
+import {
+  ProjectAuthSamlCatalog, ProjectAuthSamlSigningKey, SAML_METADATA_NS,
+  type ProjectAuthSamlProvider,
+} from "@/lib/server/project-auth/saml";
 import { createProjectAuthSamlAcsHandler } from
   "@/app/api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/acs/route";
-import { samlResponse, samlResponseXml, TestSamlIdp } from "@/tests/support/saml-idp";
+import { createProjectAuthSamlMetadataHandler } from
+  "@/app/api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/metadata/route";
+import {
+  attributeValue, childElements, directText, onlyChild, parseXml,
+} from "@/lib/server/project-auth/saml-xml";
+import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service";
+import { X509Certificate, verify as verifySignature } from "node:crypto";
+import { samlResponse, samlResponseXml, TestSamlIdp, testSelfSignedKeyPair } from "@/tests/support/saml-idp";
 import { NextRequest } from "next/server";
 import { MemoryProjectAuthAuditSink } from "@/lib/server/project-auth/audit";
 import type { ProjectAuthService as ProjectAuthServiceType } from "@/lib/server/project-auth/service";
@@ -55,9 +65,13 @@ class FastHasher implements PasswordHasher {
   async verify(password: string, hash: string) { return hash === await this.hash(password); }
 }
 
-function createService(saml: ProjectAuthSamlProvider[] = []) {
+function createService(
+  saml: ProjectAuthSamlProvider[] = [],
+  samlSigningKey: ProjectAuthSamlSigningKey | null = null,
+) {
   const { privateKey } = generateKeyPairSync("ed25519");
   return new ProjectAuthService({
+    samlSigningKey,
     repository: new MemoryProjectAuthRepository(),
     passwords: new FastHasher(),
     rateLimiter: new InMemoryRateLimiter(),
@@ -429,6 +443,140 @@ describe.runIf(enabled)("Project Auth provider certification", () => {
     expect(listed).toEqual([{ id: "federation", entityId: idp.entityId, requiresVerifiedEmail: true }]);
     expect(JSON.stringify(listed)).not.toMatch(/CERTIFICATE|sso|certificate/i);
   }, 60_000);
+
+  /**
+   * Die eigene Seite des Anbieterverhaeltnisses: Metadaten und eine signierte
+   * `AuthnRequest`.
+   *
+   * ## Was dieser Fall beweist, und warum er ein Fall ist
+   *
+   * Zwei Dinge, die einzeln nichts wert sind. Ein Metadatendokument nennt ein
+   * Zertifikat. Eine `AuthnRequest` traegt eine Signatur. Der Anbieter hat
+   * nichts weiter als dieses Dokument, also prueft er die eine mit dem anderen.
+   * Passen sie nicht zusammen, sieht in QKERN alles richtig aus, und jede
+   * Anmeldung scheitert beim Anbieter mit einer Meldung, die QKERN nie sieht.
+   *
+   * Darum prueft dieser Fall die Signatur **nur** mit dem Zertifikat, das er
+   * aus dem Dokument gelesen hat. Der eigene Schluessel taucht dabei nicht auf.
+   *
+   * ## Was gestellt ist
+   *
+   * Der Key-Dienst, und sonst nichts. Die Metadaten-Route verlangt einen
+   * Projekt-Key wie die oeffentliche Anbieterliste daneben; welcher Key gueltig
+   * ist, ist eigens zertifiziert. Der Handler ist der echte, die Antwort ist die
+   * echte XML-Antwort, und der Schluessel ist ein echtes RSA-Paar mit einem
+   * echten X.509-Zertifikat.
+   */
+  const keyGate = (organizationId: string) => ({
+    async authenticate() {
+      return {
+        organizationId, projectId: PROJECT_ID, environment: "development",
+        keyId: "certification", kind: "publishable",
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+    },
+  } as unknown as ProjectApiKeyService);
+
+  /** Holt die Metadaten ueber die echte Route. */
+  async function fetchMetadata(service: ProjectAuthServiceType) {
+    const handler = createProjectAuthSamlMetadataHandler(() => service, keyGate(scope.organizationId));
+    const address = `${CALLBACK_BASE}/api/v1/projects/${PROJECT_ID}` +
+      `/environments/development/auth/saml/federation/metadata`;
+    const answer = await handler(new NextRequest(new URL(address), {
+      method: "GET",
+      headers: { "x-qkern-key": "qk_pk_certification" },
+    }), {
+      params: Promise.resolve({ projectId: PROJECT_ID, environment: "development", provider: "federation" }),
+    });
+    return { status: answer.status, contentType: answer.headers.get("content-type"), xml: await answer.text() };
+  }
+
+  it("publishes metadata over the real route whose certificate verifies the signature on the AuthnRequest it really sends, and still signs the person in", async () => {
+    const idp = samlIdp();
+    const own = testSelfSignedKeyPair({ commonName: "sp.qkern.test" });
+    const signingKey = new ProjectAuthSamlSigningKey({
+      certificate: own.certificatePem, privateKey: own.privateKeyPem,
+    });
+    const service = createService([samlProvider(idp, { signAuthnRequest: true })], signingKey);
+    const email = `saml-signed-${randomUUID()}@qkern.test`;
+
+    // --- Die Metadaten, ueber die echte Route ----------------------------
+    const metadata = await fetchMetadata(service);
+    expect(metadata.status).toBe(200);
+    // Der Medientyp gehoert zur Aussage: Ein Anbieter erwartet genau dieses
+    // Dokument und nicht eine JSON-Huelle, aus der er es auspacken muss.
+    expect(metadata.contentType).toContain("application/samlmetadata+xml");
+
+    const root = parseXml(metadata.xml);
+    expect(root.namespaceUri).toBe(SAML_METADATA_NS);
+    expect(root.localName).toBe("EntityDescriptor");
+    expect(attributeValue(root, "entityID")).toBe(SP_ENTITY);
+    const descriptor = onlyChild(root, SAML_METADATA_NS, "SPSSODescriptor")!;
+    const consumers = childElements(descriptor, SAML_METADATA_NS, "AssertionConsumerService");
+    expect(consumers).toHaveLength(1);
+    expect(attributeValue(consumers[0], "Location")).toBe(ACS_URL);
+    expect(attributeValue(consumers[0], "Binding"))
+      .toBe("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
+    expect(attributeValue(descriptor, "AuthnRequestsSigned")).toBe("true");
+
+    // Das Zertifikat kommt **aus dem Dokument**. Nichts anderes darf ab hier
+    // die Signatur pruefen.
+    const keyDescriptor = onlyChild(descriptor, SAML_METADATA_NS, "KeyDescriptor")!;
+    const keyInfo = onlyChild(keyDescriptor, "http://www.w3.org/2000/09/xmldsig#", "KeyInfo")!;
+    const x509Data = onlyChild(keyInfo, "http://www.w3.org/2000/09/xmldsig#", "X509Data")!;
+    const published = onlyChild(x509Data, "http://www.w3.org/2000/09/xmldsig#", "X509Certificate")!;
+    const certificate = new X509Certificate(
+      Buffer.from(directText(published).replace(/\s+/g, ""), "base64"));
+
+    // Und das hinterlegte Zertifikat des Anbieters steht hier nicht: Die
+    // Metadaten sprechen ueber QKERN und nicht ueber die Gegenseite.
+    expect(metadata.xml).not.toContain(idp.certificateBase64);
+
+    // --- Die Anfrage, die QKERN wirklich schickt --------------------------
+    const started = await service.startSaml(scope, {
+      provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const search = new URL(started.redirectUrl).search.slice(1);
+    const marker = "&Signature=";
+    const cut = search.indexOf(marker);
+    expect(cut, "die Adresse traegt kein Signature-Feld").toBeGreaterThan(0);
+    const signedText = search.slice(0, cut);
+    const signature = Buffer.from(decodeURIComponent(search.slice(cut + marker.length)), "base64");
+    // Die Reihenfolge ist die des Bindings: Der Anbieter baut genau diesen Text
+    // nach, und er baut ihn in dieser Folge.
+    expect(signedText.startsWith("SAMLRequest=")).toBe(true);
+    expect(signedText).toContain(`&RelayState=${started.requestId}`);
+    expect(signedText.endsWith(
+      `&SigAlg=${encodeURIComponent("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256")}`)).toBe(true);
+
+    expect(verifySignature("sha256", Buffer.from(signedText, "utf8"), certificate.publicKey, signature),
+      "das Zertifikat aus den Metadaten prueft die Signatur der Anfrage nicht").toBe(true);
+
+    // --- Und der Weg endet weiterhin in einer Sitzung ---------------------
+    // Die Signatur ist etwas, das der Anbieter prueft. An dem, was QKERN
+    // danach prueft, aendert sie nichts, und dieser Teil belegt genau das.
+    const answer = await postToAcs(service, samlResponse({
+      idp, acsUrl: ACS_URL, spEntityId: SP_ENTITY, requestId: started.requestId, email,
+    }), started.requestId);
+    expect(answer.status).toBe(200);
+    const accessToken = answer.body.data?.accessToken;
+    if (!accessToken) throw new Error(`no session: ${JSON.stringify(answer.body)}`);
+    expect((await service.verifyAccess(scope, accessToken)).user.email).toBe(email);
+
+    // --- Die Gegenprobe: derselbe Schluessel, ein Anbieter ohne Signatur --
+    const plain = createService([samlProvider(idp)], signingKey);
+    const plainMetadata = await fetchMetadata(plain);
+    const plainDescriptor = onlyChild(parseXml(plainMetadata.xml), SAML_METADATA_NS, "SPSSODescriptor")!;
+    expect(attributeValue(plainDescriptor, "AuthnRequestsSigned")).toBe("false");
+    // Kein Zertifikat, wo nichts unterschrieben wird: Ein `KeyDescriptor` waere
+    // die Ankuendigung einer Signatur, die nie kommt.
+    expect(childElements(plainDescriptor, SAML_METADATA_NS, "KeyDescriptor")).toHaveLength(0);
+    const plainStart = await plain.startSaml(scope, {
+      provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    expect(new URL(plainStart.redirectUrl).search).not.toContain("Signature=");
+  }, 60_000);
+
 
   it("refuses every known SAML forgery at the real consumer route: unsigned, envelope-only, wrapped, expired, misdirected, unbound and foreign-signed", async () => {
     const idp = samlIdp();

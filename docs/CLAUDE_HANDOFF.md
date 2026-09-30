@@ -205,10 +205,11 @@ Grossbuchstaben.
   **Die Gegenstelle ist kein fremdes Produkt**: `tests/support/saml-idp.ts`
   unterschreibt mit `node:crypto` und baut sein X.509-Zertifikat als DER
   selbst. Interoperabilitaet mit SimpleSAMLphp, Keycloak oder Shibboleth ist
-  damit **nicht** belegt. **Offen**: keine signierte `AuthnRequest`, kein
-  Single Logout, keine Metadaten-Route, keine verschluesselten Assertions, und
-  der Aufraeumer aus 0063 nimmt `project_auth_saml_assertions` noch nicht.
-  Auth-Stack 10 Faelle (vorher 7), Postgres-Fall `(2.99)`.
+  damit **nicht** belegt. **Offen**: kein Single Logout, keine IdP-initiierte
+  Anmeldung, keine verschluesselten Assertions. Nachgezogen: der Aufraeumer
+  nimmt `project_auth_saml_assertions` jetzt mit, es gibt eine Metadaten-Route,
+  und eine `AuthnRequest` laesst sich je Anbieter unterschreiben.
+  Auth-Stack 11 Faelle (vorher 7), Postgres-Faelle `(2.99)` und `(2.104)`.
 
 - 2.94 **Die Zustimmungen haben
   eine Seite, und ein einzelnes Token faellt.** Zwei Luecken aus 2.92, und beide

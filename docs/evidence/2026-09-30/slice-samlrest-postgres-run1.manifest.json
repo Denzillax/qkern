@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "slice-samlrest-postgres-run1.log",
+  "commit": "48f37df0b69601f6648be4ae921f01d961bf54da",
+  "commitSubject": "docs: SAML ist in 2.68.0 ausgeliefert, nicht in 2.67.0",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 69,
+  "testFiles": "31 passed (31)",
+  "tests": "235 passed (235)",
+  "passed": 235,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -75,6 +75,8 @@ import {
   newSamlRequestId,
   ProjectAuthSamlCatalog,
   ProjectAuthSamlError,
+  type ProjectAuthSamlSigningKey,
+  samlServiceProviderMetadata,
   SAML_REQUEST_ID,
   verifySamlResponse,
 } from "@/lib/server/project-auth/saml";
@@ -653,6 +655,15 @@ export type ProjectAuthServiceDependencies = {
    * Dienst soll dafuer nicht anders gebaut werden muessen.
    */
   samlCatalog?: ProjectAuthSamlCatalog;
+  /**
+   * Der eigene Schluessel, mit dem QKERN als Service Provider unterschreibt.
+   *
+   * Optional, und ohne ihn gibt es zwei Folgen: Die Metadaten tragen keinen
+   * `KeyDescriptor`, und ein Anbieter mit `signAuthnRequest` laesst sich nicht
+   * anstossen. Eine unsignierte Anfrage an einen Anbieter, der eine Signatur
+   * verlangt, waere ein Fehlschlag beim Anbieter statt hier.
+   */
+  samlSigningKey?: ProjectAuthSamlSigningKey | null;
   /** Optional: ohne Sink schreibt der Dienst keine Audit-Ereignisse. */
   audit?: ProjectAuthAuditSink;
   /**
@@ -2866,6 +2877,36 @@ export class ProjectAuthService {
   }
 
   /**
+   * Die Metadaten dieser Projektumgebung fuer einen hinterlegten Anbieter.
+   *
+   * Was zurueckkommt, ist ein `EntityDescriptor` als Text. Der Dienst baut ihn
+   * und die Route gibt ihn als XML heraus; eine JSON-Huelle darum waere ein
+   * Dokument, das der Anbieter erst auspacken muesste, und dann waere es kein
+   * Metadatendokument mehr.
+   *
+   * Das Zertifikat darin ist das **eigene** von QKERN und nie das hinterlegte
+   * des Anbieters. Wer den falschen Slug nennt, bekommt dieselbe Antwort wie
+   * bei jedem unbekannten Anbieter.
+   */
+  samlMetadata(scope: ProjectAuthScope, providerId: string): string {
+    assertScope(scope);
+    const provider = this.samlCatalog.get(providerId);
+    if (!provider) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    try {
+      return samlServiceProviderMetadata({
+        spEntityId: this.samlEntityId(scope),
+        acsUrl: this.samlAcsUri(scope, provider.id),
+        signAuthnRequest: provider.signAuthnRequest === true,
+        signingKey: this.dependencies.samlSigningKey ?? null,
+        now: this.now(),
+      });
+    } catch (error) {
+      if (error instanceof ProjectAuthSamlError) throw new ProjectAuthError("INVALID_INPUT");
+      throw error;
+    }
+  }
+
+  /**
    * Beginnt eine SP-initiierte Anmeldung: eine `AuthnRequest` und die Adresse
    * beim Anbieter.
    *
@@ -2894,6 +2935,7 @@ export class ProjectAuthService {
     try {
       request = createSamlAuthnRequest(provider, {
         requestId, acsUrl, spEntityId, relayState: requestId, issueInstant: now,
+        signingKey: this.dependencies.samlSigningKey ?? null,
       });
     } catch (error) {
       if (error instanceof ProjectAuthSamlError) throw new ProjectAuthError("INVALID_INPUT");
@@ -3553,6 +3595,7 @@ export class DisabledProjectAuthService {
   completeOidc(): never { return this.disabled(); }
   resolveOidcScope(): never { return this.disabled(); }
   listSamlProviders(): never { return this.disabled(); }
+  samlMetadata(): never { return this.disabled(); }
   startSaml(): never { return this.disabled(); }
   completeSaml(): never { return this.disabled(); }
   resolveSamlScope(): never { return this.disabled(); }

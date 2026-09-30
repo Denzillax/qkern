@@ -5,6 +5,7 @@ import {
   ProjectAuthExpiryRetentionRuntime,
   type ProjectAuthExpiryStore,
 } from "@/lib/server/project-auth/expiry-retention";
+import { SAML_CLOCK_SKEW_MS } from "@/lib/server/project-auth/saml";
 
 /**
  * Der Aufraeumer abgelaufener Einmal-Artefakte (2.89) ohne Datenbank.
@@ -23,9 +24,14 @@ const scope = (): ProjectAuthScope => ({
 type Call = { table: string; expiredBefore: Date; limit: number };
 
 /** Ein Vorrat je Tabelle, der sich haeppchenweise leeren laesst. */
-function recordingStore(stock: { oneTime?: number; tokens?: number; codes?: number }) {
+function recordingStore(
+  stock: { oneTime?: number; tokens?: number; codes?: number; assertions?: number },
+) {
   const calls: Call[] = [];
-  const left = { oneTime: stock.oneTime ?? 0, tokens: stock.tokens ?? 0, codes: stock.codes ?? 0 };
+  const left = {
+    oneTime: stock.oneTime ?? 0, tokens: stock.tokens ?? 0,
+    codes: stock.codes ?? 0, assertions: stock.assertions ?? 0,
+  };
   const take = (table: keyof typeof left, name: string) =>
     async (_scope: ProjectAuthScope, expiredBefore: Date, limit: number) => {
       calls.push({ table: name, expiredBefore, limit });
@@ -37,6 +43,7 @@ function recordingStore(stock: { oneTime?: number; tokens?: number; codes?: numb
     deleteExpiredOneTimeTokens: take("oneTime", "one_time_tokens"),
     deleteExpiredOAuthTokens: take("tokens", "oauth_tokens"),
     deleteExpiredOAuthCodes: take("codes", "oauth_codes"),
+    deleteExpiredSamlAssertions: take("assertions", "saml_assertions"),
   };
   return { store, calls, left };
 }
@@ -51,12 +58,44 @@ describe("project auth expiry retention", () => {
 
     const removed = await runtime.runOnce();
 
-    expect(removed).toEqual({ oneTimeTokens: 1, oauthTokens: 0, oauthCodes: 0 });
+    expect(removed).toEqual({
+      oneTimeTokens: 1, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
+    });
     // 24 Stunden vor der Uhr. Eine Zeile, die vor einer Sekunde ablief, ist der
     // Gegenstand der Fehlersuche, die gerade anfaengt.
     for (const call of calls) {
       expect(call.expiredBefore.toISOString()).toBe("2026-09-27T12:00:00.000Z");
     }
+  });
+
+  it("never cuts the saml replay bar earlier than the assertion behind it can still be accepted", async () => {
+    // Der Riegel gegen Wiedereinreichung ist die Zeile selbst, und sein
+    // Ablauf ist das `NotOnOrAfter` der Assertion. Annehmbar ist dieselbe
+    // Assertion aber noch `SAML_CLOCK_SKEW_MS` darueber hinaus: Abgewiesen
+    // wird erst bei `NotOnOrAfter <= now - SAML_CLOCK_SKEW_MS`. Faellt die
+    // Zeile in diesem Fenster, bekommt eine zweite Einreichung eine Sitzung.
+    const now = new Date("2026-09-28T12:00:00.000Z");
+    const { store, calls } = recordingStore({ assertions: 1 });
+    // Die kuerzeste Frist, die diese Klasse ueberhaupt zulaesst. Wenn die
+    // Rechnung hier aufgeht, geht sie fuer jede erlaubte Frist auf.
+    const runtime = new ProjectAuthExpiryRetentionRuntime({
+      store, scopes: [scope()], graceMs: 60_000, batchSize: 100, maxBatches: 1, now: () => now,
+    });
+
+    const removed = await runtime.runOnce();
+
+    expect(removed.samlAssertions).toBe(1);
+    const bar = calls.find((call) => call.table === "saml_assertions");
+    expect(bar, "Der Aufraeumer nimmt die Assertionstabelle nicht mit").toBeTruthy();
+    // Geloescht wird bei `expires_at < expiredBefore`. Der Stichtag muss
+    // spaetestens auf der Grenze liegen, an der die Pruefung ohnehin abweist.
+    expect(bar!.expiredBefore.getTime())
+      .toBeLessThanOrEqual(now.getTime() - SAML_CLOCK_SKEW_MS);
+    // Und die Untergrenze der Frist ist genau diese Grenze. Ein Betreiber
+    // kann sie darum nicht unterlaufen, auch nicht mit Absicht.
+    expect(() => new ProjectAuthExpiryRetentionRuntime({
+      store, scopes: [scope()], graceMs: SAML_CLOCK_SKEW_MS - 1, batchSize: 100, maxBatches: 1,
+    })).toThrow(RangeError);
   });
 
   it("removes the expired oauth tokens before the codes they hang on", async () => {
@@ -71,7 +110,7 @@ describe("project auth expiry retention", () => {
     // ON DELETE CASCADE am Code, und ein Code lebt Minuten, das Token daraus
     // bis zu zwoelf Stunden.
     expect(calls.map((call) => call.table))
-      .toEqual(["one_time_tokens", "oauth_tokens", "oauth_codes"]);
+      .toEqual(["one_time_tokens", "oauth_tokens", "oauth_codes", "saml_assertions"]);
   });
 
   it("works in batches and stops at the cap instead of taking a table in one statement", async () => {
@@ -116,6 +155,7 @@ describe("project auth expiry retention", () => {
       },
       async deleteExpiredOAuthTokens() { return 0; },
       async deleteExpiredOAuthCodes() { return 0; },
+      async deleteExpiredSamlAssertions() { return 0; },
     };
     const runtime = new ProjectAuthExpiryRetentionRuntime({
       store, scopes: [bad, good], graceMs: 86_400_000, batchSize: 10, maxBatches: 1,
@@ -128,7 +168,9 @@ describe("project auth expiry retention", () => {
 
     expect(failures).toEqual([0]);
     expect(pruned).toEqual([{ scopeIndex: 1, oneTimeTokens: 2 }]);
-    expect(removed).toEqual({ oneTimeTokens: 2, oauthTokens: 0, oauthCodes: 0 });
+    expect(removed).toEqual({
+      oneTimeTokens: 2, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
+    });
   });
 
   it("says nothing about a round in which nothing was due", async () => {

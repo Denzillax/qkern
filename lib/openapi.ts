@@ -1633,7 +1633,7 @@ export const qkernOpenAPI = {
       post: {
         tags: ["Project Auth"], operationId: "projectAuthSamlAuthorize",
         summary: "Start an SP-initiated SAML 2.0 web browser SSO flow",
-        description: "Returns the provider address for the HTTP-Redirect binding and the request id. The AuthnRequest is deflated and base64 encoded in the address; RelayState carries the request id and nothing else, because the provider sees whatever the browser carries past it. The return target lives encrypted in the row. The request is not signed: a signed request protects the provider against requests made in QKERN's name, not QKERN. What protects QKERN is InResponseTo, and that hangs on the id. Providers, their entity id and their certificate are fixed by server configuration. The open request expires after ten minutes and is deliberately not consumed on use.",
+        description: "Returns the provider address for the HTTP-Redirect binding and the request id. The AuthnRequest is deflated and base64 encoded in the address; RelayState carries the request id and nothing else, because the provider sees whatever the browser carries past it. The return target lives encrypted in the row. By default the request is not signed: a signed request protects the provider against requests made in QKERN's name, not QKERN. What protects QKERN is InResponseTo, and that hangs on the id. A provider that demands a signed request gets one through signAuthnRequest in its entry, and then the signature sits in the query string as the HTTP-Redirect binding requires (SAMLRequest, RelayState, SigAlg, then Signature); switching it on without a configured own key pair refuses instead of sending an unsigned request. Providers, their entity id and their certificate are fixed by server configuration. The open request expires after ten minutes and is deliberately not consumed on use.",
         security: [{ projectApiKey: [] }],
         parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
         responses: { "200": { description: "Provider single sign-on address and the request id" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Origin is not allowed" }, "404": { $ref: "#/components/responses/NotFound" }, "429": { $ref: "#/components/responses/RateLimited" } },
@@ -1647,6 +1647,16 @@ export const qkernOpenAPI = {
         security: [],
         parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
         responses: { "200": { description: "Application session or MFA challenge" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/saml/{provider}/metadata": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthSamlMetadata",
+        summary: "Read the SAML 2.0 service provider metadata for a registered provider",
+        description: "An EntityDescriptor with one SPSSODescriptor, as application/samlmetadata+xml, so that whoever registers QKERN at the provider uploads a document instead of typing fields. It carries the entity id of this project environment, the assertion consumer service of this provider with the HTTP-POST binding, the NameIDFormat, and, when an own key pair is configured, a signing KeyDescriptor with QKERN's own certificate. That certificate belongs to the key that signs an AuthnRequest, and the two are checked against each other when they are read, because otherwise the metadata would name one certificate while another key signs. AuthnRequestsSigned follows the provider entry; WantAssertionsSigned is always true, because an assertion without its own signature is refused in every case. One document per provider, because the consumer address carries the slug. Same boundary as /auth/saml/providers: project key, origin gate, no-store. Any query parameter is a 400.",
+        security: [{ projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
+        responses: { "200": { description: "Service provider metadata", content: { "application/samlmetadata+xml": { schema: { type: "string" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Origin is not allowed" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
       },
     },
     "/v1/projects/{projectId}/environments/{environment}/auth/saml/providers": {

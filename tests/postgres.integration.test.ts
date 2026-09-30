@@ -9739,7 +9739,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         store, scopes: [sweepScope], graceMs: 86_400_000, batchSize: 1, maxBatches: 10,
       }).runOnce();
       expect(causes, "Der Aufraeumer hat einen Fehlschlag verschluckt").toEqual([]);
-      expect(firstRound).toEqual({ oneTimeTokens: 2, oauthTokens: 1, oauthCodes: 2 });
+      expect(firstRound).toEqual({
+        oneTimeTokens: 2, oauthTokens: 1, oauthCodes: 2, samlAssertions: 0,
+      });
 
       const afterFirst = await owner.query<{ id: string }>(
         `SELECT id::text AS id FROM project_auth_one_time_tokens
@@ -9771,7 +9773,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const secondRound = await new ProjectAuthExpiryRetentionRuntime({
         store, scopes: [sweepScope], graceMs: 60_000, batchSize: 1, maxBatches: 10,
       }).runOnce();
-      expect(secondRound).toEqual({ oneTimeTokens: 1, oauthTokens: 0, oauthCodes: 0 });
+      expect(secondRound).toEqual({
+        oneTimeTokens: 1, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
+      });
 
       const afterSecond = await owner.query<{ id: string }>(
         `SELECT id::text AS id FROM project_auth_one_time_tokens
@@ -9792,7 +9796,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       const thirdRound = await new ProjectAuthExpiryRetentionRuntime({
         store, scopes: [sweepScope], graceMs: 60_000, batchSize: 1, maxBatches: 10,
       }).runOnce();
-      expect(thirdRound).toEqual({ oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0 });
+      expect(thirdRound).toEqual({
+        oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
+      });
 
       // --- Die Rechte: genau eine Rolle darf loeschen ----------------------
       // Die Ordnung steht als Zahl in der Liste und nicht im Namen: Wie eine
@@ -9872,6 +9878,190 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query("DELETE FROM organizations WHERE id = $1", [sweepOrganization])
         .catch(() => undefined);
       await owner.query("DELETE FROM users WHERE id = $1", [sweepOwner]).catch(() => undefined);
+    }
+  }, 60_000);
+
+
+  it("(2.104) removes the long-expired saml replay bars, keeps one that expired inside the clock skew even at the shortest grace, keeps the other environment, and lets only the auth role delete", async () => {
+    // Der Riegel verschwindet auch, aber nie zu frueh (2.104).
+    //
+    // 0070 hat `project_auth_saml_assertions` angelegt und offen gelassen, dass
+    // sie waechst: Jede angenommene Assertion legt eine Zeile ab, und der
+    // Aufraeumer aus 0063 nahm die Tabelle nicht mit. Dieser Fall ist die
+    // Zertifizierung dafuer, und er prueft vor allem die **Frist**.
+    //
+    // Die Rechnung, um die es geht: Geloescht wird bei
+    // `expires_at < now - graceMs`. Abgewiesen wird eine Assertion erst bei
+    // `NotOnOrAfter <= now - SAML_CLOCK_SKEW_MS`, also 60 Sekunden nach dem
+    // `expires_at` ihrer Zeile. Faellt die Zeile in diesem Fenster, findet
+    // eine zweite Einreichung derselben Assertion keinen Riegel mehr und
+    // bekommt eine Sitzung. Genau diese Zeile steht hier als `inSkew`, und sie
+    // muss auch die kuerzeste erlaubte Frist ueberleben.
+    //
+    // Echt ist alles: echte Zeilen mit jeder CHECK-Bedingung aus 0070, der
+    // echte Postgres-Halter, der echte Aufraeumer und die Auth-Verbindung,
+    // also die Rolle `qkern_auth`.
+    const barOwner = randomUUID();
+    const barOrganization = randomUUID();
+    const barProject = randomUUID();
+    const barScope = {
+      organizationId: barOrganization, projectId: barProject,
+      environment: "development" as const,
+    };
+
+    // **Ein** Bezugspunkt, und die Uhr des Aufraeumers zeigt genau darauf.
+    // Das ist hier kein Komfort. Die Grenze liegt 60 Sekunden vor der Uhr, und
+    // eine Zeile 30 Sekunden davor entscheidet; mit der Wanduhr laege sie je
+    // Lauf woanders, und der Fall pruefte die Laufzeit statt die Frist.
+    const base = Date.now();
+    const at = (ms: number) => new Date(base + ms);
+    const minutes = (count: number) => count * 60_000;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [barOwner, `saml-bar-owner-${barOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Saml Replay Bar 2.104', $2, $3)`,
+    [barOrganization, `saml-bar-${barOrganization}`, barOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Saml Replay Bar 2.104', $3, 'test', 'ready', $4)`,
+    [barProject, barOrganization, `saml-bar-${barProject}`, barOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3), ($1, $2, 'staging', $4)`,
+    [barOrganization, barProject, `managed:${barProject}`, `managed:${barProject}:staging`]);
+
+    // Vier Zeilen in der Entwicklungsumgebung, vier Schicksale.
+    //
+    // `ancient`: vor zwei Tagen abgelaufen. Faellt bei der Vorgabefrist.
+    // `recent`:  vor knapp zwei Stunden abgelaufen. Ueberlebt die Vorgabefrist
+    //            und faellt erst bei der kuerzesten erlaubten.
+    // `inSkew`:  vor 30 Sekunden abgelaufen. Ueberlebt **beide** Runden, denn
+    //            dieselbe Assertion ist noch annehmbar, und ohne ihre Zeile
+    //            waere sie ein zweites Mal annehmbar.
+    // `valid`:   gilt noch fuenf Minuten. Ueberlebt jede Runde.
+    const ancient = randomUUID();
+    const recent = randomUUID();
+    const inSkew = randomUUID();
+    const valid = randomUUID();
+    const staging = randomUUID();
+    // Die `ID` in der Form, die ein Anbieter schreibt, mit dem Doppelpunkt
+    // darin, den die Bedingung aus 0070 ausdruecklich zulaesst.
+    const assertionId = (mark: string) => `_saml.${mark}:${randomUUID().replaceAll("-", "")}`;
+    await owner.query(`INSERT INTO project_auth_saml_assertions
+      (id, organization_id, project_id, environment, provider, assertion_id, used_at, expires_at)
+      VALUES
+        ($1, $6, $7, 'development', 'certification', $8, $13, $14),
+        ($2, $6, $7, 'development', 'certification', $9, $15, $16),
+        ($3, $6, $7, 'development', 'certification', $10, $17, $18),
+        ($4, $6, $7, 'development', 'certification', $11, $19, $20),
+        ($5, $6, $7, 'staging', 'certification', $12, $13, $14)`,
+    [ancient, recent, inSkew, valid, staging,
+      barOrganization, barProject,
+      assertionId("ancient"), assertionId("recent"), assertionId("inskew"),
+      assertionId("valid"), assertionId("staging"),
+      at(-minutes(48 * 60)), at(-minutes(48 * 60) + minutes(5)),
+      at(-minutes(120)), at(-minutes(120) + minutes(5)),
+      at(-minutes(10)), at(-30_000),
+      at(-minutes(1)), at(minutes(5))]);
+
+    const rowsIn = async (environment: "development" | "staging") => {
+      const found = await owner.query<{ id: string }>(
+        `SELECT id::text AS id FROM project_auth_saml_assertions
+          WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+          ORDER BY expires_at`, [barOrganization, barProject, environment]);
+      return found.rows.map((row) => row.id);
+    };
+
+    try {
+      const causes: string[] = [];
+      const store = recordFailures(new PostgresProjectAuthExpiryStore(auth), causes);
+      const sweep = (graceMs: number) => new ProjectAuthExpiryRetentionRuntime({
+        store, scopes: [barScope], graceMs, batchSize: 1, maxBatches: 10,
+        now: () => new Date(base),
+      }).runOnce();
+
+      // --- Runde eins: die Vorgabefrist von 24 Stunden --------------------
+      // `batchSize: 1` ist Absicht: So braucht die Tabelle mehrere
+      // Anweisungen, und der Fall prueft mit, dass die Haeppchen weiterlaufen.
+      const firstRound = await sweep(86_400_000);
+      expect(causes, "Der Aufraeumer hat einen Fehlschlag verschluckt").toEqual([]);
+      expect(firstRound).toEqual({
+        oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 1,
+      });
+      expect(await rowsIn("development")).toEqual([recent, inSkew, valid]);
+
+      // --- Runde zwei: die kuerzeste erlaubte Frist, also 60 Sekunden -----
+      //
+      // Hier entscheidet der Fall. `recent` faellt, `inSkew` bleibt. Die
+      // Grenze liegt bei `base - 60_000`, `inSkew` laeuft bei `base - 30_000`
+      // ab, und `expires_at < expiredBefore` trifft ihn darum nicht. Wer die
+      // Frist aus dem Aufraeumer nimmt, schiebt die Grenze auf `base`, und
+      // dann fehlt der Riegel, waehrend die Assertion noch gilt.
+      const secondRound = await sweep(60_000);
+      expect(secondRound).toEqual({
+        oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 1,
+      });
+      expect(await rowsIn("development")).toEqual([inSkew, valid]);
+
+      // --- Eine dritte Runde findet nichts mehr ---------------------------
+      // Sonst waere nicht zu unterscheiden, ob der Aufraeumer aufhoert oder
+      // ob er in jeder Runde dieselben Zeilen noch einmal zaehlt.
+      expect(await sweep(60_000)).toEqual({
+        oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
+      });
+
+      // --- Die andere Umgebung ist unberuehrt ------------------------------
+      // Die Zeile in `staging` ist so alt wie `ancient` und stand nie zur
+      // Debatte: Der Aufraeumer bekommt Umgebungen einzeln, und eine Runde
+      // ueber der Entwicklung darf die Nachbarumgebung nicht mitnehmen.
+      expect(await rowsIn("staging")).toEqual([staging]);
+
+      // --- Die Rechte: genau eine Rolle darf loeschen ----------------------
+      // Die Ordnung steht als Zahl und nicht im Namen: Wie eine Datenbank
+      // Unterstriche sortiert, haengt an ihrer Collation.
+      const privileges = await owner.query<{ rolname: string; may_delete: boolean }>(
+        `SELECT role.rolname,
+                has_table_privilege(role.rolname, 'project_auth_saml_assertions', 'DELETE')
+                  AS may_delete
+           FROM (VALUES (1, 'qkern_auth'), (2, 'qkern_runtime'),
+                        (3, 'qkern_worker'), (4, 'qkern_provisioner')) AS role(ord, rolname)
+          ORDER BY role.ord`);
+      expect(privileges.rows).toEqual([
+        { rolname: "qkern_auth", may_delete: true },
+        { rolname: "qkern_runtime", may_delete: false },
+        { rolname: "qkern_worker", may_delete: false },
+        { rolname: "qkern_provisioner", may_delete: false },
+      ]);
+
+      // Und dasselbe als Versuch statt als Katalogauskunft.
+      await expect(runtime.query(
+        "DELETE FROM project_auth_saml_assertions WHERE organization_id = $1",
+        [barOrganization])).rejects.toBeTruthy();
+
+      // Die Gegenprobe: Ein Riegel aendert sich nicht. 0070 gibt auf dieser
+      // Tabelle kein UPDATE, weder auf der Tabelle noch auf einer Spalte, und
+      // der Aufraeumer ist kein Grund, das zu aendern. Mit UPDATE liesse sich
+      // das `expires_at` einer gemerkten Assertion vorziehen, und damit waere
+      // der Riegel von aussen abschaltbar.
+      const shape = await owner.query<{
+        table_update: boolean; column_update: boolean; may_select: boolean; may_insert: boolean;
+      }>(
+        `SELECT has_table_privilege('qkern_auth', 'project_auth_saml_assertions', 'UPDATE')
+                  AS table_update,
+                has_any_column_privilege('qkern_auth', 'project_auth_saml_assertions', 'UPDATE')
+                  AS column_update,
+                has_table_privilege('qkern_auth', 'project_auth_saml_assertions', 'SELECT')
+                  AS may_select,
+                has_table_privilege('qkern_auth', 'project_auth_saml_assertions', 'INSERT')
+                  AS may_insert`);
+      expect(shape.rows[0]).toEqual({
+        table_update: false, column_update: false, may_select: true, may_insert: true,
+      });
+    } finally {
+      await owner.query("DELETE FROM organizations WHERE id = $1", [barOrganization])
+        .catch(() => undefined);
+      await owner.query("DELETE FROM users WHERE id = $1", [barOwner]).catch(() => undefined);
     }
   }, 60_000);
 
@@ -11791,6 +11981,7 @@ function recordFailures(
     deleteExpiredOneTimeTokens: watch(store.deleteExpiredOneTimeTokens.bind(store)),
     deleteExpiredOAuthTokens: watch(store.deleteExpiredOAuthTokens.bind(store)),
     deleteExpiredOAuthCodes: watch(store.deleteExpiredOAuthCodes.bind(store)),
+    deleteExpiredSamlAssertions: watch(store.deleteExpiredSamlAssertions.bind(store)),
   };
 }
 

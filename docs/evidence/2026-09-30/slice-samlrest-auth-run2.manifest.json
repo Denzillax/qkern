@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "slice-samlrest-auth-run2.log",
+  "commit": "48f37df0b69601f6648be4ae921f01d961bf54da",
+  "commitSubject": "docs: SAML ist in 2.68.0 ausgeliefert, nicht in 2.67.0",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "11 passed (11)",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}
