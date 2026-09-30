@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 29. September 2026 · Release: `2.67.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 30. September 2026 · Release: `2.68.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung läuft seit `2.14.0` auch auf Windows (npm-cli.js direkt mit Node) und ist auf allen drei Runnern belegt (`2.15.0`) |
 | Fresh-Project-Smoke | **Linux, Windows und macOS auf GitHub-Runnern grün (`2.15.0`, Lauf 36163798505, archiviert unter `docs/evidence/2026-09-25/`)** |
-| **PostgreSQL-17-Zertifizierung** | **233 von 233 bestanden, exit 0, zweimal reproduziert — der Lauf `qkern-slice-mp` fand vorher sieben rote Fälle, weil die Teiletabelle aus 0071 keine Rechte für die Laufzeitrolle hatte und der Wächter aus 0025 Grösse und Prüfsumme einer Reservierung festhält; seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
+| **PostgreSQL-17-Zertifizierung** | **234 von 234 bestanden, exit 0, zweimal reproduziert — der Lauf `qkern-slice-mp` fand vorher sieben rote Fälle, weil die Teiletabelle aus 0071 keine Rechte für die Laufzeitrolle hatte und der Wächter aus 0025 Grösse und Prüfsumme einer Reservierung festhält; seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
 | **versitygw-/ClamAV-Zertifizierung** | **11 von 11 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-mp` mit zwei Mutationsproben (Multipart am S3-Endpunkt, `2.101`: die Prüfsumme der ganzen Datei erreicht den Scanner nicht, ein abgebrochener Upload lässt die Reservierung stehen) — der neue Fall lässt das AWS SDK eine Datei über der Multipart-Schwelle hochladen, die es selbst in Teile schneidet; seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **10 von 10 bestanden, exit 0, zweimal reproduziert — seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider; seit `2.99` mit SAML 2.0 über die echte Assertion-Consumer-Route — vierzehn Fälschungen fallen einzeln, dieselbe Assertion zweimal fällt am Riegel in der Datenbank, und die Gegenstelle unterschreibt mit `node:crypto` statt ein fremdes Produkt zu sein** |
 | **Functions gegen Docker plus PostgreSQL** | **32 von 32 bestanden, exit 0, zweimal reproduziert — seit `1.89.0` mit Aufrufprotokoll, seit `2.98.0` mit Inhaltslogs am echten Container** |

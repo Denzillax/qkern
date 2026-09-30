@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex, Mutation: die SAML-Signatur wird nicht geprueft",
+  "log": "welle20-mutation-samlsig.log",
+  "commit": "45d53f4d3f62eefa4298a878d7726b064a2cdd94",
+  "commitSubject": "merge: S3 Multipart aus slice/s3multipart",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 9 passed (10)",
+  "passed": 9,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

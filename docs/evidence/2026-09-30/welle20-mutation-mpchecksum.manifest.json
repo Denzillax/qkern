@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: abgeschlossen ohne Pruefsumme ist erlaubt",
+  "log": "welle20-mutation-mpchecksum.log",
+  "commit": "45d53f4d3f62eefa4298a878d7726b064a2cdd94",
+  "commitSubject": "merge: S3 Multipart aus slice/s3multipart",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 69,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 233 passed (234)",
+  "passed": 233,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

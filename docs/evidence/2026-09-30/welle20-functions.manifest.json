@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "welle20-functions.log",
+  "commit": "45d53f4d3f62eefa4298a878d7726b064a2cdd94",
+  "commitSubject": "merge: S3 Multipart aus slice/s3multipart",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "32 passed (32)",
+  "passed": 32,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

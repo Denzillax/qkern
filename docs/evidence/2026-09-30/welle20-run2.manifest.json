@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle20-run2.log",
+  "commit": "45d53f4d3f62eefa4298a878d7726b064a2cdd94",
+  "commitSubject": "merge: S3 Multipart aus slice/s3multipart",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 69,
+  "testFiles": "31 passed (31)",
+  "tests": "234 passed (234)",
+  "passed": 234,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

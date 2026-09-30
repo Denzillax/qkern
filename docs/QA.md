@@ -6380,3 +6380,40 @@ exit 0; Lokal 2383 bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
 Nicht erbracht: Im Browser weiterhin nicht gesehen. AWS CLI und rclone haben
 den S3-Endpunkt nicht gesehen, Multipart bleibt 501. Inhaltslogs erreichen
 keinen Log-Drain. GraphQL kennt kein Upsert. Keine Metrik fuer Schreibzeilen.
+
+## Welle zwanzig (2.68): der Start, den es nie gab, und der letzte Anmeldeweg
+
+Drei Schnitte parallel, und die letzte Sprosse der Leiter, die auf dieser
+Maschine zu bauen war, ist gebaut. Realtime laeuft unter `production` gegen
+ein echtes TLS-PostgreSQL (eigener Stack, 11 Faelle), SAML 2.0 ist der letzte
+fehlende Anmeldeweg (Auth-Stack 7 auf 10, Fall 2.99), und Multipart am
+S3-Endpunkt laesst das AWS SDK von sich aus teilen (Storage 10 auf 11, Fall
+2.101, Migration 0071).
+
+Der schwerste Fund ist keiner der drei: `workers/realtime-runtime.mts` baute
+die LISTEN-Verbindung des Fan-outs ohne jede TLS-Angabe. Gegen ein PostgreSQL,
+das Klartext abweist, kam der Prozess darum gar nicht hoch, und weil das seit
+1.11.0 so ist und niemand ein TLS-PostgreSQL davorstellte, liess sich der
+Production-Start nie belegen.
+
+Die Console war zum ersten Mal in einem Browser. Zwei Fehler, die kein Test
+sehen konnte: das Thema blitzte vor der Hydration falsch auf, und die englische
+Seite trug deutsche aria-labels. Zwei weitere Verdachtsmomente haben sich bei
+der Pruefung erledigt.
+
+Zum Verfahren: Eine Mutationsprobe brauchte vier Anlaeufe, drei davon meine
+Fehler (falscher Stack, Lauf unter Speicherdruck, Schnitt an der falschen
+Sperre). Der vierte sass richtig und fiel trotzdem nicht, und genau das war
+der Befund: Die Zusage wurde von zwei Sperren gehalten, und die Erwartung war
+eine Alternative aus drei Mustern. Der Fall nennt jetzt beide Sperren einzeln.
+
+Checkpoint `2.68.0` am 30. September 2026: PostgreSQL 17 mit 234 von 234
+dreimal, Mailpit und Dex mit 10 von 10, versitygw und ClamAV mit 11 von 11,
+Realtime unter Production mit 11 von 11, Functions mit 32 von 32, alle exit 0;
+Lokal 2421 bestanden, 0 fehlgeschlagen, zweimal reproduziert. Fuenf
+Mutationsproben mit genau den erwarteten Ausfaellen.
+
+Nicht erbracht: Postgres Changes unter production sind unerreichbar. Kein
+fremder IdP hat SAML gesehen. UploadPartCopy fehlt. Die Console selbst liegt
+hinter der Anmeldung und ist ungesehen. Damit ist die Abbauliste leer; was
+bleibt, braucht Infrastruktur ausserhalb dieser Maschine.

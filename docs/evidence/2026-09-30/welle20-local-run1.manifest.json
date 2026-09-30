@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle20-local-run1.log",
+  "commit": "45d53f4d3f62eefa4298a878d7726b064a2cdd94",
+  "commitSubject": "merge: S3 Multipart aus slice/s3multipart",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "341 passed | 40 skipped (381)",
+  "tests": "2421 passed | 340 skipped (2761)",
+  "passed": 2421,
+  "failed": 0,
+  "skipped": 340,
+  "images": []
+}

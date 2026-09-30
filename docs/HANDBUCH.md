@@ -1709,7 +1709,7 @@ und das Verfahren sind nach dem Anlegen fest; ein Passkey, dessen Schlüssel sic
 Gerät weg heissen muss.
 ### Anmeldung mit SAML 2.0
 
-Seit `2.67.0` gibt es neben OIDC einen zweiten Weg zu einem fremden
+Seit `2.68.0` gibt es neben OIDC einen zweiten Weg zu einem fremden
 Identitätsanbieter: **SAML 2.0, Web Browser SSO Profile, SP-initiiert**. Die
 Anfrage geht mit dem HTTP-Redirect-Binding zum Anbieter, die Antwort kommt mit
 dem **HTTP-POST-Binding** an den Assertion Consumer Service zurück.
@@ -2580,7 +2580,7 @@ Was geht:
   `STREAMING-UNSIGNED-PAYLOAD-TRAILER`; Blocksignaturen, Trailer-Signatur und
   jede Prüfsumme in `x-amz-checksum-*` (CRC32, CRC32C, CRC64NVME, SHA-1,
   SHA-256) werden nachgerechnet.
-- Multipart (seit `2.101`): `CreateMultipartUpload` (`POST …?uploads`),
+- Multipart (seit `2.68.0`): `CreateMultipartUpload` (`POST …?uploads`),
   `UploadPart` (`PUT …?partNumber=N&uploadId=…`, bis 64 MiB je Teil, höchstens
   10 000 Teile), `ListParts`, `ListMultipartUploads` (`GET /s3/{bucket}?uploads`),
   `CompleteMultipartUpload` und `AbortMultipartUpload`. Ein Werkzeug, das grosse
@@ -2709,7 +2709,7 @@ eine `https`-Origin-Allowlist und, bei öffentlichem Binding, die Attestierung
 
 ### Realtime unter Production, gegen TLS-PostgreSQL
 
-Wie der Backup-Drill fährt Realtime seinen eigenen Wegwerfstack, und dort läuft
+Seit `2.68.0` belegt. Wie der Backup-Drill fährt Realtime seinen eigenen Wegwerfstack, und dort läuft
 der ausgelieferte Prozess unter `production`:
 
 ```powershell

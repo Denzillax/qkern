@@ -11633,9 +11633,36 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       "SELECT count(*)::text AS total FROM project_storage_upload_parts WHERE upload_id = $1", [uploadId]);
     expect(Number(afterComplete.rows[0]!.total)).toBe(0);
     // Abgeschlossen heisst: Die Pruefsumme steht, und sie laesst sich nicht
-    // wieder wegnehmen.
+    // wieder wegnehmen. **Zwei** Sperren halten das, und dieser Fall nennt
+    // jede einzeln, statt sie in einer Alternative zusammenzuwerfen.
+    //
+    // Der erste Anlauf tat genau das: `toThrow(/completed_content|checksum_sha256|immutable/)`.
+    // Eine Mutationsprobe, die den CHECK `completed_content` aus 0071 auf
+    // `CHECK (true)` setzte, liess den Fall trotzdem gruen, weil der Waechter
+    // aus 0025 einsprang und `immutable` warf. Eine Zusage, die auch dann
+    // haelt, wenn eine ihrer beiden Sperren weg ist, ist nicht geprueft,
+    // sondern nur wahrscheinlich.
+    //
+    // (1) Der Waechter aus 0025: eine gesetzte Pruefsumme geht nicht zurueck
+    //     auf NULL, auch bei `parts_declared` nicht.
     await expect(owner.query("UPDATE project_storage_uploads SET checksum_sha256 = NULL WHERE id = $1",
-      [uploadId])).rejects.toThrow(/completed_content|checksum_sha256|immutable/);
+      [uploadId])).rejects.toThrow(/immutable/);
+    // (2) Der CHECK aus 0071: `completed` ohne Pruefsumme gibt es nicht. Dafuer
+    //     braucht es eine Zeile, die der Waechter ziehen laesst, also eine
+    //     `parts_declared`-Reservierung, deren Pruefsumme noch NULL ist. Der
+    //     Waechter erlaubt hier den Schritt (NULL bleibt NULL), der CHECK
+    //     verbietet ihn, und darum nennt die Erwartung ihn beim Namen.
+    const halfway = randomUUID();
+    const halfwayToken = randomBytes(32).toString("base64url");
+    await repository.reserveUpload(principal, scope, {
+      ...reservation, id: halfway, objectKey: "halfway.txt", completionTokenHash: halfwayToken,
+      providerKey: `${partsOrganization}/${partsProject}/development/${bucket.id}/${halfway}/halfway.txt`,
+      providerUploadId: "provider-upload-halfway",
+    }, at);
+    await expect(owner.query(
+      "UPDATE project_storage_uploads SET status = 'completed', size_bytes = 1 WHERE id = $1",
+      [halfway])).rejects.toThrow(/completed_content/);
+    await owner.query("DELETE FROM project_storage_uploads WHERE id = $1", [halfway]);
 
     // 6. Und die Teile haengen an der Reservierung, nicht neben ihr.
     const orphan = randomUUID();

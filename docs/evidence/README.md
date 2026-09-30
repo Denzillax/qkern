@@ -1847,3 +1847,24 @@ Zwei Läufe stehen daneben, weil sie etwas belegen und nicht weil sie grün sind
 | --- | --- |
 | `2026-09-30/saml-postgres-placeholder-defect.log` | Der erste Lauf des Falls `(2.99)`. `rememberSamlAssertion` schickte `VALUES (,,,,,,,)` an PostgreSQL, weil die Platzhalter beim Schreiben der Datei verloren gingen. Der Speicher-Adapter fährt dieses SQL nie; gefunden hat es die echte Datenbank. Danach fiel derselbe Fall ein zweites Mal, weil `project_auth_oidc_identities_provider_check` aus 0024 den Anbieternamen `saml:federation` abwies — auch das sieht nur die Datenbank. 0070 weitet die Bedingung. |
 | `2026-09-30/saml-postgres-memory-pressure.log` | Ein Lauf, in dem Realtime-Change-Chain in 5000 ms lief und der Soak p95 5761 ms meldete. Das ist Speichermangel und kein Befund; der Lauf zertifiziert nichts, wiederholt wurde er ohne ein Budget anzuheben. Frei waren zu dem Zeitpunkt 2.4 GiB von 15.7 GiB, die Docker-VM steht auf 7.6 GiB. |
+
+## Läufe zu Release 2.68 (30. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-30/welle20-run1.log` | PostgreSQL 17 | 234 von 234, exit 0 |
+| `2026-09-30/welle20-run2.log` | PostgreSQL 17 | 234 von 234, exit 0, Wiederholung |
+| `2026-09-30/welle20-run3.log` | PostgreSQL 17 | 234 von 234, exit 0, nach dem Schärfen von `(2.101)` |
+| `2026-09-30/welle20-auth.log` | Mailpit und Dex | 10 von 10, exit 0 |
+| `2026-09-30/welle20-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-09-30/welle20-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 11 von 11, exit 0 |
+| `2026-09-30/welle20-functions.log` | Functions gegen Docker plus PostgreSQL | 32 von 32, exit 0 |
+| `2026-09-30/welle20-mutation-samlsig.log` | Mutation: die SAML-Signatur wird nicht geprüft | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-30/welle20-mutation-mpchecksum.log` | Mutation: abgeschlossen ohne Prüfsumme ist erlaubt | **233 von 234, exit 1 – absichtlich** |
+| `2026-09-30/welle20-mutation-rtgate.log` | Mutation: das Tor prüft die Aufbewahrung nicht | **10 von 11, exit 1 – absichtlich** |
+| `2026-09-30/welle20-mutation-theme.log` | Mutation: das Themenskript läuft mit `defer` | **1 von 2, exit 1 – absichtlich** |
+| `2026-09-30/welle20-mutation-sitelabels.log` | Mutation: deutsche Beschriftung in einem Website-Baustein | **1 von 2, exit 1 – absichtlich** |
+| `2026-09-30/welle20-local-run1.log` | Vitest lokal (Windows) | 2421 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-30/welle20-local-run2.log` | Vitest lokal (Windows) | 2421 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die Läufe der drei Agenten auf ihren Zweigen liegen daneben.
