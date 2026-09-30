@@ -121,6 +121,9 @@ if (changesEnabled) {
     // Prozess laeuft mit der Laufzeitrolle und bekaeme sie nur durch ein
     // zusaetzliches Leserecht; er verlangt deshalb ausdrueckliche Bindungen.
     allowControlPlaneBindings: false,
+    // Sonst steht dieser Prozess in `pg_stat_activity` als Migrator, und wer
+    // dort eine haengende Verbindung sucht, sucht am falschen Prozess.
+    clientName: "qkern-realtime",
     local: {
       allowFlag: "QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG",
       catalogVariable: "QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON",

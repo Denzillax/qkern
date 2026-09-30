@@ -15,6 +15,8 @@ export type VaultCatalogDependencies = {
   fetchFn?: typeof fetch;
   poolFactory?: (config: PostgresPoolConfig) => SqlPool;
   now?: () => number;
+  /** Wie der Prozess sich nennt; siehe `VaultProjectDatabaseCatalogOptions`. */
+  clientName?: string;
 };
 
 export type VaultCatalogRuntimeOptions = Omit<VaultProjectDatabaseCatalogOptions, "bindings">;
@@ -34,6 +36,7 @@ export function vaultCatalogRuntimeOptionsFromEnv(
     return {
       vaultDatabaseUrl: new URL(env.QKERN_VAULT_DATABASE_URL?.trim() ?? ""),
       tokenProvider: dependencies.tokenProvider,
+      clientName: dependencies.clientName,
       namespace: env.QKERN_VAULT_NAMESPACE,
       timeoutMs: integerFromEnv(env, "QKERN_VAULT_TIMEOUT_MS", 5_000, 100, 60_000),
       refreshSkewMs: integerFromEnv(env, "QKERN_VAULT_REFRESH_SKEW_MS", 30_000, 100, 3_600_000),

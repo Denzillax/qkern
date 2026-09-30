@@ -101,6 +101,8 @@ export type VaultProjectDatabaseBinding = Readonly<{
   serverCertificateSha256?: string;
 }>;
 
+const DEFAULT_CLIENT_NAME = "qkern-vault-project-migrator";
+
 export type VaultProjectDatabaseCatalogOptions = Readonly<{
   /** Exact mount URL, for example https://vault.example.net/v1/database. */
   vaultDatabaseUrl: URL;
@@ -113,6 +115,18 @@ export type VaultProjectDatabaseCatalogOptions = Readonly<{
   fetchFn?: typeof fetch;
   poolFactory?: (config: PostgresPoolConfig) => SqlPool;
   now?: () => number;
+  /**
+   * Wie der Prozess sich nennt: als `application_name` in `pg_stat_activity`
+   * und als `user-agent` gegenueber dem Vault.
+   *
+   * Es gab lange nur einen Aufrufer, den Migrations-Prozess, und der Name
+   * stand fest im Quelltext. Seit der Realtime-Prozess denselben Katalog
+   * benutzt, erscheint er in `pg_stat_activity` als Migrator, und wer dort
+   * nach einer haengenden Verbindung sucht, sucht am falschen Prozess.
+   * Voreinstellung bleibt der alte Wert, damit der Migrations-Pfad sich nicht
+   * aendert.
+   */
+  clientName?: string;
 }>;
 
 type VaultCredential = Readonly<{ username: string; password: string; ttlSeconds: number }>;
@@ -212,6 +226,7 @@ type ValidatedOptions = {
   fetchFn: typeof fetch;
   poolFactory: (config: PostgresPoolConfig) => SqlPool;
   now: () => number;
+  clientName: string;
 };
 
 class RotatingVaultSqlPool implements SqlPool {
@@ -316,7 +331,7 @@ class RotatingVaultSqlPool implements SqlPool {
 
     let pool: SqlPool;
     try {
-      pool = this.options.poolFactory(poolConfig(this.binding, credential, this.options.production));
+      pool = this.options.poolFactory(poolConfig(this.binding, credential, this.options.production, this.options.clientName));
       if (!isPool(pool)) throw new Error("Invalid pool");
     } catch {
       throw new VaultProjectDatabaseCatalogError("PROJECT_DATABASE_POOL_UNAVAILABLE");
@@ -397,7 +412,7 @@ async function fetchVaultCredential(
 
     const headers: Record<string, string> = {
       accept: "application/json",
-      "user-agent": "QKERN-Migration-Worker/0.21",
+      "user-agent": `${options.clientName}/0.21`,
       "x-vault-token": token,
     };
     if (options.namespace) headers["x-vault-namespace"] = options.namespace;
@@ -455,6 +470,7 @@ function validateOptions(options: VaultProjectDatabaseCatalogOptions): Validated
       fetchFn: options.fetchFn ?? fetch,
       poolFactory: options.poolFactory ?? createPostgresPool,
       now: options.now ?? Date.now,
+      clientName: options.clientName ?? DEFAULT_CLIENT_NAME,
     };
   } catch (error) {
     if (error instanceof VaultProjectDatabaseCatalogError) throw error;
@@ -496,6 +512,7 @@ function poolConfig(
   binding: VaultProjectDatabaseBinding,
   credential: VaultCredential,
   production: boolean,
+  clientName: string,
 ): PostgresPoolConfig {
   const connection = new URL("postgresql://placeholder.invalid");
   connection.username = credential.username;
@@ -506,7 +523,7 @@ function poolConfig(
   const expectedFingerprint = binding.serverCertificateSha256?.toLowerCase();
   return {
     connectionString: connection.toString(),
-    applicationName: "qkern-vault-project-migrator",
+    applicationName: clientName,
     max: 2,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,

@@ -48,6 +48,13 @@ export type ProjectDatabaseCatalogOptions = {
   allowControlPlaneBindings?: boolean;
   /** Namen der Variablen des lokalen Weges; je Prozess eigene. */
   local?: LocalCatalogEnvironmentOptions;
+  /**
+   * Wie der Prozess sich nennt, in `pg_stat_activity` und gegenueber dem
+   * Vault. Ohne diesen Wert traegt jeder Aufrufer den Namen des
+   * Migrations-Prozesses, und wer im Betrieb nach einer haengenden Verbindung
+   * sucht, sucht am falschen Prozess.
+   */
+  clientName?: string;
 };
 
 export async function createProjectDatabaseCatalogFromEnv(
@@ -62,7 +69,7 @@ export async function createProjectDatabaseCatalogFromEnv(
     { production: true },
   );
   if (env.QKERN_PROJECT_DATABASE_CATALOG_SOURCE === "static-env") {
-    return createVaultProjectDatabaseCatalogFromEnv(env, { tokenProvider });
+    return createVaultProjectDatabaseCatalogFromEnv(env, { tokenProvider, clientName: options.clientName });
   }
   if (!options.allowControlPlaneBindings) {
     throw new ConfigurationError(
