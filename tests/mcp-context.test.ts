@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createQKERNMcpServer, mcpContextFromEnv, type MCPContext } from "@/mcp/server";
+import {
+  PROJECT_AUTH_OAUTH_SCOPES,
+  type ProjectAuthOAuthScope,
+} from "@/lib/server/project-auth/oauth";
+import { AUTH_OAUTH_SCOPE_TEXTS } from "@/lib/console/auth-oauth-server-texts";
+import { MCP_TOOL_SCOPES } from "@/mcp/tool-scopes";
 
 const localContext: MCPContext = {
   organizationId: "org", projectId: "project", environment: "development", actorRef: "test-agent",
@@ -60,6 +66,64 @@ describe("MCP scope context", () => {
     // Und der Weg ueber Migrationen bleibt zu, mit jedem Bereich, den es gibt.
     expect(writeOnly.qkern_migration_apply_queue).toBeUndefined();
     expect(writeOnly.qkern_migration_preview).toBeUndefined();
+  });
+
+  it("(2.103) opens exactly the tools a new scope names and nothing beside them", () => {
+    const withScopes = (...scopes: ProjectAuthOAuthScope[]) => registeredTools(createQKERNMcpServer({
+      organizationId: "org", projectId: "project", environment: "development",
+      actorRef: "project-auth-oauth:ai-bridge:nutzer",
+      access: {
+        kind: "project_oauth", clientName: "ai-bridge", userId: "nutzer",
+        email: "nutzer@example.test", scopes,
+      },
+    }));
+    const names = (tools: Record<string, unknown>) => Object.keys(tools).sort();
+
+    // Vollstaendig und nicht "enthaelt": Die Aussage eines Bereichs ist, was er
+    // **nicht** oeffnet.
+    expect(names(withScopes("storage:read")))
+      .toEqual(["qkern_storage_buckets_list", "qkern_storage_objects_list"]);
+    expect(names(withScopes("queues:read")))
+      .toEqual(["qkern_queue_status", "qkern_queues_list"]);
+    // Einstellen schliesst Lesen nicht ein, genau wie bei der Data API. Und es
+    // oeffnet keine Worker-Operation; die gibt es hier gar nicht.
+    expect(names(withScopes("queues:write"))).toEqual(["qkern_queue_message_enqueue"]);
+    expect(names(withScopes("project:read")))
+      .toEqual(["qkern_automation_policy_get", "qkern_project_get"]);
+    // Das Audit-Log ist ein eigener Satz und haengt nicht an project:read.
+    expect(names(withScopes("logs:read"))).toEqual(["qkern_logs_search"]);
+    expect(names(withScopes("project:read"))).not.toContain("qkern_logs_search");
+    // Vorschlagen ist nicht Anwenden.
+    expect(names(withScopes("migrations:propose"))).toEqual(["qkern_migration_preview"]);
+
+    // Und die zwei, die an der Zeilensicherheit vorbeilesen, bleiben mit jedem
+    // Bereich zusammen unerreichbar.
+    const alles = withScopes(...PROJECT_AUTH_OAUTH_SCOPES);
+    expect(alles.qkern_query_readonly).toBeUndefined();
+    expect(alles.qkern_schema_list).toBeUndefined();
+    expect(alles.qkern_migration_apply_queue).toBeUndefined();
+    // Lokal gibt es sie, und das ist der Unterschied, den dieser Schnitt haelt.
+    const lokal = registeredTools(createQKERNMcpServer(localContext));
+    expect(lokal.qkern_query_readonly).toBeDefined();
+    expect(lokal.qkern_schema_list).toBeDefined();
+    expect(lokal.qkern_migration_apply_queue).toBeDefined();
+  });
+
+  it("(2.103) gives every scope a sentence the console can show and every entry a scope that exists", () => {
+    // Ein Bereich, den die Console nicht erklaeren kann, erscheint auf der Seite
+    // als nackte Kennung. Der Nutzer liest dann `queues:write` und soll daraus
+    // selbst schliessen, was er erlaubt. Darum haengt hier die Bereichsliste an
+    // der Texttabelle und nicht bloss an sich selbst.
+    expect(Object.keys(AUTH_OAUTH_SCOPE_TEXTS).sort())
+      .toEqual([...PROJECT_AUTH_OAUTH_SCOPES].sort());
+
+    // Und umgekehrt: Kein Eintrag der Werkzeugtabelle nennt einen Bereich, den
+    // es nicht gibt. Der Typ verhindert das schon; diese Zeile faengt den Fall,
+    // in dem jemand den Typ weitet, statt die Liste zu pflegen.
+    for (const needed of Object.values(MCP_TOOL_SCOPES)) {
+      if (needed === null) continue;
+      expect(PROJECT_AUTH_OAUTH_SCOPES).toContain(needed);
+    }
   });
 
   it("marks apply queueing as an idempotent destructive write for client approval policy", () => {

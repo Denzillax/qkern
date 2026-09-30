@@ -20,7 +20,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 | Modul | implementiert | zertifiziert |
 | --- | --- | --- |
-| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 67 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
+| Control Plane, Approval/Audit, Migration Runtime | ja | ja — 68 Real-DB-Fälle; der Migrations-**Prozess** wendet seit `1.49.0` in einer echten Projektdatenbank an, mit Ledger-Eintrag |
 | Generated Data API | ja | ja — 18 Real-DB-Fälle: RLS, Injection, `security_invoker`-Views (`1.71.0`), RPC über SECURITY-INVOKER-Funktionen (`1.72.0`), ein OpenAPI-Dokument, das Views und RPC nach denselben Grenzen beschreibt (`1.80.0`), Aggregate unter der RLS des Aufrufers (`1.86.0`) , die Trigger-Liste aus dem Katalog (`2.9.0`), die Funktionsliste (`2.18.0`) sowie Indizes, Policies und Enum-Typen (`2.19.0`) und Erweiterungen, Rollen, Publikationen und Spaltenrechte (`2.20.0`) sowie Namen mit Grossbuchstaben (`2.26.0`) und ein Pflichtargument namens `valueOf` (`2.28.0`) |
 | Project Auth | ja | ja — Lifecycle, Replay, echtes SMTP, echtes OIDC und SAML 2.0 gegen einen Anbieter, der wirklich unterschreibt (`2.99`); die Gegenstelle ist kein fremdes Produkt, und das steht auch im Fall |
 | Object Storage | ja | ja — 8 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist); seit `2.96` ein S3-Endpunkt `/s3` mit SigV4, im Storage-Stack mit echter Signatur zertifiziert; seit `2.99` dazu Presigned URLs, `aws-chunked`, Range, CopyObject und DeleteObjects, und **ein echter Client hat den Endpunkt gesehen**: das AWS SDK für JavaScript über HTTP; seit `2.101` Multipart am S3-Endpunkt auf demselben Dienstweg, und der Client hat die Datei **selbst geteilt** |
@@ -107,7 +107,8 @@ war damit über mehrere Releases überholt; gemessen sind es 2384 bestandene und
   Manifest-/Tarball-Gate und einem ausführbaren secretfreien Fresh-Project-Smoke;
   Schema Pull akzeptiert jetzt scope-gebundene Project Keys wie SDK und CLI
 - REST/OpenAPI sowie MCP für Queue-Liste, Status und Enqueue; Worker-Lease-
-  Operationen bleiben bewusst aus MCP ausgeschlossen
+  Operationen bleiben bewusst aus MCP ausgeschlossen, und der Bereich
+  `queues:write` erreicht sie darum auch über OAuth nicht
 - opt-in Usage-Metering mit sechs festen Monatsmetriken, verifier-only
   Idempotenz, atomaren `observe`-/`enforce`-Quotas und stabilen Retry-Entscheidungen
 - dauerhafter Usage-Adapter mit Migration 0028, Tenant-RLS, append-only Events,

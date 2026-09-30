@@ -45,15 +45,22 @@ export type ProjectApplicationPrincipal = {
  * Die Vorgabe ist `reject`, und das ist die tragende Entscheidung dieser Zeile.
  * `projectApplicationPrincipal` wird nicht nur von der Data API benutzt, sondern
  * auch von den Queues (`lib/server/project-queues/http.ts`) und den
- * Function-Definitionen (`lib/server/compute/definitions-http.ts`). Es gibt
- * heute keinen Bereich, der eine Queue oder eine Function beschreibt, und ein
- * Token, das an diesen Tueren einfach mitgelaufen waere, haette eine Erlaubnis
- * gehabt, die niemand hinschreiben konnte.
+ * Function-Definitionen (`lib/server/compute/definitions-http.ts`). Ein Token,
+ * das an diesen Tueren einfach mitgelaufen waere, haette eine Erlaubnis gehabt,
+ * die an dieser Tuer niemand geprueft hat.
  *
  * Darum muss eine Tuer ein OAuth-Token ausdruecklich zulassen, und sie sagt
  * dabei, was sie tut: `read` verlangt `data:read`, `write` verlangt
  * `data:write`. Wer eine neue Tuer baut und nichts angibt, bekommt die
  * geschlossene, und das ist die richtige Richtung.
+ *
+ * Seit Migration 0073 gibt es Bereiche, die eine Queue und einen Bucket
+ * beschreiben (`queues:read`, `queues:write`, `storage:read`), und an dieser
+ * Vorgabe aendert das nichts. Sie wirken am entfernten MCP-Server
+ * (`mcp/tool-scopes.ts`) und nicht hier: Eine Tuer aufzumachen heisst, ihre
+ * Ansprueche, ihre Rolle und ihre Ablehnungen zu pruefen, und das ist je Tuer
+ * ein eigener Schnitt. Ein vorhandener Bereich ist der Satz, den eine solche
+ * Tuer dann verlangen kann, und keine Zulassung im Vorbeigehen.
  */
 export type ProjectOAuthAdmission = "reject" | "read" | "write";
 

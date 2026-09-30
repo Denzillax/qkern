@@ -212,6 +212,12 @@ import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { admitMcpOAuthRequest } from "@/mcp/oauth-gate";
 import { createQKERNMcpServer, type MCPContext } from "@/mcp/server";
+// Die eine Bereichstabelle (2.103). Der Fall liest sie, statt ihre Eintraege
+// abzuschreiben: Eine zweite Liste im Test waere eine zweite Antwort auf die
+// Frage, welcher Bereich was oeffnet, und sie wuerde genau dann gruen bleiben,
+// wenn die erste falsch wird.
+import { MCP_TOOL_SCOPES, isMcpToolName } from "@/mcp/tool-scopes";
+import type { ProjectAuthOAuthScope } from "@/lib/server/project-auth/oauth";
 import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -9006,7 +9012,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(stored.forbiddenRole).toBe("service_role");
       expect(stored.grant).toBe("authorization_code");
       expect(stored.challengeMethod).toBe("S256");
-      expect(stored.scopes).toEqual(["identity:read", "data:read", "data:write"]);
+      // Die geschlossene Liste, die dieser Server ausgibt. Seit Migration 0073
+      // sind es neun; die Reihenfolge ist die der Liste und nicht die der
+      // Eingabe, damit dieselbe Erlaubnis ueberall gleich aussieht.
+      expect(stored.scopes).toEqual([
+        "identity:read", "data:read", "data:write", "project:read", "storage:read",
+        "queues:read", "queues:write", "logs:read", "migrations:propose",
+      ]);
       // Die nicht gebauten Verfahren kommen aus dem Dienst und nicht aus diesem
       // Fall. Dass `implicit` und `password` darin stehen, ist die Aussage:
       // Sie sind benannt und nicht bloss vergessen.
@@ -10234,6 +10246,368 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+
+  it("(2.103) opens exactly the tools each new scope names against the real database, keeps the tenant boundary, reaches no worker lease operation through queues:write and throws for a tool name without an entry", async () => {
+    // Ein neuer Bereich ist eine Zusage (2.103), und dieser Fall ist die
+    // Pruefung. Er faehrt denselben ganzen Weg wie `(2.91)`, nur fuer die sechs
+    // Bereiche, die es vorher nicht gab: echter Nutzer, echte Zustimmung aus
+    // Migration 0064, echter Code mit PKCE, echtes Token, echtes Gate, echter
+    // MCP-Server an einem echten MCP-Client, und echte Dienste hinter den
+    // Werkzeugen, die dabei wirklich aufgerufen werden.
+    //
+    // Die Frage ist nicht, ob ein Bereich etwas oeffnet. Die Frage ist, ob er
+    // **nur** das oeffnet, was er nennt. Darum wird die Werkzeugliste je Sitzung
+    // vollstaendig verglichen und nicht auf "enthaelt" geprueft: Was fehlt, ist
+    // die Aussage.
+    const mcpOwner = randomUUID();
+    const mcpOrganization = randomUUID();
+    const mcpProject = randomUUID();
+    const scope = {
+      organizationId: mcpOrganization, projectId: mcpProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [mcpOwner, `mcp-scopes-owner-${mcpOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'MCP Scopes 2.103', $2, $3)`,
+    [mcpOrganization, `mcp-scopes-${mcpOrganization}`, mcpOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'MCP Scopes 2.103', $3, 'test', 'ready', $4)`,
+    [mcpProject, mcpOrganization, `mcp-scopes-${mcpProject}`, mcpOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [mcpOrganization, mcpProject, `managed:${mcpProject}`]);
+
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService(
+        { kid: "certification-2-103", privateKey: generateKeyPairSync("ed25519").privateKey },
+        "https://qkern.test",
+      ),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 31)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const home = "https://app.test/mcp/bereiche";
+    const control = new PostgresControlPlane(runtime);
+    // Echte Dienste hinter den Werkzeugen, die dieser Fall aufruft. Die Queues
+    // liegen vollstaendig in der echten Datenbank; bei Storage liegt der
+    // Bucket-Satz in der echten Datenbank, und nur die Ablage selbst ist
+    // gestellt, weil kein Werkzeug dieses Bereichs einen Inhalt anfasst.
+    const queues = new ProjectQueueService({
+      repository: new PostgresProjectQueueRepository(control),
+    });
+    const storage = new ProjectStorageService({
+      repository: new PostgresProjectStorageRepository(control),
+      provider: new MemoryProjectStorageProvider(),
+      scanner: new QuarantineOnlyProjectStorageScanner(),
+    });
+    const betreiber = {
+      organizationId: mcpOrganization, actorRef: "mcp-scopes@qkern.test",
+      role: "admin" as const, subject: mcpOwner,
+    };
+    const queueName = `mcp-scopes-${randomUUID().slice(0, 8)}`;
+    const bucketName = `mcp-scopes-${randomUUID().slice(0, 8)}`;
+    try {
+      await queues.createQueue(betreiber, scope, { name: queueName, dedupeWindowSeconds: 3_600 });
+      const bucketAt = new Date();
+      await new PostgresProjectStorageRepository(control).createBucket(betreiber, {
+        ...scope, id: randomUUID(), name: bucketName,
+        readPolicy: "private", writePolicy: "private", allowedMimeTypes: ["text/plain"],
+        maxObjectBytes: 1_024, quotaBytes: 8_192, usedBytes: 0, reservedBytes: 0,
+        retentionDays: null, createdAt: bucketAt, updatedAt: bucketAt,
+      });
+
+      // --- Der Nutzer, der zustimmt, und der Client mit seiner Decke --------
+      //
+      // Die Decke am Client ist hier die tragende Zeile: Welche Bereiche eine
+      // Anwendung hoechstens verlangen darf, schreibt ein Owner oder
+      // Administrator. Ein Endnutzer kann nur zustimmen, was dort schon steht,
+      // und darum ist `project:read` keine Rechteausweitung durch Zustimmung.
+      const email = `mcp-scopes-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const appUserId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+
+      const stored = await service.createOAuthClient(scope, {
+        name: "mcp-tools", redirectUris: [home],
+        scopes: [
+          "storage:read", "queues:read", "queues:write",
+          "project:read", "logs:read", "migrations:propose",
+        ],
+      }, { id: mcpOwner });
+      expect(stored.clients).toHaveLength(1);
+
+      const issueToken = async (scopes: ProjectAuthOAuthScope[]) => {
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        await service.grantOAuthConsent(scope, signedIn.accessToken, {
+          clientId: "mcp-tools", scopes,
+        });
+        const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+          clientId: "mcp-tools", redirectUri: home, scopes, codeChallenge: challenge, state: null,
+        });
+        const issued = await service.exchangeOAuthCode(scope, {
+          clientId: "mcp-tools", code: granted.code, redirectUri: home, codeVerifier: verifier,
+        });
+        expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
+        return issued.accessToken;
+      };
+
+      // Die Zustimmungen stehen wirklich als Zeilen da, mit genau diesen
+      // Bereichen. Migration 0073 laesst sie zu; vor ihr waere hier der CHECK
+      // aus 0064 gefallen, und das ist der Grund, warum die Migration zu diesem
+      // Schnitt gehoert und nicht nachgereicht werden kann.
+      const storageToken = await issueToken(["storage:read"]);
+      const queueReadToken = await issueToken(["queues:read"]);
+      const queueWriteToken = await issueToken(["queues:write"]);
+      const controlToken = await issueToken(["project:read", "logs:read"]);
+      const proposeToken = await issueToken(["migrations:propose"]);
+      const gespeicherteBereiche = await auth.query<{ scopes: string[] }>(
+        `SELECT scopes FROM project_auth_oauth_consents
+          WHERE organization_id = $1 AND project_id = $2 ORDER BY scopes`,
+        [mcpOrganization, mcpProject]);
+      expect(gespeicherteBereiche.rows.map((row) => row.scopes.join(" ")).sort()).toEqual([
+        "migrations:propose", "project:read logs:read", "queues:read", "queues:write",
+        "storage:read",
+      ].sort());
+
+      // --- Der Key nennt den Mandanten, und ein zweiter einen fremden ------
+      const strangerOrganization = randomUUID();
+      const strangerProject = randomUUID();
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: mcpOrganization, projectId: mcpProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) =>
+          secret === "qk_public_2_103" ? keyPrincipal
+            : secret === "qk_public_2_103_fremd"
+              ? { ...keyPrincipal, id: randomUUID(),
+                organizationId: strangerOrganization, projectId: strangerProject }
+              : null,
+      } as unknown as ProjectApiKeyService;
+      const admit = (token: string, key: string | undefined = "qk_public_2_103") =>
+        admitMcpOAuthRequest(
+          { authorization: `Bearer ${token}`, projectKey: key },
+          { keys, projectAuth: service },
+        );
+
+      const connect = async (token: string) => {
+        const admission = await admit(token);
+        expect(admission.ok).toBe(true);
+        if (!admission.ok) throw new Error("unerreichbar");
+        const server = createQKERNMcpServer(admission.context, {
+          projectQueues: queues, projectStorage: storage,
+        });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new McpClient({ name: "certification-2-103", version: "1.0.0" });
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+        return {
+          client, context: admission.context,
+          close: async () => { await client.close(); await server.close(); },
+        };
+      };
+      const toolNames = async (client: McpClient) =>
+        (await client.listTools()).tools.map((tool) => tool.name).sort();
+      const toolText = (result: unknown) => {
+        const content = (result as { content: Array<{ type: string; text: string }> }).content;
+        expect(content).toHaveLength(1);
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+      const nichtGefunden = (name: string) => ({
+        isError: true,
+        content: [{ type: "text", text: `MCP error -32602: Tool ${name} not found` }],
+      });
+
+      // --- Zusage 1: storage:read oeffnet die zwei Lesewerkzeuge und nichts --
+      const lesendesStorage = await connect(storageToken);
+      try {
+        expect(await toolNames(lesendesStorage.client))
+          .toEqual(["qkern_storage_buckets_list", "qkern_storage_objects_list"]);
+
+        // Und das Werkzeug arbeitet wirklich: Der Bucket aus der echten
+        // Datenbank kommt zurueck. Ein Bereich, der eine leere Liste oeffnet,
+        // haette nichts belegt.
+        const buckets = toolText(await lesendesStorage.client.callTool({
+          name: "qkern_storage_buckets_list", arguments: {},
+        }));
+        expect((buckets.data as Array<{ name: string }>).map((bucket) => bucket.name))
+          .toEqual([bucketName]);
+
+        // Ein schreibendes Werkzeug fehlt schon in der Liste, und der direkte
+        // Aufruf scheitert am Server und nicht an einer Prueffrage im Werkzeug.
+        // Dass hier ein Queue-Werkzeug steht und kein Storage-Schreibwerkzeug,
+        // ist die Aussage von `mcp/tool-scopes.ts`: Es gibt kein schreibendes
+        // Storage-Werkzeug, und darum gibt es auch keinen Bereich `storage:write`.
+        expect(await lesendesStorage.client.callTool({
+          name: "qkern_queue_message_enqueue",
+          arguments: { queue: queueName, payload: { darf: "nicht" } },
+        })).toEqual(nichtGefunden("qkern_queue_message_enqueue"));
+        expect(await lesendesStorage.client.callTool({
+          name: "qkern_table_rows_insert",
+          arguments: { table: "notizen", rows: [{ inhalt: "darf nicht" }] },
+        })).toEqual(nichtGefunden("qkern_table_rows_insert"));
+      } finally { await lesendesStorage.close(); }
+
+      // --- Zusage 2: queues:read liest und stellt nichts ein ---------------
+      const lesendeQueue = await connect(queueReadToken);
+      try {
+        expect(await toolNames(lesendeQueue.client))
+          .toEqual(["qkern_queue_status", "qkern_queues_list"]);
+        const liste = toolText(await lesendeQueue.client.callTool({
+          name: "qkern_queues_list", arguments: {},
+        }));
+        expect((liste.data as Array<{ name: string }>).map((queue) => queue.name))
+          .toContain(queueName);
+        expect(await lesendeQueue.client.callTool({
+          name: "qkern_queue_message_enqueue",
+          arguments: { queue: queueName, payload: { darf: "nicht" } },
+        })).toEqual(nichtGefunden("qkern_queue_message_enqueue"));
+      } finally { await lesendeQueue.close(); }
+      // Und es ist dabei wirklich nichts entstanden. Gelesen mit dem
+      // Eigentuemer und nicht mit der Laufzeitrolle: Auf
+      // `project_queue_messages` liegt die Mandanten-RLS, und eine Abfrage der
+      // Laufzeitrolle ohne gesetzten Mandanten sieht keine Zeile. Eine Zaehlung,
+      // die immer "0" liefert, haette hier nichts belegt.
+      expect((await owner.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_queue_messages
+          WHERE organization_id = $1 AND project_id = $2`,
+        [mcpOrganization, mcpProject])).rows[0].count).toBe("0");
+
+      // --- Zusage 3: queues:write stellt ein und erreicht keinen Worker -----
+      const schreibendeQueue = await connect(queueWriteToken);
+      try {
+        expect(await toolNames(schreibendeQueue.client)).toEqual(["qkern_queue_message_enqueue"]);
+        const eingestellt = toolText(await schreibendeQueue.client.callTool({
+          name: "qkern_queue_message_enqueue",
+          arguments: { queue: queueName, payload: { ueber: "mcp" }, dedupeKey: "2-103" },
+        }));
+        expect((eingestellt.data as { id: string }).id).toMatch(/^[0-9a-f-]{36}$/);
+
+        // Der Satz, auf den es bei diesem Bereich ankommt: Er oeffnet keine
+        // Worker-Operation. Claim, Lease, Renewal und Abschluss sind nach
+        // `STATUS.md` bewusst aus MCP heraus; sie stehen in der Bereichstabelle
+        // nicht, und ein Name ohne Eintrag ist keine Erlaubnis.
+        for (const name of [
+          "qkern_queue_message_claim", "qkern_queue_message_acknowledge",
+          "qkern_queue_message_fail", "qkern_queue_lease_renew",
+        ]) {
+          expect(isMcpToolName(name)).toBe(false);
+          expect(await schreibendeQueue.client.callTool({ name, arguments: {} }))
+            .toEqual(nichtGefunden(name));
+        }
+      } finally { await schreibendeQueue.close(); }
+      // Die Nachricht steht wirklich in der Datenbank, und genau eine.
+      const eingestellteZeilen = await owner.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_queue_messages
+          WHERE organization_id = $1 AND project_id = $2`,
+        [mcpOrganization, mcpProject]);
+      expect(eingestellteZeilen.rows[0].count).toBe("1");
+
+      // --- Zusage 4: project:read und logs:read sind zwei Saetze ------------
+      const controlPlane = await connect(controlToken);
+      try {
+        expect(await toolNames(controlPlane.client)).toEqual([
+          "qkern_automation_policy_get", "qkern_logs_search", "qkern_project_get",
+        ]);
+        // Die freie Abfrage und die Schemaliste sind auch hier nicht dabei, und
+        // sie sind es mit keinem Bereich: Sie lesen an der Zeilensicherheit
+        // vorbei, `data:read` sagt aber Lesen unter ihr zu.
+        expect(await controlPlane.client.callTool({
+          name: "qkern_query_readonly", arguments: { statement: "SELECT 1" },
+        })).toEqual(nichtGefunden("qkern_query_readonly"));
+        expect(await controlPlane.client.callTool({
+          name: "qkern_schema_list", arguments: {},
+        })).toEqual(nichtGefunden("qkern_schema_list"));
+      } finally { await controlPlane.close(); }
+
+      // --- Zusage 5: vorschlagen ist nicht anwenden -------------------------
+      const vorschlagend = await connect(proposeToken);
+      try {
+        expect(await toolNames(vorschlagend.client)).toEqual(["qkern_migration_preview"]);
+        expect(await vorschlagend.client.callTool({
+          name: "qkern_migration_apply_queue", arguments: { changeSetId: randomUUID() },
+        })).toEqual(nichtGefunden("qkern_migration_apply_queue"));
+      } finally { await vorschlagend.close(); }
+
+      // --- Zusage 6: die Mandantengrenze haelt weiter -----------------------
+      //
+      // Kein neuer Bereich verschiebt sie. Ein Key eines fremden Projekts
+      // findet dieses Token dort nicht, und ohne Key gibt es diesen Weg gar
+      // nicht; beides ist derselbe 401 ohne Grund.
+      const unbekannt = { ok: false, status: 401, error: "Unauthorized" };
+      expect(await admit(storageToken, "qk_public_2_103_fremd")).toEqual(unbekannt);
+      expect(await admitMcpOAuthRequest(
+        { authorization: `Bearer ${queueWriteToken}` },
+        { keys, projectAuth: service },
+      )).toEqual(unbekannt);
+      expect(await admit(`qk_oauth_${randomBytes(32).toString("base64url")}`)).toEqual(unbekannt);
+
+      // --- Zusage 7: ein Werkzeugname ohne Eintrag wirft beim Start ---------
+      //
+      // Geprueft wird das, indem der Eintrag eines wirklich angemeldeten
+      // Werkzeugs fuer einen Augenblick fehlt. Das ist genau die Lage, in die
+      // jemand geraet, der ein Werkzeug hinzufuegt und die Tabelle vergisst,
+      // und sie soll beim Start auffallen und nicht beim ersten Vorfall.
+      const tabelle = MCP_TOOL_SCOPES as unknown as Record<string, string | null>;
+      const gemerkt = tabelle.qkern_logs_search;
+      delete tabelle.qkern_logs_search;
+      try {
+        expect(() => createQKERNMcpServer({
+          organizationId: mcpOrganization, projectId: mcpProject, environment: "development",
+          actorRef: "local-mcp-agent", access: { kind: "local_static_bearer" },
+        })).toThrow("MCP tool qkern_logs_search has no entry in MCP_TOOL_SCOPES.");
+      } finally { tabelle.qkern_logs_search = gemerkt; }
+      // Und die Tabelle ist danach wieder heil; die Zusagen oben haengen daran.
+      expect(MCP_TOOL_SCOPES.qkern_logs_search).toBe("logs:read");
+
+      // --- Zusage 8: die Spur traegt kein Token ----------------------------
+      const auditRows = await owner.query<{ metadata: string }>(
+        `SELECT redacted_metadata::text AS metadata FROM audit_logs WHERE organization_id = $1`,
+        [mcpOrganization]);
+      const serialised = JSON.stringify(auditRows.rows);
+      for (const token of [
+        storageToken, queueReadToken, queueWriteToken, controlToken, proposeToken,
+      ]) {
+        expect(serialised).not.toContain(token);
+      }
+      expect(serialised).not.toContain("service_role");
+      expect(appUserId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    } finally {
+      // Die eingestellte Nachricht bleibt stehen, und das ist ein Befund dieses
+      // Falles: Eine Queue-Nachricht laesst sich vor ihrer Aufbewahrungsfrist
+      // nicht loeschen, auch nicht als Eigentuemer der Datenbank. Der Versuch
+      // fiel an "project queue message cannot be deleted before safe
+      // retention". Ein Fall, der diese Grenze fuer sein Aufraeumen aufweicht,
+      // haette sie damit auch fuer alles andere aufgeweicht; die Zeile bleibt
+      // als erwarteter Rest im Wegwerfstack, wie bei `(2.42)`.
+      //
+      // Aufgeraeumt wird trotzdem etwas: der Mandant selbst gehoert diesem Fall
+      // allein, und alle Zaehlungen oben liegen vor diesem Punkt.
+      expect((await owner.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_queue_messages
+          WHERE organization_id = $1 AND project_id = $2`,
+        [mcpOrganization, mcpProject])).rows[0].count).toBe("1");
+    }
+  }, 120_000);
 
   it("(2.92) records a consent as one row, issues a token on it, revokes exactly that consent so the token stops working while the row stays, and refuses a scope nobody consented to", async () => {
     // Eine Zustimmung ist eine Zeile (2.92), gegen die echte Datenbank.
