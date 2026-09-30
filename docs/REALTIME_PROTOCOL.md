@@ -1,10 +1,16 @@
 # QKERN Realtime Protocol v1
 
-Dieses Dokument beschreibt den in `1.5.0-alpha.1` eingeführten und in
-`1.6.0-alpha.1` unverändert geltenden ausführbaren Vertrag. Der
-Transport ist ein lokaler Alpha-Durchstich und verweigert `NODE_ENV=production`,
-bis persistente History, horizontales Fan-out, TLS-/Proxy-Zertifizierung und
-Lasttests implementiert sind.
+Dieses Dokument beschreibt den in `1.5.0-alpha.1` eingeführten und seither
+unverändert geltenden ausführbaren Vertrag.
+
+Der Satz, der hier bis zu diesem Slice stand, galt seit `1.72.0` nicht mehr:
+Der Transport verweigerte `NODE_ENV=production` bedingungslos. Seit `1.73.0`
+steht dort ein Tor mit benannten Bedingungen, und der Start dagegen ist jetzt
+belegt. Der Stack `docker-compose.realtime-certification.yml` führt ein
+PostgreSQL mit eigener CA, das jede Verbindung ohne TLS abweist; der
+ausgelieferte Prozess läuft davor unter `production` an, und `pg_stat_ssl`
+nennt für jede seiner Verbindungen Version und Cipher. Was Production heute
+nicht kann, steht unter „Grenzen unter Production".
 
 ## Verbindung und Authentifizierung
 
@@ -113,10 +119,37 @@ $env:QKERN_REALTIME_ALLOWED_ORIGINS="http://localhost:3000"
 npm run realtime
 ```
 
-Der Prozess bindet ausschließlich `127.0.0.1`. Für einen späteren Production-
-Release fehlen mindestens PostgreSQL-basierter Event Log/CDC, horizontaler
-Fan-out, mehrere Instanzen, Proxy-/TLS-Grenze, externe Rate-Limits, Telemetrie,
-Abuse-/Lasttests und archivierte Real-Service-E2E-Nachweise.
+Der Prozess bindet standardmäßig `127.0.0.1`. Ein Binding darüber hinaus
+verlangt in jeder Umgebung ein ausdrückliches `QKERN_REALTIME_PUBLIC_BIND=true`.
+
+## Grenzen unter Production
+
+Das Tor in `lib/server/realtime/production-gate.ts` prüft fünf Bedingungen
+einzeln und nennt jede, die fehlt: dauerhafter Event-Log, Cursor-Geheimnis mit
+mindestens 32 Byte, konfigurierte Aufbewahrung, eine ausdrückliche
+`https`-Origin-Allowlist und, bei öffentlichem Binding, die Attestierung
+`QKERN_REALTIME_TLS_TERMINATED=proxy`. Der Transport selbst spricht `ws` ohne
+TLS; die Attestierung ist deshalb eine Attestierung und kein Beweis.
+
+Die Datenbankverbindung ist unter Production `DATABASE_SSL=require`, und das
+heißt in diesem Prozess beides: Kette und Hostname werden geprüft. Der
+Vertrauensanker kommt aus `NODE_EXTRA_CA_CERTS`, wenn der Server nicht auf eine
+öffentlich vertrauenswürdige CA lautet. Dieselbe Konfiguration gilt für die
+`LISTEN`-Verbindung des Fan-outs; bis zu diesem Slice baute sie sich ohne jede
+auf, und gegen ein PostgreSQL mit `hostnossl ... reject` kam der Prozess darum
+gar nicht hoch.
+
+Nicht erreichbar unter Production sind **Postgres Changes**. Der Prozess baut
+seinen Projektdatenbank-Katalog ausschließlich über
+`createLocalProjectDatabaseCatalogFromEnv` beziehungsweise
+`createGeneratedDataApiFromEnv` auf, und beide weisen `production` ab: Sie
+verlangen einen eingespeisten, vault-gestützten Katalog. Der Migrations-Prozess
+hat diesen Zweig, der Realtime-Prozess hat ihn nicht. Wer `changes:` unter
+Production anschaltet, bekommt beim Start eine benannte Abweisung; ein leeres
+Abonnement gibt es nicht.
+
+Ebenfalls offen: History und Presence liegen je Verbindung im Prozessspeicher,
+externe Rate-Limits und ein Lastprofil jenseits des Soak fehlen.
 
 ## Dauerhaftigkeit und Mehrinstanzbetrieb (Release 1.11)
 

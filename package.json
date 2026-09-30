@@ -21,6 +21,7 @@
     "test:storage:provider": "vitest run tests/project-storage-provider.integration.test.ts tests/project-storage-s3-endpoint.integration.test.ts",
     "test:storage:docker": "node scripts/storage-certification.mjs",
     "test:backup:docker": "node scripts/backup-certification.mjs",
+    "test:realtime:docker": "node scripts/realtime-certification.mjs",
     "storage:bucket": "node scripts/storage-create-bucket.mjs",
     "dev:bind-project-database": "node scripts/dev-bind-project-database.mjs",
     "verify:backup-restore": "node --import tsx scripts/verify-backup-restore-evidence.ts",

@@ -1,6 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
-import { getPostgresPool } from "@/lib/server/db/pool";
+import {
+  getPostgresPool,
+  postgresPoolConfigFromEnv,
+  type PostgresPoolConfig,
+} from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { ControlPlaneDataTargetResolver } from "@/lib/server/data-plane/runtime";
@@ -58,12 +62,23 @@ const eventLog = ephemeralLog
 // Benachrichtigung traegt nur einen Verweis, nie eine Payload.
 const eventBus = ephemeralLog ? undefined : new PostgresRealtimeEventBus({
   connect: async (): Promise<ListenConnection> => {
-    const connectionString = process.env.QKERN_RUNTIME_DATABASE_URL?.trim();
-    if (!connectionString) throw new Error("QKERN_RUNTIME_DATABASE_URL is required for Realtime fan-out.");
+    // Dieselbe Verbindung wie die des Event-Logs, nur ohne Pool: `LISTEN`
+    // belegt sie dauerhaft und gehoert deshalb nicht in einen. Sie liest ihre
+    // Konfiguration aus derselben Quelle, damit sie auch dieselbe
+    // TLS-Konfiguration bekommt.
+    //
+    // Bis zu diesem Slice baute sie sich ohne jede TLS-Angabe auf: Sie las die
+    // Adresse selbst und liess `DATABASE_SSL` liegen. Gegen ein PostgreSQL, das
+    // Klartext abweist (`hostnossl ... reject`), scheiterte sie darum, und weil
+    // sie vor dem Lauschen aufgebaut wird und der dauerhafte Log unter
+    // Production Pflicht ist, kam der Prozess dort nie hoch. Das war der Grund,
+    // aus dem der Production-Start nie belegt werden konnte.
+    const { connectionString, ssl } = postgresPoolConfigFromEnv(process.env);
     const { Client } = createRequire(import.meta.url)("pg") as {
-      Client: new (config: { connectionString: string }) => ListenConnection & { connect(): Promise<void> };
+      Client: new (config: { connectionString: string; ssl: PostgresPoolConfig["ssl"] })
+      => ListenConnection & { connect(): Promise<void> };
     };
-    const client = new Client({ connectionString });
+    const client = new Client({ connectionString, ssl });
     await client.connect();
     return client;
   },
