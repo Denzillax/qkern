@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: die Sperrdatei nennt eine andere Version",
+  "log": "welle20-mutation-lockversion.log",
+  "commit": "b5f122a55e0d74ed4941166c64f1c1d879f49578",
+  "commitSubject": "merge: Realtime unter Production aus slice/rtprod",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "2 failed (2)",
+  "passed": 0,
+  "failed": 2,
+  "skipped": 0,
+  "images": []
+}

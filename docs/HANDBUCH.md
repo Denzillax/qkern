@@ -4386,7 +4386,7 @@ doch eine echte Lesung, die die Frage wenigstens teilweise beantwortet? Einmal
 ja, zweimal nein. Der Unterschied zu `2.51.0` ist, dass hier zweimal nicht das
 Backend fehlt, sondern die Sache selbst.
 
-**Function-Logs: bis `2.97.0` gab es die Ausgabe nicht, das Image schon.**
+**Function-Logs: bis `2.66.0` gab es die Ausgabe nicht, das Image schon.**
 Der Platzhalter versprach „Ausgaben aus dem Container“. Migration `0045`
 hält `stdout` und `stderr` nicht, mit dem Grund: Beides stammt aus fremdem
 Code und könnte alles enthalten, was die Function gesehen hat. Die Sandbox

@@ -1,0 +1,36 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/version-reference-contract.test.ts (2 tests | 1 failed) 929ms
+     × never names a release that has not shipped 925ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/version-reference-contract.test.ts > version reference contract > never names a release that has not shipped
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "docs\\HANDBUCH.md:4389: 2.97.0 in \"**Function-Logs: bis `2.97.0` gab es die Ausgabe nicht, das Image schon.**\"",
++ ]
+
+ ❯ tests/version-reference-contract.test.ts:107:19
+    105|       }
+    106|     }
+    107|     expect(found).toEqual([]);
+       |                   ^
+    108|   });
+    109|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  07:06:56
+   Duration  1.14s (transform 27ms, setup 0ms, import 40ms, tests 929ms, environment 0ms)
+
+EXIT=1

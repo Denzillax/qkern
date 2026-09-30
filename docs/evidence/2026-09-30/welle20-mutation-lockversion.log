@@ -1,0 +1,45 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/version-reference-contract.test.ts (2 tests | 2 failed) 5040ms
+     × never names a release that has not shipped 5008ms
+     × keeps the lockfile on the version of the package 29ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/version-reference-contract.test.ts > version reference contract > never names a release that has not shipped
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/version-reference-contract.test.ts:75:3
+     73|
+     74| describe("version reference contract", () => {
+     75|   it("never names a release that has not shipped", async () => {
+       |   ^
+     76|     const pkg = JSON.parse(await readFile("package.json", "utf8")) as …
+     77|     const shipped = pkg.version.split(".").map(Number);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/version-reference-contract.test.ts > version reference contract > keeps the lockfile on the version of the package
+AssertionError: expected '2.66.0' to be '2.67.0' // Object.is equality
+
+Expected: "2.67.0"
+Received: "2.66.0"
+
+ ❯ tests/version-reference-contract.test.ts:116:26
+    114|         JSON.parse(text) as { version: string; packages: Record<string…
+    115|     ]);
+    116|     expect(lock.version).toBe(pkg.version);
+       |                          ^
+    117|     // Die Wurzel des Baums traegt die Version ein zweites Mal. npm sc…
+    118|     // beide, also muessen auch beide stimmen.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  07:04:54
+   Duration  5.71s (transform 119ms, setup 0ms, import 157ms, tests 5.04s, environment 0ms)
+
+EXIT=1

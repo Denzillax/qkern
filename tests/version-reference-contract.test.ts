@@ -39,16 +39,24 @@ const SKIP_DIRS = new Set(["node_modules", ".next", "evidence", "coverage"]);
 const READ = new Set([".ts", ".tsx", ".md", ".mjs", ".sql"]);
 
 /**
- * Zeilen, die eine fremde Version nennen und nicht die von QKERN. Ohne diese
- * Liste schlaegt der Vertrag an Abhaengigkeiten an, deren Nummern mit QKERN
- * nichts zu tun haben.
+ * Namen, hinter denen eine **fremde** Version steht und nicht die von QKERN.
+ *
+ * Gesucht wird nur **unmittelbar vor** der Zahl, nicht irgendwo in der Zeile.
+ * Die erste Fassung filterte ganze Zeilen und hat damit sofort einen echten
+ * Fehler verdeckt: Im Satz "bis `2.97.0` gab es die Ausgabe nicht, das Image
+ * schon" liess das Wort "Image" die falsche Zahl durch. Ein Filter, der mehr
+ * verdeckt als er erlaubt, ist schlimmer als keiner.
  */
-const FOREIGN = [
-  /postgres(ql)?[ :@-]/i, /node[ :@-]/i, /alpine/i, /vault/i, /clamav/i, /versitygw/i, /minio/i,
-  /mailpit/i, /dex/i, /docker/i, /next\.js/i, /vitest/i, /typescript/i, /argon2/i, /aws-sdk/i,
-  /@aws/i, /npm/i, /image/i, /Image/, /RFC/i, /sha256:/i, /^\s*\*?\s*https?:/i, /:\d+\.\d+\.\d+/,
-  /iceberg/i, /pgvector/i, /sdk/i, /icu/i, /unicode/i, /openapi/i, /json schema/i, /3\.1\.\d/,
-];
+const FOREIGN = new RegExp(
+  "(postgres(ql)?|node|alpine|vault|clamav|versitygw|minio|mailpit|dex|docker|next\\.js|vitest|" +
+  "typescript|argon2|aws-sdk|@aws/[a-z-]*|npm|iceberg|pgvector|icu|unicode|openapi|json schema|" +
+  "react|turbopack|sha256|v)" +
+  "[ :@/v-]{0,3}$",
+  "i",
+);
+
+/** Wie viele Zeichen vor der Zahl nach einem fremden Namen gesehen wird. */
+const LOOKBEHIND = 24;
 
 async function files(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -84,8 +92,9 @@ describe("version reference contract", () => {
         const lines = text.split("\n");
         for (let i = 0; i < lines.length; i += 1) {
           const line = lines[i];
-          if (FOREIGN.some((pattern) => pattern.test(line))) continue;
           for (const match of line.matchAll(VERSION)) {
+            const before = line.slice(Math.max(0, match.index - LOOKBEHIND), match.index);
+            if (FOREIGN.test(before)) continue;
             const version = [Number(match[1]), Number(match[2]), Number(match[3])];
             // Nur die Familie von QKERN: eine 1 oder 2 vorne. Alles andere ist
             // eine fremde Nummer, die hier nichts beweist.
@@ -96,5 +105,26 @@ describe("version reference contract", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+
+  /**
+   * Die Sperrdatei nennt dieselbe Version wie das Paket.
+   *
+   * Der Versionssprung am Release-Schnitt fasst `package.json` an, nicht
+   * `package-lock.json`; die zieht erst ein `npm install` nach. Beim Schnitt
+   * von `2.67.0` blieb sie darum auf `2.66.0` stehen, und ein Agent ist beim
+   * Installieren darueber gestolpert. Zwei Zeilen, die sich widersprechen,
+   * sind billiger zu pruefen als zu erklaeren.
+   */
+  it("keeps the lockfile on the version of the package", async () => {
+    const [pkg, lock] = await Promise.all([
+      readFile("package.json", "utf8").then((text) => JSON.parse(text) as { version: string }),
+      readFile("package-lock.json", "utf8").then((text) =>
+        JSON.parse(text) as { version: string; packages: Record<string, { version?: string }> }),
+    ]);
+    expect(lock.version).toBe(pkg.version);
+    // Die Wurzel des Baums traegt die Version ein zweites Mal. npm schreibt
+    // beide, also muessen auch beide stimmen.
+    expect(lock.packages[""]?.version).toBe(pkg.version);
   });
 });

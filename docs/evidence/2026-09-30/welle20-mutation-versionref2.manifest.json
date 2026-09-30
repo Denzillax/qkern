@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: eine Ausgabe, die es nicht gibt, hinter einem Fremdwort",
+  "log": "welle20-mutation-versionref2.log",
+  "commit": "b5f122a55e0d74ed4941166c64f1c1d879f49578",
+  "commitSubject": "merge: Realtime unter Production aus slice/rtprod",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}
