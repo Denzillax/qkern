@@ -3,16 +3,22 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import {
+  AbortMultipartUploadCommand,
   CopyObjectCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListBucketsCommand,
+  ListMultipartUploadsCommand,
   ListObjectsV2Command,
+  ListPartsCommand,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { describe, expect, it } from "vitest";
 import {
@@ -59,7 +65,19 @@ import { ProjectStorageService } from "@/lib/server/project-storage/service";
  * Fall liest am Server mit, was ankam, und belegt, dass es die Formen sind,
  * die die AWS-Werkzeuge ueber HTTP waehlen: Pruefsumme im Header bei einem
  * Puffer, `aws-chunked` mit `STREAMING-UNSIGNED-PAYLOAD-TRAILER` bei einem
- * Strom. Nicht gesehen hat den Endpunkt die AWS CLI selbst und rclone; beide
+ * Strom.
+ *
+ * Der dritte (2.101) laesst denselben Client eine Datei hochladen, die ueber
+ * der Multipart-Schwelle liegt, und **er teilt sie selbst**:
+ * `@aws-sdk/lib-storage` schneidet sie in Teile von 5 MiB, schickt
+ * `CreateMultipartUpload`, die Teile und `CompleteMultipartUpload`, und der
+ * Fall liest am Server mit, dass genau diese Anfragen kamen. Danach belegt er,
+ * was am Dienstweg haengt: Die Pruefsumme der ganzen Datei rechnet der
+ * Endpunkt aus dem zusammengesetzten Objekt, der echte Scanner rechnet sie
+ * nach, und erst dann ist das Objekt sauber und lesbar. Ein abgebrochener
+ * Upload laesst beim echten Provider keinen begonnenen Upload stehen.
+ *
+ * Nicht gesehen hat den Endpunkt die AWS CLI selbst und rclone; beide
  * brauchen einen laufenden Next-Server im Stack, und den gibt es dort nicht.
  */
 const enabled = process.env.QKERN_TEST_STORAGE_PROVIDER_E2E === "true";
@@ -290,9 +308,112 @@ describe.runIf(enabled)("real versitygw and ClamAV: the S3 endpoint", () => {
       await bridge.close();
     }
   }, 180_000);
+
+  it("(S3-Client) is split by the AWS SDK itself above the multipart threshold: create, parts, list, complete through the same service path, the whole-file checksum verified by the real scanner, and an aborted upload leaving nothing at the provider", async () => {
+    const { s3, keys, storage, provider } = await certificationRuntime();
+    const bridge = await bridgeTo(s3);
+    try {
+      // Ein eigener Bucket und ein eigenes Paar: Der Fall daneben zaehlt die
+      // Buckets seines Paars, und diese Datei ist groesser als das, was dort
+      // je Objekt erlaubt ist.
+      const bucket = await storage.createBucket(admin, scope, {
+        name: "cert-s3-mp", readPolicy: "service", writePolicy: "service",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 32 * 1024 * 1024, quotaBytes: 96 * 1024 * 1024,
+      });
+      const pair = await keys.create(admin, scope, {
+        name: "Zertifizierung Multipart", bucketIds: [bucket.id],
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      });
+      const client = new S3Client({
+        endpoint: `${bridge.origin}/s3`, region: "us-east-1", forcePathStyle: true,
+        credentials: { accessKeyId: pair.key.accessKeyId, secretAccessKey: pair.secret },
+      });
+
+      // 12 MiB, also ueber der Schwelle, ab der die AWS-Werkzeuge von sich aus
+      // teilen. Der Inhalt ist nicht zufaellig, damit der Vergleich am Ende
+      // etwas aussagt.
+      const payload = Buffer.alloc(12 * 1024 * 1024);
+      for (let offset = 0; offset < payload.byteLength; offset += 64) {
+        payload.write(`qkern multipart certification ${offset} `.padEnd(64, "."), offset, 64, "utf8");
+      }
+      const wholeFile = createHash("sha256").update(payload).digest("base64");
+
+      const upload = new Upload({
+        client,
+        params: { Bucket: "cert-s3-mp", Key: "mp/big.txt", Body: payload, ContentType: "text/plain" },
+        partSize: 5 * 1024 * 1024,
+        queueSize: 2,
+      });
+      const finished = await upload.done();
+      expect(finished.Key).toBe("mp/big.txt");
+
+      // Der Client hat geteilt, nicht der Fall: drei Teile, ein Anfang, ein Abschluss.
+      const started = bridge.seen.filter((entry) => entry.method === "POST" && entry.query.includes("uploads"));
+      const parts = bridge.seen.filter((entry) => entry.method === "PUT" && entry.query.includes("partNumber"));
+      const completed = bridge.seen.filter((entry) => entry.method === "POST" &&
+        entry.query.includes("uploadId") && !entry.query.includes("uploads"));
+      expect(started).toHaveLength(1);
+      expect(parts.length).toBeGreaterThanOrEqual(3);
+      expect(completed).toHaveLength(1);
+      // Jedes Teil kam mit der Pruefsumme, die der Client selbst gerechnet hat.
+      for (const part of parts) {
+        expect(part.headers["x-amz-checksum-crc32"] ?? part.headers["x-amz-trailer"]).toBeDefined();
+      }
+
+      // Am Dienstweg gepruefte Bytes: Groesse, Urteil des echten Scanners, und
+      // die Pruefsumme der ganzen Datei, die der Endpunkt aus dem
+      // zusammengesetzten Objekt gerechnet hat.
+      const stored = await storage.listObjects(admin, scope, "cert-s3-mp", {});
+      expect(stored.objects.map((object) => [object.key, object.sizeBytes, object.status]))
+        .toEqual([["mp/big.txt", payload.byteLength, "clean"]]);
+      const head = await client.send(new HeadObjectCommand({ Bucket: "cert-s3-mp", Key: "mp/big.txt" }));
+      expect(head.ContentLength).toBe(payload.byteLength);
+      const read = await client.send(new GetObjectCommand({ Bucket: "cert-s3-mp", Key: "mp/big.txt" }));
+      const readBack = Buffer.from(await read.Body!.transformToByteArray());
+      expect(createHash("sha256").update(readBack).digest("base64")).toBe(wholeFile);
+
+      // Ein zweiter Upload, diesmal ueber die einzelnen Befehle des SDK, und
+      // unterwegs abgebrochen: `ListMultipartUploads` und `ListParts` sagen,
+      // was offen ist, und danach steht beim echten Provider nichts mehr.
+      const openUpload = await client.send(new CreateMultipartUploadCommand({
+        Bucket: "cert-s3-mp", Key: "mp/abort.txt", ContentType: "text/plain",
+      }));
+      expect(openUpload.UploadId).toMatch(/^[0-9a-f-]{36}$/);
+      const partBody = Buffer.alloc(5 * 1024 * 1024, "q");
+      const firstPart = await client.send(new UploadPartCommand({
+        Bucket: "cert-s3-mp", Key: "mp/abort.txt", UploadId: openUpload.UploadId, PartNumber: 1, Body: partBody,
+      }));
+      expect(firstPart.ETag).toMatch(/^"[^"]+"$/);
+      const inFlight = await client.send(new ListMultipartUploadsCommand({ Bucket: "cert-s3-mp", Prefix: "mp/" }));
+      expect(inFlight.Uploads?.map((entry) => entry.Key)).toEqual(["mp/abort.txt"]);
+      const listedParts = await client.send(new ListPartsCommand({
+        Bucket: "cert-s3-mp", Key: "mp/abort.txt", UploadId: openUpload.UploadId,
+      }));
+      expect(listedParts.Parts?.map((part) => [part.PartNumber, part.Size]))
+        .toEqual([[1, partBody.byteLength]]);
+
+      await client.send(new AbortMultipartUploadCommand({
+        Bucket: "cert-s3-mp", Key: "mp/abort.txt", UploadId: openUpload.UploadId,
+      }));
+      const keyPrefix = `${scope.organizationId}/${scope.projectId}/${scope.environment}/`;
+      expect(await provider.listMultipartUploads({ keyPrefix })).toHaveLength(0);
+      const afterAbort = (await storage.listBuckets(admin, scope)).find((entry) => entry.id === bucket.id)!;
+      expect(afterAbort.reservedBytes).toBe(0);
+      expect(afterAbort.usedBytes).toBe(payload.byteLength);
+      const gone = await client.send(new ListPartsCommand({
+        Bucket: "cert-s3-mp", Key: "mp/abort.txt", UploadId: openUpload.UploadId,
+      })).catch((error) => error);
+      expect((gone as S3ServiceException).name).toBe("NoSuchUpload");
+      expect((await client.send(new ListMultipartUploadsCommand({ Bucket: "cert-s3-mp" }))).Uploads ?? [])
+        .toEqual([]);
+      client.destroy();
+    } finally {
+      await bridge.close();
+    }
+  }, 300_000);
 });
 
-type Seen = { method: string; path: string; headers: Record<string, string> };
+type Seen = { method: string; path: string; query: string; headers: Record<string, string> };
 
 /**
  * Die HTTP-Bruecke: `node:http` auf 127.0.0.1, jede Anfrage als `Request` an
@@ -312,7 +433,7 @@ async function bridgeTo(s3: ProjectStorageS3Endpoint): Promise<{ origin: string;
       flat[name] = joined;
     }
     const url = new URL(incoming.url ?? "/", `http://${incoming.headers.host ?? "127.0.0.1"}`);
-    seen.push({ method: incoming.method ?? "", path: url.pathname, headers: flat });
+    seen.push({ method: incoming.method ?? "", path: url.pathname, query: url.search, headers: flat });
     const withBody = incoming.method !== "GET" && incoming.method !== "HEAD";
     const request = new Request(url, {
       method: incoming.method, headers,
@@ -421,7 +542,7 @@ async function certificationRuntime() {
   });
   expect(issued.key.verifiable).toBe(true);
   const s3 = new ProjectStorageS3Endpoint({ storage, keys });
-  return { s3, keys, storage, issued, bucket, other };
+  return { s3, keys, storage, provider, issued, bucket, other };
 }
 
 async function waitForProviderBucket() {

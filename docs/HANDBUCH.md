@@ -2580,11 +2580,36 @@ Was geht:
   `STREAMING-UNSIGNED-PAYLOAD-TRAILER`; Blocksignaturen, Trailer-Signatur und
   jede Prüfsumme in `x-amz-checksum-*` (CRC32, CRC32C, CRC64NVME, SHA-1,
   SHA-256) werden nachgerechnet.
+- Multipart (seit `2.101`): `CreateMultipartUpload` (`POST …?uploads`),
+  `UploadPart` (`PUT …?partNumber=N&uploadId=…`, bis 64 MiB je Teil, höchstens
+  10 000 Teile), `ListParts`, `ListMultipartUploads` (`GET /s3/{bucket}?uploads`),
+  `CompleteMultipartUpload` und `AbortMultipartUpload`. Ein Werkzeug, das grosse
+  Dateien von sich aus teilt, braucht keine Einstellung dafür; die AWS CLI und
+  das AWS SDK arbeiten mit ihrer Vorgabe.
+
+**Wie Multipart am Dienstweg hängt.** Ein S3-Client nennt beim Anfang weder die
+Grösse noch die Prüfsumme der ganzen Datei, die ein fortsetzbarer Upload über
+REST vorher zusagt. Die Reservierung beginnt darum bei null Bytes und wächst mit
+jedem Teil (Spalte `parts_declared`, Migration 0071); jedes Teil wird beim
+Annehmen gegen Quota und Objektgrenze des Buckets gerechnet, bevor seine Bytes
+beim Provider liegen, und ein zweites Teil derselben Nummer ersetzt das erste
+und gibt dessen Bytes frei. Beim Abschluss prüft der Dienst die Teileliste gegen
+die Teile, die der Endpunkt angenommen hat: aufsteigende Nummern ohne
+Wiederholung (`400 InvalidPartOrder`), jede Nummer bekannt und mit derselben
+Kennung (`400 InvalidPart`), und die Summe der Teilgrössen gleich der gebuchten.
+Danach setzt der Provider zusammen, der Endpunkt rechnet die Prüfsumme der
+ganzen Datei aus dem zusammengesetzten Objekt über eine Lesezusage, und diese
+Summe bekommt der Scanner, so wie bei REST die zugesagte. Ohne sie gibt es kein
+Objekt. `AbortMultipartUpload` bricht beim Provider ab und gibt die Reservierung
+frei; bleibt eine liegen, räumt der Lifecycle sie über dieselbe
+`provider_upload_id` ab wie eine des REST-Wegs (`1.78.0`). Ein vorhandener
+Schlüssel wird beim Anfang gelöscht, weil die Reservierung ihn exklusiv hält:
+Bricht der Upload ab, ist das alte Objekt weg und kein neues da.
 
 Was nicht geht, und mit `501 NotImplemented` beim Namen genannt wird:
-Multipart über S3 (die AWS CLI teilt ab 8 MiB von sich aus; dagegen hilft
-`multipart_threshold`), `ListObjects` Version 1, Buckets anlegen oder löschen,
-ACLs, Versionen, Tags, POST-Policy-Uploads, virtuell gehostete Adressen
+`UploadPartCopy` (ein Teil aus dem Bytebereich eines anderen Objekts; ein ganzes
+Objekt legt `CopyObject` um), `ListObjects` Version 1, Buckets anlegen oder
+löschen, ACLs, Versionen, Tags, POST-Policy-Uploads, virtuell gehostete Adressen
 (`bucket.host`).
 
 **Wo das Geheimnis liegt.** Eine SigV4-Signatur ist eine HMAC-Kette aus dem

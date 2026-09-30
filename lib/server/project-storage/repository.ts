@@ -6,6 +6,7 @@ import type {
   ProjectStoragePrincipal,
   ProjectStorageScope,
   ProjectStorageUpload,
+  ProjectStorageUploadPart,
 } from "@/lib/server/project-storage/model";
 
 export class ProjectStorageConflictError extends Error {
@@ -109,6 +110,62 @@ export interface ProjectStorageRepository {
     now: Date,
     limit: number,
   ): Promise<ProjectStorageUpload[]>;
+  /**
+   * Eine Multipart-Reservierung ueber ihre Kennung, ohne Abschluss-Token
+   * (2.101). Der S3-Endpunkt hat keinen: Seine Vollmacht ist die
+   * SigV4-Signatur, und der Geltungsbereich steht im Aufruf.
+   */
+  findMultipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+  ): Promise<ProjectStorageUpload | null>;
+  /**
+   * Nimmt ein Teil eines S3-Multipart-Uploads an (2.101).
+   *
+   * Die Reservierung dieser Sorte beginnt bei null Bytes, also traegt jedes
+   * Teil seine eigenen. Die Quota wird hier geprueft, nicht erst beim
+   * Abschluss: Ein Teil, das den Bucket ueber die Grenze braechte, wird
+   * abgelehnt, bevor seine Bytes beim Provider liegen. Ein zweites Teil
+   * derselben Nummer ersetzt das erste und gibt dessen Bytes frei, so wie S3
+   * ein Teil ueberschreiben laesst.
+   */
+  recordUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    part: { partNumber: number; sizeBytes: number; checksumSha256: string },
+    now: Date,
+  ): Promise<ProjectStorageUploadPart>;
+  /** Traegt die Kennung des Providers nach, sobald die Bytes des Teils liegen. */
+  confirmUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    partNumber: number,
+    etag: string,
+  ): Promise<ProjectStorageUploadPart | null>;
+  /** Die angenommenen Teile einer Reservierung, aufsteigend nach Nummer. */
+  listUploadParts(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+  ): Promise<ProjectStorageUploadPart[]>;
+  /**
+   * Traegt die Pruefsumme der ganzen Datei an einer Reservierung nach, deren
+   * Groesse mit den Teilen kam. Ohne sie hat der Scanner nichts
+   * nachzurechnen, und `completeUpload` nimmt das Objekt nicht an.
+   */
+  declareUploadChecksum(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    checksumSha256: string,
+  ): Promise<boolean>;
   /** Lebende Multipart-Reservierungen — die Schutzliste des Waisen-Aufraeumers. */
   listPendingMultipartUploads(
     principal: ProjectStoragePrincipal,
@@ -167,6 +224,7 @@ function afterObjectLogCursor(object: ProjectStorageObject, cursor: ProjectStora
 export class MemoryProjectStorageRepository implements ProjectStorageRepository {
   private readonly buckets = new Map<string, ProjectStorageBucket>();
   private readonly uploads = new Map<string, ProjectStorageUpload>();
+  private readonly parts = new Map<string, ProjectStorageUploadPart[]>();
   private readonly objects = new Map<string, ProjectStorageObject>();
 
   async listBuckets(principal: ProjectStoragePrincipal, scope: ProjectStorageScope) {
@@ -281,6 +339,7 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
     this.buckets.set(bucket.id, bucket);
     this.uploads.set(upload.id, upload);
     this.objects.set(object.id, cloneObject(object));
+    this.parts.delete(upload.id);
     return cloneObject(object);
   }
 
@@ -302,6 +361,106 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
       bucket.updatedAt = new Date(now);
     }
     upload.status = status;
+    this.uploads.set(upload.id, upload);
+    this.parts.delete(upload.id);
+    return true;
+  }
+
+  async findMultipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+  ) {
+    const upload = this.uploads.get(uploadId);
+    return upload && upload.organizationId === principal.organizationId && sameScope(upload, scope) &&
+      upload.kind === "multipart" ? cloneUpload(upload) : null;
+  }
+
+  async recordUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    part: { partNumber: number; sizeBytes: number; checksumSha256: string },
+    now: Date,
+  ) {
+    // No await before this critical section: the quota counters and the part
+    // list must move together, exactly as in reserveUpload.
+    const upload = this.uploads.get(uploadId);
+    if (!upload || upload.organizationId !== principal.organizationId || !sameScope(upload, scope) ||
+        upload.completionTokenHash !== tokenHash || !upload.partsDeclared) {
+      throw new ProjectStorageConflictError();
+    }
+    if (upload.status !== "pending" || upload.expiresAt <= now) throw new ProjectStorageConflictError();
+    const bucket = this.buckets.get(upload.bucketId);
+    if (!bucket) throw new ProjectStorageConflictError();
+    const existing = (this.parts.get(uploadId) ?? []).find((candidate) => candidate.partNumber === part.partNumber);
+    const delta = part.sizeBytes - (existing?.sizeBytes ?? 0);
+    if (bucket.usedBytes + bucket.reservedBytes + delta > bucket.quotaBytes) throw new ProjectStorageQuotaError();
+    if (upload.sizeBytes + delta > bucket.maxObjectBytes) throw new ProjectStorageQuotaError();
+    bucket.reservedBytes = Math.max(0, bucket.reservedBytes + delta);
+    bucket.updatedAt = new Date(now);
+    this.buckets.set(bucket.id, bucket);
+    upload.sizeBytes += delta;
+    this.uploads.set(upload.id, upload);
+    const stored: ProjectStorageUploadPart = {
+      organizationId: upload.organizationId,
+      projectId: upload.projectId,
+      environment: upload.environment,
+      uploadId,
+      partNumber: part.partNumber,
+      sizeBytes: part.sizeBytes,
+      checksumSha256: part.checksumSha256,
+      etag: null,
+      createdAt: new Date(now),
+    };
+    const list = (this.parts.get(uploadId) ?? []).filter((candidate) => candidate.partNumber !== part.partNumber);
+    list.push(stored);
+    list.sort((a, b) => a.partNumber - b.partNumber);
+    this.parts.set(uploadId, list);
+    return { ...stored };
+  }
+
+  async confirmUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    partNumber: number,
+    etag: string,
+  ) {
+    const upload = this.uploads.get(uploadId);
+    if (!upload || upload.organizationId !== principal.organizationId || !sameScope(upload, scope) ||
+        upload.completionTokenHash !== tokenHash) return null;
+    const part = (this.parts.get(uploadId) ?? []).find((candidate) => candidate.partNumber === partNumber);
+    if (!part) return null;
+    part.etag = etag;
+    return { ...part };
+  }
+
+  async listUploadParts(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+  ) {
+    const upload = this.uploads.get(uploadId);
+    if (!upload || upload.organizationId !== principal.organizationId || !sameScope(upload, scope) ||
+        upload.completionTokenHash !== tokenHash) return [];
+    return (this.parts.get(uploadId) ?? []).map((part) => ({ ...part }));
+  }
+
+  async declareUploadChecksum(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    checksumSha256: string,
+  ) {
+    const upload = this.uploads.get(uploadId);
+    if (!upload || upload.organizationId !== principal.organizationId || !sameScope(upload, scope) ||
+        upload.completionTokenHash !== tokenHash || !upload.partsDeclared || upload.status !== "pending") return false;
+    upload.checksumSha256 = checksumSha256;
     this.uploads.set(upload.id, upload);
     return true;
   }
@@ -395,6 +554,7 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
         bucket.updatedAt = new Date(now);
       }
     }
+    for (const upload of stale) this.parts.delete(upload.id);
     return stale.map(cloneUpload);
   }
 

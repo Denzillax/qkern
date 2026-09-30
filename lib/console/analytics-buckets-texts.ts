@@ -123,7 +123,7 @@ export const ANALYTICS_BUCKET_TEXTS = {
   /** Was der S3-Endpunkt fuer einen Iceberg-Client leistet. */
   s3Title: "Was der S3-Zugang kann",
   s3Meaning:
-    "Der Endpunkt nimmt an, was ein Iceberg-Client an Dateien schreibt: PutObject in einem Stück, GetObject ganz oder als Bytebereich, CopyObject, DeleteObjects, Presigned URLs. Was fehlt, ist Multipart über S3; eine grössere Datei ginge darum nur über den REST-Weg. Und jede Datei geht durch den Scanner, bevor sie lesbar ist, was bei vielen kleinen Dateien Zeit kostet.",
+    "Der Endpunkt nimmt an, was ein Iceberg-Client an Dateien schreibt: PutObject in einem Stück, GetObject ganz oder als Bytebereich, CopyObject, DeleteObjects, Presigned URLs, und seit `2.101` auch Multipart, also schreibt ein Client eine grössere Datei so, wie er es von S3 kennt. Jede Datei geht durch den Scanner, bevor sie lesbar ist, was bei vielen kleinen Dateien Zeit kostet.",
 
   /** Was der Server wirklich anbietet. */
   serverTitle: "Was dieser Server anbietet",
@@ -160,8 +160,8 @@ export const ANALYTICS_NEXT_STEPS: readonly AnalyticsStep[] = [
     body: "Namensräume, Tabellen und der Metadatenzeiger je Tabelle gehören in die Kontrollebene, mit denselben Grenzen wie jede Projekttabelle: Organisation, Projekt, Umgebung, Zeilensicherheit. Darüber eine Route, die die Iceberg-REST-Schnittstelle spricht: Namensräume auflisten, Tabelle anlegen, Metadaten laden und den Zeiger tauschen, mit Prüfung des alten Stands. Ohne diese Prüfung schreibt jeder Client am anderen vorbei.",
   },
   {
-    title: "2. Die Dateien brauchen Multipart über S3",
-    body: "Ein Iceberg-Client schreibt Parquet-Dateien und Metadaten über S3. PutObject in einem Stück reicht für kleine Tabellen; grössere Dateien schickt jeder Client als Multipart, und das antwortet am Endpunkt heute mit 501. Dazu kommt der Scanner: Er sieht jede Datei, bevor sie lesbar ist, und ein Client, der hundert Dateien schreibt und gleich wieder liest, wartet hundertmal darauf.",
+    title: "2. Die Dateien liegen, aber der Scanner steht davor",
+    body: "Ein Iceberg-Client schreibt Parquet-Dateien und Metadaten über S3. Das geht seit `2.101` auch für grössere Dateien, weil der Endpunkt Multipart annimmt und jedes Teil denselben Weg durch Quota und MIME-Liste nimmt. Was bleibt, ist der Scanner: Er sieht jede Datei, bevor sie lesbar ist, und ein Client, der hundert Dateien schreibt und gleich wieder liest, wartet hundertmal darauf.",
   },
   {
     title: "3. Eine Engine muss die Dateien lesen",

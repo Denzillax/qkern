@@ -154,6 +154,9 @@ export function projectStorageRouteError(error: unknown, request?: NextRequest):
     switch (error.code) {
       case "STORAGE_INVALID_INPUT": return respond(projectStorageNoStore({ error: "Invalid storage request" }, 400));
       case "STORAGE_INVALID_TOKEN": return respond(projectStorageNoStore({ error: "Invalid upload completion" }, 401));
+      case "STORAGE_UPLOAD_NOT_FOUND": return respond(projectStorageNoStore({ error: "Upload not found" }, 404));
+      case "STORAGE_PART_ORDER": return respond(projectStorageNoStore({ error: "Parts must be listed in ascending order" }, 400));
+      case "STORAGE_PART_UNKNOWN": return respond(projectStorageNoStore({ error: "Unknown upload part" }, 400));
       case "STORAGE_ACCESS_DENIED":
       case "STORAGE_RESOURCE_NOT_FOUND": return respond(projectStorageNoStore({ error: "Resource not found" }, 404));
       case "STORAGE_CONFLICT": return respond(projectStorageNoStore({ error: "Storage conflict" }, 409));
