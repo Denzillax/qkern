@@ -725,7 +725,9 @@ Grossbuchstaben.
   Methoden**, und das ist die naechste offene Aufgabe. Im Browser nicht gesehen
 - Davor: 2.57 Drei Seiten, die mit dem beginnen, was sie nicht haben.
   `logs-postgres` heißt jetzt **Postgres-Zustand**: Ein Serverlog gibt es
-  nicht, QKERN hat keinen Dateizugriff auf die Projektdatenbank. Gelesen wird
+  nicht; der Server dieses Stacks laeuft ohne Sammler und schreibt auf stderr
+  seines Prozesses, und seit `2.109` leitet die Seite das Urteil darueber aus
+  `logging_collector` und `log_destination` ab. Gelesen wird
   über `inspectDatabaseHealth` aus `pg_stat_database` und, je nach
   Serverversion, `pg_stat_checkpointer` oder `pg_stat_bgwriter`; welche Sicht
   es gibt, fragt der Dienst mit `to_regclass` nach, weil ein unbekannter Name

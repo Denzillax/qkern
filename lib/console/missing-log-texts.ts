@@ -187,7 +187,7 @@ export const POOLER_LOG_TEXTS = {
   /** Was ein Betreiber tun kann. */
   operatorTitle: "Wenn Sie mehr brauchen",
   operatorSteps:
-    "Wer ein Protokoll je Verbindung braucht, lässt es den Server schreiben: log_connections und log_disconnections erzeugen je Verbindung eine Zeile im Serverlog. Dieses Log liegt in Dateien neben dem Datenverzeichnis, QKERN hat darauf keinen Zugriff und zeigt es nicht. Wer stattdessen eine einzelne blockierende Sitzung sucht, findet die Vorlage aktuelle Sperren im SQL-Editor.",
+    "Wer ein Protokoll je Verbindung braucht, lässt es den Server schreiben: log_connections und log_disconnections erzeugen je Verbindung eine Zeile im Serverlog. Dieses Log geht dorthin, wohin der Server es schreibt, im Stack also auf stderr seines Prozesses, und dort kommt QKERN nicht heran; die Karte zum Serverlog unter Logs → Postgres-Zustand sagt, was dieser Server damit tut. Wer stattdessen eine einzelne blockierende Sitzung sucht, findet die Vorlage aktuelle Sperren im SQL-Editor.",
   operatorDrain:
     "Ein Log-Drain hat keine Quelle für Verbindungen. Seine fünf Quellen sind das Auth-Protokoll, die Function-Aufrufe, die Speicherobjekte, die Webhook-Zustellungen und die Nutzungsreihe; ein Verbindungslog ist keine davon, weil es keines gibt.",
 } as const;

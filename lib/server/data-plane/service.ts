@@ -715,9 +715,10 @@ export type ProjectDatabaseRuntimeResult = {
 /**
  * Der Zustand der Projektdatenbank (2.70), aus den Statistiksichten.
  *
- * Das ist ausdruecklich **kein Serverlog**. QKERN hat keinen Dateizugriff auf
- * die Projektdatenbank, und `log_destination` schreibt in Dateien des
- * Servers. Was hier steht, sind Zaehler: Summen seit dem letzten Zuruecksetzen
+ * Das ist ausdruecklich **kein Serverlog**. Welches Log dieser Server
+ * ueberhaupt schreibt, steht seit 2.109 unter `serverLog`, und die Ansicht
+ * faellt ihr Urteil daraus statt aus einer Annahme. Was hier steht, sind
+ * Zaehler: Summen seit dem letzten Zuruecksetzen
  * der Statistik. Kein Feld traegt einen Zeitpunkt eines Ereignisses, mit einer
  * benannten Ausnahme (`checksumLastFailure`), und keines traegt einen Wortlaut.
  *
@@ -790,6 +791,30 @@ export type ProjectDatabaseHealthResult = {
     checkpointerStatsReset: string | null;
     /** `stats_reset` von `pg_stat_bgwriter`, UTC-Text */
     bgwriterStatsReset: string | null;
+  };
+  /**
+   * Was dieser Server mit seinem eigenen Log tut (2.109).
+   *
+   * Vier Angaben, und keine davon ist eine Logzeile. Die Seite leitet daraus
+   * ihr Urteil ab, statt einen festen Satz zu behaupten: Bis 2.108 stand dort,
+   * das Serverlog liege in Dateien neben dem Datenverzeichnis, und in jedem
+   * Stack, den QKERN fahrt, gibt es diese Datei gar nicht.
+   *
+   * Gelesen wird nur, was die Laufzeitrolle sehen darf. `log_directory`,
+   * `log_filename` und `data_directory` verlangen `pg_read_all_settings`, und
+   * die Grenze in `pool.ts` verbietet jeder Anmeldung die Mitgliedschaft
+   * darin. Eine eingeschraenkte Einstellung fehlt in `pg_settings` ganz,
+   * statt dass die Abfrage scheitert.
+   */
+  serverLog: {
+    /** `logging_collector`. Ohne ihn entsteht keine Logdatei. */
+    collector: boolean;
+    /** `log_destination` im Wortlaut, etwa `stderr` oder `stderr,csvlog`. */
+    destination: string;
+    /** Ob die Rolle Mitglied von `pg_read_server_files` ist. Erwartet: `false`. */
+    mayReadFiles: boolean;
+    /** Ob die Rolle Mitglied von `pg_read_all_settings` ist. Erwartet: `false`. */
+    maySeeLogPath: boolean;
   };
 };
 
@@ -1470,6 +1495,57 @@ const DATABASE_HEALTH_SQL = `
  */
 const HAS_CHECKPOINTER_SQL = `
   SELECT to_regclass('pg_catalog.pg_stat_checkpointer') IS NOT NULL AS has_checkpointer`;
+
+/**
+ * Die Ziele, die `log_destination` annehmen kann (2.109).
+ *
+ * PostgreSQL laesst hier genau diese fuenf Woerter zu, in beliebiger
+ * Reihenfolge und Zusammenstellung. Die Liste steht hier und nicht in der
+ * Console, weil sie die Grenze bewacht: Der Wortlaut der Einstellung ist der
+ * einzige Text, der bei dieser Lesung von einem Server kommt, und ein Text,
+ * den diese Liste nicht kennt, laesst den Aufruf scheitern statt in die
+ * Console zu laufen. Der Fall (2.70) prueft die Zusage "kein Wortlaut" ueber
+ * jede Zeichenkette der Antwort, und diese Liste ist der Grund, dass die
+ * Zusage weiter haelt.
+ */
+export const LOG_DESTINATION_TARGETS: readonly string[] =
+  ["stderr", "csvlog", "jsonlog", "syslog", "eventlog"];
+
+type ServerLogRow = {
+  collector: string | null;
+  destination: string | null;
+  may_read_files: boolean;
+  may_see_log_path: boolean;
+};
+
+/**
+ * Was dieser Server mit seinem eigenen Log tut (2.109).
+ *
+ * Keine Logzeile, kein Pfad, kein Dateiname. Vier Angaben, aus denen die
+ * Ansicht ihr Urteil ableitet.
+ *
+ * Die beiden Einstellungen kommen als Unterabfrage auf `pg_settings` und
+ * nicht als `current_setting`. Der Unterschied ist der Fehlerfall: Eine
+ * Einstellung, die diese Rolle nicht einsehen darf, fehlt in `pg_settings`
+ * einfach, und die Unterabfrage gibt `NULL`. `current_setting` wuerde werfen
+ * und die ganze Lesung mitnehmen. `logging_collector` und `log_destination`
+ * sind beide nicht eingeschraenkt, also kommen sie an; die Form der Abfrage
+ * haelt die Lesung trotzdem heil, falls ein Server das anders sieht.
+ *
+ * Die beiden Rechte werden gefragt und nicht geglaubt. Dass die Laufzeitrolle
+ * kein Mitglied von `pg_read_server_files` ist, prueft `pool.ts` bei jeder
+ * Verbindung; hier steht dieselbe Frage noch einmal, weil die Ansicht ihr
+ * Urteil daraus faellt und nicht aus einer Annahme ueber die Anmeldung.
+ * `pg_read_server_files` und `pg_read_all_settings` gibt es seit PostgreSQL
+ * 11 in jedem Cluster, also findet `pg_has_role` sie.
+ */
+const SERVER_LOG_SQL = `
+  SELECT (SELECT settings.setting FROM pg_catalog.pg_settings AS settings
+           WHERE settings.name = 'logging_collector') AS collector,
+         (SELECT settings.setting FROM pg_catalog.pg_settings AS settings
+           WHERE settings.name = 'log_destination') AS destination,
+         pg_catalog.pg_has_role(current_user, 'pg_read_server_files', 'MEMBER') AS may_read_files,
+         pg_catalog.pg_has_role(current_user, 'pg_read_all_settings', 'MEMBER') AS may_see_log_path`;
 
 /**
  * Der Schreibweg ab PostgreSQL 17 (2.70): Checkpoints aus
@@ -2612,6 +2688,30 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
         throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
       }
 
+      // Was der Server mit seinem Log tut (2.109). Die Angaben passieren die
+      // Grenze wie jeder Zaehler: Ein `logging_collector`, der weder `on`
+      // noch `off` sagt, und ein `log_destination`, das kein Text ist, lassen
+      // den Aufruf scheitern. Eine erfundene Voreinstellung waere hier
+      // schlimmer als keine Antwort, denn die Seite faellt darauf ihr Urteil.
+      const serverLogRows = await client.query<ServerLogRow>(SERVER_LOG_SQL);
+      const serverLogRow = serverLogRows.rows[0];
+      if (!serverLogRow ||
+          (serverLogRow.collector !== "on" && serverLogRow.collector !== "off") ||
+          typeof serverLogRow.destination !== "string" || serverLogRow.destination.length === 0 ||
+          serverLogRow.destination.length > 128 ||
+          typeof serverLogRow.may_read_files !== "boolean" ||
+          typeof serverLogRow.may_see_log_path !== "boolean") {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+      // Jedes Wort in `log_destination` muss eines der fuenf sein, die
+      // PostgreSQL kennt. Ein sechstes waere freier Text von einem Server, und
+      // freier Text passiert diese Grenze nicht.
+      const targets = serverLogRow.destination.split(",").map((value) => value.trim());
+      if (targets.length === 0 || targets.length > LOG_DESTINATION_TARGETS.length ||
+          targets.some((target) => !LOG_DESTINATION_TARGETS.includes(target))) {
+        throw new ProjectDataPlaneError("DATA_PLANE_BOUNDARY_REJECTED");
+      }
+
       const [
         backends, commits, rollbacks, blocksRead, blocksHit, deadlocks, conflicts,
         tempFiles, tempBytes, sessions, sessionsAbandoned, sessionsFatal, sessionsKilled,
@@ -2634,6 +2734,12 @@ export class ProjectDataPlaneService implements ProjectDataPlanePort {
           buffersCheckpoint, buffersClean, maxwrittenClean, buffersAlloc,
           checkpointerStatsReset: writeback.checkpointer_stats_reset,
           bgwriterStatsReset: writeback.bgwriter_stats_reset,
+        },
+        serverLog: {
+          collector: serverLogRow.collector === "on",
+          destination: serverLogRow.destination,
+          mayReadFiles: serverLogRow.may_read_files,
+          maySeeLogPath: serverLogRow.may_see_log_path,
         },
       };
     });

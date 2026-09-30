@@ -12,7 +12,7 @@ import { PostgresRealtimeLogReader } from "@/lib/server/realtime/log-reader";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
-import { isProjectDataPlaneError, ProjectDataPlaneService } from "@/lib/server/data-plane/service";
+import { isProjectDataPlaneError, LOG_DESTINATION_TARGETS, ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import type { ProjectDatabaseHealthResult } from "@/lib/server/data-plane/service";
 // Abfrage-Einblicke (2.69): der Plan laeuft durch den echten Dienst, das
 // reine Modul flacht ihn ab.
@@ -27,6 +27,7 @@ import { SLOT_STATE_TEXTS, slotState } from "@/lib/console/replication-texts";
 // Storage -> Vektor-Buckets (2.93): dieselben Angaben und dieselbe reine
 // Ableitung, aus denen die Seite ihr Urteil ueber den Server macht.
 import { VECTOR_FACTS, vectorVerdict } from "@/lib/console/vector-buckets-texts";
+import { SERVER_LOG_FACTS, SERVER_LOG_VERDICTS, serverLogVerdict } from "@/lib/console/server-log-texts";
 import { evaluateSecurityRules } from "@/lib/server/advisors/security-rules";
 import { evaluatePerformanceRules } from "@/lib/server/advisors/performance-rules";
 import { evaluateHealthRules, type HealthAdvisorInput } from "@/lib/server/advisors/health-rules";
@@ -5594,7 +5595,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
       // --- Die Form der Antwort -------------------------------------------
       expect(before.source).toBe("postgres");
-      expect(Object.keys(before).sort()).toEqual(["database", "source", "writeback"]);
+      // `serverLog` kam mit 2.109 dazu und traegt keine Logzeile, sondern vier
+      // Angaben ueber das Log dieses Servers. Die Form steht hier mit, damit
+      // ein fuenftes Feld nicht unbemerkt durch die Grenze kommt.
+      expect(Object.keys(before).sort()).toEqual(["database", "serverLog", "source", "writeback"]);
+      expect(Object.keys(before.serverLog).sort()).toEqual([
+        "collector", "destination", "mayReadFiles", "maySeeLogPath",
+      ]);
       expect(Object.keys(before.database).sort()).toEqual([
         "backends", "blocksHit", "blocksRead", "checksumFailures", "checksumLastFailure",
         "commits", "conflicts", "deadlocks", "rollbacks", "sessions", "sessionsAbandoned",
@@ -5720,7 +5727,12 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(afterTemp.database.backends).toBeGreaterThan(0);
 
       // --- Zusage 4: kein Wortlaut, keine Adresse -------------------------
-      const allowed = new Set(["pg_stat_checkpointer", "pg_stat_bgwriter", "postgres"]);
+      // `log_destination` (2.109) ist die einzige Zeichenkette der Antwort, die
+      // von einer Einstellung des Servers kommt. Sie steht hier nicht als
+      // Literal: Die Grenze im Dienst laesst nur diese fuenf Woerter durch, und
+      // der Fall nimmt dieselbe Liste, damit es nicht zwei davon gibt.
+      const allowed = new Set(["pg_stat_checkpointer", "pg_stat_bgwriter", "postgres",
+        ...LOG_DESTINATION_TARGETS]);
       const walk = (value: unknown, path: string): void => {
         if (value === null || typeof value === "number" || typeof value === "boolean") {
           if (typeof value === "number") expect(Number.isFinite(value), path).toBe(true);
@@ -12242,6 +12254,255 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     const cascaded = await owner.query<{ total: string }>(
       "SELECT count(*)::text AS total FROM project_storage_upload_parts WHERE upload_id = $1", [orphan]);
     expect(Number(cascaded.rows[0]!.total)).toBe(0);
+  });
+
+  /**
+   * Logs -> Postgres-Zustand, die Karte zum Serverlog (2.109) gegen den echten
+   * Server.
+   *
+   * Die Seite sagt seit 2.109 nicht mehr, wo das Serverlog liege, sondern
+   * fragt den Server, was er mit ihm tut. Das ist eine Aussage ueber einen
+   * laufenden Server, und ein Vertrag am Quelltext kann sie nicht belegen:
+   * `logging_collector` liest sich nur gegen einen Server, und ob
+   * `pg_read_file` wirklich abweist, weiss nur er selbst.
+   *
+   * Fuenf Teile, in der Reihenfolge, in der die Seite sie zeigt:
+   *
+   *   1. Die Lesung ueber denselben Dienst und dieselbe Rolle wie die Console.
+   *      Aus genau diesen vier Angaben faellt das Urteil, und der Fall laesst
+   *      es von derselben reinen Funktion faellen wie die Ansicht.
+   *   2. Der Server sagt es selbst: Der Sammler steht auf `off`, das Ziel ist
+   *      `stderr`, und die eingeschraenkten Einstellungen fehlen dieser Rolle
+   *      in `pg_settings` ganz.
+   *   3. Die Rolle kommt wirklich nicht an eine Datei: `pg_read_file` und
+   *      `pg_ls_logdir` weisen ab, und `SHOW log_directory` auch.
+   *   4. Es gibt gar keine Datei, und das gilt auch fuer den Superuser.
+   *      `pg_current_logfile()` ist `NULL`, und im Datenverzeichnis liegt kein
+   *      Logverzeichnis. Das ist der Punkt, an dem der alte Satz der Seite
+   *      falsch war: Er nannte einen fehlenden Zugriff als Grund, und der
+   *      Grund ist, dass es nichts zu lesen gibt.
+   *   5. `adminpack` gibt es auf diesem Server nicht. PostgreSQL 17 hat die
+   *      Erweiterung entfernt, und dieser Stack faehrt 17.
+   */
+  it("(2.109) proves what the server log card claims: this server runs without a collector so no log file exists at all, the runtime role may neither read a server file nor learn where one would lie, adminpack is gone in PostgreSQL 17, and the same pure function the view uses lands on no_file", async () => {
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // --- 1. Die Lesung, wie die Console sie macht -----------------------
+      const service = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: "managed:certification" }) },
+        { resolve: async () => ({
+          pool: projectApi,
+          expectedRole: "qkern_project_api_app",
+          expectedDatabase: new URL(projectApiUrl!).pathname.slice(1),
+          expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const health = await service.inspectDatabaseHealth(
+        { organizationId: organizationA, actorRef: "console@qkern.test" },
+        { projectId: "certification-project", environment: "development" },
+      );
+      expect(health.serverLog.collector).toBe(false);
+      expect(health.serverLog.destination).toBe("stderr");
+      expect(health.serverLog.mayReadFiles).toBe(false);
+      expect(health.serverLog.maySeeLogPath).toBe(false);
+      // Das Urteil faellt dieselbe reine Funktion wie in der Ansicht. Steht
+      // hier eines Tages etwas anderes, dann hat der Stack seine Einstellungen
+      // gewechselt, und die Seite sagt dann etwas anderes als bisher.
+      expect(serverLogVerdict(health.serverLog)).toBe("no_file");
+      expect(SERVER_LOG_VERDICTS[serverLogVerdict(health.serverLog)].label)
+        .toBe(SERVER_LOG_VERDICTS.no_file.label);
+
+      // --- 2. Der Server sagt es selbst ----------------------------------
+      // Dieselbe Rolle, aber jetzt roh: Die zwei erlaubten Einstellungen
+      // kommen an, die drei eingeschraenkten fehlen der Rolle in pg_settings.
+      const visible = await projectApi.query<{ name: string; setting: string }>(
+        `SELECT name, setting FROM pg_catalog.pg_settings
+          WHERE name IN ($1, $2, 'log_directory', 'log_filename', 'data_directory')
+          ORDER BY name`,
+        [SERVER_LOG_FACTS.collectorSetting, SERVER_LOG_FACTS.destinationSetting]);
+      // `ORDER BY name` heisst alphabetisch, und log_destination kommt vor
+       // logging_collector.
+      expect(visible.rows).toEqual([
+        { name: SERVER_LOG_FACTS.destinationSetting, setting: "stderr" },
+        { name: SERVER_LOG_FACTS.collectorSetting, setting: "off" },
+      ]);
+
+      // --- 3. Die Rolle kommt nicht an eine Datei ------------------------
+      await expect(projectApi.query("SELECT pg_read_file('postgresql.conf', 0, 16)"))
+        .rejects.toThrow(/permission denied/u);
+      await expect(projectApi.query("SELECT * FROM pg_ls_logdir()"))
+        .rejects.toThrow(/permission denied/u);
+      await expect(projectApi.query("SHOW log_directory"))
+        .rejects.toThrow(/permission denied/u);
+      // Und sie ist wirklich in keiner der beiden Rollen.
+      const memberships = await projectApi.query<{ files: boolean; settings: boolean }>(
+        `SELECT pg_has_role(current_user, $1, 'MEMBER') AS files,
+                pg_has_role(current_user, $2, 'MEMBER') AS settings`,
+        [SERVER_LOG_FACTS.fileRole, SERVER_LOG_FACTS.settingsRole]);
+      expect(memberships.rows[0]).toEqual({ files: false, settings: false });
+
+      // --- 4. Es gibt keine Datei, auch nicht fuer den Superuser ---------
+      // Der Kern des Befunds. Ein Recht wuerde hier nichts oeffnen, weil
+      // nichts da ist, was es oeffnen koennte.
+      const current = await owner.query<{ logfile: string | null }>(
+        "SELECT pg_current_logfile() AS logfile");
+      expect(current.rows[0]!.logfile).toBeNull();
+      // Und es gibt nicht einmal das Verzeichnis: `pg_ls_logdir()` scheitert
+      // beim Oeffnen, statt eine leere Liste zu geben. Deutlicher kann ein
+      // Server nicht sagen, dass er kein Log als Datei fuehrt.
+      await expect(owner.query("SELECT * FROM pg_ls_logdir()"))
+        .rejects.toThrow(/could not open directory/u);
+
+      // --- 5. adminpack gibt es auf diesem Server nicht ------------------
+      const major = await owner.query<{ major: number }>(
+        "SELECT (current_setting('server_version_num')::int / 10000) AS major");
+      expect(major.rows[0]!.major).toBe(SERVER_LOG_FACTS.removedInMajor);
+      const adminpack = await owner.query<{ total: string }>(
+        "SELECT count(*)::text AS total FROM pg_catalog.pg_available_extensions WHERE name = $1",
+        [SERVER_LOG_FACTS.removedExtension]);
+      expect(Number(adminpack.rows[0]!.total)).toBe(0);
+    } finally {
+      await projectApi.end();
+    }
+  });
+
+  /**
+   * Der Weg, der im eigenen Stack ginge, und die Grenze, die ihn abweist
+   * (2.110).
+   *
+   * Die Karte "Im eigenen Stack" behauptet zwei Dinge, und beide sind
+   * nachpruefbar. Erstens: `file_fdw` gibt es auf diesem Server, also ist der
+   * Weg keine Erfindung. Zweitens: QKERN nimmt ihn nicht, und das ist keine
+   * Absicht, sondern eine Grenze, die bei jeder Verbindung prueft.
+   *
+   * Der zweite Teil ist der eigentliche Fall. Eine Anmeldung bekommt hier
+   * genau das Recht, das die direkte Lesung braeuchte, und
+   * `verifyDatabaseBoundary` weist sie ab. Damit ist belegt, dass das Recht
+   * nicht deshalb fehlt, weil es niemand gewaehrt hat, sondern weil der Code
+   * eine Anmeldung damit nicht annimmt. Dieselbe Anmeldung ohne das Recht
+   * kommt durch, also weist die Grenze nicht einfach alles ab.
+   *
+   * Die Rolle wird am Ende wieder entfernt: Der Fall soll die Datenbank so
+   * hinterlassen, wie er sie vorgefunden hat.
+   */
+  it("(2.110) proves the own-stack finding and its boundary: this server does offer file_fdw, but the collector is off so even a superuser finds no log file to point at, and a login carrying pg_read_server_files is rejected by the role boundary while the same login without it passes", async () => {
+    expect(runtimeUrl, "QKERN_TEST_RUNTIME_DATABASE_URL fehlt").toBeTruthy();
+    const probeRole = `qkern_pglog_probe_${randomUUID().replace(/-/gu, "").slice(0, 16)}`;
+    const probePassword = randomUUID();
+    const probeUrl = new URL(runtimeUrl!);
+    probeUrl.username = probeRole;
+    probeUrl.password = probePassword;
+    let allowed: SqlPool | undefined;
+    let forbidden: SqlPool | undefined;
+    try {
+      // --- 1. Der Weg ist keine Erfindung: file_fdw ist da --------------
+      const wrapper = await owner.query<{ total: string }>(
+        "SELECT count(*)::text AS total FROM pg_catalog.pg_available_extensions WHERE name = 'file_fdw'");
+      expect(Number(wrapper.rows[0]!.total)).toBe(1);
+
+      // --- 2. Und trotzdem gibt es nichts, worauf er zeigen koennte -----
+      // Ohne Sammler schreibt der Server keine Datei, also haette eine
+      // Fremdtabelle hier keinen Namen, auf den sie sich setzen liesse.
+      const settings = await owner.query<{ collector: string; destination: string }>(
+        "SELECT current_setting($1) AS collector, current_setting($2) AS destination",
+        [SERVER_LOG_FACTS.collectorSetting, SERVER_LOG_FACTS.destinationSetting]);
+      expect(settings.rows[0]).toEqual({ collector: "off", destination: "stderr" });
+      const structured = SERVER_LOG_FACTS.structuredDestinations
+        .some((target) => settings.rows[0]!.destination.split(",").includes(target));
+      expect(structured).toBe(false);
+
+      // --- 3. Die Grenze weist das Recht ab -----------------------------
+      await owner.query(`CREATE ROLE ${probeRole} LOGIN PASSWORD '${probePassword}' INHERIT`);
+      await owner.query(`GRANT qkern_runtime TO ${probeRole}`);
+      // Erst ohne das Recht: Die Grenze nimmt diese Anmeldung an. Ohne diese
+      // Haelfte wuerde der Fall auch dann gruen bleiben, wenn die Grenze
+      // schlicht jede fremde Anmeldung abweist.
+      allowed = verifyDatabaseBoundary(createPostgresPool({ connectionString: probeUrl.toString(), max: 1 }), "runtime");
+      const reachable = await allowed.query<{ ok: number }>("SELECT 1::int AS ok");
+      expect(reachable.rows[0]!.ok).toBe(1);
+
+      // Jetzt mit dem Recht, das die direkte Lesung des Serverlogs braeuchte.
+      await owner.query(`GRANT ${SERVER_LOG_FACTS.fileRole} TO ${probeRole}`);
+      forbidden = verifyDatabaseBoundary(createPostgresPool({ connectionString: probeUrl.toString(), max: 1 }), "runtime");
+      await expect(forbidden.query("SELECT 1"))
+        .rejects.toThrow(/least-privilege role boundary/u);
+
+      // --- 4. Das Recht wirkt wirklich, und zwar ueber COPY -------------
+      //
+      // Ohne diesen Teil wuerde der Fall auch dann gruen bleiben, wenn der
+      // GRANT gar nichts oeffnet und die Grenze nur einen leeren Namen
+      // abweist. Er belegt also, dass es ein Recht ist und keine Zierde.
+      //
+      // Gemessen wurde dabei ein Punkt, den man leicht falsch annimmt:
+      // `pg_read_server_files` oeffnet **nicht** `pg_read_file`. Die
+      // Funktion traegt eine eigene ACL, und die steht auf dem Bootstrap-
+      // Superuser allein; ohne einen ausdruecklichen GRANT EXECUTE weist sie
+      // auch ein Mitglied der Rolle ab. Was die Rolle wirklich oeffnet, ist
+      // die Pfadgrenze von `COPY ... FROM '<absoluter Pfad>'`, und genau so
+      // kaeme ein csvlog in eine Tabelle. Beides steht hier, damit die
+      // Annahme nicht ein zweites Mal in den Baum wandert.
+      const raw = createPostgresPool({ connectionString: probeUrl.toString(), max: 1 });
+      try {
+        // Welche Klausel der Grenze abweist, und zwar beide (Befund einer
+        // Mutationsprobe zu 2.110).
+        //
+        // Die Probe nahm `pg_read_server_files` aus der namentlichen Liste in
+        // `pool.ts`, und der Fall blieb gruen. Der Grund: Die Grenze prueft
+        // zwei Dinge. `privileged_member` nennt Rollen beim Namen, und
+        // `unexpected_member` weist jede Mitgliedschaft ab, die nicht die
+        // eigene Boundary-Rolle ist. Fuer diese Anmeldung trifft beides zu,
+        // also haelt die Grenze auch ohne die Liste. Das ist kein Fehler,
+        // sondern zwei Riegel an derselben Tuer; der Fall sagt es jetzt, damit
+        // die naechste Probe nicht dieselbe Runde dreht. Die Liste selbst
+        // haengt am Vertrag `console-server-log-view-contract`, denn bis 2.109
+        // hat sie kein Test gehalten.
+        const clauses = await raw.query<{ privileged: boolean; unexpected: boolean }>(
+          `SELECT EXISTS (
+                     SELECT 1 FROM pg_roles AS privileged
+                     WHERE privileged.rolname = $1
+                       AND pg_has_role(current_user, privileged.oid, 'MEMBER')
+                   ) AS privileged,
+                   EXISTS (
+                     SELECT 1 FROM pg_roles AS inherited
+                     WHERE inherited.rolname NOT IN (current_user, 'qkern_runtime')
+                       AND pg_has_role(current_user, inherited.oid, 'MEMBER')
+                   ) AS unexpected`,
+          [SERVER_LOG_FACTS.fileRole]);
+        expect(clauses.rows[0]).toEqual({ privileged: true, unexpected: true });
+
+        const acl = await owner.query<{ granted: boolean }>(
+          `SELECT bool_or(array_to_string(proc.proacl, ' ') LIKE '%' || $1 || '=%') AS granted
+             FROM pg_catalog.pg_proc AS proc WHERE proc.proname = 'pg_read_file'`,
+          [SERVER_LOG_FACTS.fileRole]);
+        expect(acl.rows[0]!.granted).toBe(false);
+        await expect(raw.query("SELECT pg_read_file('postgresql.conf', 0, 8)"))
+          .rejects.toThrow(/permission denied for function pg_read_file/u);
+
+        // COPY dagegen laesst die Rolle jede Datei lesen, die der Server
+        // erreicht. Die Tabelle gehoert dem Superuser und verschwindet
+        // gleich wieder; der Fall soll nichts hinterlassen.
+        await owner.query(`CREATE TABLE ${probeRole}_lines (line text)`);
+        await owner.query(`GRANT INSERT, SELECT ON ${probeRole}_lines TO ${probeRole}`);
+        await raw.query(`COPY ${probeRole}_lines FROM '/etc/hostname'`);
+        const copied = await owner.query<{ total: string }>(
+          `SELECT count(*)::text AS total FROM ${probeRole}_lines`);
+        expect(Number(copied.rows[0]!.total)).toBeGreaterThan(0);
+      } finally {
+        await raw.end();
+      }
+    } finally {
+      await allowed?.end();
+      await forbidden?.end();
+      if (owner) {
+        // Die Tabelle zuerst: Sie traegt ein Recht der Probierrolle, und
+        // solange es steht, laesst PostgreSQL die Rolle nicht fallen.
+        await owner.query(`DROP TABLE IF EXISTS ${probeRole}_lines`).catch(() => {});
+        await owner.query(`REVOKE ${SERVER_LOG_FACTS.fileRole} FROM ${probeRole}`).catch(() => {});
+        await owner.query(`REVOKE qkern_runtime FROM ${probeRole}`).catch(() => {});
+        await owner.query(`DROP ROLE IF EXISTS ${probeRole}`).catch(() => {});
+      }
+    }
   });
 
 });

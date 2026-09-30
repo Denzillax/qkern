@@ -29,7 +29,7 @@ export type HealthNote = {
  * das, bevor sie eine einzige Zahl zeigt.
  */
 export const NO_SERVER_LOG_NOTE =
-  "Ein Serverlog der Projektdatenbank gibt es hier nicht. QKERN hat keinen Dateizugriff auf den Server, und log_destination schreibt in Dateien des Servers. Was diese Seite zeigt, sind die Statistiksichten der Datenbank.";
+  "Ein Serverlog der Projektdatenbank zeigt diese Seite nicht. Was dieser Server mit seinem Log tut, fragt sie ihn bei jedem Öffnen, und das Urteil dazu steht weiter unten. Was sie an Zahlen zeigt, kommt aus den Statistiksichten der Datenbank.";
 
 /**
  * Der zweite Satz, und ohne ihn wuerde jede Zahl falsch gelesen. Eine
@@ -155,7 +155,7 @@ export function brokenSessions(abandoned: number, fatal: number, killed: number)
 export const MISSING_POSTGRES_LOG: readonly HealthNote[] = [
   {
     title: "Kein Serverlog",
-    body: "Das Log des Postgres-Servers liegt in Dateien neben seinem Datenverzeichnis, und QKERN hat auf dieses Verzeichnis keinen Zugriff. Eine Fläche, die so täte, als läse sie mit, wäre eine Lüge. Wer das Serverlog braucht, holt es dort, wo der Server läuft.",
+    body: "Ob dieser Server sein Log überhaupt in eine Datei schreibt, steht in der Karte zum Serverlog weiter unten, und dort steht auch, welches Recht es bräuchte, um an so eine Datei zu kommen. Eine Fläche, die so täte, als läse sie mit, wäre eine Lüge. Wer das Serverlog braucht, holt es dort, wo der Server läuft.",
   },
   {
     title: "Keine einzelne Verbindung und kein Verbindungsverlauf",
@@ -163,7 +163,7 @@ export const MISSING_POSTGRES_LOG: readonly HealthNote[] = [
   },
   {
     title: "Keine langsamen Statements",
-    body: "Welche Abfrage wie viel Zeit gekostet hat, steht unter Berichte → Abfrage-Leistung, und auch dort ohne ihren Text. Eine Grenze, ab der ein Statement als langsam protokolliert wird, gibt es in QKERN nicht: log_min_duration_statement schriebe wieder in eine Datei des Servers.",
+    body: "Welche Abfrage wie viel Zeit gekostet hat, steht unter Berichte → Abfrage-Leistung, und auch dort ohne ihren Text. Eine Grenze, ab der ein Statement als langsam protokolliert wird, gibt es in QKERN nicht: log_min_duration_statement schriebe die Abfrage dorthin, wohin dieser Server sein Log schreibt, und dorthin kommt keine Abfrage.",
   },
   {
     title: "Keine Fehlermeldung im Wortlaut",

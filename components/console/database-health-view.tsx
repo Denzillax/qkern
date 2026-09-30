@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, FileWarning, HardDrive, RefreshCw, ShieldCheck, Timer } from "lucide-react";
+import { AlertTriangle, Database, FileWarning, HardDrive, KeyRound, RefreshCw, ScrollText, ShieldCheck, Timer, Wrench } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
 import { formatBytes } from "@/components/console/console-format";
@@ -23,13 +23,33 @@ import {
   requestedCheckpointRatio,
   rollbackRatio,
 } from "@/lib/console/database-health-texts";
+import {
+  SERVER_LOG_CONTENT,
+  SERVER_LOG_FACTS,
+  SERVER_LOG_NEXT_STEPS,
+  SERVER_LOG_OWN_STACK,
+  SERVER_LOG_VERDICTS,
+  serverLogVerdict,
+} from "@/lib/console/server-log-texts";
 
 /**
  * Logs → Postgres-Zustand (2.70), nur lesend.
  *
  * Der Platzhalter versprach „das Serverlog der Projektdatenbank: Verbindungen,
- * Fehler, langsame Statements". Dieses Log gibt es nicht, und die Seite sagt
+ * Fehler, langsame Statements". Dieses Log zeigt die Seite nicht, und sie sagt
  * das als Erstes, noch vor der ersten Zahl.
+ *
+ * Seit 2.109 sagt sie ausserdem, warum, und leitet es ab statt es zu
+ * behaupten. Bis dahin stand hier, das Log liege in Dateien neben dem
+ * Datenverzeichnis und QKERN habe darauf keinen Zugriff. Der zweite Teil ist
+ * wahr. Der erste war eine Annahme, und in jedem Stack, den QKERN faehrt, ist
+ * sie falsch: Der Server laeuft ohne Sammler, und dann gibt es die Datei gar
+ * nicht. Die Karte zum Serverlog fragt bei jedem Oeffnen `logging_collector`
+ * und `log_destination` und waehlt daraus ein Urteil aus dem Katalog in
+ * `server-log-texts`. Dazu kommen drei Karten, die nicht an den Daten haengen
+ * und darum auch dann stehen, wenn die Datenbank nicht antwortet: was ein
+ * Serverlog enthielte, welcher Weg im eigenen Stack ginge, und was es
+ * braeuchte.
  *
  * Was sie stattdessen hält, ist der Zustand: die Störungszähler aus
  * `pg_stat_database` und der Schreibweg des Servers aus `pg_stat_checkpointer`
@@ -75,6 +95,12 @@ type Health = {
     checkpointerStatsReset: string | null;
     bgwriterStatsReset: string | null;
   };
+  serverLog: {
+    collector: boolean;
+    destination: string;
+    mayReadFiles: boolean;
+    maySeeLogPath: boolean;
+  };
 };
 
 /** `disabled` heisst: Die Data Plane ist abgeschaltet. Das ist kein Fehler, sondern eine Entscheidung. */
@@ -117,7 +143,8 @@ export function DatabaseHealthView({ projectId, environment, initialState }: { p
     if (controller.signal.aborted) return;
 
     const data = payload.data as Health | undefined;
-    if (status === 200 && data && typeof data.database === "object" && typeof data.writeback === "object") {
+    if (status === 200 && data && typeof data.database === "object" && typeof data.writeback === "object" &&
+        typeof data.serverLog === "object" && data.serverLog !== null) {
       setHealth(data);
       setState("ready");
       return;
@@ -151,6 +178,11 @@ export function DatabaseHealthView({ projectId, environment, initialState }: { p
   const averageTemp = database ? averageTempFileBytes(database.tempFiles, database.tempBytes) : null;
   const requested = writeback ? requestedCheckpointRatio(writeback.checkpointsTimed, writeback.checkpointsRequested) : null;
   const source = writeback ? CHECKPOINT_SOURCE_TEXTS[checkpointSource(writeback.checkpointSource)] : null;
+  // Das Urteil zum Serverlog faellt dieselbe reine Funktion, die der Fall
+  // (2.109) gegen den echten Server fahrt. Die Ansicht formuliert keinen Satz
+  // dazu selbst; sie waehlt den Eintrag aus dem Katalog.
+  const serverLog = health?.serverLog ?? null;
+  const verdict = serverLog ? SERVER_LOG_VERDICTS[serverLogVerdict(serverLog)] : null;
 
   return <div className="module-grid">
     <article className="console-card span-2">
@@ -251,6 +283,46 @@ export function DatabaseHealthView({ projectId, environment, initialState }: { p
         : t("pg_stat_bgwriter wurde nie zurückgesetzt.")}</p>
       {writeback.checkpointerStatsReset && <p className="muted">{t("pg_stat_checkpointer zuletzt zurückgesetzt:")} {formatMoment(writeback.checkpointerStatsReset)}</p>}
     </article>}
+
+    {serverLog && verdict && <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("SERVERLOG")}</span><h3>{t("Was dieser Server mit seinem Log tut")}</h3></div><ScrollText size={18}/></div>
+      <div className="bucket-row">
+        <span className="bucket-icon"><ScrollText size={16}/></span>
+        <div><strong className={verdict.tone}>{t(verdict.label)}</strong><p className="muted">{t(verdict.explains)}</p></div>
+      </div>
+      <div className="log-row log-header"><span>{t("Einstellung")}</span><span>{t("Wert")}</span><span>{t("Was sie sagt")}</span></div>
+      <div className="log-row"><span><code>{SERVER_LOG_FACTS.collectorSetting}</code></span><code>{serverLog.collector ? "on" : "off"}</code><small>{serverLog.collector
+        ? t("Der Sammler läuft, es gibt also eine Logdatei.")
+        : t("Ohne Sammler entsteht keine Logdatei. Die Meldungen gehen auf stderr des Prozesses.")}</small></div>
+      <div className="log-row"><span><code>{SERVER_LOG_FACTS.destinationSetting}</code></span><code>{serverLog.destination}</code><small>{t("Eine Liste von Zielen. Nur csvlog und jsonlog schreiben Spalten, die eine Maschine sicher trennt.")}</small></div>
+      <div className="log-row"><span><code>{SERVER_LOG_FACTS.fileRole}</code></span><code className={serverLog.mayReadFiles ? "risk medium" : undefined}>{serverLog.mayReadFiles ? t("Mitglied") : t("kein Mitglied")}</code><small>{t("Das Recht, eine Datei des Servers zu lesen. Die Rollengrenze weist jede Anmeldung ab, die es hat, und prüft das bei jeder Verbindung neu.")}</small></div>
+      <div className="log-row"><span><code>{SERVER_LOG_FACTS.settingsRole}</code></span><code className={serverLog.maySeeLogPath ? "risk medium" : undefined}>{serverLog.maySeeLogPath ? t("Mitglied") : t("kein Mitglied")}</code><small>{t("Ohne dieses Recht bleiben log_directory, log_filename und data_directory unsichtbar. Diese Seite weiss darum nie, wie die Datei heisst.")}</small></div>
+      <p className="muted">{t("Die Erweiterung adminpack brachte einmal Funktionen mit, die Dateien des Servers lasen. Sie verlangte trotzdem Superuser, und PostgreSQL 17 hat sie aus dem Baum entfernt. Dieser Stack fährt 17.")}</p>
+    </article>}
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("WAS EIN SERVERLOG ENTHIELTE")}</span><h3>{t("Jede Zeile, und was QKERN an ihrer Stelle hat")}</h3></div><ScrollText size={18}/></div>
+      {SERVER_LOG_CONTENT.map((entry) => <div className="bucket-row" key={entry.title}>
+        <span className="bucket-icon"><ScrollText size={16}/></span>
+        <div><strong>{t(entry.title)}</strong><p className="muted">{t(entry.body)}</p></div>
+      </div>)}
+    </article>
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("IM EIGENEN STACK")}</span><h3>{t("Ein Weg, der geht, und warum QKERN ihn nicht nimmt")}</h3></div><KeyRound size={18}/></div>
+      {SERVER_LOG_OWN_STACK.map((entry) => <div className="bucket-row" key={entry.title}>
+        <span className="bucket-icon"><KeyRound size={16}/></span>
+        <div><strong>{t(entry.title)}</strong><p className="muted">{t(entry.body)}</p></div>
+      </div>)}
+    </article>
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("WAS ES BRÄUCHTE")}</span><h3>{t("Der nächste Schritt, und die drei danach")}</h3></div><Wrench size={18}/></div>
+      {SERVER_LOG_NEXT_STEPS.map((entry) => <div className="bucket-row" key={entry.title}>
+        <span className="bucket-icon"><Wrench size={16}/></span>
+        <div><strong>{t(entry.title)}</strong><p className="muted">{t(entry.body)}</p></div>
+      </div>)}
+    </article>
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("NICHT VORHANDEN")}</span><h3>{t("Was diese Seite nicht zeigt, und warum nicht")}</h3></div></div>

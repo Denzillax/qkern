@@ -3855,8 +3855,9 @@ und die Antwort der Route tut es auch:
 - **Nutzung je Zeitfenster**: aggregierte Eimer, keine Ereignisse. Ein Eimer hat
   keinen Zeitpunkt, an dem etwas passiert wäre.
 - **Cron-Vorkommen**: kein gespeichertes Log, sondern je Anfrage rekonstruiert.
-- **Postgres-Serverlog**: liegt in Dateien neben dem Datenverzeichnis, auf die
-  QKERN keinen Zugriff hat.
+- **Postgres-Serverlog**: Der Server dieses Stacks läuft ohne Sammler und
+  schreibt seine Meldungen auf stderr seines Prozesses, wo keine Abfrage
+  hinkommt (siehe „Postgres: kein Serverlog, sondern der Zustand“).
 - **Pooler- und API-Gateway-Log**: gibt es nicht, weil es weder einen Pooler
   noch einen protokollierenden Rand gibt (siehe „Drei Logs, die es nicht
   gibt“).
@@ -4100,10 +4101,78 @@ Platzhalter versprach „das Serverlog der Projektdatenbank: Verbindungen,
 Fehler, langsame Statements“, und die Seite sagt als Erstes, dass es dieses
 Log hier nicht gibt.
 
-**Das Serverlog liegt in Dateien neben dem Datenverzeichnis des Servers.**
-QKERN hat auf dieses Verzeichnis keinen Zugriff, und `log_destination` schreibt
-weiter dorthin. Eine Konsolenfläche, die so täte, als läse sie mit, wäre eine
-Lüge. Wer das Serverlog braucht, holt es dort, wo der Server läuft.
+**Bis `2.108` stand hier, das Serverlog liege in Dateien neben dem
+Datenverzeichnis und QKERN habe darauf keinen Zugriff.** Der zweite Teil ist
+wahr. Der erste war eine Annahme, die niemand am Server nachgesehen hatte, und
+sie ist falsch: Der Postgres dieses Stacks läuft mit
+`logging_collector = off`, und dann entsteht diese Datei überhaupt nicht. Der
+Server schreibt seine Meldungen auf stderr seines Prozesses, und dort holt sie
+ab, wer den Prozess gestartet hat. An stderr kommt keine Abfrage heran, mit
+keinem Recht und mit keiner Erweiterung. Eine Konsolenfläche, die so täte, als
+läse sie mit, wäre eine Lüge. Wer das Serverlog braucht, holt es dort, wo der
+Server läuft.
+
+**Seit `2.109` behauptet die Seite das nicht mehr, sondern leitet es ab.** Die
+Route liefert unter `serverLog` vier Angaben: `logging_collector`,
+`log_destination` im Wortlaut, und ob diese Rolle Mitglied von
+`pg_read_server_files` beziehungsweise `pg_read_all_settings` ist. Aus diesen
+vier Angaben fällt `serverLogVerdict` ein Urteil aus einem Katalog von vier
+Einträgen, und die Karte zeigt dessen Text. Eine Logzeile, einen Pfad und einen
+Dateinamen trägt das Feld nicht: `log_directory`, `log_filename` und
+`data_directory` verlangen `pg_read_all_settings`, und die Rollengrenze in
+`pool.ts` verbietet jeder Anmeldung die Mitgliedschaft darin. Die Seite weiss
+darum, **ob** es eine Datei gibt, und nie, wie sie heisst.
+
+| Urteil | Wann | Was es sagt |
+| --- | --- | --- |
+| `no_file` | Sammler aus | Keine Datei, nirgends. Das ist der Stand jedes QKERN-Stacks. |
+| `free_text_out_of_reach` | Sammler an, Ziel ohne `csvlog`/`jsonlog` | Eine Datei aus freiem Text, und die Rolle kommt nicht an sie heran. |
+| `structured_out_of_reach` | Sammler an, Ziel mit Spalten, kein Recht | Eine Datei, die sich als Tabelle lesen liesse, und niemand darf es. |
+| `reachable` | Sammler an, Ziel mit Spalten, Recht vorhanden | Kommt in QKERN nicht vor; die Rollengrenze weist so eine Anmeldung ab. |
+
+**Der Weg, der im eigenen Stack ginge.** Gemessen gegen `postgres:17-alpine`:
+Mit `logging_collector = on` und `log_destination = csvlog` schreibt der Server
+eine Datei mit Spalten. Ein Superuser legt darüber einmalig `file_fdw`, einen
+Server und eine Fremdtabelle an, und danach liest eine gewöhnliche Rolle diese
+Tabelle mit einem blossen `SELECT`-Recht, **ohne** Mitglied von
+`pg_read_server_files` zu sein. Die Prüfung von `file_fdw` fällt beim Anlegen
+und nicht beim Lesen. QKERN nimmt diesen Weg trotzdem nicht: Der Dateiname
+steht in `log_filename` und wechselt mit jeder Rotation, und die Datei gilt für
+den ganzen Cluster. Eine Sicht, die auf `current_database()` filtert, hält die
+Mandanten sauber und lässt dabei jede Zeile des Postmasters weg, also gerade
+die, um die es geht. Bei einem gehosteten Anbieter ginge der Weg gar nicht:
+kein Superuser, also kein `file_fdw`, und `log_destination` lässt sich nicht
+setzen.
+
+**Welches Recht es genau bräuchte.** Gemessen, nicht angenommen:
+`pg_read_server_files` öffnet **nicht** `pg_read_file`. Diese Funktion trägt
+eine eigene ACL, und die steht auf dem Bootstrap-Superuser allein; ohne einen
+ausdrücklichen `GRANT EXECUTE` weist sie auch ein Mitglied der Rolle ab. Was
+die Rolle wirklich öffnet, ist die Pfadgrenze von
+`COPY ... FROM '<absoluter Pfad>'`, und genau so käme ein csvlog in eine
+Tabelle. Das ist das Recht, das die Rollengrenze in `pool.ts` namentlich
+verbietet, und `(2.110)` belegt beide Hälften: dass `pg_read_file` auch mit der
+Rolle abweist, und dass `COPY FROM` mit ihr eine Datei des Servers liest.
+
+**`adminpack` gibt es nicht mehr.** Die Erweiterung brachte `pg_file_read` und
+`pg_file_write` mit, verlangte trotzdem Superuser, und PostgreSQL 17 hat sie
+aus dem Baum entfernt. Dieser Stack fährt 17.
+
+**Was der nächste Schritt wäre.** Nicht die Datei lesen, sondern ein Sammler
+neben dem Server. Supabase macht es so: Ein Sammler liest stdout und stderr der
+Container über den Docker-Socket und schickt die Zeilen an einen Dienst, der
+sie in Tabellen legt. Dieser Weg braucht kein Datenbankrecht und funktioniert
+auch bei einem gehosteten Anbieter, weil er den Server nicht fragt. Danach käme
+eine fünfte Quelle im Log-Explorer, eine Aufbewahrung, die wirklich löscht, und
+die Frage, wem eine Zeile gehört, die keinen Datenbanknamen trägt. QKERN hat
+diesen Sammler nicht.
+
+Zertifiziert ist der Befund in `(2.109)` und `(2.110)`: dass der Sammler
+wirklich aus ist und auch der Superuser keine Logdatei findet, dass die
+Laufzeitrolle `pg_read_file`, `pg_ls_logdir` und `SHOW log_directory` wirklich
+nicht darf, dass `adminpack` auf diesem Server wirklich fehlt, und dass die
+Rollengrenze eine Anmeldung mit `pg_read_server_files` wirklich abweist,
+während dieselbe Anmeldung ohne das Recht durchkommt.
 
 Was die Seite stattdessen hält, ist der **Zustand**, gelesen über
 `GET .../database/health` und damit über dieselbe Tür wie `/database/activity`
@@ -4863,8 +4932,8 @@ Aufruf läuft, existiert der Container unter einem Namen, der mit `qkern-fn-`
 beginnt; dauerhaft hinausschreiben kann nur ein Log-Treiber des
 Docker-Dämons, der vor dem Lauf eingerichtet ist. Für Anfragen am Rand: ein
 Reverse Proxy vor Node, der ein Zugriffsprotokoll führt. Für Verbindungen:
-`log_connections` und `log_disconnections` im Serverlog, das neben dem
-Datenverzeichnis liegt und auf das QKERN keinen Zugriff hat. Und ein
+`log_connections` und `log_disconnections`; die Zeilen gehen dorthin, wohin der
+Server sein Log schreibt, im Stack also auf stderr seines Prozesses. Und ein
 Log-Drain aus `2.54.0` trägt nach draussen, was es gibt: `function_invocations`
 für die Aufrufzeile, `usage_series` für abgeschlossene Stunden des Zählers,
 `auth_audit` für das Auth-Protokoll. Eine Quelle für die Ausgabe des
