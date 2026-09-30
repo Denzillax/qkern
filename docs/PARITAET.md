@@ -24,7 +24,7 @@ statt Tiefe.
 | Fähigkeit | Supabase | QKERN heute | Was fehlt |
 | --- | --- | --- | --- |
 | Postgres-Datenbank je Projekt | ja | Provisioning-Kette bis zur Bindung zertifiziert (`1.62.0`); Migrationen in echte Projektdatenbank (`1.49.0`); Einstellungen, Rollen und TLS-Zustand lesbar (`2.53.0`); Replikation mit Publikationen, Abonnements und Slot-Rückstand lesbar (`2.58.0`); drei feste Umgebungen mit echten Zahlen (`2.60.0`) | ein Broker, der wirklich Datenbanken einrichtet (die Provisioniererrolle hat `NOCREATEDB`, im Produktquelltext steht kein `CREATE DATABASE`); freie Zweige; Wiederherstellung in ein neues Projekt (drei von vier Gliedern fehlen, `2.62.0`) |
-| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social, Passkeys, Hooks | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE gegen zwei getrennte Gegenstellen, JWKS; Sitzungen sehen und beenden (`2.34.0`); Audit-Kette in Zeitreihenfolge (`2.35.0`, `2.36.0`); MFA-Erzwingung mit Einrichtungsschein (`2.50.0`); Rate Limits in der Datenbank (`2.52.0`); Leckliste lokal (`2.53.0`); Auth-Hooks, die geschlossen fallen (`2.59.0`); Passkeys mit WebAuthn ohne fremde Bibliothek (`2.60.0`); fremde Aussteller an der Data API (`2.60.0`); eigener OAuth-Server mit PKCE (`2.61.0`) und Zustimmung als Zeile (`2.64.0`); Zustimmungen nach Nutzer geordnet mit Widerruf je Token (`2.65.0`); Aufräumer für abgelaufene Artefakte (`2.63.0`) | SAML, SMS, kommerzielle Provider mit echten Konten; eine Seite, auf der ein Nutzer seine **eigenen** Erlaubnisse sieht |
+| Auth | E-Mail, Magic Link, MFA, OAuth/OIDC, SAML, SMS, Social, Passkeys, Hooks | E-Mail/Passwort, Magic Link, Reset, TOTP/Recovery-MFA, OIDC/PKCE gegen zwei getrennte Gegenstellen, JWKS; SAML 2.0 Web Browser SSO, SP-initiiert, mit XML-Signaturprüfung ohne fremde Bibliothek (`2.99`); Sitzungen sehen und beenden (`2.34.0`); Audit-Kette in Zeitreihenfolge (`2.35.0`, `2.36.0`); MFA-Erzwingung mit Einrichtungsschein (`2.50.0`); Rate Limits in der Datenbank (`2.52.0`); Leckliste lokal (`2.53.0`); Auth-Hooks, die geschlossen fallen (`2.59.0`); Passkeys mit WebAuthn ohne fremde Bibliothek (`2.60.0`); fremde Aussteller an der Data API (`2.60.0`); eigener OAuth-Server mit PKCE (`2.61.0`) und Zustimmung als Zeile (`2.64.0`); Zustimmungen nach Nutzer geordnet mit Widerruf je Token (`2.65.0`); Aufräumer für abgelaufene Artefakte (`2.63.0`) | SMS, kommerzielle Provider mit echten Konten; SAML gegen ein fremdes Produkt wie SimpleSAMLphp oder Keycloak, signierte `AuthnRequest`, Single Logout, verschlüsselte Assertions; eine Seite, auf der ein Nutzer seine **eigenen** Erlaubnisse sieht |
 | Data API | REST/PostgREST: CRUD, RPC, Views, Aggregate, eingebettete Joins; GraphQL | CRUD mit Live-Schema, RLS, Filtern, Cursor-Pagination, OpenAPI; `security_invoker`-Views (`1.71.0`), RPC (`1.72.0`), Aggregate unter RLS (`1.86.0`); der ganze Katalog lesbar: Trigger, Funktionen, Indizes, Policies, Enums, Erweiterungen, Rollen, Publikationen, Spaltenrechte (`2.9.0` bis `2.20.0`); Namen mit Grossbuchstaben (`2.26.0`, `2.33.0`); GraphQL lesend mit harten Grenzen, ohne fremde Bibliothek (`2.61.0`); ein OpenAPI-Vertrag über Pfade und Verben in beide Richtungen (`2.59.0`); eingebettete Joins über Fremdschlüssel, eine Ebene tief, unter der RLS beider Tabellen (`2.66.0`); GraphQL schreibend über denselben Schreibweg wie REST, alle Mutationen einer Anfrage in einer Transaktion, Ändern und Löschen nur mit Bedingung (`2.67.0`) | Joins tiefer als eine Ebene und über Schemagrenzen; GraphQL-Upsert und Beziehungen in Mutationen |
 | Storage | Buckets, signierte URLs, Multipart/Resumable, Transforms, CDN, S3-Protokoll, Analytics- und Vektor-Buckets | Buckets, Policies, Quota, signierte Grants, Virenprüfung, Lifecycle gegen versitygw/ClamAV; Multipart/Resumable (`1.70.0`); Regeln und Grenzen je Bucket (`2.27.0`); Scanner-Log (`2.49.0`); S3-Schlüsselpaare, genau einmal gezeigt und widerrufbar (`2.59.0`); S3-Endpunkt `/s3` mit SigV4 für ListBuckets, ListObjectsV2, Head/Get/Put/DeleteObject durch denselben Dienst (`2.66.0`); Presigned URLs, aws-chunked, Range, CopyObject, DeleteObjects (`2.67.0`) | Bildtransformation, CDN; am S3-Endpunkt fehlen Multipart und ListObjects v1, mit 501 benannt (Presigned URLs, Range, CopyObject, DeleteObjects und aws-chunked seit `2.67.0`); kein Vektortyp im Stack-Image, die Seite dazu sagt es aus dem Katalog (`2.65.0`); Analytics-Buckets (Iceberg): kein Katalog, keine Engine, die Seite sagt es (`2.67.0`), kein Platzhalter mehr in der Console |
 | Realtime | Broadcast, Presence, CDC, produktiv, skaliert | Broadcast, Presence, CDC, Ordering, Replay, zertifiziert mit zwei Instanzen; Tor mit benannten Bedingungen statt Production-Verbot (`1.73.0`); Grenzen und Rechtematrix in der Console (`2.47.0`); Berichte und Log (`2.49.0`, `2.62.0`); Production-Start gegen TLS-PostgreSQL belegt, Verbindung als `verify-full` im Server nachgelesen, jede Bedingung des Tors einzeln fallend (Stack `qkern-slice-rt`) | Postgres Changes laufen unter `production` nicht: Der Prozess baut seinen Projektdatenbank-Katalog nur lokal auf und verlangt dort einen eingespeisten, vault-gestützten; persistente Presence und History; Lastprofil jenseits Soak; das Log kennt nur Broadcasts, nicht die zugestellten Änderungen |
@@ -66,7 +66,17 @@ Was auf dieser Maschine noch geht, in dieser Reihenfolge:
    wie die Vektoren: kein Katalog, keine Engine, Multipart am S3-Endpunkt
    fehlt; das Urteil über den Server kommt aus dem Katalog. Kein Platzhalter
    mehr in der Console.
-8. **Auth: SAML.** SMS braucht einen echten Anbieter und liegt dahinter.
+8. ~~Auth: SAML~~ **erledigt in `2.67.0`**: Web Browser SSO, SP-initiiert,
+   Antwort über HTTP-POST, XML-Signatur über der Assertion mit `node:crypto`
+   und exklusiver Kanonisierung, ohne fremde SAML-Bibliothek. Die Formen, die
+   der Leser prüft und die er ablehnt, stehen im Handbuch; eine Assertion,
+   deren Form er nicht prüfen kann, wird abgelehnt. Die Gegenstelle des
+   Nachweises unterschreibt mit `node:crypto` und ist **kein fremdes
+   Produkt** — Interoperabilität mit SimpleSAMLphp, Keycloak oder Shibboleth
+   ist damit nicht belegt und bleibt auf der Liste unten. SMS braucht einen
+   echten Anbieter und liegt dahinter.
+
+Damit ist diese Liste leer: Was auf dieser Maschine ging, ist abgebaut.
 
 Was Infrastruktur ausserhalb dieser Maschine braucht, und an dem der
 Abbau hier endet:
@@ -76,6 +86,8 @@ Abbau hier endet:
 - ein Backup einer Projektdatenbank und ein Restore-Drill dagegen;
 - Registry-Publishing des SDK;
 - kommerzielle Auth-Provider mit echten Konten;
+- ein fremder SAML-Anbieter als Gegenstelle (SimpleSAMLphp, Keycloak,
+  Shibboleth) und damit Interoperabilität statt nur Prüfung;
 - CDN und Bildtransformation;
 - Zahlungsanbindung.
 

@@ -1707,6 +1707,239 @@ und das Verfahren sind nach dem Anlegen fest; ein Passkey, dessen Schlüssel sic
 ändern lässt, ist kein Passkey. `DELETE` ist der Unterschied zu den übrigen
 `project_auth_*`-Tabellen und steht hier, weil „entfernt" bei einem verlorenen
 Gerät weg heissen muss.
+### Anmeldung mit SAML 2.0
+
+Seit `2.67.0` gibt es neben OIDC einen zweiten Weg zu einem fremden
+Identitätsanbieter: **SAML 2.0, Web Browser SSO Profile, SP-initiiert**. Die
+Anfrage geht mit dem HTTP-Redirect-Binding zum Anbieter, die Antwort kommt mit
+dem **HTTP-POST-Binding** an den Assertion Consumer Service zurück.
+
+Gebaut ist das ohne fremde SAML-Bibliothek, wie GraphQL, WebAuthn und SigV4
+vorher. `lib/server/project-auth/saml-xml.ts` ist ein XML-Leser mit exklusiver
+Kanonisierung, `lib/server/project-auth/saml.ts` ist die Prüfung. Der Grund ist
+derselbe wie bei den Passkeys, aber er ist hier schärfer: Die bekannten Lücken in
+SAML-Umsetzungen sitzen zwischen Parser und Prüfung. Eine Bibliothek prüft eine
+Signatur und lässt die Anwendung danach ein anderes Element lesen. Diese beiden
+Dateien lösen beides an einer Stelle, und die Ansprüche kommen aus dem Element,
+das die Signatur wirklich gedeckt hat.
+
+#### Welche XML-Formen geprüft werden, und welche abgelehnt
+
+Das ist die wichtigste Liste dieses Abschnitts, weil eine Assertion, deren Form
+QKERN nicht prüfen kann, **abgelehnt** wird. Sie wird nicht bestmöglich gelesen.
+
+Angenommen werden:
+
+- eine optionale XML-Deklaration am Anfang,
+- Elemente, Attribute, Namensraumdeklarationen und Textinhalt,
+- die fünf vordefinierten Entities (`&lt; &gt; &amp; &quot; &apos;`) und
+  numerische Zeichenverweise,
+- der implizit deklarierte Präfix `xml`,
+- Dokumente bis 1 MiB und bis 100 Ebenen tief.
+
+Abgelehnt werden, jedes mit eigenem Grund im Audit:
+
+- **Kommentare.** Ein Kommentar mitten in einem Namen ist der klassische Weg,
+  zwei Leser dasselbe Dokument verschieden lesen zu lassen.
+- **`<!DOCTYPE …>` und jede Entity-Deklaration.** Damit fallen XXE, Billion
+  Laughs und benannte Entities in einem Satz weg.
+- **CDATA-Abschnitte.** Zwei Schreibweisen für denselben Text sind zwei
+  Lesungen.
+- **Verarbeitungsanweisungen** ausser der XML-Deklaration.
+- **Benannte Entities** ausser den fünf vordefinierten.
+- **Zwei Elemente mit demselben `ID`-Wert.** Daran hängt die Abwehr von XML
+  Signature Wrapping: Wer eine zweite Assertion mit derselben `ID` daneben legt,
+  bekommt keine Entscheidung darüber, welche von beiden die Referenz meint.
+- **Undeklarierte Präfixe** in Element- oder Attributnamen.
+- **Zwei Attribute mit gleichem Namensraum und gleichem lokalen Namen.**
+
+Bei den Algorithmen gilt dasselbe. Zugelassen ist genau:
+
+- Kanonisierung `http://www.w3.org/2001/10/xml-exc-c14n#`, exklusiv, ohne
+  Kommentare, mit `InclusiveNamespaces PrefixList`;
+- Transformationen genau zwei, in dieser Reihenfolge: `enveloped-signature`,
+  dann `xml-exc-c14n#`;
+- Digest `xmlenc#sha256`;
+- Signatur `xmldsig-more#rsa-sha256` und `xmldsig-more#ecdsa-sha256`;
+- genau eine Referenz, als `#<ID>` auf ein Element desselben Dokuments.
+
+Abgelehnt werden damit die Kanonisierung 1.0 und 1.1, jede Variante mit
+Kommentaren, jede XPath-Transformation, SHA-1 in jeder Rolle und jede
+`EncryptedAssertion`, `EncryptedID` und `EncryptedAttribute`. Für verschlüsselte
+Assertions gibt es in QKERN keinen Entschlüsselungsweg, und eine Antwort, die
+QKERN nicht lesen kann, gilt nicht als geprüft.
+
+#### Was die Prüfung in welcher Reihenfolge ansieht
+
+Die Reihenfolge ist Teil der Zusage. Zuerst die Form, dann die Eindeutigkeit der
+Assertion, dann die Signatur, und erst danach alles, was in der Assertion steht.
+So wird kein Wert aus einer Assertion gelesen, deren Signatur noch nicht geprüft
+ist, und kein Ablehnungsgrund verrät etwas über einen Inhalt, den niemand
+unterschrieben hat.
+
+1. Das Dokument enthält **genau eine** Assertion, irgendwo, und sie ist ein
+   direktes Kind der Response. Eine zweite Assertion macht die ganze Antwort
+   ungültig.
+2. `Destination` der Response ist die eigene Consumer-Adresse, buchstabengleich.
+3. `InResponseTo` der Response ist die Kennung der eigenen Anfrage.
+4. `Status` ist `Success`.
+5. Eine Signatur über der **Antworthülle** ist erlaubt und wird geprüft, ersetzt
+   aber die Signatur über der Assertion nicht. Wer nur die Hülle unterschreibt,
+   hat die Assertion nicht gedeckt, und die Antwort fällt.
+6. Über der Assertion steht genau eine `ds:Signature`, sie referenziert die `ID`
+   dieser Assertion, und diese `ID` löst im Dokument auf dieses Element auf.
+   Geprüft wird gegen das **hinterlegte** Zertifikat. Ein `X509Certificate` im
+   `KeyInfo` darf dasselbe Zertifikat wiederholen; ein anderes dort ist eine
+   Ablehnung mit dem Grund `certificate_mismatch`.
+7. `Issuer` der Assertion ist die hinterlegte `entityID`.
+8. Die `SubjectConfirmationData` mit Methode `bearer` nennt `Recipient` gleich
+   der eigenen Consumer-Adresse, `InResponseTo` gleich der eigenen Anfrage, und
+   ihr `NotOnOrAfter` liegt in der Zukunft.
+9. `Conditions` hat `NotBefore` und `NotOnOrAfter`, das Fenster ist offen und
+   nicht breiter als 24 Stunden.
+10. Eine `AudienceRestriction` nennt die `entityID` dieser Projektumgebung.
+11. Genau ein `AuthnStatement` mit `AuthnInstant`.
+12. Das Attribut `email` trägt die Adresse. Fehlt es und ist das `NameID`-Format
+    `emailAddress`, gilt der `NameID`.
+13. `email_verified` gilt nach derselben Regel wie bei OIDC seit `1.85.0`: Ein
+    ausdrückliches `false` ist immer eine Ablehnung, ein fehlendes Attribut nur
+    dann keine, wenn der Anbieter mit `emailVerification: "trusted"` hinterlegt
+    ist.
+14. Die `ID` der Assertion darf hier noch nie eine Sitzung erzeugt haben.
+
+Die Uhrabweichung, die dabei geduldet wird, beträgt 60 Sekunden in beide
+Richtungen. Diese Zahl steht im Code und nicht in einer Umgebungsvariablen: Wer
+sein Zeitfenster aufzieht, um einen Anbieter mit falscher Uhr zum Laufen zu
+bringen, zieht die Gültigkeitsdauer jeder Assertion mit auf.
+
+Nach aussen antwortet der Assertion Consumer Service auf jede dieser Ablehnungen
+mit `401` und demselben Rumpf. Der Grund steht im Audit als
+`project_auth.login.failed` mit `method: saml`, dem Slug des Anbieters und dem
+Grund. Wer eine Antwort baut, soll nicht erfahren, an welcher Prüfung sie
+gescheitert ist.
+
+#### Der Riegel gegen Wiedereinreichung, und warum die Anfrage offen bleibt
+
+Die benutzte Assertion-`ID` liegt in `project_auth_saml_assertions`, je Umgebung
+und Anbieter eindeutig. Der Anbieter steht mit im Schlüssel, weil eine `ID` eine
+Zusage des Anbieters ist: Zwei Anbieter dürfen dieselbe `ID` vergeben, und keiner
+soll den anderen aussperren können. Entschieden wird an der eindeutigen Bedingung
+in der Datenbank. Zwei Einreichungen, die gleichzeitig ankommen, bekommen so
+genau einmal eine Zeile.
+
+Die offene `AuthnRequest` liegt als Einmal-Token mit dem Zweck `saml_request` und
+gilt zehn Minuten. **Verbraucht wird sie nicht**, und das ist der Unterschied zum
+OIDC-Zustand daneben. Würde sie beim ersten Einreichen verbraucht, wiese die
+zweite Einreichung derselben Assertion mit „Zustand unbekannt" ab, und der Riegel
+wäre nie das, was entscheidet. Ein Riegel, den nie etwas erreicht, ist kein
+Riegel.
+
+In der Zeile steht neben dem Slug des Anbieters nur ein verschlüsselter Block mit
+Consumer-Adresse, eigener `entityID` und Rücksprungziel. Der `RelayState`, den
+der Browser beim Anbieter vorbeiträgt, ist die Kennung der Anfrage und nichts
+weiter: Was dort steht, sieht der Anbieter.
+
+#### Wie ein Anbieter hinterlegt wird
+
+Über `QKERN_PROJECT_AUTH_SAML_PROVIDERS_JSON`, eine Liste mit höchstens zehn
+Einträgen, genau wie beim OIDC-Katalog. Ein Eintrag trägt `id` (Slug),
+`entityId`, `singleSignOnUrl` (exaktes HTTPS, kein `localhost`, keine
+IP-Adresse), `certificate` (PEM) und optional `emailVerification`,
+`emailAttribute` und `emailVerifiedAttribute`. Ein Anbieter wird in der
+Konfiguration des Auth-Dienstes hinterlegt und nicht in der Console; die Console
+zeigt ihn.
+
+Die `entityID`, unter der QKERN beim Anbieter auftritt, ist
+`{Basis}/api/v1/projects/{projectId}/environments/{environment}/auth/saml`. Sie
+gilt je Projektumgebung und nicht je Anbieter, und sie muss in jeder
+`AudienceRestriction` stehen. Die Consumer-Adresse ist dieselbe Adresse mit
+`/{provider}/acs` dahinter.
+
+#### Die Routen
+
+- `POST …/auth/saml/{provider}/authorize` — Projekt-Key, Origin-Gate, CORS,
+  no-store, wie `oidc/{provider}/authorize` daneben. Zurück kommt die Adresse
+  beim Anbieter und die Kennung der Anfrage. QKERN leitet nicht selbst um: Eine
+  Antwort mit `302` nähme der Anwendung die Entscheidung ab, ob sie umleiten
+  will.
+- `POST …/auth/saml/{provider}/acs` — **kein Origin-Gate und kein Projekt-Key.**
+  Diese Tür ruft ein Formular auf, das der Anbieter in den Browser gelegt hat.
+  Der Browser schickt sie als Cross-Site-POST; ein Projekt-Key steht nicht darin
+  und ein erlaubter `Origin` auch nicht. Die Grenze ist dieselbe wie beim
+  OIDC-Callback: Die Umgebung kommt aus dem Pfad und aus der offenen Anfrage,
+  überzeugen muss die Antwort selbst. Genau deshalb steht in `saml.ts` jede
+  Prüfung, die dort steht. Die Antwort ist JSON. Eine Weiterleitung mit Tokens in
+  der Adresse hätte die Sitzung in eine URL geschrieben, und eine URL steht in
+  jedem Protokoll.
+- `GET …/auth/saml/providers` — die öffentliche Liste vor der Anmeldung, verengt
+  auf Slug und `entityID`. Nie das Zertifikat, nie der SSO-Endpunkt.
+- `GET …/auth/admin/saml` — dieselbe Liste hinter der Admin-Grenze, mit
+  `requiresVerifiedEmail` als drittem Feld. Eine eigene Tür und kein zweites Feld
+  in `admin/providers`: Diese Antwort ist eine Liste von OIDC-Anbietern, und wer
+  eine Liste zu einem Objekt mit zwei Listen umbaut, ändert die Form einer
+  Antwort, die es schon gibt.
+
+**Derselbe Weg zur Sitzung.** Eine SAML-Anmeldung endet in derselben Stelle wie
+Passwort, Magic Link, Passkey und OIDC. Sie bleibt `aal1`, ein bestätigter
+zweiter Faktor führt weiterhin zur Challenge, die MFA-Erzwingung greift, der
+Hook `saml` wird gerufen, und das Rücksprungziel geht durch dieselbe Prüfung wie
+die der anderen vier Wege. Wer die Rücksprungziele einer Umgebung nach `2.51.0`
+verengt, verengt damit auch den SAML-Weg.
+
+**Wie die Identität verknüpft wird.** Die Identität liegt in
+`project_auth_oidc_identities` unter dem Anbieternamen `saml:<slug>`. Der Präfix
+hat einen Grund: Ohne ihn könnten ein OIDC-Anbieter und ein SAML-Anbieter mit
+demselben Slug sich gegenseitig die Subjects überschreiben, und ein Subject ist
+die Zusage **eines** Ausstellers. Die Verknüpfung zweier Anbieter läuft weiter
+über die bestätigte Adresse, genau wie zwischen zwei OIDC-Anbietern.
+
+**Migration.** `db/migrations/0070_project_auth_saml.sql`. In
+`project_auth_saml_assertions` steht die `ID`, der Slug, der Zeitpunkt der
+Benutzung und das `NotOnOrAfter`. Kein XML, keine Adresse, kein Subject, keine
+Signatur, kein Zertifikat. Wer diese Tabelle liest, erfährt, wie oft sich in
+einer Umgebung jemand über welchen Anbieter angemeldet hat. Das hinterlegte
+Zertifikat steht in der Konfiguration und nicht in der Datenbank, dieselbe Grenze
+wie beim OIDC-Katalog. Die Laufzeitrolle darf `SELECT`, `INSERT` und `DELETE`;
+kein `UPDATE`, weil sich an einer gemerkten Assertion nur der Riegel selbst
+ändern liesse.
+
+#### Was der Nachweis belegt und was nicht
+
+Der Auth-Zertifizierungslauf fährt drei SAML-Fälle über die echte
+Assertion-Consumer-Route: eine gelungene Anmeldung bis zur Sitzung, vierzehn
+Fälschungen, die einzeln fallen, und dieselbe Assertion zum zweiten Mal. Der
+Postgres-Lauf hat dazu den Fall `(2.99)` gegen die echte Datenbank.
+
+Die Gegenstelle ist `tests/support/saml-idp.ts`: ein eigenes RSA-Schlüsselpaar,
+ein selbst aus DER gebautes X.509-Zertifikat, eine echte XML-Signatur nach
+`rsa-sha256` über der exklusiv kanonisierten Assertion. Kryptografisch ist das
+eine echte Gegenstelle, und QKERN bekommt davon nur das Zertifikat und den
+base64-Text.
+
+**Es hat aber kein fremdes Produkt mitgespielt.** Kein SimpleSAMLphp, kein
+Keycloak, kein Shibboleth. Belegt ist damit die Prüfung, nicht die
+Interoperabilität mit einer Umsetzung, die jemand anders geschrieben hat. Das
+steht auch in `docs/PARITAET.md` auf der Liste dessen, was Infrastruktur
+ausserhalb dieser Maschine braucht.
+
+**Was ausserdem fehlt**, und zwar ganz:
+
+- Eine signierte `AuthnRequest`. QKERN unterschreibt seine Anfrage nicht. Eine
+  signierte Anfrage schützt den Anbieter davor, dass jemand in QKERNs Namen
+  Anmeldungen anstösst; QKERN schützt sie nicht. Was QKERN schützt, ist
+  `InResponseTo`, und das hängt an der Kennung. Ein Anbieter, der eine signierte
+  Anfrage verlangt, kann diesen Weg heute nicht benutzen.
+- **Single Logout.** Es gibt keinen `LogoutRequest` und keine `LogoutResponse`.
+  Eine Sitzung endet in QKERN, beim Anbieter läuft sie weiter.
+- **Eine Metadaten-Route.** Wer QKERN beim Anbieter einträgt, trägt `entityID`
+  und Consumer-Adresse von Hand ein.
+- **IdP-initiierte Anmeldung.** Ohne eigene Anfrage gibt es kein `InResponseTo`,
+  das binden könnte, und eine Assertion, die niemand bestellt hat, wird nicht
+  angenommen.
+- **Verschlüsselte Assertions.** Siehe oben.
+- Der Aufräumer aus `2.89` nimmt `project_auth_saml_assertions` noch nicht. Die
+  Tabelle wächst, bis das nachgezogen wird.
+
 ### Fremde Anbieter: Token annehmen, die QKERN nicht ausgegeben hat
 
 Seit `2.60.0` ist **Auth → Fremde Anbieter** keine Platzhalterseite mehr. Der

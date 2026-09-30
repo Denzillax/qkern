@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "saml-postgres-placeholder-defect.log",
+  "commit": "4d64876098a974c4b3514fa1da954f914ef2eb45",
+  "commitSubject": "release: 2.67.0 Geschrieben, gedruckt, und ein Protokoll, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 68,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 232 passed (233)",
+  "passed": 232,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

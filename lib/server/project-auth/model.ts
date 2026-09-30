@@ -63,6 +63,14 @@ export type ProjectAuthOneTimePurpose =
   | "magic_link"
   | "password_reset"
   | "oidc_state"
+  /**
+   * Die offene SAML-AuthnRequest (2.99). Sie traegt keinen Nutzer und wird
+   * **nicht** verbraucht: Der Riegel gegen eine zweite Einreichung derselben
+   * Assertion liegt in project_auth_saml_assertions, nicht hier. Eine
+   * verbrauchte Anfrage haette die zweite Einreichung mit dem falschen Grund
+   * abgewiesen und den eigentlichen Riegel nie gezeigt.
+   */
+  | "saml_request"
   | "mfa_challenge"
   | "mfa_enrollment"
   /**
@@ -213,6 +221,23 @@ export type ProjectAuthRateCount = {
 export type ProjectAuthMfaEnrolmentCount = {
   users: number;
   enrolled: number;
+};
+
+/**
+ * Eine schon benutzte SAML-Assertion (2.99).
+ *
+ * Es steht nur die `ID` hier und kein Inhalt: Der Riegel muss wissen, ob diese
+ * Assertion schon einmal eine Sitzung erzeugt hat, und sonst nichts. Keine
+ * Adresse, kein Subject, kein XML. `expiresAt` ist das `NotOnOrAfter` der
+ * Assertion; danach darf die Zeile weg, weil eine abgelaufene Assertion schon
+ * am Zeitfenster scheitert.
+ */
+export type ProjectAuthSamlAssertion = ProjectAuthScope & {
+  id: string;
+  provider: string;
+  assertionId: string;
+  usedAt: Date;
+  expiresAt: Date;
 };
 
 export type ProjectAuthOidcIdentity = ProjectAuthScope & {

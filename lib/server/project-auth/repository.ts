@@ -9,6 +9,7 @@ import type {
   ProjectAuthPasskey,
   ProjectAuthPasskeyCount,
   ProjectAuthScope,
+  ProjectAuthSamlAssertion,
   ProjectAuthSession,
   ProjectAuthSessionSummary,
   ProjectAuthSettings,
@@ -216,6 +217,16 @@ export interface ProjectAuthRepository {
     subject: string,
   ): Promise<ProjectAuthOidcIdentity | null>;
   createOidcIdentity(identity: ProjectAuthOidcIdentity): Promise<ProjectAuthOidcIdentity>;
+
+  /**
+   * Legt eine benutzte SAML-Assertion ab und sagt, ob sie neu war (2.99).
+   *
+   * `true` heisst: diese `ID` hat hier noch nie eine Sitzung erzeugt. `false`
+   * heisst Wiedereinreichung. Die Entscheidung faellt in der Datenbank, an der
+   * eindeutigen Bedingung, und nicht im Dienst: Zwei Einreichungen, die
+   * gleichzeitig ankommen, bekommen so genau einmal ein `true`.
+   */
+  rememberSamlAssertion(assertion: ProjectAuthSamlAssertion): Promise<boolean>;
 
   /**
    * Die hinterlegten fremden Anbieter dieser Umgebung (2.80), nach Namen
@@ -467,6 +478,7 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
   private readonly mfaFactors = new Map<string, ProjectAuthMfaFactor>();
   private readonly passkeys = new Map<string, ProjectAuthPasskey>();
   private readonly oidcIdentities = new Map<string, ProjectAuthOidcIdentity>();
+  private readonly samlAssertions = new Map<string, ProjectAuthSamlAssertion>();
   private readonly settings = new Map<string, ProjectAuthSettings>();
   private readonly rateCounters = new Map<string, number>();
   /** Je Eintrag der Scope daneben, weil ein Anbieter keine Scope-Felder traegt. */
@@ -842,6 +854,13 @@ export class MemoryProjectAuthRepository implements ProjectAuthRepository {
     const stored = cloneOidcIdentity(identity);
     this.oidcIdentities.set(key, stored);
     return cloneOidcIdentity(stored);
+  }
+
+  async rememberSamlAssertion(assertion: ProjectAuthSamlAssertion) {
+    const key = oidcKey(assertion, assertion.provider, assertion.assertionId);
+    if (this.samlAssertions.has(key)) return false;
+    this.samlAssertions.set(key, { ...assertion, usedAt: new Date(assertion.usedAt), expiresAt: new Date(assertion.expiresAt) });
+    return true;
   }
 
   async listThirdPartyProviders(scope: ProjectAuthScope) {

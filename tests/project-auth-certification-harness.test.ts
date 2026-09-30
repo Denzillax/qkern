@@ -88,6 +88,29 @@ describe("Project Auth provider certification harness", () => {
     expect(runner).toContain('"down", "--volumes", "--remove-orphans"');
   });
 
+  /**
+   * SAML (2.99) braucht keinen neuen Dienst im Stack, und diese Pruefung haelt
+   * fest, warum das kein Versehen ist: Der Anbieter steht als eigenes Modul im
+   * Fall, unterschreibt mit `node:crypto` und geht durch die echte ACS-Route.
+   * Der Fall sagt selbst, dass keine fremde Gegenstelle mitgespielt hat.
+   */
+  it("certifies SAML against a provider the case itself signs, through the real consumer route", () => {
+    expect(integration).toContain("createProjectAuthSamlAcsHandler");
+    expect(integration).toContain("tests/support/saml-idp");
+    expect(integration).toContain("Keine fremde Software hat mitgespielt");
+    // Keine neue Gegenstelle im Compose, und darum auch keine neue Zeile in der
+    // Dienstliste des Runners.
+    expect(compose).not.toMatch(/simplesaml|keycloak|shibboleth/i);
+  });
+
+  it("names every service it starts, so a service added to the compose file cannot stay unstarted", () => {
+    expect(runner).toContain('"dex", "dex-partner", "mailpit"');
+  });
+
+  it("lets a slice run stand beside another stack under its own project name", () => {
+    expect(runner).toContain("COMPOSE_PROJECT_NAME");
+  });
+
   it("exposes direct and disposable-container certification commands", () => {
     expect(packageJson.scripts["test:auth:provider"]).toContain(
       "project-auth-provider.integration.test.ts",

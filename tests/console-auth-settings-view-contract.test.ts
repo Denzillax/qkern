@@ -190,10 +190,11 @@ describe("console auth settings view contract", () => {
     const service = await source("lib/server/project-auth/service.ts");
     expect(service).toContain("projectAuthReturnTargetAllowed(");
     expect(service).toContain("parseProjectAuthReturnTargets(");
-    // Genau eine Stelle nimmt ein Ruecksprungziel an, und alle vier Wege
-    // gehen durch sie.
+    // Genau eine Stelle nimmt ein Ruecksprungziel an, und alle fuenf Wege
+    // gehen durch sie. Der fuenfte ist SAML (2.99): Wer die Rueckspruenge einer
+    // Umgebung verengt, verengt damit auch die des SAML-Weges.
     expect([...service.matchAll(/private async returnTarget\(/g)]).toHaveLength(1);
-    expect([...service.matchAll(/await this\.returnTarget\(scope, input\.redirectTo\)/g)]).toHaveLength(4);
+    expect([...service.matchAll(/await this\.returnTarget\(scope, input\.redirectTo\)/g)]).toHaveLength(5);
     expect(service).not.toContain("allowedRedirectOrigins.has(");
   });
 

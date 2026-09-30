@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "saml-auth-mutation-replay.log",
+  "commit": "4d64876098a974c4b3514fa1da954f914ef2eb45",
+  "commitSubject": "release: 2.67.0 Geschrieben, gedruckt, und ein Protokoll, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 9 passed (10)",
+  "passed": 9,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}
