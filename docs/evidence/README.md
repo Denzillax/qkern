@@ -1868,3 +1868,24 @@ Zwei Läufe stehen daneben, weil sie etwas belegen und nicht weil sie grün sind
 | `2026-09-30/welle20-local-run2.log` | Vitest lokal (Windows) | 2421 bestanden, exit 0, mit `--maxWorkers=3` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben.
+
+## Läufe zu Release 2.69 (30. September 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-30/welle21-run1.log` | PostgreSQL 17 | 236 von 236, exit 0 |
+| `2026-09-30/welle21-run2.log` | PostgreSQL 17 | 236 von 236, exit 0, Wiederholung |
+| `2026-09-30/welle21-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-09-30/welle21-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL und Vault | 17 von 17, exit 0 |
+| `2026-09-30/welle21-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-09-30/welle21-functions.log` | Functions gegen Docker plus PostgreSQL | 32 von 32, exit 0 |
+| `2026-09-30/welle21-mutation-mcpscope.log` | Mutation: ein Werkzeug ohne Bereich wird geöffnet | **234 von 236, exit 1 – absichtlich** |
+| `2026-09-30/welle21-mutation-samlclean.log` | Mutation: der Aufräumer lässt die Assertionen liegen | **235 von 236, exit 1 – absichtlich** |
+| `2026-09-30/welle21-mutation-rtgate2.log` | Mutation: Changes an, Data API aus, der Start fällt nicht | **16 von 17, exit 1 – absichtlich** |
+| `2026-09-30/welle21-mutation-notfound.log` | Mutation: die 404-Seite verliert ihren Kopf | **1 von 2, exit 1 – absichtlich** |
+| `2026-09-30/welle21-local-run1.log` | Vitest lokal (Windows) | 2434 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-30/welle21-local-run2.log` | Vitest lokal (Windows) | 2434 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die erste Fassung von `welle21-mutation-mcpscope` warf elf statt zwei Fälle um; neun davon waren Zeitfälle unter Speicherdruck. Der Lauf ist unter ruhiger Maschine wiederholt, und die Datei enthält die Wiederholung.
+
+Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `slice-samlrest-*` und in ihren jeweiligen Worktrees.

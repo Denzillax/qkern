@@ -6417,3 +6417,42 @@ Nicht erbracht: Postgres Changes unter production sind unerreichbar. Kein
 fremder IdP hat SAML gesehen. UploadPartCopy fehlt. Die Console selbst liegt
 hinter der Anmeldung und ist ungesehen. Damit ist die Abbauliste leer; was
 bleibt, braucht Infrastruktur ausserhalb dieser Maschine.
+
+## Welle einundzwanzig (2.69): was unter Production wirklich laeuft
+
+Drei Schnitte an Zeilen, die nach 2.68.0 noch etwas hergaben. Postgres Changes
+laufen unter `production` ueber einen vault-gestuetzten Katalog, Ende zu Ende
+belegt (Realtime-Stack 11 auf 17). Der Aufraeumer nimmt die SAML-Assertionen
+mit, die Tabelle wuchs bis dahin unbegrenzt; dazu Metadaten-Route und
+signierte AuthnRequest (Auth-Stack 10 auf 11, Fall 2.104). Neun von zwoelf
+MCP-Werkzeugen sind ueber OAuth erreichbar, mit sechs neuen Bereichen aus
+Migration 0073 (Fall 2.103).
+
+Zwei stille Fehler im Weg der Aenderungen: Mit abgeschalteter Data API lief der
+Prozess an, und der Abonnent bekam dauerhaft nichts, ohne Fehler. Und ein
+vault-gestuetzter Katalog holte seine Zugangsdaten erst beim ersten Zugriff,
+sodass ein unerreichbarer Vault erst am leeren Abonnement aufgefallen waere.
+
+Der dritte Besuch im Browser fand, dass es keine 404-Seite gab: die Vorgabe des
+Frameworks, ohne Kopf, ohne einen Link, der Satz fest auf Englisch und im Tab
+der deutsche Titel der Startseite. Geprueft und in Ordnung: alle 27
+Glossar-Anker, keine toten Links, sichtbare Tastaturfuehrung.
+
+Zum Verfahren: Eine Reihenfolge ist keine Sperre. "Warte, bis der andere weg
+ist" greift nicht, wenn zwei Agenten im selben Moment starten, und das hat zwei
+Laeufe gekostet. Seither eine Sperrdatei, atomar mit `set -o noclobber`, und ein
+Agent hat darin sofort die naechste Luecke gefunden: `rm -f` prueft nicht, wem
+sie gehoert. Eine Mutationsprobe musste wiederholt werden, weil sie elf statt
+zwei Faelle umwarf und die Laufzeiten Last sagten; sauber gefahren fielen genau
+die zwei.
+
+Checkpoint `2.69.0` am 30. September 2026: PostgreSQL 17 mit 236 von 236
+zweimal, Mailpit und Dex mit 11 von 11, Realtime unter Production mit 17 von
+17, versitygw und ClamAV mit 11 von 11, Functions mit 32 von 32, alle exit 0;
+Lokal 2434 bestanden, 0 fehlgeschlagen, zweimal reproduziert. Vier
+Mutationsproben mit genau den erwarteten Ausfaellen.
+
+Nicht erbracht: Storage und Queues laufen ueber MCP mit Betreiberrechten, nicht
+unter der Zeilensicherheit des zustimmenden Nutzers. Der Realtime-Prozess liest
+seine Bindungen nicht aus der Control Plane. Kein fremder IdP hat SAML gesehen.
+Die Console selbst liegt hinter der Anmeldung und ist ungesehen.

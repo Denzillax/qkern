@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "welle21-functions.log",
+  "commit": "823711d01f0ed65b5fe07469cab26e7a887f1703",
+  "commitSubject": "merge: Bereiche fuer die MCP-Werkzeuge aus slice/mcpscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "32 passed (32)",
+  "passed": 32,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

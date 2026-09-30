@@ -1971,7 +1971,7 @@ wie beim OIDC-Katalog. Die Laufzeitrolle darf `SELECT`, `INSERT` und `DELETE`;
 kein `UPDATE`, weil sich an einer gemerkten Assertion nur der Riegel selbst
 ändern liesse.
 
-**Der Aufräumer nimmt die Tabelle jetzt mit.** `2.68.0` hat offen gelassen, dass
+**Der Aufräumer nimmt die Tabelle jetzt mit, seit `2.69.0`.** `2.68.0` hat offen gelassen, dass
 `project_auth_saml_assertions` mit jeder Anmeldung wächst; der Aufräumer aus
 `2.89` räumt sie als vierte Tabelle, über dieselbe Auth-Verbindung, häppchenweise
 und je Umgebung.
@@ -2844,7 +2844,7 @@ und der Start trotzdem nicht.
 
 ### Postgres Changes unter Production
 
-Der Befund des Laufs von `2.68.0` war: **Postgres Changes** gingen unter
+Seit `2.69.0` belegt. Der Befund des Laufs von `2.68.0` war: **Postgres Changes** gingen unter
 Production nicht. Der Realtime-Prozess baute seinen Projektdatenbank-Katalog nur
 über den lokalen Weg auf, und der weist `production` ab, weil dort ein
 eingespeister, vault-gestützter Katalog erwartet wird. Der Migrations-Prozess

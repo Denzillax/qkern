@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production, Mutation: Changes an und Data API aus",
+  "log": "welle21-mutation-rtgate2.log",
+  "commit": "823711d01f0ed65b5fe07469cab26e7a887f1703",
+  "commitSubject": "merge: Bereiche fuer die MCP-Werkzeuge aus slice/mcpscopes",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 70,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 16 passed (17)",
+  "passed": 16,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

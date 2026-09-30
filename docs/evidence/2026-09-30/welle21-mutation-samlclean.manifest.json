@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der Aufraeumer laesst die Assertionen liegen",
+  "log": "welle21-mutation-samlclean.log",
+  "commit": "823711d01f0ed65b5fe07469cab26e7a887f1703",
+  "commitSubject": "merge: Bereiche fuer die MCP-Werkzeuge aus slice/mcpscopes",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 70,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 235 passed (236)",
+  "passed": 235,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

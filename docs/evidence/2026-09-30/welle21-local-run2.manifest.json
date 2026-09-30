@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle21-local-run2.log",
+  "commit": "823711d01f0ed65b5fe07469cab26e7a887f1703",
+  "commitSubject": "merge: Bereiche fuer die MCP-Werkzeuge aus slice/mcpscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "342 passed | 40 skipped (382)",
+  "tests": "2434 passed | 349 skipped (2783)",
+  "passed": 2434,
+  "failed": 0,
+  "skipped": 349,
+  "images": []
+}

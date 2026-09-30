@@ -1,8 +1,8 @@
 {
   "stack": "Vitest lokal (Windows), Mutation: die 404-Seite verliert ihren Kopf",
   "log": "welle21-mutation-notfound.log",
-  "commit": "48f37df0b69601f6648be4ae921f01d961bf54da",
-  "commitSubject": "docs: SAML ist in 2.68.0 ausgeliefert, nicht in 2.67.0",
+  "commit": "823711d01f0ed65b5fe07469cab26e7a887f1703",
+  "commitSubject": "merge: Bereiche fuer die MCP-Werkzeuge aus slice/mcpscopes",
   "workingTreeClean": false,
   "exitCode": 1,
   "migrationsApplied": null,
