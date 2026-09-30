@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle19-local-run2.log",
+  "commit": "061fa5c9d829f303d580d448db422c285307647c",
+  "commitSubject": "test: Der Versionsvertrag laesst seine eigene Datei aus",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "338 passed | 39 skipped (377)",
+  "tests": "2383 passed | 323 skipped (2706)",
+  "passed": 2383,
+  "failed": 0,
+  "skipped": 323,
+  "images": []
+}

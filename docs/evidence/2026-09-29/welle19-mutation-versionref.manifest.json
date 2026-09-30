@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: ein Text nennt eine Ausgabe, die es nicht gibt",
+  "log": "welle19-mutation-versionref.log",
+  "commit": "061fa5c9d829f303d580d448db422c285307647c",
+  "commitSubject": "test: Der Versionsvertrag laesst seine eigene Datei aus",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed (1)",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

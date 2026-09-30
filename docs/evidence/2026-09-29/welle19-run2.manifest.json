@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle19-run2.log",
+  "commit": "061fa5c9d829f303d580d448db422c285307647c",
+  "commitSubject": "test: Der Versionsvertrag laesst seine eigene Datei aus",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 67,
+  "testFiles": "31 passed (31)",
+  "tests": "232 passed (232)",
+  "passed": 232,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

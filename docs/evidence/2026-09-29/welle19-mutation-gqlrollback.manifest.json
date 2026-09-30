@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: eine gescheiterte Anfrage rollt nicht zurueck",
+  "log": "welle19-mutation-gqlrollback.log",
+  "commit": "061fa5c9d829f303d580d448db422c285307647c",
+  "commitSubject": "test: Der Versionsvertrag laesst seine eigene Datei aus",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 67,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 231 passed (232)",
+  "passed": 231,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

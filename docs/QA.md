@@ -6372,9 +6372,9 @@ aelteren Ausgaben.
 Dazu an der REST-Flaeche: Eine von WITH CHECK abgewiesene Zeile kam als 503
 zurueck und war damit nicht von einem Ausfall zu unterscheiden. Jetzt 403.
 
-Checkpoint `2.67.0` am 29. September 2026: PostgreSQL 17 mit STACK von STACK
+Checkpoint `2.67.0` am 29. September 2026: PostgreSQL 17 mit 232 von 232
 zweimal, versitygw und ClamAV mit 10 von 10, Functions mit 32 von 32, alle
-exit 0; Lokal LOKAL bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
+exit 0; Lokal 2383 bestanden, 0 fehlgeschlagen, zweimal reproduziert mit
 `--maxWorkers=3`. Vier Mutationsproben auf dem gemergten Stand.
 
 Nicht erbracht: Im Browser weiterhin nicht gesehen. AWS CLI und rclone haben

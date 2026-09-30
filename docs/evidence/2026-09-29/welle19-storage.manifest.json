@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle19-storage.log",
+  "commit": "061fa5c9d829f303d580d448db422c285307647c",
+  "commitSubject": "test: Der Versionsvertrag laesst seine eigene Datei aus",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "10 passed (10)",
+  "passed": 10,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

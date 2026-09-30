@@ -10,7 +10,7 @@ führt, wurde im Betrieb nie geschrieben.
 - Der S3-Endpunkt nimmt echte Clients an: `aws-chunked`, Range, CopyObject, DeleteObjects und Presigned URLs. Das AWS SDK hat ihn gesehen.
 - Function-Container haben ein Inhaltslog: jede Zeile auf `stdout` und `stderr`, mit Zeitpunkt und Strom.
 - **Der letzte Platzhalter der Console ist weg.** Von sechsundzwanzig sind null übrig.
-- PostgreSQL-Zertifizierung von 230 auf STACK Fälle, Storage von 9 auf 10, Functions von 27 auf 32, lokale Suite von 2335 auf LOKAL.
+- PostgreSQL-Zertifizierung von 230 auf 232 Fälle, Storage von 9 auf 10, Functions von 27 auf 32, lokale Suite von 2335 auf 2383.
 
 ## Das Protokoll, das nie geschrieben wurde
 
@@ -82,16 +82,16 @@ nichts durchsickert, was QKERN setzt.
 
 | Lauf | Manifest |
 | --- | --- |
-| PostgreSQL 17, STACK/STACK, exit 0 | `docs/evidence/2026-09-29/welle19-run1.manifest.json` |
-| PostgreSQL 17, STACK/STACK, exit 0 | `docs/evidence/2026-09-29/welle19-run2.manifest.json` |
+| PostgreSQL 17, 232/232, exit 0 | `docs/evidence/2026-09-29/welle19-run1.manifest.json` |
+| PostgreSQL 17, 232/232, exit 0 | `docs/evidence/2026-09-29/welle19-run2.manifest.json` |
 | versitygw und ClamAV, 10/10, exit 0 | `docs/evidence/2026-09-29/welle19-storage.manifest.json` |
 | Functions gegen Docker plus PostgreSQL, 32/32, exit 0 | `docs/evidence/2026-09-29/welle19-functions.manifest.json` |
 | Mutation das Zurückrollen der Anfrage entfällt, exit 1 | `docs/evidence/2026-09-29/welle19-mutation-gqlrollback.manifest.json` |
 | Mutation stderr wird als stdout geführt, exit 1 | `docs/evidence/2026-09-29/welle19-mutation-stderr.manifest.json` |
 | Mutation die Blocksignatur wird nicht geprüft, exit 1 | `docs/evidence/2026-09-29/welle19-mutation-chunksig.manifest.json` |
 | Mutation ein Text nennt eine Ausgabe, die es nicht gibt, exit 1 | `docs/evidence/2026-09-29/welle19-mutation-versionref.manifest.json` |
-| Vitest lokal LOKAL/LOKAL, exit 0 | `docs/evidence/2026-09-29/welle19-local-run1.manifest.json` |
-| Vitest lokal LOKAL/LOKAL, exit 0 | `docs/evidence/2026-09-29/welle19-local-run2.manifest.json` |
+| Vitest lokal 2383/2383, exit 0 | `docs/evidence/2026-09-29/welle19-local-run1.manifest.json` |
+| Vitest lokal 2383/2383, exit 0 | `docs/evidence/2026-09-29/welle19-local-run2.manifest.json` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als
 `graphqlwrite-*`, `slice-s3c-*` und `fnlogs-*`.

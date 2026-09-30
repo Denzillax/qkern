@@ -1810,15 +1810,15 @@ Tage. Genau der Fall `(S3-Client)` fällt: Das AWS SDK signiert eine Adresse mit
 
 | Datei | Stack | Ergebnis |
 | --- | --- | --- |
-| `2026-09-29/welle19-run1.log` | PostgreSQL 17 | STACK von STACK, exit 0 |
-| `2026-09-29/welle19-run2.log` | PostgreSQL 17 | STACK von STACK, exit 0, Wiederholung |
+| `2026-09-29/welle19-run1.log` | PostgreSQL 17 | 232 von 232, exit 0 |
+| `2026-09-29/welle19-run2.log` | PostgreSQL 17 | 232 von 232, exit 0, Wiederholung |
 | `2026-09-29/welle19-storage.log` | versitygw und ClamAV | 10 von 10, exit 0 |
 | `2026-09-29/welle19-functions.log` | Functions gegen Docker plus PostgreSQL | 32 von 32, exit 0 |
-| `2026-09-29/welle19-mutation-gqlrollback.log` | Mutation: das Zurückrollen der Anfrage entfällt | **STACKM von STACK, exit 1 – absichtlich** |
-| `2026-09-29/welle19-mutation-stderr.log` | Mutation: stderr wird als stdout geführt | **FNM von 32, exit 1 – absichtlich** |
+| `2026-09-29/welle19-mutation-gqlrollback.log` | Mutation: das Zurückrollen der Anfrage entfällt | **231 von 232, exit 1 – absichtlich** |
+| `2026-09-29/welle19-mutation-stderr.log` | Mutation: stderr wird als stdout geführt | **28 von 32, exit 1 – absichtlich** |
 | `2026-09-29/welle19-mutation-chunksig.log` | Mutation: die Blocksignatur wird nicht geprüft | **9 von 10, exit 1 – absichtlich** |
 | `2026-09-29/welle19-mutation-versionref.log` | Mutation: ein Text nennt eine Ausgabe, die es nicht gibt | **0 von 1, exit 1 – absichtlich** |
-| `2026-09-29/welle19-local-run1.log` | Vitest lokal (Windows) | LOKAL bestanden, exit 0, mit `--maxWorkers=3` |
-| `2026-09-29/welle19-local-run2.log` | Vitest lokal (Windows) | LOKAL bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-29/welle19-local-run1.log` | Vitest lokal (Windows) | 2383 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-09-29/welle19-local-run2.log` | Vitest lokal (Windows) | 2383 bestanden, exit 0, mit `--maxWorkers=3` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `graphqlwrite-*`, `slice-s3c-*` und `fnlogs-*`.

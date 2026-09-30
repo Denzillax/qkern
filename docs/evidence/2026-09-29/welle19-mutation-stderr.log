@@ -1,0 +1,167 @@
+
+> qkern-platform@2.67.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-registry-1 Healthy 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:f8c8a2b0bb3d2b7e6d68ae4950754588da6b79e3abc9a0e7216be17f5c95e697 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/function-sandbox.integration.test.ts (21 tests | 2 failed) 41986ms
+     × hands what the container wrote to the sink, with stream and order 1489ms
+     × cuts and counts beyond the limits and says so 1691ms
+ ❯ tests/function-chain.integration.test.ts (11 tests | 2 failed) 18741ms
+     × stores what the real container wrote next to the invocation log and reads it back 1835ms
+     × records a truncated content log honestly, with the limits of migration 0069 860ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > stores what the real container wrote next to the invocation log and reads it back
+AssertionError: expected [ Array(4) ] to deeply equal [ Array(4) ]
+
+- Expected
++ Received
+
+@@ -2,17 +2,17 @@
+    [
+      "stdout",
+      "chatter: start",
+    ],
+    [
+-     "stderr",
++     "stdout",
+      "chatter: something to worry about",
+    ],
+    [
+      "stdout",
+      "[\"not\",\"a\",\"protocol\",\"message\"]",
+    ],
+    [
+-     "stderr",
++     "stdout",
+      "{\"level\":\"info\",\"note\":\"json on stderr is a log line\"}",
+    ],
+  ]
+
+ ❯ tests/function-chain.integration.test.ts:167:74
+    165|     const stored = await definitions.readFunctionInvocationOutput(admi…
+    166|     expect(stored.functionName).toBe(created.name);
+    167|     expect(stored.output?.lines.map((line) => [line.stream, line.text]…
+       |                                                                          ^
+    168|       ["stdout", "chatter: start"],
+    169|       ["stderr", "chatter: something to worry about"],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > records a truncated content log honestly, with the limits of migration 0069
+AssertionError: expected { lines: [ { …(4) }, …(499) ], …(6) } to match object { Object (lineCount, stdoutLines, ...) }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "droppedLines": 101,
+    "lineCount": 500,
+-   "stderrLines": 600,
+-   "stdoutLines": 1,
++   "stderrLines": 0,
++   "stdoutLines": 601,
+    "truncated": true,
+  }
+
+ ❯ tests/function-chain.integration.test.ts:186:27
+    184|     const [entry] = await definitions.listFunctionInvocations(admin, s…
+    185|     const stored = await definitions.readFunctionInvocationOutput(admi…
+    186|     expect(stored.output).toMatchObject({
+       |                           ^
+    187|       lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: …
+    188|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > hands what the container wrote to the sink, with stream and order
+AssertionError: expected [ Array(4) ] to deeply equal [ Array(4) ]
+
+- Expected
++ Received
+
+@@ -2,17 +2,17 @@
+    [
+      "stdout",
+      "chatter: start",
+    ],
+    [
+-     "stderr",
++     "stdout",
+      "chatter: something to worry about",
+    ],
+    [
+      "stdout",
+      "[\"not\",\"a\",\"protocol\",\"message\"]",
+    ],
+    [
+-     "stderr",
++     "stdout",
+      "{\"level\":\"info\",\"note\":\"json on stderr is a log line\"}",
+    ],
+  ]
+
+ ❯ tests/function-sandbox.integration.test.ts:259:66
+    257|     expect(result.body).toMatchObject({ chattered: true });
+    258|     const record = output.snapshot();
+    259|     expect(record.lines.map((line) => [line.stream, line.text])).toEqu…
+       |                                                                  ^
+    260|       ["stdout", "chatter: start"],
+    261|       ["stderr", "chatter: something to worry about"],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/function-sandbox.integration.test.ts > Function sandbox certification > cuts and counts beyond the limits and says so
+AssertionError: expected { lines: [ { …(4) }, …(499) ], …(6) } to match object { Object (lineCount, stdoutLines, ...) }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "droppedLines": 101,
+    "lineCount": 500,
+-   "stderrLines": 600,
+-   "stdoutLines": 1,
++   "stderrLines": 0,
++   "stdoutLines": 601,
+    "truncated": true,
+  }
+
+ ❯ tests/function-sandbox.integration.test.ts:281:20
+    279|     expect(record.lines[0]).toMatchObject({ stream: "stdout", cut: tru…
+    280|     expect(Buffer.byteLength(record.lines[0]!.text, "utf8")).toBe(2_04…
+    281|     expect(record).toMatchObject({
+       |                    ^
+    282|       lineCount: 500, stdoutLines: 1, stderrLines: 600, droppedLines: …
+    283|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 28 passed (32)
+   Start at  06:11:47
+   Duration  62.33s (transform 627ms, setup 0ms, import 883ms, tests 60.73s, environment 0ms)
+
+EXIT=1
