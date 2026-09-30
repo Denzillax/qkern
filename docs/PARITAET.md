@@ -66,7 +66,7 @@ Was auf dieser Maschine noch geht, in dieser Reihenfolge:
    wie die Vektoren: kein Katalog, keine Engine, Multipart am S3-Endpunkt
    fehlt; das Urteil über den Server kommt aus dem Katalog. Kein Platzhalter
    mehr in der Console.
-8. ~~Auth: SAML~~ **erledigt in `2.67.0`**: Web Browser SSO, SP-initiiert,
+8. ~~Auth: SAML~~ **erledigt in `2.68.0`**: Web Browser SSO, SP-initiiert,
    Antwort über HTTP-POST, XML-Signatur über der Assertion mit `node:crypto`
    und exklusiver Kanonisierung, ohne fremde SAML-Bibliothek. Die Formen, die
    der Leser prüft und die er ablehnt, stehen im Handbuch; eine Assertion,
