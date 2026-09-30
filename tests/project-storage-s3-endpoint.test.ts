@@ -50,7 +50,12 @@ async function harness() {
   const bytesAtProvider = new Map<string, Buffer>();
   // Das Urteil laesst sich je Fall umstellen: `pending` legt ein Objekt in Quarantaene.
   const verdict = { value: "clean" as "clean" | "pending" | "infected" };
-  const scanner: ProjectStorageScanner = { async scan() { return verdict.value; } };
+  // Was der Scanner zu sehen bekam, bleibt stehen: daran haengt, ob die
+  // Pruefsumme der **ganzen** Datei bei ihm ankommt.
+  const scans: Array<{ providerKey: string; contentType: string; sizeBytes: number; checksumSha256: string }> = [];
+  const scanner: ProjectStorageScanner = {
+    async scan(input) { scans.push({ ...input }); return verdict.value; },
+  };
   const storage = new ProjectStorageService({ repository, provider, scanner, now: () => now });
   const protector = new ProjectStorageS3SecretProtector(randomBytes(32));
   const keys = new ProjectStorageS3AccessKeyService({
@@ -60,6 +65,24 @@ async function harness() {
   // Der Provider-Ersatz: loest die POST-Zusage ein und liefert GET-Zusagen aus.
   const fetchFn: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+    if (init?.method === "PUT") {
+      // Die Zusage fuer ein Teil: Der Provider prueft die Pruefsumme im
+      // signierten Kopf, also prueft der Ersatz sie auch, und antwortet mit
+      // genau der Kennung, die der Memory-Provider fuer dieses Teil vergeben
+      // hat.
+      const providerKey = decodeURIComponent(url.pathname.slice(1));
+      const partNumber = Number(url.searchParams.get("partNumber"));
+      const uploadId = url.searchParams.get("uploadId") ?? "";
+      const body = Buffer.from(init.body as Uint8Array);
+      const declared = new Headers(init.headers).get("x-amz-checksum-sha256") ?? "";
+      if (declared !== createHash("sha256").update(body).digest("base64")) {
+        return new Response("denied", { status: 403 });
+      }
+      const parts = partsAtProvider.get(`${providerKey}\n${uploadId}`) ?? new Map<number, Buffer>();
+      parts.set(partNumber, body);
+      partsAtProvider.set(`${providerKey}\n${uploadId}`, parts);
+      return new Response(null, { status: 200, headers: { etag: `"memory-${partNumber}-${declared.slice(0, 8)}"` } });
+    }
     if (init?.method === "POST") {
       const form = init.body as FormData;
       const fields = Object.fromEntries([...form.entries()].filter(([name]) => name !== "file")) as Record<string, string>;
@@ -95,6 +118,29 @@ async function harness() {
     return new Response(new Uint8Array(body), { status: 200 });
   };
   const providerRange = { honours: true };
+  const partsAtProvider = new Map<string, Map<number, Buffer>>();
+  // Der Memory-Provider fuehrt die Teile nur als Nummern; das Zusammensetzen
+  // macht in echt versitygw. Hier tut es diese Naht, damit der Endpunkt danach
+  // ein Objekt vorfindet, das er durchrechnen kann.
+  const contentTypes = new Map<string, string>();
+  const startMultipart = provider.createMultipartUpload.bind(provider);
+  provider.createMultipartUpload = async (started) => {
+    contentTypes.set(started.providerKey, started.contentType);
+    return await startMultipart(started);
+  };
+  const finishMultipart = provider.completeMultipartUpload.bind(provider);
+  provider.completeMultipartUpload = async (finished) => {
+    await finishMultipart(finished);
+    const parts = partsAtProvider.get(`${finished.providerKey}\n${finished.uploadId}`) ?? new Map<number, Buffer>();
+    const body = Buffer.concat(finished.parts.map((part) => parts.get(part.partNumber) ?? Buffer.alloc(0)));
+    provider.putForTest(finished.providerKey, {
+      sizeBytes: body.byteLength,
+      contentType: contentTypes.get(finished.providerKey) ?? "text/plain",
+      checksumSha256: createHash("sha256").update(body).digest("base64"),
+      etag: `${sha256Hex(body).slice(0, 32)}-${finished.parts.length}`,
+    });
+    bytesAtProvider.set(finished.providerKey, body);
+  };
   const endpoint = new ProjectStorageS3Endpoint({
     storage, keys, fetchFn, now: () => now, admit: async (target) => { admitted.push(target); },
     requestId: () => "req-1",
@@ -113,7 +159,7 @@ async function harness() {
     { ...admin }, foreignScope, { name: "open", readPolicy: "service", writePolicy: "service", allowedMimeTypes: ["text/plain"] });
   const expiresAt = new Date(now.getTime() + 24 * 3600_000).toISOString();
   const issued = await keys.create(admin, scope, { name: "Werkzeug", bucketIds: [open.id, locked.id], expiresAt });
-  return { endpoint, storage, keys, provider, repository, issued, open, locked, notMine, foreign, admitted, bytesAtProvider, verdict, providerRange };
+  return { endpoint, storage, keys, provider, repository, issued, open, locked, notMine, foreign, admitted, bytesAtProvider, verdict, providerRange, scans, partsAtProvider };
 }
 
 /**
@@ -173,6 +219,12 @@ function s3(issued: Issued, method: string, path: string, options: {
     region: "us-east-1", now: options.at ?? now,
   });
   return new Request(url, { method, headers, body: body ? new Uint8Array(body) : undefined });
+}
+
+/** Der Stand eines Buckets: gebuchte und belegte Bytes, wie der Dienst sie fuehrt. */
+async function bucketState(storage: ProjectStorageService, bucketId: string) {
+  const buckets = await storage.listBuckets(admin, scope);
+  return buckets.find((bucket) => bucket.id === bucketId)!;
 }
 
 async function errorCode(response: Response): Promise<string> {
@@ -360,10 +412,13 @@ describe("Project Storage S3 endpoint", () => {
     const { endpoint, issued } = await harness();
     const cases: Array<[Request, string]> = [
       [s3(issued, "GET", "/s3/open"), "NotImplemented"],
-      [s3(issued, "PUT", "/s3/open/x.txt?uploadId=1&partNumber=1", { body: Buffer.from("x") }), "NotImplemented"],
       [s3(issued, "PUT", "/s3/new-bucket"), "NotImplemented"],
-      [s3(issued, "POST", "/s3/open/x.txt?uploads"), "NotImplemented"],
       [s3(issued, "POST", "/s3/open"), "NotImplemented"],
+      // UploadPartCopy bleibt aus: ein Teil aus einem Bereich eines anderen
+      // Objekts kreuzt Lese- und Schreibweg. Multipart selbst steht seit 2.101.
+      [s3(issued, "PUT", "/s3/open/x.txt?uploadId=1&partNumber=1", {
+        headers: { "x-amz-copy-source": "/open/y.txt", "content-length": "0" },
+      }), "NotImplemented"],
       [s3(issued, "PUT", "/s3/open/copy.txt", { headers: { "x-amz-copy-source": "/open/x.txt?versionId=3", "content-length": "0" } }), "NotImplemented"],
       [s3(issued, "GET", "/s3/open/x.txt?versionId=3"), "NotImplemented"],
     ];
@@ -375,6 +430,184 @@ describe("Project Storage S3 endpoint", () => {
     // Signature Version 2 ist keine Luecke, sondern vorbei: gesagt, nicht geraten.
     const v2 = await endpoint.handle(s3(issued, "GET", "/s3/open?list-type=2&AWSAccessKeyId=abc&Signature=def"));
     expect(v2.status).toBe(400);
+  });
+
+  it("carries a multipart upload through the same service path, and the scanner sees the checksum of the whole file", async () => {
+    const { endpoint, issued, storage, scans, open } = await harness();
+    const first = Buffer.alloc(600, "a");
+    const second = Buffer.alloc(400, "b");
+    const whole = Buffer.concat([first, second]);
+
+    const started = await endpoint.handle(s3(issued, "POST", "/s3/open/big.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    expect(started.status).toBe(200);
+    const startedBody = await started.text();
+    const uploadId = /<UploadId>([^<]+)<\/UploadId>/.exec(startedBody)![1];
+    expect(startedBody).toContain("<Key>big.txt</Key>");
+
+    const etags: string[] = [];
+    for (const [index, part] of [first, second].entries()) {
+      const response = await endpoint.handle(s3(issued, "PUT",
+        `/s3/open/big.txt?partNumber=${index + 1}&uploadId=${uploadId}`, { body: part }));
+      expect(response.status, `part ${index + 1}`).toBe(200);
+      etags.push(response.headers.get("ETag")!);
+    }
+
+    // Die Teile stehen beim Dienst, nicht beim Provider erfragt.
+    const listed = await endpoint.handle(s3(issued, "GET", `/s3/open/big.txt?uploadId=${uploadId}`));
+    expect(listed.status).toBe(200);
+    const listedBody = await listed.text();
+    expect(listedBody).toContain("<Size>600</Size>");
+    expect(listedBody).toContain("<Size>400</Size>");
+    expect(listedBody).toContain("<IsTruncated>false</IsTruncated>");
+
+    const inFlight = await endpoint.handle(s3(issued, "GET", "/s3/open?uploads"));
+    expect(inFlight.status).toBe(200);
+    const inFlightBody = await inFlight.text();
+    expect(inFlightBody).toContain("<Key>big.txt</Key>");
+    expect(inFlightBody).toContain(`<UploadId>${uploadId}</UploadId>`);
+
+    // Solange die Teile fliegen, haelt die Reservierung ihre Bytes.
+    const reserving = await bucketState(storage, open.id);
+    expect(reserving.reservedBytes).toBe(1000);
+
+    const body = Buffer.from(`<CompleteMultipartUpload>${[1, 2].map((number) =>
+      `<Part><PartNumber>${number}</PartNumber><ETag>${etags[number - 1].replace(/"/g, "&quot;")}</ETag></Part>`,
+    ).join("")}</CompleteMultipartUpload>`, "utf8");
+    const completed = await endpoint.handle(s3(issued, "POST", `/s3/open/big.txt?uploadId=${uploadId}`, { body }));
+    expect(completed.status).toBe(200);
+    expect(await completed.text()).toContain("<Key>big.txt</Key>");
+    expect(completed.headers.get("x-qkern-object-status")).toBe("clean");
+
+    // Das ist der Kern: Der Scanner hat die Summe der ganzen Datei bekommen,
+    // nicht die eines Teils und keine zusammengesetzte.
+    expect(scans.at(-1)!.checksumSha256).toBe(createHash("sha256").update(whole).digest("base64"));
+    expect(scans.at(-1)!.sizeBytes).toBe(1000);
+
+    // Und das Objekt ist danach ein Objekt wie jedes andere.
+    const read = await endpoint.handle(s3(issued, "GET", "/s3/open/big.txt"));
+    expect(read.status).toBe(200);
+    expect(Buffer.from(await read.arrayBuffer()).equals(whole)).toBe(true);
+    const settled = await bucketState(storage, open.id);
+    expect(settled.reservedBytes).toBe(0);
+    expect(settled.usedBytes).toBe(1000);
+    const gone = await endpoint.handle(s3(issued, "GET", `/s3/open/big.txt?uploadId=${uploadId}`));
+    expect(gone.status).toBe(404);
+    expect(await errorCode(gone)).toBe("NoSuchUpload");
+  });
+
+  it("refuses a part list that is out of order, names a part it never took, and an upload that is not its own", async () => {
+    const { endpoint, issued } = await harness();
+    const started = await endpoint.handle(s3(issued, "POST", "/s3/open/order.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const uploadId = /<UploadId>([^<]+)<\/UploadId>/.exec(await started.text())![1];
+    const etags: string[] = [];
+    for (const number of [1, 2]) {
+      const response = await endpoint.handle(s3(issued, "PUT",
+        `/s3/open/order.txt?partNumber=${number}&uploadId=${uploadId}`, { body: Buffer.alloc(300, String(number)) }));
+      etags.push(response.headers.get("ETag")!);
+    }
+    const listOf = (numbers: number[], tags: string[]) => Buffer.from(
+      `<CompleteMultipartUpload>${numbers.map((number, index) =>
+        `<Part><PartNumber>${number}</PartNumber><ETag>${tags[index].replace(/"/g, "&quot;")}</ETag></Part>`,
+      ).join("")}</CompleteMultipartUpload>`, "utf8");
+
+    // Absteigend: Die Bytes lagen anders zusammen als jede Pruefsumme sagt.
+    const reversed = await endpoint.handle(s3(issued, "POST", `/s3/open/order.txt?uploadId=${uploadId}`,
+      { body: listOf([2, 1], [etags[1], etags[0]]) }));
+    expect(reversed.status).toBe(400);
+    expect(await errorCode(reversed)).toBe("InvalidPartOrder");
+
+    // Dieselbe Nummer zweimal ist auch keine aufsteigende Ordnung.
+    const twice = await endpoint.handle(s3(issued, "POST", `/s3/open/order.txt?uploadId=${uploadId}`,
+      { body: listOf([1, 1], [etags[0], etags[0]]) }));
+    expect(await errorCode(twice)).toBe("InvalidPartOrder");
+
+    // Eine Nummer, die dieser Endpunkt nie angenommen hat.
+    const unknown = await endpoint.handle(s3(issued, "POST", `/s3/open/order.txt?uploadId=${uploadId}`,
+      { body: listOf([1, 3], [etags[0], etags[1]]) }));
+    expect(await errorCode(unknown)).toBe("InvalidPart");
+
+    // Eine fremde Kennung zum richtigen Teil.
+    const wrongEtag = await endpoint.handle(s3(issued, "POST", `/s3/open/order.txt?uploadId=${uploadId}`,
+      { body: listOf([1, 2], [etags[0], '"memory-2-deadbeef"']) }));
+    expect(await errorCode(wrongEtag)).toBe("InvalidPart");
+
+    // Ein Upload, den es nicht gibt, und einer unter dem falschen Schluessel.
+    const nowhere = await endpoint.handle(s3(issued, "GET",
+      "/s3/open/order.txt?uploadId=00000000-0000-4000-8000-0000000009ff"));
+    expect(await errorCode(nowhere)).toBe("NoSuchUpload");
+    const wrongKey = await endpoint.handle(s3(issued, "GET", `/s3/open/other.txt?uploadId=${uploadId}`));
+    expect(await errorCode(wrongKey)).toBe("NoSuchUpload");
+  });
+
+  it("leaves neither parts at the provider nor a reservation behind when an upload is aborted", async () => {
+    const { endpoint, issued, storage, provider, open } = await harness();
+    const started = await endpoint.handle(s3(issued, "POST", "/s3/open/abort.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const uploadId = /<UploadId>([^<]+)<\/UploadId>/.exec(await started.text())![1];
+    await endpoint.handle(s3(issued, "PUT", `/s3/open/abort.txt?partNumber=1&uploadId=${uploadId}`,
+      { body: Buffer.alloc(500, "z") }));
+    expect((await bucketState(storage, open.id)).reservedBytes).toBe(500);
+
+    const aborted = await endpoint.handle(s3(issued, "DELETE", `/s3/open/abort.txt?uploadId=${uploadId}`));
+    expect(aborted.status).toBe(204);
+
+    // Beim Provider liegt kein begonnener Upload mehr, und die Quota ist frei.
+    expect(await provider.listMultipartUploads({ keyPrefix: `${scope.organizationId}/${scope.projectId}/${scope.environment}/` }))
+      .toHaveLength(0);
+    const released = await bucketState(storage, open.id);
+    expect(released.reservedBytes).toBe(0);
+    expect(released.usedBytes).toBe(0);
+    expect(await errorCode(await endpoint.handle(s3(issued, "GET", `/s3/open/abort.txt?uploadId=${uploadId}`))))
+      .toBe("NoSuchUpload");
+
+    // Der Schluessel ist wieder frei: ein zweiter Anfang geht.
+    const again = await endpoint.handle(s3(issued, "POST", "/s3/open/abort.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    expect(again.status).toBe(200);
+  });
+
+  it("weighs every part against the bucket rules and quarantines a multipart object whose verdict is not clean", async () => {
+    const { endpoint, issued, verdict } = await harness();
+    // `open` nimmt hoechstens 1024 Bytes je Objekt: Das zweite Teil sprengt es,
+    // und zwar bevor seine Bytes beim Provider liegen.
+    const started = await endpoint.handle(s3(issued, "POST", "/s3/open/limit.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const uploadId = /<UploadId>([^<]+)<\/UploadId>/.exec(await started.text())![1];
+    const first = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/limit.txt?partNumber=1&uploadId=${uploadId}`, { body: Buffer.alloc(900, "a") }));
+    expect(first.status).toBe(200);
+    const second = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/limit.txt?partNumber=2&uploadId=${uploadId}`, { body: Buffer.alloc(900, "b") }));
+    expect(second.status).toBe(403);
+    expect(await errorCode(second)).toBe("QuotaExceeded");
+
+    // Ein Inhaltstyp, den der Bucket nicht fuehrt, kommt nicht einmal an.
+    const refused = await endpoint.handle(s3(issued, "POST", "/s3/open/script.js?uploads", {
+      headers: { "content-type": "application/javascript" },
+    }));
+    expect(refused.status).toBe(400);
+
+    // Und das Urteil entscheidet wie bei einem Stueck: kein Urteil, Quarantaene.
+    verdict.value = "pending";
+    const quarantined = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/limit.txt?partNumber=2&uploadId=${uploadId}`, { body: Buffer.alloc(100, "b") }));
+    const etag = quarantined.headers.get("ETag")!;
+    const firstEtag = first.headers.get("ETag")!;
+    const body = Buffer.from(`<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>${
+      firstEtag.replace(/"/g, "&quot;")}</ETag></Part><Part><PartNumber>2</PartNumber><ETag>${
+      etag.replace(/"/g, "&quot;")}</ETag></Part></CompleteMultipartUpload>`, "utf8");
+    const completed = await endpoint.handle(s3(issued, "POST", `/s3/open/limit.txt?uploadId=${uploadId}`, { body }));
+    expect(completed.status).toBe(200);
+    expect(completed.headers.get("x-qkern-object-status")).toBe("quarantined");
+    // Ein Objekt in Quarantaene hat keine Lesezusage, also sieht das Paar es nicht.
+    expect((await endpoint.handle(s3(issued, "GET", "/s3/open/limit.txt"))).status).toBe(404);
   });
 
   it("accepts aws-chunked bodies in all three forms and refuses a tampered chunk, a wrong trailer and a wrong header checksum without storing anything", async () => {

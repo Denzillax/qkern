@@ -125,6 +125,41 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.101 **Multipart am S3-Endpunkt.** Migration
+  `0071_project_storage_s3_multipart.sql` haengt `parts_declared boolean NOT NULL
+  DEFAULT false` an `project_storage_uploads`, lockert `size_bytes` auf `BETWEEN
+  0 AND 5368709120` und `checksum_sha256` auf NULL, aber nur fuer diese Sorte,
+  und haelt mit `project_storage_uploads_completed_content` fest, dass eine
+  abgeschlossene Reservierung Groesse und Pruefsumme hat. Dazu
+  `project_storage_upload_parts` (Fremdschluessel auf die Reservierung, `ON
+  DELETE CASCADE`), weil die Teile drei Dinge tragen: die Bytes, um die die
+  Reservierung gewachsen ist, die Reihenfolge, die `CompleteMultipartUpload`
+  nennen darf, und die Antwort auf `ListParts`.
+
+  Der Grund fuer die neue Sorte: Ein S3-Client nennt bei
+  `CreateMultipartUpload` weder Groesse noch Pruefsumme der ganzen Datei, die
+  `prepareMultipartUpload` (REST, 1.70) vorher verlangt. Die Reservierung
+  beginnt darum bei null Bytes und waechst mit jedem angenommenen Teil, jedes
+  unter derselben Quota- und Objektgrenzenpruefung wie eine Reservierung. Beim
+  Abschluss prueft der Dienst die Teileliste gegen den Satz des Endpunkts
+  (aufsteigend, jede Nummer bekannt, jede Kennung dieselbe, Summe der Groessen
+  gleich der gebuchten), der Provider setzt zusammen, und der Endpunkt rechnet
+  die Pruefsumme der **ganzen** Datei aus dem zusammengesetzten Objekt ueber
+  eine Lesezusage. Diese Summe bekommt der Scanner, so wie bei REST die
+  zugesagte; `settleMultipart` in `service.ts` ist der eine Abschluss fuer beide
+  Wege und bricht ab, wenn keine Summe da ist. Ein S3-Upload wird ueber seine
+  Kennung gefunden, nicht ueber einen Abschluss-Token: Die Vollmacht eines
+  S3-Clients ist die SigV4-Signatur und die Bucket-Regel, und darum ist
+  `ListMultipartUploads` ueberhaupt brauchbar.
+
+  **Offen**: `UploadPartCopy` antwortet mit 501. Ein vorhandener Schluessel wird
+  beim Anfang des Uploads geloescht, weil die Reservierung ihn exklusiv haelt;
+  bricht der Upload ab, ist das alte Objekt weg. Der Abschluss liest das
+  zusammengesetzte Objekt zweimal, einmal fuer die Pruefsumme und einmal im
+  Scanner. Die AWS CLI und rclone haben den Endpunkt weiterhin nicht gesehen;
+  gefahren hat ihn das AWS SDK ueber die HTTP-Bruecke, das oberhalb der Schwelle
+  von sich aus teilt.
+
 - 2.98 **Inhaltslogs je Function-Aufruf.** Migration
   `0069_project_function_invocation_output.sql` legt
   `project_function_invocation_output` an: genau eine Zeile je Aufruf, per

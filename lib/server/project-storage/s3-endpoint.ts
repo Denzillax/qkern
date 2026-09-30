@@ -58,6 +58,24 @@ import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
  * als ein Bereich, `Range: bytes=…`), PutObject (ein Stueck, bis
  * `maxPutBytes`), CopyObject, DeleteObject, DeleteObjects.
  *
+ * Multipart (2.101): CreateMultipartUpload, UploadPart, ListParts,
+ * ListMultipartUploads, CompleteMultipartUpload, AbortMultipartUpload. Der Weg
+ * ist derselbe wie bei REST, nur mit anderer Reihenfolge der Zusagen: Ein
+ * S3-Client nennt beim Anfang weder Groesse noch Pruefsumme, also beginnt die
+ * Reservierung bei null Bytes und waechst mit jedem Teil, jedes unter derselben
+ * Quota-Pruefung. Der Endpunkt reicht die Bytes eines Teils ueber eine Zusage
+ * des Dienstes zum Provider und merkt sich Groesse und Pruefsumme des Teils.
+ * Beim Abschluss prueft der Dienst die Teileliste gegen diesen Satz
+ * (aufsteigend, jede Nummer bekannt, jede Kennung dieselbe), setzt beim
+ * Provider zusammen und laesst den Endpunkt das zusammengesetzte Objekt ueber
+ * eine Lesezusage durchrechnen. Diese Summe der **ganzen** Datei bekommt der
+ * Scanner, so wie bei REST die zugesagte; ohne sie gibt es kein Objekt.
+ *
+ * Ein abgebrochener Upload laesst nichts stehen: `AbortMultipartUpload` bricht
+ * beim Provider ab und gibt die Reservierung frei, und bleibt einer liegen,
+ * findet ihn der Lifecycle ueber dieselbe `provider_upload_id` wie einen
+ * REST-Upload.
+ *
  * Signatur im Header oder in der Query (Presigned URL, hoechstens 15 Minuten
  * wie die signierten Zusagen des Dienstes). Koerper als SHA-256-Hex,
  * `UNSIGNED-PAYLOAD` oder `aws-chunked` in den drei Formen, die die
@@ -75,9 +93,13 @@ import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
  *
  * ## Was nicht gebaut ist
  *
- * Jedes davon antwortet mit 501 statt mit einem Rateversuch: Multipart ueber
- * S3, ListObjects v1, Bucket anlegen oder loeschen, ACLs, Versionen, Tags,
- * POST-Policy-Upload.
+ * Jedes davon antwortet mit 501 statt mit einem Rateversuch: ListObjects v1,
+ * Bucket anlegen oder loeschen, ACLs, Versionen, Tags, POST-Policy-Upload,
+ * UploadPartCopy. Das letzte fehlt, weil ein Teil aus einem Bereich eines
+ * anderen Objekts zwei Wege kreuzt, die hier getrennt bleiben: Der Endpunkt
+ * muesste eine Lesezusage bereichweise anzapfen und das Ergebnis als Teil
+ * buchen. `CopyObject` kopiert ein ganzes Objekt bis `maxPutBytes`, und dafuer
+ * braucht niemand Multipart.
  */
 
 export const S3_ENDPOINT_PATH = "/s3";
@@ -88,6 +110,7 @@ const MAX_KEYS = 1000;
 const PAGE = 100;
 const MAX_LIST_PAGES = 10;
 const S3_XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/";
+const MAX_COMPLETE_PARTS = 10_000;
 
 export type ProjectStorageS3EndpointDependencies = {
   storage: ProjectStorageService;
@@ -117,7 +140,13 @@ type Operation =
   | { kind: "PutObject"; bucket: string; key: string }
   | { kind: "CopyObject"; bucket: string; key: string; source: { bucket: string; key: string } }
   | { kind: "DeleteObject"; bucket: string; key: string }
-  | { kind: "DeleteObjects"; bucket: string };
+  | { kind: "DeleteObjects"; bucket: string }
+  | { kind: "CreateMultipartUpload"; bucket: string; key: string }
+  | { kind: "UploadPart"; bucket: string; key: string; uploadId: string; partNumber: number }
+  | { kind: "CompleteMultipartUpload"; bucket: string; key: string; uploadId: string }
+  | { kind: "AbortMultipartUpload"; bucket: string; key: string; uploadId: string }
+  | { kind: "ListParts"; bucket: string; key: string; uploadId: string }
+  | { kind: "ListMultipartUploads"; bucket: string };
 
 /** Was die Signaturpruefung dem Koerperleser hinterlaesst: die Kopfsignatur ist der Anfang der Blockkette. */
 type Authenticated = {
@@ -195,7 +224,8 @@ export class ProjectStorageS3Endpoint {
       if (method === "GET") {
         if (query.get("list-type") === "2") return { kind: "ListObjectsV2", bucket };
         if (query.has("location")) return { kind: "HeadBucket", bucket };
-        for (const subresource of ["uploads", "versioning", "acl", "policy", "cors", "lifecycle", "tagging", "versions"]) {
+        if (query.has("uploads")) return { kind: "ListMultipartUploads", bucket };
+        for (const subresource of ["versioning", "acl", "policy", "cors", "lifecycle", "tagging", "versions"]) {
           if (query.has(subresource)) {
             throw new S3ResponseError(501, "NotImplemented", `The bucket subresource "${subresource}" is not implemented.`);
           }
@@ -204,16 +234,45 @@ export class ProjectStorageS3Endpoint {
       }
       throw new S3ResponseError(501, "NotImplemented", "Buckets are created and deleted in the QKERN console, not through S3.");
     }
-    if (query.has("uploadId") || query.has("uploads") || query.has("partNumber")) {
-      throw new S3ResponseError(501, "NotImplemented", "Multipart upload through the S3 endpoint is not implemented; PutObject accepts one piece.");
-    }
     for (const subresource of ["acl", "tagging", "versionId", "torrent", "legal-hold", "retention", "select"]) {
       if (query.has(subresource)) {
         throw new S3ResponseError(501, "NotImplemented", `The object subresource "${subresource}" is not implemented.`);
       }
     }
+    if (query.has("uploads")) {
+      if (method !== "POST") {
+        throw new S3ResponseError(405, "MethodNotAllowed", "A multipart upload is started with POST.");
+      }
+      return { kind: "CreateMultipartUpload", bucket, key };
+    }
+    const uploadId = query.get("uploadId");
+    if (uploadId !== null) {
+      const partNumber = query.get("partNumber");
+      if (partNumber !== null) {
+        if (method !== "PUT") {
+          throw new S3ResponseError(405, "MethodNotAllowed", "A part is sent with PUT.");
+        }
+        if (request.headers.get("x-amz-copy-source") !== null) {
+          throw new S3ResponseError(501, "NotImplemented", "UploadPartCopy is not implemented; CopyObject copies a whole object up to the single-piece limit.");
+        }
+        if (partNumber === "") {
+          throw new S3ResponseError(400, "InvalidArgument", "Argument partNumber must be an integer between 1 and 10000.");
+        }
+        return {
+          kind: "UploadPart", bucket, key, uploadId,
+          partNumber: boundedInteger(partNumber, 1, 1, 10_000, "partNumber"),
+        };
+      }
+      if (method === "POST") return { kind: "CompleteMultipartUpload", bucket, key, uploadId };
+      if (method === "DELETE") return { kind: "AbortMultipartUpload", bucket, key, uploadId };
+      if (method === "GET") return { kind: "ListParts", bucket, key, uploadId };
+      throw new S3ResponseError(405, "MethodNotAllowed", "An upload is completed with POST, aborted with DELETE and listed with GET.");
+    }
+    if (query.has("partNumber")) {
+      throw new S3ResponseError(400, "InvalidArgument", "A part number needs the uploadId of the multipart upload it belongs to.");
+    }
     if (method === "POST") {
-      throw new S3ResponseError(501, "NotImplemented", "POST to an object (multipart upload, SelectObjectContent) is not implemented.");
+      throw new S3ResponseError(501, "NotImplemented", "POST to an object (POST policy upload, SelectObjectContent) is not implemented.");
     }
     if (method === "GET") return { kind: "GetObject", bucket, key, range: request.headers.get("range") };
     if (method === "HEAD") return { kind: "HeadObject", bucket, key };
@@ -268,12 +327,14 @@ export class ProjectStorageS3Endpoint {
     if (streaming && authenticated.presigned) {
       throw new S3ResponseError(400, "InvalidRequest", "A presigned URL cannot carry an aws-chunked body.");
     }
-    const takesBody = operation.kind === "PutObject" || operation.kind === "DeleteObjects";
+    const carriesObjectBytes = operation.kind === "PutObject" || operation.kind === "UploadPart";
+    const takesBody = carriesObjectBytes || operation.kind === "DeleteObjects" ||
+      operation.kind === "CompleteMultipartUpload";
     const contentLength = integerHeader(request.headers.get("content-length"), "Content-Length");
     const decodedLength = integerHeader(request.headers.get("x-amz-decoded-content-length"), "x-amz-decoded-content-length");
     let expected: number | null = null;
     let limit = 0;
-    if (operation.kind === "PutObject") {
+    if (carriesObjectBytes) {
       expected = streaming ? decodedLength : contentLength;
       if (expected === null) {
         throw new S3ResponseError(411, "MissingContentLength", streaming
@@ -281,13 +342,15 @@ export class ProjectStorageS3Endpoint {
           : "You must provide the Content-Length HTTP header.");
       }
       if (expected > this.maxPutBytes) {
-        throw new S3ResponseError(400, "EntityTooLarge", `PutObject through this endpoint accepts at most ${this.maxPutBytes} bytes per object.`);
+        throw new S3ResponseError(400, "EntityTooLarge", operation.kind === "UploadPart"
+          ? `UploadPart through this endpoint accepts at most ${this.maxPutBytes} bytes per part.`
+          : `PutObject through this endpoint accepts at most ${this.maxPutBytes} bytes per object.`);
       }
       if (expected === 0) throw new S3ResponseError(400, "InvalidArgument", "Empty objects are not accepted.");
       // Ein Block kostet Kopfzeile und Signatur; bei kleinen Bloecken ist das
       // ein Achtel dazu, mehr nicht. Was darueber liegt, ist kein Objekt.
       limit = streaming ? expected + (expected >> 3) + 64 * 1024 : expected;
-    } else if (operation.kind === "DeleteObjects") {
+    } else if (operation.kind === "DeleteObjects" || operation.kind === "CompleteMultipartUpload") {
       limit = MAX_DELETE_BODY_BYTES;
     }
     let raw = await readBody(request, takesBody ? limit : 0);
@@ -397,7 +460,222 @@ export class ProjectStorageS3Endpoint {
         const bucket = await this.bucket(principal, key, operation.bucket);
         return await this.deleteObjects(principal, scope, bucket, context.body);
       }
+      case "CreateMultipartUpload": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        const contentType = normalizeContentType(context.request.headers.get("content-type"));
+        return await this.createMultipartUpload(principal, scope, bucket, operation.key, contentType);
+      }
+      case "UploadPart": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.uploadPart(principal, scope, bucket, operation.key, operation.uploadId,
+          operation.partNumber, context.body);
+      }
+      case "CompleteMultipartUpload": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.completeMultipartUpload(principal, scope, bucket, operation.key,
+          operation.uploadId, context.body);
+      }
+      case "AbortMultipartUpload": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        await this.storage(() => this.dependencies.storage.abortS3MultipartUpload(principal, scope, {
+          bucketIdOrName: bucket.id, key: operation.key, uploadId: operation.uploadId,
+        }));
+        return new Response(null, { status: 204 });
+      }
+      case "ListParts": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.listParts(principal, scope, bucket, operation.key, operation.uploadId, url.searchParams);
+      }
+      case "ListMultipartUploads": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.listMultipartUploads(principal, scope, bucket, url.searchParams);
+      }
     }
+  }
+
+  /**
+   * `CreateMultipartUpload`. Der Dienst reserviert den Schluessel und laesst
+   * den Provider die Kennung ausgeben; Groesse und Pruefsumme kommen mit den
+   * Teilen.
+   *
+   * Ein Objekt, das schon unter dem Schluessel liegt, geht vorher weg — die
+   * Reservierung haelt den Schluessel exklusiv, sonst gaebe es keinen zweiten
+   * Upload auf denselben Namen. Das ist die Ueberschreibe-Regel von
+   * `PutObject`, nur mit einem Fenster, das so lang ist wie der Upload: Bricht
+   * er ab, ist das alte Objekt weg und kein neues da.
+   */
+  private async createMultipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    key: string,
+    contentType: string,
+  ): Promise<Response> {
+    const existing = await this.findObject(principal, scope, bucket, key);
+    if (existing) {
+      await this.storage(() => this.dependencies.storage.deleteObject(principal, scope, bucket.id, existing.key));
+    }
+    const created = await this.storage(() => this.dependencies.storage.prepareS3MultipartUpload(
+      principal, scope, bucket.id, { key, contentType }));
+    return xml(200, `<InitiateMultipartUploadResult xmlns="${S3_XMLNS}"><Bucket>${
+      escapeXml(bucket.name)}</Bucket><Key>${escapeXml(created.key)}</Key><UploadId>${
+      escapeXml(created.uploadId)}</UploadId></InitiateMultipartUploadResult>`);
+  }
+
+  /**
+   * `UploadPart`. Die Bytes sind schon geprueft, wenn sie hier ankommen
+   * (Laenge, SHA-256, Blocksignaturen, Pruefsummen); der Dienst bucht sie auf
+   * die Reservierung, stellt die Zusage aus, und der Endpunkt loest sie ein.
+   *
+   * Die Kennung des Providers wird danach am Teil vermerkt. Ein Teil ohne
+   * diesen Vermerk zaehlt beim Abschluss nicht, also kostet ein Abbruch
+   * zwischen PUT und Vermerk nichts ausser der gebuchten Groesse, die mit der
+   * Reservierung wieder frei wird.
+   */
+  private async uploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    body: Buffer,
+  ): Promise<Response> {
+    const checksumSha256 = createHash("sha256").update(body).digest("base64");
+    const grant = await this.storage(() => this.dependencies.storage.createS3PartUploadGrant(principal, scope, {
+      bucketIdOrName: bucket.id, key, uploadId, partNumber, sizeBytes: body.byteLength, checksumSha256,
+    }));
+    const bytes = new Uint8Array(new ArrayBuffer(body.byteLength));
+    bytes.set(body);
+    const stored = await this.fetchFn(grant.url, {
+      method: grant.method, headers: grant.headers, body: bytes, redirect: "error",
+    }).catch(() => null);
+    if (!stored || !stored.ok) {
+      throw new S3ResponseError(503, "ServiceUnavailable", "The object store did not accept the part.");
+    }
+    // Die Kennung wird gelassen, wie der Provider sie gemeldet hat,
+    // Anfuehrungszeichen inklusive: Sie geht beim Abschluss unveraendert an
+    // ihn zurueck.
+    const etag = (stored.headers.get("etag") ?? "").trim();
+    if (etag === "" || etag === '""') {
+      throw new S3ResponseError(503, "ServiceUnavailable", "The object store accepted the part without an ETag.");
+    }
+    await this.storage(() => this.dependencies.storage.confirmS3UploadPart(principal, scope, {
+      bucketIdOrName: bucket.id, key, uploadId, partNumber, etag,
+    }));
+    const headers = new Headers({ ETag: etag.startsWith('"') ? etag : quoteEtag(etag) });
+    return new Response(null, { status: 200, headers });
+  }
+
+  /**
+   * `CompleteMultipartUpload`. Die Teileliste kommt als XML; der Dienst prueft
+   * sie gegen die Teile, die dieser Endpunkt angenommen hat, setzt beim
+   * Provider zusammen und gibt eine Lesezusage heraus, aus der der Endpunkt
+   * die Pruefsumme der **ganzen** Datei rechnet. Erst diese Summe sieht der
+   * Scanner, und erst sein Abgleich macht das Objekt sauber.
+   */
+  private async completeMultipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    key: string,
+    uploadId: string,
+    body: Buffer,
+  ): Promise<Response> {
+    const parts = parseCompleteMultipartBody(body);
+    const object = await this.storage(() => this.dependencies.storage.completeS3MultipartUpload(principal, scope, {
+      bucketIdOrName: bucket.id,
+      key,
+      uploadId,
+      parts,
+      measureWholeFile: async (grant, expected) => await this.measureWholeFile(grant.url, expected.sizeBytes),
+    }));
+    const headers = new Headers({ "x-qkern-object-status": object.status });
+    return xml(200, `<CompleteMultipartUploadResult xmlns="${S3_XMLNS}"><Location>${
+      escapeXml(`${this.basePath}/${bucket.name}/${key}`)}</Location><Bucket>${
+      escapeXml(bucket.name)}</Bucket><Key>${escapeXml(key)}</Key>${
+      object.etag ? `<ETag>${escapeXml(quoteEtag(object.etag))}</ETag>` : ""
+    }</CompleteMultipartUploadResult>`, headers);
+  }
+
+  /**
+   * Die Pruefsumme des zusammengesetzten Objekts, im Strom gerechnet.
+   *
+   * Sie wird nicht gepuffert: Die Bytes laufen durch den Hash und werden
+   * verworfen. Kommt mehr oder weniger als der HEAD des Providers gesagt hat,
+   * bricht die Rechnung ab, und der Dienst raeumt das Objekt und die
+   * Reservierung weg.
+   */
+  private async measureWholeFile(url: string, expectedBytes: number): Promise<string> {
+    const response = await this.fetchFn(url, { method: "GET", redirect: "error" }).catch(() => null);
+    if (!response || !response.ok || !response.body) {
+      throw new S3ResponseError(503, "ServiceUnavailable", "The object store did not serve the assembled object.");
+    }
+    const digest = createHash("sha256");
+    let seen = 0;
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      seen += value.byteLength;
+      if (seen > expectedBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new S3ResponseError(500, "InternalError", "The assembled object grew while it was being verified.");
+      }
+      digest.update(value);
+    }
+    if (seen !== expectedBytes) {
+      throw new S3ResponseError(500, "InternalError", "The assembled object was shorter than the object store reported.");
+    }
+    return digest.digest("base64");
+  }
+
+  /** `ListParts` — aus dem Satz des Dienstes, nicht aus dem des Providers. */
+  private async listParts(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    key: string,
+    uploadId: string,
+    query: URLSearchParams,
+  ): Promise<Response> {
+    const listed = await this.storage(() => this.dependencies.storage.listS3UploadParts(principal, scope, {
+      bucketIdOrName: bucket.id, key, uploadId,
+    }));
+    const maxParts = boundedInteger(query.get("max-parts"), 1_000, 1, 1_000, "max-parts");
+    const after = boundedInteger(query.get("part-number-marker"), 0, 0, 10_000, "part-number-marker");
+    const eligible = listed.parts.filter((part) => part.partNumber > after);
+    const page = eligible.slice(0, maxParts);
+    const truncated = eligible.length > page.length;
+    return xml(200, `<ListPartsResult xmlns="${S3_XMLNS}"><Bucket>${escapeXml(bucket.name)}</Bucket><Key>${
+      escapeXml(listed.key)}</Key><UploadId>${escapeXml(uploadId)}</UploadId><PartNumberMarker>${
+      after}</PartNumberMarker><MaxParts>${maxParts}</MaxParts><IsTruncated>${truncated}</IsTruncated>${
+      truncated ? `<NextPartNumberMarker>${page[page.length - 1].partNumber}</NextPartNumberMarker>` : ""
+    }${page.map((part) => `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${
+      escapeXml(quotedEtag(part.etag ?? ""))}</ETag><Size>${part.sizeBytes}</Size><LastModified>${
+      escapeXml(part.createdAt.toISOString())}</LastModified></Part>`).join("")}</ListPartsResult>`);
+  }
+
+  /** `ListMultipartUploads` — die offenen Uploads dieses Buckets. */
+  private async listMultipartUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    query: URLSearchParams,
+  ): Promise<Response> {
+    const prefix = query.get("prefix") ?? "";
+    const maxUploads = boundedInteger(query.get("max-uploads"), 1_000, 1, 1_000, "max-uploads");
+    const uploads = await this.storage(() => this.dependencies.storage.listS3MultipartUploads(
+      principal, scope, bucket.id, { prefix }));
+    const page = uploads.slice(0, maxUploads);
+    const truncated = uploads.length > page.length;
+    return xml(200, `<ListMultipartUploadsResult xmlns="${S3_XMLNS}"><Bucket>${
+      escapeXml(bucket.name)}</Bucket><KeyMarker></KeyMarker><UploadIdMarker></UploadIdMarker><Prefix>${
+      escapeXml(prefix)}</Prefix><MaxUploads>${maxUploads}</MaxUploads><IsTruncated>${truncated}</IsTruncated>${
+      page.map((upload) => `<Upload><Key>${escapeXml(upload.key)}</Key><UploadId>${
+        escapeXml(upload.uploadId)}</UploadId><Initiated>${escapeXml(upload.initiatedAt.toISOString())
+      }</Initiated></Upload>`).join("")}</ListMultipartUploadsResult>`);
   }
 
   /**
@@ -693,6 +971,10 @@ function noSuchKey(): S3ResponseError {
 
 function mapStorageError(error: unknown): unknown {
   if (!(error instanceof ProjectStorageError)) {
+    // Eine Antwort, die dieser Endpunkt selbst schon formuliert hat, bleibt
+    // stehen: Sie kommt aus einem Rueckruf, den der Dienst aufruft (etwa dem
+    // Nachrechnen der ganzen Datei), und ist genauer als ein 500er.
+    if (error instanceof S3ResponseError) return error;
     if (isConnectionUnavailable(error) || error instanceof UsageQuotaExceededError) return error;
     return new S3ResponseError(500, "InternalError", "We encountered an internal error. Please try again.");
   }
@@ -713,6 +995,12 @@ function mapStorageError(error: unknown): unknown {
       return new S3ResponseError(422, "QkernObjectRejected", "The malware scanner rejected the object; nothing was stored.");
     case "STORAGE_INVALID_TOKEN":
       return new S3ResponseError(409, "OperationAborted", "The upload reservation expired before completion.");
+    case "STORAGE_UPLOAD_NOT_FOUND":
+      return new S3ResponseError(404, "NoSuchUpload", "The specified multipart upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed.");
+    case "STORAGE_PART_ORDER":
+      return new S3ResponseError(400, "InvalidPartOrder", "The list of parts was not in ascending order. Parts must be ordered by part number.");
+    case "STORAGE_PART_UNKNOWN":
+      return new S3ResponseError(400, "InvalidPart", "One or more of the specified parts could not be found. The part may not have been uploaded, or the specified ETag may not have matched the part's ETag.");
     case "PROJECT_STORAGE_DISABLED":
     case "STORAGE_PROVIDER_UNAVAILABLE":
       return new S3ResponseError(503, "ServiceUnavailable", "Project Storage is disabled or its provider is unavailable.");
@@ -842,6 +1130,10 @@ function objectHeaders(object: PublicProjectStorageObject): Headers {
   return headers;
 }
 
+function quotedEtag(value: string): string {
+  return value.startsWith('"') ? value : quoteEtag(value);
+}
+
 function quoteEtag(value: string): string {
   return value.startsWith('"') ? value : `"${value}"`;
 }
@@ -852,11 +1144,11 @@ function decodeSegment(segment: string): string {
   }
 }
 
-function boundedInteger(value: string | null, fallback: number, min: number, max: number): number {
+function boundedInteger(value: string | null, fallback: number, min: number, max: number, name = "max-keys"): number {
   if (value === null || value === "") return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < min) {
-    throw new S3ResponseError(400, "InvalidArgument", "Argument max-keys must be an integer between 1 and 1000.");
+    throw new S3ResponseError(400, "InvalidArgument", `Argument ${name} must be an integer between ${min} and ${max}.`);
   }
   return Math.min(parsed, max);
 }
@@ -890,6 +1182,41 @@ function xml(status: number, body: string, headers?: Headers): Response {
   const merged = new Headers(headers);
   merged.set("Content-Type", "application/xml");
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n${body}`, { status, headers: merged });
+}
+
+/**
+ * Die Teileliste aus `CompleteMultipartUpload`.
+ *
+ * Gelesen wird, was S3-Clients schicken: `<Part>` mit `<PartNumber>` und
+ * `<ETag>`. Die Reihenfolge bleibt die des Dokuments — ob sie aufsteigt,
+ * entscheidet der Dienst, nicht dieser Leser, denn genau daran haengt, ob die
+ * Bytes so zusammengesetzt werden, wie die Pruefsumme sie beschreibt.
+ */
+function parseCompleteMultipartBody(body: Buffer): Array<{ partNumber: number; etag: string }> {
+  const text = body.toString("utf8");
+  if (text.trim() === "") {
+    throw new S3ResponseError(400, "MalformedXML", "The XML you provided was not well-formed: the part list is missing.");
+  }
+  const parts: Array<{ partNumber: number; etag: string }> = [];
+  for (const match of text.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
+    const block = match[1];
+    const number = /<PartNumber>\s*(\d{1,5})\s*<\/PartNumber>/.exec(block);
+    const etag = /<ETag>([\s\S]*?)<\/ETag>/.exec(block);
+    if (!number || !etag) {
+      throw new S3ResponseError(400, "MalformedXML", "Every Part needs a PartNumber and an ETag.");
+    }
+    parts.push({
+      partNumber: boundedInteger(number[1], 1, 1, MAX_COMPLETE_PARTS, "PartNumber"),
+      etag: unescapeXml(etag[1]).trim().replace(/^"|"$/g, ""),
+    });
+  }
+  if (parts.length < 1) {
+    throw new S3ResponseError(400, "MalformedXML", "The XML you provided was not well-formed: no Part was named.");
+  }
+  if (parts.length > MAX_COMPLETE_PARTS) {
+    throw new S3ResponseError(400, "InvalidRequest", `A multipart upload takes at most ${MAX_COMPLETE_PARTS} parts.`);
+  }
+  return parts;
 }
 
 function errorXml(status: number, code: string, message: string, resource: string, method: string, extra?: Record<string, string>): Response {

@@ -11263,6 +11263,184 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(Number(left.rows[0]!.total)).toBe(0);
   });
 
+  it("(2.101) books an S3 multipart upload part by part against the real quota, replaces a part without booking it twice, and lets no completed reservation stand without the checksum of the whole file", async () => {
+    // Multipart am S3-Endpunkt (2.101) gegen die echte Datenbank.
+    //
+    // Der fortsetzbare Upload ueber REST sagt Groesse und Pruefsumme vorher
+    // zu. Ein S3-Client kann das nicht, also traegt die Reservierung beides
+    // nach: Sie beginnt bei null Bytes und waechst mit jedem Teil. Das ist
+    // neue Arithmetik auf denselben Zaehlern, und sie steht in SQL — in
+    // `recordUploadPart`, das Reservierung und Bucket sperrt, die Quota prueft
+    // und drei Zeilen zusammen bewegt. Ein Vertrag am Quelltext sieht davon
+    // nichts: nicht die gelockerten CHECKs aus 0071, nicht die Kaskade der
+    // Teiletabelle, nicht was bei einem ersetzten Teil mit den gebuchten Bytes
+    // passiert, und nicht, ob die Datenbank eine abgeschlossene Reservierung
+    // ohne Pruefsumme durchlaesst.
+    //
+    // Migration 0043 ist die Warnung dazu: Der CHECK aus 0041 war nie
+    // erfuellbar und fiel erst beim ersten echten INSERT. Genau dieser Fall
+    // hat ihn gefunden.
+    //
+    // Gelaufen wird der Produktweg: `PostgresProjectStorageRepository` mit der
+    // Laufzeitrolle ueber `withTenant`.
+    //
+    // Sechs Zusagen:
+    //   1. Eine Reservierung ohne Groesse und ohne Pruefsumme wird angenommen,
+    //      und zwar nur als Multipart.
+    //   2. Jedes Teil erhoeht `size_bytes` der Reservierung und
+    //      `reserved_bytes` des Buckets um genau seine Bytes.
+    //   3. Dasselbe Teil noch einmal ersetzt das erste und bucht die Differenz,
+    //      nicht die ganze Groesse.
+    //   4. Ein Teil ueber der Quota wird abgelehnt, und danach stehen die
+    //      Zaehler unveraendert.
+    //   5. Der Abschluss traegt die Pruefsumme der ganzen Datei nach, schiebt
+    //      gebucht auf belegt und raeumt die Teile weg.
+    //   6. Die Datenbank laesst keine abgeschlossene Reservierung ohne Groesse
+    //      und ohne Pruefsumme zu, und die Teile haengen an der Reservierung.
+    const partsOwner = randomUUID();
+    const partsOrganization = randomUUID();
+    const partsProject = randomUUID();
+    const actorRef = `s3-multipart-${partsOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [partsOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'S3 Multipart', $2, $3)`,
+    [partsOrganization, `s3-multipart-${partsOrganization}`, partsOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [partsOrganization, partsOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'S3 Multipart', $3, 'test', 'ready', $4)`,
+    [partsProject, partsOrganization, `s3-multipart-${partsProject}`, partsOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [partsOrganization, partsProject, `managed:${partsProject}`]);
+
+    const scope = {
+      organizationId: partsOrganization, projectId: partsProject, environment: "development" as const,
+    };
+    const principal = {
+      organizationId: partsOrganization, actorRef, role: "admin" as const, subject: partsOwner,
+    };
+    const repository = new PostgresProjectStorageRepository(new PostgresControlPlane(runtime));
+    const at = new Date();
+    const bucket = await repository.createBucket(principal, {
+      ...scope, id: randomUUID(), name: `mp-${randomUUID().slice(0, 8)}`,
+      readPolicy: "service", writePolicy: "service", allowedMimeTypes: ["text/plain"],
+      maxObjectBytes: 4_096, quotaBytes: 4_096, usedBytes: 0, reservedBytes: 0,
+      retentionDays: null, createdAt: at, updatedAt: at,
+    });
+    const counters = async () => {
+      const row = await owner.query<{ used_bytes: string; reserved_bytes: string; size_bytes: string }>(
+        `SELECT b.used_bytes::text, b.reserved_bytes::text, u.size_bytes::text
+         FROM project_storage_buckets b
+         LEFT JOIN project_storage_uploads u ON u.id = $2
+         WHERE b.id = $1`, [bucket.id, uploadId]);
+      return {
+        used: Number(row.rows[0]!.used_bytes),
+        reserved: Number(row.rows[0]!.reserved_bytes),
+        reservation: Number(row.rows[0]!.size_bytes),
+      };
+    };
+
+    // 1. Ohne Groesse, ohne Pruefsumme: Das nimmt die Tabelle erst seit 0071 an.
+    const uploadId = randomUUID();
+    const tokenHash = randomBytes(32).toString("base64url");
+    const providerKey = `${partsOrganization}/${partsProject}/development/${bucket.id}/${uploadId}/big.txt`;
+    const reservation = {
+      ...scope, id: uploadId, bucketId: bucket.id, objectKey: "big.txt", providerKey,
+      kind: "multipart" as const, providerUploadId: "provider-upload-1", partsDeclared: true,
+      ownerSubject: partsOwner, contentType: "text/plain", sizeBytes: 0, checksumSha256: null,
+      completionTokenHash: tokenHash, status: "pending" as const, createdAt: at,
+      expiresAt: new Date(at.getTime() + 3_600_000), completedAt: null, objectId: null,
+    };
+    await repository.reserveUpload(principal, scope, reservation, at);
+    expect(await counters()).toEqual({ used: 0, reserved: 0, reservation: 0 });
+
+    // Nur ein fortsetzbarer Upload darf seine Groesse nachliefern, und die
+    // Sorte selbst bewegt sich nie: Das halten der CHECK und der Waechter,
+    // nicht die Anwendung.
+    await expect(owner.query(`UPDATE project_storage_uploads
+      SET parts_declared = true, kind = 'single', provider_upload_id = NULL
+      WHERE id = $1`, [uploadId])).rejects.toThrow(/parts_declared_multipart|immutable/);
+    await expect(owner.query(`UPDATE project_storage_uploads SET parts_declared = false
+      WHERE id = $1`, [uploadId])).rejects.toThrow(/immutable/);
+
+    // 2. Jedes Teil bucht seine Bytes.
+    await repository.recordUploadPart(principal, scope, uploadId, tokenHash,
+      { partNumber: 1, sizeBytes: 1_000, checksumSha256: createHash("sha256").update("a").digest("base64") }, at);
+    expect(await counters()).toEqual({ used: 0, reserved: 1_000, reservation: 1_000 });
+    await repository.recordUploadPart(principal, scope, uploadId, tokenHash,
+      { partNumber: 2, sizeBytes: 500, checksumSha256: createHash("sha256").update("b").digest("base64") }, at);
+    expect(await counters()).toEqual({ used: 0, reserved: 1_500, reservation: 1_500 });
+
+    // 3. Dasselbe Teil noch einmal, kleiner: Die Differenz geht zurueck.
+    await repository.recordUploadPart(principal, scope, uploadId, tokenHash,
+      { partNumber: 1, sizeBytes: 600, checksumSha256: createHash("sha256").update("c").digest("base64") }, at);
+    expect(await counters()).toEqual({ used: 0, reserved: 1_100, reservation: 1_100 });
+    const afterReplace = await owner.query<{ total: string }>(
+      "SELECT count(*)::text AS total FROM project_storage_upload_parts WHERE upload_id = $1", [uploadId]);
+    expect(Number(afterReplace.rows[0]!.total)).toBe(2);
+
+    // 4. Ein Teil ueber der Quota wird abgelehnt, und nichts bleibt haengen.
+    await expect(repository.recordUploadPart(principal, scope, uploadId, tokenHash,
+      { partNumber: 3, sizeBytes: 4_000, checksumSha256: createHash("sha256").update("d").digest("base64") }, at))
+      .rejects.toThrow(/STORAGE_QUOTA_EXCEEDED/);
+    expect(await counters()).toEqual({ used: 0, reserved: 1_100, reservation: 1_100 });
+
+    // Die Kennungen des Providers kommen nach, und nur ein Teil mit Kennung
+    // zaehlt beim Abschluss.
+    expect(await repository.confirmUploadPart(principal, scope, uploadId, tokenHash, 1, '"etag-1"'))
+      .toMatchObject({ partNumber: 1, etag: '"etag-1"' });
+    expect(await repository.confirmUploadPart(principal, scope, uploadId, tokenHash, 2, '"etag-2"'))
+      .toMatchObject({ partNumber: 2, etag: '"etag-2"' });
+    expect(await repository.confirmUploadPart(principal, scope, uploadId, tokenHash, 9, '"etag-9"')).toBeNull();
+    const listed = await repository.listUploadParts(principal, scope, uploadId, tokenHash);
+    expect(listed.map((part) => [part.partNumber, part.sizeBytes])).toEqual([[1, 600], [2, 500]]);
+    // Ein fremder Token oeffnet die Teile nicht.
+    expect(await repository.listUploadParts(principal, scope, uploadId, randomBytes(32).toString("base64url")))
+      .toHaveLength(0);
+
+    // 5. Die Pruefsumme der ganzen Datei kommt beim Abschluss, und ohne sie
+    // nimmt `completeUpload` das Objekt nicht an.
+    const checksumSha256 = createHash("sha256").update(Buffer.alloc(1_100, "x")).digest("base64");
+    const objectRow = {
+      ...scope, id: randomUUID(), bucketId: bucket.id, key: "big.txt", ownerSubject: partsOwner,
+      providerKey, sizeBytes: 1_100, contentType: "text/plain", checksumSha256,
+      etag: "assembled-etag-2", status: "clean" as const, createdAt: at, deleteAfter: null, deletedAt: null,
+    };
+    await expect(repository.completeUpload(principal, scope, uploadId, tokenHash, objectRow, at))
+      .rejects.toThrow(/STORAGE_CONFLICT/);
+    expect(await repository.declareUploadChecksum(principal, scope, uploadId, tokenHash, checksumSha256)).toBe(true);
+    const stored = await repository.completeUpload(principal, scope, uploadId, tokenHash, objectRow, at);
+    expect(stored.sizeBytes).toBe(1_100);
+    expect(await counters()).toEqual({ used: 1_100, reserved: 0, reservation: 1_100 });
+    const afterComplete = await owner.query<{ total: string }>(
+      "SELECT count(*)::text AS total FROM project_storage_upload_parts WHERE upload_id = $1", [uploadId]);
+    expect(Number(afterComplete.rows[0]!.total)).toBe(0);
+    // Abgeschlossen heisst: Die Pruefsumme steht, und sie laesst sich nicht
+    // wieder wegnehmen.
+    await expect(owner.query("UPDATE project_storage_uploads SET checksum_sha256 = NULL WHERE id = $1",
+      [uploadId])).rejects.toThrow(/completed_content|checksum_sha256|immutable/);
+
+    // 6. Und die Teile haengen an der Reservierung, nicht neben ihr.
+    const orphan = randomUUID();
+    const orphanToken = randomBytes(32).toString("base64url");
+    await repository.reserveUpload(principal, scope, {
+      ...reservation, id: orphan, objectKey: "cascade.txt", completionTokenHash: orphanToken,
+      providerKey: `${partsOrganization}/${partsProject}/development/${bucket.id}/${orphan}/cascade.txt`,
+      providerUploadId: "provider-upload-2",
+    }, at);
+    await repository.recordUploadPart(principal, scope, orphan, orphanToken,
+      { partNumber: 1, sizeBytes: 100, checksumSha256: createHash("sha256").update("e").digest("base64") }, at);
+    await owner.query("DELETE FROM project_storage_uploads WHERE id = $1", [orphan]);
+    const cascaded = await owner.query<{ total: string }>(
+      "SELECT count(*)::text AS total FROM project_storage_upload_parts WHERE upload_id = $1", [orphan]);
+    expect(Number(cascaded.rows[0]!.total)).toBe(0);
+  });
+
 });
 
 /**

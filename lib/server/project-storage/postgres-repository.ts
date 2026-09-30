@@ -8,6 +8,7 @@ import type {
   ProjectStoragePrincipal,
   ProjectStorageScope,
   ProjectStorageUpload,
+  ProjectStorageUploadPart,
 } from "@/lib/server/project-storage/model";
 import {
   emptyObjectLogCounts,
@@ -185,8 +186,8 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
         const result = await database.query(`INSERT INTO project_storage_uploads
           (id,organization_id,project_id,environment,bucket_id,object_key,provider_key,
            owner_subject,content_type,size_bytes,checksum_sha256,completion_token_hash,status,
-           created_at,expires_at,completed_at,object_id,kind,provider_upload_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL,NULL,$16,$17)
+           created_at,expires_at,completed_at,object_id,kind,provider_upload_id,parts_declared)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULL,NULL,$16,$17,$18)
           RETURNING ${UPLOAD_COLUMNS}`, uploadValues(upload));
         await database.query(`UPDATE project_storage_buckets
           SET reserved_bytes=reserved_bytes+$5,updated_at=$6
@@ -252,6 +253,11 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
           reserved_bytes=greatest(0,reserved_bytes-$5),used_bytes=used_bytes+$5,updated_at=$6
           WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4`,
         [...scopeValues(scope), object.bucketId, object.sizeBytes, now]);
+        // Die Teile haben ihre Arbeit getan: Sie trugen die Quota und die
+        // Reihenfolge. Was bleibt, waere eine Zeile ohne Leser.
+        await database.query(`DELETE FROM project_storage_upload_parts
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND upload_id=$4`,
+        [...scopeValues(scope), upload.id]);
         return objectFromRow(inserted.rows[0]);
       } catch (error) {
         if ((error as { code?: string }).code === "23505") throw new ProjectStorageConflictError();
@@ -282,6 +288,9 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
         reserved_bytes=greatest(0,reserved_bytes-$5),updated_at=$6
         WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4`,
       [...scopeValues(scope), upload.bucketId, upload.sizeBytes, now]);
+      await database.query(`DELETE FROM project_storage_upload_parts
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND upload_id=$4`,
+      [...scopeValues(scope), upload.id]);
       return true;
     });
   }
@@ -404,6 +413,11 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
           ORDER BY expires_at ASC,id ASC LIMIT $5 FOR UPDATE SKIP LOCKED)
         RETURNING ${UPLOAD_COLUMNS}`, [...scopeValues(scope), now, limit]);
       const expired = result.rows.map(uploadFromRow);
+      if (expired.length > 0) {
+        await database.query(`DELETE FROM project_storage_upload_parts
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND upload_id = ANY($4::uuid[])`,
+        [...scopeValues(scope), expired.map((upload) => upload.id)]);
+      }
       const releasedByBucket = new Map<string, number>();
       for (const upload of expired) {
         releasedByBucket.set(upload.bucketId, (releasedByBucket.get(upload.bucketId) ?? 0) + upload.sizeBytes);
@@ -415,6 +429,136 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
         [...scopeValues(scope), bucketId, released, now]);
       }
       return expired;
+    });
+  }
+
+  findMultipartUpload(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`${UPLOAD_SELECT}
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          AND kind='multipart' LIMIT 1`, [...scopeValues(scope), uploadId]);
+      return result.rows[0] ? uploadFromRow(result.rows[0]) : null;
+    });
+  }
+
+  /**
+   * Ein Teil annehmen (2.101). Die Reihenfolge ist dieselbe wie bei
+   * `reserveUpload`: Reservierung sperren, Bucket sperren, Quota pruefen, dann
+   * schreiben. Die Bytes eines ersetzten Teils gehen dabei zurueck.
+   */
+  recordUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    part: { partNumber: number; sizeBytes: number; checksumSha256: string },
+    now: Date,
+  ) {
+    return this.withTenant(principal, false, async (database) => {
+      const uploadResult = await database.query(`${UPLOAD_SELECT}
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          AND completion_token_hash=$5 FOR UPDATE`, [...scopeValues(scope), uploadId, tokenHash]);
+      const upload = uploadResult.rows[0] ? uploadFromRow(uploadResult.rows[0]) : null;
+      if (!upload || !upload.partsDeclared) throw new ProjectStorageConflictError();
+      if (upload.status !== "pending" || upload.expiresAt <= now) throw new ProjectStorageConflictError();
+      const bucketResult = await database.query(`${BUCKET_SELECT}
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4 FOR UPDATE`,
+      [...scopeValues(scope), upload.bucketId]);
+      const bucket = bucketResult.rows[0] ? bucketFromRow(bucketResult.rows[0]) : null;
+      if (!bucket) throw new ProjectStorageConflictError();
+      const previous = await database.query<{ size_bytes: unknown }>(`SELECT size_bytes
+        FROM project_storage_upload_parts
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND upload_id=$4
+          AND part_number=$5 FOR UPDATE`, [...scopeValues(scope), uploadId, part.partNumber]);
+      const delta = part.sizeBytes - (previous.rows[0] ? safeInteger(previous.rows[0].size_bytes) : 0);
+      if (bucket.usedBytes + bucket.reservedBytes + delta > bucket.quotaBytes) throw new ProjectStorageQuotaError();
+      if (upload.sizeBytes + delta > bucket.maxObjectBytes) throw new ProjectStorageQuotaError();
+      try {
+        const inserted = await database.query(`INSERT INTO project_storage_upload_parts
+          (organization_id,project_id,environment,upload_id,part_number,size_bytes,checksum_sha256,etag,created_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,$8)
+          ON CONFLICT (organization_id,project_id,environment,upload_id,part_number)
+          DO UPDATE SET size_bytes=EXCLUDED.size_bytes,checksum_sha256=EXCLUDED.checksum_sha256,
+            etag=NULL,created_at=EXCLUDED.created_at
+          RETURNING organization_id,project_id,environment,upload_id,part_number,size_bytes,
+            checksum_sha256,etag,created_at`,
+        [...scopeValues(scope), uploadId, part.partNumber, part.sizeBytes, part.checksumSha256, now]);
+        await database.query(`UPDATE project_storage_uploads SET size_bytes=size_bytes+$6
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+            AND completion_token_hash=$5`, [...scopeValues(scope), uploadId, tokenHash, delta]);
+        await database.query(`UPDATE project_storage_buckets SET
+          reserved_bytes=greatest(0,reserved_bytes+$5),updated_at=$6
+          WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4`,
+        [...scopeValues(scope), upload.bucketId, delta, now]);
+        return uploadPartFromRow(inserted.rows[0]);
+      } catch (error) {
+        if ((error as { code?: string }).code === "23505") throw new ProjectStorageConflictError();
+        throw mapPostgresError(error);
+      }
+    });
+  }
+
+  confirmUploadPart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    partNumber: number,
+    etag: string,
+  ) {
+    return this.withTenant(principal, false, async (database) => {
+      const result = await database.query(`UPDATE project_storage_upload_parts SET etag=$6
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND upload_id=$4 AND part_number=$5
+          AND EXISTS (SELECT 1 FROM project_storage_uploads
+            WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+              AND completion_token_hash=$7)
+        RETURNING organization_id,project_id,environment,upload_id,part_number,size_bytes,
+          checksum_sha256,etag,created_at`,
+      [...scopeValues(scope), uploadId, partNumber, etag, tokenHash]);
+      return result.rows[0] ? uploadPartFromRow(result.rows[0]) : null;
+    });
+  }
+
+  listUploadParts(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`SELECT p.organization_id,p.project_id,p.environment,p.upload_id,
+          p.part_number,p.size_bytes,p.checksum_sha256,p.etag,p.created_at
+        FROM project_storage_upload_parts p
+        JOIN project_storage_uploads u ON u.organization_id=p.organization_id AND u.project_id=p.project_id
+          AND u.environment=p.environment AND u.id=p.upload_id
+        WHERE p.organization_id=$1 AND p.project_id=$2 AND p.environment=$3 AND p.upload_id=$4
+          AND u.completion_token_hash=$5
+        ORDER BY p.part_number ASC`, [...scopeValues(scope), uploadId, tokenHash]);
+      return result.rows.map(uploadPartFromRow);
+    });
+  }
+
+  declareUploadChecksum(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    tokenHash: string,
+    checksumSha256: string,
+  ) {
+    return this.withTenant(principal, false, async (database) => {
+      // Nur von NULL auf einen Wert, oder auf denselben Wert noch einmal: Der
+      // Waechter der Tabelle laesst eine stehende Summe nicht umschreiben, und
+      // ein zweiter Abschluss mit derselben Summe soll daran nicht scheitern.
+      const result = await database.query(`UPDATE project_storage_uploads SET checksum_sha256=$6
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          AND completion_token_hash=$5 AND parts_declared AND status='pending'
+          AND (checksum_sha256 IS NULL OR checksum_sha256=$6)
+        RETURNING id`, [...scopeValues(scope), uploadId, tokenHash, checksumSha256]);
+      return result.rows.length > 0;
     });
   }
 
@@ -496,7 +640,7 @@ const BUCKET_COLUMNS = `id,organization_id,project_id,environment,name,read_poli
 const BUCKET_SELECT = `SELECT ${BUCKET_COLUMNS} FROM project_storage_buckets`;
 const UPLOAD_COLUMNS = `id,organization_id,project_id,environment,bucket_id,object_key,provider_key,
   owner_subject,content_type,size_bytes,checksum_sha256,completion_token_hash,status,created_at,
-  expires_at,completed_at,object_id,kind,provider_upload_id`;
+  expires_at,completed_at,object_id,kind,provider_upload_id,parts_declared`;
 const UPLOAD_SELECT = `SELECT ${UPLOAD_COLUMNS} FROM project_storage_uploads`;
 const OBJECT_COLUMNS = `id,organization_id,project_id,environment,bucket_id,object_key,owner_subject,
   provider_key,size_bytes,content_type,checksum_sha256,etag,status,created_at,delete_after,deleted_at`;
@@ -510,7 +654,7 @@ function uploadValues(upload: ProjectStorageUpload): SqlValue[] {
   return [upload.id, upload.organizationId, upload.projectId, upload.environment, upload.bucketId,
     upload.objectKey, upload.providerKey, upload.ownerSubject, upload.contentType, upload.sizeBytes,
     upload.checksumSha256, upload.completionTokenHash, upload.status, upload.createdAt, upload.expiresAt,
-    upload.kind, upload.providerUploadId];
+    upload.kind, upload.providerUploadId, upload.partsDeclared];
 }
 
 function objectValues(object: ProjectStorageObject): SqlValue[] {
@@ -545,13 +689,27 @@ function uploadFromRow(row: Row): ProjectStorageUpload {
     environment: environment(row.environment), id: String(row.id), bucketId: String(row.bucket_id),
     objectKey: String(row.object_key), providerKey: String(row.provider_key), ownerSubject: String(row.owner_subject),
     contentType: String(row.content_type), sizeBytes: safeInteger(row.size_bytes),
-    checksumSha256: String(row.checksum_sha256), completionTokenHash: String(row.completion_token_hash),
+    checksumSha256: row.checksum_sha256 === null || row.checksum_sha256 === undefined
+      ? null : String(row.checksum_sha256),
+    completionTokenHash: String(row.completion_token_hash),
     status: status as ProjectStorageUpload["status"], createdAt: date(row.created_at),
     expiresAt: date(row.expires_at), completedAt: nullableDate(row.completed_at),
     objectId: row.object_id === null ? null : String(row.object_id),
     kind: String(row.kind) === "multipart" ? "multipart" : "single",
     providerUploadId: row.provider_upload_id === null || row.provider_upload_id === undefined
       ? null : String(row.provider_upload_id),
+    partsDeclared: row.parts_declared === true,
+  };
+}
+
+function uploadPartFromRow(row: Row): ProjectStorageUploadPart {
+  return {
+    organizationId: String(row.organization_id), projectId: String(row.project_id),
+    environment: environment(row.environment), uploadId: String(row.upload_id),
+    partNumber: safeInteger(row.part_number), sizeBytes: safeInteger(row.size_bytes),
+    checksumSha256: String(row.checksum_sha256),
+    etag: row.etag === null || row.etag === undefined ? null : String(row.etag),
+    createdAt: date(row.created_at),
   };
 }
 

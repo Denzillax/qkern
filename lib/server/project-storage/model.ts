@@ -67,16 +67,38 @@ export type ProjectStorageUpload = ProjectStorageScope & {
   /** Einfach oder fortsetzbar in Teilen; die Teile sammelt der Provider. */
   kind: "single" | "multipart";
   providerUploadId: string | null;
+  /**
+   * Die Groesse kommt mit den Teilen, nicht mit der Zusage (S3-Multipart).
+   *
+   * Ein fortsetzbarer Upload ueber REST sagt Groesse und Pruefsumme der ganzen
+   * Datei vorher zu. Ein S3-Client kann das nicht: `CreateMultipartUpload`
+   * nennt nur Bucket, Schluessel und Inhaltstyp. Bei dieser Sorte beginnt
+   * `sizeBytes` bei null und waechst mit jedem angenommenen Teil, und
+   * `checksumSha256` bleibt leer, bis der Abschluss die ganze Datei
+   * durchgerechnet hat.
+   */
+  partsDeclared: boolean;
   ownerSubject: string;
   contentType: string;
   sizeBytes: number;
-  checksumSha256: string;
+  checksumSha256: string | null;
   completionTokenHash: string;
   status: ProjectStorageUploadStatus;
   createdAt: Date;
   expiresAt: Date;
   completedAt: Date | null;
   objectId: string | null;
+};
+
+/** Ein Teil, das der S3-Endpunkt angenommen und zum Provider gebracht hat. */
+export type ProjectStorageUploadPart = ProjectStorageScope & {
+  uploadId: string;
+  partNumber: number;
+  sizeBytes: number;
+  checksumSha256: string;
+  /** Die Kennung des Providers; sie steht erst da, wenn die Bytes liegen. */
+  etag: string | null;
+  createdAt: Date;
 };
 
 export type PublicProjectStorageBucket = Omit<ProjectStorageBucket,

@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "slice-mp-storage-mutation-wholefilechecksum.log",
+  "commit": "4d64876098a974c4b3514fa1da954f914ef2eb45",
+  "commitSubject": "release: 2.67.0 Geschrieben, gedruckt, und ein Protokoll, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 10 passed (11)",
+  "passed": 10,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

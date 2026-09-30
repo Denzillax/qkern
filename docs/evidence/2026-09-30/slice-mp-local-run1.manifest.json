@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "slice-mp-local-run1.log",
+  "commit": "4d64876098a974c4b3514fa1da954f914ef2eb45",
+  "commitSubject": "release: 2.67.0 Geschrieben, gedruckt, und ein Protokoll, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "338 passed | 39 skipped (377)",
+  "tests": "2387 passed | 325 skipped (2712)",
+  "passed": 2387,
+  "failed": 0,
+  "skipped": 325,
+  "images": []
+}
