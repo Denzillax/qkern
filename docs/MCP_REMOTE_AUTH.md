@@ -41,17 +41,45 @@ The mapping lives in `mcp/tool-scopes.ts` and nowhere else.
 | --- | --- |
 | `data:read` | `qkern_table_rows_list` |
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
+| `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
+| `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
+| `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
+| `queues:write` | `qkern_queue_message_enqueue` |
+| `logs:read` | `qkern_logs_search` |
+| `migrations:propose` | `qkern_migration_preview` |
 | `identity:read` | no tool of its own; it decides whether the request claims carry the user's email address |
 
-Every other tool is unreachable over OAuth and is not registered for such a
-session, so it does not appear in `tools/list` either. The reasons are written out
-in `mcp/tool-scopes.ts`; the short version is that `data:read` promises reading
-under row level security as that user, and `qkern_query_readonly`,
-`qkern_schema_list`, the control-plane tools, Storage, Queues and the migration
-tools all do something else. A migration apply through a foreign client is the
-door nobody wants, and it stays shut with every scope that exists.
+Three tools have no scope at all and are therefore not registered for an OAuth
+session, so they do not appear in `tools/list` either:
+
+* `qkern_query_readonly` and `qkern_schema_list` read past row level security,
+  while `data:read` promises reading under it as that user. Giving them a scope
+  means first making them read under it, and that is a cut of its own.
+* `qkern_migration_apply_queue` changes control-plane state and leads to a change
+  in the project database. An apply through a foreign client is the door nobody
+  wants. It does not fall under `migrations:propose`, because proposing and
+  applying are two sentences, and it gets no scope of its own here either.
+
+There is no `storage:write`, because there is no storage-writing tool and nothing
+else would check it. A scope nobody checks is a label, and a label on a consent
+page is worse than a missing entry: the user reads a boundary that holds nowhere.
 
 Write does not imply read, the same way it does not at the Data API.
+`queues:write` opens enqueueing and not the queue list, and it opens no worker
+operation at all. Claim, lease, renewal and completion are deliberately outside
+MCP, they have no entry in the table, and a name without an entry is not a
+permission.
+
+The six scopes added in migration `0073` change nothing about the HTTP doors.
+`ProjectOAuthAdmission` stays at `reject` for Queues, Functions and Storage;
+opening a door means checking its claims, its role and its refusals, which is a
+cut per door. Storage and Queues also run inside this server with `role: admin`
+on the operator's behalf rather than under the consenting user's row level
+security, so `storage:read` and `queues:read` say something about this project
+environment and nothing about that user's own data. What carries that is the
+ceiling on the client: an owner or administrator writes which scopes an
+application may ever ask for, and a user can only consent to what already stands
+there.
 
 ## Claims, refusals and sessions
 

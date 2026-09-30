@@ -85,7 +85,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 /**
  * Die Bereiche, die es gibt. Die Liste ist geschlossen und steht noch einmal als
- * CHECK in Migration 0062.
+ * CHECK in Migration 0062, seit Migration 0073 in ihrer neuen Fassung.
  *
  * * `identity:read`: Wer hat zugestimmt. Kennung und E-Mail-Adresse dieses
  *   Nutzers, und sonst nichts. Keine Metadaten, kein Sitzungsstand, keine
@@ -100,8 +100,81 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * Frage schon, und zwar feiner. Eine Policy entscheidet je Zeile; ein Bereich je
  * Tabelle koennte nur die Tabelle sperren. Zwei Systeme fuer dieselbe Frage
  * haetten zwei Antworten, und die Console muesste erklaeren, welche gilt.
+ *
+ * ## Die sechs Bereiche neben der Data API (Migration 0073)
+ *
+ * Bis hierher beschrieb jeder Bereich eine Anfrage durch die Data API, und alles
+ * andere hatte darum keinen. Die Folge war trotzdem eine Luecke und keine
+ * Sperre: Der entfernte MCP-Server meldete zwoelf Werkzeuge fuer eine
+ * OAuth-Sitzung gar nicht erst an, weil es keinen Satz gab, der sie beschreibt.
+ * Ein Werkzeug ohne Bereich ist nicht sicher, es ist unerreichbar, und
+ * `docs/PARITAET.md` hat das als Luecke gefuehrt und nicht als Zusage.
+ *
+ * Diese sechs sagen, was sie oeffnen, und nicht mehr:
+ *
+ * * `project:read`: Die Gestalt **dieser** Projektumgebung aus der Control
+ *   Plane, ohne Zugangsdaten: der Eintrag der Umgebung und die geltende
+ *   Automatisierungsregel mit ihrer Risikogrenze. Keine andere Umgebung, kein
+ *   anderes Projekt, keine Organisation, keine Mitgliederliste.
+ * * `storage:read`: Buckets, ihre festen Zugriffsregeln, Kontingente und
+ *   Verbrauch, sowie begrenzte Metadaten der Objekte eines Buckets. **Kein
+ *   Inhalt und keine Signatur.**
+ * * `queues:read`: Queue-Definitionen und ihre Zaehler je Nachrichtenzustand.
+ *   Keine Nachrichteninhalte.
+ * * `queues:write`: Genau das Einstellen einer Nachricht. **Keine
+ *   Worker-Operation**, also kein Claim, kein Lease, kein Renewal und kein
+ *   Abschluss; die gibt es ueber MCP ueberhaupt nicht, und dieser Bereich macht
+ *   sie nicht erreichbar.
+ * * `logs:read`: Die Suche im begrenzten, bereits redigierten Audit-Log dieser
+ *   Projektumgebung.
+ * * `migrations:propose`: Das Anlegen einer unveraenderlichen
+ *   Migrationsvorschau. **Kein Anwenden.** Vorschlagen und Anwenden sind zwei
+ *   Saetze, und ein Bereich, der beides oeffnete, saegte an dem, was er nennt.
+ *
+ * ## Warum `storage:write` fehlt
+ *
+ * Weil es nichts gibt, das ihn pruefen wuerde. Der MCP-Server hat kein
+ * schreibendes Storage-Werkzeug, und die HTTP-Tueren von Storage nehmen ein
+ * OAuth-Token weiterhin nicht an. Ein Bereich, den niemand prueft, ist eine
+ * Beschriftung, und eine Beschriftung auf einer Zustimmungsseite ist schlimmer
+ * als ein fehlender Eintrag: Der Nutzer liest eine Erlaubnis, die nirgends
+ * wirkt, und haelt sie fuer die Grenze. Er kommt mit dem ersten Werkzeug, das
+ * ihn braucht.
+ *
+ * ## Was diese sechs **nicht** aendern
+ *
+ * Die HTTP-Tueren. `ProjectOAuthAdmission` bleibt bei `reject` fuer Queues,
+ * Functions und Storage, und diese Bereiche aendern daran nichts. Das ist keine
+ * Halbheit: Eine Tuer aufzumachen heisst, ihre Ansprueche, ihre Rolle und ihre
+ * Ablehnungen zu pruefen, und das ist je Tuer ein eigener Schnitt. Was hier
+ * entsteht, ist der Satz, den eine solche Tuer dann verlangen **kann**.
+ *
+ * ## Und die Grenze, die diese sechs nicht verschieben
+ *
+ * Storage und Queues laufen im MCP-Server mit `role: "admin"` im Namen des
+ * Betreibers, nicht unter einer Zeilensicherheit des zustimmenden Nutzers. Ein
+ * Bucket hat keine Policy je Zeile, eine Queue auch nicht. `storage:read` und
+ * `queues:read` sagen darum etwas ueber diese Projektumgebung und nichts ueber
+ * die Daten eines Nutzers, und die Console sagt das bei jedem der beiden.
+ *
+ * Getragen wird das von der Decke am Client: Welche Bereiche eine Anwendung
+ * hoechstens verlangen darf, schreibt ein Owner oder Administrator der
+ * Organisation, und ein Nutzer kann nur zustimmen, was dort schon steht. Ohne
+ * diese Decke waere ein Bereich wie `project:read` eine Rechteausweitung durch
+ * Zustimmung eines Endnutzers; mit ihr ist er die Erlaubnis, die der Betreiber
+ * einer namentlich hinterlegten Anwendung geben wollte.
  */
-export const PROJECT_AUTH_OAUTH_SCOPES = ["identity:read", "data:read", "data:write"] as const;
+export const PROJECT_AUTH_OAUTH_SCOPES = [
+  "identity:read",
+  "data:read",
+  "data:write",
+  "project:read",
+  "storage:read",
+  "queues:read",
+  "queues:write",
+  "logs:read",
+  "migrations:propose",
+] as const;
 export type ProjectAuthOAuthScope = (typeof PROJECT_AUTH_OAUTH_SCOPES)[number];
 
 export function isProjectAuthOAuthScope(value: unknown): value is ProjectAuthOAuthScope {

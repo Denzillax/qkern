@@ -2275,7 +2275,7 @@ bearbeitet: Ein geändertes Ziel oder ein geänderter Bereich würde die Zusage
 ändern, unter der ein Nutzer zugestimmt hat, und die Datenbank hat auf dieser
 Tabelle darum gar kein `UPDATE`-Recht.
 
-**Es gibt drei Bereiche.** `identity:read` gibt Kennung und E-Mail-Adresse des
+**Es gibt neun Bereiche.** `identity:read` gibt Kennung und E-Mail-Adresse des
 Nutzers, abrufbar unter `GET /auth/oauth/userinfo`, und sonst nichts: kein
 `user_metadata`, kein `app_metadata`, keine Sitzung, keine Angabe über einen
 zweiten Faktor. `data:read` erlaubt Lesen durch die Data API, `data:write`
@@ -2283,6 +2283,22 @@ Schreiben, beides unter der Zeilensicherheit und als dieser Nutzer. Einen
 Bereich je Tabelle gibt es nicht, weil die Zeilensicherheit die Frage schon
 feiner beantwortet: Eine Policy entscheidet je Zeile. Verlangt eine Anwendung
 mehr, als ihr Client führt, wird der Anlauf abgewiesen und nicht still gekürzt.
+
+Sechs weitere kommen aus Migration `0073` und beschreiben, was der entfernte
+MCP-Server kann: `project:read` die Gestalt dieser Projektumgebung und ihre
+Automatisierungsregel, `storage:read` Buckets und Objektmetadaten ohne Inhalt,
+`queues:read` Definitionen und Zähler, `queues:write` das Einstellen einer
+Nachricht, `logs:read` die Suche im redigierten Audit-Log, `migrations:propose`
+das Anlegen einer Vorschau. Sie wirken heute nur am MCP-Server; die HTTP-Türen
+von Storage, Queues und Functions nehmen ein OAuth-Token weiterhin nicht an.
+Einen Bereich `storage:write` gibt es nicht, weil es kein schreibendes
+Storage-Werkzeug gibt und ihn darum nichts prüfen würde.
+
+Was ein Bereich am Client bedeutet, ist eine Decke: Ein Owner oder
+Administrator schreibt hin, was eine namentlich hinterlegte Anwendung
+höchstens verlangen darf, und ein Nutzer kann nur zustimmen, was dort schon
+steht. Das ist die Stelle, an der ein Betreiber entscheidet, ob eine fremde
+Anwendung überhaupt nach `project:read` fragen darf.
 
 **Der Code ist einmalig, kurzlebig und vierfach gebunden.** Er gilt 60 Sekunden
 und hängt am Client, am Rücksprungziel, an der Prüfsumme des Prüftexts und am
@@ -5159,20 +5175,37 @@ dort:
 | --- | --- |
 | `data:read` | `qkern_table_rows_list` |
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
+| `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
+| `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
+| `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
+| `queues:write` | `qkern_queue_message_enqueue` |
+| `logs:read` | `qkern_logs_search` |
+| `migrations:propose` | `qkern_migration_preview` |
 | `identity:read` | kein eigenes Werkzeug; entscheidet, ob die E-Mail-Adresse in den Ansprüchen der Data-API-Anfrage steht |
 
-Alle übrigen Werkzeuge sind über OAuth nicht erreichbar, und sie fehlen einem
-solchen Client schon in `tools/list`. Das betrifft `qkern_query_readonly` und
-`qkern_schema_list` (sie lesen an der Zeilensicherheit vorbei, `data:read` sagt
-aber Lesen unter der Zeilensicherheit zu), `qkern_project_get`,
-`qkern_automation_policy_get` und `qkern_logs_search` (Control Plane, kein
-Bereich beschreibt sie), Storage und Queues (laufen im Namen des Betreibers) sowie
-`qkern_migration_preview` und `qkern_migration_apply_queue`. Ein Migration-Apply
-über einen fremden Client bleibt zu, mit jedem Bereich, den es gibt.
+Drei Werkzeuge haben keinen Bereich und sind über OAuth nicht erreichbar; sie
+fehlen einem solchen Client schon in `tools/list`. `qkern_query_readonly` und
+`qkern_schema_list` lesen an der Zeilensicherheit vorbei, `data:read` sagt aber
+Lesen unter ihr zu; wer ihnen einen Bereich gibt, muss sie vorher unter sie
+stellen, und das ist ein eigener Schnitt. `qkern_migration_apply_queue` ändert
+den Zustand der Control Plane und führt zu einer Änderung an der
+Projektdatenbank; ein Apply über einen fremden Client bleibt zu, es fällt nicht
+unter `migrations:propose`, und es bekommt hier auch keinen eigenen Bereich.
 
 Schreiben schließt Lesen nicht ein. Ein Token mit `data:write` bekommt die drei
-Mutationen und keine Leseliste, genauso wie an der Data API. Wer beides braucht,
+Mutationen und keine Leseliste, genauso wie an der Data API, und ein Token mit
+`queues:write` bekommt das Einstellen und keine Queue-Liste. Wer beides braucht,
 lässt beidem zustimmen.
+
+`queues:write` öffnet ausserdem keine Worker-Operation. Claim, Lease, Renewal
+und Abschluss sind bewusst aus MCP heraus, sie stehen in der Bereichstabelle
+nicht, und ein Name ohne Eintrag ist keine Erlaubnis.
+
+Storage und Queues laufen in diesem Server mit `role: admin` im Namen des
+Betreibers und nicht unter der Zeilensicherheit des zustimmenden Nutzers; ein
+Bucket hat keine Regel je Zeile, eine Queue auch nicht. `storage:read` und
+`queues:read` sagen darum etwas über diese Projektumgebung und nichts über die
+Daten eines Nutzers. Getragen wird das von der Decke am Client.
 
 Die Anfragen laufen unter der Zeilensicherheit des Nutzers, der zugestimmt hat.
 In `request.jwt.claims` stehen dieselben Angaben wie beim REST-Weg, also `sub`,

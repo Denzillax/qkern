@@ -52,7 +52,9 @@ import {
   AUTH_OAUTH_S256_ONLY,
   AUTH_OAUTH_SAME_RLS_PATH,
   AUTH_OAUTH_SCOPE_TEXTS,
+  AUTH_OAUTH_SCOPES_NOT_EVERYTHING,
   AUTH_OAUTH_SCOPES_WHAT,
+  AUTH_OAUTH_SCOPES_WHERE_THEY_ACT,
   AUTH_OAUTH_TARGET_IS_A_BINDING,
   AUTH_OAUTH_TOKEN_LIFETIME,
   AUTH_OAUTH_VERSUS_THIRD_PARTY,
@@ -399,6 +401,8 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
           <small>{scopeNote(scope)}</small>
         </div>)}
         <p className="muted">{t(AUTH_OAUTH_SCOPES_WHAT)}</p>
+        <p className="muted">{t(AUTH_OAUTH_SCOPES_WHERE_THEY_ACT)}</p>
+        <p className="muted">{t(AUTH_OAUTH_SCOPES_NOT_EVERYTHING)}</p>
         <p className="risk medium">{t(AUTH_OAUTH_NO_SILENT_NARROWING)}</p>
         {full && <p className="risk medium">{t(AUTH_OAUTH_REJECTIONS.too_many_clients)}</p>}
 

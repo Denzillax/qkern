@@ -107,7 +107,8 @@ war damit über mehrere Releases überholt; gemessen sind es 2384 bestandene und
   Manifest-/Tarball-Gate und einem ausführbaren secretfreien Fresh-Project-Smoke;
   Schema Pull akzeptiert jetzt scope-gebundene Project Keys wie SDK und CLI
 - REST/OpenAPI sowie MCP für Queue-Liste, Status und Enqueue; Worker-Lease-
-  Operationen bleiben bewusst aus MCP ausgeschlossen
+  Operationen bleiben bewusst aus MCP ausgeschlossen, und der Bereich
+  `queues:write` erreicht sie darum auch über OAuth nicht
 - opt-in Usage-Metering mit sechs festen Monatsmetriken, verifier-only
   Idempotenz, atomaren `observe`-/`enforce`-Quotas und stabilen Retry-Entscheidungen
 - dauerhafter Usage-Adapter mit Migration 0028, Tenant-RLS, append-only Events,

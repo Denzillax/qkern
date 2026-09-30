@@ -92,6 +92,14 @@ export const AUTH_OAUTH_NO_EDIT =
 export const AUTH_OAUTH_SCOPES_WHAT =
   "Ein Bereich ist, was der Nutzer der Anwendung erlaubt. Am Client steht, was sie höchstens verlangen darf; am Token steht, was er wirklich zugestimmt hat. Weniger ist der häufige Fall und in Ordnung.";
 
+/** Wo die Bereiche wirken, und wo nicht. */
+export const AUTH_OAUTH_SCOPES_WHERE_THEY_ACT =
+  "Nicht jeder Bereich wirkt an jeder Tür. identity:read wirkt an /auth/oauth/userinfo, data:read und data:write an der Data API und am entfernten MCP-Server. Die Bereiche für Projekt, Storage, Queues, Logs und Migrationsvorschläge wirken heute nur am entfernten MCP-Server; die HTTP-Türen von Storage und Queues nehmen ein OAuth-Token weiterhin nicht an. Das steht hier, damit niemand einen Bereich vergibt und eine Tür erwartet, die zu ist.";
+
+/** Und die Werkzeuge, für die es weiterhin keinen gibt. */
+export const AUTH_OAUTH_SCOPES_NOT_EVERYTHING =
+  "Zwei Werkzeuge des MCP-Servers haben weiterhin keinen Bereich und sind über OAuth gar nicht erreichbar: die freie Abfrage und die Schemaliste. Sie lesen an der Zeilensicherheit vorbei, data:read sagt aber Lesen unter der Zeilensicherheit zu. Ein Anwenden einer Migration ist ebenfalls nicht erreichbar; migrations:propose deckt nur den Vorschlag.";
+
 /** Warum kein Bereich je Tabelle. */
 export const AUTH_OAUTH_NO_TABLE_SCOPES =
   "Es gibt keinen Bereich je Tabelle, und das ist Absicht: Die Zeilensicherheit beantwortet die Frage schon, und zwar feiner. Eine Policy entscheidet je Zeile; ein Bereich je Tabelle könnte nur die Tabelle sperren. Zwei Systeme für dieselbe Frage hätten zwei Antworten, und diese Seite müsste erklären, welche gilt.";
@@ -108,6 +116,18 @@ export const AUTH_OAUTH_SCOPE_TEXTS = {
     "Lesen durch die Data API, unter der Zeilensicherheit, als dieser Nutzer. Eine Policy entscheidet weiterhin je Zeile.",
   "data:write":
     "Schreiben durch die Data API, unter derselben Zeilensicherheit. Getrennt vom Lesen, weil das der Unterschied ist, den ein Nutzer wirklich versteht: Eine Anwendung, die nur anzeigt, soll nicht löschen können.",
+  "project:read":
+    "Die Gestalt dieser Projektumgebung: ihr Eintrag ohne Zugangsdaten und die geltende Automatisierungsregel mit ihrer Risikogrenze. Keine andere Umgebung, kein anderes Projekt, keine Organisation und keine Mitgliederliste. Das ist eine Angabe über das Projekt und nicht über den Nutzer, der zustimmt.",
+  "storage:read":
+    "Buckets mit ihren festen Zugriffsregeln, Kontingenten und dem Verbrauch, dazu begrenzte Metadaten der Objekte eines Buckets. Kein Inhalt, keine Signatur, keine Providerschlüssel. Ein Bucket hat keine Regel je Zeile, also ist das der Blick des Betreibers auf diese Umgebung und nicht der Blick des Nutzers auf seine Daten.",
+  "queues:read":
+    "Queue-Definitionen und die Zähler je Nachrichtenzustand. Keine Nachrichteninhalte. Auch das ist der Blick auf die Umgebung und nicht auf die Daten eines Nutzers.",
+  "queues:write":
+    "Das Einstellen einer Nachricht, und nur das. Keine Worker-Operation: kein Claim, kein Lease-Token, kein Renewal und kein Abschluss. Die gibt es über MCP überhaupt nicht, und dieser Bereich macht sie nicht erreichbar.",
+  "logs:read":
+    "Die Suche im Audit-Log dieser Projektumgebung, redigiert und hart begrenzt. Ein eigener Bereich und nicht Teil von project:read, weil ein Audit-Log sagt, wer wann was getan hat, und das etwas über Personen ist.",
+  "migrations:propose":
+    "Das Anlegen einer Migrationsvorschau. Angewendet wird dabei nichts. Ein Anwenden fällt nicht hierunter und ist über eine fremde Anwendung weiterhin gar nicht erreichbar.",
 } as const;
 
 export type AuthOAuthScopeId = keyof typeof AUTH_OAUTH_SCOPE_TEXTS;
@@ -206,7 +226,7 @@ export const AUTH_OAUTH_KEY_STILL_REQUIRED =
 
 /** Nur die Data API. */
 export const AUTH_OAUTH_DATA_API_ONLY =
-  "Ein OAuth-Token öffnet nur die Data API. Queues, Functions und Storage nehmen es nicht an, und das ist keine Vergesslichkeit: Es gibt heute keinen Bereich, der eine Queue oder eine Function beschreibt, und ein Token, das dort mitliefe, hätte eine Erlaubnis, die niemand hinschreiben kann. Neue Türen sind darum voreingestellt geschlossen.";
+  "Über HTTP öffnet ein OAuth-Token nur die Data API. Queues, Functions und Storage nehmen es an ihren eigenen Türen nicht an, auch nicht mit den Bereichen für Queues und Storage: Eine Tür aufzumachen heisst, ihre Ansprüche, ihre Rolle und ihre Ablehnungen zu prüfen, und das ist je Tür ein eigener Schnitt. Neue Türen sind darum voreingestellt geschlossen.";
 
 /* ------------------------------------------------------------------ *
  * Der Widerruf
@@ -337,6 +357,8 @@ export function authOAuthServerTexts(): string[] {
     AUTH_OAUTH_NAME_IS_CLIENT_ID,
     AUTH_OAUTH_NO_EDIT,
     AUTH_OAUTH_SCOPES_WHAT,
+    AUTH_OAUTH_SCOPES_WHERE_THEY_ACT,
+    AUTH_OAUTH_SCOPES_NOT_EVERYTHING,
     AUTH_OAUTH_NO_TABLE_SCOPES,
     AUTH_OAUTH_NO_SILENT_NARROWING,
     AUTH_OAUTH_CODE_WHAT,

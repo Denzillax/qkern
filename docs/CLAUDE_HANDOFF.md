@@ -125,6 +125,50 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.103 **Die Werkzeuge ohne Bereich haben jetzt einen, und drei absichtlich
+  nicht.** Migration `0073_project_auth_oauth_tool_scopes.sql` ersetzt die vier
+  Scope-CHECKs aus 0062 und 0064; die Bereichsliste wird von drei auf neun
+  erweitert, die Obergrenze je Zeile von 3 auf 9. Neu sind `project:read`
+  (`qkern_project_get`, `qkern_automation_policy_get`), `storage:read` (die
+  zwei Storage-Lesewerkzeuge), `queues:read` (Liste und Status), `queues:write`
+  (nur Einstellen), `logs:read` (`qkern_logs_search`) und `migrations:propose`
+  (nur die Vorschau). Die Tabelle steht weiterhin allein in `mcp/tool-scopes.ts`,
+  und die Begruendung je Werkzeug steht dort im Quelltext.
+
+  **Ohne Bereich bleiben drei.** `qkern_query_readonly` und `qkern_schema_list`
+  lesen an der Zeilensicherheit vorbei, `data:read` sagt aber Lesen unter ihr zu;
+  wer ihnen einen Bereich gibt, muss sie vorher unter sie stellen, und das ist
+  ein eigener Schnitt. `qkern_migration_apply_queue` faellt nicht unter
+  `migrations:propose`, weil Vorschlagen und Anwenden zwei Saetze sind, und
+  bekommt auch keinen eigenen: Ein Apply ueber eine fremde Anwendung ist eine
+  eigene Entscheidung mit eigener Widerrufsflaeche.
+
+  **Kein `storage:write`**, weil es kein schreibendes Storage-Werkzeug gibt und
+  ihn darum nichts pruefen wuerde. Ein Bereich, den niemand prueft, ist eine
+  Beschriftung, und auf einer Zustimmungsseite ist eine Beschriftung schlimmer
+  als ein fehlender Eintrag.
+
+  `queues:write` erreicht keine Worker-Operation: Claim, Lease, Renewal und
+  Abschluss stehen in der Tabelle nicht, und ein Name ohne Eintrag ist keine
+  Erlaubnis. Die HTTP-Tueren von Storage, Queues und Functions nehmen ein
+  OAuth-Token weiterhin nicht an; `ProjectOAuthAdmission` bleibt bei `reject`,
+  und diese Bereiche wirken nur am entfernten MCP-Server.
+
+  **Offen**: Storage und Queues laufen im MCP-Server mit `role: "admin"` im Namen
+  des Betreibers und nicht unter der Zeilensicherheit des zustimmenden Nutzers.
+  `storage:read` und `queues:read` sagen darum etwas ueber die Projektumgebung
+  und nichts ueber die Daten eines Nutzers. Getragen wird das allein von der
+  Decke am Client, die ein Owner oder Administrator schreibt. Wer diese Bereiche
+  je Nutzer einschraenken will, braucht dafuer eine Rolle je Bucket und je
+  Queue, und die gibt es nicht. Fall `(2.103)` in
+  `tests/postgres.integration.test.ts`.
+
+  **Befund am Rande**: Eine Queue-Nachricht laesst sich vor ihrer
+  Aufbewahrungsfrist nicht loeschen, auch nicht als Eigentuemer der Datenbank
+  (Trigger aus 0026). Und `project_queue_messages` liegt unter der
+  Mandanten-RLS: Eine Zaehlung mit der Laufzeitrolle ohne gesetzten Mandanten
+  liefert immer null und belegt darum nichts.
+
 - 2.101 **Multipart am S3-Endpunkt.** Migration
   `0071_project_storage_s3_multipart.sql` haengt `parts_declared boolean NOT NULL
   DEFAULT false` an `project_storage_uploads`, lockert `size_bytes` auf `BETWEEN
