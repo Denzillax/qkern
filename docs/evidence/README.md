@@ -1822,3 +1822,28 @@ Tage. Genau der Fall `(S3-Client)` fällt: Das AWS SDK signiert eine Adresse mit
 | `2026-09-29/welle19-local-run2.log` | Vitest lokal (Windows) | 2383 bestanden, exit 0, mit `--maxWorkers=3` |
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `graphqlwrite-*`, `slice-s3c-*` und `fnlogs-*`.
+
+## Läufe zum SAML-Schnitt (30. September 2026)
+
+Zweig `slice/saml`, Stack-Präfix `qkern-slice-saml`. Die Gegenstelle des
+SAML-Nachweises ist `tests/support/saml-idp.ts`: eigenes RSA-Paar, selbst aus
+DER gebautes X.509-Zertifikat, echte XML-Signatur mit `node:crypto`. **Kein
+fremdes SAML-Produkt hat mitgespielt.**
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-09-30/saml-auth-run1.log` | Mailpit und Dex | 10 von 10, exit 0 |
+| `2026-09-30/saml-auth-run2.log` | Mailpit und Dex | 10 von 10, exit 0, Wiederholung |
+| `2026-09-30/saml-auth-run3.log` | Mailpit und Dex | 10 von 10, exit 0, nach dem Zurücksetzen der Mutationen |
+| `2026-09-30/saml-postgres-run1.log` | PostgreSQL 17 | 233 von 233, exit 0 |
+| `2026-09-30/saml-postgres-run2.log` | PostgreSQL 17 | 233 von 233, exit 0, Wiederholung |
+| `2026-09-30/saml-auth-mutation-signature.log` | Mutation: die Signaturprüfung nimmt jede Unterschrift | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-30/saml-auth-mutation-replay.log` | Mutation: der Riegel gegen Wiedereinreichung entfällt | **9 von 10, exit 1 – absichtlich** |
+| `2026-09-30/saml-auth-mutation-conditions.log` | Mutation: das Zeitfenster der Bedingungen wird nicht geprüft | **9 von 10, exit 1 – absichtlich** |
+
+Zwei Läufe stehen daneben, weil sie etwas belegen und nicht weil sie grün sind:
+
+| Datei | Warum sie hier liegt |
+| --- | --- |
+| `2026-09-30/saml-postgres-placeholder-defect.log` | Der erste Lauf des Falls `(2.99)`. `rememberSamlAssertion` schickte `VALUES (,,,,,,,)` an PostgreSQL, weil die Platzhalter beim Schreiben der Datei verloren gingen. Der Speicher-Adapter fährt dieses SQL nie; gefunden hat es die echte Datenbank. Danach fiel derselbe Fall ein zweites Mal, weil `project_auth_oidc_identities_provider_check` aus 0024 den Anbieternamen `saml:federation` abwies — auch das sieht nur die Datenbank. 0070 weitet die Bedingung. |
+| `2026-09-30/saml-postgres-memory-pressure.log` | Ein Lauf, in dem Realtime-Change-Chain in 5000 ms lief und der Soak p95 5761 ms meldete. Das ist Speichermangel und kein Befund; der Lauf zertifiziert nichts, wiederholt wurde er ohne ein Budget anzuheben. Frei waren zu dem Zeitpunkt 2.4 GiB von 15.7 GiB, die Docker-VM steht auf 7.6 GiB. |

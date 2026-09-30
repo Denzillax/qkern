@@ -4,6 +4,7 @@ import type {
   ProjectAuthMfaEnrolmentCount,
   ProjectAuthMfaFactor,
   ProjectAuthOidcIdentity,
+  ProjectAuthSamlAssertion,
   ProjectAuthOneTimePurpose,
   ProjectAuthOneTimeToken,
   ProjectAuthPasskey,
@@ -623,6 +624,28 @@ export class PostgresProjectAuthRepository implements ProjectAuthRepository {
       if (pg.code === "23505" && pg.constraint === "project_auth_oidc_identity_key") {
         throw new DuplicateProjectAuthIdentityError();
       }
+      throw mapPostgresError(error);
+    }
+  }
+
+  /**
+   * Der Riegel gegen eine zweite Einreichung derselben Assertion (2.99).
+   *
+   * `ON CONFLICT DO NOTHING` und danach die Zeilenzahl: Kommen zwei
+   * Einreichungen gleichzeitig an, gewinnt genau eine, weil die eindeutige
+   * Bedingung aus 0070 entscheidet und nicht ein vorher gelesener Zustand.
+   */
+  async rememberSamlAssertion(assertion: ProjectAuthSamlAssertion): Promise<boolean> {
+    try {
+      const result = await this.pool.query(`INSERT INTO project_auth_saml_assertions
+        (id, organization_id, project_id, environment, provider, assertion_id, used_at, expires_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (organization_id, project_id, environment, provider, assertion_id) DO NOTHING`, [
+        assertion.id, assertion.organizationId, assertion.projectId, assertion.environment,
+        assertion.provider, assertion.assertionId, assertion.usedAt, assertion.expiresAt,
+      ]);
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
       throw mapPostgresError(error);
     }
   }

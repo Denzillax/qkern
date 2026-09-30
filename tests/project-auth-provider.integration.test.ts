@@ -4,6 +4,13 @@ import type { PasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
+import { ProjectAuthSamlCatalog, type ProjectAuthSamlProvider } from "@/lib/server/project-auth/saml";
+import { createProjectAuthSamlAcsHandler } from
+  "@/app/api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/acs/route";
+import { samlResponse, samlResponseXml, TestSamlIdp } from "@/tests/support/saml-idp";
+import { NextRequest } from "next/server";
+import { MemoryProjectAuthAuditSink } from "@/lib/server/project-auth/audit";
+import type { ProjectAuthService as ProjectAuthServiceType } from "@/lib/server/project-auth/service";
 import { MemoryProjectAuthRepository } from "@/lib/server/project-auth/repository";
 import { ProjectAuthService } from "@/lib/server/project-auth/service";
 import { SmtpProjectAuthDelivery } from "@/lib/server/project-auth/smtp-delivery";
@@ -48,7 +55,7 @@ class FastHasher implements PasswordHasher {
   async verify(password: string, hash: string) { return hash === await this.hash(password); }
 }
 
-function createService() {
+function createService(saml: ProjectAuthSamlProvider[] = []) {
   const { privateKey } = generateKeyPairSync("ed25519");
   return new ProjectAuthService({
     repository: new MemoryProjectAuthRepository(),
@@ -87,6 +94,10 @@ function createService() {
       scopes: ["openid", "email", "profile"],
     }]),
     oidcClient: new ProjectAuthOidcClient(process.env),
+    samlCatalog: new ProjectAuthSamlCatalog(saml),
+    // Ein Audit-Sink, weil die SAML-Faelle ihre Gruende dort nachlesen: Nach
+    // aussen antwortet die Route auf jede Faelschung dasselbe.
+    audit: new MemoryProjectAuthAuditSink(),
     callbackBaseUrl: CALLBACK_BASE,
     allowedRedirectOrigins: new Set([CALLBACK_BASE]),
     // Kein lokaler Abkuerzungspfad: das Token existiert nur in der Mail.
@@ -339,6 +350,225 @@ describe.runIf(enabled)("Project Auth provider certification", () => {
       provider: "github", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
     })).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
   }, 60_000);
+
+  /**
+   * SAML 2.0 gegen einen Anbieter, der wirklich unterschreibt — Sprosse 8.
+   *
+   * ## Wer hier mitspielt, und wer nicht
+   *
+   * Die Gegenstelle ist `tests/support/saml-idp.ts`: ein eigenes
+   * RSA-Schluesselpaar, ein selbst aus DER gebautes X.509-Zertifikat, eine
+   * echte XML-Signatur nach `rsa-sha256` ueber der exklusiv kanonisierten
+   * Assertion. Kryptografisch ist das eine echte Gegenstelle; QKERN bekommt
+   * nur das Zertifikat und den base64-Text und kennt die Datei nicht.
+   *
+   * **Keine fremde Software hat mitgespielt.** Kein SimpleSAMLphp, kein
+   * Keycloak, kein Shibboleth. Was diese Faelle belegen, ist die Pruefung.
+   * Was sie nicht belegen, ist Interoperabilitaet mit einem Produkt, das
+   * jemand anders geschrieben hat, und das steht auch so im Handbuch.
+   *
+   * Die Antwort geht durch die **echte Route**: `createProjectAuthSamlAcsHandler`
+   * ist derselbe Handler, den `POST .../auth/saml/{provider}/acs` ausfuehrt,
+   * mit demselben Rumpf aus einem Formular und demselben Weg ueber
+   * `resolveSamlScope`.
+   */
+  const samlIdp = () => new TestSamlIdp({ entityId: "https://saml-idp.qkern.test/metadata" });
+  const samlProvider = (idp: TestSamlIdp, extra: Partial<ProjectAuthSamlProvider> = {}): ProjectAuthSamlProvider => ({
+    id: "federation", entityId: idp.entityId, singleSignOnUrl: "https://saml-idp.qkern.test/sso",
+    certificate: idp.certificatePem, ...extra,
+  });
+  const ACS_URL = `${CALLBACK_BASE}/api/v1/projects/${PROJECT_ID}/environments/development/auth/saml/federation/acs`;
+  const SP_ENTITY = `${CALLBACK_BASE}/api/v1/projects/${PROJECT_ID}/environments/development/auth/saml`;
+
+  /** Reicht eine Antwort durch die echte ACS-Route ein. */
+  async function postToAcs(service: ProjectAuthServiceType, response: string, relayState: string) {
+    const handler = createProjectAuthSamlAcsHandler(() => service);
+    const request = new NextRequest(new URL(ACS_URL), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ SAMLResponse: response, RelayState: relayState }).toString(),
+    });
+    const answer = await handler(request, {
+      params: Promise.resolve({ projectId: PROJECT_ID, environment: "development", provider: "federation" }),
+    });
+    return { status: answer.status, body: await answer.json() as { data?: { accessToken?: string }; error?: string } };
+  }
+
+  it("signs a person in over a real SP-initiated SAML flow and ends in a session the access check accepts", async () => {
+    const idp = samlIdp();
+    const service = createService([samlProvider(idp)]);
+    const email = `saml-${randomUUID()}@qkern.test`;
+
+    const started = await service.startSaml(scope, {
+      provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    // Die Anfrage geht mit dem HTTP-Redirect-Binding zum Anbieter, deflatiert
+    // und base64 in der Adresse, und der RelayState ist die Kennung.
+    const authorization = new URL(started.redirectUrl);
+    expect(authorization.origin).toBe("https://saml-idp.qkern.test");
+    expect(authorization.searchParams.get("RelayState")).toBe(started.requestId);
+    expect(authorization.searchParams.get("SAMLRequest")).toBeTruthy();
+
+    const answer = await postToAcs(service, samlResponse({
+      idp, acsUrl: ACS_URL, spEntityId: SP_ENTITY, requestId: started.requestId, email,
+    }), started.requestId);
+    expect(answer.status).toBe(200);
+    const accessToken = answer.body.data?.accessToken;
+    if (!accessToken) throw new Error(`no session: ${JSON.stringify(answer.body)}`);
+
+    const principal = await service.verifyAccess(scope, accessToken);
+    expect(principal.user.email).toBe(email);
+    expect(principal.user.emailVerifiedAt).not.toBeNull();
+
+    // Die Identitaet liegt unter `saml:<slug>` und nicht unter dem Slug allein:
+    // Ein Subject ist die Zusage **eines** Ausstellers.
+    expect(principal.user.appMetadata).toMatchObject({ providers: ["saml:federation"] });
+
+    // Der Anbieter steht in der Projektion, ohne Zertifikat und ohne Endpunkt.
+    const listed = service.listSamlProviders();
+    expect(listed).toEqual([{ id: "federation", entityId: idp.entityId, requiresVerifiedEmail: true }]);
+    expect(JSON.stringify(listed)).not.toMatch(/CERTIFICATE|sso|certificate/i);
+  }, 60_000);
+
+  it("refuses every known SAML forgery at the real consumer route: unsigned, envelope-only, wrapped, expired, misdirected, unbound and foreign-signed", async () => {
+    const idp = samlIdp();
+    const other = new TestSamlIdp({ entityId: idp.entityId });
+    const service = createService([samlProvider(idp)]);
+    const email = `saml-forge-${randomUUID()}@qkern.test`;
+
+    /** Jede Faelschung bekommt eine eigene, frische Anfrage. */
+    const forge = async (
+      build: (requestId: string, now: Date) => string,
+      readAt?: (now: Date) => Date,
+    ) => {
+      const now = new Date();
+      const flow = await service.startSaml(scope, {
+        provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+      });
+      void readAt;
+      return postToAcs(service, build(flow.requestId, now), flow.requestId);
+    };
+    const base = (requestId: string, now: Date) => ({
+      idp, acsUrl: ACS_URL, spEntityId: SP_ENTITY, requestId, email, now,
+    });
+
+    // 1. Keine Signatur ueber der Assertion.
+    expect((await forge((id, now) => samlResponse({ ...base(id, now), signAssertion: false }))).status).toBe(401);
+    // 2. Signatur nur ueber der Antworthuelle. Sie ist echt, sie prueft auch
+    //    durch, und sie deckt die Assertion trotzdem nicht.
+    expect((await forge((id, now) =>
+      samlResponse({ ...base(id, now), signAssertion: false, signResponse: true }))).status).toBe(401);
+    // 3. XML Signature Wrapping: die echte Assertion in einem Extensions-Block,
+    //    eine erfundene an ihrer Stelle.
+    expect((await forge((id, now) =>
+      samlResponse({ ...base(id, now), wrapWith: { email: "angreifer@qkern.test" } }))).status).toBe(401);
+    // 4. Abgelaufenes NotOnOrAfter der Bedingungen.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now),
+      notBefore: new Date(now.getTime() - 2 * 60 * 60 * 1_000),
+      notOnOrAfter: new Date(now.getTime() - 60 * 60 * 1_000),
+      confirmationNotOnOrAfter: new Date(now.getTime() + 5 * 60 * 1_000),
+    }))).status).toBe(401);
+    // 5. NotBefore noch nicht erreicht.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now),
+      notBefore: new Date(now.getTime() + 60 * 60 * 1_000),
+      notOnOrAfter: new Date(now.getTime() + 2 * 60 * 60 * 1_000),
+    }))).status).toBe(401);
+    // 6. Abgelaufene SubjectConfirmationData bei offenen Bedingungen.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), confirmationNotOnOrAfter: new Date(now.getTime() - 60 * 60 * 1_000),
+    }))).status).toBe(401);
+    // 7. Destination zeigt woandershin.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), destination: `${CALLBACK_BASE}/api/v1/elsewhere`,
+    }))).status).toBe(401);
+    // 8. Recipient zeigt woandershin.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), recipient: "https://elsewhere.qkern.test/acs",
+    }))).status).toBe(401);
+    // 9. Audience ist nicht diese Projektumgebung.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), audience: "https://someone-else.qkern.test",
+    }))).status).toBe(401);
+    // 10. InResponseTo passt nicht zur eigenen Anfrage — in der Huelle.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), responseInResponseTo: "_0000000000000000000000000000000000000000",
+    }))).status).toBe(401);
+    // 11. ... und in der Bestaetigung.
+    expect((await forge((id, now) => samlResponse({
+      ...base(id, now), assertionInResponseTo: "_0000000000000000000000000000000000000000",
+    }))).status).toBe(401);
+    // 12. Ein Zertifikat, das nicht das hinterlegte ist — mit KeyInfo faellt es
+    //     dort auf, ohne KeyInfo an der Unterschrift.
+    expect((await forge((id, now) => samlResponse({ ...base(id, now), signWith: other }))).status).toBe(401);
+    expect((await forge((id, now) =>
+      samlResponse({ ...base(id, now), signWith: other, keyInfo: false }))).status).toBe(401);
+    // 13. Fehlendes email_verified bei einem Anbieter, der dafuer buergen muss.
+    expect((await forge((id, now) => samlResponse({ ...base(id, now), emailVerified: null }))).status).toBe(401);
+    expect((await forge((id, now) => samlResponse({ ...base(id, now), emailVerified: "false" }))).status).toBe(401);
+    // 14. Eine Assertion, deren Bytes nach der Signatur geaendert wurden.
+    expect((await forge((id, now) => Buffer.from(
+      samlResponseXml(base(id, now)).replace(`${email}</saml:AttributeValue>`, "root@qkern.test</saml:AttributeValue>"),
+      "utf8").toString("base64"))).status).toBe(401);
+
+    // Keine dieser Antworten hat einen Nutzer angelegt. Waere eine
+    // durchgekommen, stuende hier eine Sitzung.
+    await expect(service.passwordSignIn(scope, {
+      email, password: "a sufficiently long password", rateLimitKey: randomUUID(),
+    })).rejects.toMatchObject({ name: "ProjectAuthError" });
+
+    // Jede Abweisung steht mit ihrem Grund im Audit, und keiner der Gruende
+    // ging nach aussen: Die Route hat vierzehnmal dasselbe geantwortet.
+    const audit = await service.listAuditEvents(scope, 100);
+    const reasons = audit.events
+      .filter((event) => event.action === "project_auth.login.failed" &&
+        (event.metadata as { method?: unknown }).method === "saml")
+      .map((event) => String((event.metadata as { reason?: unknown }).reason ?? ""));
+    expect(new Set(reasons)).toEqual(new Set([
+      "signature_missing", "assertion_not_unique", "condition_expired", "condition_not_yet_valid",
+      "subject_confirmation_expired", "destination_mismatch", "recipient_mismatch", "audience_mismatch",
+      "in_response_to_mismatch", "certificate_mismatch", "signature_invalid", "email_not_verified",
+      "digest_mismatch",
+    ]));
+  }, 120_000);
+
+  it("refuses the very same assertion a second time on the replay bar, and the bar is what refuses it", async () => {
+    const idp = samlIdp();
+    const service = createService([samlProvider(idp)]);
+    const email = `saml-replay-${randomUUID()}@qkern.test`;
+
+    const started = await service.startSaml(scope, {
+      provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const response = samlResponse({
+      idp, acsUrl: ACS_URL, spEntityId: SP_ENTITY, requestId: started.requestId, email,
+    });
+
+    const first = await postToAcs(service, response, started.requestId);
+    expect(first.status).toBe(200);
+    // Dieselbe Antwort, dieselbe offene Anfrage, dieselbe Route. Die Anfrage
+    // wird absichtlich nicht verbraucht, damit die zweite Einreichung
+    // ueberhaupt bis zum Riegel kommt.
+    const second = await postToAcs(service, response, started.requestId);
+    expect(second.status).toBe(401);
+
+    const audit = await service.listAuditEvents(scope, 50);
+    const failed = audit.events.find((event) => event.action === "project_auth.login.failed");
+    expect(failed?.metadata).toMatchObject({ method: "saml", provider: "federation", reason: "assertion_replayed" });
+
+    // Genau eine Sitzung, nicht zwei. Und eine neue Anfrage mit einer neuen
+    // Assertion geht weiter durch: Der Riegel sperrt eine `ID`, nicht den Weg.
+    const again = await service.startSaml(scope, {
+      provider: "federation", redirectTo: `${CALLBACK_BASE}/welcome`, rateLimitKey: randomUUID(),
+    });
+    const fresh = await postToAcs(service, samlResponse({
+      idp, acsUrl: ACS_URL, spEntityId: SP_ENTITY, requestId: again.requestId, email,
+      assertionId: `_a${randomUUID().replace(/-/g, "")}`,
+    }), again.requestId);
+    expect(fresh.status).toBe(200);
+  }, 60_000);
+
   /**
    * Die Auswahlflaeche aus 1.83: Der Katalog kannte `list()` seit 1.76 —
    * gerufen hat es bis jetzt niemand, weder Console noch App. Die Liste ist

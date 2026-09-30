@@ -1,0 +1,93 @@
+
+> qkern-platform@2.67.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Network qkern-slice-saml_default Creating 
+ Network qkern-slice-saml_default Created 
+ Volume qkern-slice-saml_auth-certification-certs Creating 
+ Volume qkern-slice-saml_auth-certification-certs Created 
+ Container qkern-slice-saml-mailpit-1 Creating 
+ Container qkern-slice-saml-certs-1 Creating 
+ Container qkern-slice-saml-mailpit-1 Created 
+ Container qkern-slice-saml-certs-1 Created 
+ Container qkern-slice-saml-dex-1 Creating 
+ Container qkern-slice-saml-dex-partner-1 Creating 
+ Container qkern-slice-saml-dex-1 Created 
+ Container qkern-slice-saml-dex-partner-1 Created 
+ Container qkern-slice-saml-mailpit-1 Starting 
+ Container qkern-slice-saml-certs-1 Starting 
+ Container qkern-slice-saml-certs-1 Started 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-mailpit-1 Started 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-dex-1 Starting 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-dex-partner-1 Starting 
+ Container qkern-slice-saml-dex-partner-1 Started 
+ Container qkern-slice-saml-dex-1 Started 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-mailpit-1 Waiting 
+ Container qkern-slice-saml-dex-1 Waiting 
+ Container qkern-slice-saml-dex-partner-1 Waiting 
+ Container qkern-slice-saml-dex-1 Healthy 
+ Container qkern-slice-saml-dex-partner-1 Healthy 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-mailpit-1 Healthy 
+ Container qkern-slice-saml-certification-run-7cdff5e9f936 Creating 
+ Container qkern-slice-saml-certification-run-7cdff5e9f936 Created 
+
+added 312 packages, and audited 313 packages in 14s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (6 moderate, 3 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.20.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0
+npm notice To update run: npm install -g npm@11.20.0
+npm notice
+
+> qkern-platform@2.67.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [32m✓[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 674[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m10 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 04:56:08
+[2m   Duration [22m 1.85s[2m (transform 686ms, setup 0ms, import 1.00s, tests 674ms, environment 0ms)[22m
+
+ Container qkern-slice-saml-dex-1 Stopping 
+ Container qkern-slice-saml-mailpit-1 Stopping 
+ Container qkern-slice-saml-dex-partner-1 Stopping 
+ Container qkern-slice-saml-dex-1 Stopped 
+ Container qkern-slice-saml-dex-1 Removing 
+ Container qkern-slice-saml-dex-1 Removed 
+ Container qkern-slice-saml-dex-partner-1 Stopped 
+ Container qkern-slice-saml-dex-partner-1 Removing 
+ Container qkern-slice-saml-dex-partner-1 Removed 
+ Container qkern-slice-saml-certs-1 Stopping 
+ Container qkern-slice-saml-certs-1 Stopped 
+ Container qkern-slice-saml-certs-1 Removing 
+ Container qkern-slice-saml-certs-1 Removed 
+ Container qkern-slice-saml-mailpit-1 Stopped 
+ Container qkern-slice-saml-mailpit-1 Removing 
+ Container qkern-slice-saml-mailpit-1 Removed 
+ Network qkern-slice-saml_default Removing 
+ Volume qkern-slice-saml_auth-certification-certs Removing 
+ Volume qkern-slice-saml_auth-certification-certs Removed 
+ Network qkern-slice-saml_default Removed 
+EXIT=0

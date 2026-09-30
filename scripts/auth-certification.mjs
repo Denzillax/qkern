@@ -6,10 +6,15 @@ import { spawnSync } from "node:child_process";
 // starten. Deshalb werden die Dienste erst hochgefahren und der Testcontainer
 // danach getrennt ausgefuehrt.
 
+// Der Projektname kommt aus COMPOSE_PROJECT_NAME, wenn gesetzt: So kann ein
+// Slice-Lauf neben einem anderen Stack stehen, ohne dessen Container zu
+// beruehren. Ohne Angabe gilt der Name aus der Compose-Datei.
+const project = process.env.COMPOSE_PROJECT_NAME?.trim() || "qkern-auth-v13-certification";
+
 const compose = [
   "compose",
   "-p",
-  "qkern-auth-v13-certification",
+  project,
   "-f",
   "docker-compose.auth-certification.yml",
 ];

@@ -89,6 +89,12 @@ import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
+// SAML 2.0 (2.99): der Katalog, die echte ACS-Route und ein Anbieter, der
+// wirklich unterschreibt. Keine fremde Gegenstelle hat mitgespielt.
+import { ProjectAuthSamlCatalog } from "@/lib/server/project-auth/saml";
+import { createProjectAuthSamlAcsHandler } from
+  "@/app/api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/acs/route";
+import { samlResponse, TestSamlIdp } from "@/tests/support/saml-idp";
 import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
 import { NoopDevelopmentProjectAuthDelivery, ProjectAuthService } from "@/lib/server/project-auth/service";
@@ -11261,6 +11267,211 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       "SELECT count(*)::text AS total FROM project_function_invocation_output WHERE organization_id = $1",
       [outputOrganization]);
     expect(Number(left.rows[0]!.total)).toBe(0);
+  });
+
+  /**
+   * SAML 2.0 (2.99) gegen die echte Datenbank.
+   *
+   * Der Anbieter ist `tests/support/saml-idp.ts`: eigenes RSA-Paar, selbst
+   * gebautes X.509-Zertifikat, echte XML-Signatur. Keine fremde Software hat
+   * mitgespielt. Was dieser Fall gegen PostgreSQL belegt, ist der Riegel: dass
+   * eine `ID` **in der Datenbank** entscheidet und nicht im Dienst, dass sie je
+   * Umgebung und Anbieter entscheidet, und dass die Bedingungen aus 0070
+   * wirklich stehen.
+   *
+   * Die Antwort geht durch die echte ACS-Route, mit einem Formularrumpf, wie
+   * der Browser des Anbieters ihn schickt.
+   */
+  it("(2.99) turns a really signed SAML assertion into a session in the real database, bars the same assertion the second time at the unique constraint of 0070, and keeps that bar inside its own environment and provider", async () => {
+    const samlOwner = randomUUID();
+    const samlOrganization = randomUUID();
+    const samlProject = randomUUID();
+    const scope = {
+      organizationId: samlOrganization, projectId: samlProject, environment: "development" as const,
+    };
+    const staging = { ...scope, environment: "staging" as const };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [samlOwner, `saml-owner-${samlOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'SAML', $2, $3)`, [samlOrganization, `saml-${samlOrganization}`, samlOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'SAML', $3, 'test', 'ready', $4)`,
+    [samlProject, samlOrganization, `saml-${samlProject}`, samlOwner]);
+    for (const environment of ["development", "staging"]) {
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, $3, $4)`,
+      [samlOrganization, samlProject, environment, `managed:${samlProject}:${environment}`]);
+    }
+
+    const idp = new TestSamlIdp({ entityId: "https://saml-idp.qkern.test/metadata" });
+    const provider = {
+      id: "federation", entityId: idp.entityId, singleSignOnUrl: "https://saml-idp.qkern.test/sso",
+      certificate: idp.certificatePem,
+    };
+    const { privateKey: samlSigningKey } = generateKeyPairSync("ed25519");
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService({ kid: "certification-2-99", privateKey: samlSigningKey }, "https://qkern.test"),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 11)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      samlCatalog: new ProjectAuthSamlCatalog([provider]),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const acsUrl = `https://qkern.test/api/v1/projects/${samlProject}/environments/development/auth/saml/federation/acs`;
+    const spEntityId = `https://qkern.test/api/v1/projects/${samlProject}/environments/development/auth/saml`;
+    const email = `saml-${randomUUID()}@example.test`;
+    const handler = createProjectAuthSamlAcsHandler(() => service);
+    const submit = async (response: string, relayState: string) => {
+      const request = new NextRequest(new URL(acsUrl), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ SAMLResponse: response, RelayState: relayState }).toString(),
+      });
+      const answer = await handler(request, {
+        params: Promise.resolve({ projectId: samlProject, environment: "development", provider: "federation" }),
+      });
+      return { status: answer.status, body: await answer.json() as { data?: { accessToken?: string } } };
+    };
+
+    // --- Die Anmeldung ----------------------------------------------------
+    const started = await service.startSaml(scope, {
+      provider: "federation", redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    // Die offene Anfrage liegt als Zeile mit dem neuen Zweck aus 0070.
+    const open = await auth.query<{ purpose: string; auth_user_id: string | null; consumed_at: Date | null }>(
+      `SELECT purpose, auth_user_id, consumed_at FROM project_auth_one_time_tokens
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [samlOrganization, samlProject]);
+    expect(open.rows).toHaveLength(1);
+    expect(open.rows[0]!.purpose).toBe("saml_request");
+    expect(open.rows[0]!.auth_user_id).toBeNull();
+
+    const response = samlResponse({ idp, acsUrl, spEntityId, requestId: started.requestId, email });
+    const first = await submit(response, started.requestId);
+    expect(first.status).toBe(200);
+    const accessToken = first.body.data?.accessToken;
+    if (!accessToken) throw new Error("the signed assertion did not produce a session");
+    const principal = await service.verifyAccess(scope, accessToken);
+    expect(principal.user.email).toBe(email);
+
+    // Die Anfrage bleibt absichtlich unverbraucht. Genau deshalb kommt die
+    // zweite Einreichung ueberhaupt bis zum Riegel.
+    const stillOpen = await auth.query<{ consumed_at: Date | null }>(
+      `SELECT consumed_at FROM project_auth_one_time_tokens
+       WHERE organization_id = $1 AND project_id = $2 AND purpose = 'saml_request'`,
+      [samlOrganization, samlProject]);
+    expect(stillOpen.rows[0]!.consumed_at).toBeNull();
+
+    const remembered = await auth.query<{ assertion_id: string; provider: string }>(
+      `SELECT assertion_id, provider FROM project_auth_saml_assertions
+       WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'`,
+      [samlOrganization, samlProject]);
+    expect(remembered.rows).toHaveLength(1);
+    expect(remembered.rows[0]!.provider).toBe("federation");
+    const assertionId = remembered.rows[0]!.assertion_id;
+
+    // --- Der Riegel -------------------------------------------------------
+    const second = await submit(response, started.requestId);
+    expect(second.status).toBe(401);
+    const afterReplay = await auth.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM project_auth_saml_assertions
+       WHERE organization_id = $1 AND project_id = $2`, [samlOrganization, samlProject]);
+    expect(Number(afterReplay.rows[0]!.total)).toBe(1);
+
+    // Der Grund steht in der echten Audit-Kette und ging nicht nach aussen.
+    const audit = await service.listAuditEvents(scope, 20);
+    const refused = audit.events.find((event) => event.action === "project_auth.login.failed");
+    expect(refused?.metadata).toMatchObject({ method: "saml", provider: "federation", reason: "assertion_replayed" });
+
+    // Und die Datenbank ist die Stelle, die entscheidet: derselbe Riegel gilt
+    // auch fuer eine Zeile, die niemand ueber den Dienst anlegt.
+    await expect(auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+      VALUES ($1, $2, 'development', 'federation', $3, now() + interval '5 minutes')`,
+    [samlOrganization, samlProject, assertionId])).rejects.toMatchObject({ code: "23505" });
+
+    // --- Die Grenzen des Riegels -----------------------------------------
+    // Dieselbe `ID` in einer anderen Umgebung und bei einem anderen Anbieter
+    // ist erlaubt: Eine `ID` ist die Zusage eines Ausstellers und nicht global.
+    await auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+      VALUES ($1, $2, 'staging', 'federation', $3, now() + interval '5 minutes')`,
+    [samlOrganization, samlProject, assertionId]);
+    await auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+      VALUES ($1, $2, 'development', 'second-idp', $3, now() + interval '5 minutes')`,
+    [samlOrganization, samlProject, assertionId]);
+    const spread = await auth.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM project_auth_saml_assertions WHERE organization_id = $1`,
+      [samlOrganization]);
+    expect(Number(spread.rows[0]!.total)).toBe(3);
+    void staging;
+
+    // --- Was 0070 in der Datenbank festhaelt -----------------------------
+    // Eine `ID`, die mit einer Ziffer anfaengt, ist kein `xsd:ID`.
+    await expect(auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+      VALUES ($1, $2, 'development', 'federation', '9nope', now() + interval '5 minutes')`,
+    [samlOrganization, samlProject])).rejects.toMatchObject({ code: "23514" });
+    // Ein Slug, den der Katalog nie vergeben koennte.
+    await expect(auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+      VALUES ($1, $2, 'development', 'Federation', '_abc', now() + interval '5 minutes')`,
+    [samlOrganization, samlProject])).rejects.toMatchObject({ code: "23514" });
+    // Ein Fenster, das schon zu war, als es aufging.
+    await expect(auth.query(`INSERT INTO project_auth_saml_assertions
+      (organization_id, project_id, environment, provider, assertion_id, used_at, expires_at)
+      VALUES ($1, $2, 'development', 'federation', '_window', now(), now() - interval '1 minute')`,
+    [samlOrganization, samlProject])).rejects.toMatchObject({ code: "23514" });
+    // Ein Zweck, den 0070 nicht kennt, kommt nicht in die Token-Tabelle.
+    await expect(auth.query(`INSERT INTO project_auth_one_time_tokens
+      (organization_id, project_id, environment, purpose, token_hash, expires_at)
+      VALUES ($1, $2, 'development', 'saml_reply', $3, now() + interval '5 minutes')`,
+    [samlOrganization, samlProject, "a".repeat(64)])).rejects.toMatchObject({ code: "23514" });
+
+    // Die Laufzeitrolle darf eine gemerkte Assertion nicht umschreiben. Was
+    // sich aendern liesse, waere der Riegel selbst.
+    await expect(auth.query(
+      `UPDATE project_auth_saml_assertions SET assertion_id = '_other' WHERE organization_id = $1`,
+      [samlOrganization])).rejects.toMatchObject({ code: "42501" });
+
+    // Eine neue Anfrage mit einer neuen Assertion geht weiter durch: Der Riegel
+    // sperrt eine `ID`, nicht den Weg.
+    const again = await service.startSaml(scope, {
+      provider: "federation", redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+    });
+    const fresh = await submit(samlResponse({
+      idp, acsUrl, spEntityId, requestId: again.requestId, email,
+      assertionId: `_a${randomUUID().replace(/-/g, "")}`,
+    }), again.requestId);
+    expect(fresh.status).toBe(200);
+    const total = await auth.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM project_auth_saml_assertions
+       WHERE organization_id = $1 AND environment = 'development' AND provider = 'federation'`,
+      [samlOrganization]);
+    expect(Number(total.rows[0]!.total)).toBe(2);
+
+    // Und derselbe Mensch hat genau einen Nutzer, mit genau einer Identitaet
+    // unter `saml:federation`.
+    const users = await auth.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM project_auth_users WHERE organization_id = $1`,
+      [samlOrganization]);
+    expect(Number(users.rows[0]!.total)).toBe(1);
+    const identities = await auth.query<{ provider: string }>(
+      `SELECT provider FROM project_auth_oidc_identities WHERE organization_id = $1`,
+      [samlOrganization]);
+    expect(identities.rows.map((row) => row.provider)).toEqual(["saml:federation"]);
   });
 
 });

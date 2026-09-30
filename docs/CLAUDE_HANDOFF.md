@@ -148,6 +148,33 @@ Grossbuchstaben.
   (Zeilengrenze aus: 2 fallen; stderr als stdout: 4 fallen; Canary per `--env`:
   2 fallen). Postgres-Fall `(2.98)`, 231 gruen.
 
+- 2.99 **SAML 2.0 als Anmeldeweg, ohne fremde SAML-Bibliothek.** Migration
+  `0070_project_auth_saml.sql` legt `project_auth_saml_assertions` an: nur die
+  `ID` einer schon benutzten Assertion, je Umgebung und Anbieter eindeutig, kein
+  XML, keine Adresse, kein Subject. Dazu der Zweck `saml_request` in
+  `project_auth_one_time_tokens`. Abgedeckt ist das Web Browser SSO Profile,
+  SP-initiiert, Anfrage ueber HTTP-Redirect, Antwort ueber HTTP-POST.
+  `lib/server/project-auth/saml-xml.ts` ist ein eigener XML-Leser mit
+  exklusiver Kanonisierung; `saml.ts` ist die Pruefung. **Die Formen, die der
+  Leser annimmt und ablehnt, stehen vollstaendig in seinem Kopfkommentar und im
+  Handbuch** — abgelehnt werden Kommentare, `DOCTYPE`, CDATA,
+  Verarbeitungsanweisungen, benannte Entities, doppelte `ID`-Werte,
+  undeklarierte Praefixe, jede Kanonisierung ausser exklusiv, jeder Digest
+  ausser sha256, jede Signatur ausser rsa-sha256 und ecdsa-sha256 und jede
+  `EncryptedAssertion`. **Die offene Anfrage wird absichtlich nicht
+  verbraucht**: Sonst wiese die zweite Einreichung derselben Assertion mit
+  "Zustand unbekannt" ab, und der Riegel in der Datenbank waere eine
+  Behauptung. Routen `saml/{provider}/authorize`, `saml/{provider}/acs` (ohne
+  Origin-Gate und ohne Projekt-Key, weil der Anbieter das Formular schickt),
+  `saml/providers` und `admin/saml`; Ansicht Auth → Anmeldeverfahren.
+  **Die Gegenstelle ist kein fremdes Produkt**: `tests/support/saml-idp.ts`
+  unterschreibt mit `node:crypto` und baut sein X.509-Zertifikat als DER
+  selbst. Interoperabilitaet mit SimpleSAMLphp, Keycloak oder Shibboleth ist
+  damit **nicht** belegt. **Offen**: keine signierte `AuthnRequest`, kein
+  Single Logout, keine Metadaten-Route, keine verschluesselten Assertions, und
+  der Aufraeumer aus 0063 nimmt `project_auth_saml_assertions` noch nicht.
+  Auth-Stack 10 Faelle (vorher 7), Postgres-Fall `(2.99)`.
+
 - 2.94 **Die Zustimmungen haben
   eine Seite, und ein einzelnes Token faellt.** Zwei Luecken aus 2.92, und beide
   hingen zusammen. Die erste: Die Liste der Zustimmungen stand unter

@@ -71,6 +71,14 @@ import {
   ProjectAuthOidcError,
 } from "@/lib/server/project-auth/oidc";
 import {
+  createSamlAuthnRequest,
+  newSamlRequestId,
+  ProjectAuthSamlCatalog,
+  ProjectAuthSamlError,
+  SAML_REQUEST_ID,
+  verifySamlResponse,
+} from "@/lib/server/project-auth/saml";
+import {
   DuplicateProjectAuthIdentityError,
   type ProjectAuthRepository,
 } from "@/lib/server/project-auth/repository";
@@ -168,6 +176,8 @@ const PASSKEY_RATE = { limit: 20, windowMs: 15 * 60 * 1_000 };
 const ENROLLMENT_TOKEN = /^qk_enroll_[A-Za-z0-9_-]{43}$/;
 const ONE_TIME_TOKEN = /^qk_(verify|magic|reset)_[A-Za-z0-9_-]{43}$/;
 const OIDC_STATE_TOKEN = /^qk_oidc_[A-Za-z0-9_-]{43}$/;
+/** Wie lange eine offene SAML-Anfrage gilt. Wie beim OIDC-Zustand: zehn Minuten. */
+const SAML_REQUEST_TTL_MS = 10 * 60 * 1_000;
 const PASSWORD_RATE = { limit: 10, windowMs: 15 * 60 * 1_000 };
 const EMAIL_RATE = { limit: 5, windowMs: 60 * 60 * 1_000 };
 const MFA_RATE = { limit: 8, windowMs: 15 * 60 * 1_000 };
@@ -550,7 +560,8 @@ recognisedByName(ProjectAuthReturnTargetError, "ProjectAuthReturnTargetError");
 /** Wer in der Console handelt: die ID des Console-Nutzers, nie seine E-Mail. */
 export type ProjectAuthAdminActor = { id: string };
 
-type ProjectAuthSignInMethod = "password" | "magic_link" | "email_verification" | "oidc" | "passkey";
+type ProjectAuthSignInMethod =
+  | "password" | "magic_link" | "email_verification" | "oidc" | "passkey" | "saml";
 
 export type ProjectAuthAdminContext = {
   organizationId: string;
@@ -636,6 +647,12 @@ export type ProjectAuthServiceDependencies = {
   delivery: ProjectAuthDeliveryPort;
   oidcCatalog: ProjectAuthOidcCatalog;
   oidcClient: ProjectAuthOidcClient;
+  /**
+   * Der SAML-Katalog (2.99). Optional, und ohne ihn gilt ein leerer Katalog:
+   * Eine Installation ohne hinterlegten Anbieter hat keinen SAML-Weg, und der
+   * Dienst soll dafuer nicht anders gebaut werden muessen.
+   */
+  samlCatalog?: ProjectAuthSamlCatalog;
   /** Optional: ohne Sink schreibt der Dienst keine Audit-Ereignisse. */
   audit?: ProjectAuthAuditSink;
   /**
@@ -673,8 +690,10 @@ export class ProjectAuthService {
   private readonly id: () => string;
   private readonly opaqueToken: (prefix: string) => string;
   private readonly refreshTtlMs: number;
+  private readonly samlCatalog: ProjectAuthSamlCatalog;
 
   constructor(private readonly dependencies: ProjectAuthServiceDependencies) {
+    this.samlCatalog = dependencies.samlCatalog ?? new ProjectAuthSamlCatalog([]);
     this.now = dependencies.now ?? (() => new Date());
     this.id = dependencies.id ?? (() => randomUUID());
     this.opaqueToken = dependencies.opaqueToken ?? ((prefix) => `qk_${prefix}_${randomBytes(32).toString("base64url")}`);
@@ -2825,6 +2844,249 @@ export class ProjectAuthService {
     return scope;
   }
 
+  /**
+   * Die hinterlegten SAML-Anbieter als Projektion (2.99).
+   *
+   * Zwei Felder und ein Wahrheitswert, genau wie bei `listOidcProviders`:
+   * Slug, `entityID` des Anbieters und ob QKERN ein bestaetigtes
+   * `email_verified` verlangt. Nie das Zertifikat, nie der SSO-Endpunkt. Das
+   * Zertifikat ist nicht geheim, aber es gehoert in die Konfiguration und
+   * nicht in eine Liste, die eine Ansicht abruft.
+   */
+  listSamlProviders(): Array<{ id: string; entityId: string; requiresVerifiedEmail: boolean }> {
+    return this.samlCatalog.list().flatMap((id) => {
+      const provider = this.samlCatalog.get(id);
+      return provider
+        ? [{
+            id: provider.id, entityId: provider.entityId,
+            requiresVerifiedEmail: provider.emailVerification !== "trusted",
+          }]
+        : [];
+    });
+  }
+
+  /**
+   * Beginnt eine SP-initiierte Anmeldung: eine `AuthnRequest` und die Adresse
+   * beim Anbieter.
+   *
+   * Der `RelayState` ist die Kennung der Anfrage und nichts weiter. Kein
+   * Ruecksprungziel, kein verschluesselter Zustand, kein Token: Was der Browser
+   * beim Anbieter vorbeitraegt, sieht der Anbieter, und darum steht dort nur
+   * eine Kennung, unter der QKERN den eigenen Zustand wieder findet. Das
+   * Ruecksprungziel liegt verschluesselt in der Zeile.
+   */
+  async startSaml(scope: ProjectAuthScope, input: {
+    provider: string;
+    redirectTo: string;
+    rateLimitKey: string;
+  }): Promise<{ redirectUrl: string; requestId: string; expiresAt: string }> {
+    const now = this.now();
+    await this.assertRateLimit(`project-saml:${scopeKey(scope)}:${input.rateLimitKey}`, EMAIL_RATE, now);
+    assertScope(scope);
+    const provider = this.samlCatalog.get(input.provider);
+    if (!provider) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    const redirectTo = await this.returnTarget(scope, input.redirectTo);
+    const acsUrl = this.samlAcsUri(scope, provider.id);
+    const spEntityId = this.samlEntityId(scope);
+    const requestId = newSamlRequestId();
+    if (!SAML_REQUEST_ID.test(requestId)) throw new ProjectAuthError("INVALID_INPUT");
+    let request;
+    try {
+      request = createSamlAuthnRequest(provider, {
+        requestId, acsUrl, spEntityId, relayState: requestId, issueInstant: now,
+      });
+    } catch (error) {
+      if (error instanceof ProjectAuthSamlError) throw new ProjectAuthError("INVALID_INPUT");
+      throw error;
+    }
+    const flow = this.dependencies.secrets.encrypt(JSON.stringify({ acsUrl, spEntityId, redirectTo }));
+    const expiresAt = new Date(now.getTime() + SAML_REQUEST_TTL_MS);
+    await this.dependencies.repository.createOneTimeToken({
+      ...scope, id: this.id(), userId: null, purpose: "saml_request",
+      tokenHash: hashProjectAuthToken(requestId), metadata: { provider: provider.id, flow },
+      createdAt: now, expiresAt, consumedAt: null,
+    });
+    return { redirectUrl: request.url, requestId, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Nimmt die Antwort am Assertion Consumer Service an.
+   *
+   * Die Reihenfolge ist der Fall: Erst wird die offene Anfrage **gelesen**
+   * (nicht verbraucht), dann prueft das reine Modul die ganze Antwort, und erst
+   * eine Antwort, die jede Pruefung bestanden hat, schlaegt den Riegel gegen
+   * Wiedereinreichung zu. Waere die Anfrage schon vorher verbraucht, wiese die
+   * zweite Einreichung derselben Assertion mit "Zustand unbekannt" ab, und der
+   * Riegel waere eine Behauptung statt einer Pruefung.
+   */
+  async completeSaml(scope: ProjectAuthScope, input: {
+    provider: string;
+    requestId: string;
+    response: string;
+  }): Promise<ProjectAuthSessionResult | ProjectAuthMfaRequired | ProjectAuthMfaEnrollmentRequired> {
+    assertScope(scope);
+    if (!SAML_REQUEST_ID.test(input.requestId)) throw new ProjectAuthError("INVALID_TOKEN");
+    const provider = this.samlCatalog.get(input.provider);
+    if (!provider) throw new ProjectAuthError("RESOURCE_NOT_FOUND");
+    const now = this.now();
+    const open = await this.dependencies.repository.findActiveOneTimeToken(
+      scope, hashProjectAuthToken(input.requestId), "saml_request", now,
+    );
+    if (!open || open.metadata.provider !== provider.id || typeof open.metadata.flow !== "string") {
+      throw new ProjectAuthError("INVALID_TOKEN");
+    }
+    const flow = this.parseSamlFlow(this.dependencies.secrets.decrypt(open.metadata.flow));
+
+    let verdict: ReturnType<typeof verifySamlResponse>;
+    try {
+      verdict = verifySamlResponse(provider, {
+        response: input.response, requestId: input.requestId,
+        acsUrl: flow.acsUrl, spEntityId: flow.spEntityId, now,
+      });
+    } catch (error) {
+      if (!(error instanceof ProjectAuthSamlError)) throw error;
+      verdict = { ok: false, reason: "malformed_response" };
+    }
+    if (!verdict.ok) return this.refuseSaml(scope, provider.id, verdict.reason);
+    const identityClaims = verdict.value;
+
+    // Der Riegel. Er steht **hinter** der Signatur, weil eine `ID` aus einer
+    // ungepruefen Antwort nichts ist, was man sich merken sollte: Sonst koennte
+    // jeder mit einer erfundenen `ID` eine echte Anmeldung aussperren.
+    const remembered = await this.dependencies.repository.rememberSamlAssertion({
+      ...scope, id: this.id(), provider: provider.id,
+      assertionId: identityClaims.assertionId, usedAt: now, expiresAt: identityClaims.notOnOrAfter,
+    });
+    if (!remembered) return this.refuseSaml(scope, provider.id, "assertion_replayed");
+
+    const email = canonicalEmail(identityClaims.email);
+    assertEmail(email);
+    const slug = this.samlIdentityProvider(provider.id);
+    const identity = await this.dependencies.repository.findOidcIdentity(scope, slug, identityClaims.subject);
+    let user = identity ? await this.dependencies.repository.findUserById(scope, identity.userId) : null;
+    if (!user) {
+      user = await this.dependencies.repository.findUserByEmail(scope, email);
+      if (!user) {
+        user = await this.dependencies.repository.createUser({
+          ...scope, id: this.id(), email, passwordHash: null, status: "active", emailVerifiedAt: now,
+          userMetadata: identityClaims.name ? { name: identityClaims.name } : {},
+          appMetadata: { providers: [slug] }, createdAt: now, updatedAt: now,
+        });
+        await this.recordAudit(this.userEvent(scope, "project_auth.signup.succeeded", user.id, "succeeded", {
+          method: "saml", provider: provider.id,
+        }));
+      } else if (!user.emailVerifiedAt) {
+        user = await this.dependencies.repository.updateUser(scope, user.id, { emailVerifiedAt: now, updatedAt: now });
+      }
+      if (!user) throw new ProjectAuthError("INVALID_CREDENTIALS");
+      try {
+        await this.dependencies.repository.createOidcIdentity({
+          ...scope, id: this.id(), userId: user.id, provider: slug, subject: identityClaims.subject,
+          createdAt: now, lastSignInAt: now,
+        });
+      } catch (error) {
+        if (!(error instanceof DuplicateProjectAuthIdentityError)) throw error;
+        const winner = await this.dependencies.repository.findOidcIdentity(scope, slug, identityClaims.subject);
+        if (!winner || winner.userId !== user.id) throw new ProjectAuthError("INVALID_CREDENTIALS");
+      }
+    }
+    if (user.status !== "active") {
+      await this.recordAudit(this.userEvent(scope, "project_auth.login.failed", user.id, "failed", {
+        method: "saml", provider: provider.id, reason: "user_disabled",
+      }));
+      throw new ProjectAuthError("INVALID_CREDENTIALS");
+    }
+    return this.beginAuthenticatedSession(scope, user, now, "saml", provider.id);
+  }
+
+  /**
+   * Findet die Umgebung zu einem `RelayState`, damit die ACS-Route dieselbe
+   * Grenze hat wie der OIDC-Callback: Sie kennt Projekt und Umgebung aus dem
+   * Pfad und holt die Organisation aus der offenen Anfrage, nie aus dem, was
+   * der Browser mitbringt.
+   */
+  async resolveSamlScope(input: {
+    projectId: string;
+    environment: ProjectAuthScope["environment"];
+    requestId: string;
+  }): Promise<ProjectAuthScope> {
+    if (!input.projectId || input.projectId.length > 128 ||
+        !["development", "staging", "production"].includes(input.environment) ||
+        !SAML_REQUEST_ID.test(input.requestId)) throw new ProjectAuthError("INVALID_TOKEN");
+    const scope = await this.dependencies.repository.findActiveOneTimeTokenScope(
+      input.projectId, input.environment, hashProjectAuthToken(input.requestId), "saml_request", this.now(),
+    );
+    if (!scope) throw new ProjectAuthError("INVALID_TOKEN");
+    return scope;
+  }
+
+  /**
+   * Eine abgewiesene Antwort. Der Grund steht im Audit und geht **nicht** nach
+   * aussen: Wer eine Antwort baut, soll nicht erfahren, an welcher der
+   * Pruefungen sie gescheitert ist.
+   */
+  private async refuseSaml(scope: ProjectAuthScope, provider: string, reason: string): Promise<never> {
+    await this.recordAudit({
+      scope, action: "project_auth.login.failed", actorType: "app_user", actorRef: "anonymous",
+      resourceRef: "project_auth_user:unknown", status: "failed",
+      metadata: { method: "saml", provider, reason },
+    });
+    throw new ProjectAuthError("INVALID_CREDENTIALS");
+  }
+
+  /**
+   * Unter welchem Namen eine SAML-Identitaet in `project_auth_oidc_identities`
+   * steht: `saml:<slug>`.
+   *
+   * Der Praefix ist kein Schmuck. Ohne ihn koennten ein OIDC-Anbieter und ein
+   * SAML-Anbieter mit demselben Slug sich gegenseitig die Subjects
+   * ueberschreiben, und ein Subject ist eine Zusage **eines** Ausstellers. Die
+   * Verknuepfung zweier Anbieter laeuft weiter ueber die bestaetigte Adresse,
+   * genau wie bei zwei OIDC-Anbietern.
+   */
+  private samlIdentityProvider(slug: string): string { return `saml:${slug}`; }
+
+  private samlAcsUri(scope: ProjectAuthScope, provider: string): string {
+    return this.samlUrl(
+      `/api/v1/projects/${scope.projectId}/environments/${scope.environment}/auth/saml/${provider}/acs`,
+    );
+  }
+
+  /**
+   * Die `entityID`, unter der QKERN beim Anbieter auftritt: eine je
+   * Projektumgebung, nicht eine je Anbieter. Sie steht in jeder
+   * `AudienceRestriction`, die QKERN annimmt.
+   */
+  private samlEntityId(scope: ProjectAuthScope): string {
+    return this.samlUrl(`/api/v1/projects/${scope.projectId}/environments/${scope.environment}/auth/saml`);
+  }
+
+  private samlUrl(path: string): string {
+    try {
+      const base = new URL(this.dependencies.callbackBaseUrl);
+      const localHttp = base.protocol === "http:" && ["localhost", "127.0.0.1"].includes(base.hostname);
+      if ((base.protocol !== "https:" && !localHttp) || base.username || base.password || base.search || base.hash) {
+        throw new Error("invalid");
+      }
+      return new URL(path, base.origin).toString();
+    } catch {
+      throw new ProjectAuthError("INVALID_INPUT");
+    }
+  }
+
+  private parseSamlFlow(encoded: string): { acsUrl: string; spEntityId: string; redirectTo: string } {
+    try {
+      const parsed = JSON.parse(encoded) as unknown;
+      if (!parsed || typeof parsed !== "object") throw new Error("invalid");
+      const flow = parsed as Record<string, unknown>;
+      if (typeof flow.acsUrl !== "string" || typeof flow.spEntityId !== "string" ||
+          typeof flow.redirectTo !== "string") throw new Error("invalid");
+      return { acsUrl: flow.acsUrl, spEntityId: flow.spEntityId, redirectTo: flow.redirectTo };
+    } catch {
+      throw new ProjectAuthError("INVALID_TOKEN");
+    }
+  }
+
   jwks() { return this.dependencies.tokens.jwks(); }
 
   async listUsers(scope: ProjectAuthScope, limit = 50, cursor?: string): Promise<{
@@ -3290,6 +3552,10 @@ export class DisabledProjectAuthService {
   startOidc(): never { return this.disabled(); }
   completeOidc(): never { return this.disabled(); }
   resolveOidcScope(): never { return this.disabled(); }
+  listSamlProviders(): never { return this.disabled(); }
+  startSaml(): never { return this.disabled(); }
+  completeSaml(): never { return this.disabled(); }
+  resolveSamlScope(): never { return this.disabled(); }
   jwks(): never { return this.disabled(); }
   listUsers(): never { return this.disabled(); }
   updateUser(): never { return this.disabled(); }

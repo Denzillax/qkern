@@ -1629,6 +1629,46 @@ export const qkernOpenAPI = {
         responses: { "200": { description: "Configured providers with slug, issuer and email-verification requirement", content: { "application/json": { schema: { $ref: "#/components/schemas/ProjectAuthAdminOidcProviderListEnvelope" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/auth/saml/{provider}/authorize": {
+      post: {
+        tags: ["Project Auth"], operationId: "projectAuthSamlAuthorize",
+        summary: "Start an SP-initiated SAML 2.0 web browser SSO flow",
+        description: "Returns the provider address for the HTTP-Redirect binding and the request id. The AuthnRequest is deflated and base64 encoded in the address; RelayState carries the request id and nothing else, because the provider sees whatever the browser carries past it. The return target lives encrypted in the row. The request is not signed: a signed request protects the provider against requests made in QKERN's name, not QKERN. What protects QKERN is InResponseTo, and that hangs on the id. Providers, their entity id and their certificate are fixed by server configuration. The open request expires after ten minutes and is deliberately not consumed on use.",
+        security: [{ projectApiKey: [] }],
+        parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
+        responses: { "200": { description: "Provider single sign-on address and the request id" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Origin is not allowed" }, "404": { $ref: "#/components/responses/NotFound" }, "429": { $ref: "#/components/responses/RateLimited" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/saml/{provider}/acs": {
+      post: {
+        tags: ["Project Auth"], operationId: "projectAuthSamlAssertionConsumer",
+        summary: "Consume a SAML 2.0 response over the HTTP-POST binding",
+        description: "Form-encoded SAMLResponse and RelayState, posted by a form the provider put in the browser. No project key and no origin gate: a cross-site POST carries neither, and inventing a path for them would invent the flow. What has to convince is the response itself. Checked in this order: the accepted XML forms, exactly one Assertion in the whole document, the XML signature over the assertion against the registered certificate with exclusive canonicalisation, then Destination, InResponseTo, Recipient, the audience, both time windows and the email attributes. A signature over the response envelope alone does not cover the assertion and is refused. An assertion whose form cannot be checked is refused, never passed through. Every refusal answers 401 with the same body; the reason is only in the audit. The assertion id is barred against a second use in the database.",
+        security: [],
+        parameters: [...projectAuthScopeParameters, { name: "provider", in: "path", required: true, schema: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,62}$" } }],
+        responses: { "200": { description: "Application session or MFA challenge" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "Project Auth disabled" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/saml/providers": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthListSamlProviders",
+        summary: "List the registered SAML providers before sign-in",
+        description: "The same public boundary and the same narrowing as /auth/oidc/providers: project key, origin gate, CORS, no-store, and two fields only, the slug and the provider entity id. Never the certificate and never the single sign-on address. Whether QKERN requires a confirmed email_verified for a provider is an operating statement for the console and stays behind /auth/admin/saml. Any query parameter is a 400.",
+        security: [{ projectApiKey: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Registered providers with slug and entity id" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Origin is not allowed" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/auth/admin/saml": {
+      get: {
+        tags: ["Project Auth"], operationId: "projectAuthAdminListSamlProviders",
+        summary: "List the registered SAML providers for the console as owner or administrator",
+        description: "Its own door rather than a second field in /auth/admin/providers: that answer is a list of OIDC providers, and turning a list into an object with two lists changes the shape of an answer that already exists. Console session, no project key. Slug, entity id and requiresVerifiedEmail; never the registered certificate and never the single sign-on address. Providers are configured on the server, so there is no writer behind this path. Any query parameter is a 400.",
+        security: [{ sessionCookie: [] }],
+        parameters: projectAuthScopeParameters,
+        responses: { "200": { description: "Registered providers with slug, entity id and email-verification requirement" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/auth/admin/users": {
       get: {
         tags: ["Project Auth"], operationId: "projectAuthAdminListUsers", summary: "List environment-scoped app users as owner or administrator",

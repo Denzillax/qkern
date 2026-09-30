@@ -1,0 +1,126 @@
+
+> qkern-platform@2.67.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Network qkern-slice-saml_default Creating 
+ Network qkern-slice-saml_default Created 
+ Volume qkern-slice-saml_auth-certification-certs Creating 
+ Volume qkern-slice-saml_auth-certification-certs Created 
+ Container qkern-slice-saml-mailpit-1 Creating 
+ Container qkern-slice-saml-certs-1 Creating 
+ Container qkern-slice-saml-mailpit-1 Created 
+ Container qkern-slice-saml-certs-1 Created 
+ Container qkern-slice-saml-dex-1 Creating 
+ Container qkern-slice-saml-dex-partner-1 Creating 
+ Container qkern-slice-saml-dex-1 Created 
+ Container qkern-slice-saml-dex-partner-1 Created 
+ Container qkern-slice-saml-mailpit-1 Starting 
+ Container qkern-slice-saml-certs-1 Starting 
+ Container qkern-slice-saml-certs-1 Started 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-mailpit-1 Started 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-dex-partner-1 Starting 
+ Container qkern-slice-saml-dex-1 Starting 
+ Container qkern-slice-saml-dex-1 Started 
+ Container qkern-slice-saml-dex-partner-1 Started 
+ Container qkern-slice-saml-mailpit-1 Waiting 
+ Container qkern-slice-saml-dex-1 Waiting 
+ Container qkern-slice-saml-dex-partner-1 Waiting 
+ Container qkern-slice-saml-certs-1 Waiting 
+ Container qkern-slice-saml-dex-partner-1 Healthy 
+ Container qkern-slice-saml-dex-1 Healthy 
+ Container qkern-slice-saml-certs-1 Exited 
+ Container qkern-slice-saml-mailpit-1 Healthy 
+ Container qkern-slice-saml-certification-run-d3fecf749c3f Creating 
+ Container qkern-slice-saml-certification-run-d3fecf749c3f Created 
+
+added 312 packages, and audited 313 packages in 23s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (6 moderate, 3 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.20.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0
+npm notice To update run: npm install -g npm@11.20.0
+npm notice
+
+> qkern-platform@2.67.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [31m❯[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m10 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1983[2mms[22m[39m
+     [32m✓[39m delivers a verification mail over real SMTP and only the mail carries the token[32m 203[2mms[22m[39m
+     [32m✓[39m delivers a magic link that signs the user in[32m 110[2mms[22m[39m
+     [32m✓[39m delivers a password reset that a new password can be set with[32m 135[2mms[22m[39m
+     [33m[2m✓[22m[39m completes a real OIDC authorization code flow with PKCE against Dex [33m 354[2mms[22m[39m
+     [32m✓[39m refuses a replayed authorization state[32m 232[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps two real providers separate and links identities by verified mail [33m 406[2mms[22m[39m
+     [32m✓[39m signs a person in over a real SP-initiated SAML flow and ends in a session the access check accepts[32m 145[2mms[22m[39m
+[31m     [31m×[31m refuses every known SAML forgery at the real consumer route: unsigned, envelope-only, wrapped, expired, misdirected, unbound and foreign-signed[39m[32m 232[2mms[22m[39m
+     [32m✓[39m refuses the very same assertion a second time on the replay bar, and the bar is what refuses it[32m 158[2mms[22m[39m
+     [32m✓[39m lists exactly the configured providers as a three-field projection[32m 2[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/project-auth-provider.integration.test.ts[2m > [22mProject Auth provider certification[2m > [22mrefuses every known SAML forgery at the real consumer route: unsigned, envelope-only, wrapped, expired, misdirected, unbound and foreign-signed
+[31m[1mAssertionError[22m: expected 200 to be 401 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 401[39m
+[31m+ 200[39m
+
+[36m [2m❯[22m tests/project-auth-provider.integration.test.ts:[2m471:18[22m[39m
+    [90m469|[39m       notOnOrAfter[33m:[39m [35mnew[39m [33mDate[39m(now[33m.[39m[34mgetTime[39m() [33m-[39m [34m60[39m [33m*[39m [34m60[39m [33m*[39m [34m1_000[39m)[33m,[39m
+    [90m470|[39m       confirmationNotOnOrAfter: new Date(now.getTime() + 5 * 60 * 1_00…
+    [90m471|[39m     })))[33m.[39mstatus)[33m.[39m[34mtoBe[39m([34m401[39m)[33m;[39m
+    [90m   |[39m                  [31m^[39m
+    [90m472|[39m     [90m// 5. NotBefore noch nicht erreicht.[39m
+    [90m473|[39m     [34mexpect[39m(([35mawait[39m [34mforge[39m((id[33m,[39m now) [33m=>[39m [34msamlResponse[39m({
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m9 passed[39m[22m[90m (10)[39m
+[2m   Start at [22m 05:13:48
+[2m   Duration [22m 4.82s[2m (transform 1.88s, setup 0ms, import 2.61s, tests 1.98s, environment 0ms)[22m
+
+
+ Container qkern-slice-saml-dex-partner-1 Stopping 
+ Container qkern-slice-saml-mailpit-1 Stopping 
+ Container qkern-slice-saml-dex-1 Stopping 
+ Container qkern-slice-saml-dex-partner-1 Stopped 
+ Container qkern-slice-saml-dex-partner-1 Removing 
+ Container qkern-slice-saml-dex-1 Stopped 
+ Container qkern-slice-saml-dex-1 Removing 
+ Container qkern-slice-saml-mailpit-1 Stopped 
+ Container qkern-slice-saml-mailpit-1 Removing 
+ Container qkern-slice-saml-dex-partner-1 Removed 
+ Container qkern-slice-saml-dex-1 Removed 
+ Container qkern-slice-saml-certs-1 Stopping 
+ Container qkern-slice-saml-certs-1 Stopped 
+ Container qkern-slice-saml-certs-1 Removing 
+ Container qkern-slice-saml-mailpit-1 Removed 
+ Container qkern-slice-saml-certs-1 Removed 
+ Network qkern-slice-saml_default Removing 
+ Volume qkern-slice-saml_auth-certification-certs Removing 
+ Volume qkern-slice-saml_auth-certification-certs Removed 
+ Network qkern-slice-saml_default Removed 
+EXIT=1
