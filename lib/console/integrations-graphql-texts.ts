@@ -29,7 +29,7 @@ export const GRAPHQL_WHAT =
 
 /** Die drei Mutationen und ihre Klammer. */
 export const GRAPHQL_MUTATIONS =
-  "Mutationen gibt es in drei Formen, benannt wie bei pg_graphql: insertInto<Tabelle>Collection, update<Tabelle>Collection und deleteFrom<Tabelle>Collection. Alle Mutationen einer Anfrage laufen in einer Transaktion der Data API. Fällt eine, auch an einer Policy, wirkt keine. Ändern und Löschen verlangen eine Bedingung in where.";
+  "Mutationen gibt es in drei Formen, benannt wie bei pg_graphql: insertInto<Tabelle>Collection, update<Tabelle>Collection und deleteFrom<Tabelle>Collection. Das Einfügen nimmt onConflict und wird damit zum Upsert. Alle Mutationen einer Anfrage laufen in einer Transaktion der Data API. Fällt eine, auch an einer Policy, wirkt keine. Ändern und Löschen verlangen eine Bedingung in where.";
 
 /** Der Weg in die Datenbank. */
 export const GRAPHQL_SAME_PATH =
@@ -99,6 +99,7 @@ export const GRAPHQL_ACCEPTED_TEXTS: Record<ProjectGraphqlAccepted, string> = {
   comments: "Kommentare mit # bis zum Zeilenende.",
   mutations: "Mutationen: insertInto<Tabelle>Collection(objects: […]), update<Tabelle>Collection(set: {…}, where: […]) und deleteFrom<Tabelle>Collection(where: […]), mit affectedCount und records in der Antwort.",
   row_objects: "Flache Eingabeobjekte als Zeile oder Zuweisung in einer Mutation, nur mit Zahl, Zeichenkette, true, false und null.",
+  upserts: "Ein Upsert: das Einfügen nimmt onConflict mit den Spalten eines vorhandenen Primärschlüssels oder eindeutigen Index. Trifft eine Zeile den Schlüssel, wird sie geändert, und die Policy entscheidet darüber wie bei einem Ändern.",
 };
 
 /** Was er abweist, je Eintrag mit Grund. */
@@ -136,6 +137,7 @@ export const GRAPHQL_MUTATION_ARGUMENT_TEXTS: Record<string, string> = {
   set: "Die Zuweisung beim Ändern, ein flaches Objekt. Spalten des Primärschlüssels stehen nicht darin.",
   where: "Die Bedingung beim Ändern und Löschen, Pflicht, in derselben Form wie bei einer Abfrage.",
   atMost: "Wie viele Zeilen die Bedingung höchstens treffen darf. Trifft sie mehr, wird die Mutation abgewiesen und die Transaktion zurückgerollt.",
+  onConflict: "Die Spalten des Konfliktschlüssels eines Upsert. Sie müssen im Katalog einen Primärschlüssel oder eindeutigen Index bilden und in jeder Zeile stehen; sonst wird die Mutation abgewiesen, bevor eine Zeile geschrieben ist.",
 };
 
 /* ------------------------------------------------------------------ *

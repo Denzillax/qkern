@@ -799,6 +799,60 @@ nur `schema` und `match`. Spalten mit Passwort-/Secret-/Token-/Key-Mustern sind
 von Lesen, Filtern, Sortieren und Mutieren ausgeschlossen. Die Console `Table
 Editor` benutzt dieselben Endpunkte und zeigt nie Beispieldaten.
 
+**Upsert (seit 2.105).** `POST` nimmt zusätzlich `onConflict` mit den Spalten
+des Konfliktschlüssels und wird damit zu `INSERT ... ON CONFLICT (…) DO
+UPDATE`:
+
+```powershell
+$body = @{ rows = @(@{ email = "a@example.com"; name = "Anna" }); onConflict = @("email") } | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -Body $body
+```
+
+**Der Konfliktschlüssel kommt aus dem Katalog.** Die API liest die eindeutigen
+Schlüssel der Tabelle aus `pg_index` und nimmt den, dessen Spalten genau die
+genannten sind; die Reihenfolge zählt nicht, weil PostgreSQL den Index auch als
+Menge ableitet. Gibt es keinen solchen Schlüssel, antwortet die API mit `400`
+und `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN`, bevor eine Zeile geschrieben ist.
+Vier Arten von Index fallen dabei heraus: ein nicht eindeutiger, ein teilweiser
+(`WHERE …`, weil `ON CONFLICT` dann die Bedingung mitschreiben müsste), einer
+auf einem Ausdruck (`lower(email)`, weil er sich mit Spaltennamen nicht benennen
+lässt) und ein aufschiebbarer (`DEFERRABLE`, weil `ON CONFLICT` ihn nicht als
+Schiedsrichter annimmt). Spalten hinter `INCLUDE` gehören nicht zum Schlüssel
+und zählen darum nicht mit. Die Spaltennamen im erzeugten SQL stammen aus dem
+Katalog und nicht aus der Anfrage.
+
+Jede Spalte des Schlüssels muss in jeder Zeile stehen. Fehlt eine, setzt ein
+`DEFAULT` den Wert, und der Aufrufer weiss dann nicht, welche Zeile er getroffen
+hat. Mindestens eine Spalte ausserhalb des Schlüssels muss ebenfalls dabei sein,
+denn eine Zeile nur aus dem Schlüssel hätte nichts zu ändern; daraus still ein
+`DO NOTHING` zu machen wäre eine andere Zusage als die, die dort steht. Zwei
+Zeilen derselben Anfrage dürfen nicht denselben Schlüssel tragen: PostgreSQL
+bricht das mit `cannot affect row a second time` ab, und das käme bei uns als
+Ausfall an. Darum fällt es vorher als `400`. Die Spalten hinter `DO UPDATE SET`
+gehen durch dieselbe Prüfung wie `values` eines `PATCH`: änderbar für die Rolle,
+nicht sensibel, keine Identitäts- und keine berechnete Spalte und keine Spalte
+des Primärschlüssels. Ein Upsert verlangt beide Rechte, `INSERT` und `UPDATE`.
+
+**Die Zusage, auf die es ankommt: Ein Upsert ändert keine Zeile, die der
+Aufrufer nicht auch per `UPDATE` ändern dürfte.** Sie hält, aber anders als beim
+`PATCH`, und an diesem Unterschied gehen solche Umsetzungen schief. Ein
+gewöhnliches `UPDATE` filtert mit der `USING`-Bedingung der Policy: Eine fremde
+Zeile wird gar nicht getroffen, und die Antwort lautet null Zeilen. Bei
+`ON CONFLICT DO UPDATE` trifft der eindeutige Index die Zeile ohne Rücksicht auf
+eine Policy; erst danach prüft PostgreSQL die `USING`-Bedingung jeder
+UPDATE-Policy gegen die vorhandene Zeile. Fällt sie durch, bricht PostgreSQL mit
+SQLSTATE 42501 ab; ein gewöhnliches `UPDATE` hätte die Zeile an dieser Stelle
+übersprungen. Bei uns ist das `403` mit `GENERATED_DATA_API_POLICY_REJECTED`,
+die Transaktion rollt samt allem davor zurück, und die fremde Zeile bleibt
+unberührt. Eine Tabelle ohne UPDATE-Policy lässt darum überhaupt keinen Upsert
+auf eine vorhandene Zeile zu. Der Zertifizierungsfall `(2.105)` stupst genau so
+eine fremde Zeile an und liest danach nach, dass sie unverändert ist.
+
+Was ein Upsert dabei verrät, verriet ein Einfügen auch: Wer eine Ablehnung
+bekommt, weiss, dass es zu diesem Schlüssel eine Zeile gibt. Dasselbe sagte
+vorher der eindeutige Index selbst, der ein gewöhnliches Einfügen mit einem
+Unique-Fehler abweist.
+
 ## 6. Project Auth für App-User
 
 Project Auth verwaltet die Nutzer einer Kundenanwendung getrennt von QKERN-Login,
@@ -4261,6 +4315,32 @@ Obergrenze getroffener Zeilen. Jede Mutation antwortet mit `affectedCount` und
 `records`, beides mit Alias, und `records` nimmt dieselben Spalten wie ein
 Tabellenfeld.
 
+**Upsert (`2.105`).** Das Einfügen nimmt ein weiteres Argument, `onConflict`,
+und wird damit zu `INSERT ... ON CONFLICT (…) DO UPDATE`:
+
+```graphql
+mutation {
+  insertIntokundenCollection(
+    objects: [{ email: "a@example.com", name: "Anna" }]
+    onConflict: ["email"]
+  ) { affectedCount records { id name } }
+}
+```
+
+Es ist dieselbe Fläche wie am REST-Weg und dieselben Regeln: Die Spalten müssen
+im Katalog einen Primärschlüssel oder eindeutigen Index bilden, sonst
+`GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN`; jede Spalte des Schlüssels steht in
+jeder Zeile, mindestens eine Spalte ausserhalb des Schlüssels auch; und ein
+Upsert ändert keine Zeile, die der Aufrufer nicht auch per `UPDATE` ändern
+dürfte. Die Begründung steht bei der REST-Fläche weiter oben und gilt hier
+unverändert, weil es derselbe Schreibweg ist.
+
+`onConflict` steht nur im Schema, wo die Rolle einfügen **und** ändern darf;
+ohne das Recht zum Ändern wäre es eine Zusage ohne Deckung. `type Mutation`
+führt darum `insertInto<Tabelle>Collection(objects: […]!, onConflict: [String!])`
+nur an einer Tabelle mit beiden Rechten, und die Typangabe der Fläche nennt es
+als `mutations.upsert`.
+
 Drei Zusagen tragen das:
 
 - **Alle Mutationen einer Anfrage laufen in einer Transaktion.** Fällt eine,
@@ -4295,7 +4375,7 @@ Schreiben keine Lesung meldet.
 Fragmente (benannt wie inline), Variablen, Direktiven, Introspektion,
 Enum-Werte, Eingabeobjekte als Filter, Objekte in Objekten,
 Block-Zeichenketten, mehrere Operationen in einem Dokument, Beziehungen
-zwischen Tabellen, Views, Aggregate und ein Upsert. Fragmente fehlen nicht aus
+zwischen Tabellen, Views und Aggregate. Fragmente fehlen nicht aus
 Bequemlichkeit: Ohne sie gibt es auch keine Fragment-Rekursion zu begrenzen,
 und eine Begrenzung, die es nicht braucht, kann auch nicht danebenliegen.
 

@@ -34,6 +34,8 @@ const MAX_EMBED_ROWS = DATA_API_LIMITS.maxEmbedRows;
 const MAX_EMBED_FOREIGN_KEYS = 200;
 /** PostgreSQL erlaubt 32 Spalten je Schluessel; dieselbe Zahl wie in service.ts. */
 const MAX_FOREIGN_KEY_COLUMNS = 32;
+/** Eindeutige Schluessel an einer Tabelle, die der Katalog fuer einen Upsert hergibt (2.105). */
+const MAX_UNIQUE_KEYS = 100;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_INPUT_BYTES = 64 * 1024;
 
@@ -179,9 +181,13 @@ export type GeneratedMutationResult = {
  * mit Bedingung. Aendern und Loeschen verlangen mindestens einen Filter; ein
  * Stapel ohne Bedingung aendert nie die ganze Tabelle. `atMost` ist die
  * Obergrenze getroffener Zeilen, hoechstens `DATA_API_LIMITS.mutationRowsMax`.
+ *
+ * `onConflict` macht aus dem Einfuegen einen Upsert (2.105): die Spalten des
+ * Konfliktschluessels, die es im Katalog als Primaerschluessel oder eindeutigen
+ * Index geben muss. Siehe `insertWithin`.
  */
 export type GeneratedMutation =
-  | { kind: "insert"; table: string; rows: Array<Record<string, unknown>> }
+  | { kind: "insert"; table: string; rows: Array<Record<string, unknown>>; onConflict?: string[] }
   | { kind: "update"; table: string; filters: GeneratedDataFilter[]; values: Record<string, unknown>; atMost?: number }
   | { kind: "delete"; table: string; filters: GeneratedDataFilter[]; atMost?: number };
 
@@ -242,10 +248,18 @@ export interface GeneratedDataApiPort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<GeneratedTable[]>;
+  /**
+   * Zeilen einfuegen, und mit `onConflict` als Upsert (2.105).
+   *
+   * Ohne `onConflict` ist es das Einfuegen von 2.97. Mit `onConflict` wird
+   * daraus `INSERT ... ON CONFLICT (...) DO UPDATE`, und dann verlangt die
+   * Tabelle zusaetzlich das Recht zum Aendern: Ein Upsert aendert Zeilen, also
+   * geht er durch dieselbe Tuer wie ein Aendern.
+   */
   insertRows(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
-    input: { schema: string; table: string; rows: Array<Record<string, unknown>> },
+    input: { schema: string; table: string; rows: Array<Record<string, unknown>>; onConflict?: string[] },
   ): Promise<GeneratedMutationResult>;
   updateRow(
     context: GeneratedDataContext,
@@ -309,7 +323,15 @@ export type GeneratedDataApiErrorCode =
    * unterscheiden. Der Code sagt nur, dass eine Policy gegriffen hat, nicht
    * welche.
    */
-  | "GENERATED_DATA_API_POLICY_REJECTED";
+  | "GENERATED_DATA_API_POLICY_REJECTED"
+  /**
+   * Der Konfliktschluessel eines Upsert steht nicht im Katalog (2.105): Es gibt
+   * zu diesen Spalten keinen Primaerschluessel und keinen eindeutigen Index,
+   * auf den `ON CONFLICT` sich berufen kann. Ein Fehler der Anfrage, darum ein
+   * eigener Code und nicht "unavailable": Der Aufrufer soll den Schluessel
+   * korrigieren und nicht wiederholen.
+   */
+  | "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN";
 
 /** Cause-free by design: connection details, SQL and driver diagnostics stay internal. */
 export class GeneratedDataApiError extends Error {
@@ -450,6 +472,69 @@ const EMBED_FOREIGN_KEYS_SQL = `
     AND (relation.relname = $2 OR referenced.relname = $2)
   ORDER BY fk.conname ASC
   LIMIT $3`;
+
+/**
+ * Die eindeutigen Schluessel einer Tabelle, aus dem Katalog (2.105).
+ *
+ * Der Konfliktschluessel eines Upsert darf nicht vom Aufrufer frei gewaehlt
+ * werden. `ON CONFLICT (a, b)` ohne einen passenden Index waere in PostgreSQL
+ * ohnehin ein Fehler, aber der Aufrufer bekaeme dann einen Treiberfehler statt
+ * einer Ablehnung, und die Fehlermeldung traege den Tabellennamen. Darum liest
+ * diese Abfrage die vorhandenen Schluessel und der Dienst vergleicht.
+ *
+ * Nur Indizes, auf die `ON CONFLICT` sich ueberhaupt berufen kann:
+ *
+ * - `indisunique`, also Primaerschluessel und eindeutige Indizes; ein
+ *   gewoehnlicher Index kennt keinen Konflikt.
+ * - `indisvalid` und `indislive`: Ein Index, der gerade nebenlaeufig entsteht
+ *   oder fallengelassen wird, traegt die Zusage nicht.
+ * - `indpred IS NULL`: Ein teilweiser Index gilt nur fuer die Zeilen seiner
+ *   Bedingung. `ON CONFLICT` mit ihm verlangt, dass die Bedingung in der
+ *   Anfrage steht, und diese Flaeche schreibt keine Bedingungen.
+ * - `indexprs IS NULL`: Ein Index auf einem Ausdruck (`lower(email)`) laesst
+ *   sich mit Spaltennamen nicht benennen.
+ * - `indimmediate`: Ein aufschiebbarer eindeutiger Schluessel
+ *   (`DEFERRABLE`) prueft erst am Ende der Transaktion. `ON CONFLICT` nimmt
+ *   ihn nicht als Schiedsrichter an und bricht mit einem Fehler ab; hier
+ *   faellt er vorher als unbekannter Schluessel.
+ *
+ * `indkey` traegt bei einem abdeckenden Index auch die Spalten hinter
+ * `INCLUDE`; die gehoeren nicht zum Schluessel, und `ON CONFLICT` kennt sie
+ * nicht. Darum der Schnitt bei `indnkeyatts`. `WITH ORDINALITY` haelt die
+ * Reihenfolge fest, auch wenn sie fuer die Ableitung des Index keine Rolle
+ * spielt: Der Dienst vergleicht als Menge, die Antwort nennt die Spalten aber
+ * in der Reihenfolge des Index.
+ */
+const UNIQUE_KEYS_SQL = `
+  SELECT index_relation.relname AS index_name,
+         COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
+                   FROM unnest(unique_index.indkey::smallint[]) WITH ORDINALITY AS key(attnum, ordinality)
+                   JOIN pg_catalog.pg_attribute AS attribute
+                     ON attribute.attrelid = unique_index.indrelid AND attribute.attnum = key.attnum
+                   WHERE key.ordinality <= unique_index.indnkeyatts), ARRAY[]::text[]) AS columns
+  FROM pg_catalog.pg_index AS unique_index
+  JOIN pg_catalog.pg_class AS index_relation ON index_relation.oid = unique_index.indexrelid
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = unique_index.indrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = $1
+    AND relation.relname = $2
+    AND unique_index.indisunique
+    AND unique_index.indisvalid
+    AND unique_index.indislive
+    AND unique_index.indimmediate
+    AND unique_index.indpred IS NULL
+    AND unique_index.indexprs IS NULL
+  ORDER BY index_relation.relname ASC
+  LIMIT $3`;
+
+type UniqueKeyRow = { index_name: string; columns: string[] };
+
+/**
+ * Ein eindeutiger Schluessel, wie der Katalog ihn hergibt. Der Name steht hier,
+ * weil die Grenzpruefung ihn gegen die Grammatik haelt: Ein Katalogeintrag, der
+ * keinen gueltigen Bezeichner tragen kann, wird abgewiesen statt benutzt.
+ */
+type UniqueKey = { name: string; columns: string[] };
 
 type EmbedForeignKeyRow = {
   constraint_name: string;
@@ -1015,11 +1100,13 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
   async insertRows(
     context: GeneratedDataContext,
     scope: ProjectDataPlaneScope,
-    input: { schema: string; table: string; rows: Array<Record<string, unknown>> },
+    input: { schema: string; table: string; rows: Array<Record<string, unknown>>; onConflict?: string[] },
   ): Promise<GeneratedMutationResult> {
     assertRequest(context, scope, input.schema, input.table);
     assertInsertInput(input.rows);
-    return this.run(context, scope, true, (client) => this.insertWithin(client, input.schema, input.table, input.rows));
+    assertConflictInput(input.onConflict);
+    return this.run(context, scope, true, (client) =>
+      this.insertWithin(client, input.schema, input.table, input.rows, input.onConflict));
   }
 
   async updateRow(
@@ -1065,6 +1152,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       if (!isPlainRecord(mutation) || !safeIdentifier(mutation.table)) throw invalidInput();
       if (mutation.kind === "insert") {
         assertInsertInput(mutation.rows);
+        assertConflictInput(mutation.onConflict);
         continue;
       }
       if (mutation.kind !== "update" && mutation.kind !== "delete") throw invalidInput();
@@ -1087,7 +1175,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       // Helfer wie ihr REST-Gegenstueck; es gibt keinen zweiten Schreibweg.
       for (const mutation of input.mutations) {
         if (mutation.kind === "insert") {
-          results.push(await this.insertWithin(client, input.schema, mutation.table, mutation.rows));
+          results.push(await this.insertWithin(
+            client, input.schema, mutation.table, mutation.rows, mutation.onConflict));
         } else if (mutation.kind === "update") {
           results.push(await this.updateWithin(client, input.schema, mutation.table,
             { filters: mutation.filters }, mutation.values, mutation.atMost ?? MAX_INSERT_ROWS));
@@ -1100,15 +1189,60 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     });
   }
 
-  /** Das Einfuegen selbst, innerhalb einer Schreibtransaktion; von REST und GraphQL geteilt. */
+  /**
+   * Das Einfuegen selbst, innerhalb einer Schreibtransaktion; von REST und
+   * GraphQL geteilt. Mit `onConflict` ist es ein Upsert (2.105).
+   *
+   * **Der Konfliktschluessel kommt aus dem Katalog und nicht vom Aufrufer.**
+   * `resolveConflictKey` sucht unter den eindeutigen Schluesseln der Tabelle
+   * einen, dessen Spalten genau die genannten sind, und die Spaltennamen im
+   * SQL stammen dann aus `pg_index` und nicht aus der Anfrage. Ohne passenden
+   * Schluessel gibt es `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN`, und zwar
+   * bevor eine Zeile geschrieben ist.
+   *
+   * **Ein Upsert geht durch beide Tueren.** `assertTableBoundary(..., "insert")`
+   * und, sobald `onConflict` dabei ist, auch `"update"`: Ein Upsert aendert
+   * Zeilen, also braucht die Rolle das Recht dazu. Die Tuer steht hier auch
+   * dann, wenn die Spaltenpruefung unten dieselbe Zeile schon abwiese: Ohne
+   * `UPDATE` ist keine Spalte `updateable`, und der Aufrufer bekaeme
+   * `_INVALID_INPUT` statt `_FORBIDDEN`, also einen Grund, der die Lage falsch
+   * beschreibt. Die Mutationsprobe B dieses Schnitts nimmt genau diese Zeile
+   * heraus und zeigt den Unterschied. Die Spalten hinter
+   * `DO UPDATE SET` gehen durch dieselbe Pruefung wie `set` eines Aenderns:
+   * aenderbar, nicht sensibel, keine Identitaets- und keine berechnete Spalte
+   * und keine Spalte des Primaerschluessels. Was ein Aendern nicht setzen
+   * darf, setzt ein Upsert auch nicht.
+   *
+   * **Die Zusage, die zaehlt: Ein Upsert aendert keine Zeile, die der Aufrufer
+   * nicht auch per UPDATE aendern duerfte.** Sie kommt von PostgreSQL, und sie
+   * kommt anders als beim Aendern. Ein gewoehnliches `UPDATE` filtert mit der
+   * `USING`-Bedingung der Policy: Eine fremde Zeile wird nicht getroffen, und
+   * die Antwort lautet null Zeilen. Bei `ON CONFLICT DO UPDATE` trifft der
+   * eindeutige Index die Zeile ohne Ruecksicht auf eine Policy, und erst
+   * danach prueft PostgreSQL die `USING`-Bedingung jeder UPDATE-Policy gegen
+   * die vorhandene Zeile. Faellt sie durch, bricht PostgreSQL ab, statt die
+   * Zeile zu ueberspringen: SQLSTATE 42501, bei uns
+   * `GENERATED_DATA_API_POLICY_REJECTED`, und die ganze Transaktion rollt
+   * zurueck. Die fremde Zeile bleibt unberuehrt, und eine Tabelle ohne
+   * UPDATE-Policy laesst darum ueberhaupt keinen Upsert auf eine vorhandene
+   * Zeile zu.
+   *
+   * **Was ein Upsert verraet, verriet ein Einfuegen auch.** Wer eine fremde
+   * Zeile anstupst, erfaehrt an der Ablehnung, dass es zu diesem Schluessel
+   * eine Zeile gibt. Dasselbe erfuhr er vorher am eindeutigen Index selbst,
+   * der ein gewoehnliches Einfuegen mit 23505 abweist. Der Upsert oeffnet
+   * hier nichts, was die Tabelle nicht schon sagte.
+   */
   private async insertWithin(
     client: SqlPoolClient,
     schema: string,
     tableName: string,
     rows: Array<Record<string, unknown>>,
+    onConflict?: string[],
   ): Promise<GeneratedMutationResult> {
     const table = await this.loadTable(client, schema, tableName);
     assertTableBoundary(table, "insert");
+    if (onConflict) assertTableBoundary(table, "update");
     const byName = new Map(table.columns.map((column) => [column.name, column]));
     const columns = Object.keys(rows[0]!).sort();
     if (columns.length > MAX_COLUMNS || rows.some((row) => Object.keys(row).sort().join("\0") !== columns.join("\0")) ||
@@ -1119,8 +1253,41 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       throw invalidInput();
     }
     const returning = safeReturningColumns(table);
+    let conflictClause = "";
+    if (onConflict) {
+      const key = await this.resolveConflictKey(client, schema, tableName, onConflict);
+      // Der Schluessel muss in jeder Zeile stehen. Fehlt eine seiner Spalten,
+      // entscheidet ein DEFAULT der Tabelle, auf welche Zeile der Upsert
+      // trifft, und der Aufrufer wuesste nicht, welche er geaendert hat.
+      const keySet = new Set(key.columns);
+      if (key.columns.some((name) => !columns.includes(name))) throw invalidInput();
+      const assigned = columns.filter((name) => !keySet.has(name));
+      // Ein Upsert, dessen Zeile nur aus dem Schluessel besteht, hat nichts zu
+      // aendern. `DO NOTHING` daraus zu machen waere eine andere Zusage als
+      // die, die der Aufrufer geschrieben hat.
+      if (assigned.length === 0) throw invalidInput();
+      if (assigned.some((name) => {
+        const column = byName.get(name);
+        return !column?.updateable || column.sensitive || column.identity || column.generated ||
+          column.primaryKeyPosition !== null;
+      })) throw invalidInput();
+      // Zwei Zeichen einer Anfrage mit demselben Schluessel gehen nicht.
+      // PostgreSQL bricht das mit 21000 ab ("cannot affect row a second time"),
+      // und das waere bei uns ein Ausfall statt einer Ablehnung. Hier faellt es
+      // vor der Datenbank und mit einem Grund, der zur Anfrage passt.
+      const seen = new Set<string>();
+      for (const row of rows) {
+        const identity = JSON.stringify(key.columns.map((name) => normalizeDataValue(row[name])));
+        if (seen.has(identity)) throw invalidInput();
+        seen.add(identity);
+      }
+      conflictClause = `ON CONFLICT (${key.columns.map(quoted).join(", ")})
+         DO UPDATE SET ${assigned.map((name) => `${quoted(name)} = EXCLUDED.${quoted(name)}`).join(", ")}`;
+    }
     let result;
     if (columns.length === 0) {
+      // Ohne Spalten gibt es keinen Konfliktschluessel in der Zeile; der Fall
+      // oben hat das schon abgewiesen.
       if (rows.length !== 1) throw invalidInput();
       result = await client.query<Record<string, unknown>>(
         `INSERT INTO ${qualified(schema, tableName)} DEFAULT VALUES RETURNING ${returning.map(quoted).join(", ")}`,
@@ -1134,11 +1301,54 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       result = await client.query<Record<string, unknown>>(
         `INSERT INTO ${qualified(schema, tableName)} (${columns.map(quoted).join(", ")})
          VALUES ${tuples.join(", ")}
+         ${conflictClause}
          RETURNING ${returning.map(quoted).join(", ")}`,
         values,
       );
     }
     return mutationResult(table, result.rows, MAX_INSERT_ROWS);
+  }
+
+  /**
+   * Den Konfliktschluessel eines Upsert gegen den Katalog pruefen (2.105).
+   *
+   * Verglichen wird als Menge: `ON CONFLICT (a, b)` und `ON CONFLICT (b, a)`
+   * berufen sich auf denselben Index, und PostgreSQL leitet ihn genauso ab.
+   * Zurueck kommen die Spalten in der Reihenfolge des Index und mit den Namen
+   * aus `pg_index`.
+   *
+   * Zwei Indizes ueber genau denselben Spalten sind kein Grund abzulehnen: Sie
+   * halten dieselbe Zusage, und welcher von beiden die Ableitung nimmt, aendert
+   * am Ergebnis nichts.
+   */
+  private async resolveConflictKey(
+    client: SqlPoolClient,
+    schema: string,
+    table: string,
+    requested: string[],
+  ): Promise<UniqueKey> {
+    const keys = await this.loadUniqueKeys(client, schema, table);
+    const wanted = [...requested].sort().join("\0");
+    const candidate = keys.find((key) => [...key.columns].sort().join("\0") === wanted);
+    if (!candidate) throw new GeneratedDataApiError("GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN");
+    return candidate;
+  }
+
+  private async loadUniqueKeys(client: SqlPoolClient, schema: string, table: string): Promise<UniqueKey[]> {
+    const result = await client.query<UniqueKeyRow>(UNIQUE_KEYS_SQL, [schema, table, MAX_UNIQUE_KEYS + 1]);
+    if (result.rows.length > MAX_UNIQUE_KEYS) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+    }
+    return result.rows.map((row) => {
+      if (!safeIdentifier(row.index_name) || !Array.isArray(row.columns) || row.columns.length < 1 ||
+          row.columns.length > MAX_FOREIGN_KEY_COLUMNS || !row.columns.every(safeIdentifier) ||
+          new Set(row.columns).size !== row.columns.length) {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED", {
+          cause: new Error("unique key row rejected"),
+        });
+      }
+      return { name: row.index_name, columns: row.columns };
+    });
   }
 
   /**
@@ -1229,7 +1439,11 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         const path = `/v1/projects/${scope.projectId}/environments/${scope.environment}/tables/${table.name}/rows`;
         paths[path] = {
           get: generatedOperation(`list_${table.name}`, "List RLS-filtered rows", componentName),
-          ...(table.canInsert ? { post: generatedOperation(`insert_${table.name}`, "Insert RLS-checked rows", componentName) } : {}),
+          // Ein Upsert (2.105) steht nur, wo die Rolle auch aendern darf: Er
+          // aendert eine vorhandene Zeile, und das Recht dazu ist dasselbe.
+          ...(table.canInsert ? { post: generatedOperation(`insert_${table.name}`,
+            table.canUpdate ? "Insert RLS-checked rows, or upsert with onConflict" : "Insert RLS-checked rows",
+            componentName) } : {}),
           ...(table.canUpdate ? { patch: generatedOperation(`update_${table.name}`, "Update one row by primary key", componentName) } : {}),
           ...(table.canDelete ? { delete: generatedOperation(`delete_${table.name}`, "Delete one row by primary key", componentName) } : {}),
         };
@@ -2046,6 +2260,21 @@ function mutationTargetSql(table: InternalTable, target: MutationTarget, values:
 function assertInsertInput(rows: unknown): asserts rows is Array<Record<string, unknown>> {
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > MAX_INSERT_ROWS ||
       byteLength(rows) > MAX_INPUT_BYTES || rows.some((row) => !isPlainRecord(row))) {
+    throw invalidInput();
+  }
+}
+
+/**
+ * Die Form des Konfliktschluessels, vor der Datenbank (2.105).
+ *
+ * Nur die Form: dass es zu diesen Spalten einen eindeutigen Schluessel gibt,
+ * sagt erst der Katalog in `resolveConflictKey`. 32 ist die Zahl, die
+ * PostgreSQL fuer einen Schluessel zulaesst; mehr koennte kein Index sein.
+ */
+function assertConflictInput(onConflict: unknown): asserts onConflict is string[] | undefined {
+  if (onConflict === undefined) return;
+  if (!Array.isArray(onConflict) || onConflict.length < 1 || onConflict.length > MAX_FOREIGN_KEY_COLUMNS ||
+      !onConflict.every(safeIdentifier) || new Set(onConflict).size !== onConflict.length) {
     throw invalidInput();
   }
 }

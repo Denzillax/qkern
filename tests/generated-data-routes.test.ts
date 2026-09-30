@@ -141,6 +141,34 @@ describe("generated data routes", () => {
       { projectId: "project-1", environment: "development", table: "orders" },
       { schema: "public", table: "orders", rows: [{ id: "1" }] },
     );
+
+    // Ein Upsert (2.105) kommt ueber dieselbe Tuer und dasselbe Verb; die Route
+    // gibt `onConflict` weiter und entscheidet nichts darueber.
+    const upsert = await handlers.POST(new NextRequest(
+      "https://qkern.test/api/v1/projects/project-1/environments/development/tables/orders/rows",
+      { method: "POST", headers: {
+        authorization: `Bearer qk_service_${"a".repeat(43)}`,
+        "content-type": "application/json",
+      }, body: JSON.stringify({ rows: [{ id: "1", status: "paid" }], onConflict: ["id"] }) },
+    ), route);
+    expect(upsert.status).toBe(201);
+    expect(service.insertRows).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { projectId: "project-1", environment: "development", table: "orders" },
+      { schema: "public", table: "orders", rows: [{ id: "1", status: "paid" }], onConflict: ["id"] },
+    );
+    // Keine Liste ist schon an der Route ein 400, und ein unbekannter
+    // Schluessel im Rumpf bleibt unbekannt.
+    for (const body of [{ rows: [{ id: "1" }], onConflict: "id" }, { rows: [{ id: "1" }], onConflictColumns: ["id"] }]) {
+      const refused = await handlers.POST(new NextRequest(
+        "https://qkern.test/api/v1/projects/project-1/environments/development/tables/orders/rows",
+        { method: "POST", headers: {
+          authorization: `Bearer qk_service_${"a".repeat(43)}`,
+          "content-type": "application/json",
+        }, body: JSON.stringify(body) },
+      ), route);
+      expect(refused.status).toBe(400);
+    }
   });
 
   it("takes a GraphQL mutation through the same door as a row write and hands it to mutateRows as one batch", async () => {

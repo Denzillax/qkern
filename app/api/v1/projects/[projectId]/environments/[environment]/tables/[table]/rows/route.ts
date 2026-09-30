@@ -62,6 +62,12 @@ export function routeError(error: unknown) {
     if (error.code === "GENERATED_DATA_API_INVALID_INPUT") {
       return noStore({ error: "Invalid generated data request", code: error.code }, 400);
     }
+    // Ein Konfliktschluessel, den der Katalog nicht hergibt (2.105): ein Fehler
+    // der Anfrage, darum 400. Wiederholen hilft nicht, der Schluessel muss
+    // einer werden, den es gibt.
+    if (error.code === "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN") {
+      return noStore({ error: "The conflict key is not a unique key of the table", code: error.code }, 400);
+    }
     if (error.code === "GENERATED_DATA_API_TABLE_NOT_FOUND" || error.code === "GENERATED_DATA_API_FORBIDDEN") {
       return noStore({ error: "Resource not found", code: error.code }, 404);
     }
@@ -166,8 +172,12 @@ export function createGeneratedTableHandlers(
         const parsedScope = await routeScope(routeContext);
         const body = await safeJson(request);
         const schema = object(body) ? schemaName.safeParse(body.schema ?? "public") : null;
+        // `onConflict` macht aus dem Einfuegen einen Upsert (2.105). Die Route
+        // prueft nur, dass es eine Liste ist; welche Spalten es gibt und ob sie
+        // einen eindeutigen Schluessel bilden, sagt der Katalog im Dienst.
         if (!parsedScope || !object(body) || !schema?.success || !Array.isArray(body.rows) ||
-            Object.keys(body).some((key) => !["schema", "rows"].includes(key))) {
+            (body.onConflict !== undefined && !Array.isArray(body.onConflict)) ||
+            Object.keys(body).some((key) => !["schema", "rows", "onConflict"].includes(key))) {
           return noStore({ error: "Invalid generated data request" }, 400);
         }
         const context = await generatedDataContext(request, parsedScope, true, keys, projectAuth);
@@ -175,6 +185,7 @@ export function createGeneratedTableHandlers(
         return noStore({ data: await service.insertRows(context, parsedScope, {
           schema: schema.data, table: parsedScope.table,
           rows: body.rows as Array<Record<string, unknown>>,
+          ...(body.onConflict === undefined ? {} : { onConflict: body.onConflict as string[] }),
         }) }, 201);
       } catch (error) { return routeError(error); }
     },

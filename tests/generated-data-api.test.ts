@@ -153,6 +153,104 @@ describe("generated project data API", () => {
     expect(built.client.calls.some((call) => call.text.startsWith("DELETE") && call.text.includes('WHERE "id" = $1'))).toBe(true);
   });
 
+  it("builds an upsert only from a unique key the catalogue holds, with the key out of the assignment (2.105)", async () => {
+    // Der Konfliktschluessel kommt aus `pg_index` und nicht aus der Anfrage.
+    // Diese Tabelle hat zwei eindeutige Schluessel: den Primaerschluessel auf
+    // `id` und einen Index auf `status`.
+    const uniqueKeys = [
+      { index_name: "orders_pkey", columns: ["id"] },
+      { index_name: "orders_status_key", columns: ["status"] },
+    ];
+    const built = fixture((text, values) => {
+      if (text.includes("FROM pg_catalog.pg_index AS unique_index")) return uniqueKeys;
+      if (text.startsWith("INSERT INTO")) return [{ id: values?.[0], status: values?.[1], total: values?.[2] ?? null }];
+      return [];
+    });
+    const upserted = await built.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000001", status: "paid", total: 12 }],
+      onConflict: ["id"],
+    });
+    expect(upserted.rowCount).toBe(1);
+    const call = built.client.calls.find((entry) => entry.text.startsWith("INSERT INTO"));
+    // Die Schluesselspalte steht in der Bedingung und nicht in der Zuweisung:
+    // Sie zu setzen, waere ein Aendern des Primaerschluessels.
+    expect(call?.text).toContain('ON CONFLICT ("id")');
+    expect(call?.text).toContain('DO UPDATE SET "status" = EXCLUDED."status", "total" = EXCLUDED."total"');
+    expect(call?.text).not.toContain('"id" = EXCLUDED."id"');
+    // Werte bleiben Parameter, auch am Upsert.
+    expect(call?.values).toEqual(["00000000-0000-4000-8000-000000000001", "paid", 12]);
+    // Der Katalog wird gelesen, bevor die Zeile geschrieben ist.
+    const order = built.client.calls.map((entry) => entry.text);
+    expect(order.findIndex((text) => text.includes("FROM pg_catalog.pg_index AS unique_index")))
+      .toBeLessThan(order.findIndex((text) => text.startsWith("INSERT INTO")));
+
+    // Ein Schluessel, den es nicht gibt: eigener Code, und keine Zeile.
+    await expect(built.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000002", status: "paid" }],
+      onConflict: ["total"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN" });
+    // Auch eine Teilmenge eines Schluessels ist keiner: `ON CONFLICT` leitet den
+    // Index ueber die ganze Spaltenmenge ab.
+    await expect(built.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000002", status: "paid" }],
+      onConflict: ["id", "status"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN" });
+
+    // Eine Schluesselspalte, die nicht in der Zeile steht: Dann entschiede ein
+    // DEFAULT, auf welche Zeile der Upsert trifft.
+    await expect(built.service.insertRows(context, scope, {
+      schema: "public", table: "orders", rows: [{ status: "paid" }], onConflict: ["id"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    // Eine Zeile nur aus dem Schluessel hat nichts zu aendern; still ein
+    // DO NOTHING daraus zu machen waere eine andere Zusage.
+    await expect(built.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000002" }], onConflict: ["id"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    // Die Form vor der Datenbank: kein leerer Schluessel, keine doppelte Spalte,
+    // kein Name ausserhalb der Grammatik.
+    for (const onConflict of [[], ["id", "id"], ['id"'], ["ID; DROP"]]) {
+      await expect(built.service.insertRows(context, scope, {
+        schema: "public", table: "orders",
+        rows: [{ id: "00000000-0000-4000-8000-000000000002", status: "paid" }], onConflict,
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+    }
+  });
+
+  it("refuses an upsert without the right to update and never assigns a column an update may not set (2.105)", async () => {
+    const uniqueKeys = [{ index_name: "orders_pkey", columns: ["id"] }];
+    // Dieselbe Tabelle, aber die Rolle darf nur einfuegen. Ein Upsert aendert
+    // eine vorhandene Zeile, also faellt er am fehlenden Recht — und zwar mit
+    // demselben Code wie ein Aendern ohne Recht.
+    const noUpdate = metadata({ can_update_table: false, can_update_column: false });
+    const built = fixture((text) => {
+      if (text.includes("FROM pg_catalog.pg_index AS unique_index")) return uniqueKeys;
+      if (text.startsWith("INSERT INTO")) return [{ id: "x", status: "paid", total: null }];
+      return [];
+    }, noUpdate);
+    // Ohne `onConflict` geht das Einfuegen durch: Es aendert nichts.
+    await built.service.insertRows(context, scope, {
+      schema: "public", table: "orders", rows: [{ status: "paid" }],
+    });
+    await expect(built.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000001", status: "paid" }], onConflict: ["id"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_FORBIDDEN" });
+
+    // Eine sensible Spalte kommt weder ins Einfuegen noch in die Zuweisung.
+    const withToken = fixture((text) => {
+      if (text.includes("FROM pg_catalog.pg_index AS unique_index")) return uniqueKeys;
+      return [];
+    });
+    await expect(withToken.service.insertRows(context, scope, {
+      schema: "public", table: "orders",
+      rows: [{ id: "00000000-0000-4000-8000-000000000001", api_token: "neu" }], onConflict: ["id"],
+    })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+  });
+
   it("normalizes timestamp cursor values without exposing or skipping rows", async () => {
     const built = fixture((text) => text.startsWith("SELECT \"id\"") ? [
       { id: "00000000-0000-4000-8000-000000000001", created_at: new Date("2026-08-03T10:00:00Z") },

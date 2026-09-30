@@ -8491,7 +8491,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // Kein Schreibweg im Schema, weil die Leserolle hier nur SELECT hat: Eine
       // Mutation (2.97) steht nur dort, wo die Rolle das Recht dazu hat. Was
       // nicht im Schema steht, wird nicht versprochen.
-      expect(described.types[0]!.mutations).toEqual({ insert: false, update: false, delete: false });
+      expect(described.types[0]!.mutations).toEqual({ insert: false, update: false, delete: false, upsert: false });
       expect(described.sdl).not.toContain("type Mutation");
       expect(described.sdl).not.toContain("type Subscription");
 
@@ -8726,9 +8726,11 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // --- Zusage 1: das Schema traegt die Mutationen ---------------------
       const described = await graphql.describe(contextFor(mine), scope, schema);
       expect(described.types.map((type) => type.name)).toEqual(["notizen"]);
-      expect(described.types[0]!.mutations).toEqual({ insert: true, update: true, delete: true });
+      expect(described.types[0]!.mutations).toEqual({ insert: true, update: true, delete: true, upsert: true });
       expect(described.sdl).toContain("type Mutation {");
-      expect(described.sdl).toContain("  insertIntonotizenCollection(objects: [notizenInsertInput!]!): notizenMutationResponse!");
+      // Seit 2.105 traegt das Einfuegen `onConflict`, weil die Rolle hier auch
+      // aendern darf; ein Upsert aendert eine vorhandene Zeile.
+      expect(described.sdl).toContain("  insertIntonotizenCollection(objects: [notizenInsertInput!]!, onConflict: [String!]): notizenMutationResponse!");
       expect(described.sdl).toContain("  updatenotizenCollection(set: notizenUpdateInput!, where: [String!]!, atMost: Int): notizenMutationResponse!");
       expect(described.sdl).toContain("  deleteFromnotizenCollection(where: [String!]!, atMost: Int): notizenMutationResponse!");
       expect(described.types[0]!.insertFields.map((field) => field.name)).toEqual(["id", "besitzer", "inhalt", "menge"]);
@@ -8884,6 +8886,355 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       if (read.kind !== "query") throw new Error("eine Abfrage erwartet");
       expect(read.data.notizen).toEqual([{ menge: 3 }, { menge: 4 }, { menge: 9 }]);
       expect(metered).toEqual([{ metric: "database_row_reads", quantity: 3 }]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
+  it("(2.105) upserts through both surfaces over a unique key the catalogue really holds, refuses a key it does not, and never changes a row the caller could not have updated", async () => {
+    // Upsert (2.105) gegen die echte Datenbank, an beiden Flaechen.
+    //
+    // Echt ist, worauf es ankommt: Schema, Tabellen, Primaerschluessel und
+    // eindeutige Indizes in der echten Projektdatenbank, die echten Policies
+    // fuer SELECT, INSERT, UPDATE und DELETE, die echte Projektrolle mit ihren
+    // echten Rechten, die echte `GeneratedDataApiService` und darueber
+    // `ProjectGraphqlService`. Gestellt sind nur die Aufloesung des Ziels, die
+    // Verbindung und der Usage-Emitter.
+    //
+    // Der Fall prueft sechs Zusagen an einem Stueck:
+    //
+    // 1. Das Schema traegt `onConflict` genau dort, wo die Rolle einfuegen und
+    //    aendern darf, und sonst nicht.
+    // 2. Ein Upsert legt eine neue Zeile an und aendert eine vorhandene, an
+    //    beiden Flaechen und ueber denselben Schreibweg: einmal ueber den
+    //    eindeutigen Index, einmal ueber den Primaerschluessel.
+    // 3. Der Konfliktschluessel kommt aus dem Katalog. Eine Spalte mit
+    //    gewoehnlichem Index, eine mit nur teilweise eindeutigem Index, eine
+    //    mit Ausdrucksindex und eine Teilmenge eines Schluessels werden
+    //    abgewiesen, obwohl es die Indizes wirklich gibt.
+    // 4. **Die Zusage, auf die es ankommt.** Ein Upsert, der eine fremde Zeile
+    //    anstupst, wird abgewiesen, die fremde Zeile bleibt unveraendert, und
+    //    die Mutation davor wirkt auch nicht. Daneben derselbe Versuch als
+    //    gewoehnliches Aendern: Der trifft null Zeilen, ohne Fehler. Der
+    //    Unterschied ist genau die Stelle, an der solche Umsetzungen
+    //    schiefgehen, und er steht hier als zwei Zeilen nebeneinander.
+    // 5. Ohne das Recht zum Aendern gibt es keinen Upsert: nicht im Schema,
+    //    nicht ueber GraphQL und nicht ueber die Data API.
+    // 6. Zwei Zeilen einer Anfrage mit demselben Schluessel fallen vor der
+    //    Datenbank, und ein Schreiben meldet keine Lesung.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const schema = `gqlupsert_${randomUUID().replaceAll("-", "_")}`;
+    const upsertProject = randomUUID();
+    const upsertOrganization = randomUUID();
+    const scope = { projectId: upsertProject, environment: "development" as const };
+    const mine = randomUUID();
+    const neighbour = randomUUID();
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".kunden (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        besitzer text NOT NULL,
+        email text NOT NULL,
+        name text NOT NULL,
+        punkte integer NOT NULL DEFAULT 0,
+        -- Traegt spaeter einen aufschiebbaren eindeutigen Schluessel; je Zeile
+        -- ein eigener Wert, damit er sich anlegen laesst.
+        slug text NOT NULL DEFAULT gen_random_uuid()::text,
+        -- Je Zeile ein eigener Wert, damit spaeter ein eindeutiger Index darauf
+        -- entstehen kann: Der Fall prueft, dass auch ein echter eindeutiger
+        -- Index auf einer sensiblen Spalte kein Konfliktschluessel wird.
+        api_token text NOT NULL DEFAULT gen_random_uuid()::text)`);
+      // Der eindeutige Index, auf den der Upsert sich beruft. Er gilt fuer die
+      // ganze Tabelle und nicht je Besitzer: Genau darum kann ein Aufrufer mit
+      // ihm eine fremde Zeile anstupsen, und genau das prueft Zusage 4.
+      await owner.query(`CREATE UNIQUE INDEX kunden_email_key ON "${schema}".kunden (email)`);
+      // Drei Indizes, die ein Konfliktschluessel nicht sein koennen, und jeder
+      // aus einem eigenen Grund: nicht eindeutig, nur teilweise, ein Ausdruck.
+      await owner.query(`CREATE INDEX kunden_punkte_idx ON "${schema}".kunden (punkte)`);
+      await owner.query(`CREATE UNIQUE INDEX kunden_name_aktiv_key ON "${schema}".kunden (name) WHERE punkte > 0`);
+      await owner.query(`CREATE UNIQUE INDEX kunden_name_klein_key ON "${schema}".kunden (lower(name))`);
+      await owner.query(`ALTER TABLE "${schema}".kunden ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY lesen ON "${schema}".kunden FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY einfuegen ON "${schema}".kunden FOR INSERT TO ${expectedRole}
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY aendern ON "${schema}".kunden FOR UPDATE TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY loeschen ON "${schema}".kunden FOR DELETE TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      // Eine zweite Tabelle, in die die Rolle nur einfuegen darf. Ein Upsert
+      // aendert, also gibt es hier keinen.
+      await owner.query(`CREATE TABLE "${schema}".eingang (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        besitzer text NOT NULL,
+        kennung text NOT NULL,
+        inhalt text NOT NULL)`);
+      await owner.query(`CREATE UNIQUE INDEX eingang_kennung_key ON "${schema}".eingang (kennung)`);
+      await owner.query(`ALTER TABLE "${schema}".eingang ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY lesen ON "${schema}".eingang FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY einfuegen ON "${schema}".eingang FOR INSERT TO ${expectedRole}
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`INSERT INTO "${schema}".kunden (besitzer, email, name, punkte) VALUES
+        ($1, 'nachbar@example.ch', 'Nachbar', 11)`, [neighbour]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}".kunden TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT ON "${schema}".eingang TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${upsertProject}` }) };
+      const metered: Array<{ metric: string; quantity?: number }> = [];
+      const usage = { admit: async (_scope: unknown, input: { metric: string; quantity?: number }) => {
+        metered.push({ metric: input.metric, quantity: input.quantity });
+        return { admitted: true, metric: input.metric, mode: "observe" as const, used: 0n, limit: null, remaining: null };
+      } } as unknown as ConstructorParameters<typeof GeneratedDataApiService>[2];
+      const generated = new GeneratedDataApiService(targets, connections, usage);
+      const graphql = new ProjectGraphqlService(generated);
+      const contextFor = (subject: string) => ({
+        organizationId: upsertOrganization,
+        actorRef: `project-api-key:${subject}`,
+        claims: { role: "authenticated" as const, subject },
+      });
+      const held = async (where: string, values: string[] = []) => {
+        const result = await owner.query<{ besitzer: string; email: string; name: string; punkte: number }>(
+          `SELECT besitzer, email, name, punkte FROM "${schema}".kunden WHERE ${where} ORDER BY email`, values);
+        return result.rows;
+      };
+      const mutate = async (subject: string, document: string) => {
+        const result = await graphql.execute(contextFor(subject), scope, schema, document);
+        if (result.kind !== "mutation") throw new Error("eine Mutation erwartet");
+        return result;
+      };
+
+      // --- Zusage 1: onConflict steht genau dort im Schema -----------------
+      const described = await graphql.describe(contextFor(mine), scope, schema);
+      expect(described.types.map((type) => type.name)).toEqual(["eingang", "kunden"]);
+      const byName = new Map(described.types.map((type) => [type.name, type]));
+      expect(byName.get("kunden")!.mutations).toEqual({ insert: true, update: true, delete: true, upsert: true });
+      // Nur einfuegen: kein Upsert, weil ein Upsert eine vorhandene Zeile aendert.
+      expect(byName.get("eingang")!.mutations).toEqual({ insert: true, update: false, delete: false, upsert: false });
+      expect(described.sdl).toContain("  insertIntokundenCollection(objects: [kundenInsertInput!]!, onConflict: [String!]): kundenMutationResponse!");
+      expect(described.sdl).toContain("  insertIntoeingangCollection(objects: [eingangInsertInput!]!): eingangMutationResponse!");
+      // Das Argument steht in derselben Tabelle wie die anderen, damit die
+      // Console es zeigen kann, ohne eine zweite Liste zu fuehren.
+      expect(described.limits.mutationArguments).toContain("onConflict");
+
+      // --- Zusage 2: anlegen, dann aendern, an beiden Flaechen -------------
+      const created = await mutate(mine, `mutation Anlegen {
+        neu: insertIntokundenCollection(
+          objects: [{ besitzer: "${mine}", email: "anna@example.ch", name: "Anna", punkte: 1 }]
+          onConflict: ["email"]
+        ) { anzahl: affectedCount records { email name punkte } }
+      }`);
+      expect(created.operationName).toBe("Anlegen");
+      expect(created.data.neu).toEqual({ anzahl: 1, records: [{ email: "anna@example.ch", name: "Anna", punkte: 1 }] });
+      expect(await held("besitzer = $1", [mine]))
+        .toEqual([{ besitzer: mine, email: "anna@example.ch", name: "Anna", punkte: 1 }]);
+
+      // Dieselbe E-Mail ein zweites Mal: Die Zeile wird geaendert und keine
+      // zweite angelegt. Dass es keine zweite gibt, ist die eigentliche Aussage.
+      const changed = await mutate(mine, `mutation {
+        insertIntokundenCollection(
+          objects: [{ besitzer: "${mine}", email: "anna@example.ch", name: "Anna Neu", punkte: 5 }]
+          onConflict: ["email"]
+        ) { affectedCount records { name punkte } }
+      }`);
+      expect(changed.data.insertIntokundenCollection)
+        .toEqual({ affectedCount: 1, records: [{ name: "Anna Neu", punkte: 5 }] });
+      expect(await held("besitzer = $1", [mine]))
+        .toEqual([{ besitzer: mine, email: "anna@example.ch", name: "Anna Neu", punkte: 5 }]);
+
+      // Und derselbe Upsert ueber die REST-Flaeche, diesmal ueber den
+      // Primaerschluessel: dieselbe Zeile, dieselbe Zusage, ein Weg.
+      const annaId = (await owner.query<{ id: string }>(
+        `SELECT id FROM "${schema}".kunden WHERE email = 'anna@example.ch'`)).rows[0]!.id;
+      const rest = await generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden",
+        rows: [{ id: annaId, besitzer: mine, email: "anna@example.ch", name: "Anna REST", punkte: 6 }],
+        onConflict: ["id"],
+      });
+      expect(rest.rowCount).toBe(1);
+      expect(rest.rows[0]).toMatchObject({ name: "Anna REST", punkte: 6 });
+      // Die sensible Spalte steht auch in der Antwort eines Upsert nicht.
+      expect(Object.keys(rest.rows[0]!).sort()).toEqual(["besitzer", "email", "id", "name", "punkte", "slug"]);
+      // Der Primaerschluessel wird nicht zugewiesen; die Zeile behaelt ihre ID.
+      expect((await held("besitzer = $1", [mine])).map((row) => row.name)).toEqual(["Anna REST"]);
+      expect((await owner.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM "${schema}".kunden WHERE id = $1`, [annaId])).rows[0]).toEqual({ n: 1 });
+
+      // --- Zusage 3: der Schluessel kommt aus dem Katalog ------------------
+      //
+      // Erst der Beweis, dass es die Indizes wirklich gibt; sonst pruefte die
+      // Ablehnung nur einen fehlenden Namen.
+      const indexes = (await owner.query<{ indexname: string }>(
+        `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND tablename = 'kunden' ORDER BY indexname`,
+        [schema])).rows.map((row) => row.indexname);
+      expect(indexes).toEqual(["kunden_email_key", "kunden_name_aktiv_key", "kunden_name_klein_key",
+        "kunden_pkey", "kunden_punkte_idx"]);
+      const refusedKeys: Array<{ onConflict: string[]; warum: string }> = [
+        // ein gewoehnlicher Index kennt keinen Konflikt
+        { onConflict: ["punkte"], warum: "nicht eindeutig" },
+        // teilweise eindeutig und auf einem Ausdruck: beide auf `name`, und
+        // keiner von beiden macht `name` zu einem Schluessel
+        { onConflict: ["name"], warum: "teilweise oder Ausdruck" },
+        // eine Teilmenge eines Schluessels ist keiner
+        { onConflict: ["email", "name"], warum: "zu viele Spalten" },
+        // eine Spalte, die es gibt, aber keinen Schluessel bildet
+        { onConflict: ["besitzer"], warum: "kein Index" },
+      ];
+      for (const entry of refusedKeys) {
+        await expect(generated.insertRows(contextFor(mine), scope, {
+          schema, table: "kunden",
+          rows: [{ besitzer: mine, email: "neu@example.ch", name: "Neu", punkte: 2 }],
+          onConflict: entry.onConflict,
+        }), entry.warum).rejects.toMatchObject({ code: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN" });
+      }
+      // Die Reihenfolge der Spalten zaehlt nicht: PostgreSQL leitet den Index
+      // als Menge ab, und diese Flaeche vergleicht auch als Menge.
+      await owner.query(`CREATE UNIQUE INDEX kunden_paar_key ON "${schema}".kunden (besitzer, name)`);
+      const pair = await generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden",
+        rows: [{ besitzer: mine, email: "paar@example.ch", name: "Paar", punkte: 1 }],
+        onConflict: ["name", "besitzer"],
+      });
+      expect(pair.rowCount).toBe(1);
+      // Ein aufschiebbarer eindeutiger Schluessel ist auch keiner: `ON CONFLICT`
+      // nimmt ihn nicht als Schiedsrichter an. Erst der Beweis, dass es ihn
+      // wirklich gibt, dann die Ablehnung.
+      await owner.query(`ALTER TABLE "${schema}".kunden
+        ADD CONSTRAINT kunden_slug_uq UNIQUE (slug) DEFERRABLE INITIALLY DEFERRED`);
+      expect((await owner.query<{ condeferrable: boolean }>(
+        `SELECT condeferrable FROM pg_constraint WHERE conname = 'kunden_slug_uq'`)).rows)
+        .toEqual([{ condeferrable: true }]);
+      await expect(generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden",
+        rows: [{ besitzer: mine, email: "slug@example.ch", name: "Slug", punkte: 1, slug: "s-1" }],
+        onConflict: ["slug"],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN" });
+      // Die sensible Spalte kann kein Schluessel sein: Sie darf in keiner Zeile
+      // stehen, und der Schluessel muss in jeder stehen.
+      await owner.query(`CREATE UNIQUE INDEX kunden_token_key ON "${schema}".kunden (api_token)`);
+      await expect(generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden",
+        rows: [{ besitzer: mine, email: "token@example.ch", name: "Token", punkte: 1 }],
+        onConflict: ["api_token"],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      // Und ueber GraphQL ist sie ein unbekanntes Feld, weil sie nicht im
+      // Schema steht.
+      await expect(mutate(mine, `mutation { insertIntokundenCollection(
+        objects: [{ besitzer: "${mine}", email: "t2@example.ch", name: "T2" }], onConflict: ["api_token"]
+      ) { affectedCount } }`)).rejects.toMatchObject({ reason: "unknown_field", at: "kunden.api_token" });
+      expect((await held("besitzer = $1", [mine])).map((row) => row.email))
+        .toEqual(["anna@example.ch", "paar@example.ch"]);
+
+      // --- Zusage 4: keine fremde Zeile, und der Unterschied zum Aendern ---
+      //
+      // Der Nachbar hat 'nachbar@example.ch'. Der Aufrufer stupst genau diese
+      // Zeile an, mit sich selbst als Besitzer in der Zeile, die er anlegen
+      // wuerde. `ON CONFLICT DO UPDATE` trifft die Zeile ueber den eindeutigen
+      // Index, ohne Ruecksicht auf eine Policy; erst danach prueft PostgreSQL
+      // die USING-Bedingung der UPDATE-Policy gegen die vorhandene Zeile, und
+      // die passt nicht. Das ist kein Ueberspringen, sondern ein Fehler.
+      const nachbarVorher = await held("besitzer = $1", [neighbour]);
+      expect(nachbarVorher).toEqual([{ besitzer: neighbour, email: "nachbar@example.ch", name: "Nachbar", punkte: 11 }]);
+      await expect(mutate(mine, `mutation { insertIntokundenCollection(
+        objects: [{ besitzer: "${mine}", email: "nachbar@example.ch", name: "gekapert", punkte: 99 }]
+        onConflict: ["email"]
+      ) { affectedCount } }`)).rejects.toMatchObject({
+        name: "GeneratedDataApiError", code: "GENERATED_DATA_API_POLICY_REJECTED",
+      });
+      expect(await held("besitzer = $1", [neighbour])).toEqual(nachbarVorher);
+      // Dasselbe ueber die REST-Flaeche, weil es dieselbe Zusage ist.
+      await expect(generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden",
+        rows: [{ besitzer: mine, email: "nachbar@example.ch", name: "gekapert", punkte: 99 }],
+        onConflict: ["email"],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_POLICY_REJECTED" });
+      expect(await held("besitzer = $1", [neighbour])).toEqual(nachbarVorher);
+
+      // Und daneben derselbe Wunsch als gewoehnliches Aendern: Die
+      // USING-Bedingung filtert, die Mutation trifft null Zeilen und meldet
+      // keinen Fehler. Der Upsert daneben faellt. Beides laesst die fremde Zeile
+      // stehen; die Zusage haelt also an beiden Wegen, nur mit verschiedener
+      // Antwort.
+      const plain = await generated.mutateRows(contextFor(mine), scope, { schema, mutations: [
+        { kind: "update", table: "kunden", filters: [{ column: "email", operator: "eq", value: "nachbar@example.ch" }],
+          values: { name: "gekapert" } },
+      ] });
+      expect(plain.results[0]!.rowCount).toBe(0);
+      expect(await held("besitzer = $1", [neighbour])).toEqual(nachbarVorher);
+
+      // Die Klammer haelt auch hier: Die Mutation davor war fuer sich erlaubt
+      // und wirkt trotzdem nicht.
+      await expect(mutate(mine, `mutation {
+        erst: insertIntokundenCollection(objects: [{ besitzer: "${mine}", email: "bleibt@example.ch", name: "Bleibt" }]) { affectedCount }
+        dann: insertIntokundenCollection(
+          objects: [{ besitzer: "${mine}", email: "nachbar@example.ch", name: "gekapert", punkte: 99 }]
+          onConflict: ["email"]
+        ) { affectedCount }
+      }`)).rejects.toMatchObject({ code: "GENERATED_DATA_API_POLICY_REJECTED" });
+      expect(await held("email = 'bleibt@example.ch'")).toEqual([]);
+      expect(await held("besitzer = $1", [neighbour])).toEqual(nachbarVorher);
+
+      // --- Zusage 5: ohne das Recht zum Aendern kein Upsert ----------------
+      //
+      // Erst der Beweis, dass das gewoehnliche Einfuegen in diese Tabelle geht.
+      const eingang = await generated.insertRows(contextFor(mine), scope, {
+        schema, table: "eingang", rows: [{ besitzer: mine, kennung: "k-1", inhalt: "eins" }],
+      });
+      expect(eingang.rowCount).toBe(1);
+      // Dieselbe Zeile als Upsert: Die Data API nennt das fehlende Recht.
+      await expect(generated.insertRows(contextFor(mine), scope, {
+        schema, table: "eingang", rows: [{ besitzer: mine, kennung: "k-1", inhalt: "zwei" }],
+        onConflict: ["kennung"],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_FORBIDDEN" });
+      // Ueber GraphQL steht das Argument nicht im Schema, und die Ablehnung
+      // sagt darum "unbekanntes Argument" und nicht "kein Recht".
+      await expect(mutate(mine, `mutation { insertIntoeingangCollection(
+        objects: [{ besitzer: "${mine}", kennung: "k-1", inhalt: "drei" }], onConflict: ["kennung"]
+      ) { affectedCount } }`)).rejects.toMatchObject({ reason: "unknown_argument", at: "onConflict" });
+      expect((await owner.query<{ inhalt: string }>(
+        `SELECT inhalt FROM "${schema}".eingang ORDER BY inhalt`)).rows).toEqual([{ inhalt: "eins" }]);
+
+      // --- Zusage 6: zwei gleiche Schluessel, und die Zaehlung -------------
+      //
+      // PostgreSQL wuerde das mit "cannot affect row a second time" abbrechen,
+      // und das waere bei uns ein Ausfall statt einer Ablehnung.
+      await expect(generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden", rows: [
+          { besitzer: mine, email: "doppelt@example.ch", name: "Eins", punkte: 1 },
+          { besitzer: mine, email: "doppelt@example.ch", name: "Zwei", punkte: 2 },
+        ], onConflict: ["email"],
+      })).rejects.toMatchObject({ code: "GENERATED_DATA_API_INVALID_INPUT" });
+      expect(await held("email = 'doppelt@example.ch'")).toEqual([]);
+      // Zwei verschiedene Schluessel in einer Anfrage gehen, und zwar beide.
+      const both = await generated.insertRows(contextFor(mine), scope, {
+        schema, table: "kunden", rows: [
+          { besitzer: mine, email: "a1@example.ch", name: "A1", punkte: 1 },
+          { besitzer: mine, email: "a2@example.ch", name: "A2", punkte: 2 },
+        ], onConflict: ["email"],
+      });
+      expect(both.rowCount).toBe(2);
+
+      // Ein Upsert ist ein Schreiben und meldet keine gelesene Zeile.
+      expect(metered).toEqual([]);
+      const read = await graphql.execute(contextFor(mine), scope, schema, '{ kunden(orderBy: "email") { email } }');
+      if (read.kind !== "query") throw new Error("eine Abfrage erwartet");
+      expect(read.data.kunden).toEqual([
+        { email: "a1@example.ch" }, { email: "a2@example.ch" },
+        { email: "anna@example.ch" }, { email: "paar@example.ch" },
+      ]);
+      expect(metered).toEqual([{ metric: "database_row_reads", quantity: 4 }]);
     } finally {
       await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await projectApi.end();
