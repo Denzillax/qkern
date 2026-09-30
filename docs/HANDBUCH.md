@@ -2716,14 +2716,15 @@ der ausgelieferte Prozess unter `production`:
 npm run test:realtime:docker
 ```
 
-Der Stack legt eine eigene CA an, stellt damit ein Serverzertifikat auf
-`postgres.qkern.test` aus und weist in `pg_hba.conf` jede Verbindung ohne TLS
-ab. Der Lauf belegt vier Dinge: dass der Prozess unter `production` wirklich
-anläuft und einen Broadcast durchträgt, dass er ihn über `LISTEN`/`NOTIFY` in
-eine zweite Instanz trägt, dass `pg_stat_ssl` für jede seiner Verbindungen
-TLSv1.3 meldet, und dass er ohne Vertrauensanker oder unter einem Namen, der
-nicht im Zertifikat steht, gar nicht hochkommt. Dazu fällt jede der fünf
-Bedingungen des Tors einzeln.
+Der Stack legt eine eigene CA an, stellt damit Serverzertifikate auf
+`postgres.qkern.test` und `vault.qkern.test` aus und weist in `pg_hba.conf` jede
+Verbindung ohne TLS ab. Der Lauf belegt: dass der Prozess unter `production`
+wirklich anläuft und einen Broadcast durchträgt, dass er ihn über
+`LISTEN`/`NOTIFY` in eine zweite Instanz trägt, dass `pg_stat_ssl` für jede
+seiner Verbindungen TLSv1.3 meldet, und dass er ohne Vertrauensanker oder unter
+einem Namen, der nicht im Zertifikat steht, gar nicht hochkommt. Dazu fällt jede
+der fünf Bedingungen des Tors einzeln, und der Change Feed läuft über den
+vault-gestützten Katalog bis zu einem angemeldeten Abonnenten.
 
 Der Lauf hat einen Produktfehler gefunden, der diesen Start seit `1.11.0`
 unmöglich gemacht hatte: Die `LISTEN`-Verbindung des Fan-outs baute sich ohne
@@ -2733,12 +2734,46 @@ vor dem Lauschen aufgebaut wird und der dauerhafte Log unter Production Pflicht
 ist, kam der Prozess dort nie hoch. Die Bedingung des Tors war also erfüllbar
 und der Start trotzdem nicht.
 
-Was unter Production nicht geht: **Postgres Changes**. Der Prozess baut seinen
-Projektdatenbank-Katalog nur über den lokalen Weg auf, und der weist
-`production` ab, weil dort ein eingespeister, vault-gestützter Katalog erwartet
-wird. Der Migrations-Prozess hat diesen Zweig, der Realtime-Prozess hat ihn
-nicht. Wer `changes:` trotzdem anschaltet, bekommt beim Start eine benannte
-Abweisung und kein leeres Abonnement.
+### Postgres Changes unter Production
+
+Der Befund des Laufs von `2.68.0` war: **Postgres Changes** gingen unter
+Production nicht. Der Realtime-Prozess baute seinen Projektdatenbank-Katalog nur
+über den lokalen Weg auf, und der weist `production` ab, weil dort ein
+eingespeister, vault-gestützter Katalog erwartet wird. Der Migrations-Prozess
+hatte diesen Zweig, der Realtime-Prozess nicht.
+
+Der Zweig liegt jetzt in `lib/server/migrations/connection-catalog-runtime.ts`,
+und beide Prozesse rufen ihn. Es ist dieselbe Fabrik und nicht eine zweite
+Quelle: An den Angaben einer Bindung hängt die Rollengrenze der
+Projektdatenbank, und ein Katalog, der an zwei Stellen entsteht, kann an zwei
+Stellen anders aussehen. Im Realtime-Prozess speist derselbe Katalog beide
+Hälften des Weges, die Quelle des Feeds und den Leser der Zeile; vorher waren es
+zwei Kataloge mit zwei Pool-Sätzen auf dieselben Datenbanken.
+
+Was der Betrieb dafür setzt, steht in `docs/REALTIME_PROTOCOL.md` unter „Grenzen
+unter Production". Zwei Dinge sind daran wichtig:
+
+- Der Prozess greift vor dem Lauschen einmal je Bindung bis zur Datenbank durch.
+  Ein vault-gestützter Katalog holt seine Zugangsdaten erst beim ersten Zugriff,
+  und ohne diesen Griff wäre ein unerreichbarer Vault erst am leeren Abonnement
+  zu merken gewesen. Der Leser fällt geschlossen, also käme kein Fehler zurück,
+  sondern nichts.
+- Sind Changes an, muss die Generated Data API an sein. Der Leser holt jede Zeile
+  durch sie, und eine abgeschaltete API hätte denselben stillen Zustand erzeugt.
+
+Der Realtime-Prozess nimmt seine Bindungen nur ausdrücklich aus der Umgebung
+(`QKERN_PROJECT_DATABASE_CATALOG_SOURCE=static-env`). Die Bindungstabelle der
+Control Plane gehört der Worker-Rolle; er läuft mit der Laufzeitrolle und
+bekäme sie nur durch ein zusätzliches Leserecht. Das Recht wurde nicht
+ausgeweitet, und die fehlende Quelle nennt sich beim Start.
+
+Belegt ist der Weg im Stack des Realtime-Laufs. Dort steht neben dem
+TLS-PostgreSQL ein echter Vault mit einem Serverzertifikat aus derselben CA, dazu
+eine zweite Datenbank mit Ledger, Zaun und `qkern_internal.change_feed`. Eine
+echte Änderung geht durch den Feed bis zu einem angemeldeten Abonnenten, gelesen
+mit dessen Claims; die Zeile eines anderen Nutzers kommt nicht an, weil Row Level
+Security sie nicht herausgibt. `pg_stat_ssl` meldet für die lesende Verbindung
+TLSv1.3 unter `qkern_project_api_app`.
 
 ### Vektor-Buckets: kein Vektortyp, und darum keine Ablage
 

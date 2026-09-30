@@ -1,9 +1,20 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomUUID, X509Certificate, generateKeyPairSync } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
+import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { createPostgresPool } from "@/lib/server/db/pool";
 import { hashProjectApiKey } from "@/lib/server/project-api-keys/service";
+import { ProjectAuthSecretProtector, ProjectAuthTotp } from "@/lib/server/project-auth/mfa";
+import { ProjectAuthOidcCatalog, ProjectAuthOidcClient } from "@/lib/server/project-auth/oidc";
+import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
+import {
+  NoopDevelopmentProjectAuthDelivery,
+  ProjectAuthService,
+} from "@/lib/server/project-auth/service";
+import { projectAuthTokenServiceFromEnv } from "@/lib/server/project-auth/tokens";
 import { QKERN_REALTIME_PROTOCOL } from "@/lib/server/realtime/websocket-server";
 import type { RealtimeServerMessage } from "@/lib/server/realtime/model";
 import type { SqlPool } from "@/lib/server/db/sql";
@@ -49,9 +60,20 @@ const authUrl = process.env.QKERN_TEST_AUTH_DATABASE_URL;
 const tlsHost = process.env.QKERN_TEST_REALTIME_TLS_HOST;
 const caFile = process.env.QKERN_TEST_REALTIME_CA_FILE;
 const altHost = process.env.QKERN_TEST_REALTIME_ALT_HOST;
+// Der Change-Feed-Teil des Stacks (2.69): Projektdatenbank, Vault, Blatt-Pin.
+const projectDatabaseUrl = process.env.QKERN_TEST_PROJECT_DATABASE_URL;
+const projectDatabaseName = process.env.QKERN_TEST_PROJECT_DATABASE_NAME;
+const projectApiRole = process.env.QKERN_TEST_PROJECT_API_ROLE;
+const projectLedgerOwner = process.env.QKERN_TEST_PROJECT_LEDGER_OWNER;
+const serverCertFile = process.env.QKERN_TEST_REALTIME_SERVER_CERT_FILE;
+const vaultDatabaseUrl = process.env.QKERN_TEST_REALTIME_VAULT_DATABASE_URL;
+const vaultStaticRole = process.env.QKERN_TEST_REALTIME_VAULT_STATIC_ROLE;
+const vaultTokenFile = process.env.QKERN_TEST_REALTIME_VAULT_TOKEN_FILE;
 const enabled = Boolean(
   process.env.QKERN_TEST_REALTIME_PRODUCTION_STACK === "true" &&
-  ownerUrl && runtimeUrl && authUrl && tlsHost && caFile && altHost,
+  ownerUrl && runtimeUrl && authUrl && tlsHost && caFile && altHost &&
+  projectDatabaseUrl && projectDatabaseName && projectApiRole && projectLedgerOwner &&
+  serverCertFile && vaultDatabaseUrl && vaultStaticRole && vaultTokenFile,
 );
 
 /** Nur `https`: Das Tor verlangt es, und der Client muss es genauso senden. */
@@ -123,6 +145,20 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
   const projectKey = `qk_service_${randomUUID().replace(/-/g, "")}${"A".repeat(11)}`;
 
   let owner: SqlPool;
+  /** Die Projektdatenbank, in der der Aenderungs-Feed liegt. */
+  let projectDb: SqlPool;
+  /** Der Auth-Pool, mit dem der Test seine Abonnenten anlegt. */
+  let authDb: SqlPool;
+  /** Eigenes Schema je Lauf, damit zwei Laeufe sich nicht sehen. */
+  const schema = `rtc_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  /** Blatt-Pin des Serverzertifikats; eine Vault-Bindung verlangt ihn unter Production. */
+  let serverCertificateSha256 = "";
+  /**
+   * Die Schluesselangaben von Project Auth, in Test und Kindprozess dieselben.
+   * Nur so kann der Prozess ein Token pruefen, das der Test ausgestellt hat.
+   */
+  let projectAuthEnv: Record<string, string> = {};
+  const subscribers: { id: string; accessToken: string }[] = [];
 
   /**
    * Die Umgebung eines Production-Prozesses mit **allen** Bedingungen des Tors
@@ -162,7 +198,7 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
     return env;
   }
 
-  async function authenticated(port: number) {
+  async function authenticated(port: number, accessToken?: string) {
     const url = `ws://127.0.0.1:${port}/realtime/v1/projects/${projectId}/environments/production`;
     const socket = new WebSocket(url, QKERN_REALTIME_PROTOCOL, { origin: ORIGIN });
     await new Promise<void>((resolve, reject) => {
@@ -170,9 +206,50 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
       socket.once("error", reject);
     });
     const ready = nextMessage(socket, "ready");
-    socket.send(JSON.stringify({ type: "auth", requestId: "auth-1", projectKey }));
+    socket.send(JSON.stringify({
+      type: "auth", requestId: "auth-1", projectKey, ...(accessToken ? { accessToken } : {}),
+    }));
     await ready;
     return socket;
+  }
+
+  /**
+   * Die Bindung, die der Prozess als Katalog bekommt. Ein Blatt-Pin ist unter
+   * Production Pflicht: Ohne ihn weist die Bindung sich selbst ab, und das ist
+   * richtig — eine Kette allein sagt nur, wer ausgestellt hat.
+   */
+  function binding(overrides: Record<string, unknown> = {}) {
+    return {
+      databaseInstanceRef: `managed:${projectId}`,
+      vaultStaticRole: vaultStaticRole!,
+      host: tlsHost!,
+      port: 5432,
+      expectedRole: projectApiRole!,
+      expectedDatabase: projectDatabaseName!,
+      expectedLedgerOwner: projectLedgerOwner!,
+      serverCertificateSha256,
+      ...overrides,
+    };
+  }
+
+  /**
+   * Die Umgebung eines Production-Prozesses **mit** Postgres Changes: derselbe
+   * vault-gestuetzte Katalog, den der Migrations-Prozess fuehrt, und die
+   * Generated Data API, durch die der Leser jede Zeile holt.
+   */
+  function changesEnv(port: number, overrides: Record<string, string | undefined> = {}) {
+    return productionEnv(port, {
+      QKERN_REALTIME_CHANGES_ENABLED: "true",
+      QKERN_GENERATED_DATA_API_ENABLED: "true",
+      QKERN_PROJECT_DATABASE_CATALOG_SOURCE: "static-env",
+      QKERN_VAULT_DATABASE_URL: vaultDatabaseUrl!,
+      QKERN_VAULT_TOKEN_FILE: vaultTokenFile!,
+      QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON: JSON.stringify([binding()]),
+      QKERN_REALTIME_CHANGE_POLL_MS: "200",
+      QKERN_REALTIME_CHANGE_RECONCILE_MS: "500",
+      ...projectAuthEnv,
+      ...overrides,
+    });
   }
 
   beforeAll(async () => {
@@ -196,9 +273,90 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
       (organization_id,project_id,environment,name,kind,token_prefix,token_hash,expires_at,created_by)
       VALUES ($1,$2,'production','certification','service',$3,$4,now() + interval '1 day',$5)`,
     [organizationId, projectId, projectKey.slice(0, 22), hashProjectApiKey(projectKey), controlUser]);
-  }, 180_000);
 
-  afterAll(async () => { await owner?.end(); });
+    // Der Blatt-Pin aus derselben Datei, die der Server vorzeigt. Kein
+    // Abschreiben aus der Konfiguration: Was gepinnt wird, ist das Zertifikat.
+    serverCertificateSha256 = new X509Certificate(await readFile(serverCertFile!))
+      .fingerprint256.replaceAll(":", "").toLowerCase();
+
+    // Die Tabelle, deren Aenderungen der Feed traegt. Eigentuemer ist der
+    // Ledger-Owner, nicht der Data-API-Login: Die Generated Data API weist eine
+    // Tabelle ab, die der lesenden Rolle selbst gehoert, weil RLS fuer den
+    // Eigentuemer nicht gilt.
+    projectDb = createPostgresPool({
+      connectionString: projectDatabaseUrl!, max: 3, ssl: { rejectUnauthorized: true },
+    });
+    await projectDb.query(`CREATE SCHEMA "${schema}" AUTHORIZATION ${projectLedgerOwner}`);
+    await projectDb.query(`CREATE TABLE "${schema}".items (
+      id uuid PRIMARY KEY, owner_id text NOT NULL, label text NOT NULL)`);
+    // Kein `SET ROLE` auf einem Pool: Die naechste Abfrage kann eine andere
+    // Verbindung erwischen. Der Eigentuemer wird nachtraeglich gesetzt, das
+    // Ergebnis ist dasselbe.
+    await projectDb.query(`ALTER TABLE "${schema}".items OWNER TO ${projectLedgerOwner}`);
+    await projectDb.query(`ALTER TABLE "${schema}".items ENABLE ROW LEVEL SECURITY`);
+    await projectDb.query(`CREATE POLICY items_owner_isolation ON "${schema}".items
+      USING (owner_id = current_setting('request.jwt.claim.sub', true))`);
+    await projectDb.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${projectApiRole}`);
+    await projectDb.query(`GRANT SELECT ON "${schema}".items TO ${projectApiRole}`);
+    await projectDb.query(`CREATE TRIGGER items_capture
+      AFTER INSERT OR UPDATE OR DELETE ON "${schema}".items
+      FOR EACH ROW EXECUTE FUNCTION qkern_internal.capture_change()`);
+
+    // Project Auth, damit der Abonnent ein echter angemeldeter Nutzer ist und
+    // die Zeile mit **seinen** Claims gelesen wird. Mit einem Service-Schluessel
+    // stuende in `sub` die Id des API-Schluessels; eine Policy darauf waere
+    // erfunden und belegte nichts ueber den Weg, den ein Kunde geht.
+    const { privateKey } = generateKeyPairSync("ed25519");
+    projectAuthEnv = {
+      QKERN_PROJECT_AUTH_ENABLED: "true",
+      QKERN_PROJECT_AUTH_SIGNING_KEY_ID: "realtime-production",
+      QKERN_PROJECT_AUTH_SIGNING_PRIVATE_KEY_BASE64:
+        privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+      QKERN_PROJECT_AUTH_ISSUER_BASE_URL: ORIGIN,
+      QKERN_PROJECT_AUTH_REDIRECT_ORIGINS: ORIGIN,
+      QKERN_PROJECT_AUTH_CALLBACK_BASE_URL: ORIGIN,
+      QKERN_PROJECT_AUTH_MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64url"),
+    };
+    authDb = createPostgresPool({
+      connectionString: authUrl!, max: 3, ssl: { rejectUnauthorized: true },
+    });
+    const projectAuth = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(authDb),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      // Aus derselben Umgebung wie im Kindprozess: gleicher Schluessel, gleiche
+      // Kennung, gleicher Aussteller. Sonst pruefte der Prozess ein Token, das
+      // er nie ausgestellt haben koennte.
+      tokens: projectAuthTokenServiceFromEnv({ ...projectAuthEnv, NODE_ENV: "production" }),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 7)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: ORIGIN,
+      allowedRedirectOrigins: new Set([ORIGIN]),
+      exposeDeliveryTokens: true,
+    });
+    const authScope = { organizationId, projectId, environment: "production" as const };
+    for (let index = 0; index < 2; index += 1) {
+      const signup = await projectAuth.signUp(authScope, {
+        email: `realtime-changes-${randomUUID()}@qkern.test`,
+        password: "a sufficiently long password",
+        redirectTo: `${ORIGIN}/callback`,
+        rateLimitKey: randomUUID(),
+      });
+      const session = await projectAuth.consumeEmailToken(authScope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if (!("accessToken" in session)) throw new Error("the signup did not yield a session");
+      subscribers.push({ id: session.user.id, accessToken: session.accessToken });
+    }
+  }, 300_000);
+
+  afterAll(async () => {
+    await projectDb?.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => undefined);
+    await Promise.allSettled([owner?.end(), projectDb?.end(), authDb?.end()]);
+  });
 
   /**
    * Der Stack selbst: Ohne TLS kommt niemand an diese Datenbank. Ohne diesen
@@ -380,30 +538,165 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
   }, 120_000);
 
   /**
-   * Der Befund dieses Laufs, als Fall festgehalten.
+   * Der Befund aus `2.68.0`, geschlossen.
    *
-   * Postgres Changes sind unter Production **nicht** erreichbar. Der
-   * Realtime-Prozess baut seinen Projektdatenbank-Katalog ausschliesslich ueber
-   * `createLocalProjectDatabaseCatalogFromEnv` beziehungsweise
-   * `createGeneratedDataApiFromEnv` auf, und beide weisen `NODE_ENV=production`
-   * ab: Sie verlangen einen eingespeisten, vault-gestuetzten Katalog. Der
-   * Migrations-Prozess hat diesen Zweig (`createVaultProjectDatabaseCatalog
-   * FromEnv`), der Realtime-Prozess hat ihn nicht.
+   * Damals war Postgres Changes unter Production unerreichbar: Der Prozess baute
+   * seinen Projektdatenbank-Katalog ausschliesslich lokal auf, und der lokale Weg
+   * weist `NODE_ENV=production` ab. Der Migrations-Prozess hatte den
+   * vault-gestuetzten Zweig, der Realtime-Prozess nicht. Jetzt rufen beide
+   * dieselbe Fabrik (`lib/server/migrations/connection-catalog-runtime.ts`), und
+   * dieser Fall geht den ganzen Weg:
    *
-   * Das Tor aus `1.73.0` nennt diese Bedingung nicht, weil sie nicht im Tor
-   * steht. Der Fall haelt fest, was heute gilt: Die Abweisung ist ausdruecklich
-   * und benannt, nicht ein stiller Rutsch in ein leeres `changes:`-Abonnement.
-   * Sobald der Prozess einen vault-gestuetzten Katalog bekommt, faellt dieser
-   * Fall und muss umgeschrieben werden.
+   * Trigger in der Projektdatenbank → `qkern_internal.change_feed` → Poller →
+   * Lesen der Zeile mit den Claims des Abonnenten durch die Generated Data API →
+   * Zustellung. Die Zugangsdaten der lesenden Rolle kommen aus einem echten
+   * Vault ueber `https` mit gepruefter Kette, die Verbindung zur
+   * Projektdatenbank haengt zusaetzlich an einem Blatt-Pin, und der Abonnent ist
+   * ein angemeldeter Nutzer, nicht ein Service-Schluessel.
+   *
+   * Der zweite Teil ist so wichtig wie der erste: Die Zeile des **anderen**
+   * Nutzers kommt nicht an. Sie wird nicht ausgefiltert, weil der Prozess etwas
+   * ueber sie wuesste, sondern weil RLS sie beim Lesen nicht herausgibt.
    */
-  it("names the missing injected project catalog when changes are switched on", async () => {
-    const started = start(productionEnv(BASE_PORT + 6, {
-      QKERN_REALTIME_CHANGES_ENABLED: "true",
-      QKERN_GENERATED_DATA_API_ENABLED: "true",
-    }));
+  it("carries a real change through the vault-backed catalog to an authenticated subscriber",
+    async () => {
+      const port = BASE_PORT + 7;
+      const [mine, theirs] = subscribers;
+      const started = start(changesEnv(port));
+      try {
+        await waitForListening(started);
+        // Der Startgriff hat wirklich stattgefunden: Der Prozess sagt, wie viele
+        // Projektdatenbanken er ueber den Vault erreicht hat.
+        expect(started.output()).toContain("change feed catalog reached 1 project database(s)");
+
+        const socket = await authenticated(port, mine.accessToken);
+        const changes: Extract<RealtimeServerMessage, { type: "change" }>[] = [];
+        socket.on("message", (raw: Buffer) => {
+          const message = JSON.parse(raw.toString("utf8")) as RealtimeServerMessage;
+          if (message.type === "change") changes.push(message);
+        });
+        try {
+          const channel = `changes:${schema}.items`;
+          const subscribed = nextMessage(socket, "subscribed");
+          socket.send(JSON.stringify({ type: "subscribe", requestId: "sub-changes", channel }));
+          expect(await subscribed).toMatchObject({ channel });
+
+          const delivered = nextMessage(socket, "change");
+          const foreignRow = randomUUID();
+          const ownRow = randomUUID();
+          // Die fremde Zeile zuerst und mit kleinerer Feed-Position: Kommt danach
+          // die eigene an, war der Stapel beim Abonnenten und die fremde ist
+          // nicht unterwegs verloren gegangen.
+          await projectDb.query(
+            `INSERT INTO "${schema}".items (id, owner_id, label) VALUES ($1, $2, 'their row')`,
+            [foreignRow, theirs.id],
+          );
+          await projectDb.query(
+            `INSERT INTO "${schema}".items (id, owner_id, label) VALUES ($1, $2, 'my row')`,
+            [ownRow, mine.id],
+          );
+
+          const change = await delivered;
+          expect(change).toMatchObject({
+            channel, schema, table: "items", operation: "insert",
+          });
+          expect(change.record).toMatchObject({
+            id: ownRow, owner_id: mine.id, label: "my row",
+          });
+
+          // Zeit lassen und danach zaehlen: Wenn die fremde Zeile kaeme, kaeme
+          // sie in dieser Spanne.
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+          expect(changes.map((entry) => entry.record?.id)).toEqual([ownRow]);
+          expect(JSON.stringify(changes)).not.toContain(foreignRow);
+          expect(JSON.stringify(changes)).not.toContain("their row");
+        } finally {
+          socket.close();
+        }
+
+        // Nachgelesen im Server: Die lesende Verbindung gehoert der
+        // unprivilegierten Data-API-Rolle, sie liegt in der Projektdatenbank und
+        // sie ist verschluesselt. Die Zugangsdaten dafuer hat der Prozess vom
+        // Vault geholt; das Passwort aus dem Init-Script gilt nach der Rotation
+        // nicht mehr.
+        const readers = await projectDb.query<{
+          usename: string; ssl: boolean; version: string | null; application_name: string;
+        }>(`SELECT activity.usename::text AS usename, ssl.ssl, ssl.version,
+                   activity.application_name
+              FROM pg_stat_activity AS activity
+              JOIN pg_stat_ssl AS ssl ON ssl.pid = activity.pid
+             WHERE activity.datname = current_database()
+               AND activity.usename::text = $1`, [projectApiRole!]);
+        console.error(`QKERN_REALTIME_CHANGE_READBACK ${JSON.stringify(readers.rows)}`);
+        expect(readers.rows.length, "Der Prozess hielt keine Projektverbindung offen")
+          .toBeGreaterThanOrEqual(1);
+        expect(readers.rows.every((row) => row.ssl === true)).toBe(true);
+        expect(readers.rows.every((row) => (row.version ?? "").startsWith("TLSv1."))).toBe(true);
+
+        expect(started.output()).not.toContain(mine.accessToken);
+        expect(started.output()).not.toContain("qkern_project_api_local_only");
+      } finally {
+        started.child.kill();
+      }
+    }, 300_000);
+
+  /**
+   * Die andere Haelfte der Zusage: Fehlt der Vault-Zweig oder liefert er nichts,
+   * **faellt der Start**. Kein stiller Rutsch in ein `changes:`-Abonnement, das
+   * fuer immer leer bleibt.
+   *
+   * Der letzte Fall ist der unauffaelligste und der wichtigste: Die
+   * Konfiguration ist vollstaendig und gueltig, der Vault ist erreichbar, aber
+   * die statische Rolle gibt es dort nicht. Ein vault-gestuetzter Katalog holt
+   * seine Zugangsdaten erst beim ersten Zugriff, also waere das ohne den
+   * Startgriff gar nicht zu merken gewesen: Der Prozess haette gelauscht, der
+   * Leser waere geschlossen gefallen, und der Abonnent haette nichts bekommen —
+   * ohne Fehler, ohne Hinweis.
+   */
+  it.each([
+    [
+      "the vault branch is not named",
+      { QKERN_PROJECT_DATABASE_CATALOG_SOURCE: undefined },
+      "QKERN_PROJECT_DATABASE_CATALOG_SOURCE=static-env",
+    ],
+    [
+      "the bindings are missing",
+      { QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON: undefined },
+      "Vault project database catalog configuration is invalid",
+    ],
+    [
+      "the token file is not named",
+      { QKERN_VAULT_TOKEN_FILE: undefined },
+      "QKERN_VAULT_TOKEN_FILE must be a bounded absolute path",
+    ],
+    [
+      "the vault address is plain http",
+      { QKERN_VAULT_DATABASE_URL: vaultDatabaseUrl?.replace("https://", "http://") },
+      "Vault project database catalog configuration is invalid",
+    ],
+    [
+      "the generated data api is switched off",
+      { QKERN_GENERATED_DATA_API_ENABLED: undefined },
+      "requires QKERN_GENERATED_DATA_API_ENABLED=true",
+    ],
+    [
+      "the vault has no credential for the binding",
+      {
+        QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON: undefined as string | undefined,
+      },
+      "Vault credential response was rejected",
+    ],
+  ] as const)("falls when %s", async (name, overrides, message) => {
+    const applied: Record<string, string | undefined> = { ...overrides };
+    if (name === "the vault has no credential for the binding") {
+      applied.QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON = JSON.stringify([
+        binding({ vaultStaticRole: "qkern-project-api-absent" }),
+      ]);
+    }
+    const started = start(changesEnv(BASE_PORT + 8, applied));
     const exitCode = await waitForExit(started);
     expect(exitCode, `Prozessausgabe: ${started.output().slice(-800)}`).not.toBe(0);
-    expect(started.output()).toContain("injected dedicated project API-role catalog");
+    expect(started.output()).toContain(message);
     expect(started.output()).not.toContain("listening");
-  }, 120_000);
+  }, 180_000);
 });

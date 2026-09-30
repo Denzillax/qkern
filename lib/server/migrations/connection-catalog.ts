@@ -73,6 +73,15 @@ export class TrustedProjectDatabaseConnectionCatalog implements ProjectDatabaseC
     this.pools = Object.freeze([...ownedPools]);
   }
 
+  /**
+   * Die Verweise, die dieser Katalog kennt. Nur fuer den Startgriff eines
+   * Prozesses: Er will einmal bis zur Datenbank durchreichen, bevor er lauscht.
+   * Ein Verweis ist ein Provisioner-Name, kein Geheimnis.
+   */
+  references(): readonly string[] {
+    return [...this.entries.keys()];
+  }
+
   resolve(databaseInstanceRef: string): ResolvedProjectDatabaseConnection {
     if (this.state !== "open") {
       throw new ProjectDatabaseCatalogError("PROJECT_DATABASE_CATALOG_CLOSED");

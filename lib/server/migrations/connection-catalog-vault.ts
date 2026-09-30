@@ -159,6 +159,16 @@ export class VaultProjectDatabaseConnectionCatalog implements ProjectDatabaseCon
     this.pools = Object.freeze(pools);
   }
 
+  /**
+   * Die Verweise der eingetragenen Bindungen. Nur fuer den Startgriff eines
+   * Prozesses, der einmal bis zur Datenbank durchreichen will, bevor er
+   * lauscht: Zugangsdaten holt dieser Katalog erst beim ersten Zugriff, und ein
+   * unerreichbarer Vault waere sonst erst am leeren Abonnement zu merken.
+   */
+  references(): readonly string[] {
+    return [...this.entries.keys()];
+  }
+
   resolve(databaseInstanceRef: string): ResolvedProjectDatabaseConnection {
     if (this.state !== "open") {
       throw new VaultProjectDatabaseCatalogError("PROJECT_DATABASE_CATALOG_CLOSED");

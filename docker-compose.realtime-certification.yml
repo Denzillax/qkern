@@ -22,6 +22,17 @@ name: qkern-slice-rt
 #    Nur so ist die Hostnamenspruefung ueberhaupt erfuellbar, und nur so kann
 #    ein Gegenfall (Verbindung ueber `127.0.0.1`) belegen, dass sie stattfindet.
 #
+# Neben dem TLS-PostgreSQL steht jetzt ein **Vault**, so wie der
+# Backup-Stack sein WAL-Archiv hat. Postgres Changes brauchen unter Production
+# einen vault-gestuetzten Projektdatenbank-Katalog; ohne echten Vault waere der
+# Weg nicht zu belegen, sondern nur zu behaupten. Der Vault bekommt sein
+# Serverzertifikat aus derselben CA wie PostgreSQL, weil die Produktgrenze
+# `https` verlangt und der Stack sie nicht aufweicht.
+#
+# Dazu kommt eine zweite Datenbank im selben Cluster, `project_database`, mit
+# Ledger, Zaun und `qkern_internal.change_feed` aus `db/project`. Der Feed ist
+# der Gegenstand der Zertifizierung; ohne ihn gibt es nichts zuzustellen.
+#
 # Regeln wie in den anderen Stacks: kein Mount in einem anderen Mount, keine
 # Produktgrenze wird fuer den Test aufgeweicht.
 
@@ -46,11 +57,22 @@ services:
         openssl x509 -req -in /certs/server.csr -days 2 \
           -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
           -extfile /certs/server.ext -out /certs/server.crt
-        rm -f /certs/server.csr /certs/server.ext /certs/ca.key
+        openssl req -nodes -newkey rsa:2048 \
+          -subj /CN=vault.qkern.test \
+          -keyout /certs/vault.key -out /certs/vault.csr
+        printf 'subjectAltName=DNS:vault.qkern.test,IP:127.0.0.1\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > /certs/vault.ext
+        openssl x509 -req -in /certs/vault.csr -days 2 \
+          -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+          -extfile /certs/vault.ext -out /certs/vault.crt
+        rm -f /certs/server.csr /certs/server.ext /certs/vault.csr /certs/vault.ext /certs/ca.key
         chown 70:70 /certs/server.key /certs/server.crt
-        chmod 0600 /certs/server.key
-        chmod 0644 /certs/server.crt /certs/ca.crt
+        # Der Vault-Prozess laeuft im Image als uid 100, auch wenn der Container
+        # als root startet: Der Entrypoint setzt mit `su-exec` herunter.
+        chown 100:100 /certs/vault.key /certs/vault.crt
+        chmod 0600 /certs/server.key /certs/vault.key
+        chmod 0644 /certs/server.crt /certs/vault.crt /certs/ca.crt
         openssl verify -CAfile /certs/ca.crt /certs/server.crt
+        openssl verify -CAfile /certs/ca.crt /certs/vault.crt
     volumes:
       - realtime-certification-certs:/certs
 
@@ -84,11 +106,16 @@ services:
       QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
       QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
       QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+      # Setzt `998-project-database.sh` in Gang: die zweite Datenbank im selben
+      # Cluster mit Ledger-Eigentuemer und Rechten fuer den Data-API-Login.
+      QKERN_PROJECT_READER_DB_PASSWORD: qkern_project_reader_local_only
+      QKERN_PROJECT_MIGRATOR_DB_PASSWORD: qkern_project_migrator_local_only
     tmpfs:
       - /var/lib/postgresql/data
     volumes:
       - ./db:/qkern/db:ro
       - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+      - ./db/docker/realtime-project-database.sh:/docker-entrypoint-initdb.d/001-realtime-project-database.sh:ro
       - ./db/docker/realtime-pg_hba.conf:/qkern/realtime/pg_hba.conf:ro
       - realtime-certification-certs:/certs:ro
     healthcheck:
@@ -100,11 +127,58 @@ services:
       timeout: 5s
       retries: 30
 
+  # Der Vault des Stacks.
+  #
+  # **Kein Dev-Modus.** Der Katalog verlangt unter `NODE_ENV=production` eine
+  # `https`-Adresse, und der Dev-Modus kann nur eine selbst erzeugte Kette
+  # ausstellen. Der Vault bekommt deshalb ein Serverzertifikat aus **derselben
+  # CA**, die schon fuer PostgreSQL ausgestellt hat: Ein Anker fuer beide Wege,
+  # und `NODE_EXTRA_CA_CERTS` bleibt eine Datei.
+  #
+  # Ablage `inmem`, ein Schluesselanteil, Entsiegeln im Testcontainer. Fuer einen
+  # Wegwerfstack ist das richtig und aendert nichts an dem, was hier geprueft
+  # wird: der Weg von einer Bindung zu einem Zugangsdatum und die Grenzen darum.
+  vault:
+    image: hashicorp/vault:1.18.3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - vault.qkern.test
+    environment:
+      VAULT_LOCAL_CONFIG: >-
+        {"storage": {"inmem": {}},
+         "listener": [{"tcp": {"address": "0.0.0.0:8200",
+                               "tls_cert_file": "/certs/vault.crt",
+                               "tls_key_file": "/certs/vault.key"}}],
+         "api_addr": "https://vault.qkern.test:8200",
+         "cluster_addr": "https://vault.qkern.test:8201",
+         "disable_mlock": true}
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config"]
+    volumes:
+      - realtime-certification-certs:/certs:ro
+    healthcheck:
+      # Ohne diese Pruefung koennte der Test schreiben, bevor der Listener
+      # bereit ist. `uninitcode` und `sealedcode` auf 200, weil beides beim
+      # Start zutrifft: Entsiegelt wird im Testcontainer.
+      # `--no-check-certificate` gilt nur fuer die Probe des Containers gegen
+      # sich selbst; der Produktweg prueft Kette und Namen.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--no-check-certificate", "--spider", "https://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200&standbycode=200"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   certification:
     image: node:24-alpine
     working_dir: /workspace/qkern
     depends_on:
       postgres:
+        condition: service_healthy
+      vault:
         condition: service_healthy
     volumes:
       - .:/qkern-src:ro
@@ -114,10 +188,27 @@ services:
       # Der Testcontainer selbst spricht ebenfalls nur TLS: Der Stack laesst
       # nichts anderes zu. Der Anker steht in der Umgebung, damit der
       # ausgelieferte Prozess ihn ohne eine eigene Variable findet.
+      # Ein Anker fuer beide Wege: PostgreSQL und Vault haben ihre Zertifikate
+      # aus derselben CA. Keine Pruefung wird abgeschaltet.
       NODE_EXTRA_CA_CERTS: /certs/ca.crt
       DATABASE_SSL: require
       QKERN_TEST_REALTIME_PRODUCTION_STACK: "true"
       QKERN_TEST_REALTIME_CA_FILE: /certs/ca.crt
+      # Die Halbe Wahrheit eines Zertifikats ist die Kette, die andere der
+      # Fingerabdruck: Eine Vault-Bindung verlangt unter Production einen
+      # Blatt-Pin, und der Test rechnet ihn aus dieser Datei aus.
+      QKERN_TEST_REALTIME_SERVER_CERT_FILE: /certs/server.crt
+      QKERN_TEST_REALTIME_VAULT_ADDRESS: https://vault.qkern.test:8200
+      QKERN_TEST_REALTIME_VAULT_DATABASE_URL: https://vault.qkern.test:8200/v1/database
+      QKERN_TEST_REALTIME_VAULT_STATIC_ROLE: qkern-project-api
+      # Bewusst nicht `VAULT_TOKEN` und nicht `QKERN_VAULT_TOKEN`: Beide Namen
+      # sind fuer den Katalog ein Zeichen gemischter Autoritaet und laessen ihn
+      # abweisen. Der Prozess bekommt den Token nur als Datei.
+      QKERN_TEST_REALTIME_VAULT_TOKEN_FILE: /run/qkern/vault-token
+      QKERN_TEST_PROJECT_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres.qkern.test:5432/project_database
+      QKERN_TEST_PROJECT_DATABASE_NAME: project_database
+      QKERN_TEST_PROJECT_API_ROLE: qkern_project_api_app
+      QKERN_TEST_PROJECT_LEDGER_OWNER: qkern_ledger_owner
       QKERN_TEST_REALTIME_TLS_HOST: postgres.qkern.test
       # Derselbe Server unter einem Namen, der nicht im Zertifikat steht: Der
       # Dienstname aus Compose. Damit ist die Hostnamenspruefung pruefbar, ohne
@@ -130,7 +221,56 @@ services:
       - "sh"
       - "-ec"
       - |
-        mkdir -p /workspace/qkern
+        mkdir -p /workspace/qkern /run/qkern
+        # Vault entsiegeln, die Datenbank-Engine einrichten und eine statische
+        # Rolle fuer den Data-API-Login anlegen. Kein eigener Seed-Container, aus
+        # demselben Grund wie im Vault-Stack: `--abort-on-container-exit` haette
+        # ihn als Abbruch des ganzen Laufs genommen. Der Seed laeuft hier, ueber
+        # dieselbe HTTPS-API und gegen dieselbe CA, die auch der Katalog benutzt.
+        node -e "
+          import { writeFileSync } from 'node:fs';
+          const address = process.env.QKERN_TEST_REALTIME_VAULT_ADDRESS;
+          const call = async (path, options = {}, token) => {
+            const response = await fetch(address + path, {
+              method: options.body ? 'POST' : 'GET',
+              headers: {
+                'content-type': 'application/json',
+                ...(token ? { 'x-vault-token': token } : {}),
+              },
+              ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+            });
+            if (!response.ok) throw new Error(path + ': ' + response.status + ' ' + await response.text());
+            return response.status === 204 ? {} : await response.json();
+          };
+          const initialized = await call('/v1/sys/init', {
+            body: { secret_shares: 1, secret_threshold: 1 },
+          });
+          await call('/v1/sys/unseal', { body: { key: initialized.keys[0] } });
+          const token = initialized.root_token;
+          // Der Katalog liest den Token nur aus einer Datei, und unter
+          // Production darf sie fuer andere nicht lesbar sein.
+          writeFileSync(process.env.QKERN_TEST_REALTIME_VAULT_TOKEN_FILE, token, { mode: 0o600 });
+          await call('/v1/sys/mounts/database', { body: { type: 'database' } }, token);
+          await call('/v1/database/config/project', { body: {
+            plugin_name: 'postgresql-database-plugin',
+            allowed_roles: '*',
+            connection_url: 'postgresql://{{username}}:{{password}}@postgres.qkern.test:5432/project_database?sslmode=require',
+            username: 'qkern',
+            password: 'qkern_local_only',
+            password_authentication: 'scram-sha-256',
+          } }, token);
+          const role = process.env.QKERN_TEST_REALTIME_VAULT_STATIC_ROLE;
+          await call('/v1/database/static-roles/' + role, { body: {
+            db_name: 'project',
+            username: 'qkern_project_api_app',
+            rotation_period: '86400',
+          } }, token);
+          const credential = await call('/v1/database/static-creds/' + role, {}, token);
+          if (credential.data.username !== 'qkern_project_api_app' || !credential.data.password) {
+            throw new Error('static-creds did not name the expected role');
+          }
+          console.error('vault-seed: static role rotated, ttl ' + credential.data.ttl);
+        " --input-type=module
         tar -C /qkern-src \
           --exclude=./node_modules \
           --exclude=./.next \

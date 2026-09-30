@@ -1,11 +1,8 @@
-import { closePostgresPool, getWorkerPostgresPool } from "@/lib/server/db/pool";
-import { PostgresControlPlane } from "@/lib/server/db/repositories";
-import { createLocalProjectDatabaseCatalogFromEnv } from "@/lib/server/migrations/connection-catalog-env";
-import { VaultTokenFileProvider } from "@/lib/server/migrations/connection-catalog-vault";
-import { createVaultProjectDatabaseCatalogFromEnv } from "@/lib/server/migrations/connection-catalog-vault-env";
-import { vaultCatalogRuntimeOptionsFromEnv } from "@/lib/server/migrations/connection-catalog-vault-env";
-import { PersistedVaultProjectDatabaseConnectionCatalog } from "@/lib/server/migrations/connection-catalog-vault-persisted";
-import type { ProjectDatabaseConnectionResolver } from "@/lib/server/migrations/postgres-executor";
+import { closePostgresPool } from "@/lib/server/db/pool";
+import {
+  createProjectDatabaseCatalogFromEnv,
+  type ProjectDatabaseCatalogRuntime,
+} from "@/lib/server/migrations/connection-catalog-runtime";
 import { createMigrationWorkerRuntimeFromEnv } from "@/lib/server/migrations/runtime-composition";
 import { createLoopbackRuntimeProbeFromEnv } from "@/lib/server/operations/runtime-probe";
 
@@ -14,29 +11,15 @@ const requestStop = () => controller.abort();
 process.once("SIGINT", requestStop);
 process.once("SIGTERM", requestStop);
 
-let catalog: (ProjectDatabaseConnectionResolver & { close(): Promise<void> }) | undefined;
+let catalog: ProjectDatabaseCatalogRuntime | undefined;
 const probe = createLoopbackRuntimeProbeFromEnv(process.env);
 try {
-  if (process.env.NODE_ENV === "production") {
-    const tokenProvider = new VaultTokenFileProvider(process.env.QKERN_VAULT_TOKEN_FILE?.trim() ?? "", {
-      production: true,
-    });
-    if (process.env.QKERN_PROJECT_DATABASE_CATALOG_SOURCE === "static-env") {
-      catalog = createVaultProjectDatabaseCatalogFromEnv(process.env, { tokenProvider });
-    } else {
-      if (process.env.QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON !== undefined) {
-        throw new Error("Static project database bindings cannot be mixed with the control-plane catalog.");
-      }
-      const organizationId = process.env.QKERN_WORKER_ORGANIZATION_ID?.trim() ?? "";
-      catalog = new PersistedVaultProjectDatabaseConnectionCatalog(
-        new PostgresControlPlane(getWorkerPostgresPool(process.env)),
-        organizationId,
-        vaultCatalogRuntimeOptionsFromEnv(process.env, { tokenProvider }),
-      );
-    }
-  } else {
-    catalog = await createLocalProjectDatabaseCatalogFromEnv(process.env);
-  }
+  // Dieselbe Fabrik, die auch der Realtime-Prozess ruft. Der Migrations-Prozess
+  // ist der einzige, der seine Bindungen auch aus der Control Plane lesen darf:
+  // Die Tabelle gehoert der Worker-Rolle, und genau die hat er.
+  catalog = await createProjectDatabaseCatalogFromEnv(process.env, {
+    allowControlPlaneBindings: true,
+  });
   const runtime = createMigrationWorkerRuntimeFromEnv(process.env, {
     catalog,
     // Der Runtime-Logger meldet Runden, der Worker-Logger einzelne Auftraege.

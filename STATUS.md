@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 8 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist); seit `2.96` ein S3-Endpunkt `/s3` mit SigV4, im Storage-Stack mit echter Signatur zertifiziert; seit `2.99` dazu Presigned URLs, `aws-chunked`, Range, CopyObject und DeleteObjects, und **ein echter Client hat den Endpunkt gesehen**: das AWS SDK für JavaScript über HTTP; seit `2.101` Multipart am S3-Endpunkt auf demselben Dienstweg, und der Client hat die Datei **selbst geteilt** |
 | Project Queues | ja | ja — 9 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last; seit `1.88.0` mit Metrics-Export im Prometheus-Textformat |
 | Usage Metering | teilweise | teilweise — 34 Real-DB-Fälle; **alle sechs Metriken melden**, append-only Preisblatt mit Monatsprojektion (`1.67.0`) und ein Rechnungslauf, der abgeschlossene Monate als eigener Prozess fakturiert (`1.68.0`), mit REST-Lesefläche und belegtem Wettlauf zweier Läufe (`1.77.0`) und lückenlosem Nummernkreis samt Fälligkeit (`1.81.0`); keine Zahlungsanbindung |
-| Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert; Production-Start gegen TLS-PostgreSQL belegt, Verbindung als `verify-full` im Server nachgelesen |
+| Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert; Production-Start gegen TLS-PostgreSQL belegt, Verbindung als `verify-full` im Server nachgelesen; Postgres Changes laufen unter `production` ueber denselben vault-gestuetzten Projektdatenbank-Katalog wie die Migrationen, belegt gegen echten Vault |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 51 Real-DB-Fälle, dazu 32 im Functions-Lauf und 14 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess; seit `2.98.0` Inhaltslogs je Aufruf am echten Container |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -52,9 +52,9 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **16 von 16 bestanden, exit 0, zweimal reproduziert** |
 | **Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv** | **1 von 1 bestanden, exit 0, zweimal reproduziert — seit `2.29.0`: verschlüsseltes Basisbackup über `sslmode=verify-full`, Wiederherstellung bis zu einem Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest belegt, Evidenz vom Produkt-Verifier geprüft; Mutation (Archiv aus) fällt** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
-| **Realtime-Production gegen TLS-PostgreSQL** | **11 von 11 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-rt` mit zwei Mutationsproben. Der ausgelieferte Prozess laeuft unter `NODE_ENV=production` an, traegt einen Broadcast durch und einen zweiten in eine zweite Instanz; `pg_stat_ssl` meldet fuer jede seiner Verbindungen TLSv1.3; ohne Vertrauensanker und unter einem Namen, der nicht im Zertifikat steht, kommt er nicht hoch; jede der fuenf Bedingungen des Tors laesst den Start einzeln fallen und nennt sich** |
+| **Realtime-Production gegen TLS-PostgreSQL und echten Vault** | **17 von 17 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-rtc` mit zwei Mutationsproben. Der ausgelieferte Prozess laeuft unter `NODE_ENV=production` an, traegt einen Broadcast durch und einen zweiten in eine zweite Instanz; `pg_stat_ssl` meldet fuer jede seiner Verbindungen TLSv1.3; ohne Vertrauensanker und unter einem Namen, der nicht im Zertifikat steht, kommt er nicht hoch; jede der fuenf Bedingungen des Tors laesst den Start einzeln fallen und nennt sich. Neu: Eine echte Datenbankaenderung geht durch `qkern_internal.change_feed` bis zu einem angemeldeten Abonnenten, mit dessen Claims gelesen und unter Zeilensicherheit; die Zeile des anderen Nutzers kommt nicht an. Die Zugangsdaten der lesenden Rolle holt der Prozess ueber `https` aus einem Vault mit gepruefter Kette, die Verbindung zur Projektdatenbank haengt zusaetzlich an einem Blatt-Pin, und `pg_stat_ssl` meldet fuer sie TLSv1.3 unter `qkern_project_api_app`. Sechs Faelle halten die andere Haelfte: Fehlt der Vault-Zweig, die Bindung, die Tokendatei, die `https`-Adresse oder die Generated Data API, faellt der Start und nennt sich; und ein Vault, der fuer eine gueltige Bindung kein Zugangsdatum hat, laesst ihn ebenfalls fallen, statt lauschend in ein leeres `changes:`-Abonnement zu rutschen** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-09-30/` |
-| Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Der Soak selbst laeuft weiter unter `test`; den Production-Start belegt der eigene TLS-Stack |
+| Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 3315 ms ueber fuenf Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Der hoechste Wert und ein Fehlschlag mit p95 7638 ms stammen aus einem Lauf auf einer Maschine mit rund 1 GiB freiem Speicher; der Wiederholungslauf derselben Aenderung war gruen. Der Soak selbst laeuft weiter unter `test`; den Production-Start belegt der eigene TLS-Stack |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
 | **Functions Ende zu Ende** | **Registry → Datenbank → Dienst → Container in einem Lauf zertifiziert**; seit `1.35.0` ohne jede ersetzte Stelle |
@@ -127,7 +127,7 @@ war damit über mehrere Releases überholt; gemessen sind es 2384 bestandene und
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert; Multipart/Resumable seit `1.70.0`** | Transform-Service und CDN als eigener Slice |
-| Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`, Production-Start gegen TLS-PostgreSQL belegt** | Postgres Changes unter `production` (es fehlt der vault-gestuetzte Projektdatenbank-Katalog); persistente Presence/History |
+| Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`, Production-Start gegen TLS-PostgreSQL belegt, Postgres Changes unter `production` belegt** | persistente Presence/History; der Katalog des Realtime-Prozesses kommt nur aus ausdruecklichen Bindungen, nicht aus der Control Plane |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
 | SDK/CLI | **auf npm seit `2.16.0`**: `@qkern/sdk@1.7.0-alpha.5`, `@qkern/cli@1.7.0-alpha.5` (`2.26.0`), Apache 2.0, Tag `alpha`; CI-Evidenz auf drei Betriebssystemen seit `2.15.0` | Upgrade-E2E und ein `latest`-Release |
@@ -189,8 +189,12 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
   eigener CA, das Klartext abweist, und der ausgelieferte Prozess läuft davor
   an. Dabei kam ein Produktfehler heraus, der diesen Start seit `1.11.0`
   unmöglich gemacht hatte: Die `LISTEN`-Verbindung des Fan-outs baute sich ohne
-  jede TLS-Konfiguration auf. Offen bleiben Postgres Changes unter `production`
-  und History/Presence, die weiter im Prozessspeicher liegen.
+  jede TLS-Konfiguration auf. Postgres Changes laufen jetzt auch unter
+  `production`: Der Prozess ruft für seinen Projektdatenbank-Katalog dieselbe
+  Fabrik wie der Migrations-Prozess, holt die Zugangsdaten der lesenden Rolle
+  über `https` aus einem Vault und greift vor dem Lauschen einmal bis zur
+  Datenbank durch. Offen bleiben History und Presence, die weiter im
+  Prozessspeicher liegen.
 - Usage Metering ist disabled-by-default. Browser und MCP dürfen keine Quota-
   Policies mutieren; `meter`/`operator` bleiben interne Autoritäten.
 - Seit `1.29.0` melden Project Queues und Functions ihre Operationen selbst; ein

@@ -9,8 +9,12 @@ import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { controlPlaneService } from "@/lib/server/control-plane/runtime";
 import { ControlPlaneDataTargetResolver } from "@/lib/server/data-plane/runtime";
 import { createGeneratedDataApiFromEnv } from "@/lib/server/data-plane/generated-runtime";
-import { createLocalProjectDatabaseCatalogFromEnv } from
-  "@/lib/server/migrations/connection-catalog-env";
+import {
+  asListableProjectDatabaseCatalog,
+  createProjectDatabaseCatalogFromEnv,
+  probeProjectDatabaseCatalog,
+  type ProjectDatabaseCatalogRuntime,
+} from "@/lib/server/migrations/connection-catalog-runtime";
 import { projectApiKeyService } from "@/lib/server/project-api-keys/runtime";
 import { getProjectAuthService } from "@/lib/server/project-auth/runtime";
 import { ProjectRealtimeAuthenticator } from "@/lib/server/realtime/auth";
@@ -87,21 +91,58 @@ const eventBus = ephemeralLog ? undefined : new PostgresRealtimeEventBus({
 // leer, statt ungeprueft Daten auszuliefern; ohne Registry pollt niemand, und
 // die Funktion saehe vorhanden aus, ohne es zu sein.
 //
-// Der Katalog wird mit denselben Umgebungsvariablen aufgebaut wie der der
-// Generated Data API: beide sprechen dieselben Projektdatenbanken ueber
-// dieselbe unprivilegierte Rolle an.
+// Der Weg zum Feed hat zwei Haelften, und beide brauchen dieselbe
+// Projektdatenbank: Die Quelle liest `qkern_internal.change_feed`, der Leser
+// holt die geaenderte Zeile je Abonnent durch die Generated Data API. Bis
+// `2.68.0` baute dieser Prozess dafuer **zwei** Kataloge aus derselben
+// Umgebungsvariablen auf, also zwei Pool-Saetze auf dieselben Datenbanken. Es
+// ist jetzt einer, und er wird in beide Haelften eingespeist: Ein Katalog, der
+// an zwei Stellen entsteht, kann an zwei Stellen unterschiedlich aussehen, und
+// an genau diesen Angaben haengt die Rollengrenze.
+//
+// Unter Production kommt er aus derselben Fabrik wie der des
+// Migrations-Prozesses, also vault-gestuetzt. Bis `2.68.0` gab es diesen Zweig
+// hier nicht, und der Change Feed war unter Production darum tot.
 const changesEnabled = process.env.QKERN_REALTIME_CHANGES_ENABLED === "true";
+// Der Leser ist die Generated Data API. Ist sie abgeschaltet, wirft sie bei
+// jedem Lesevorgang, der Leser faellt geschlossen und der Abonnent bekaeme
+// dauerhaft nichts — ohne Fehler, ohne Hinweis. Das ist genau der stille
+// Rutsch, den es nicht geben soll, also faellt der Start.
+if (changesEnabled && process.env.QKERN_GENERATED_DATA_API_ENABLED !== "true") {
+  throw new Error(
+    "QKERN_REALTIME_CHANGES_ENABLED=true requires QKERN_GENERATED_DATA_API_ENABLED=true: "
+    + "the change reader reads every row through the Generated Data API.",
+  );
+}
+let projectCatalog: ProjectDatabaseCatalogRuntime | undefined;
+if (changesEnabled) {
+  projectCatalog = await createProjectDatabaseCatalogFromEnv(process.env, {
+    // Die Bindungstabelle der Control Plane gehoert der Worker-Rolle. Dieser
+    // Prozess laeuft mit der Laufzeitrolle und bekaeme sie nur durch ein
+    // zusaetzliches Leserecht; er verlangt deshalb ausdrueckliche Bindungen.
+    allowControlPlaneBindings: false,
+    local: {
+      allowFlag: "QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG",
+      catalogVariable: "QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON",
+      applicationName: "qkern-realtime-changes",
+    },
+  });
+  // Vor dem Lauschen einmal bis zur Datenbank. Ein leerer Katalog oder ein
+  // Vault, der nichts liefert, laesst den Start fallen.
+  const references = await probeProjectDatabaseCatalog(
+    asListableProjectDatabaseCatalog(projectCatalog),
+  );
+  console.error(`QKERN Realtime change feed catalog reached ${references.length} project database(s)`);
+}
 const changeReader = changesEnabled
-  ? new GeneratedApiRealtimeChangeReader(await createGeneratedDataApiFromEnv() as never)
+  ? new GeneratedApiRealtimeChangeReader(
+    await createGeneratedDataApiFromEnv(process.env, { connections: projectCatalog }) as never,
+  )
   : undefined;
 const changeSource = changesEnabled
   ? new PostgresRealtimeChangeSource(new ControlPlaneRealtimeProjectConnection(
     new ControlPlaneDataTargetResolver(controlPlaneService),
-    await createLocalProjectDatabaseCatalogFromEnv(process.env, undefined, {
-      allowFlag: "QKERN_ALLOW_LOCAL_PROJECT_DATA_API_CATALOG",
-      catalogVariable: "QKERN_LOCAL_PROJECT_DATA_API_CATALOG_JSON",
-      applicationName: "qkern-realtime-changes",
-    }),
+    projectCatalog!,
   ))
   : undefined;
 
@@ -210,6 +251,10 @@ async function stop() {
   // noch ankommen.
   await usage.stop();
   await eventBus?.close();
+  // Zuletzt der Projektdatenbank-Katalog: Er besitzt seine Pools, und unter
+  // Production haengt an jedem ein Vault-Zugangsdatum, das nicht laenger als
+  // der Prozess leben soll.
+  await projectCatalog?.close().catch(() => undefined);
 }
 process.once("SIGINT", () => { void stop(); });
 process.once("SIGTERM", () => { void stop(); });
