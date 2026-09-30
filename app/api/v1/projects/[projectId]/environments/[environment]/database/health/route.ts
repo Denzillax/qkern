@@ -13,10 +13,15 @@ import { dataPlaneRouteError } from "@/app/api/v1/projects/[projectId]/environme
  * Stoerungszaehler aus `pg_stat_database` und der Schreibweg des Servers aus
  * `pg_stat_checkpointer` beziehungsweise `pg_stat_bgwriter`.
  *
- * **Das ist kein Serverlog.** QKERN hat keinen Dateizugriff auf die
- * Projektdatenbank; `log_destination` schreibt in Dateien des Servers, und
- * diese Route liest keine davon. Sie liest Zaehler, und ein Zaehler ist eine
- * Summe seit der letzten Ruecksetzung, kein Ereignis mit Zeitpunkt.
+ * **Das ist kein Serverlog.** Welches Log dieser Server ueberhaupt schreibt,
+ * sagt die Route seit 2.109 unter `serverLog`: `logging_collector`,
+ * `log_destination` im Wortlaut und die zwei Rechte, die es braeuchte, um an
+ * eine Datei zu kommen. Eine Logzeile, einen Pfad und einen Dateinamen traegt
+ * das Feld nicht. Steht der Sammler auf `off`, gibt es die Datei gar nicht,
+ * und so laeuft jeder Stack von QKERN.
+ *
+ * Alles andere in dieser Antwort sind Zaehler, und ein Zaehler ist eine Summe
+ * seit der letzten Ruecksetzung, kein Ereignis mit Zeitpunkt.
  *
  * Dieselbe Tuer wie `/database/activity` und `/database/runtime`: Session mit
  * Leserecht oder scope-gebundener Projekt-Key, dieselbe Fehlerabbildung,

@@ -33,6 +33,7 @@ import { infrastructureTexts } from "@/lib/console/infrastructure-texts";
 import { queryInsightsTexts } from "@/lib/console/query-insights";
 import { authPerformanceTexts } from "@/lib/console/auth-performance-texts";
 import { databaseHealthTexts } from "@/lib/console/database-health-texts";
+import { serverLogTexts } from "@/lib/console/server-log-texts";
 import { wrappersTexts } from "@/lib/console/wrappers-texts";
 import { replicationTexts } from "@/lib/console/replication-texts";
 import { s3AccessTexts } from "@/lib/console/s3-access-texts";
@@ -166,6 +167,10 @@ async function consoleKeys(): Promise<string[]> {
   // der Pruefsummen, was es nicht gibt und seine Ehrlichkeitssaetze ueber
   // t(variable).
   for (const text of databaseHealthTexts()) keys.add(text);
+  // Logs -> Postgres-Zustand, Karte zum Serverlog (2.109): das Urteil ueber
+  // das Log dieses Servers, was ein Serverlog enthielte, der Weg, der im
+  // eigenen Stack ginge, und was es braeuchte. Alles ueber t(variable).
+  for (const text of serverLogTexts()) keys.add(text);
   // Integrationen -> Wrappers (2.72) zeigt den Zustand eines Wrappers, die
   // Schritte zum Anlegen, was es nicht kann und seine Ehrlichkeitssaetze
   // ueber t(variable).
