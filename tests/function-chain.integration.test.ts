@@ -12,6 +12,15 @@ import { ProjectQueueFunctionDispatch } from "@/lib/server/project-queues/functi
 import { ProjectQueueHostRuntime } from "@/lib/server/project-queues/host-runtime";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+import { LOG_DRAIN_SOURCE_DEFINITIONS } from "@/lib/console/log-drains";
+import { LogDrainCollector, LogDrainService } from "@/lib/server/compute/log-drains";
+import {
+  PostgresLogDrainRepository,
+  PostgresLogDrainSourceReader,
+} from "@/lib/server/compute/log-drain-postgres-repository";
+import { WebhookOutbox } from "@/lib/server/compute/webhook-outbox";
+import { PostgresWebhookOutboxRepository } from
+  "@/lib/server/compute/webhook-postgres-repository";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 
@@ -59,6 +68,8 @@ describe.runIf(enabled)("Function chain certification", () => {
   let repository: PostgresComputeDefinitionRepository;
   let invocation: FunctionInvocationService;
   let queues: ProjectQueueService;
+  /** Die Laufzeitverbindung, wie der Drain-Leser sie braucht (2.108). */
+  let runtimePool: SqlPool;
 
   const uniqueName = (prefix: string) => `${prefix}-${randomUUID().slice(0, 8)}`;
 
@@ -81,6 +92,7 @@ describe.runIf(enabled)("Function chain certification", () => {
       createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
     );
     pools.push(pool);
+    runtimePool = pool;
     repository = new PostgresComputeDefinitionRepository(new PostgresControlPlane(pool));
     definitions = new ComputeDefinitionService({ repository });
     // Nichts wird mehr getauscht. Die Sandbox ist die der Produktion, und der
@@ -188,6 +200,74 @@ describe.runIf(enabled)("Function chain certification", () => {
     });
     expect(stored.output?.lines[0]).toMatchObject({ stream: "stdout", cut: true });
     expect(stored.output?.byteCount).toBeLessThanOrEqual(65_536);
+  });
+
+  /**
+   * Die Inhaltslogs an einem Log-Drain (2.108), am echten Container.
+   *
+   * Der PostgreSQL-Lauf belegt die Quelle an Zeilen, die ein ersetzter Invoker
+   * geschrieben hat. Hier schreibt sie ein **echter** Container, und derselbe
+   * Leser holt sie heraus: Damit haengt die Kette von stdout im Container bis
+   * zur Ladung in der Outbox an einem Lauf und nicht an zwei Haelften.
+   *
+   * Zugestellt wird nichts. Dieser Stack hat keinen Vault und keinen
+   * Empfaenger; was hier gemessen wird, ist die Ladung, nicht der Weg nach
+   * draussen. Den belegt der PostgreSQL-Lauf gegen einen echten HTTPS-Empfaenger.
+   */
+  it("carries the real container output into a log drain batch, line by line", async () => {
+    const created = await define();
+    await invocation.invoke(serviceRole, scope, created.name, { mode: "chatter" });
+
+    const control = new PostgresControlPlane(runtimePool);
+    const drains = new PostgresLogDrainRepository(control);
+    const drain = await new LogDrainService({ repository: drains }).create(admin, scope, {
+      name: `container-drain-${randomUUID().slice(0, 8)}`,
+      url: "https://siem.example.com/qkern/container",
+      sources: ["function_output"],
+      signingSecretRef: "vault:log-drains/certification",
+    });
+    expect(drain.sources).toEqual(["function_output"]);
+
+    const outboxRepository = new PostgresWebhookOutboxRepository(control);
+    const collector = new LogDrainCollector({
+      reader: new PostgresLogDrainSourceReader(control),
+      drains,
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      scope,
+      maxBatchEntries: 1,
+    });
+    // Der erste Lauf setzt den Stand auf die Spitze; der Aufruf von oben liegt
+    // davor und geht darum nicht hinaus. Genau das ist die Zusage: Ein neu
+    // angelegter Drain schickt dem Empfaenger nicht die Vergangenheit.
+    expect(await collector.poll()).toBe(0);
+
+    // Jetzt der Aufruf, den der Drain sehen soll.
+    await invocation.invoke(serviceRole, scope, created.name, { mode: "chatter" });
+    expect(await collector.poll()).toBe(1);
+
+    const delivered = await owner.query<{ event_type: string; payload: Record<string, unknown> }>(
+      `SELECT event_type, payload FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2 ORDER BY occurred_at, id`,
+      [organizationId, projectId]);
+    expect(delivered.rows).toHaveLength(1);
+    expect(delivered.rows[0].event_type).toBe("log.function_output");
+    const entries = delivered.rows[0].payload.entries as Array<Record<string, unknown>>;
+    // Vier Zeilen, vier Eintraege, in der Reihenfolge, in der der Container sie
+    // geschrieben hat.
+    expect(entries.map((entry) => [entry.stream, entry.text])).toEqual([
+      ["stdout", "chatter: start"],
+      ["stderr", "chatter: something to worry about"],
+      ["stdout", '["not","a","protocol","message"]'],
+      ["stderr", '{"level":"info","note":"json on stderr is a log line"}'],
+    ]);
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort())
+        .toEqual([...LOG_DRAIN_SOURCE_DEFINITIONS.function_output.fields].sort());
+      expect(entry.truncated).toBe(false);
+    }
+    const encoded = JSON.stringify(delivered.rows[0].payload);
+    expect(encoded, "die Ladung traegt das Ziel").not.toContain("siem.example.com");
+    expect(encoded, "die Ladung traegt die Geheimnisreferenz").not.toContain("vault:");
   });
 
   it("still denies egress when the definition came from the database", async () => {

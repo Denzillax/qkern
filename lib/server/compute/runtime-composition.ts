@@ -45,17 +45,29 @@ import { safeRuntimeProbe, type RuntimeProbeObserver } from
 import { createProjectQueueServiceFromEnv } from "@/lib/server/project-queues/runtime";
 import type { ProjectQueuePrincipal } from "@/lib/server/project-queues/model";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
-import type { Environment } from "@/lib/types";
+import {
+  computeScopesFromEnv,
+  ComputeScopeCensusRuntime,
+  computeScopeOrganizationFromEnv,
+  computeScopeSourceFromEnv,
+  PostgresComputeScopeCatalog,
+  type ComputeScopeCatalog,
+  type ComputeScopeConfig,
+  type ComputeScopeSource,
+} from "@/lib/server/compute/scope-discovery";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ENVIRONMENTS = new Set<Environment>(["development", "staging", "production"]);
-const MAX_SCOPES = 32;
-
-export type ComputeScopeConfig = Readonly<{
-  organizationId: string;
-  projectId: string;
-  environment: Environment;
-}>;
+/**
+ * Die Bereiche dieses Prozesses wohnen seit 2.107 in `scope-discovery`, weil
+ * sie dort nicht mehr nur aus der Umgebung kommen. Diese Datei gibt sie weiter
+ * heraus: Jeder Aufrufer, der sie bisher hier geholt hat, holt sie weiter hier.
+ */
+export {
+  computeScopesFromEnv,
+  MAX_COMPUTE_SCOPES,
+  resolveComputeScopes,
+  type ComputeScopeConfig,
+  type ComputeScopeSource,
+} from "@/lib/server/compute/scope-discovery";
 
 /**
  * Was der Compute-Prozess ueber seine Arbeit meldet.
@@ -74,8 +86,22 @@ export type ComputeRuntimeLogEvent = Readonly<{
   | "compute.database_webhook_round" | "compute.database_webhook_failed"
   | "compute.log_drain_round" | "compute.log_drain_failed"
   | "compute.dashboard_webhook_round" | "compute.dashboard_webhook_failed"
-  | "compute.auth_retention_round" | "compute.auth_retention_failed";
+  | "compute.auth_retention_round" | "compute.auth_retention_failed"
+  | "compute.scope_census" | "compute.scope_census_failed";
+  /**
+   * Der Index in der Liste der Bereiche dieses Prozesses. Die Zaehlung der
+   * Bereiche (2.107) gehoert keinem einzelnen und traegt darum `-1`: Sie sagt
+   * etwas ueber die Liste selbst, nicht ueber einen Eintrag darin.
+   */
   scopeIndex: number;
+  /**
+   * Umgebungen der Organisation, die dieser Prozess nicht bedient (2.107), und
+   * Bereiche dieses Prozesses, zu denen die Control Plane keine Umgebung
+   * fuehrt. Zwei Zahlen, keine Kennung: Ein Projektname oder eine Id gehoert
+   * nicht in dieses Log, wie bei jeder anderen Meldung hier.
+   */
+  unserved?: number;
+  stale?: number;
   dispatched?: number;
   failures?: number;
   failureCode?: string;
@@ -137,51 +163,25 @@ export type ComputeRuntimeDependencies = {
    * auszusehen und nichts zu tun.
    */
   projectConnection?: ProjectConnection;
+  /**
+   * Die Bereiche, die dieser Prozess bedient, schon aufgeloest (2.107).
+   *
+   * Sie werden **eingereicht** und nicht hier gebaut, aus demselben Grund wie
+   * die Projektverbindung darueber: Die Entdeckung liest die Control Plane und
+   * ist damit asynchron, diese Fabrik ist synchron. Der Prozess loest auf
+   * (`resolveComputeScopes`), diese Komposition verdrahtet.
+   *
+   * Ohne sie gilt weiter die ausdrueckliche Liste aus der Umgebung. Ein
+   * Aufrufer, der nichts einreicht, verhaelt sich wie vor 2.107.
+   */
+  scopes?: readonly ComputeScopeConfig[];
+  /**
+   * Woher die Umgebungen der Organisation gelesen werden, fuer die Zaehlung
+   * (2.107). Ohne diesen Katalog baut die Komposition ihn selbst aus derselben
+   * Verbindung, die sie ohnehin oeffnet; Tests reichen ihn ein.
+   */
+  scopeCatalog?: ComputeScopeCatalog;
 };
-
-/**
- * Welche Projekte dieser Prozess bedient.
- *
- * **Bewusst ausdrücklich statt entdeckt.** Die Runtime-Rolle sieht durch RLS nur
- * die eigene Organisation; eine organisationsübergreifende Suche nach fälliger
- * Arbeit ginge nur mit einer Rolle, die alles sieht. Diese Rolle für einen
- * Dauerprozess einzuführen wäre eine größere Entscheidung als dieser Schnitt
- * trägt. Bis dahin trägt der Betreiber die Liste ein.
- */
-export function computeScopesFromEnv(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): ComputeScopeConfig[] {
-  const raw = env.QKERN_COMPUTE_SCOPES_JSON?.trim();
-  if (!raw) throw new ConfigurationError("QKERN_COMPUTE_SCOPES_JSON is required.");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ConfigurationError("QKERN_COMPUTE_SCOPES_JSON must be valid JSON.");
-  }
-  if (!Array.isArray(parsed) || parsed.length < 1 || parsed.length > MAX_SCOPES) {
-    throw new ConfigurationError(`QKERN_COMPUTE_SCOPES_JSON must list 1 to ${MAX_SCOPES} scopes.`);
-  }
-
-  const seen = new Set<string>();
-  return parsed.map((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new ConfigurationError("QKERN_COMPUTE_SCOPES_JSON contains an invalid scope.");
-    }
-    const { organizationId, projectId, environment } = entry as Record<string, unknown>;
-    if (typeof organizationId !== "string" || !UUID.test(organizationId) ||
-        typeof projectId !== "string" || !UUID.test(projectId) ||
-        typeof environment !== "string" || !ENVIRONMENTS.has(environment as Environment)) {
-      throw new ConfigurationError("QKERN_COMPUTE_SCOPES_JSON contains an invalid scope.");
-    }
-    const key = `${organizationId}:${projectId}:${environment}`;
-    if (seen.has(key)) throw new ConfigurationError("QKERN_COMPUTE_SCOPES_JSON contains a duplicate scope.");
-    seen.add(key);
-    return Object.freeze({
-      organizationId, projectId, environment: environment as Environment,
-    });
-  });
-}
 
 export type ComputeRuntime = {
   run(signal: AbortSignal): Promise<void>;
@@ -198,6 +198,14 @@ export type ComputeRuntime = {
    * waere von einem ohne ihn nicht zu unterscheiden.
    */
   readonly authRetention: boolean;
+  /** Woher die Bereiche dieses Prozesses kommen (2.107). Fuer die Startzeile. */
+  readonly scopeSource: ComputeScopeSource;
+  /**
+   * Ob die Zaehlung der Bereiche (2.107) laeuft. Sie laeuft genau dann, wenn
+   * die Organisation dieses Prozesses genannt ist -- und ob sie laeuft,
+   * entscheidet, ob eine vergessene Umgebung auffaellt.
+   */
+  readonly scopeCensus: boolean;
 };
 
 /**
@@ -267,7 +275,18 @@ export function createComputeRuntimeFromEnv(
     throw new ConfigurationError(
       "The dashboard webhook collector needs the webhook delivery loop in the same process.");
   }
-  const scopes = computeScopesFromEnv(env);
+  // Eingereichte Bereiche gewinnen; ohne sie bleibt es bei der Liste aus der
+  // Umgebung. Die Entdeckung (2.107) laeuft im Prozess, weil sie liest.
+  const scopes = dependencies.scopes && dependencies.scopes.length > 0
+    ? Object.freeze([...dependencies.scopes])
+    : computeScopesFromEnv(env);
+  // Genannt heisst gezaehlt: Wer die Organisation dieses Prozesses angibt,
+  // bekommt die Zaehlung, auch am festen Weg. Gerade dort ist sie etwas wert --
+  // eine Umgebung, die in der Liste fehlt, faellt sonst niemandem auf.
+  const scopeOrganizationId = computeScopeOrganizationFromEnv(env);
+  const scopeSource = computeScopeSourceFromEnv(env);
+  const scopeCensusIntervalMs = integer(
+    env.QKERN_COMPUTE_SCOPE_CENSUS_INTERVAL_MS, 300_000, 1_000, 86_400_000);
   const workerId = workerIdentity(env);
   // Der Aufraeumer abgelaufener Einmal-Artefakte (2.89) laeuft, wenn ihn
   // niemand ausdruecklich abschaltet -- wie Cron und die Zustellung daneben,
@@ -515,8 +534,34 @@ export function createComputeRuntimeFromEnv(
     ...(sleep ? { sleep } : {}),
   }) : undefined;
 
+  // Die Zaehlung der Bereiche (2.107). Sie greift nicht ein; sie macht das
+  // Fehlende sichtbar. Die Begruendung, warum sie nicht selbst einen Bereich
+  // hinzunimmt, steht an `ComputeScopeCensusRuntime`.
+  const scopeCensus = scopeOrganizationId ? new ComputeScopeCensusRuntime({
+    catalog: dependencies.scopeCatalog ?? new PostgresComputeScopeCatalog(controlPlane),
+    organizationId: scopeOrganizationId,
+    scopes,
+    intervalMs: scopeCensusIntervalMs,
+    // Zwei Zahlen und kein Bereich: `-1` sagt, dass diese Zeile die Liste
+    // meint und keinen Eintrag darin.
+    onCensus: (counted) => safeComputeLog(dependencies.logger, {
+      event: "compute.scope_census", scopeIndex: -1,
+      unserved: counted.unserved, stale: counted.stale,
+    }),
+    onFailure: () => {
+      safeRuntimeProbe(dependencies.probe, "iterationFailed");
+      safeComputeLog(dependencies.logger, {
+        event: "compute.scope_census_failed", scopeIndex: -1,
+        failureCode: "scope_census_failed",
+      });
+    },
+    ...(sleep ? { sleep } : {}),
+  }) : undefined;
+
   return {
     scopes,
+    scopeSource,
+    scopeCensus: Boolean(scopeCensus),
     databaseWebhookBridge: Boolean(bridgeRuntime),
     logDrainCollector: Boolean(drainRuntime),
     dashboardWebhookCollector: Boolean(dashboardRuntime),
@@ -544,6 +589,10 @@ export function createComputeRuntimeFromEnv(
       if (authRetention) {
         stops.push(() => authRetention.stop());
         loops.push(authRetention.run());
+      }
+      if (scopeCensus) {
+        stops.push(() => scopeCensus.stop());
+        loops.push(scopeCensus.run());
       }
 
       for (const [scopeIndex, scope] of scopes.entries()) {

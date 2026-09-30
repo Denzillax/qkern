@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { FUNCTION_OUTPUT_LIMITS } from "@/lib/server/compute/function-output";
 import {
   buildLogDrainBatch,
   LOG_DRAIN_SOURCE_DEFINITIONS,
@@ -145,6 +146,55 @@ describe("log drain field boundary", () => {
     expect(entry.bucketName).toBe("rechnungen");
     expect(entry.sizeBytes).toBe(12);
     expect(entry.deletedAt).toBeNull();
+  });
+
+  it("keeps a line at the limit of migration 0069, where the general one would have lost it", () => {
+    // Die Grenze je Quelle (2.108). `LOG_DRAIN_MAX_TEXT` sind 1024 Zeichen, die
+    // Grenze des laengsten Feldes der ersten fuenf Quellen. Fuer die
+    // Inhaltslogs waere sie falsch: 0069 laesst 2 KiB je Zeile zu, und ein zu
+    // langes Feld faellt **weg**. Eine 1500 Zeichen lange Zeile waere damit als
+    // Eintrag ohne Text weitergeleitet worden, und der Ladung waere das nicht
+    // anzusehen gewesen.
+    expect(LOG_DRAIN_SOURCE_DEFINITIONS.function_output.maxText)
+      .toBe(FUNCTION_OUTPUT_LIMITS.maxLineBytes);
+    const atTheLimit = "L".repeat(FUNCTION_OUTPUT_LIMITS.maxLineBytes);
+    const entry = projectLogDrainEntry("function_output", {
+      invocationId: "3f2a1b0c-4d5e-4f60-8a71-b2c3d4e5f607",
+      at: "2026-09-30T09:00:00.000Z", stream: "stdout", text: atTheLimit, cut: false,
+      truncated: false, droppedLines: 0,
+    });
+    expect(entry.text).toBe(atTheLimit);
+    // Und darueber faellt sie weg, wie bei jeder anderen Quelle: Was laenger
+    // ist, kann aus dieser Projektion nicht stammen.
+    const tooLong = projectLogDrainEntry("function_output", {
+      invocationId: "3f2a1b0c-4d5e-4f60-8a71-b2c3d4e5f607",
+      at: "2026-09-30T09:00:00.000Z", stream: "stdout",
+      text: "L".repeat(FUNCTION_OUTPUT_LIMITS.maxLineBytes + 1), cut: false,
+      truncated: false, droppedLines: 0,
+    });
+    expect(tooLong).not.toHaveProperty("text");
+    // Die allgemeine Grenze gilt weiter, wo keine eigene steht.
+    expect(LOG_DRAIN_SOURCE_DEFINITIONS.storage_objects.maxText).toBeUndefined();
+  });
+
+  it("expands no nested line array into an entry, not even for the content logs", () => {
+    // Die Auflosung in Eintraege macht der Leser, nicht die Whitelist. Kaeme
+    // hier trotzdem ein `lines`-Array an, faellt es weg: Es ist kein Skalar,
+    // und es steht nicht auf der Liste.
+    const entry = projectLogDrainEntry("function_output", {
+      invocationId: "3f2a1b0c-4d5e-4f60-8a71-b2c3d4e5f607",
+      at: "2026-09-30T09:00:00.000Z", stream: "stdout", text: "ok", cut: false,
+      truncated: true, droppedLines: 7,
+      lines: [{ at: "2026-09-30T09:00:00.000Z", stream: "stdout", text: "geheim", cut: false }],
+      byteCount: 12, lineCount: 1,
+    });
+    expect(Object.keys(entry).sort()).toEqual(
+      ["at", "cut", "droppedLines", "invocationId", "stream", "text", "truncated"]);
+    expect(JSON.stringify(entry)).not.toContain("geheim");
+    // Die beiden Angaben des Aufrufs fahren mit, damit eine an einer
+    // Aufrufgrenze abgeschnittene Ladung nicht vollstaendig aussieht.
+    expect(entry.truncated).toBe(true);
+    expect(entry.droppedLines).toBe(7);
   });
 
   it("wraps a batch in a hull that carries no target, reference or secret", () => {

@@ -70,7 +70,7 @@ export const CONTAINER_LOG_TEXTS = {
   /** Was ein Betreiber tun kann. */
   operatorTitle: "Nach draussen",
   operatorDrain:
-    "Ein Log-Drain trägt das Aufrufprotokoll nach draussen, die Inhaltslogs nicht. Die Quelle heisst function_invocations und führt genau die Felder, die Logs → Functions zeigt. Die Zeilen eines Aufrufs bleiben in QKERN und werden nur hier und im Log-Explorer als Quelle Function-Ausgabe gelesen; dort erscheinen sie als Zahlen, nicht als Text.",
+    "Ein Log-Drain trägt beides nach draussen. Die Quelle function_invocations führt genau die Felder, die Logs → Functions zeigt; die Quelle function_output führt die Zeilen dieser Seite mit Zeitpunkt, Strom und Text, und derselbe Bestand liegt im Log-Explorer als Quelle Function-Ausgabe. Weil ein Aufruf 64 KiB tragen darf, hat diese Quelle eine eigene Mengengrenze: höchstens vier Aufrufe je Lauf, also höchstens 256 KiB in einer Ladung. Gestrichen wird aus den Zeilen nichts.",
 } as const;
 
 /** Die Spalten der Ausgabe, jede mit ihrem Gegenstueck im Backend. */
@@ -189,7 +189,7 @@ export const POOLER_LOG_TEXTS = {
   operatorSteps:
     "Wer ein Protokoll je Verbindung braucht, lässt es den Server schreiben: log_connections und log_disconnections erzeugen je Verbindung eine Zeile im Serverlog. Dieses Log liegt in Dateien neben dem Datenverzeichnis, QKERN hat darauf keinen Zugriff und zeigt es nicht. Wer stattdessen eine einzelne blockierende Sitzung sucht, findet die Vorlage aktuelle Sperren im SQL-Editor.",
   operatorDrain:
-    "Ein Log-Drain hat keine Quelle für Verbindungen. Seine fünf Quellen sind das Auth-Protokoll, die Function-Aufrufe, die Speicherobjekte, die Webhook-Zustellungen und die Nutzungsreihe; ein Verbindungslog ist keine davon, weil es keines gibt.",
+    "Ein Log-Drain hat keine Quelle für Verbindungen. Seine sechs Quellen sind das Auth-Protokoll, die Function-Aufrufe, die Inhaltslogs der Functions, die Speicherobjekte, die Webhook-Zustellungen und die Nutzungsreihe; ein Verbindungslog ist keine davon, weil es keines gibt.",
 } as const;
 
 /** Zustandstexte, die alle drei Ansichten ueber `t(variable)` zeigen. */

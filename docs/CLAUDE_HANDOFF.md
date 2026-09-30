@@ -125,6 +125,46 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.107 **Der Compute-Prozess findet seine Bereiche selbst, innerhalb einer
+  Organisation.** `QKERN_COMPUTE_SCOPE_SOURCE=control-plane` liest
+  `project_environments` fuer die Organisation aus
+  `QKERN_COMPUTE_ORGANIZATION_ID`, mit einem Join auf `projects` gegen
+  geloeschte Projekte. Kein neues Recht: `qkern_runtime` hat SELECT seit 0002,
+  und die Policy begrenzt die Sicht auf `qkern_current_organization_id()`.
+  **Die Grenze steht und wird nicht umgangen, und sie liegt woanders als
+  erwartet**: `qkern_current_organization_id()` liest eine Sitzungsvariable, die
+  der Prozess selbst setzt, also liest die Laufzeitrolle jede Organisation,
+  deren Id sie nennt. Der Fall 2.107 hat das gegen die echte Datenbank gemessen
+  und die urspruengliche Annahme widerlegt. Was fehlt, ist die **Aufzaehlung**:
+  `organizations_select` haengt an derselben Variablen, also sieht eine Sitzung
+  genau eine Organisation. Eine uebergreifende Entdeckung braeuchte eine Rolle,
+  die RLS umgeht, oder ein Leserecht auf `organizations` ohne diese Policy;
+  dieser Schnitt legt beides nicht an.
+  Wer mehrere Organisationen in einem Prozess bedienen will, behaelt
+  `QKERN_COMPUTE_SCOPES_JSON`; beides zusammen wird abgewiesen. **Offen**: Eine
+  Umgebung, die nach dem Start entsteht, bekommt keine Schleife. Stattdessen
+  zaehlt `ComputeScopeCensusRuntime` im Takt und meldet
+  `compute.scope_census` mit `unserved` und `stale`, sobald eine Zahl von null
+  abweicht. Ein Neustart bedient sie dann. Die Zaehlung laeuft auch am festen
+  Weg, sobald die Organisation genannt ist.
+
+- 2.108 **Die Inhaltslogs erreichen einen Log-Drain.** Migration
+  `0075_log_drain_function_output_source.sql` haengt `function_output` an die
+  Quellenliste aus 0054 (`CREATE OR REPLACE`, Reihenfolge geprueft, `BETWEEN 1
+  AND 6`), und der Leser loest `project_function_invocation_output.lines` in
+  einen Eintrag je Ausgabezeile auf. Kein neues Recht: 0069 gibt `qkern_runtime`
+  SELECT auf der Tabelle. **Die Menge hat eine eigene Grenze**, weil ein Aufruf
+  64 KiB tragen darf: vier Aufrufe je Lauf, also 256 KiB je Ladung
+  (`LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS`), genannt in der Migration und in
+  jedem Text der Console. Und `LOG_DRAIN_MAX_TEXT` gilt je Quelle: fuer diese
+  2 KiB wie `FUNCTION_OUTPUT_LIMITS.maxLineBytes`, sonst waere jede Zeile ueber
+  1024 Zeichen als Eintrag ohne Text hinausgegangen. **Zwei Texte waren falsch
+  und stehen jetzt richtig da**: `LOG_DRAIN_NEVER` versprach, ein Drain trage
+  nie die Ausgabe eines Containers, und `function_invocations` behauptete, QKERN
+  speichere sie gar nicht; der zweite Satz war seit `2.67.0` falsch.
+  `LOG_DRAIN_OUTPUT_EXCEPTION` sagt die Ausnahme in einem eigenen Satz, in vier
+  Sprachen.
+
 - 2.103 **Die Werkzeuge ohne Bereich haben jetzt einen, und drei absichtlich
   nicht.** Migration `0073_project_auth_oauth_tool_scopes.sql` ersetzt die vier
   Scope-CHECKs aus 0062 und 0064; die Bereichsliste wird von drei auf neun

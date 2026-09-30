@@ -168,10 +168,25 @@ vorhanden und gegen echtes PostgreSQL zertifiziert.
 Cron-Vorkommen aus und stellt Webhooks zu. Bis `1.19.0` waren beide
 Bibliotheken, die niemand aufrief.
 
-Welche Projekte der Prozess bedient, steht ausdrücklich in
-`QKERN_COMPUTE_SCOPES_JSON`. Die Runtime-Rolle sieht durch RLS nur die eigene
-Organisation; eine organisationsübergreifende Suche nach fälliger Arbeit ginge
-nur mit einer Rolle, die alles sieht.
+Welche Projekte der Prozess bedient, kommt aus einer von zwei Quellen.
+`QKERN_COMPUTE_SCOPE_SOURCE=control-plane` mit
+`QKERN_COMPUTE_ORGANIZATION_ID` liest `project_environments` dieser einen
+Organisation, verbunden mit `projects` gegen gelöschte Projekte. Ohne Angabe
+gilt weiter die ausdrückliche Liste in `QKERN_COMPUTE_SCOPES_JSON`. Beides
+zusammen wird abgewiesen.
+
+Eine organisationsübergreifende Suche nach fälliger Arbeit gibt es nicht, und
+der Grund ist die fehlende Aufzählung: `qkern_current_organization_id()` liest
+eine Sitzungsvariable, die der Prozess selbst setzt, und `organizations_select`
+hängt an derselben Variablen. Eine Sitzung sieht deshalb genau eine
+Organisation, die genannte, und keine Abfrage sagt dem Prozess, welche es gibt.
+Übergreifend suchen könnte nur eine Rolle, die RLS umgeht. Die ausdrückliche
+Liste ist der einzige Weg zu mehreren Organisationen in einem Prozess.
+
+Eine Umgebung, die nach dem Start entsteht, bekommt keine Schleife. Der Prozess
+zählt dafür im Takt nach und meldet `compute.scope_census` mit `unserved` und
+`stale`, sobald eine der beiden Zahlen von null abweicht. Ein Neustart bedient
+das Fehlende.
 
 Der Prozess startet nicht ohne erreichbaren Signaturschlüssel. Ein Zusteller,
 der stillschweigend unsigniert sendet, wäre schlimmer als einer, der gar nicht

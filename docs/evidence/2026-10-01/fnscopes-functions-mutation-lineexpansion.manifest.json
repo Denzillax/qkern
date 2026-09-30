@@ -1,0 +1,18 @@
+{
+  "stack": "Docker 29.5, registry:2 und PostgreSQL 17",
+  "log": "fnscopes-functions-mutation-lineexpansion.log",
+  "commit": "140a4fd36fbbfeb0ad64322c553f10550182afe0",
+  "commitSubject": "release: 2.69.0 Was unter Production wirklich laeuft",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 32 passed (33)",
+  "passed": 32,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

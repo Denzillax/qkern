@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "fnscopes-postgres-run6.log",
+  "commit": "140a4fd36fbbfeb0ad64322c553f10550182afe0",
+  "commitSubject": "release: 2.69.0 Was unter Production wirklich laeuft",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 71,
+  "testFiles": "31 passed (31)",
+  "tests": "238 passed (238)",
+  "passed": 238,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

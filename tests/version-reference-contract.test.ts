@@ -35,6 +35,17 @@ import { describe, expect, it } from "vitest";
 const VERSION = /(?<![\d.])(\d+)\.(\d+)\.(\d+)(?![\d.])/g;
 
 const ROOTS = ["lib", "app", "components", "tests", "mcp", "scripts", "db", "docs"] as const;
+/**
+ * Die Dateien in der Wurzel, die der Vertrag mitliest.
+ *
+ * `STATUS.md` fehlte, und darin standen zwei Verweise auf eine Ausgabe
+ * `2.98.0`, die es nie gab: Die Fallnummer 2.98 der Inhaltslogs war zweimal in
+ * der Form einer Ausgabe geschrieben, die Ausgabe dazu ist `2.67.0`. Der
+ * Vertrag lief gruen, weil er nur Verzeichnisse abging -- und genau die Datei,
+ * die laut ihrer eigenen ersten Zeile Teil der Definition of Done ist, las er
+ * nicht.
+ */
+const ROOT_FILES = ["STATUS.md", "AGENTS.md", "README.md"] as const;
 const SKIP_DIRS = new Set(["node_modules", ".next", "evidence", "coverage"]);
 const READ = new Set([".ts", ".tsx", ".md", ".mjs", ".sql"]);
 
@@ -86,8 +97,19 @@ describe("version reference contract", () => {
     expect(shipped).toHaveLength(3);
 
     const found: string[] = [];
-    for (const root of ROOTS) {
-      for (const file of await files(root)) {
+    const scanned: string[] = [];
+    for (const root of ROOTS) scanned.push(...await files(root));
+    for (const name of ROOT_FILES) {
+      // Eine Datei, die es nicht gibt, ist kein Fehlschlag: Der Bestand der
+      // Wurzel darf sich aendern, ohne diesen Vertrag zu beschaeftigen.
+      try {
+        await readFile(name, "utf8");
+        scanned.push(name);
+      } catch { /* nicht vorhanden */ }
+    }
+    expect(scanned).toContain("STATUS.md");
+    {
+      for (const file of scanned) {
         const text = await readFile(file, "utf8");
         const lines = text.split("\n");
         for (let i = 0; i < lines.length; i += 1) {

@@ -1,7 +1,15 @@
 import { createComputeRuntimeFromEnv } from "@/lib/server/compute/runtime-composition";
+import {
+  computeScopeOrganizationFromEnv,
+  computeScopeSourceFromEnv,
+  computeScopesFromEnv,
+  PostgresComputeScopeCatalog,
+  resolveComputeScopes,
+} from "@/lib/server/compute/scope-discovery";
 import { createControlPlaneService } from "@/lib/server/control-plane/runtime";
 import { ControlPlaneDataTargetResolver } from "@/lib/server/data-plane/runtime";
-import { closePostgresPool } from "@/lib/server/db/pool";
+import { closePostgresPool, getPostgresPool } from "@/lib/server/db/pool";
+import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { TrustedProjectDatabaseConnectionCatalog } from
   "@/lib/server/migrations/connection-catalog";
 import { createLocalProjectDatabaseCatalogFromEnv } from
@@ -52,8 +60,27 @@ try {
       "compute-database-webhooks",
     );
   }
+  // Die Bereiche (2.107). Bis 2.106 stand hier nichts: Die Komposition las
+  // `QKERN_COMPUTE_SCOPES_JSON` und sonst nichts, und ein Projekt, das nach
+  // dem letzten Neustart entstand, wurde nicht bedient, ohne dass es jemand
+  // erfuhr. Aufgeloest wird hier und nicht in der Komposition, weil die
+  // Entdeckung liest und die Fabrik synchron ist -- dieselbe Naht wie bei der
+  // Projektverbindung darueber.
+  const scopeSource = computeScopeSourceFromEnv(process.env);
+  const scopeOrganizationId = computeScopeOrganizationFromEnv(process.env);
+  const resolved = await resolveComputeScopes({
+    source: scopeSource,
+    ...(scopeOrganizationId ? { organizationId: scopeOrganizationId } : {}),
+    // Am entdeckten Weg darf die Liste nicht daneben stehen; `resolveComputeScopes`
+    // weist das ab, statt sie stillschweigend zu uebergehen.
+    ...(scopeSource === "static-env" ? { configured: computeScopesFromEnv(process.env) } : {}),
+    ...(scopeOrganizationId
+      ? { catalog: new PostgresComputeScopeCatalog(new PostgresControlPlane(getPostgresPool(process.env))) }
+      : {}),
+  });
   const runtime = createComputeRuntimeFromEnv(process.env, {
     probe: probe?.observer,
+    scopes: resolved.scopes,
     ...(projectConnection ? { projectConnection } : {}),
     // Scope-Index, Zahl der ausgeloesten Vorkommen und feste Failure Codes —
     // keine Ids, keine Endpunkte, keine Datenbankmeldungen. Bis Release 1.53
@@ -79,8 +106,25 @@ try {
     // (2.89). Er loescht Zeilen; dass er laeuft, gehoert in die Startzeile und
     // nicht in eine Vermutung.
     + (runtime.authRetention ? " and the auth expiry retention sweep" : "")
+    // Woher die Bereiche kommen, gehoert in die Startzeile: Ein Prozess mit
+    // einer entdeckten Liste und einer von Hand gesetzten sehen sonst gleich
+    // aus, und die beiden altern vollkommen verschieden.
+    + ` (scopes from ${runtime.scopeSource}`
+    // Und ob gezaehlt wird. Ohne Zaehlung faellt eine vergessene Umgebung
+    // niemandem auf, und genau das war der Zustand bis 2.106.
+    + (runtime.scopeCensus ? ", census on" : ", no census")
+    + ")"
     + (bound ? ` (probe on http://${bound.host}:${bound.port}/ready)` : ""),
   );
+  // Eine Abweichung, die beim Start schon dasteht, wird beim Start gesagt. Die
+  // Schleife meldet sie danach im Takt; die erste Zeile soll nicht auf sie
+  // warten muessen.
+  if (resolved.unserved > 0 || resolved.stale > 0) {
+    console.info(JSON.stringify({
+      event: "compute.scope_census", scopeIndex: -1,
+      unserved: resolved.unserved, stale: resolved.stale,
+    }));
+  }
   runtime.scopes.length > 0 && probe?.observer.runtimeStarted();
   await runtime.run(controller.signal);
 } catch {

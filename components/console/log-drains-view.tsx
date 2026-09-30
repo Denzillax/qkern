@@ -10,6 +10,7 @@ import {
   LOG_DRAIN_NEVER,
   LOG_DRAIN_NO_CRON,
   LOG_DRAIN_NO_DELETE,
+  LOG_DRAIN_OUTPUT_EXCEPTION,
   LOG_DRAIN_SAME_PATH,
   LOG_DRAIN_SCHEMA_VERSION,
   LOG_DRAIN_SECRET,
@@ -220,6 +221,7 @@ export function LogDrainsView({ projectId, environment, initialState }: {
       <div className="card-head"><div><span>{t("WAS EIN DRAIN TRÄGT")}</span><h3>{t("Genau das, was diese Console schon zeigt")}</h3></div><ShieldCheck size={18}/></div>
       <p className="muted">{t(LOG_DRAIN_WHAT)}</p>
       <p className="muted">{t(LOG_DRAIN_NEVER)}</p>
+      <p className="muted">{t(LOG_DRAIN_OUTPUT_EXCEPTION)}</p>
       <p className="muted">{t(LOG_DRAIN_SAME_PATH)}</p>
       <p className="muted">{t(LOG_DRAIN_NO_CRON)}</p>
       <p className="muted">{t(LOG_DRAIN_GAPS)}</p>
