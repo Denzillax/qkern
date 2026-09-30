@@ -3258,6 +3258,60 @@ Zusteller, der stillschweigend unsigniert sendet, wäre schlimmer als einer, der
 gar nicht startet: Der Empfänger könnte dann nicht mehr unterscheiden, ob eine
 Nachricht wirklich von QKERN kommt.
 
+**Die Bereiche entdecken statt eintragen.** Seit dem Schnitt 2.107 kann der
+Prozess seine Umgebungen selbst finden, innerhalb **einer**
+Organisation:
+
+```powershell
+$env:QKERN_COMPUTE_SCOPE_SOURCE="control-plane"
+$env:QKERN_COMPUTE_ORGANIZATION_ID="<org-id>"
+# QKERN_COMPUTE_SCOPES_JSON bleibt dann leer; beides zusammen wird abgewiesen.
+npm run worker:compute
+```
+
+Gelesen wird `project_environments`, verbunden mit `projects`, damit ein
+gelöschtes Projekt keinen Bereich bekommt. Ein zusätzliches Recht braucht das
+nicht: Die Laufzeitrolle hat auf dieser Tabelle seit `0002` SELECT, und die
+Policy begrenzt die Sicht auf die eigene Organisation.
+
+**Die Grenze, und warum sie steht.** Eine Suche über alle Organisationen gibt es
+nicht, weil dem Prozess die Aufzählung fehlt: `qkern_current_organization_id()`
+liest eine Sitzungsvariable, die der Prozess selbst setzt, und die Policy auf
+`organizations` hängt an derselben Variablen. Eine Sitzung sieht genau eine
+Organisation, die genannte, und keine Abfrage sagt ihm, welche es gibt.
+Übergreifend suchen könnte nur eine Rolle, die RLS umgeht; dieser Schnitt legt
+keine an. Wer mehrere Organisationen in einem Prozess bedienen will oder eine
+Organisation auf mehrere Prozesse aufteilen will, behält
+`QKERN_COMPUTE_SCOPES_JSON`. Findet die Entdeckung mehr als 32 Umgebungen,
+startet der Prozess nicht: Die ersten 32 zu nehmen wäre ein Prozess, der einen
+Teil bedient und von aussen vollständig aussieht.
+
+**Was passiert, wenn eine Umgebung ohne Bereich bleibt.** Die Entdeckung
+läuft beim Start. Eine Umgebung, die später entsteht, bekommt keine Schleife,
+denn jede Schleife dieses Prozesses hängt an einem Bereich, der beim Start
+gebaut wird. Stattdessen zählt der Prozess im Takt nach und meldet:
+
+```json
+{"event":"compute.scope_census","scopeIndex":-1,"unserved":1,"stale":0}
+```
+
+`unserved` sind Umgebungen der Organisation ohne Bereich in diesem Prozess,
+`stale` sind Bereiche dieses Prozesses ohne Umgebung in der Control Plane. Zwei
+Zahlen und keine Kennung, wie bei jeder anderen Meldung dieses Prozesses. Die
+Zeile erscheint nur, wenn eine der Zahlen von null abweicht, und ein Neustart
+bedient das Fehlende dann. Der Takt steht in
+`QKERN_COMPUTE_SCOPE_CENSUS_INTERVAL_MS` (Vorgabe 300000, zwischen 1000 und
+86400000).
+
+Die Zählung läuft auch am ausdrücklichen Weg, sobald
+`QKERN_COMPUTE_ORGANIZATION_ID` gesetzt ist. Gerade dort ist sie etwas wert:
+Eine Umgebung, die in der von Hand gepflegten Liste fehlt, fiel vor 2.107
+niemandem auf.
+
+Die Startzeile sagt beides: `(scopes from control-plane, census on)` oder
+`(scopes from static-env, no census)`.
+
+
 Der Umgebungs-Provider ist ausdrücklich nur für lokale Entwicklung und weigert
 sich, unter `NODE_ENV=production` überhaupt zu existieren — ein Signaturgeheimnis
 in einer Umgebungsvariable steht in jedem Prozessabbild und in jeder
@@ -3563,6 +3617,30 @@ eine Spalte mehr liest, kann sie nicht weiterleiten.
 | `storage_objects` | `id`, `bucketName`, `key`, `sizeBytes`, `contentType`, `status`, `createdAt`, `deleteAfter`, `deletedAt` | `bucketId`, `ownerSubject` |
 | `webhook_deliveries` | `id`, `eventType`, `status`, `attemptCount`, `lastFailureCode`, `occurredAt`, `settledAt` | Nutzlast, Ziel-Adresse |
 | `usage_series` | `metric`, `bucket`, `start`, `accepted`, `rejected`, `events` | Einzelereignisse |
+| `function_output` | `invocationId`, `at`, `stream`, `text`, `cut`, `truncated`, `droppedLines` | `lines`, `lineCount`, `stdoutLines`, `stderrLines`, `byteCount` |
+
+**Die Ausnahme: `function_output`.** Diese Quelle trägt die Inhaltslogs je
+Aufruf, also die Ausgabe eines Containers Zeile für Zeile. Sie ist die eine
+Quelle, deren Inhalt QKERN nicht selbst erzeugt, und aus ihr wird nichts
+gestrichen: Der Prozess, der den Container startet, kennt keinen Wert eines
+Geheimnisses, reicht nur Referenzen weiter und gibt seine eigene Umgebung nicht
+durch. Ein Filter wäre eine Zusage ohne Deckung. Was Ihre Function schreibt,
+verlässt mit dieser Quelle die Plattform, und die Verantwortung dafür liegt bei
+der Function.
+
+Die Menge hat deshalb eine eigene Grenze, denn ein Aufruf darf nach `0069` 500
+Zeilen und 64 KiB tragen: Ein Lauf liest höchstens vier Aufrufe, also höchstens
+256 KiB in einer Ladung. Ohne diese Grenze lagen bei der allgemeinen Lesegrenze
+von 200 Zeilen bis zu 12,8 MiB in **einer** Zustellung, und eine Zustellung
+wiederholt die Outbox als Ganzes. Die Textgrenze eines Feldes ist hier 2 KiB
+statt der üblichen 1024 Zeichen, gleich `FUNCTION_OUTPUT_LIMITS.maxLineBytes`:
+Eine Zeile darüber fällt weg, und hätte die allgemeine Grenze gegolten, wäre
+jede Zeile über 1024 Zeichen als Eintrag ohne Text hinausgegangen.
+
+`truncated` und `droppedLines` hängen am Aufruf und stehen trotzdem an jeder
+Zeile. Eine Ladung kann an einer Aufrufgrenze enden, und ein Empfänger, der nur
+den vorderen Teil bekommt, hielte eine abgeschnittene Ausgabe sonst für
+vollständig.
 
 Drei Felder zeigt die Console und ein Drain trägt sie trotzdem nicht:
 `invokedBy` und `ownerSubject` sind Akteursreferenzen und dürfen nach `0045`
@@ -4662,7 +4740,7 @@ liest.
 
 Anschalten ist ausdrücklich, aus demselben Grund wie bei der Brücke: Der
 Prozess schickt damit Protokollzeilen an ein Ziel im Internet. Eine Verbindung
-zu einer Projektdatenbank braucht er dafür **nicht** — alle fünf Quellen liegen
+zu einer Projektdatenbank braucht er dafür **nicht** — alle sechs Quellen liegen
 in der Control Plane:
 
 ```powershell
@@ -5015,10 +5093,12 @@ Reverse Proxy vor Node, der ein Zugriffsprotokoll führt. Für Verbindungen:
 `log_connections` und `log_disconnections`; die Zeilen gehen dorthin, wohin der
 Server sein Log schreibt, im Stack also auf stderr seines Prozesses. Und ein
 Log-Drain aus `2.54.0` trägt nach draussen, was es gibt: `function_invocations`
-für die Aufrufzeile, `usage_series` für abgeschlossene Stunden des Zählers,
-`auth_audit` für das Auth-Protokoll. Eine Quelle für die Ausgabe des
-Containers, für Anfragen am Rand oder für Verbindungen hat er nicht, weil es
-keine davon gibt.
+für die Aufrufzeile, `function_output` für die Zeilen des Containers,
+`usage_series` für abgeschlossene Stunden des Zählers, `auth_audit` für das
+Auth-Protokoll. `function_output` hat eine eigene Mengengrenze, weil ein Aufruf
+64 KiB tragen darf: höchstens vier Aufrufe je Lauf, also höchstens 256 KiB in
+einer Ladung. Eine Quelle für Anfragen am Rand oder für Verbindungen hat er
+nicht, weil es keine davon gibt.
 
 **Kein Fall gegen die echte Datenbank.** Die drei Seiten führen weder neues SQL
 noch eine neue Route ein; sie lesen `compute/functions`,

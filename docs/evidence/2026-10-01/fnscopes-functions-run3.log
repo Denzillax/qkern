@@ -1,0 +1,31 @@
+
+> qkern-platform@2.69.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-fns_default Creating 
+ Network qkern-slice-fns_default Created 
+ Container qkern-slice-fns-registry-1 Creating 
+ Container qkern-slice-fns-postgres-1 Creating 
+ Container qkern-slice-fns-registry-1 Created 
+ Container qkern-slice-fns-postgres-1 Created 
+ Container qkern-slice-fns-postgres-1 Starting 
+ Container qkern-slice-fns-registry-1 Starting 
+ Container qkern-slice-fns-registry-1 Started 
+ Container qkern-slice-fns-postgres-1 Started 
+ Container qkern-slice-fns-registry-1 Waiting 
+ Container qkern-slice-fns-postgres-1 Waiting 
+ Container qkern-slice-fns-registry-1 Healthy 
+ Container qkern-slice-fns-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:932ad89bf39b1483163c492b21f140b47afac6de1ec3591ecfd35371deca2b8a (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-realtime
+
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  01:06:17
+   Duration  70.89s (transform 577ms, setup 0ms, import 983ms, tests 68.82s, environment 0ms)
+
+EXIT=0
+EXIT=0

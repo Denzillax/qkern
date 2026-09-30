@@ -90,7 +90,7 @@ export const REALTIME_LOG_TEXTS = {
   operatorSteps:
     "Eine wachsende Zahl beim Rückstand heisst, dass niemand liest oder dass der Leser nicht nachkommt. Die Kopplungen und der Stand der Brücke stehen unter Integrationen → Datenbank-Webhooks. Wächst der Rückstand, ohne dass eine Kopplung eingerichtet ist, räumt nur die Aufbewahrung den Feed ab.",
   operatorDrain:
-    "Ein Log-Drain kann den Realtime-Log nicht nach draussen tragen. Seine Quellen sind das Auth-Protokoll, die Function-Aufrufe, die Speicherobjekte, die Webhook-Zustellungen und die Nutzungsreihe; realtime_events ist keine davon. Die Nutzungsreihe trägt die Metrik realtime_messages allerdings mit.",
+    "Ein Log-Drain kann den Realtime-Log nicht nach draussen tragen. Seine Quellen sind das Auth-Protokoll, die Function-Aufrufe, die Inhaltslogs der Functions, die Speicherobjekte, die Webhook-Zustellungen und die Nutzungsreihe; realtime_events ist keine davon. Die Nutzungsreihe trägt die Metrik realtime_messages allerdings mit.",
 } as const;
 
 /* ------------------------------------------------------- Spalten und Rollen */

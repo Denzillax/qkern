@@ -1,0 +1,71 @@
+
+> qkern-platform@2.69.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-fns_default Creating 
+ Network qkern-slice-fns_default Created 
+ Container qkern-slice-fns-postgres-1 Creating 
+ Container qkern-slice-fns-registry-1 Creating 
+ Container qkern-slice-fns-registry-1 Created 
+ Container qkern-slice-fns-postgres-1 Created 
+ Container qkern-slice-fns-registry-1 Starting 
+ Container qkern-slice-fns-postgres-1 Starting 
+ Container qkern-slice-fns-registry-1 Started 
+ Container qkern-slice-fns-postgres-1 Started 
+ Container qkern-slice-fns-registry-1 Waiting 
+ Container qkern-slice-fns-postgres-1 Waiting 
+ Container qkern-slice-fns-registry-1 Healthy 
+ Container qkern-slice-fns-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:b9b339315be39f86ab289be4358571aad94b53633f3c041d22d1aa2cc852d91d (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-realtime
+
+ ❯ tests/function-chain.integration.test.ts (12 tests | 1 failed) 21711ms
+     × carries the real container output into a log drain batch, line by line 1512ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/function-chain.integration.test.ts > Function chain certification > carries the real container output into a log drain batch, line by line
+AssertionError: expected [ [ 'stdout', 'chatter: start' ] ] to deeply equal [ Array(4) ]
+
+- Expected
++ Received
+
+  [
+    [
+      "stdout",
+      "chatter: start",
+    ],
+-   [
+-     "stderr",
+-     "chatter: something to worry about",
+-   ],
+-   [
+-     "stdout",
+-     "[\"not\",\"a\",\"protocol\",\"message\"]",
+-   ],
+-   [
+-     "stderr",
+-     "{\"level\":\"info\",\"note\":\"json on stderr is a log line\"}",
+-   ],
+  ]
+
+ ❯ tests/function-chain.integration.test.ts:257:64
+    255|     // Vier Zeilen, vier Eintraege, in der Reihenfolge, in der der Con…
+    256|     // geschrieben hat.
+    257|     expect(entries.map((entry) => [entry.stream, entry.text])).toEqual…
+       |                                                                ^
+    258|       ["stdout", "chatter: start"],
+    259|       ["stderr", "chatter: something to worry about"],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 32 passed (33)
+   Start at  00:41:05
+   Duration  51.09s (transform 501ms, setup 0ms, import 690ms, tests 50.05s, environment 0ms)
+
+EXIT=1
+EXIT=1

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { LOG_DRAIN_SOURCES } from "@/lib/console/log-drains";
@@ -49,15 +49,48 @@ describe("project log drains migration", () => {
     expect(sql).toContain("CREATE FUNCTION qkern_log_drain_sources_ok(sources text[])");
     expect(sql).toContain("IMMUTABLE");
     expect(sql).toContain("CHECK (qkern_log_drain_sources_ok(sources))");
-    for (const source of LOG_DRAIN_SOURCES) {
-      expect(sql, source).toContain(`'${source}'`);
-    }
     // Die Reihenfolge wird mitgeprueft, nicht nur die Menge.
     expect(sql).toContain("ORDER BY allowed.nth");
-    expect(sql).toContain("cardinality(sources) BETWEEN 1 AND 5");
     // Und was nicht dasteht, ist ebenso Teil der Zusage.
     expect(sql).not.toContain("'cron_occurrences'");
     expect(sql).not.toContain("'queue_messages'");
+  });
+
+  /**
+   * Die geltende Liste steht in der **letzten** Migration, die sie anfasst.
+   *
+   * 0054 hat fuenf Quellen geschrieben, 0075 hat `function_output` angehaengt
+   * (2.108). Ein Fall, der die Liste nur in 0054 sucht, faellt bei jeder
+   * Erweiterung, und der naechste Agent aendert dann die alte Migration statt
+   * eine neue zu schreiben. Gesucht wird darum in der juengsten Fassung der
+   * Funktion, und dort muss jede Quelle des Codes stehen.
+   */
+  it("keeps the effective source list in the newest migration that writes it", async () => {
+    const files = (await readdir(path.resolve(process.cwd(), "db/migrations")))
+      .filter((name) => name.endsWith(".sql")).sort();
+    const writing: string[] = [];
+    for (const name of files) {
+      const text = await readFile(path.resolve(process.cwd(), "db/migrations", name), "utf8");
+      if (/FUNCTION qkern_log_drain_sources_ok/.test(text)) writing.push(name);
+    }
+    expect(writing.length, "keine Migration schreibt die Quellenliste").toBeGreaterThan(0);
+    const newest = await readFile(
+      path.resolve(process.cwd(), "db/migrations", writing[writing.length - 1]), "utf8");
+    for (const source of LOG_DRAIN_SOURCES) {
+      expect(newest, source).toContain(`'${source}'`);
+    }
+    expect(newest).toContain(`cardinality(sources) BETWEEN 1 AND ${LOG_DRAIN_SOURCES.length}`);
+    expect(newest).toContain("ORDER BY allowed.nth");
+    // Die Reihenfolge des Codes ist die Reihenfolge der Datenbank. Faellt das
+    // auseinander, weist die Datenbank eine Definition ab, die die Ansicht
+    // vorher angenommen hat.
+    // Gelesen wird das Array der Funktion und nicht die ganze Datei: Die
+    // Begruendung darueber nennt Quellnamen als Beispiel, und ein Vergleich
+    // gegen die Datei zaehlte sie mit.
+    const array = newest.match(/unnest\(ARRAY\[([\s\S]*?)\]\)/);
+    expect(array, "ARRAY der Quellenliste nicht gefunden").not.toBeNull();
+    const listed = [...array![1].matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+    expect(listed).toEqual([...LOG_DRAIN_SOURCES]);
   });
 
   it("grants no UPDATE, so the sources stay immutable", async () => {

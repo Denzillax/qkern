@@ -201,11 +201,19 @@ describe("console missing log views contract", () => {
     expect(CONTAINER_LOG_TEXTS.invocationsMeaning).toContain("Logs → Functions");
     expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("function_invocations");
     expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("Function-Ausgabe");
-    // Die Drain-Quelle gibt es wirklich, und eine fuer die Zeilen gibt es
-    // wirklich nicht.
+    // Seit 2.108 gibt es beide Quellen, und die Seite sagt beide. Bis 2.107
+    // stand hier das Gegenteil: `not.toContain("function_output")`, weil es die
+    // Quelle wirklich nicht gab. Der Satz der Seite und der Fall sind zusammen
+    // umgedreht worden, nicht einzeln.
+    expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("function_output");
     const drains = await source("lib/console/log-drains.ts");
     expect(drains).toContain('"auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series",');
-    expect(drains).not.toContain("function_output");
+    expect(drains).toContain('"function_output",');
+    // Und die Mengengrenze steht im Satz der Seite, nicht nur im Code: Ein
+    // Betreiber, der 64 KiB je Aufruf an sein SIEM schickt, soll vorher
+    // wissen, wie viel in einer Ladung ankommt.
+    expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("vier Aufrufe je Lauf");
+    expect(CONTAINER_LOG_TEXTS.operatorDrain).toContain("256 KiB");
     // Der Explorer kennt die Quelle, unter genau dem Namen, den die Seite nennt.
     const explorer = await source("lib/console/log-explorer.ts");
     expect(explorer).toContain('label: "Function-Ausgabe"');

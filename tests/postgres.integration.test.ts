@@ -192,7 +192,15 @@ import {
   PostgresLogDrainRepository,
   PostgresLogDrainSourceReader,
 } from "@/lib/server/compute/log-drain-postgres-repository";
-import { LOG_DRAIN_SOURCE_DEFINITIONS } from "@/lib/console/log-drains";
+import {
+  LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS,
+  LOG_DRAIN_SOURCE_DEFINITIONS,
+} from "@/lib/console/log-drains";
+import {
+  ComputeScopeCensusRuntime,
+  PostgresComputeScopeCatalog,
+  resolveComputeScopes,
+} from "@/lib/server/compute/scope-discovery";
 // Die Bruecke als Prozess (2.53): derselbe Prozess, den der Betrieb startet.
 import { spawn } from "node:child_process";
 // Was abgelaufen ist, verschwindet auch (2.89): derselbe Aufraeumer und
@@ -4454,6 +4462,381 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Uebersetzung der Module, dazu zwei bewusst grosszuegige Wartefristen.
     // Jede einzelne Wartezeit hat trotzdem ihre eigene, engere Frist.
   }, 600_000);
+
+  it("(2.107) discovers the environments of one organization from the real control plane, can enumerate no organization but the one it names, refuses a list beside the discovery, and counts what it does not serve", async () => {
+    // Die Scope-Entdeckung (2.107) gegen die echte Datenbank.
+    //
+    // Bis 2.106 kam die Liste der Bereiche allein aus
+    // `QKERN_COMPUTE_SCOPES_JSON`. Ein neu angelegtes Projekt wurde erst
+    // bedient, wenn jemand die Variable nachzog und den Prozess neu startete,
+    // und bis dahin sah ein unvollstaendiger Prozess aus wie ein vollstaendiger.
+    //
+    // Der Fall belegt vier Dinge, und das dritte ist der Befund dieses
+    // Schnitts:
+    //
+    // 1. Der Katalog liest `project_environments` mit der **Laufzeitrolle**,
+    //    ohne ein Recht, das 0002 ihr nicht schon gibt.
+    // 2. Ein geloeschtes Projekt behaelt seine Umgebungszeilen und darf keinen
+    //    Bereich bekommen.
+    // 3. **Die Rollengrenze, gemessen statt vermutet.** Der erste Entwurf
+    //    dieses Falls verlangte, dass die Laufzeitrolle eine fremde
+    //    Organisation nicht liest. Der Lauf hat ihn widerlegt: Die Policy
+    //    haengt an einer Sitzungsvariablen, die der Prozess selbst setzt. Was
+    //    wirklich fehlt, ist die Aufzaehlung, und deshalb kann die Entdeckung
+    //    nicht organisationsuebergreifend sein.
+    // 4. Die Zaehlung sieht eine Umgebung, die nach dem Start entsteht.
+    const scopeOwner = randomUUID();
+    const scopeOrganization = randomUUID();
+    const foreignOrganization = randomUUID();
+    const livingProject = randomUUID();
+    const deletedProject = randomUUID();
+    const foreignProject = randomUUID();
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [scopeOwner, `scopes-${scopeOwner}@qkern.test`]);
+    // Nur die erste Organisation ist der persoenliche Arbeitsbereich dieses
+    // Benutzers. `one_personal_workspace_per_user` laesst genau einen zu, und
+    // der erste Entwurf dieses Falls ist an dieser Bedingung gescheitert.
+    for (const [organization, label, personal] of [
+      [scopeOrganization, "Scopes", true], [foreignOrganization, "Scopes Fremd", false],
+    ] as const) {
+      await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+        VALUES ($1, $2, $3, $4)`, [organization, label, `scopes-${organization}`, scopeOwner]);
+      await owner.query(`INSERT INTO organization_members
+        (organization_id, user_id, role, is_personal_workspace)
+        VALUES ($1, $2, 'owner', $3)`, [organization, scopeOwner, personal]);
+    }
+    for (const [project, organization] of [
+      [livingProject, scopeOrganization], [deletedProject, scopeOrganization],
+      [foreignProject, foreignOrganization],
+    ] as const) {
+      await owner.query(`INSERT INTO projects
+        (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Scopes', $3, 'test', 'ready', $4)`,
+      [project, organization, `scopes-${project}`, scopeOwner]);
+      for (const environment of ["development", "production"] as const) {
+        await owner.query(`INSERT INTO project_environments
+          (organization_id, project_id, environment, database_instance_ref)
+          VALUES ($1, $2, $3, $4)`,
+        [organization, project, environment, `managed:${project}-${environment}`]);
+      }
+    }
+    // Das geloeschte Projekt behaelt seine beiden Umgebungszeilen: 0001 haengt
+    // die Kaskade an der Organisation, nicht am Projekt. Genau deshalb muss der
+    // Join im Katalog stehen.
+    await owner.query(`UPDATE projects SET deleted_at = now() WHERE id = $1`, [deletedProject]);
+
+    const catalog = new PostgresComputeScopeCatalog(new PostgresControlPlane(runtime));
+    const discovered = await catalog.environments(scopeOrganization);
+    // Zwei Umgebungen des lebenden Projekts, keine des geloeschten.
+    expect(discovered.map((scope) => `${scope.projectId}:${scope.environment}`).sort())
+      .toEqual([`${livingProject}:development`, `${livingProject}:production`]);
+    for (const scope of discovered) expect(scope.organizationId).toBe(scopeOrganization);
+
+    // Der Befund, als Zusicherung, und er sieht anders aus als erwartet.
+    //
+    // Der erste Entwurf dieses Falls hat verlangt, dass die Laufzeitrolle die
+    // fremde Organisation **nicht** sieht. Der Lauf hat ihn widerlegt: Die
+    // Policy vergleicht `organization_id` mit `qkern_current_organization_id()`,
+    // und diese Funktion liest `current_setting('qkern.organization_id')`, das
+    // der Prozess selbst setzt. Wer die Id einer Organisation nennt, liest
+    // deren Zeilen.
+    expect(await catalog.environments(foreignOrganization)).toHaveLength(2);
+
+    // Die wirkliche Grenze ist die **Aufzaehlung**. `organizations_select`
+    // haengt an derselben Sitzungsvariablen, also sieht diese Rolle in einer
+    // Sitzung genau eine Organisation: die genannte. Es gibt keine Abfrage, mit
+    // der dieser Prozess erfaehrt, welche Organisationen es gibt. Genau darum
+    // kann die Entdeckung nicht organisationsuebergreifend sein, und genau
+    // darum legt dieser Schnitt keine Rolle an, die RLS umgeht.
+    const visible = await new PostgresControlPlane(runtime).withTenant({
+      organizationId: scopeOrganization, actorRef: "service-role:compute-scopes", readOnly: true,
+    }, async (repositories) => await repositories.transaction.query<{ id: string }>(
+      `SELECT id FROM organizations`));
+    expect(visible.rows.map((row) => row.id)).toEqual([scopeOrganization]);
+    // Und es gibt wirklich mehr als eine; die Sicht ist die Grenze und nicht
+    // der Bestand.
+    const allOrganizations = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM organizations WHERE id = ANY($1::uuid[])`,
+      [[scopeOrganization, foreignOrganization]]);
+    expect(allOrganizations.rows[0].count).toBe("2");
+
+    // Der Katalog liest ausschliesslich die Organisation, die er bekommt. Ein
+    // Bereich einer anderen kann aus ihm nicht herausfallen.
+    for (const scope of discovered) expect(scope.organizationId).toBe(scopeOrganization);
+
+    // Die Aufloesung, wie der Prozess sie ruft.
+    const resolved = await resolveComputeScopes({
+      source: "control-plane", organizationId: scopeOrganization, catalog,
+    });
+    expect(resolved.source).toBe("control-plane");
+    expect(resolved.scopes).toHaveLength(2);
+    expect(resolved.unserved).toBe(0);
+    expect(resolved.stale).toBe(0);
+
+    // Die Liste **neben** der Entdeckung wird abgewiesen, statt wirkungslos
+    // dazustehen. Zwei Wahrheiten ueber denselben Prozess, von denen eine
+    // stillschweigend verliert, sind genau der Zustand, den dieser Schnitt
+    // beseitigt.
+    await expect(resolveComputeScopes({
+      source: "control-plane", organizationId: scopeOrganization, catalog,
+      configured: [...resolved.scopes],
+    })).rejects.toThrow(/cannot be mixed/);
+    // Und ohne Organisation geht die Entdeckung nicht, weil die Rolle nur eine
+    // sieht.
+    await expect(resolveComputeScopes({ source: "control-plane", catalog }))
+      .rejects.toThrow(/QKERN_COMPUTE_ORGANIZATION_ID/);
+
+    // Die Zaehlung: ein Prozess, der nur eine der beiden Umgebungen bedient.
+    const census = new ComputeScopeCensusRuntime({
+      catalog, organizationId: scopeOrganization,
+      scopes: [resolved.scopes[0]],
+    });
+    expect(await census.count()).toEqual({ unserved: 1, stale: 0 });
+
+    // Jetzt entsteht eine Umgebung nach dem Start. Der Prozess bedient sie
+    // nicht -- und die Zaehlung sagt es, statt dass es niemandem auffaellt.
+    const lateProject = randomUUID();
+    await owner.query(`INSERT INTO projects
+      (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Spaet', $3, 'test', 'ready', $4)`,
+    [lateProject, scopeOrganization, `scopes-late-${lateProject}`, scopeOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'staging', $3)`,
+    [scopeOrganization, lateProject, `managed:${lateProject}-staging`]);
+
+    const afterwards = new ComputeScopeCensusRuntime({
+      catalog, organizationId: scopeOrganization, scopes: resolved.scopes,
+    });
+    expect(await afterwards.count()).toEqual({ unserved: 1, stale: 0 });
+
+    // Und die andere Richtung: ein Bereich in der Liste, zu dem es keine
+    // Umgebung gibt. Auch das merkt heute niemand.
+    const staleCensus = new ComputeScopeCensusRuntime({
+      catalog, organizationId: scopeOrganization,
+      scopes: [...resolved.scopes, {
+        organizationId: scopeOrganization, projectId: deletedProject,
+        environment: "development" as const,
+      }],
+    });
+    expect(await staleCensus.count()).toEqual({ unserved: 1, stale: 1 });
+
+    // Ein Bereich einer fremden Organisation zaehlt in keine der beiden
+    // Zahlen: Diese Sicht kennt ihn nicht, und ihn als veraltet zu zaehlen
+    // waere eine Aussage ueber etwas, das der Prozess nicht sehen darf.
+    const foreignCensus = new ComputeScopeCensusRuntime({
+      catalog, organizationId: scopeOrganization,
+      scopes: [...resolved.scopes, {
+        organizationId: foreignOrganization, projectId: foreignProject,
+        environment: "development" as const,
+      }],
+    });
+    expect(await foreignCensus.count()).toEqual({ unserved: 1, stale: 0 });
+  });
+
+  it("(2.108) forwards the real container output of a real invocation as one entry per line, keeps a two kibibyte line, and reads no more invocations per run than its own limit allows", async () => {
+    // Die Inhaltslogs an einem Log-Drain (2.108).
+    //
+    // 2.67.0 hat die Zeilen je Aufruf gebaut (Migration 0069), und die Drains
+    // aus 2.54/2.55 leiteten weiter, was die Console zeigt -- nur diese Zeilen
+    // nicht, weil die Quellenliste in der Datenbank sie nicht kannte.
+    //
+    // Der Fall laeuft ueber die echte Produktkette: `FunctionInvocationService`
+    // sammelt die Ausgabe im echten Kollektor mit den echten Grenzen und
+    // schreibt sie nach 0069, `PostgresLogDrainSourceReader` liest sie,
+    // `LogDrainCollector` buendelt, `WebhookOutbox` reiht ein. Nur die Sandbox
+    // ist ersetzt; sie ist im Functions-Stack eigens zertifiziert, und dort
+    // laeuft derselbe Weg an einem echten Container.
+    //
+    // Drei Dinge, die nur an echten Zeilen zu sehen sind:
+    //
+    // 1. Ein Aufruf mit 3 Zeilen wird zu 3 Eintraegen, jeder mit genau der
+    //    Feldliste der Quelle.
+    // 2. Eine Zeile an der Grenze aus 0069 (2 KiB) kommt **an**. Mit der
+    //    allgemeinen Textgrenze von 1024 Zeichen waere sie als Eintrag ohne
+    //    Text hinausgegangen, und der Ladung waere das nicht anzusehen.
+    // 3. Die eigene Mengengrenze greift: Ein Lauf liest hoechstens vier
+    //    Aufrufe, auch wenn sechs warten.
+    expect(databaseWebhookSecretRef, "QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF fehlt").toBeTruthy();
+
+    const outputOwner = randomUUID();
+    const outputOrganization = randomUUID();
+    const outputProject = randomUUID();
+    const actorRef = `fn-output-${outputOwner}@qkern.test`;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`, [outputOwner, actorRef]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Function Output Drain', $2, $3)`,
+    [outputOrganization, `fn-output-${outputOrganization}`, outputOwner]);
+    await owner.query(`INSERT INTO organization_members
+      (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [outputOrganization, outputOwner]);
+    await owner.query(`INSERT INTO projects
+      (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Function Output Drain', $3, 'test', 'ready', $4)`,
+    [outputProject, outputOrganization, `fn-output-${outputProject}`, outputOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [outputOrganization, outputProject, `managed:${outputProject}`]);
+
+    const scope = {
+      organizationId: outputOrganization, projectId: outputProject,
+      environment: "development" as const,
+    };
+    const admin = {
+      organizationId: outputOrganization, actorRef, role: "admin" as const, subject: outputOwner,
+    };
+    const control = new PostgresControlPlane(runtime);
+    const drains = new PostgresLogDrainRepository(control);
+
+    // Die Definition ueber den echten Dienst. Die Quelle steht erst seit
+    // Migration 0075 auf der Liste; vor ihr wies der CHECK in der Datenbank
+    // genau diese Zeile ab.
+    const drain = await new LogDrainService({ repository: drains }).create(admin, scope, {
+      name: "container-logs-an-siem",
+      url: "https://siem.example.com/qkern/container",
+      sources: ["function_output"],
+      signingSecretRef: databaseWebhookSecretRef!,
+    });
+    expect(drain.sources).toEqual(["function_output"]);
+    expect(drain.eventTypes).toEqual(["log.function_output"]);
+
+    const outboxRepository = new PostgresWebhookOutboxRepository(control);
+    const collector = new LogDrainCollector({
+      reader: new PostgresLogDrainSourceReader(control),
+      drains,
+      outbox: new WebhookOutbox({ repository: outboxRepository }),
+      scope,
+      // Eine Ladung, sobald irgendetwas da ist: Der Fall misst die Quelle,
+      // nicht das Altersfenster der Buendelung.
+      maxBatchEntries: 1,
+    });
+    // Der erste Lauf setzt den Stand auf die Spitze. Die Quelle ist leer, und
+    // eine leere Quelle hat keine Position -- der Sammler faengt trotzdem an
+    // und schickt nicht die Vergangenheit.
+    expect(await collector.poll()).toBe(0);
+
+    const definitions = new ComputeDefinitionService({
+      repository: new PostgresComputeDefinitionRepository(control),
+    });
+    const image = `registry.example.com/qkern/probe@sha256:${"d".repeat(64)}`;
+    const probe = await definitions.createFunction(admin, scope, {
+      name: `output-probe-${randomUUID().slice(0, 8)}`, image, entrypoint: "handler.mjs",
+      secretRefs: [], enabled: true,
+    });
+
+    const repository = new PostgresComputeDefinitionRepository(control);
+    // Was der Container schreibt. Die lange Zeile trifft die Grenze aus 0069
+    // genau: 2048 Bytes, also die laengste, die ungekuerzt durchgeht.
+    const marker = randomUUID();
+    const longLine = "L".repeat(2 * 1024);
+    const invoker = new FunctionInvocationService({
+      repository, invocationLog: repository,
+      invoker: {
+        async invoke(_definition, invocation, _timeout, sink) {
+          sink?.line("stdout", `start ${marker}`);
+          sink?.line("stderr", `warn ${marker}`);
+          sink?.line("stdout", longLine);
+          return Object.freeze({ statusCode: 200, headers: {}, body: { ok: invocation.id } });
+        },
+      },
+    });
+    await invoker.invoke(admin, scope, probe.name, { probe: marker });
+
+    // Die Zeilen liegen wirklich in 0069, mit den Zahlen, die 0069 verlangt.
+    const storedOutput = await owner.query<{
+      line_count: number; stdout_lines: number; stderr_lines: number;
+      truncated: boolean; dropped_lines: number; byte_count: number;
+    }>(`SELECT line_count, stdout_lines, stderr_lines, truncated, dropped_lines, byte_count
+          FROM project_function_invocation_output
+         WHERE organization_id = $1 AND project_id = $2`,
+    [outputOrganization, outputProject]);
+    expect(storedOutput.rows).toHaveLength(1);
+    expect(storedOutput.rows[0].line_count).toBe(3);
+    expect(storedOutput.rows[0].stdout_lines).toBe(2);
+    expect(storedOutput.rows[0].stderr_lines).toBe(1);
+    expect(storedOutput.rows[0].truncated).toBe(false);
+    expect(storedOutput.rows[0].dropped_lines).toBe(0);
+
+    expect(await collector.poll()).toBe(1);
+
+    const firstBatch = await owner.query<{
+      event_type: string; status: string; payload: Record<string, unknown>;
+    }>(`SELECT event_type, status, payload FROM project_webhook_deliveries
+         WHERE organization_id = $1 AND project_id = $2 ORDER BY occurred_at, id`,
+    [outputOrganization, outputProject]);
+    expect(firstBatch.rows).toHaveLength(1);
+    expect(firstBatch.rows[0].event_type).toBe("log.function_output");
+    expect(Object.keys(firstBatch.rows[0].payload).sort())
+      .toEqual(["count", "entries", "schemaVersion", "source"]);
+
+    const entries = firstBatch.rows[0].payload.entries as Array<Record<string, unknown>>;
+    // Eine Zeile ist ein Eintrag: drei Zeilen, drei Eintraege.
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort())
+        .toEqual([...LOG_DRAIN_SOURCE_DEFINITIONS.function_output.fields].sort());
+      // Die beiden Angaben des Aufrufs stehen an jeder Zeile, damit eine an
+      // einer Aufrufgrenze abgeschnittene Ladung nicht vollstaendig aussieht.
+      expect(entry.truncated).toBe(false);
+      expect(entry.droppedLines).toBe(0);
+      expect(typeof entry.invocationId).toBe("string");
+    }
+    expect(entries.map((entry) => entry.stream)).toEqual(["stdout", "stderr", "stdout"]);
+    expect(entries[0].text).toBe(`start ${marker}`);
+    expect(entries[1].text).toBe(`warn ${marker}`);
+    // Der Punkt, an dem die allgemeine Textgrenze falsch gewesen waere: Diese
+    // Zeile ist 2048 Zeichen lang und kommt ganz an.
+    expect(entries[2].text).toBe(longLine);
+    expect(entries[2].cut).toBe(false);
+
+    // Und die Huelle traegt weiter kein Ziel, keine Referenz und kein Feld,
+    // das die Console nicht zeigt.
+    const encoded = JSON.stringify(firstBatch.rows[0].payload);
+    expect(encoded, "die Ladung traegt das Ziel").not.toContain("siem.example.com");
+    expect(encoded, "die Ladung traegt die Geheimnisreferenz")
+      .not.toContain(databaseWebhookSecretRef!);
+    expect(encoded, "die Ladung traegt die Adresse des Aufrufers").not.toContain(actorRef);
+    expect(encoded, "die Ladung traegt das verschachtelte Feld").not.toContain("\"lines\"");
+
+    // Jetzt die Mengengrenze. Sechs weitere Aufrufe, jeder mit einer Zeile.
+    for (let index = 0; index < 6; index += 1) {
+      await invoker.invoke(admin, scope, probe.name, { probe: `${marker}-${index}` });
+    }
+    const outputRows = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM project_function_invocation_output
+        WHERE organization_id = $1 AND project_id = $2`, [outputOrganization, outputProject]);
+    expect(outputRows.rows[0].count).toBe("7");
+
+    expect(await collector.poll()).toBe(1);
+    // Der Rest bleibt liegen und kommt im naechsten Lauf, statt verloren zu
+    // gehen.
+    expect(await collector.poll()).toBe(1);
+
+    // Verglichen werden die Ladungen als Mengen und nicht ueber ihre
+    // Reihenfolge: Zwei Ladungen koennen dieselbe Millisekunde tragen, und ein
+    // Fall, der sich auf `occurred_at` als Reihenfolge verlaesst, waere von
+    // dieser Millisekunde abhaengig statt vom Produkt.
+    const all = await owner.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM project_webhook_deliveries
+        WHERE organization_id = $1 AND project_id = $2`, [outputOrganization, outputProject]);
+    expect(all.rows).toHaveLength(3);
+    const perBatch = all.rows.map((row) => new Set(
+      (row.payload.entries as Array<Record<string, unknown>>)
+        .map((entry) => entry.invocationId as string)));
+    // Vier Aufrufe je Lauf, obwohl sechs warteten: die Grenze der Quelle. Die
+    // allgemeine Lesegrenze von 200 Zeilen liesse hier bis zu 12,8 MiB in einer
+    // Zustellung liegen, die die Outbox als Ganzes wiederholt.
+    expect(perBatch.map((batch) => batch.size).sort())
+      .toEqual([1, 2, LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS]);
+    // Und jeder Aufruf geht genau einmal hinaus.
+    const forwarded = perBatch.flatMap((batch) => [...batch]);
+    expect(new Set(forwarded).size).toBe(7);
+  });
 
   it("(2.66) stores the console settings of a user and gives them back unchanged", async () => {
     // Die eigene Darstellung der Console (2.55) gegen die echte Datenbank.

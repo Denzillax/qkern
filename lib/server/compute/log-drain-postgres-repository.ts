@@ -2,6 +2,7 @@ import { ConflictError } from "@/lib/server/db/errors";
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlQueryable, SqlValue } from "@/lib/server/db/sql";
 import {
+  LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS,
   LOG_DRAIN_SOURCES,
   type LogDrainDraft,
   type LogDrainRecord,
@@ -311,6 +312,89 @@ export class PostgresLogDrainSourceReader implements LogDrainSourceReader {
               errorCode: row.error_code,
             },
           }));
+        }
+        case "function_output": {
+          // Die Inhaltslogs je Aufruf (2.108), aus 0069.
+          //
+          // **Die eigene Grenze.** Eine Zeile dieser Tabelle traegt bis zu 500
+          // Ausgabezeilen und 64 KiB. Die allgemeine Lesegrenze von 200 Zeilen
+          // ergaebe 12,8 MiB in einer Ladung, und die Outbox wiederholt eine
+          // Zustellung als Ganzes. Darum liest dieser Zweig hoechstens
+          // `LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS` Aufrufe, egal was der
+          // Sammler anfragt. Die Zahl steht in `lib/console/log-drains.ts`, in
+          // Migration 0075 und in jedem Text der Ansicht.
+          //
+          // **Eine Ausgabezeile ist ein Eintrag.** Ein Eintrag traegt nur
+          // Skalare (`LogDrainValue`), also kann `lines` nicht als Feld
+          // mitfahren. Der Leser loest das Feld in Eintraege auf, und alle
+          // Eintraege eines Aufrufs tragen **dieselbe** Position. Das ist kein
+          // Versehen: Eine Zeile dieser Tabelle entsteht einmal, vollstaendig,
+          // am Ende des Aufrufs, und wird nie geaendert. Es gibt daher nichts,
+          // was mitten in einem Aufruf wieder aufsetzen muesste, und der
+          // Sammler merkt sich ohnehin nur die Position des letzten Eintrags.
+          const outputLimit = Math.min(
+            Number(values[values.length - 1]), LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS);
+          const outputValues = [...values.slice(0, values.length - 1), outputLimit];
+          const result = await database.query<{
+            id: string; invocation_id: string; truncated: boolean; dropped_lines: number;
+            lines: unknown; cursor_at: string;
+          }>(
+            `SELECT o.id, o.invocation_id, o.truncated, o.dropped_lines, o.lines,
+                    ${EXACT("o.recorded_at")} AS cursor_at
+               FROM project_function_invocation_output o
+              WHERE o.organization_id = $1 AND o.project_id = $2::uuid
+                AND o.environment = $3::qkern_environment
+                ${after("o.recorded_at", "o.id", "uuid")}
+              ORDER BY o.recorded_at ${direction}, o.id ${direction}
+              LIMIT ${limit}`, outputValues);
+          const rows: LogDrainSourceRow[] = [];
+          for (const row of result.rows) {
+            const cursor = formatCursor(row.cursor_at, row.id);
+            // Eine Zeile, die nicht die erwartete Form hat, wird uebersprungen
+            // und nicht geraten. Der CHECK in 0069 laesst nur ein Array zu;
+            // faende sich hier etwas anderes, waere das ein Programmierfehler
+            // und keine Auskunft, die ein Empfaenger bekommen sollte.
+            for (const line of Array.isArray(row.lines) ? row.lines : []) {
+              if (!line || typeof line !== "object" || Array.isArray(line)) continue;
+              const entry = line as Record<string, unknown>;
+              rows.push(frozenRow({
+                cursor,
+                record: {
+                  invocationId: row.invocation_id,
+                  at: entry.at,
+                  stream: entry.stream,
+                  text: entry.text,
+                  cut: entry.cut,
+                  // An jeder Zeile, nicht nur an der letzten: Eine Ladung kann
+                  // an einer Aufrufgrenze enden, und ein Empfaenger, der nur
+                  // den vorderen Teil bekommt, hielte eine abgeschnittene
+                  // Ausgabe sonst fuer vollstaendig.
+                  truncated: row.truncated,
+                  droppedLines: row.dropped_lines,
+                },
+              }));
+            }
+          }
+          // Ein Aufruf darf null Ausgabezeilen haben (0069 laesst
+          // `line_count = 0` zu). Fuer `read` ist das nichts, und der Stand
+          // bleibt vor ihm stehen: Der naechste Lauf liest ihn wieder, findet
+          // wieder nichts und kostet eine Abfrage. Sobald danach ein Aufruf mit
+          // Zeilen liegt, wandert der Stand ueber beide.
+          //
+          // Fuer `tip` ist es etwas anderes. Die Spitze ist eine **Position**
+          // und kein Eintrag, und sie darf hier nicht `null` werden, nur weil
+          // der juengste Aufruf nichts geschrieben hat: `null` heisst beim
+          // Sammler "von Anfang an", und ein frisch angelegter Drain schickte
+          // dann das ganze bisherige Protokoll hinaus. `tip` liest allein
+          // `rows[0].cursor`; der leere Datensatz daran verlaesst diesen Zweig
+          // nie.
+          if (input.newestFirst && rows.length === 0 && result.rows.length > 0) {
+            return [frozenRow({
+              cursor: formatCursor(result.rows[0].cursor_at, result.rows[0].id),
+              record: {},
+            })];
+          }
+          return rows;
         }
         case "storage_objects": {
           const result = await database.query<{

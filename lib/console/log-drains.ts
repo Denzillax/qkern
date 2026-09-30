@@ -39,6 +39,32 @@ import { isDeliverableWebhookTarget } from "@/lib/server/compute/webhooks";
  * in jeder Referenz sowohl `@` als auch `qk_`, und er wirft, bevor irgendein
  * Sink schreibt. `resourceRef` kann deshalb keine Adresse und kein Token sein.
  *
+ * ## Die sechste Quelle, und warum sie anders ist (2.108)
+ *
+ * `function_output` traegt die Inhaltslogs je Aufruf: was ein Container auf
+ * stdout und stderr geschrieben hat. Fuer die ersten fuenf Quellen gilt, dass
+ * QKERN jedes Feld selbst erzeugt und seine Form kennt. Fuer diese gilt das
+ * nicht. Der Inhalt einer Zeile kommt aus fremdem Code, und 0069 hat
+ * aufgeschrieben, warum daraus nichts gestrichen wird: Der Prozess, der den
+ * Container startet, kennt keinen Wert eines Geheimnisses, reicht nur
+ * Referenzen weiter und gibt seine eigene Umgebung nicht durch. Ein Filter
+ * waere eine Zusage ohne Deckung.
+ *
+ * Die Grenze des Slices haelt trotzdem, und zwar woertlich: Weitergeleitet wird
+ * genau das, was die Console unter Logs -> Functions fuer denselben Aufruf
+ * schon zeigt, Zeitpunkt, Strom, Text und die Markierung der gekuerzten Zeile.
+ * Was sich aendert, ist die Zusage darueber. `LOG_DRAIN_NEVER` hat bis 2.107
+ * behauptet, ein Drain trage nie die Ausgabe eines Containers, und dazu, QKERN
+ * speichere sie gar nicht. Der zweite Halbsatz war seit `2.67.0` falsch, der
+ * erste wird es mit dieser Quelle. Beide stehen jetzt richtig da, und
+ * `LOG_DRAIN_OUTPUT_EXCEPTION` sagt die Ausnahme in einem eigenen Satz, statt
+ * sie in einem Nebensatz zu verstecken.
+ *
+ * Und die Menge hat eine eigene Grenze, weil ein Aufruf 64 KiB tragen darf:
+ * vier Aufrufe je Lauf, also 256 KiB je Ladung. Sie steht in
+ * `LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS`, in Migration 0075 und in jedem
+ * Text, den die Console ueber diese Quelle zeigt.
+ *
  * ## Warum das Cron-Log nicht auf der Liste steht
  *
  * Das Cron-Log (2.42) ist kein gespeichertes Log. Es wird bei jeder Anfrage aus
@@ -55,6 +81,10 @@ export const LOG_DRAIN_SCHEMA_VERSION = 1;
 /** Die feste Liste. Ein Aufrufer waehlt daraus; er ergaenzt sie nicht. */
 export const LOG_DRAIN_SOURCES = [
   "auth_audit", "function_invocations", "storage_objects", "webhook_deliveries", "usage_series",
+  // `function_output` steht am Ende, und das ist keine Laune: Migration 0075
+  // prueft die Reihenfolge, und ein Name in der Mitte haette jede gespeicherte
+  // Definition mit spaeteren Quellen ungueltig gemacht.
+  "function_output",
 ] as const;
 export type LogDrainSourceId = (typeof LOG_DRAIN_SOURCES)[number];
 
@@ -68,6 +98,19 @@ export type LogDrainSourceDefinition = Readonly<{
   fields: readonly string[];
   /** Felder, die die Console zeigt und ein Drain bewusst zurueckhaelt. */
   withheld: readonly string[];
+  /**
+   * Die Laengengrenze eines Textes dieser Quelle, wenn sie von `LOG_DRAIN_MAX_TEXT`
+   * abweicht (2.108).
+   *
+   * Sie ist je Quelle die Grenze, die deren **eigene** Ablage schon erzwingt.
+   * Ohne diese Angabe galt ueberall 1024 Zeichen, die Grenze des laengsten
+   * Feldes der ersten fuenf Quellen. Fuer die Inhaltslogs waere sie falsch:
+   * 0069 laesst 2 KiB je Zeile zu, und `projectLogDrainEntry` laesst ein zu
+   * langes Feld **weg**. Eine 1500 Zeichen lange Zeile waere damit als Eintrag
+   * ohne Text weitergeleitet worden -- ein stiller Verlust, dem an der Ladung
+   * nichts anzusehen ist.
+   */
+  maxText?: number;
 }>;
 
 export const LOG_DRAIN_SOURCE_DEFINITIONS: Readonly<Record<LogDrainSourceId, LogDrainSourceDefinition>> =
@@ -109,6 +152,30 @@ export const LOG_DRAIN_SOURCE_DEFINITIONS: Readonly<Record<LogDrainSourceId, Log
       consoleTypes: Object.freeze(["Series", "SeriesBucket"]),
       fields: Object.freeze(["metric", "bucket", "start", "accepted", "rejected", "events"]),
       withheld: Object.freeze(["eventKeyHash", "source"]),
+    }),
+    function_output: Object.freeze({
+      id: "function_output",
+      consoleView: "components/console/function-container-log-view.tsx",
+      consoleTypes: Object.freeze(["InvocationRow", "OutputLine", "OutputRecord"]),
+      // Eine Zeile je Ausgabezeile: Zeitpunkt, Strom, Text und die Markierung
+      // der gekuerzten Zeile, dazu die Aufrufkennung, damit ein Empfaenger
+      // gruppieren kann.
+      //
+      // `truncated` und `droppedLines` haengen am Aufruf und stehen trotzdem an
+      // jeder Zeile. Eine Ladung kann an einer Aufrufgrenze enden, und ein
+      // Empfaenger, der nur den vorderen Teil bekommt, hielte eine
+      // abgeschnittene Ausgabe sonst fuer vollstaendig. 0069 sagt genau das
+      // umgekehrt zu: Das Protokoll tut nie so, als waere es vollstaendig.
+      fields: Object.freeze(["invocationId", "at", "stream", "text", "cut",
+        "truncated", "droppedLines"]),
+      // `lines` ist das verschachtelte Feld selbst; es wird in Eintraege
+      // aufgeloest, statt als Objekt mitzufahren. Die vier Zaehlungen gehoeren
+      // dem Aufruf und nicht der Zeile; an jeder Zeile wiederholt waeren sie
+      // Rauschen, und die einzige, auf die es ankommt, traegt die Zeile schon.
+      withheld: Object.freeze(["lines", "lineCount", "stdoutLines", "stderrLines", "byteCount"]),
+      // Dieselbe Zahl wie `FUNCTION_OUTPUT_LIMITS.maxLineBytes` in
+      // `lib/server/compute/function-output.ts` und wie der CHECK in 0069.
+      maxText: 2 * 1_024,
     }),
   });
 
@@ -252,6 +319,27 @@ export type LogDrainEntry = Readonly<Record<string, LogDrainValue>>;
 export const LOG_DRAIN_MAX_TEXT = 1_024;
 
 /**
+ * Wie viele Aufrufe die Quelle `function_output` je Lauf hoechstens liest
+ * (2.108).
+ *
+ * Diese Quelle ist die erste, deren Zeile mehr als eine Handvoll Felder
+ * traegt: 0069 laesst 500 Zeilen und 64 KiB je Aufruf zu. Bei der allgemeinen
+ * Lesegrenze von 200 Zeilen je Lauf waeren das 12,8 MiB in **einer** Ladung.
+ * Die Outbox traegt eine Zustellung als Ganzes -- sie teilt sie nicht, sie
+ * wiederholt sie als Ganzes, und ein Empfaenger, der bei 1 MiB abweist, haette
+ * eine Zustellung, die jeden Versuch verbrennt und im Dead Letter endet, ohne
+ * dass an der Definition etwas falsch waere.
+ *
+ * Deshalb hat diese Quelle ihre eigene Grenze, und sie steht in jedem Text, den
+ * die Console darueber zeigt: vier Aufrufe je Lauf, also hoechstens 256 KiB.
+ */
+export const LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS = 4;
+
+/** Die Zahl, die aus der Grenze folgt: 4 mal 64 KiB. */
+export const LOG_DRAIN_FUNCTION_OUTPUT_MAX_BYTES =
+  LOG_DRAIN_FUNCTION_OUTPUT_MAX_INVOCATIONS * 64 * 1_024;
+
+/**
  * Macht aus einer Console-Zeile den weitergeleiteten Eintrag.
  *
  * Die Funktion ist eine **Whitelist**, keine Filterung: Sie geht die
@@ -269,13 +357,17 @@ export function projectLogDrainEntry(
   record: Readonly<Record<string, unknown>>,
 ): LogDrainEntry {
   const definition = LOG_DRAIN_SOURCE_DEFINITIONS[source];
+  // Die Grenze der Quelle, sonst die allgemeine. Sie ist je Quelle genau die
+  // Grenze, die deren eigene Ablage schon erzwingt -- eine hoehere waere hier
+  // wirkungslos, eine niedrigere ein stiller Verlust.
+  const maxText = definition.maxText ?? LOG_DRAIN_MAX_TEXT;
   const entry: Record<string, LogDrainValue> = {};
   for (const field of definition.fields) {
     const value = record[field];
     if (value === null) { entry[field] = null; continue; }
     if (typeof value === "boolean") { entry[field] = value; continue; }
     if (typeof value === "number" && Number.isFinite(value)) { entry[field] = value; continue; }
-    if (typeof value === "string" && value.length <= LOG_DRAIN_MAX_TEXT) {
+    if (typeof value === "string" && value.length <= maxText) {
       entry[field] = value;
     }
   }
@@ -313,7 +405,7 @@ export const LOG_DRAIN_SOURCE_TEXTS: Readonly<Record<LogDrainSourceId, Readonly<
   }),
   function_invocations: Object.freeze({
     label: "Function-Aufrufe",
-    carries: "Function, Aufruf-Kennung, Beginn, Dauer, Ausgang und entweder einen HTTP-Status oder einen festen Fehlercode. Nicht die Ausgabe des Containers, die QKERN gar nicht speichert, und nicht die Referenz des Aufrufers.",
+    carries: "Function, Aufruf-Kennung, Beginn, Dauer, Ausgang und entweder einen HTTP-Status oder einen festen Fehlercode. Die Ausgabe des Containers steht hier nicht; sie hat seit Migration 0069 eine eigene Quelle. Die Referenz des Aufrufers bleibt zurück.",
   }),
   storage_objects: Object.freeze({
     label: "Stand der Speicherobjekte",
@@ -322,6 +414,10 @@ export const LOG_DRAIN_SOURCE_TEXTS: Readonly<Record<LogDrainSourceId, Readonly<
   webhook_deliveries: Object.freeze({
     label: "Webhook-Zustellungen",
     carries: "Kennung, Ereignistyp, Zustand, Zahl der Versuche, den letzten Fehlercode und zwei Zeitpunkte. Nicht die Nutzlast der Zustellung und nicht die Ziel-Adresse.",
+  }),
+  function_output: Object.freeze({
+    label: "Inhaltslogs der Functions",
+    carries: "Je Zeile den Zeitpunkt, den Strom, den Text bis 2 KiB und die Markierung einer gekürzten Zeile, dazu die Aufruf-Kennung und die Angabe, ob dem Aufruf Zeilen fehlen. Diese Quelle hat eine eigene Mengengrenze, weil ein Aufruf 64 KiB tragen darf: höchstens vier Aufrufe je Lauf, also höchstens 256 KiB in einer Ladung. QKERN streicht aus den Zeilen nichts, weil der Prozess, der den Container startet, keinen Geheimniswert kennt. Was Ihre Function schreibt, verlässt mit dieser Quelle die Plattform.",
   }),
   usage_series: Object.freeze({
     label: "Nutzung je Zeitfenster",
@@ -333,7 +429,19 @@ export const LOG_DRAIN_WHAT =
   "Ein Log-Drain leitet genau die Felder weiter, die diese Console für dieselbe Quelle schon zeigt. Diese Grenze hängt an einem Vertrag im Testlauf: Jedes weitergeleitete Feld muss in der Projektion der zugehörigen Ansicht vorkommen, sonst schlägt der Lauf fehl.";
 
 export const LOG_DRAIN_NEVER =
-  "Ein Drain trägt nie die Ausgabe eines Containers, nie die Nutzlast eines Webhooks oder einer Queue, nie einen Zeilenwert Ihrer Tabellen, nie eine E-Mail-Adresse, nie ein Token und nie ein Geheimnis. Drei Felder, die die Console zeigt, bleiben zusätzlich zurück: die Referenz des Aufrufers eines Function-Aufrufs, der Eigentümer eines Speicherobjekts und die interne Bucket-Kennung.";
+  "Ein Drain trägt nie die Nutzlast eines Webhooks oder einer Queue, nie einen Zeilenwert Ihrer Tabellen und nie eine Akteursreferenz, in der eine E-Mail-Adresse stehen könnte. Drei Felder, die die Console zeigt, bleiben zusätzlich zurück: die Referenz des Aufrufers eines Function-Aufrufs, der Eigentümer eines Speicherobjekts und die interne Bucket-Kennung.";
+
+/**
+ * Die eine Quelle, bei der die Zusage oben nicht greift.
+ *
+ * Bis 2.107 hat diese Ansicht versprochen, ein Drain trage nie die Ausgabe
+ * eines Containers, und dazu, QKERN speichere sie ohnehin nicht. Der zweite
+ * Teil war seit `2.67.0` falsch (Migration 0069 hebt die Zeilen auf), und mit
+ * der sechsten Quelle wird auch der erste falsch. Ein Versprechen, das nicht
+ * mehr gilt, wird ausgesprochen und nicht leise umformuliert.
+ */
+export const LOG_DRAIN_OUTPUT_EXCEPTION =
+  "Eine Ausnahme gibt es, und sie steht hier: Wählen Sie die Quelle Inhaltslogs der Functions, dann geht die Ausgabe Ihrer Container mit, Zeile für Zeile und ohne Streichung. QKERN kennt keinen Wert eines Geheimnisses und kann deshalb keinen aus einer Zeile halten; was die Function schreibt, entscheidet die Function. Die Menge hat dafür eine eigene Grenze: höchstens vier Aufrufe je Lauf, also höchstens 256 KiB in einer Ladung, weil ein Aufruf 64 KiB tragen darf und eine Zustellung als Ganzes wiederholt wird.";
 
 export const LOG_DRAIN_SECRET =
   "Jede Ladung wird mit HMAC-SHA256 signiert, über denselben Weg wie jeder andere ausgehende Webhook von QKERN. Der Schlüssel liegt im Vault; hier steht ausschliesslich seine Referenz, und es gibt in dieser Ansicht kein Feld, in das ein Geheimniswert passen würde.";
@@ -355,7 +463,8 @@ export function logDrainTexts(): string[] {
   return [
     ...Object.values(LOG_DRAIN_REASONS),
     ...Object.values(LOG_DRAIN_SOURCE_TEXTS).flatMap((entry) => [entry.label, entry.carries]),
-    LOG_DRAIN_WHAT, LOG_DRAIN_NEVER, LOG_DRAIN_SECRET, LOG_DRAIN_SAME_PATH,
+    LOG_DRAIN_WHAT, LOG_DRAIN_NEVER, LOG_DRAIN_OUTPUT_EXCEPTION,
+    LOG_DRAIN_SECRET, LOG_DRAIN_SAME_PATH,
     LOG_DRAIN_NO_CRON, LOG_DRAIN_NO_DELETE, LOG_DRAIN_GAPS,
   ];
 }

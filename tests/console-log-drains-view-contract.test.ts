@@ -2,7 +2,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { NAV, PLACEHOLDERS, REAL_VIEWS } from "@/components/console/navigation";
-import { LOG_DRAIN_SOURCE_DEFINITIONS, LOG_DRAIN_SOURCES } from "@/lib/console/log-drains";
+import {
+  LOG_DRAIN_GAPS,
+  LOG_DRAIN_NEVER,
+  LOG_DRAIN_NO_CRON,
+  LOG_DRAIN_OUTPUT_EXCEPTION,
+  LOG_DRAIN_SOURCE_DEFINITIONS,
+  LOG_DRAIN_SOURCE_TEXTS,
+  LOG_DRAIN_SOURCES,
+} from "@/lib/console/log-drains";
 
 /**
  * Die Ansicht der Log-Drains (2.54) am Quelltext geprueft.
@@ -86,14 +94,34 @@ describe("log drains view contract", () => {
   });
 
   it("says plainly what a drain never carries and what it does not promise", async () => {
-    const module = await readFile(MODULE, "utf8");
-    expect(module).toContain("nie die Ausgabe eines Containers");
-    expect(module).toContain("nie eine E-Mail-Adresse, nie ein Token und nie ein Geheimnis");
-    expect(module).toContain("Ein Drain verspricht keine Lückenlosigkeit.");
-    expect(module).toContain("Das Cron-Log steht nicht auf der Liste der Quellen.");
+    // Gepruefte werden die **Texte**, nicht die Datei: Bis 2.107 stand hier
+    // `toContain` auf dem Quelltext, und die erste Fassung dieses Falls war
+    // danach noch gruen, obwohl die Zusage nur noch in einem Kommentar stand,
+    // der ihre Geschichte erzaehlt. Ein Vertrag, den ein Kommentar erfuellt,
+    // prueft die Erklaerung statt die Aussage.
+    expect(LOG_DRAIN_NEVER).toContain("nie die Nutzlast eines Webhooks oder einer Queue");
+    expect(LOG_DRAIN_NEVER).toContain("nie einen Zeilenwert Ihrer Tabellen");
+    // Und die Zusage, die nicht mehr gilt, steht nirgends mehr als Zusage. Die
+    // Inhaltslogs (2.108) gehen mit, wenn der Betreiber die Quelle waehlt.
+    expect(LOG_DRAIN_NEVER).not.toContain("Ausgabe eines Containers");
+    expect(LOG_DRAIN_NEVER).not.toContain("nie ein Geheimnis");
+    for (const text of Object.values(LOG_DRAIN_SOURCE_TEXTS)) {
+      expect(text.carries).not.toContain("die QKERN gar nicht speichert");
+    }
+    // Die Ausnahme steht in einem eigenen Satz und nennt ihre Mengengrenze --
+    // beide Zahlen, damit ein Betreiber die Ladung abschaetzen kann, bevor sie
+    // bei seinem Empfaenger ankommt.
+    expect(LOG_DRAIN_OUTPUT_EXCEPTION).toContain("Inhaltslogs der Functions");
+    expect(LOG_DRAIN_OUTPUT_EXCEPTION).toContain("ohne Streichung");
+    expect(LOG_DRAIN_OUTPUT_EXCEPTION).toContain("vier Aufrufe je Lauf");
+    expect(LOG_DRAIN_OUTPUT_EXCEPTION).toContain("256 KiB");
+    expect(LOG_DRAIN_SOURCE_TEXTS.function_output.carries).toContain("vier Aufrufe je Lauf");
+    expect(LOG_DRAIN_SOURCE_TEXTS.function_output.carries).toContain("256 KiB");
+    expect(LOG_DRAIN_GAPS).toContain("Ein Drain verspricht keine Lückenlosigkeit.");
+    expect(LOG_DRAIN_NO_CRON).toContain("Das Cron-Log steht nicht auf der Liste der Quellen.");
     const source = await view();
-    for (const key of ["LOG_DRAIN_WHAT", "LOG_DRAIN_NEVER", "LOG_DRAIN_SAME_PATH",
-      "LOG_DRAIN_NO_CRON", "LOG_DRAIN_GAPS"]) {
+    for (const key of ["LOG_DRAIN_WHAT", "LOG_DRAIN_NEVER", "LOG_DRAIN_OUTPUT_EXCEPTION",
+      "LOG_DRAIN_SAME_PATH", "LOG_DRAIN_NO_CRON", "LOG_DRAIN_GAPS"]) {
       expect(source, key).toContain(`t(${key})`);
     }
   });
