@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: das Themenskript laeuft mit defer",
+  "log": "welle20-mutation-theme.log",
+  "commit": "4d64876098a974c4b3514fa1da954f914ef2eb45",
+  "commitSubject": "release: 2.67.0 Geschrieben, gedruckt, und ein Protokoll, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

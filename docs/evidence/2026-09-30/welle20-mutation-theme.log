@@ -1,0 +1,37 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/theme-before-paint-contract.test.ts (2 tests | 1 failed) 10ms
+     × sets the stored theme in the document head, before the body 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/theme-before-paint-contract.test.ts > theme before paint contract > sets the stored theme in the document head, before the body
+AssertionError: expected '<head>\n        <script defer dangero…' not to match /<script[^>]*\b(defer|async)\b/
+
+- Expected:
+/<script[^>]*\b(defer|async)\b/
+
++ Received:
+"<head>
+        <script defer dangerouslySetInnerHTML={{ __html: THEME_BEFORE_PAINT }} />
+      </head>
+      "
+
+ ❯ tests/theme-before-paint-contract.test.ts:43:24
+     41|     // Weder `defer` noch `async`: beide verschieben das Skript hinter…
+     42|     // erste Zeichnen und stellen damit genau den Fehler wieder her.
+     43|     expect(inHead).not.toMatch(/<script[^>]*\b(defer|async)\b/);
+       |                        ^
+     44|
+     45|     const source = layout.slice(0, head);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  06:24:22
+   Duration  200ms (transform 20ms, setup 0ms, import 34ms, tests 10ms, environment 0ms)
+
+EXIT=1
