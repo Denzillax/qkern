@@ -142,7 +142,7 @@ export type VectorStep = { title: string; body: string };
 export const VECTOR_NEXT_STEPS: readonly VectorStep[] = [
   {
     title: "1. Der Server muss den Typ mitbringen",
-    body: "Das Image des Zertifizierungsstacks ist postgres:17-alpine, und es bringt die Erweiterung vector nicht mit. Alpine hat zwar ein Paket postgresql-pgvector, aber es ist gegen Alpines eigenes PostgreSQL 18 gebaut und landet in dessen Verzeichnis; der Server im Image ist ein selbst gebautes PostgreSQL 17 unter /usr/local und kann es nicht laden. Es braucht also ein anderes Image oder ein eigenes, in dem die Erweiterung gebaut ist. Fünf Compose-Dateien fahren heute dasselbe Image; ein Wechsel betrifft jede davon und jeden Stack, der darauf zertifiziert.",
+    body: "Das Image des Zertifizierungsstacks ist postgres:17-alpine, und es bringt die Erweiterung vector nicht mit. Alpine hat zwar ein Paket postgresql-pgvector, aber es ist gegen Alpines eigenes PostgreSQL 18 gebaut und landet in dessen Verzeichnis; der Server im Image ist ein selbst gebautes PostgreSQL 17 unter /usr/local und kann es nicht laden. Es braucht also ein anderes Image oder ein eigenes, in dem die Erweiterung gebaut ist. Sechs Compose-Dateien fahren heute dasselbe Image; ein Wechsel betrifft jede davon und jeden Stack, der darauf zertifiziert.",
   },
   {
     title: "2. Die Ablage braucht eine Migration",

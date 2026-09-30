@@ -2438,10 +2438,49 @@ vollständig beschrieben. Ohne Cursor startet Subscribe am aktuellen Ende. Bei
 `REALTIME_CURSOR_STALE` muss die Anwendung den Zustand über REST neu laden und neu
 abonnieren; QKERN überspringt keine Ereignisse still.
 
-Der Prozess bindet ausschließlich Loopback und verweigert in dieser Version
-`NODE_ENV=production`. Der Event Log und Presence sind in-memory und gehen beim
-Neustart verloren. Das ist ein lokaler Funktionsdurchstich, kein Ersatz für TLS,
-persistenten CDC/Event Log, horizontalen Fan-out oder Lasttests.
+Der Prozess bindet standardmässig Loopback; alles darüber verlangt ein
+ausdrückliches `QKERN_REALTIME_PUBLIC_BIND=true`. Der Event Log liegt seit
+`1.11.0` in PostgreSQL; Presence liegt weiter im Prozessspeicher und geht beim
+Neustart verloren.
+
+`NODE_ENV=production` verweigert der Prozess nicht mehr pauschal. Seit `1.73.0`
+prüft ein Tor fünf Bedingungen einzeln und nennt jede, die fehlt: dauerhafter
+Event-Log, Cursor-Geheimnis mit mindestens 32 Byte, konfigurierte Aufbewahrung,
+eine `https`-Origin-Allowlist und, bei öffentlichem Binding, die Attestierung
+`QKERN_REALTIME_TLS_TERMINATED=proxy`.
+
+### Realtime unter Production, gegen TLS-PostgreSQL
+
+Wie der Backup-Drill fährt Realtime seinen eigenen Wegwerfstack, und dort läuft
+der ausgelieferte Prozess unter `production`:
+
+```powershell
+npm run test:realtime:docker
+```
+
+Der Stack legt eine eigene CA an, stellt damit ein Serverzertifikat auf
+`postgres.qkern.test` aus und weist in `pg_hba.conf` jede Verbindung ohne TLS
+ab. Der Lauf belegt vier Dinge: dass der Prozess unter `production` wirklich
+anläuft und einen Broadcast durchträgt, dass er ihn über `LISTEN`/`NOTIFY` in
+eine zweite Instanz trägt, dass `pg_stat_ssl` für jede seiner Verbindungen
+TLSv1.3 meldet, und dass er ohne Vertrauensanker oder unter einem Namen, der
+nicht im Zertifikat steht, gar nicht hochkommt. Dazu fällt jede der fünf
+Bedingungen des Tors einzeln.
+
+Der Lauf hat einen Produktfehler gefunden, der diesen Start seit `1.11.0`
+unmöglich gemacht hatte: Die `LISTEN`-Verbindung des Fan-outs baute sich ohne
+jede TLS-Konfiguration auf. Sie las die Adresse selbst und liess `DATABASE_SSL`
+liegen. Gegen ein PostgreSQL, das Klartext abweist, scheiterte sie, und weil sie
+vor dem Lauschen aufgebaut wird und der dauerhafte Log unter Production Pflicht
+ist, kam der Prozess dort nie hoch. Die Bedingung des Tors war also erfüllbar
+und der Start trotzdem nicht.
+
+Was unter Production nicht geht: **Postgres Changes**. Der Prozess baut seinen
+Projektdatenbank-Katalog nur über den lokalen Weg auf, und der weist
+`production` ab, weil dort ein eingespeister, vault-gestützter Katalog erwartet
+wird. Der Migrations-Prozess hat diesen Zweig, der Realtime-Prozess hat ihn
+nicht. Wer `changes:` trotzdem anschaltet, bekommt beim Start eine benannte
+Abweisung und kein leeres Abonnement.
 
 ### Vektor-Buckets: kein Vektortyp, und darum keine Ablage
 
@@ -2460,7 +2499,7 @@ Nachgesehen, statt es zu glauben:
   Alpines eigenes PostgreSQL 18 gebaut und landet unter `/usr/share/postgresql18`.
   Der Server im Image ist ein selbst gebautes PostgreSQL 17 unter `/usr/local`
   und kann es nicht laden.
-- Fünf Compose-Dateien fahren dasselbe Image. Ein Wechsel auf ein Image mit
+- Sechs Compose-Dateien fahren dasselbe Image. Ein Wechsel auf ein Image mit
   pgvector betrifft jede davon und jeden Stack, der darauf zertifiziert.
 - Das nächste, was PostgreSQL selbst mitbringt, ist `cube`. Es rechnet
   Abstände und hört bei 100 Dimensionen fest auf.
@@ -4796,6 +4835,15 @@ lehnt der Verifier ab):
 
 ```powershell
 npm run test:backup:docker
+```
+
+Realtime unter `production` gegen TLS-PostgreSQL: eine eigene CA, ein
+Serverzertifikat auf `postgres.qkern.test`, eine `pg_hba.conf`, die jede
+Verbindung ohne TLS abweist, und der ausgelieferte Prozess davor. Elf Fälle,
+beschrieben in Abschnitt 8:
+
+```powershell
+npm run test:realtime:docker
 ```
 
 Dieser Lauf umfasst inzwischen 28 optionale Real-PostgreSQL-Tests, darunter sechs

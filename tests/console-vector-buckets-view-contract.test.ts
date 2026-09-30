@@ -82,9 +82,9 @@ describe("console vector buckets view contract", () => {
       }
     }
     // Der Satz auf der Seite nennt die Zahl. Sie steht hier und nicht im Kopf.
-    expect(withPostgres).toHaveLength(5);
+    expect(withPostgres).toHaveLength(6);
     expect(VECTOR_BUCKET_TEXTS.nextTitle.length).toBeGreaterThan(0);
-    expect(VECTOR_NEXT_STEPS[0].body).toContain("Fünf Compose-Dateien");
+    expect(VECTOR_NEXT_STEPS[0].body).toContain("Sechs Compose-Dateien");
     expect(VECTOR_NEXT_STEPS[0].body).toContain("postgres:17-alpine");
   });
 

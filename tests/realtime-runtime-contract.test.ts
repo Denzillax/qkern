@@ -46,6 +46,18 @@ describe("Realtime standalone runtime contract", () => {
     expect(source).toContain("await eventBus?.close()");
   });
 
+  it("gives the fan-out connection the same TLS configuration as the event log", async () => {
+    // Die `LISTEN`-Verbindung las bis zu diesem Slice ihre Adresse selbst und
+    // liess `DATABASE_SSL` liegen. Gegen ein PostgreSQL, das Klartext abweist,
+    // scheiterte sie, und weil sie vor dem Lauschen aufgebaut wird, kam der
+    // Prozess unter Production nie hoch. Eine Adresse ohne Konfiguration waere
+    // derselbe Fehler noch einmal.
+    const source = await readFile(new URL("../workers/realtime-runtime.mts", import.meta.url), "utf8");
+    expect(source).toContain("postgresPoolConfigFromEnv(process.env)");
+    expect(source).toContain("new Client({ connectionString, ssl })");
+    expect(source).not.toContain("new Client({ connectionString })");
+  });
+
   it("wires Postgres Changes behind an explicit opt-in and stops them on shutdown", async () => {
     // Bis Release 1.15 blieb ein `changes:`-Abonnement hier leer: Registry,
     // Quelle und Reader waren zertifiziert, aber die Runtime besass keinen

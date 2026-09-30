@@ -1,0 +1,146 @@
+name: qkern-slice-rt
+
+# Portloser Wegwerfstack fuer den Production-Start von Realtime gegen
+# TLS-PostgreSQL (Sprosse 5).
+#
+# `docs/PARITAET.md` nennt in der Realtime-Zeile seit langem denselben Punkt:
+# ein belegter Production-Start gegen SSL-PostgreSQL. Seit `1.73.0` steht im
+# Produkt ein Tor mit benannten Bedingungen statt eines pauschalen Verbots, aber
+# niemand hat je belegt, dass der Prozess unter `NODE_ENV=production` wirklich
+# anlaeuft. Die Zutat dafuer gab es bereits: Der Backup-Drill (`2.29.0`) fuehrt
+# TLS-PostgreSQL in einem Wegwerfstack vor. Dieser Stack nimmt dieselbe Technik
+# und stellt den Realtime-Prozess davor.
+#
+# Zwei Unterschiede zum Backup-Stack, beide notwendig:
+#
+# 1. Es gibt eine **eigene CA**, nicht nur ein selbstsigniertes Serverzertifikat.
+#    Der Node-Treiber prueft die Kette gegen einen Vertrauensanker aus
+#    `NODE_EXTRA_CA_CERTS`; ein selbstsigniertes Blatt ohne `CA:true` ist dort
+#    kein Anker. libpq nimmt es als `sslrootcert`, Node nicht, und der
+#    Realtime-Prozess spricht Node.
+# 2. Der Server traegt `postgres.qkern.test` als Netzwerk-Alias **und** als SAN.
+#    Nur so ist die Hostnamenspruefung ueberhaupt erfuellbar, und nur so kann
+#    ein Gegenfall (Verbindung ueber `127.0.0.1`) belegen, dass sie stattfindet.
+#
+# Regeln wie in den anderen Stacks: kein Mount in einem anderen Mount, keine
+# Produktgrenze wird fuer den Test aufgeweicht.
+
+services:
+  certs:
+    image: alpine/openssl:3.3.2
+    entrypoint: ["sh", "-ec"]
+    # CA und Serverzertifikat, zwei Tage gueltig, verlassen den Stack nicht.
+    # Der Schluessel gehoert dem postgres-Benutzer des Alpine-Images (uid 70)
+    # mit 0600, sonst weigert sich der Server.
+    command:
+      - |
+        openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=qkern-realtime-certification-ca \
+          -addext basicConstraints=critical,CA:true \
+          -addext keyUsage=critical,keyCertSign,cRLSign \
+          -keyout /certs/ca.key -out /certs/ca.crt
+        openssl req -nodes -newkey rsa:2048 \
+          -subj /CN=postgres.qkern.test \
+          -keyout /certs/server.key -out /certs/server.csr
+        printf 'subjectAltName=DNS:postgres.qkern.test\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > /certs/server.ext
+        openssl x509 -req -in /certs/server.csr -days 2 \
+          -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+          -extfile /certs/server.ext -out /certs/server.crt
+        rm -f /certs/server.csr /certs/server.ext /certs/ca.key
+        chown 70:70 /certs/server.key /certs/server.crt
+        chmod 0600 /certs/server.key
+        chmod 0644 /certs/server.crt /certs/ca.crt
+        openssl verify -CAfile /certs/ca.crt /certs/server.crt
+    volumes:
+      - realtime-certification-certs:/certs
+
+  postgres:
+    image: postgres:17-alpine
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - postgres.qkern.test
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - hba_file=/qkern/realtime/pg_hba.conf
+      - -c
+      - max_connections=200
+    environment:
+      POSTGRES_USER: qkern
+      POSTGRES_PASSWORD: qkern_local_only
+      POSTGRES_DB: qkern_control
+      QKERN_RUNTIME_DB_PASSWORD: qkern_runtime_local_only
+      QKERN_AUTH_DB_PASSWORD: qkern_auth_local_only
+      QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
+      QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
+      QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./db:/qkern/db:ro
+      - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+      - ./db/docker/realtime-pg_hba.conf:/qkern/realtime/pg_hba.conf:ro
+      - realtime-certification-certs:/certs:ro
+    healthcheck:
+      # Ueber TLS, weil pg_hba alles andere abweist. Die Rolle des Worker-Logins
+      # entsteht im letzten Init-Script; vorher kann die Probe nicht bestehen,
+      # und damit wartet `--wait` auf eine fertig migrierte Datenbank.
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_worker_local_only psql 'host=127.0.0.1 sslmode=require user=qkern_worker_app dbname=qkern_control' -tAc \"SELECT pg_has_role(current_user, 'qkern_worker', 'MEMBER')\" | grep -qx t"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  certification:
+    image: node:24-alpine
+    working_dir: /workspace/qkern
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/qkern-src:ro
+      - realtime-certification-certs:/certs:ro
+    environment:
+      NODE_ENV: test
+      # Der Testcontainer selbst spricht ebenfalls nur TLS: Der Stack laesst
+      # nichts anderes zu. Der Anker steht in der Umgebung, damit der
+      # ausgelieferte Prozess ihn ohne eine eigene Variable findet.
+      NODE_EXTRA_CA_CERTS: /certs/ca.crt
+      DATABASE_SSL: require
+      QKERN_TEST_REALTIME_PRODUCTION_STACK: "true"
+      QKERN_TEST_REALTIME_CA_FILE: /certs/ca.crt
+      QKERN_TEST_REALTIME_TLS_HOST: postgres.qkern.test
+      # Derselbe Server unter einem Namen, der nicht im Zertifikat steht: Der
+      # Dienstname aus Compose. Damit ist die Hostnamenspruefung pruefbar, ohne
+      # eine Adresse zu erfinden, die niemand beantwortet.
+      QKERN_TEST_REALTIME_ALT_HOST: postgres
+      QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres.qkern.test:5432/qkern_control
+      QKERN_TEST_RUNTIME_DATABASE_URL: postgresql://qkern_app:qkern_runtime_local_only@postgres.qkern.test:5432/qkern_control
+      QKERN_TEST_AUTH_DATABASE_URL: postgresql://qkern_auth_app:qkern_auth_local_only@postgres.qkern.test:5432/qkern_control
+    command:
+      - "sh"
+      - "-ec"
+      - |
+        mkdir -p /workspace/qkern
+        tar -C /qkern-src \
+          --exclude=./node_modules \
+          --exclude=./.next \
+          --exclude=./.git \
+          --exclude=./coverage \
+          --exclude=./.claude \
+          --exclude=./docs/evidence \
+          -cf - . | tar -C /workspace/qkern -xf -
+        npm ci --ignore-scripts
+        npx vitest run tests/realtime-production-postgres.integration.test.ts
+
+volumes:
+  realtime-certification-certs:

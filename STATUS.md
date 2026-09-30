@@ -26,7 +26,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Object Storage | ja | ja — 8 Real-DB-Fälle plus versitygw/ClamAV (bis `2.13.0` MinIO, dessen Image von Docker Hub verschwunden ist); seit `2.96` ein S3-Endpunkt `/s3` mit SigV4, im Storage-Stack mit echter Signatur zertifiziert; seit `2.99` dazu Presigned URLs, `aws-chunked`, Range, CopyObject und DeleteObjects, und **ein echter Client hat den Endpunkt gesehen**: das AWS SDK für JavaScript über HTTP |
 | Project Queues | ja | ja — 9 Real-DB-Fälle plus 6 Multi-Instance-Fälle unter Last; seit `1.88.0` mit Metrics-Export im Prometheus-Textformat |
 | Usage Metering | teilweise | teilweise — 34 Real-DB-Fälle; **alle sechs Metriken melden**, append-only Preisblatt mit Monatsprojektion (`1.67.0`) und ein Rechnungslauf, der abgeschlossene Monate als eigener Prozess fakturiert (`1.68.0`), mit REST-Lesefläche und belegtem Wettlauf zweier Läufe (`1.77.0`) und lückenlosem Nummernkreis samt Fälligkeit (`1.81.0`); keine Zahlungsanbindung |
-| Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert |
+| Realtime | ja | ja — Log, Fan-out, CDC, Tenant, Ordering, Drop und Soak zertifiziert; Production-Start gegen TLS-PostgreSQL belegt, Verbindung als `verify-full` im Server nachgelesen |
 | Compute Contracts | Functions, Cron und Webhooks hinterlegbar, verwaltbar, ausführbar und nach aussen rufend; Egress adressgeprüft; Nebenläufigkeit clusterweit | ja — 51 Real-DB-Fälle, dazu 32 im Functions-Lauf und 14 gegen einen echten HTTPS-Empfänger; Kette von der Queue bis in den Container in einem Lauf; der Cron-Prozess dispatcht als eigener Prozess; seit `2.98.0` Inhaltslogs je Aufruf am echten Container |
 | SDK und CLI | ja | teilweise — nur Linux belegt |
 | Managed Operations | nein | nein |
@@ -52,17 +52,20 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **Ausgehender Weg gegen echten HTTPS-Empfänger** | **16 von 16 bestanden, exit 0, zweimal reproduziert** |
 | **Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv** | **1 von 1 bestanden, exit 0, zweimal reproduziert — seit `2.29.0`: verschlüsseltes Basisbackup über `sslmode=verify-full`, Wiederherstellung bis zu einem Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest belegt, Evidenz vom Produkt-Verifier geprüft; Mutation (Archiv aus) fällt** |
 | **Realtime gegen echtes PostgreSQL** | **5 Faelle mit zwei Instanzen plus 6 Faelle der ganzen Aenderungskette** |
+| **Realtime-Production gegen TLS-PostgreSQL** | **11 von 11 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-rt` mit zwei Mutationsproben. Der ausgelieferte Prozess laeuft unter `NODE_ENV=production` an, traegt einen Broadcast durch und einen zweiten in eine zweite Instanz; `pg_stat_ssl` meldet fuer jede seiner Verbindungen TLSv1.3; ohne Vertrauensanker und unter einem Namen, der nicht im Zertifikat steht, kommt er nicht hoch; jede der fuenf Bedingungen des Tors laesst den Start einzeln fallen und nennt sich** |
 | Rohlogs und Manifeste | `docs/evidence/2026-08-04/` bis `docs/evidence/2026-09-24/` |
-| Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Runtime verweigert weiterhin Production |
+| Realtime Soak | 120 Aenderungen ohne Verlust **mit eingeschaltetem Usage-Emitter**, p95 zwischen 421 und 1846 ms ueber vier Laeufe; die Streuung ueberdeckt die Kosten des Emitters. Der Soak selbst laeuft weiter unter `test`; den Production-Start belegt der eigene TLS-Stack |
 | Project Queues Multi-Instance/Load | **zertifiziert** |
 | **Webhook-Zustellkette** | **6 Fälle Ende zu Ende plus Mutationsprobe** |
 | **Functions Ende zu Ende** | **Registry → Datenbank → Dienst → Container in einem Lauf zertifiziert**; seit `1.35.0` ohne jede ersetzte Stelle |
 | **GitHub Actions** | **seit `2.15.0` belegt: Zertifizierung (161/161, 8/8, 7/7) und Developer Experience auf Ubuntu, Windows und macOS, Lauf 36164575195 und 36164575183, archiviert unter `docs/evidence/2026-09-25/`** |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 173 übersprungenen Fälle sind Real-Service-Tests, die in den sechs
-Docker-Läufen laufen, und 17 POSIX-Fälle, die auf Windows nicht ausdrückbar
-sind. Sie gelten als übersprungen, nie als bestanden.
+Die 334 übersprungenen Fälle sind Real-Service-Tests, die in den Docker-Läufen
+laufen, und POSIX-Fälle, die auf Windows nicht ausdrückbar sind. Sie gelten als
+übersprungen, nie als bestanden. Die Zahl stand bis zu diesem Slice auf 173 und
+war damit über mehrere Releases überholt; gemessen sind es 2384 bestandene und
+334 übersprungene Fälle in 378 Dateien.
 
 ## Ausführbar implementiert
 
@@ -124,7 +127,7 @@ sind. Sie gelten als übersprungen, nie als bestanden.
 | --- | --- | --- |
 | Project Auth | **abgeschlossen und zertifiziert** | weitere Provider, SMS und SAML als eigener Slice |
 | Storage | **abgeschlossen und zertifiziert; Multipart/Resumable seit `1.70.0`** | Transform-Service und CDN als eigener Slice |
-| Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`** | belegter Production-Start gegen SSL-PostgreSQL; persistente Presence/History |
+| Realtime | **abgeschlossen und zertifiziert; Production-Tor seit `1.73.0`, Production-Start gegen TLS-PostgreSQL belegt** | Postgres Changes unter `production` (es fehlt der vault-gestuetzte Projektdatenbank-Katalog); persistente Presence/History |
 | Project Queues / Jobs | Multi-Instance zertifiziert | startbarer Handler-Host und Metrics-Export |
 | Functions/Cron/Webhooks | **abgeschlossen und zertifiziert** | Image-Deployment, AppRole-Auth und clusterweite Nebenläufigkeit |
 | SDK/CLI | **auf npm seit `2.16.0`**: `@qkern/sdk@1.7.0-alpha.5`, `@qkern/cli@1.7.0-alpha.5` (`2.26.0`), Apache 2.0, Tag `alpha`; CI-Evidenz auf drei Betriebssystemen seit `2.15.0` | Upgrade-E2E und ein `latest`-Release |
@@ -181,9 +184,13 @@ Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
 - Realtime bindet standardmässig Loopback; seit `1.73.0` ersetzt ein Tor mit
   benannten Bedingungen (dauerhafter Log, Cursor-Geheimnis, Aufbewahrung,
   https-Origins, TLS-Attestierung bei öffentlichem Binding) das pauschale
-  Production-Verbot. Ein vollständiger Production-Start ist mangels
-  SSL-PostgreSQL im Stack nicht belegt; History/Presence liegen weiter im
-  Prozessspeicher.
+  Production-Verbot. Der vollständige Production-Start ist jetzt belegt: Der
+  Stack `docker-compose.realtime-certification.yml` führt ein PostgreSQL mit
+  eigener CA, das Klartext abweist, und der ausgelieferte Prozess läuft davor
+  an. Dabei kam ein Produktfehler heraus, der diesen Start seit `1.11.0`
+  unmöglich gemacht hatte: Die `LISTEN`-Verbindung des Fan-outs baute sich ohne
+  jede TLS-Konfiguration auf. Offen bleiben Postgres Changes unter `production`
+  und History/Presence, die weiter im Prozessspeicher liegen.
 - Usage Metering ist disabled-by-default. Browser und MCP dürfen keine Quota-
   Policies mutieren; `meter`/`operator` bleiben interne Autoritäten.
 - Seit `1.29.0` melden Project Queues und Functions ihre Operationen selbst; ein
