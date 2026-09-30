@@ -65,8 +65,12 @@ export const DATA_API_GRAPHQL_LIMITS = {
    * Zeile einer bedienbaren Tabelle.
    */
   maxObjectFields: 100,
-  /** Die Argumente einer Mutation: `objects` beim Einfuegen, `set` beim Aendern, `where` und `atMost` bei beiden Bedingungen. */
-  mutationArguments: ["objects", "set", "where", "atMost"] as const,
+  /**
+   * Die Argumente einer Mutation: `objects` beim Einfuegen, `onConflict` beim
+   * Upsert (2.105), `set` beim Aendern, `where` und `atMost` bei beiden
+   * Bedingungen.
+   */
+  mutationArguments: ["objects", "onConflict", "set", "where", "atMost"] as const,
 } as const;
 
 export type DataApiGraphqlArgument = (typeof DATA_API_GRAPHQL_LIMITS.arguments)[number];

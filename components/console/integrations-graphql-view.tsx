@@ -62,7 +62,9 @@ type SchemaType = {
   fields: SchemaField[];
   insertFields: SchemaField[];
   updateFields: SchemaField[];
-  mutations: { insert: boolean; update: boolean; delete: boolean };
+  // `upsert` ist keine vierte Form, sondern das Argument `onConflict` am
+  // Einfuegen (2.105); es steht nur bei beiden Rechten.
+  mutations: { insert: boolean; update: boolean; delete: boolean; upsert: boolean };
 };
 
 type GraphqlSchema = {

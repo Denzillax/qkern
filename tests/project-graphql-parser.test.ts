@@ -231,7 +231,9 @@ describe("project graphql subset", () => {
     // mit den drei Formen und ihren Eingabetypen. Die sensible Spalte und die
     // Spalte ohne Leserecht stehen auch dort nicht.
     expect(sdl).toContain("type Mutation {");
-    expect(sdl).toContain("  insertIntoordersCollection(objects: [ordersInsertInput!]!): ordersMutationResponse!");
+    // Mit dem Recht zum Aendern traegt das Einfuegen `onConflict` (2.105) und
+    // ist damit auch ein Upsert.
+    expect(sdl).toContain("  insertIntoordersCollection(objects: [ordersInsertInput!]!, onConflict: [String!]): ordersMutationResponse!");
     expect(sdl).toContain("  updateordersCollection(set: ordersUpdateInput!, where: [String!]!, atMost: Int): ordersMutationResponse!");
     expect(sdl).toContain("  deleteFromordersCollection(where: [String!]!, atMost: Int): ordersMutationResponse!");
     expect(sdl).toContain("type ordersMutationResponse {\n  affectedCount: Int!\n  records: [orders!]!\n}");
@@ -246,7 +248,7 @@ describe("project graphql subset", () => {
     const readOnly = { ...table("orders", [{ name: "id", primaryKeyPosition: 1 }, { name: "menge" }]),
       canInsert: false, canUpdate: false, canDelete: false };
     const types = projectGraphqlTypes([readOnly]);
-    expect(types[0]!.mutations).toEqual({ insert: false, update: false, delete: false });
+    expect(types[0]!.mutations).toEqual({ insert: false, update: false, delete: false, upsert: false });
     const sdl = projectGraphqlSdl(types);
     expect(sdl).not.toContain("type Mutation");
     expect(sdl).not.toContain("Input");
@@ -256,6 +258,15 @@ describe("project graphql subset", () => {
     expect(deleteSdl).toContain("type Mutation {\n  deleteFromordersCollection(");
     expect(deleteSdl).not.toContain("insertInto");
     expect(deleteSdl).not.toContain("Input");
+    // Nur einfuegen, ohne das Recht zum Aendern: dann gibt es kein
+    // `onConflict` (2.105). Ein Upsert aendert eine vorhandene Zeile, und das
+    // Recht dazu fehlt hier.
+    const insertOnly = { ...readOnly, canInsert: true };
+    const insertTypes = projectGraphqlTypes([insertOnly]);
+    expect(insertTypes[0]!.mutations).toEqual({ insert: true, update: false, delete: false, upsert: false });
+    const insertSdl = projectGraphqlSdl(insertTypes);
+    expect(insertSdl).toContain("  insertIntoordersCollection(objects: [ordersInsertInput!]!): ordersMutationResponse!");
+    expect(insertSdl).not.toContain("onConflict");
   });
 
   it("says that a schema without a single usable table is empty", () => {
@@ -297,6 +308,38 @@ describe("project graphql subset", () => {
     expect(plan.fieldCount).toBe(11);
     // Zwei eingefuegte, hoechstens zwei geaenderte, hoechstens die Vorgabe geloeschte.
     expect(plan.rowBudget).toBe(2 + 2 + DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation);
+  });
+
+  it("plans an upsert from onConflict and refuses what is no key at all (2.105)", () => {
+    const plan = planMutation(`mutation {
+      insertIntoordersCollection(objects: [{ email: "a@example.com", name: "Anna" }], onConflict: ["email"]) {
+        affectedCount records { id name }
+      }
+    }`);
+    expect(plan.mutations[0]!.mutation).toEqual({ kind: "insert", table: "orders",
+      rows: [{ email: "a@example.com", name: "Anna" }], onConflict: ["email"] });
+    // Ein einzelner Name ohne Klammern ist die Kurzform, wie bei `where`.
+    const single = planMutation(`mutation {
+      insertIntoordersCollection(objects: [{ email: "a@example.com", name: "Anna" }], onConflict: "email") {
+        affectedCount
+      }
+    }`);
+    expect(single.mutations[0]!.mutation).toMatchObject({ onConflict: ["email"] });
+    // Ohne `onConflict` bleibt es ein Einfuegen und traegt das Feld nicht.
+    const plain = planMutation(`mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { affectedCount } }`);
+    expect(Object.hasOwn(plain.mutations[0]!.mutation, "onConflict")).toBe(false);
+    // Die Form: keine leere Liste, kein doppelter Name, keine Zahl, kein Name
+    // ausserhalb der Grammatik. Dass es den Schluessel gibt, sagt der Katalog.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: []) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: [\"id\", \"id\"]) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: [1]) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: [\"1id\"]) { affectedCount } }")).toBe("invalid_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: [\"id; DROP\"]) { affectedCount } }")).toBe("invalid_argument");
+    const tooMany = Array.from({ length: DATA_API_GRAPHQL_LIMITS.maxListEntries + 1 }, (_, index) => `"s${index}"`).join(", ");
+    expect(reason(`mutation { insertIntoordersCollection(objects: [{ id: 1 }], onConflict: [${tooMany}]) { affectedCount } }`)).toBe("list_too_long");
+    // Nur das Einfuegen kennt es; Aendern und Loeschen haben keinen Konflikt.
+    expect(reason("mutation { updateordersCollection(set: { id: 1 }, where: [\"id:eq:1\"], onConflict: [\"id\"]) { affectedCount } }")).toBe("unknown_argument");
+    expect(reason("mutation { deleteFromordersCollection(where: [\"id:eq:1\"], onConflict: [\"id\"]) { affectedCount } }")).toBe("unknown_argument");
   });
 
   it("refuses an update or a delete without a condition, and everything else a mutation cannot mean", () => {

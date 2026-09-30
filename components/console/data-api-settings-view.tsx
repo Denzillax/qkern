@@ -144,6 +144,7 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
       <p className="muted">{t("Row Level Security gilt für beide Schlüssel: Die Datenbankrolle der Data API umgeht RLS nie, die Rolle steht nur in den Claims.")}</p>
       <p className="muted">{t("Sensible Spalten werden nie zurückgegeben, gefiltert, sortiert oder geschrieben. Erkannt am Namen:")} {SENSITIVE_COLUMN_WORDS.join(", ")}.</p>
       <p className="muted">{t("Eingebettete Beziehungen laufen über genau einen Fremdschlüssel im selben Schema, eine Ebene tief, lesend, und die Nachbartabelle braucht dieselbe Row Level Security wie die Tabelle selbst.")}</p>
+      <p className="muted">{t("Ein Upsert schickt onConflict mit den Spalten eines Primärschlüssels oder eindeutigen Index, den es im Katalog wirklich gibt; einen anderen Schlüssel lehnt die API ab. Er verlangt das Recht zum Einfügen und das zum Ändern, und er ändert keine Zeile, die ein UPDATE des Aufrufers nicht auch ändern dürfte: Die USING-Bedingung der Policy weist sie ab, und die ganze Anfrage rollt zurück.")}</p>
       <p className="muted">{t("Diese Ansicht zeigt nur das Standardschema. Die Data API nimmt über ?schema= auch andere an, Systemschemata nie.")}</p>
       <p className="muted">{t("Weitere Schemata und eine eigene Zeilengrenze sind noch nicht verbunden.")}</p>
     </article>

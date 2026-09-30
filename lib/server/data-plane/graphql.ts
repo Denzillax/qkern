@@ -32,7 +32,8 @@ import type { ProjectDataPlaneScope } from "@/lib/server/data-plane/service";
  *
  * **Mutationen, seit 2.97.** `insertInto<Tabelle>Collection`,
  * `update<Tabelle>Collection` und `deleteFrom<Tabelle>Collection`, benannt wie
- * bei pg_graphql. Alle Mutationen einer Anfrage laufen in **einer**
+ * bei pg_graphql, und seit 2.105 nimmt das Einfuegen `onConflict` und wird
+ * damit zum Upsert. Alle Mutationen einer Anfrage laufen in **einer**
  * Transaktion der Data API: Fällt eine, auch an einer Policy, wirkt keine.
  * Ändern und Löschen verlangen eine Bedingung; eine Mutation ohne `where`
  * träfe jede Zeile, die die Policy hergibt, und das meint kein Formular. Die
@@ -139,6 +140,7 @@ export const PROJECT_GRAPHQL_GRAMMAR = {
     "comments",
     "mutations",
     "row_objects",
+    "upserts",
   ] as const,
   /** Was er abweist, jedes mit eigenem Grund. */
   refused: [
@@ -697,7 +699,7 @@ function planMutation(document: {
 /** Die Argumente einer Mutation, je Form die eigenen; alles andere ist unbekannt. */
 function mutationArguments(kind: "insert" | "update" | "delete", table: string, field: ParsedField): GeneratedMutation {
   const raw = field.argumentsByName;
-  const allowed: readonly string[] = kind === "insert" ? ["objects"] : kind === "update"
+  const allowed: readonly string[] = kind === "insert" ? ["objects", "onConflict"] : kind === "update"
     ? ["set", "where", "atMost"] : ["where", "atMost"];
   for (const name of raw.keys()) {
     if (!(DATA_API_GRAPHQL_LIMITS.mutationArguments as readonly string[]).includes(name)) refuse("unknown_argument", name);
@@ -710,7 +712,12 @@ function mutationArguments(kind: "insert" | "update" | "delete", table: string, 
     if (rows.length === 0) refuse("invalid_argument", "objects");
     if (rows.length > DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation) refuse("mutation_rows_exceeded");
     if (!rows.every(isObjectValue)) refuse("invalid_argument", "objects");
-    return { kind: "insert", table, rows: rows.map((row) => ({ ...row })) };
+    // `onConflict` macht aus dem Einfuegen einen Upsert (2.105). Hier faellt
+    // nur die Form: Ob es zu diesen Spalten einen eindeutigen Schluessel gibt,
+    // sagt der Katalog in der Data API, und zwar bevor eine Zeile steht.
+    const onConflict = conflictColumns(raw.get("onConflict"), raw.has("onConflict"));
+    return { kind: "insert", table, rows: rows.map((row) => ({ ...row })),
+      ...(onConflict ? { onConflict } : {}) };
   }
   // Ändern und Löschen: ohne Bedingung nicht. Das ist die eine Ablehnung, die
   // ein Aufrufer nicht umgehen können soll, und sie hat darum einen eigenen
@@ -737,6 +744,28 @@ function mutationArguments(kind: "insert" | "update" | "delete", table: string, 
   const set = raw.get("set");
   if (!isObjectValue(set)) refuse("invalid_argument", "set");
   return { kind: "update", table, filters, values: { ...set }, ...(atMost !== undefined ? { atMost } : {}) };
+}
+
+/**
+ * Die Spalten des Konfliktschluessels eines Upsert, in der Form (2.105).
+ *
+ * Eine Liste von Namen, oder ein einzelner Name als Kurzform, wie `where` es
+ * auch annimmt. Jeder Name muss ein Bezeichner dieser Flaeche sein, und keiner
+ * darf zweimal stehen: `onConflict: ["email", "email"]` benennt keinen Index,
+ * es sieht nur so aus.
+ */
+function conflictColumns(value: ArgumentValue | undefined, present: boolean): string[] | undefined {
+  if (!present) return undefined;
+  const entries = Array.isArray(value) ? value : [value];
+  if (entries.length === 0) refuse("invalid_argument", "onConflict");
+  if (entries.length > DATA_API_GRAPHQL_LIMITS.maxListEntries) refuse("list_too_long", "onConflict");
+  const columns: string[] = [];
+  for (const entry of entries) {
+    if (typeof entry !== "string" || !DATA_IDENTIFIER.test(entry)) refuse("invalid_argument", "onConflict");
+    if (columns.includes(entry)) refuse("invalid_argument", "onConflict");
+    columns.push(entry);
+  }
+  return columns;
 }
 
 function isObjectValue(value: unknown): value is ObjectValue {
@@ -853,8 +882,14 @@ export type ProjectGraphqlType = {
   insertFields: ProjectGraphqlFieldType[];
   /** Die Spalten, die `set` nennen darf: änderbar, nicht sensibel, nicht im Primärschlüssel. */
   updateFields: ProjectGraphqlFieldType[];
-  /** Welche der drei Mutationen diese Tabelle hat; das entscheiden die Tabellenrechte der Rolle. */
-  mutations: { insert: boolean; update: boolean; delete: boolean };
+  /**
+   * Welche der drei Mutationen diese Tabelle hat; das entscheiden die
+   * Tabellenrechte der Rolle. `upsert` ist keine vierte Form, sondern das
+   * Argument `onConflict` am Einfuegen (2.105): Es steht nur dort, wo die Rolle
+   * einfuegen **und** aendern darf, weil ein Upsert eine vorhandene Zeile
+   * aendert.
+   */
+  mutations: { insert: boolean; update: boolean; delete: boolean; upsert: boolean };
 };
 
 export type ProjectGraphqlSchema = {
@@ -917,16 +952,19 @@ export function projectGraphqlTypes(tables: GeneratedTable[]): ProjectGraphqlTyp
       .filter((column) => column.selectable && column.updateable && !column.identity && !column.generated &&
         !primaryKey.has(column.name))
       .map(fieldOf);
+    const mutations = {
+      insert: table.canInsert === true && insertFields.length > 0,
+      update: table.canUpdate === true && updateFields.length > 0,
+      delete: table.canDelete === true,
+    };
     types.push({
       name: table.name,
       fields,
       insertFields,
       updateFields,
-      mutations: {
-        insert: table.canInsert === true && insertFields.length > 0,
-        update: table.canUpdate === true && updateFields.length > 0,
-        delete: table.canDelete === true,
-      },
+      // Ein Upsert (2.105) ist ein Einfuegen, das aendern kann. Er steht darum
+      // nur dort, wo beide Rechte da sind, und nicht als eigene Form.
+      mutations: { ...mutations, upsert: mutations.insert && mutations.update },
     });
   }
   return types.sort((left, right) => left.name.localeCompare(right.name));
@@ -951,7 +989,10 @@ export function projectGraphqlSdl(types: ProjectGraphqlType[]): string {
     lines.push("type Mutation {");
     for (const type of writable) {
       if (type.mutations.insert) {
-        lines.push(`  insertInto${type.name}Collection(objects: [${type.name}InsertInput!]!): ${type.name}MutationResponse!`);
+        // `onConflict` steht nur an einer Tabelle, an der die Rolle auch
+        // aendern darf; ohne das Recht waere es eine Zusage ohne Deckung.
+        const upsert = type.mutations.upsert ? ", onConflict: [String!]" : "";
+        lines.push(`  insertInto${type.name}Collection(objects: [${type.name}InsertInput!]!${upsert}): ${type.name}MutationResponse!`);
       }
       if (type.mutations.update) {
         lines.push(`  update${type.name}Collection(set: ${type.name}UpdateInput!, where: [String!]!, atMost: Int): ${type.name}MutationResponse!`);
@@ -1173,6 +1214,21 @@ export class ProjectGraphqlService {
           for (const column of Object.keys(row)) {
             if (!insertable.has(column)) refuse("unknown_field", `${field.table}.${column}`);
           }
+        }
+        // `onConflict` steht nur an einer Tabelle, an der die Rolle auch
+        // aendern darf (2.105). Fehlt das Recht, steht das Argument nicht im
+        // Schema, und die Ablehnung heisst darum "unbekanntes Argument" und
+        // nicht "kein Recht": Genau so antwortet diese Flaeche auf alles, was
+        // im Schema nicht steht.
+        if (field.mutation.onConflict && !type.mutations.upsert) {
+          refuse("unknown_argument", "onConflict");
+        }
+        // Der Konfliktschluessel eines Upsert (2.105) nennt Spalten dieser
+        // Tabelle. Dass sie zusammen einen eindeutigen Schluessel bilden, sagt
+        // der Katalog in der Data API; dass sie ueberhaupt Spalten sind, sagt
+        // das Schema hier, mit derselben Ablehnung wie ein unbekanntes Feld.
+        for (const column of field.mutation.onConflict ?? []) {
+          if (!columns.has(column)) refuse("unknown_field", `${field.table}.${column}`);
         }
         continue;
       }
