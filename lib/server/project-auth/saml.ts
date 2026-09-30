@@ -1,4 +1,7 @@
-import { X509Certificate, createHash, randomBytes, timingSafeEqual, verify as verifySignature } from "node:crypto";
+import {
+  X509Certificate, createHash, createPrivateKey, randomBytes, sign as createSignature,
+  timingSafeEqual, verify as verifySignature, type KeyObject,
+} from "node:crypto";
 import { deflateRawSync } from "node:zlib";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { isIP } from "node:net";
@@ -111,6 +114,14 @@ export type ProjectAuthSamlProvider = {
   emailAttribute?: string;
   /** Name des Attributs mit dem Ja zur Adresse. Voreinstellung `email_verified`. */
   emailVerifiedAttribute?: string;
+  /**
+   * Ob QKERN die `AuthnRequest` fuer diesen Anbieter unterschreibt.
+   * Voreinstellung **aus**, und der Schalter steht je Anbieter: Ein Anbieter,
+   * der eine unsignierte Anfrage erwartet, weist eine signierte ab, und
+   * umgekehrt. Eingeschaltet ohne hinterlegten eigenen Schluessel ist ein
+   * Konfigurationsfehler und keine stillschweigend unsignierte Anfrage.
+   */
+  signAuthnRequest?: boolean;
 };
 
 export class ProjectAuthSamlError extends Error {
@@ -120,6 +131,109 @@ export class ProjectAuthSamlError extends Error {
   }
 }
 recognisedByName(ProjectAuthSamlError, "ProjectAuthSamlError");
+
+/** Die Signaturverfahren, mit denen QKERN als SP unterschreiben kann. */
+const SIG_ALG = {
+  rsaSha256: ALGORITHMS.rsaSha256,
+  ecdsaSha256: ALGORITHMS.ecdsaSha256,
+} as const;
+
+/**
+ * Der eigene Schluessel, mit dem QKERN als Service Provider unterschreibt.
+ *
+ * ## Warum Zertifikat **und** Schluessel, und warum beide zusammen geprueft werden
+ *
+ * Die Metadaten nennen das Zertifikat, die `AuthnRequest` traegt die Signatur
+ * des Schluessels, und der Anbieter prueft die eine mit dem anderen. Passen sie
+ * nicht zueinander, laeuft alles durch: QKERN baut eine tadellose Signatur, die
+ * Metadaten sehen tadellos aus, und jede Anfrage scheitert erst beim Anbieter,
+ * mit einer Meldung, die QKERN nie sieht. Darum prueft dieser Konstruktor mit
+ * `checkPrivateKey`, dass der Schluessel zu genau diesem Zertifikat gehoert,
+ * und weist ein Paar ab, das das nicht tut.
+ *
+ * ## Warum keine Kette
+ *
+ * Dasselbe wie beim Zertifikat des Anbieters: Es gibt genau ein Zertifikat, es
+ * steht in der Konfiguration, und es steht in den Metadaten. Eine Kette waere
+ * eine Behauptung ueber eine Pruefung, die hier niemand macht.
+ */
+export class ProjectAuthSamlSigningKey {
+  /** Das DER des Zertifikats als base64, wie es in die Metadaten gehoert. */
+  readonly certificateBase64: string;
+  /** Die `SigAlg`-URI, die zu diesem Schluesseltyp gehoert. */
+  readonly signatureAlgorithm: string;
+  private readonly certificate: X509Certificate;
+  private readonly privateKey: KeyObject;
+
+  constructor(input: { certificate: string; privateKey: string }) {
+    if (typeof input?.certificate !== "string" || typeof input?.privateKey !== "string" ||
+        !input.certificate.includes("-----BEGIN CERTIFICATE-----") ||
+        input.certificate.length > 16_384 || input.privateKey.length > 16_384) {
+      throw new ProjectAuthSamlError();
+    }
+    try {
+      this.certificate = new X509Certificate(input.certificate);
+      this.privateKey = createPrivateKey(input.privateKey);
+    } catch {
+      throw new ProjectAuthSamlError();
+    }
+    // Der Riegel gegen ein Paar, das nicht zusammengehoert. Ohne ihn nennen die
+    // Metadaten ein anderes Zertifikat als das, mit dem geprueft wird.
+    if (!this.certificate.checkPrivateKey(this.privateKey)) throw new ProjectAuthSamlError();
+    // Dieselbe abgeschlossene Liste wie bei der Pruefung einer Antwort. Eine
+    // EC-Kurve ausser P-256 waere `ecdsa-sha256` nur dem Namen nach.
+    if (this.privateKey.asymmetricKeyType === "rsa") {
+      this.signatureAlgorithm = SIG_ALG.rsaSha256;
+    } else if (this.privateKey.asymmetricKeyType === "ec" &&
+               this.privateKey.asymmetricKeyDetails?.namedCurve === "prime256v1") {
+      this.signatureAlgorithm = SIG_ALG.ecdsaSha256;
+    } else {
+      throw new ProjectAuthSamlError();
+    }
+    this.certificateBase64 = this.certificate.raw.toString("base64");
+  }
+
+  /**
+   * Prueft, ob dieser Schluessel jetzt benutzt werden darf.
+   *
+   * Ein abgelaufenes eigenes Zertifikat ist derselbe Fall wie ein abgelaufenes
+   * des Anbieters: Die Signatur waere rechnerisch richtig und beim Anbieter
+   * trotzdem wertlos. Es faellt hier auf und nicht dort.
+   */
+  assertUsable(now: Date): void {
+    const validFrom = Date.parse(this.certificate.validFrom);
+    const validTo = Date.parse(this.certificate.validTo);
+    if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) ||
+        now.getTime() + SAML_CLOCK_SKEW_MS < validFrom || now.getTime() > validTo) {
+      throw new ProjectAuthSamlError();
+    }
+  }
+
+  /** Der Signaturwert ueber genau diesen Bytes. */
+  sign(data: Buffer): Buffer {
+    return this.signatureAlgorithm === SIG_ALG.ecdsaSha256
+      ? createSignature("sha256", data, { key: this.privateKey, dsaEncoding: "ieee-p1363" })
+      : createSignature("sha256", data, this.privateKey);
+  }
+}
+
+/**
+ * Der eigene Schluessel aus der Prozessumgebung, oder `null`.
+ *
+ * Beide Haelften oder keine. Ein hinterlegtes Zertifikat ohne Schluessel waere
+ * ein Zertifikat, das in den Metadaten steht und mit dem niemand
+ * unterschreiben kann; ein Schluessel ohne Zertifikat waere eine Signatur, die
+ * niemand pruefen kann. Beides faellt beim Start auf.
+ */
+export function projectAuthSamlSigningKeyFromEnv(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): ProjectAuthSamlSigningKey | null {
+  const certificate = env.QKERN_PROJECT_AUTH_SAML_SP_CERTIFICATE_PEM?.trim();
+  const privateKey = env.QKERN_PROJECT_AUTH_SAML_SP_PRIVATE_KEY_PEM?.trim();
+  if (!certificate && !privateKey) return null;
+  if (!certificate || !privateKey) throw new ProjectAuthSamlError();
+  return new ProjectAuthSamlSigningKey({ certificate, privateKey });
+}
 
 /**
  * Warum eine Antwort abgelehnt wurde. Jeder Grund steht fuer genau eine
@@ -208,13 +322,32 @@ export function newSamlRequestId(): string {
 /**
  * Baut die `AuthnRequest` und die Adresse des HTTP-Redirect-Bindings.
  *
- * Die Anfrage wird **nicht** signiert, und das ist eine Entscheidung mit
- * Begruendung: Eine signierte Anfrage schuetzt den Anbieter davor, dass jemand
- * in QKERNs Namen Anmeldungen anstoesst; sie schuetzt QKERN nicht. Was QKERN
- * schuetzt, ist die Bindung der Antwort an die eigene Anfrage
- * (`InResponseTo`), und die haengt an der Kennung, nicht an einer Signatur.
- * Wer einen Anbieter hat, der eine signierte Anfrage verlangt, kann diesen
- * Weg heute nicht benutzen — das steht im Handbuch und nicht im Kleingedruckten.
+ * ## Wann unterschrieben wird, und mit was
+ *
+ * Voreingestellt gar nicht. Eine signierte Anfrage schuetzt den Anbieter davor,
+ * dass jemand in QKERNs Namen Anmeldungen anstoesst; sie schuetzt QKERN nicht.
+ * Was QKERN schuetzt, ist die Bindung der Antwort an die eigene Anfrage
+ * (`InResponseTo`), und die haengt an der Kennung und an keiner Signatur. Ein
+ * Anbieter, der eine signierte Anfrage **verlangt**, bekommt sie ueber
+ * `signAuthnRequest` je Anbieter, und dann muss ein eigener Schluessel
+ * hinterlegt sein.
+ *
+ * ## Warum die Signatur in der Adresse steht und nicht im XML
+ *
+ * Weil das Binding sie dort verlangt. Das HTTP-Redirect-Binding unterschreibt
+ * die Abfragezeichenkette (`SAMLBind`, 3.4.4.1): den Text
+ * `SAMLRequest=…&RelayState=…&SigAlg=…` in genau dieser Reihenfolge, genau so
+ * kodiert, wie er dann in der Adresse steht. Ein eingebettetes `ds:Signature`
+ * im `AuthnRequest` waere eine Form, die kein Anbieter pruefen muss: Das XML
+ * verschwindet beim Redirect-Binding in DEFLATE und base64, und der Anbieter
+ * sieht die Abfragezeichenkette. QKERN hat die exklusive Kanonisierung fuer
+ * genau solche eingebetteten Signaturen, und sie bleibt hier ungenutzt, weil
+ * sie hier die falsche Antwort waere.
+ *
+ * Deshalb wird die Abfragezeichenkette hier von Hand gebaut. Der unterschriebene
+ * Text und der Text in der Adresse muessen Zeichen fuer Zeichen derselbe sein;
+ * zwei Stellen, die beide kodieren, waeren zwei Stellen, an denen sie
+ * auseinanderlaufen koennen.
  */
 export function createSamlAuthnRequest(provider: ProjectAuthSamlProvider, input: {
   requestId: string;
@@ -222,7 +355,9 @@ export function createSamlAuthnRequest(provider: ProjectAuthSamlProvider, input:
   spEntityId: string;
   relayState: string;
   issueInstant: Date;
-}): { url: string; request: string } {
+  /** Der eigene Schluessel. Pflicht, wenn der Anbieter eine Signatur verlangt. */
+  signingKey?: ProjectAuthSamlSigningKey | null;
+}): { url: string; request: string; signed: boolean } {
   validateProvider(provider);
   if (!SAML_REQUEST_ID.test(input.requestId)) throw new ProjectAuthSamlError();
   if (input.relayState.length < 1 || input.relayState.length > 80) throw new ProjectAuthSamlError();
@@ -237,12 +372,91 @@ export function createSamlAuthnRequest(provider: ProjectAuthSamlProvider, input:
     `<saml:Issuer xmlns:saml="${SAML_NS.assertion}">${xmlAttributeText(input.spEntityId)}</saml:Issuer>` +
     `<samlp:NameIDPolicy Format="${NAMEID_EMAIL}" AllowCreate="true"/>` +
     `</samlp:AuthnRequest>`;
+  const deflated = deflateRawSync(Buffer.from(request, "utf8")).toString("base64");
+  const query = `SAMLRequest=${encodeURIComponent(deflated)}` +
+    `&RelayState=${encodeURIComponent(input.relayState)}`;
   const url = new URL(provider.singleSignOnUrl);
-  url.search = new URLSearchParams({
-    SAMLRequest: deflateRawSync(Buffer.from(request, "utf8")).toString("base64"),
-    RelayState: input.relayState,
-  }).toString();
-  return { url: url.toString(), request };
+  if (!provider.signAuthnRequest) {
+    url.search = query;
+    return { url: url.toString(), request, signed: false };
+  }
+  // Eingeschaltet ohne Schluessel ist ein Fehlschlag und keine Anfrage, die
+  // stillschweigend unsigniert hinausgeht: Der Anbieter wuerde sie abweisen,
+  // und der Betreiber suchte die Ursache bei ihm.
+  const key = input.signingKey;
+  if (!key) throw new ProjectAuthSamlError();
+  key.assertUsable(input.issueInstant);
+  const signedQuery = `${query}&SigAlg=${encodeURIComponent(key.signatureAlgorithm)}`;
+  const signature = key.sign(Buffer.from(signedQuery, "utf8")).toString("base64");
+  url.search = `${signedQuery}&Signature=${encodeURIComponent(signature)}`;
+  return { url: url.toString(), request, signed: true };
+}
+
+/** Der Namensraum der SAML-Metadaten. */
+export const SAML_METADATA_NS = "urn:oasis:names:tc:SAML:2.0:metadata";
+const BINDING_POST = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
+
+/**
+ * Die Metadaten dieser Projektumgebung fuer genau einen Anbieter.
+ *
+ * Ein `EntityDescriptor` mit einem `SPSSODescriptor`, und darin genau das, was
+ * ein Anbieter braucht, um QKERN einzutragen, ohne dass ein Mensch Felder
+ * abtippt: die `entityID` der Umgebung, die Consumer-Adresse dieses Anbieters
+ * mit dem HTTP-POST-Binding, und das eigene Zertifikat, falls eines hinterlegt
+ * ist.
+ *
+ * ## Warum je Anbieter und nicht je Umgebung
+ *
+ * Die `entityID` gilt je Projektumgebung, die Consumer-Adresse traegt den Slug
+ * des Anbieters. Ein Dokument fuer die ganze Umgebung muesste darum zehn
+ * `AssertionConsumerService`-Eintraege aufzaehlen, und jeder Anbieter muesste
+ * sich den seinen heraussuchen. Ein Dokument je Anbieter nennt genau einen.
+ *
+ * ## Was das Zertifikat hier ist
+ *
+ * Das **eigene** Zertifikat von QKERN, mit dem eine `AuthnRequest`
+ * unterschrieben wird, und nicht das hinterlegte des Anbieters. Es ist dasselbe
+ * Zertifikat, das zum Schluessel dieser Signatur gehoert; dafuer sorgt
+ * `ProjectAuthSamlSigningKey`, und deshalb kann hier nichts anderes stehen.
+ * Ohne hinterlegten Schluessel gibt es keinen `KeyDescriptor`, und
+ * `AuthnRequestsSigned` steht auf `false`.
+ *
+ * `WantAssertionsSigned` steht immer auf `true`, weil es keine Einstellung ist:
+ * `verifySamlResponse` weist eine Assertion ohne eigene Signatur in jedem Fall
+ * ab, auch wenn die Antworthuelle eine traegt.
+ */
+export function samlServiceProviderMetadata(input: {
+  spEntityId: string;
+  acsUrl: string;
+  signAuthnRequest: boolean;
+  signingKey?: ProjectAuthSamlSigningKey | null;
+  now: Date;
+}): string {
+  assertEntityId(input.spEntityId);
+  const acs = exactCallbackUrl(input.acsUrl);
+  const key = input.signAuthnRequest ? input.signingKey ?? null : null;
+  if (input.signAuthnRequest && !key) throw new ProjectAuthSamlError();
+  if (key) key.assertUsable(input.now);
+  const keyDescriptor = key
+    ? `<md:KeyDescriptor use="signing">` +
+      `<ds:KeyInfo xmlns:ds="${SAML_NS.signature}"><ds:X509Data>` +
+      `<ds:X509Certificate>${key.certificateBase64}</ds:X509Certificate>` +
+      `</ds:X509Data></ds:KeyInfo></md:KeyDescriptor>`
+    : "";
+  // Die Reihenfolge der Kinder ist die des Schemas: KeyDescriptor,
+  // NameIDFormat, AssertionConsumerService. Ein Anbieter, der gegen das Schema
+  // prueft, weist eine andere Reihenfolge ab.
+  return `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<md:EntityDescriptor xmlns:md="${SAML_METADATA_NS}"` +
+    ` entityID="${xmlAttributeText(input.spEntityId)}">` +
+    `<md:SPSSODescriptor AuthnRequestsSigned="${key ? "true" : "false"}"` +
+    ` WantAssertionsSigned="true"` +
+    ` protocolSupportEnumeration="${SAML_NS.protocol}">` +
+    keyDescriptor +
+    `<md:NameIDFormat>${NAMEID_EMAIL}</md:NameIDFormat>` +
+    `<md:AssertionConsumerService Binding="${BINDING_POST}"` +
+    ` Location="${xmlAttributeText(acs)}" index="0" isDefault="true"/>` +
+    `</md:SPSSODescriptor></md:EntityDescriptor>`;
 }
 
 /**
@@ -596,7 +810,9 @@ function validateProvider(provider: ProjectAuthSamlProvider): void {
         !["required", "trusted"].includes(provider.emailVerification)) ||
       (provider.emailAttribute !== undefined && !/^[\x21-\x7E]{1,256}$/.test(provider.emailAttribute)) ||
       (provider.emailVerifiedAttribute !== undefined &&
-        !/^[\x21-\x7E]{1,256}$/.test(provider.emailVerifiedAttribute))) {
+        !/^[\x21-\x7E]{1,256}$/.test(provider.emailVerifiedAttribute)) ||
+      (provider.signAuthnRequest !== undefined &&
+        typeof provider.signAuthnRequest !== "boolean")) {
     throw new ProjectAuthSamlError();
   }
   assertEntityId(provider.entityId);

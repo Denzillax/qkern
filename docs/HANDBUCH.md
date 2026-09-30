@@ -1845,15 +1845,81 @@ weiter: Was dort steht, sieht der Anbieter.
 Einträgen, genau wie beim OIDC-Katalog. Ein Eintrag trägt `id` (Slug),
 `entityId`, `singleSignOnUrl` (exaktes HTTPS, kein `localhost`, keine
 IP-Adresse), `certificate` (PEM) und optional `emailVerification`,
-`emailAttribute` und `emailVerifiedAttribute`. Ein Anbieter wird in der
-Konfiguration des Auth-Dienstes hinterlegt und nicht in der Console; die Console
-zeigt ihn.
+`emailAttribute`, `emailVerifiedAttribute` und `signAuthnRequest`. Ein Anbieter
+wird in der Konfiguration des Auth-Dienstes hinterlegt und nicht in der Console;
+die Console zeigt ihn.
 
 Die `entityID`, unter der QKERN beim Anbieter auftritt, ist
 `{Basis}/api/v1/projects/{projectId}/environments/{environment}/auth/saml`. Sie
 gilt je Projektumgebung und nicht je Anbieter, und sie muss in jeder
 `AudienceRestriction` stehen. Die Consumer-Adresse ist dieselbe Adresse mit
 `/{provider}/acs` dahinter.
+
+#### Der eigene Schlüssel, und warum beide Hälften geprüft werden
+
+`QKERN_PROJECT_AUTH_SAML_SP_CERTIFICATE_PEM` und
+`QKERN_PROJECT_AUTH_SAML_SP_PRIVATE_KEY_PEM`. Das ist QKERNs **eigenes** Paar als
+Service Provider, nicht das hinterlegte des Anbieters. Das Zertifikat steht in
+den Metadaten, der Schlüssel unterschreibt die `AuthnRequest`, und der Anbieter
+prüft das eine mit dem anderen.
+
+Beide Hälften oder keine. Und beide müssen zusammengehören: Der Dienst prüft das
+beim Start mit `checkPrivateKey` und weist ein Paar ab, das es nicht tut. Ohne
+diese Prüfung nennen die Metadaten ein Zertifikat, unterschreibt ein anderer
+Schlüssel, und alles sieht in QKERN richtig aus. Auffallen würde es erst beim
+Anbieter, mit einer Meldung, die QKERN nie sieht.
+
+Der Schlüsseltyp entscheidet über das Verfahren: RSA ergibt `rsa-sha256`, eine
+P-256-Kurve `ecdsa-sha256`. Eine andere Kurve und jeder andere Typ fallen. Ein
+abgelaufenes eigenes Zertifikat fällt ebenfalls, und zwar hier: Eine Signatur
+damit wäre rechnerisch richtig und beim Anbieter trotzdem wertlos.
+
+#### Die signierte `AuthnRequest`
+
+Voreingestellt unterschreibt QKERN seine Anfrage nicht, und der Grund steht
+weiter unten bei dem, was fehlt: Eine signierte Anfrage schützt den Anbieter und
+nicht QKERN. Ein Anbieter, der sie **verlangt**, bekommt sie über
+`signAuthnRequest: true` in seinem Eintrag. Eingeschaltet ohne hinterlegten
+eigenen Schlüssel ist ein Fehlschlag beim Anstossen und keine stillschweigend
+unsignierte Anfrage: Der Anbieter würde sie abweisen, und der Betreiber suchte
+die Ursache bei ihm.
+
+**Die Signatur steht in der Adresse und nicht im XML.** Das HTTP-Redirect-Binding
+verlangt sie dort (`SAMLBind`, 3.4.4.1): unterschrieben wird der Text
+`SAMLRequest=…&RelayState=…&SigAlg=…` in genau dieser Reihenfolge und genau so
+kodiert, wie er dann in der Adresse steht, und `Signature=…` kommt dahinter. Ein
+eingebettetes `ds:Signature` im `AuthnRequest` wäre eine Form, die kein Anbieter
+prüfen muss: Das XML verschwindet beim Redirect-Binding in DEFLATE und base64,
+und was der Anbieter sieht, ist die Abfragezeichenkette. QKERN hat die exklusive
+Kanonisierung für eingebettete Signaturen und benutzt sie hier nicht, weil sie
+hier die falsche Antwort wäre.
+
+Die Abfragezeichenkette wird darum von Hand gebaut. Der unterschriebene Text und
+der Text in der Adresse müssen Zeichen für Zeichen derselbe sein; zwei Stellen,
+die beide kodieren, wären zwei Stellen, an denen sie auseinanderlaufen können.
+
+#### Die Metadaten-Route
+
+`GET …/auth/saml/{provider}/metadata` gibt einen `EntityDescriptor` mit einem
+`SPSSODescriptor` heraus, als `application/samlmetadata+xml`. Darin steht die
+`entityID` dieser Projektumgebung, die Consumer-Adresse dieses Anbieters mit dem
+HTTP-POST-Binding, `NameIDFormat` und, falls ein eigener Schlüssel hinterlegt
+ist, ein `KeyDescriptor use="signing"` mit QKERNs Zertifikat. Wer QKERN beim
+Anbieter einträgt, lädt dieses Dokument dort hoch statt Felder abzutippen.
+
+`AuthnRequestsSigned` folgt dem Schalter des Anbieters. `WantAssertionsSigned`
+steht immer auf `true`, weil es keine Einstellung ist: Eine Assertion ohne eigene
+Signatur fällt in jedem Fall, auch wenn die Antworthülle eine trägt.
+
+**Je Anbieter und nicht je Umgebung.** Die `entityID` gilt je Projektumgebung,
+die Consumer-Adresse trägt den Slug. Ein Dokument für die ganze Umgebung müsste
+zehn `AssertionConsumerService`-Einträge aufzählen, und jeder Anbieter müsste
+sich den seinen heraussuchen.
+
+**Dieselbe Grenze wie die öffentliche Anbieterliste**: Projekt-Key, Origin-Gate,
+no-store. Ein Anbieter ruft dieses Dokument nicht selbst ab; der Betreiber holt
+es, und er hat den Key. Geheim ist daran nichts, aufzählbar soll es trotzdem
+nicht sein.
 
 #### Die Routen
 
@@ -1873,6 +1939,8 @@ gilt je Projektumgebung und nicht je Anbieter, und sie muss in jeder
   jedem Protokoll.
 - `GET …/auth/saml/providers` — die öffentliche Liste vor der Anmeldung, verengt
   auf Slug und `entityID`. Nie das Zertifikat, nie der SSO-Endpunkt.
+- `GET …/auth/saml/{provider}/metadata` — der `EntityDescriptor` dieses
+  Anbieters als XML, hinter derselben Grenze wie die Anbieterliste. Siehe oben.
 - `GET …/auth/admin/saml` — dieselbe Liste hinter der Admin-Grenze, mit
   `requiresVerifiedEmail` als drittem Feld. Eine eigene Tür und kein zweites Feld
   in `admin/providers`: Diese Antwort ist eine Liste von OIDC-Anbietern, und wer
@@ -1903,12 +1971,43 @@ wie beim OIDC-Katalog. Die Laufzeitrolle darf `SELECT`, `INSERT` und `DELETE`;
 kein `UPDATE`, weil sich an einer gemerkten Assertion nur der Riegel selbst
 ändern liesse.
 
+**Der Aufräumer nimmt die Tabelle jetzt mit.** `2.68.0` hat offen gelassen, dass
+`project_auth_saml_assertions` mit jeder Anmeldung wächst; der Aufräumer aus
+`2.89` räumt sie als vierte Tabelle, über dieselbe Auth-Verbindung, häppchenweise
+und je Umgebung.
+
+Geschnitten wird an `expires_at`, also am `NotOnOrAfter` der Assertion, und nie
+an `used_at`. Die Spalte `used_at` sagt, wann die Zeile entstanden ist, und ihre
+Aufgabe fängt in dem Augenblick an; ein Schnitt daran nähme genau den Riegel weg,
+den die Zeile ist.
+
+Und die Frist muss länger sein, als die Assertion selbst gelten kann. Das ist
+länger als bis `NotOnOrAfter`: Abgewiesen wird eine Assertion erst, wenn ihr
+`NotOnOrAfter` um mehr als die geduldete Uhrabweichung von 60 Sekunden
+zurückliegt. Fällt die Zeile in diesem Fenster, findet eine zweite Einreichung
+keinen Riegel mehr und bekommt eine Sitzung. Die Rechnung geht schon bei der
+kürzesten erlaubten Frist auf: Gelöscht wird bei
+`expires_at < now - QKERN_COMPUTE_AUTH_RETENTION_GRACE_MS`, die Untergrenze
+dieser Angabe ist eine Minute, und damit ist jede gelöschte Zeile eine, deren
+Assertion ohnehin am Zeitfenster scheitert. Der Vorgabewert von 24 Stunden liegt
+weit darüber und deckt zusätzlich den Betriebstag ab, an dem jemand einer
+abgewiesenen Anmeldung nachgeht: Ohne die Zeile sieht eine wiedereingereichte
+Assertion aus wie eine, die der Anbieter nie geschickt hat.
+
 #### Was der Nachweis belegt und was nicht
 
-Der Auth-Zertifizierungslauf fährt drei SAML-Fälle über die echte
-Assertion-Consumer-Route: eine gelungene Anmeldung bis zur Sitzung, vierzehn
-Fälschungen, die einzeln fallen, und dieselbe Assertion zum zweiten Mal. Der
-Postgres-Lauf hat dazu den Fall `(2.99)` gegen die echte Datenbank.
+Der Auth-Zertifizierungslauf fährt vier SAML-Fälle über die echten Routen: eine
+gelungene Anmeldung bis zur Sitzung, vierzehn Fälschungen, die einzeln fallen,
+dieselbe Assertion zum zweiten Mal, und die Metadaten-Route samt signierter
+`AuthnRequest`. Der letzte prüft die Signatur der Anfrage **nur** mit dem
+Zertifikat, das er aus dem Metadatendokument gelesen hat: Ein Anbieter hat nichts
+anderes als dieses Dokument, und nennt es ein anderes Zertifikat als das des
+Schlüssels, der unterschrieben hat, fällt der Fall.
+
+Der Postgres-Lauf hat dazu den Fall `(2.99)` gegen die echte Datenbank und
+seither `(2.104)` für den Aufräumer der Assertionstabelle. Dessen Kern ist eine
+Zeile, die 30 Sekunden vor der Uhr abgelaufen ist und auch die kürzeste erlaubte
+Frist überleben muss.
 
 Die Gegenstelle ist `tests/support/saml-idp.ts`: ein eigenes RSA-Schlüsselpaar,
 ein selbst aus DER gebautes X.509-Zertifikat, eine echte XML-Signatur nach
@@ -1924,21 +2023,14 @@ ausserhalb dieser Maschine braucht.
 
 **Was ausserdem fehlt**, und zwar ganz:
 
-- Eine signierte `AuthnRequest`. QKERN unterschreibt seine Anfrage nicht. Eine
-  signierte Anfrage schützt den Anbieter davor, dass jemand in QKERNs Namen
-  Anmeldungen anstösst; QKERN schützt sie nicht. Was QKERN schützt, ist
-  `InResponseTo`, und das hängt an der Kennung. Ein Anbieter, der eine signierte
-  Anfrage verlangt, kann diesen Weg heute nicht benutzen.
 - **Single Logout.** Es gibt keinen `LogoutRequest` und keine `LogoutResponse`.
   Eine Sitzung endet in QKERN, beim Anbieter läuft sie weiter.
-- **Eine Metadaten-Route.** Wer QKERN beim Anbieter einträgt, trägt `entityID`
-  und Consumer-Adresse von Hand ein.
 - **IdP-initiierte Anmeldung.** Ohne eigene Anfrage gibt es kein `InResponseTo`,
   das binden könnte, und eine Assertion, die niemand bestellt hat, wird nicht
-  angenommen.
+  angenommen. Wer das nachzieht, nimmt damit genau die Bindung weg, die `(2.99)`
+  als Fälschungsschutz belegt, und darf es darum nur als ausdrückliche
+  Einstellung je Anbieter tun, die voreingestellt aus ist.
 - **Verschlüsselte Assertions.** Siehe oben.
-- Der Aufräumer aus `2.89` nimmt `project_auth_saml_assertions` noch nicht. Die
-  Tabelle wächst, bis das nachgezogen wird.
 
 ### Fremde Anbieter: Token annehmen, die QKERN nicht ausgegeben hat
 
@@ -4437,8 +4529,9 @@ ihn.
 **Er läuft, wenn Sie ihn nicht abschalten**, anders als Brücke und Sammler
 darüber. Der Unterschied hat einen Grund: Die beiden Sammler schicken Daten ins
 Internet, dieser Aufräumer löscht Zeilen in derselben Datenbank. Er braucht die
-Auth-Verbindung, weil nur die Rolle `qkern_auth` diese drei Tabellen überhaupt
-sieht; Migration `0063` gibt ihr das `DELETE` und keiner anderen Rolle. Fehlt
+Auth-Verbindung, weil nur die Rolle `qkern_auth` diese vier Tabellen überhaupt
+sieht; Migration `0063` gibt ihr das `DELETE` auf den ersten drei, `0070` auf der
+Assertionstabelle, und keiner anderen Rolle. Fehlt
 `QKERN_AUTH_DATABASE_URL`, **startet der Prozess nicht**:
 
 ```powershell
@@ -4460,6 +4553,12 @@ ganzen Betriebstag ab. Länger wäre keine Frist mehr, sondern eine zweite
 Aufbewahrung, und die gehört ins Audit und nicht in eine Tabelle mit
 Prüfsummen von Token.
 
+Bei der vierten Tabelle, dem Riegel gegen Wiedereinreichung einer
+SAML-Assertion, ist derselbe Abstand nachrechenbar: Eine Assertion bleibt bis 60
+Sekunden nach ihrem `NotOnOrAfter` annehmbar, und schon die Untergrenze dieser
+Angabe von einer Minute deckt das ab. Der Abschnitt zu SAML führt die Rechnung
+aus.
+
 **Gelöscht wird in Häppchen mit Obergrenze**
 (`QKERN_COMPUTE_AUTH_RETENTION_BATCH`, Vorgabe 500 Zeilen je Anweisung,
 `QKERN_COMPUTE_AUTH_RETENTION_MAX_BATCHES`, Vorgabe 10 Anweisungen je Tabelle,
@@ -4472,6 +4571,8 @@ statt in einer einzigen langen Anweisung gesperrt zu werden. Der Takt steht in
 * **Verbraucht ist kein Löschgrund.** Geschnitten wird am Ablauf, nicht am
   Verbrauch. Ein verbrauchtes, noch nicht abgelaufenes Token ist die Zeile, an
   der ein zweites Einlösen auffliegt.
+* **Eine gemerkte Assertion fällt am Ablauf und nicht am Gebrauch.** `used_at`
+  sagt, wann die Zeile entstanden ist; ihre Aufgabe fängt in dem Augenblick an.
 * **Ein Code, an dem noch ein Token hängt, bleibt stehen.** `code_id` hängt mit
   `ON DELETE CASCADE` am Code; ohne diese Rücksicht risse der Aufräumer einer
   Anwendung mitten in der Sitzung den Zugang weg, dem ein Nutzer zugestimmt hat.
@@ -4487,7 +4588,7 @@ statt in einer einzigen langen Anweisung gesperrt zu werden. Der Takt steht in
   er verantworten kann.
 * `project_auth_rate_counters` räumt der Auth-Dienst seit `2.56.0` selbst auf.
 
-Der Prozess meldet je Runde und Umgebung `compute.auth_retention_round` mit drei
+Der Prozess meldet je Runde und Umgebung `compute.auth_retention_round` mit vier
 Zahlen, je Tabelle einer, und dem Index der Umgebung in Ihrer Scope-Liste. Keine
 Id, keine Prüfsumme, keine Adresse, kein Rücksprungziel. Eine Runde ohne fällige
 Zeile schweigt. Und der Prozess nennt den Aufräumer in seiner Startzeile.

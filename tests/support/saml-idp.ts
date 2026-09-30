@@ -39,6 +39,47 @@ export type SamlIdpOptions = {
   validTo?: Date;
 };
 
+/**
+ * Ein Schluesselpaar mit selbst signiertem Zertifikat, beides als PEM. RSA,
+ * oder P-256 mit `curve`.
+ *
+ * Dasselbe Werkzeug, mit dem der Test-Anbieter unten sein Zertifikat baut, aber
+ * mit beiden Haelften: Die SP-Seite unterschreibt selbst und braucht darum auch
+ * den privaten Schluessel. Der DER-Bauer steht genau einmal in dieser Datei,
+ * weiter unten; zwei waeren zwei Stellen, an denen ein Zertifikat anders
+ * aussieht.
+ */
+export function testSelfSignedKeyPair(options: {
+  commonName?: string;
+  validFrom?: Date;
+  validTo?: Date;
+  curve?: "prime256v1";
+} = {}): { certificatePem: string; privateKeyPem: string; certificateBase64: string } {
+  const { privateKey, publicKey } = options.curve
+    ? generateKeyPairSync("ec", { namedCurve: options.curve })
+    : generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const der = selfSignedCertificate({
+    commonName: options.commonName ?? "sp.qkern.test",
+    publicKeySpki: publicKey.export({ type: "spki", format: "der" }) as Buffer,
+    privateKey,
+    validFrom: options.validFrom ?? new Date(Date.now() - 60 * 60 * 1_000),
+    validTo: options.validTo ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1_000),
+    ecdsa: Boolean(options.curve),
+  });
+  const certificateBase64 = der.toString("base64");
+  return {
+    certificateBase64,
+    certificatePem: certificatePem(certificateBase64),
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }) as string,
+  };
+}
+
+/** Das DER als base64 in der PEM-Huelle, auf 64 Zeichen je Zeile gebrochen. */
+function certificatePem(base64: string): string {
+  const lines = base64.replace(/(.{64})/g, "$1\n").replace(/\n$/, "");
+  return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----\n`;
+}
+
 export class TestSamlIdp {
   readonly entityId: string;
   readonly certificatePem: string;
@@ -57,9 +98,7 @@ export class TestSamlIdp {
       validTo: options.validTo ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1_000),
     });
     this.certificateBase64 = der.toString("base64");
-    this.certificatePem = `-----BEGIN CERTIFICATE-----\n${
-      this.certificateBase64.replace(/(.{64})/g, "$1\n").replace(/\n$/, "")
-    }\n-----END CERTIFICATE-----\n`;
+    this.certificatePem = certificatePem(this.certificateBase64);
   }
 
   /** Signiert ein Element und gibt das eingesetzte `ds:Signature` zurueck. */
@@ -216,8 +255,12 @@ function selfSignedCertificate(input: {
   privateKey: KeyObject;
   validFrom: Date;
   validTo: Date;
+  /** ECDSA-with-SHA256 statt RSA. Diese OID traegt **kein** Parameterfeld. */
+  ecdsa?: boolean;
 }): Buffer {
-  const algorithm = sequence(Buffer.concat([oid("1.2.840.113549.1.1.11"), nullValue()]));
+  const algorithm = input.ecdsa
+    ? sequence(oid("1.2.840.10045.4.3.2"))
+    : sequence(Buffer.concat([oid("1.2.840.113549.1.1.11"), nullValue()]));
   const name = sequence(set(sequence(Buffer.concat([oid("2.5.4.3"), utf8(input.commonName)]))));
   const validity = sequence(Buffer.concat([utcTime(input.validFrom), utcTime(input.validTo)]));
   const tbs = sequence(Buffer.concat([

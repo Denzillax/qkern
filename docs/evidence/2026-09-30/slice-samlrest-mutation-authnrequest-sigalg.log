@@ -1,0 +1,127 @@
+
+> qkern-platform@2.68.0 test:auth:docker
+> node scripts/auth-certification.mjs
+
+ Network qkern-slice-samlrest_default Creating 
+ Network qkern-slice-samlrest_default Created 
+ Volume qkern-slice-samlrest_auth-certification-certs Creating 
+ Volume qkern-slice-samlrest_auth-certification-certs Created 
+ Container qkern-slice-samlrest-mailpit-1 Creating 
+ Container qkern-slice-samlrest-certs-1 Creating 
+ Container qkern-slice-samlrest-mailpit-1 Created 
+ Container qkern-slice-samlrest-certs-1 Created 
+ Container qkern-slice-samlrest-dex-1 Creating 
+ Container qkern-slice-samlrest-dex-partner-1 Creating 
+ Container qkern-slice-samlrest-dex-1 Created 
+ Container qkern-slice-samlrest-dex-partner-1 Created 
+ Container qkern-slice-samlrest-mailpit-1 Starting 
+ Container qkern-slice-samlrest-certs-1 Starting 
+ Container qkern-slice-samlrest-certs-1 Started 
+ Container qkern-slice-samlrest-certs-1 Waiting 
+ Container qkern-slice-samlrest-certs-1 Waiting 
+ Container qkern-slice-samlrest-mailpit-1 Started 
+ Container qkern-slice-samlrest-certs-1 Exited 
+ Container qkern-slice-samlrest-dex-1 Starting 
+ Container qkern-slice-samlrest-certs-1 Exited 
+ Container qkern-slice-samlrest-dex-partner-1 Starting 
+ Container qkern-slice-samlrest-dex-partner-1 Started 
+ Container qkern-slice-samlrest-dex-1 Started 
+ Container qkern-slice-samlrest-dex-1 Waiting 
+ Container qkern-slice-samlrest-dex-partner-1 Waiting 
+ Container qkern-slice-samlrest-certs-1 Waiting 
+ Container qkern-slice-samlrest-mailpit-1 Waiting 
+ Container qkern-slice-samlrest-certs-1 Exited 
+ Container qkern-slice-samlrest-dex-1 Healthy 
+ Container qkern-slice-samlrest-dex-partner-1 Healthy 
+ Container qkern-slice-samlrest-mailpit-1 Healthy 
+ Container qkern-slice-samlrest-certification-run-6161dfb3f019 Creating 
+ Container qkern-slice-samlrest-certification-run-6161dfb3f019 Created 
+
+added 322 packages, and audited 323 packages in 12s
+
+93 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (6 moderate, 3 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New minor version of npm available! 11.5.1 -> 11.21.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.21.0
+npm notice To update run: npm install -g npm@11.21.0
+npm notice
+
+> qkern-platform@2.68.0 test:auth:provider
+> vitest run tests/project-auth-provider.integration.test.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+ [31m❯[39m tests/project-auth-provider.integration.test.ts [2m([22m[2m11 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 854[2mms[22m[39m
+     [32m✓[39m delivers a verification mail over real SMTP and only the mail carries the token[32m 59[2mms[22m[39m
+     [32m✓[39m delivers a magic link that signs the user in[32m 26[2mms[22m[39m
+     [32m✓[39m delivers a password reset that a new password can be set with[32m 35[2mms[22m[39m
+     [32m✓[39m completes a real OIDC authorization code flow with PKCE against Dex[32m 102[2mms[22m[39m
+     [32m✓[39m refuses a replayed authorization state[32m 60[2mms[22m[39m
+     [32m✓[39m keeps two real providers separate and links identities by verified mail[32m 190[2mms[22m[39m
+     [32m✓[39m signs a person in over a real SP-initiated SAML flow and ends in a session the access check accepts[32m 50[2mms[22m[39m
+[31m     [31m×[31m publishes metadata over the real route whose certificate verifies the signature on the AuthnRequest it really sends, and still signs the person in[39m[32m 125[2mms[22m[39m
+     [32m✓[39m refuses every known SAML forgery at the real consumer route: unsigned, envelope-only, wrapped, expired, misdirected, unbound and foreign-signed[32m 119[2mms[22m[39m
+     [32m✓[39m refuses the very same assertion a second time on the replay bar, and the bar is what refuses it[32m 88[2mms[22m[39m
+     [32m✓[39m lists exactly the configured providers as a three-field projection[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m tests/project-auth-provider.integration.test.ts[2m > [22mProject Auth provider certification[2m > [22mpublishes metadata over the real route whose certificate verifies the signature on the AuthnRequest it really sends, and still signs the person in
+[31m[1mAssertionError[22m: das Zertifikat aus den Metadaten prueft die Signatur der Anfrage nicht: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m tests/project-auth-provider.integration.test.ts:[2m553:81[22m[39m
+    [90m551|[39m
+    [90m552|[39m     expect(verifySignature("sha256", Buffer.from(signedText, "utf8"), …
+    [90m553|[39m       "das Zertifikat aus den Metadaten prueft die Signatur der Anfrag…
+    [90m   |[39m                                                                                 [31m^[39m
+    [90m554|[39m
+    [90m555|[39m     // --- Und der Weg endet weiterhin in einer Sitzung --------------…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (11)[39m
+[2m   Start at [22m 20:06:41
+[2m   Duration [22m 1.95s[2m (transform 663ms, setup 0ms, import 954ms, tests 854ms, environment 0ms)[22m
+
+
+ Container qkern-slice-samlrest-dex-partner-1 Stopping 
+ Container qkern-slice-samlrest-dex-1 Stopping 
+ Container qkern-slice-samlrest-mailpit-1 Stopping 
+ Container qkern-slice-samlrest-dex-1 Stopped 
+ Container qkern-slice-samlrest-dex-1 Removing 
+ Container qkern-slice-samlrest-dex-1 Removed 
+ Container qkern-slice-samlrest-dex-partner-1 Stopped 
+ Container qkern-slice-samlrest-dex-partner-1 Removing 
+ Container qkern-slice-samlrest-dex-partner-1 Removed 
+ Container qkern-slice-samlrest-certs-1 Stopping 
+ Container qkern-slice-samlrest-certs-1 Stopped 
+ Container qkern-slice-samlrest-certs-1 Removing 
+ Container qkern-slice-samlrest-certs-1 Removed 
+ Container qkern-slice-samlrest-mailpit-1 Stopped 
+ Container qkern-slice-samlrest-mailpit-1 Removing 
+ Container qkern-slice-samlrest-mailpit-1 Removed 
+ Network qkern-slice-samlrest_default Removing 
+ Volume qkern-slice-samlrest_auth-certification-certs Removing 
+ Volume qkern-slice-samlrest_auth-certification-certs Removed 
+ Network qkern-slice-samlrest_default Removed 
+EXIT=1

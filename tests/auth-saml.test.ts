@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   createSamlAuthnRequest, newSamlRequestId, ProjectAuthSamlCatalog, ProjectAuthSamlError,
-  verifySamlResponse, type ProjectAuthSamlProvider,
+  ProjectAuthSamlSigningKey, projectAuthSamlSigningKeyFromEnv, SAML_METADATA_NS,
+  samlServiceProviderMetadata, verifySamlResponse, type ProjectAuthSamlProvider,
 } from "@/lib/server/project-auth/saml";
 import {
-  canonicalizeExclusive, collectIds, parseXml, XmlFormatError,
+  attributeValue, canonicalizeExclusive, childElements, collectIds, directText, onlyChild,
+  parseXml, XmlFormatError,
 } from "@/lib/server/project-auth/saml-xml";
-import { samlResponse, samlResponseXml, TestSamlIdp } from "@/tests/support/saml-idp";
+import { samlResponse, samlResponseXml, TestSamlIdp, testSelfSignedKeyPair } from "@/tests/support/saml-idp";
 import { inflateRawSync } from "node:zlib";
+import { X509Certificate, verify as verifySignature } from "node:crypto";
 
 /**
  * SAML 2.0 als reines Modul (2.99).
@@ -108,6 +111,237 @@ describe("SAML AuthnRequest", () => {
     expect(() => new ProjectAuthSamlCatalog([providerFor(idp, { certificate: "not a certificate" })]))
       .toThrow(ProjectAuthSamlError);
     expect(new ProjectAuthSamlCatalog([providerFor(idp)]).list()).toEqual(["idp"]);
+  });
+});
+
+/* ------------------------------------------------------------------------ *
+ * Die eigene Seite: Metadaten und eine signierte AuthnRequest.
+ *
+ * Diese beiden Faelle gehoeren zusammen, und darum stehen sie hier zusammen.
+ * Die Metadaten nennen ein Zertifikat, die Anfrage traegt eine Signatur, und
+ * der Anbieter prueft die eine mit dem anderen. Der zweite Fall unten macht
+ * genau das: Er nimmt das Zertifikat **aus den Metadaten** und prueft damit die
+ * Signatur der Anfrage. Nennen die Metadaten ein anderes Zertifikat, faellt er.
+ * ------------------------------------------------------------------------ */
+
+/** Das Zertifikat, das ein Metadatendokument nennt, als DER. */
+function certificateFromMetadata(xml: string): Buffer {
+  const root = parseXml(xml);
+  expect(root.namespaceUri).toBe(SAML_METADATA_NS);
+  expect(root.localName).toBe("EntityDescriptor");
+  const descriptor = onlyChild(root, SAML_METADATA_NS, "SPSSODescriptor");
+  expect(descriptor, "kein SPSSODescriptor").toBeTruthy();
+  const keyDescriptor = onlyChild(descriptor!, SAML_METADATA_NS, "KeyDescriptor");
+  expect(keyDescriptor, "kein KeyDescriptor").toBeTruthy();
+  expect(attributeValue(keyDescriptor!, "use")).toBe("signing");
+  const keyInfo = onlyChild(keyDescriptor!, "http://www.w3.org/2000/09/xmldsig#", "KeyInfo");
+  const data = keyInfo ? onlyChild(keyInfo, "http://www.w3.org/2000/09/xmldsig#", "X509Data") : null;
+  const element = data ? onlyChild(data, "http://www.w3.org/2000/09/xmldsig#", "X509Certificate") : null;
+  expect(element, "kein X509Certificate").toBeTruthy();
+  return Buffer.from(directText(element!).replace(/\s+/g, ""), "base64");
+}
+
+/** Die Abfragezeichenkette, geteilt am `Signature`-Feld. */
+function splitSignedQuery(url: string): { signed: string; signature: Buffer; sigAlg: string } {
+  const search = new URL(url).search.slice(1);
+  const marker = "&Signature=";
+  const cut = search.indexOf(marker);
+  expect(cut, "die Adresse traegt kein Signature-Feld").toBeGreaterThan(0);
+  const signed = search.slice(0, cut);
+  const signature = Buffer.from(
+    decodeURIComponent(search.slice(cut + marker.length)), "base64");
+  const sigAlg = new URLSearchParams(search).get("SigAlg") ?? "";
+  return { signed, signature, sigAlg };
+}
+
+describe("SAML service provider metadata", () => {
+  const sp = testSelfSignedKeyPair({ commonName: "sp.qkern.test" });
+  const key = new ProjectAuthSamlSigningKey({
+    certificate: sp.certificatePem, privateKey: sp.privateKeyPem,
+  });
+
+  it("names the entityID, the consumer service with the POST binding and the own certificate", () => {
+    const xml = samlServiceProviderMetadata({
+      spEntityId: SP, acsUrl: ACS, signAuthnRequest: true, signingKey: key, now: new Date(),
+    });
+    // Gelesen wird mit dem Leser dieses Produkts. Ein Dokument, das er nicht
+    // annimmt, ist auch fuer keinen Anbieter ein Dokument.
+    const root = parseXml(xml);
+    collectIds(root);
+    expect(attributeValue(root, "entityID")).toBe(SP);
+
+    const descriptor = onlyChild(root, SAML_METADATA_NS, "SPSSODescriptor")!;
+    expect(attributeValue(descriptor, "protocolSupportEnumeration"))
+      .toBe("urn:oasis:names:tc:SAML:2.0:protocol");
+    expect(attributeValue(descriptor, "AuthnRequestsSigned")).toBe("true");
+    // `WantAssertionsSigned` ist keine Einstellung: Eine Assertion ohne eigene
+    // Signatur faellt in jedem Fall, auch wenn die Huelle eine traegt.
+    expect(attributeValue(descriptor, "WantAssertionsSigned")).toBe("true");
+
+    const consumers = childElements(descriptor, SAML_METADATA_NS, "AssertionConsumerService");
+    expect(consumers).toHaveLength(1);
+    expect(attributeValue(consumers[0], "Binding"))
+      .toBe("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST");
+    expect(attributeValue(consumers[0], "Location")).toBe(ACS);
+    expect(attributeValue(consumers[0], "index")).toBe("0");
+
+    expect(directText(onlyChild(descriptor, SAML_METADATA_NS, "NameIDFormat")!))
+      .toBe("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress");
+    // Die Reihenfolge der Kinder ist die des Schemas. Ein Anbieter, der gegen
+    // das Schema prueft, weist eine andere ab.
+    expect(descriptor.children.filter((child) => child.kind === "element")
+      .map((child) => (child as { localName: string }).localName))
+      .toEqual(["KeyDescriptor", "NameIDFormat", "AssertionConsumerService"]);
+  });
+
+  it("leaves out the key descriptor when no own key is configured", () => {
+    const xml = samlServiceProviderMetadata({
+      spEntityId: SP, acsUrl: ACS, signAuthnRequest: false, signingKey: null, now: new Date(),
+    });
+    const descriptor = onlyChild(parseXml(xml), SAML_METADATA_NS, "SPSSODescriptor")!;
+    expect(attributeValue(descriptor, "AuthnRequestsSigned")).toBe("false");
+    expect(childElements(descriptor, SAML_METADATA_NS, "KeyDescriptor")).toHaveLength(0);
+    // Und ein Anbieter, der eine Signatur verlangt, bekommt kein Dokument, das
+    // ein Zertifikat behauptet, das es nicht gibt.
+    expect(() => samlServiceProviderMetadata({
+      spEntityId: SP, acsUrl: ACS, signAuthnRequest: true, signingKey: null, now: new Date(),
+    })).toThrow(ProjectAuthSamlError);
+  });
+
+  it("refuses a key that does not belong to the certificate, a wrong key type and an expired certificate", () => {
+    const other = testSelfSignedKeyPair({ commonName: "other.qkern.test" });
+    // Der Fall, der ohne `checkPrivateKey` durchlaeuft: Die Metadaten nennen
+    // ein Zertifikat, unterschrieben wird mit einem anderen Schluessel, und
+    // auffallen wuerde es erst beim Anbieter.
+    expect(() => new ProjectAuthSamlSigningKey({
+      certificate: sp.certificatePem, privateKey: other.privateKeyPem,
+    })).toThrow(ProjectAuthSamlError);
+
+    // Eine EC-Kurve ausser P-256 waere `ecdsa-sha256` nur dem Namen nach, und
+    // Ed25519 hat in dieser Liste ueberhaupt keinen Platz.
+    const ed = testSelfSignedKeyPair({ commonName: "ed.qkern.test" });
+    expect(() => new ProjectAuthSamlSigningKey({
+      certificate: ed.certificatePem, privateKey: "-----BEGIN PRIVATE KEY-----\nnope\n-----END PRIVATE KEY-----\n",
+    })).toThrow(ProjectAuthSamlError);
+
+    const expired = testSelfSignedKeyPair({
+      commonName: "old.qkern.test",
+      validFrom: new Date(Date.now() - 400 * 24 * 60 * 60 * 1_000),
+      validTo: new Date(Date.now() - 24 * 60 * 60 * 1_000),
+    });
+    const stale = new ProjectAuthSamlSigningKey({
+      certificate: expired.certificatePem, privateKey: expired.privateKeyPem,
+    });
+    // Ein abgelaufenes eigenes Zertifikat faellt hier auf und nicht beim
+    // Anbieter: Die Signatur waere rechnerisch richtig und trotzdem wertlos.
+    expect(() => samlServiceProviderMetadata({
+      spEntityId: SP, acsUrl: ACS, signAuthnRequest: true, signingKey: stale, now: new Date(),
+    })).toThrow(ProjectAuthSamlError);
+  });
+
+  it("reads both halves of the own key from the environment, or neither", () => {
+    expect(projectAuthSamlSigningKeyFromEnv({})).toBeNull();
+    expect(() => projectAuthSamlSigningKeyFromEnv({
+      QKERN_PROJECT_AUTH_SAML_SP_CERTIFICATE_PEM: sp.certificatePem,
+    })).toThrow(ProjectAuthSamlError);
+    expect(() => projectAuthSamlSigningKeyFromEnv({
+      QKERN_PROJECT_AUTH_SAML_SP_PRIVATE_KEY_PEM: sp.privateKeyPem,
+    })).toThrow(ProjectAuthSamlError);
+    const both = projectAuthSamlSigningKeyFromEnv({
+      QKERN_PROJECT_AUTH_SAML_SP_CERTIFICATE_PEM: sp.certificatePem,
+      QKERN_PROJECT_AUTH_SAML_SP_PRIVATE_KEY_PEM: sp.privateKeyPem,
+    });
+    expect(both?.certificateBase64).toBe(sp.certificateBase64);
+  });
+});
+
+describe("signed SAML AuthnRequest", () => {
+  const sp = testSelfSignedKeyPair({ commonName: "sp.qkern.test" });
+  const key = new ProjectAuthSamlSigningKey({
+    certificate: sp.certificatePem, privateKey: sp.privateKeyPem,
+  });
+
+  it("signs the redirect query with the key behind the certificate the metadata names", () => {
+    const idp = new TestSamlIdp();
+    const requestId = newSamlRequestId();
+    const now = new Date();
+    const metadata = samlServiceProviderMetadata({
+      spEntityId: SP, acsUrl: ACS, signAuthnRequest: true, signingKey: key, now,
+    });
+    const built = createSamlAuthnRequest(providerFor(idp, { signAuthnRequest: true }), {
+      requestId, acsUrl: ACS, spEntityId: SP, relayState: requestId, issueInstant: now,
+      signingKey: key,
+    });
+    expect(built.signed).toBe(true);
+
+    const { signed, signature, sigAlg } = splitSignedQuery(built.url);
+    // Die Reihenfolge der Felder ist die des Bindings und keine Geschmacksfrage:
+    // Der Anbieter baut denselben Text nach, und er baut ihn in dieser Folge.
+    expect(signed.startsWith("SAMLRequest=")).toBe(true);
+    expect(signed).toContain("&RelayState=");
+    expect(signed.endsWith(`&SigAlg=${encodeURIComponent(sigAlg)}`)).toBe(true);
+    expect(sigAlg).toBe("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256");
+
+    // Der Kern dieses Falles. Geprueft wird **nur** mit dem Zertifikat aus dem
+    // Metadatendokument. Nennt es ein anderes als das des Schluessels, der
+    // unterschrieben hat, faellt diese Zeile, und genau das ist der Punkt: Ein
+    // Anbieter hat nichts anderes als dieses Dokument.
+    const certificate = new X509Certificate(certificateFromMetadata(metadata));
+    expect(verifySignature("sha256", Buffer.from(signed, "utf8"), certificate.publicKey, signature))
+      .toBe(true);
+
+    // Und die Anfrage darin ist dieselbe wie ohne Signatur.
+    const request = new URLSearchParams(new URL(built.url).search).get("SAMLRequest") ?? "";
+    expect(inflateRawSync(Buffer.from(request, "base64")).toString("utf8")).toBe(built.request);
+  });
+
+  it("leaves the query untouched for a provider that does not want a signature", () => {
+    const idp = new TestSamlIdp();
+    const requestId = newSamlRequestId();
+    const built = createSamlAuthnRequest(providerFor(idp), {
+      requestId, acsUrl: ACS, spEntityId: SP, relayState: requestId, issueInstant: new Date(),
+      signingKey: key,
+    });
+    // Voreingestellt wird nicht unterschrieben, auch wenn ein Schluessel da
+    // ist: Ein Anbieter, der eine unsignierte Anfrage erwartet, weist eine
+    // signierte ab.
+    expect(built.signed).toBe(false);
+    const search = new URL(built.url).search;
+    expect(search).not.toContain("SigAlg");
+    expect(search).not.toContain("Signature=");
+  });
+
+  it("refuses to start a signed flow without an own key instead of sending an unsigned request", () => {
+    const idp = new TestSamlIdp();
+    const requestId = newSamlRequestId();
+    expect(() => createSamlAuthnRequest(providerFor(idp, { signAuthnRequest: true }), {
+      requestId, acsUrl: ACS, spEntityId: SP, relayState: requestId, issueInstant: new Date(),
+      signingKey: null,
+    })).toThrow(ProjectAuthSamlError);
+    // Und ein Schalter, der kein Wahrheitswert ist, kommt nicht in den Katalog.
+    expect(() => new ProjectAuthSamlCatalog([
+      providerFor(idp, { signAuthnRequest: "yes" as unknown as boolean }),
+    ])).toThrow(ProjectAuthSamlError);
+  });
+
+  it("signs with ecdsa-sha256 when the own key is a P-256 key", () => {
+    const ec = testSelfSignedKeyPair({ commonName: "ec.qkern.test", curve: "prime256v1" });
+    const ecKey = new ProjectAuthSamlSigningKey({
+      certificate: ec.certificatePem, privateKey: ec.privateKeyPem,
+    });
+    expect(ecKey.signatureAlgorithm).toBe("http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256");
+    const idp = new TestSamlIdp();
+    const requestId = newSamlRequestId();
+    const built = createSamlAuthnRequest(providerFor(idp, { signAuthnRequest: true }), {
+      requestId, acsUrl: ACS, spEntityId: SP, relayState: requestId, issueInstant: new Date(),
+      signingKey: ecKey,
+    });
+    const { signed, signature } = splitSignedQuery(built.url);
+    // `ieee-p1363` und nicht DER: Dasselbe Format, das die Pruefung einer
+    // Antwort erwartet, und das einzige, das XML-DSig kennt.
+    const certificate = new X509Certificate(Buffer.from(ec.certificateBase64, "base64"));
+    expect(verifySignature("sha256", Buffer.from(signed, "utf8"),
+      { key: certificate.publicKey, dsaEncoding: "ieee-p1363" }, signature)).toBe(true);
   });
 });
 

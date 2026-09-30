@@ -7,8 +7,9 @@ import type { ProjectAuthExpiryStore } from "@/lib/server/project-auth/expiry-re
  * Der Aufraeumer an der echten Datenbank.
  *
  * **Er laeuft ueber die Auth-Verbindung**, also unter `qkern_auth`. Das ist die
- * einzige Rolle, die diese drei Tabellen ueberhaupt sieht, und 0063 gibt genau
- * ihr das DELETE. Der Compute-Prozess betreibt ihn zwar, aber er reicht ihm
+ * einzige Rolle, die diese vier Tabellen ueberhaupt sieht; 0063 gibt genau ihr
+ * das DELETE auf den ersten drei, 0070 auf der Assertionstabelle. Der
+ * Compute-Prozess betreibt ihn zwar, aber er reicht ihm
  * dafuer die Auth-Verbindung und nicht seine eigene: Eine zweite Rolle an
  * diesen Tabellen waere eine Aenderung an der Auth-Grenze, und die verdient
  * eine eigene Entscheidung.
@@ -99,6 +100,34 @@ export class PostgresProjectAuthExpiryStore implements ProjectAuthExpiryStore {
                SELECT 1 FROM project_auth_oauth_tokens AS token WHERE token.code_id = code.id
              )
            ORDER BY code.expires_at
+           LIMIT $5
+        )`,
+      scope, expiredBefore, limit,
+    );
+  }
+
+  /**
+   * Gemerkte SAML-Assertions aus 0070.
+   *
+   * Der Stichtag geht auf `expires_at`, also auf das `NotOnOrAfter` der
+   * Assertion, und ausdruecklich **nicht** auf `used_at`. Die Spalte `used_at`
+   * sagt, wann diese Zeile entstanden ist; sie ist kein Verbrauchsvermerk,
+   * sondern der Anfang der Aufgabe. Warum die Frist trotzdem laenger sein muss
+   * als bis `expires_at`, steht am Aufraeumer: Eine Assertion gilt noch
+   * `SAML_CLOCK_SKEW_MS` darueber hinaus.
+   *
+   * 0070 hat der Auth-Rolle das DELETE auf dieser Tabelle schon gegeben und
+   * den Index `project_auth_saml_assertions_expiry_idx` mit genau der Spalten-
+   * folge angelegt, die diese Auswahl braucht. Es fehlte nur der Aufruf.
+   */
+  deleteExpiredSamlAssertions(scope: ProjectAuthScope, expiredBefore: Date, limit: number) {
+    return this.deleteBatch(
+      `DELETE FROM project_auth_saml_assertions
+        WHERE ctid IN (
+          SELECT ctid FROM project_auth_saml_assertions
+           WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+             AND expires_at < $4
+           ORDER BY expires_at
            LIMIT $5
         )`,
       scope, expiredBefore, limit,

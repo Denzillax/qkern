@@ -8,14 +8,18 @@ export type ProjectAuthExpiryRemoval = Readonly<{
   oneTimeTokens: number;
   oauthTokens: number;
   oauthCodes: number;
+  samlAssertions: number;
 }>;
 
 export const NOTHING_REMOVED: ProjectAuthExpiryRemoval = Object.freeze({
-  oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0,
+  oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0,
 });
 
+/** Derselbe Satz Zahlen, solange eine Runde noch daran zaehlt. */
+type RemovalCounters = { -readonly [K in keyof ProjectAuthExpiryRemoval]: number };
+
 /**
- * Die drei Schritte einer Runde, jeder mit einer harten Obergrenze.
+ * Die vier Schritte einer Runde, jeder mit einer harten Obergrenze.
  *
  * Jede Methode loescht **hoechstens** `limit` Zeilen und gibt zurueck, wie
  * viele es waren. Der Aufrufer wiederholt, solange eine volle Portion kam; so
@@ -32,6 +36,9 @@ export interface ProjectAuthExpiryStore {
   /** OAuth-Codes aus 0062, und zwar nur solche, an denen kein Token mehr haengt. */
   deleteExpiredOAuthCodes(
     scope: ProjectAuthScope, expiredBefore: Date, limit: number): Promise<number>;
+  /** Gemerkte SAML-Assertions aus 0070. Siehe die Klasse: die Frist dafuer. */
+  deleteExpiredSamlAssertions(
+    scope: ProjectAuthScope, expiredBefore: Date, limit: number): Promise<number>;
 }
 
 export type ProjectAuthExpiryRetentionOptions = {
@@ -45,7 +52,7 @@ export type ProjectAuthExpiryRetentionOptions = {
   maxBatches: number;
   intervalMs?: number;
   now?: () => Date;
-  /** Erhaelt den Index der Umgebung und drei Zahlen, sonst nichts. */
+  /** Erhaelt den Index der Umgebung und vier Zahlen, sonst nichts. */
   onPruned?: (scopeIndex: number, removed: ProjectAuthExpiryRemoval) => void;
   /** Erhaelt den Index der Umgebung und einen festen Code, nie die Ursache. */
   onFailure?: (scopeIndex: number) => void;
@@ -57,13 +64,14 @@ export type ProjectAuthExpiryRetentionOptions = {
  *
  * ## Warum es diesen Aufraeumer gibt
  *
- * Drei Tabellen halten Dinge, die genau einmal und nur kurz gelten:
+ * Vier Tabellen halten Dinge, die genau einmal und nur kurz gelten:
  * `project_auth_one_time_tokens` (Bestaetigungslink, Magic Link,
  * Passwort-Reset, OIDC-Zustand, MFA- und Passkey-Herausforderung),
- * `project_auth_oauth_codes` und `project_auth_oauth_tokens`. Jede Pruefung
- * sieht auf die Uhr, also gilt eine abgelaufene Zeile nicht mehr. Geloescht
- * hat sie trotzdem nie jemand. 0062 hat das selbst zugegeben, statt einen
- * Auftrag zu behaupten, der nicht laeuft.
+ * `project_auth_oauth_codes`, `project_auth_oauth_tokens` und
+ * `project_auth_saml_assertions` (0070). Jede Pruefung sieht auf die Uhr, also
+ * gilt eine abgelaufene Zeile nicht mehr. Geloescht hat sie trotzdem nie jemand.
+ * 0062 hat das selbst zugegeben, statt einen Auftrag zu behaupten, der nicht
+ * laeuft, und 0070 hat es fuer die Assertionstabelle genauso hingeschrieben.
  *
  * ## Die Frist nach dem Ablauf
  *
@@ -84,6 +92,36 @@ export type ProjectAuthExpiryRetentionOptions = {
  *
  * Laenger waere keine Frist mehr, sondern eine zweite Aufbewahrung, und die
  * gehoert ins Audit und nicht in eine Tabelle mit Pruefsummen von Token.
+ *
+ * ## Die Frist fuer eine gemerkte SAML-Assertion
+ *
+ * `project_auth_saml_assertions` (0070) ist der Riegel gegen Wiedereinreichung:
+ * je angenommener Assertion eine Zeile, deren `expires_at` das `NotOnOrAfter`
+ * der Assertion ist. 0070 hat offen gelassen, dass diese Tabelle waechst, und
+ * sie waechst mit jeder einzelnen Anmeldung. Die beiden Regeln von oben gelten
+ * hier genauso, und bei der Assertion lassen sie sich ausrechnen.
+ *
+ * **Geschnitten wird an `expires_at` und nie an `used_at`.** Eine Zeile
+ * entsteht ueberhaupt erst durch das Annehmen einer Assertion; ihre Aufgabe
+ * faengt in dem Augenblick an, in dem sie geschrieben ist. Ein Schnitt am
+ * Verbrauch nimmt genau den Riegel weg, den die Zeile ist.
+ *
+ * **Die Frist muss laenger sein, als die Assertion selbst gelten kann.** Und
+ * das ist hier laenger als bis `NotOnOrAfter`: `verifySamlResponse` weist eine
+ * Assertion erst ab, wenn ihr `NotOnOrAfter` um mehr als
+ * `SAML_CLOCK_SKEW_MS` zurueckliegt, also 60 Sekunden. Bis dahin ist dieselbe
+ * Assertion noch annehmbar, und faellt ihre Zeile in diesem Fenster, findet
+ * eine zweite Einreichung keinen Riegel mehr und bekommt eine Sitzung.
+ *
+ * Die Rechnung geht auf, und zwar schon bei der kuerzesten Frist, die diese
+ * Klasse zulaesst. Geloescht wird bei `expires_at < now - graceMs`, abgewiesen
+ * wird bei `NotOnOrAfter <= now - 60_000`. Die Untergrenze fuer `graceMs` ist
+ * eine Minute, also `60_000`, und damit ist jede geloeschte Zeile eine, deren
+ * Assertion schon am Zeitfenster scheitert. Der Vorgabewert von 24 Stunden
+ * liegt weit darueber und deckt zusaetzlich den Betriebstag ab, an dem jemand
+ * einer abgewiesenen Anmeldung nachgeht: Ohne die Zeile sieht eine
+ * wiedereingereichte Assertion aus wie eine, die der Anbieter nie geschickt
+ * hat.
  *
  * ## Was er stehen laesst
  *
@@ -136,7 +174,7 @@ export class ProjectAuthExpiryRetentionRuntime {
       // die dann Null sagt, waere eine Behauptung ueber etwas, das
       // stattgefunden hat. Gemeldet wird, was getan wurde, auch wenn die Runde
       // danach abbricht.
-      const removed = { oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0 };
+      const removed = { oneTimeTokens: 0, oauthTokens: 0, oauthCodes: 0, samlAssertions: 0 };
       try {
         await this.pruneScope(scope, expiredBefore, removed);
       } catch {
@@ -148,10 +186,12 @@ export class ProjectAuthExpiryRetentionRuntime {
         oneTimeTokens: total.oneTimeTokens + removed.oneTimeTokens,
         oauthTokens: total.oauthTokens + removed.oauthTokens,
         oauthCodes: total.oauthCodes + removed.oauthCodes,
+        samlAssertions: total.samlAssertions + removed.samlAssertions,
       });
       // Nur Runden, in denen etwas geschehen ist. Eine leere Runde zu melden
       // hiesse, den Takt zu protokollieren statt die Arbeit.
-      if (removed.oneTimeTokens + removed.oauthTokens + removed.oauthCodes > 0) {
+      if (removed.oneTimeTokens + removed.oauthTokens + removed.oauthCodes +
+          removed.samlAssertions > 0) {
         this.options.onPruned?.(scopeIndex, Object.freeze({ ...removed }));
       }
     }
@@ -176,7 +216,7 @@ export class ProjectAuthExpiryRetentionRuntime {
 
   private async pruneScope(
     scope: ProjectAuthScope, expiredBefore: Date,
-    into: { oneTimeTokens: number; oauthTokens: number; oauthCodes: number },
+    into: RemovalCounters,
   ): Promise<void> {
     const { store } = this.options;
     await this.drain(into, "oneTimeTokens",
@@ -187,6 +227,14 @@ export class ProjectAuthExpiryRetentionRuntime {
       (limit) => store.deleteExpiredOAuthTokens(scope, expiredBefore, limit));
     await this.drain(into, "oauthCodes",
       (limit) => store.deleteExpiredOAuthCodes(scope, expiredBefore, limit));
+    // Die Assertionen stehen zuletzt, und ihre Stelle in der Reihe ist frei
+    // waehlbar: Sie haengen an keiner der drei anderen Tabellen, weder ueber
+    // einen Fremdschluessel noch ueber eine Kaskade. Was an ihnen haengt, ist
+    // die offene `AuthnRequest`, und die liegt als Einmal-Token mit dem Zweck
+    // `saml_request` in der ersten Tabelle. Sie laeuft nach zehn Minuten ab,
+    // die Assertion spaeter, und keine der beiden Zeilen braucht die andere.
+    await this.drain(into, "samlAssertions",
+      (limit) => store.deleteExpiredSamlAssertions(scope, expiredBefore, limit));
   }
 
   /**
@@ -201,8 +249,8 @@ export class ProjectAuthExpiryRetentionRuntime {
    * sind die ersten beiden trotzdem geloescht.
    */
   private async drain(
-    into: { oneTimeTokens: number; oauthTokens: number; oauthCodes: number },
-    field: keyof typeof into,
+    into: RemovalCounters,
+    field: keyof RemovalCounters,
     step: (limit: number) => Promise<number>,
   ): Promise<void> {
     const { batchSize, maxBatches } = this.options;

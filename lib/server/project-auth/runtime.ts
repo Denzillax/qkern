@@ -7,8 +7,10 @@ import { ProjectAuthSecretProtector, ProjectAuthTotp, projectAuthSecretProtector
   "@/lib/server/project-auth/mfa";
 import { ProjectAuthOidcClient, ProjectAuthOidcCatalog, projectAuthOidcCatalogFromEnv } from
   "@/lib/server/project-auth/oidc";
-import { ProjectAuthSamlCatalog, projectAuthSamlCatalogFromEnv } from
-  "@/lib/server/project-auth/saml";
+import {
+  ProjectAuthSamlCatalog, projectAuthSamlCatalogFromEnv,
+  ProjectAuthSamlSigningKey, projectAuthSamlSigningKeyFromEnv,
+} from "@/lib/server/project-auth/saml";
 import { MemoryProjectAuthAuditSink, type ProjectAuthAuditSink } from "@/lib/server/project-auth/audit";
 import { PostgresProjectAuthAuditSink } from "@/lib/server/project-auth/audit-postgres";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
@@ -47,6 +49,7 @@ export type ProjectAuthRuntimeDependencies = {
   oidcCatalog?: ProjectAuthOidcCatalog;
   oidcClient?: ProjectAuthOidcClient;
   samlCatalog?: ProjectAuthSamlCatalog;
+  samlSigningKey?: ProjectAuthSamlSigningKey | null;
   audit?: ProjectAuthAuditSink;
   hooks?: ProjectAuthHookPort;
   thirdPartyKeys?: ProjectAuthThirdPartyKeyPort;
@@ -125,6 +128,10 @@ export function createProjectAuthServiceFromEnv(
     // OIDC-Katalog: eine Liste in einer Umgebungsvariablen. Ohne sie gibt es
     // keinen SAML-Weg, und keine Route erfindet einen.
     samlCatalog: dependencies.samlCatalog ?? projectAuthSamlCatalogFromEnv(env),
+    // Der eigene Schluessel fuer die signierte `AuthnRequest` und fuer das
+    // Zertifikat in den Metadaten. Zwei PEM-Angaben oder keine; eine halbe
+    // faellt beim Start auf und nicht beim Anbieter.
+    samlSigningKey: dependencies.samlSigningKey ?? projectAuthSamlSigningKeyFromEnv(env),
     audit,
     hooks: dependencies.hooks ?? projectAuthHookPortFromEnv(env),
     // Der Weg zu den Schluesselsaetzen fremder Aussteller (2.80). Er braucht

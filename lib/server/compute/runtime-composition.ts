@@ -85,7 +85,9 @@ export type ComputeRuntimeLogEvent = Readonly<{
    * und kein Ruecksprungziel -- diese Zeile darf ueberall stehen, wo das
    * Prozesslog steht.
    */
-  removed?: Readonly<{ oneTimeTokens: number; oauthTokens: number; oauthCodes: number }>;
+  removed?: Readonly<{
+    oneTimeTokens: number; oauthTokens: number; oauthCodes: number; samlAssertions: number;
+  }>;
   /**
    * Zahl der eingereihten Zustellungen: von der Webhook-Bruecke (2.53), als
    * Ladung des Log-Drain-Sammlers (2.64) oder als Meldung des
@@ -498,7 +500,7 @@ export function createComputeRuntimeFromEnv(
     batchSize: authRetentionBatch,
     maxBatches: authRetentionMaxBatches,
     intervalMs: authRetentionIntervalMs,
-    // Drei Zahlen und der Index der Umgebung. Der Index zeigt in
+    // Vier Zahlen und der Index der Umgebung. Der Index zeigt in
     // `QKERN_COMPUTE_SCOPES_JSON`, die der Betreiber selbst gesetzt hat.
     onPruned: (scopeIndex, removed) => safeComputeLog(dependencies.logger, {
       event: "compute.auth_retention_round", scopeIndex, removed,
