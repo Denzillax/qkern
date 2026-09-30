@@ -1137,3 +1137,23 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .sql-template-list strong { font-size: 12px; color: var(--qkern-text); }
 .sql-template-list span { font-size: 11px; line-height: 1.6; color: var(--qkern-text-muted); }
 .sql-template-list em { font-size: 10px; line-height: 1.6; color: var(--qkern-text-muted); font-style: normal; }
+
+/* Die 404-Seite (siehe app/not-found.tsx). Sie steht fuer sich, weil sie
+   ohne den Rahmen der Startseite auskommt: ein Satz, eine Erklaerung und
+   zwei Wege zurueck. */
+.not-found-page {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding-block: clamp(72px, 14vh, 160px);
+  max-width: 44rem;
+}
+.not-found-page h1 { margin: 0; }
+.not-found-page p { margin: 0; }
+.not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}

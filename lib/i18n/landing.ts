@@ -24,6 +24,7 @@ export type LandingDictionary = {
   close: { title: string; lead: string; cta: string };
   footer: { tagline: string; product: string; developers: string; docs: string; company: string; modules: string; verification: string; bridge: string; console: string; interfaces: string; gaps: string; imprint: string; privacy: string; status: string; copyright: string; madeIn: string };
   docs: { title: string; pages: string; onThisPage: string; copy: string; copied: string; translationPending: string; menu: string };
+  notFound: { title: string; heading: string; lead: string; home: string; docs: string };
   months: string[];
 };
 
@@ -98,6 +99,7 @@ const de: LandingDictionary = {
   close: { title: "Fang mit dem Kern an.", lead: "Ein Development-Projekt kostet nichts. Die Belege für diese Seite liegen im Repository unter docs/evidence.", cta: "Projekt erstellen" },
   footer: { tagline: "Dein Backend. Getestet, bevor du es anfasst.", product: "Produkt", developers: "Entwickler", docs: "Dokumentation", company: "Unternehmen", modules: "Module", verification: "Prüfverfahren", bridge: "AI Bridge", console: "Console", interfaces: "Schnittstellen", gaps: "Offene Punkte", imprint: "Impressum, Vorlage", privacy: "Datenschutz, Vorlage", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Entwickelt in der Schweiz. Hosting-Aussage noch nicht verifiziert." },
   docs: { title: "Dokumentation", pages: "Seiten", onThisPage: "Auf dieser Seite", copy: "Kopieren", copied: "Kopiert", translationPending: "Diese Seite gibt es bisher nur auf Deutsch. Die Übersetzung folgt.", menu: "Inhalt" },
+  notFound: { title: "Seite nicht gefunden", heading: "Diese Seite gibt es nicht.", lead: "Vielleicht hat sich die Adresse geändert, vielleicht ein Tippfehler. Beides ist von hier aus schnell behoben.", home: "Zur Startseite", docs: "Zur Dokumentation" },
   months: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
 };
 
@@ -172,6 +174,7 @@ const en: LandingDictionary = {
   close: { title: "Start with the core.", lead: "A development project costs nothing. The evidence for this page lives in the repository under docs/evidence.", cta: "Create a project" },
   footer: { tagline: "Your backend. Tested before you touch it.", product: "Product", developers: "Developers", docs: "Documentation", company: "Company", modules: "Modules", verification: "How we test", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Open items", imprint: "Imprint, template", privacy: "Privacy, template", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Built in Switzerland. Hosting claim not yet verified." },
   docs: { title: "Documentation", pages: "Pages", onThisPage: "On this page", copy: "Copy", copied: "Copied", translationPending: "This page exists in German only for now. The translation is coming.", menu: "Contents" },
+  notFound: { title: "Page not found", heading: "This page does not exist.", lead: "Maybe the address changed, maybe it is a typo. Either way, it is a short way back.", home: "Go to the home page", docs: "Go to the documentation" },
   months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
 };
 
@@ -246,6 +249,7 @@ const fr: LandingDictionary = {
   close: { title: "Commencez par le noyau.", lead: "Un projet de développement ne coûte rien. Les preuves de cette page sont dans le dépôt, sous docs/evidence.", cta: "Créer un projet" },
   footer: { tagline: "Votre backend. Testé avant que vous y touchiez.", product: "Produit", developers: "Développeurs", docs: "Documentation", company: "Entreprise", modules: "Modules", verification: "Nos tests", bridge: "AI Bridge", console: "Console", interfaces: "Interfaces", gaps: "Points ouverts", imprint: "Mentions légales, modèle", privacy: "Confidentialité, modèle", status: "Statut", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Développé en Suisse. Affirmation sur l'hébergement pas encore vérifiée." },
   docs: { title: "Documentation", pages: "Pages", onThisPage: "Sur cette page", copy: "Copier", copied: "Copié", translationPending: "Cette page n'existe pour l'instant qu'en allemand. La traduction arrive.", menu: "Sommaire" },
+  notFound: { title: "Page introuvable", heading: "Cette page n'existe pas.", lead: "L'adresse a peut-être changé, ou il s'agit d'une faute de frappe. Dans les deux cas, le retour est court.", home: "Aller à l'accueil", docs: "Aller à la documentation" },
   months: ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
 };
 
@@ -320,6 +324,7 @@ const it: LandingDictionary = {
   close: { title: "Comincia dal nucleo.", lead: "Un progetto di sviluppo non costa nulla. Le prove di questa pagina sono nel repository, sotto docs/evidence.", cta: "Crea un progetto" },
   footer: { tagline: "Il tuo backend. Testato prima che lo tocchi.", product: "Prodotto", developers: "Sviluppatori", docs: "Documentazione", company: "Azienda", modules: "Moduli", verification: "Come testiamo", bridge: "AI Bridge", console: "Console", interfaces: "Interfacce", gaps: "Punti aperti", imprint: "Note legali, modello", privacy: "Privacy, modello", status: "Stato", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Sviluppato in Svizzera. Affermazione sull'hosting non ancora verificata." },
   docs: { title: "Documentazione", pages: "Pagine", onThisPage: "In questa pagina", copy: "Copia", copied: "Copiato", translationPending: "Questa pagina esiste per ora solo in tedesco. La traduzione arriva.", menu: "Indice" },
+  notFound: { title: "Pagina non trovata", heading: "Questa pagina non esiste.", lead: "Forse l'indirizzo è cambiato, forse è un errore di battitura. In entrambi i casi il ritorno è breve.", home: "Vai alla pagina iniziale", docs: "Vai alla documentazione" },
   months: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
 };
 

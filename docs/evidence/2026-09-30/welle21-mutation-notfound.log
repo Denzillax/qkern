@@ -1,0 +1,75 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/not-found-contract.test.ts (2 tests | 1 failed) 45ms
+     × gives the page a header and a way back 33ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/not-found-contract.test.ts > not found contract > gives the page a header and a way back
+AssertionError: expected 'import Link from "next/link";\nimport…' to match /<SiteHeader\s*\/>/>
+
+- Expected:
+/<SiteHeader\s*\/>/
+
++ Received:
+"import Link from \"next/link\";
+import type { Metadata } from \"next\";
+import { ArrowRight, Compass } from \"lucide-react\";
+import { SiteHeader } from \"@/components/site-header\";
+import { currentLocale } from \"@/lib/i18n/server\";
+import { getLandingDictionary } from \"@/lib/i18n/landing\";
+
+/**
+ * Die Seite, die ein Besucher sieht, wenn die Adresse nicht stimmt.
+ *
+ * Bis zum ersten Besuch im Browser gab es sie nicht, und Next.js zeigte seine
+ * Vorgabe: „404 — This page could not be found.\", ohne Kopf, ohne Navigation
+ * und **ohne einen einzigen Link**. Wer sich vertippte, stand ohne Weg zurueck
+ * da, las den Satz in jeder der vier Sprachen auf Englisch, und im Tab stand
+ * der deutsche Titel der Startseite, waehrend `lang` auf `en` stand.
+ *
+ * Kein Test konnte das sehen: Eine fehlende Route hat keine Komponente, die
+ * ein Vertrag rendern koennte, und die Vorgabe kommt aus dem Framework.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = getLandingDictionary(await currentLocale()).notFound;
+  return { title: `${t.title} · QKERN` };
+}
+
+export default async function NotFound() {
+  const locale = await currentLocale();
+  const t = getLandingDictionary(locale).notFound;
+  return (
+    <>
+      <main className=\"container not-found-page\">
+        <span className=\"eyebrow\">404</span>
+        <h1>{t.heading}</h1>
+        <p className=\"muted\">{t.lead}</p>
+        <div className=\"not-found-actions\">
+          <Link className=\"button\" href=\"/\">{t.home} <ArrowRight size={16} /></Link>
+          <Link className=\"secondary-button\" href=\"/docs\"><Compass size={15} /> {t.docs}</Link>
+        </div>
+      </main>
+    </>
+  );
+}
+"
+
+ ❯ tests/not-found-contract.test.ts:33:18
+     31|     // enthaelt den Namen ja weiterhin. Dieselbe Klasse wie die zu loc…
+     32|     // Erwartung in `(2.101)`.
+     33|     expect(page).toMatch(/<SiteHeader\s*\/>/);
+       |                  ^
+     34|     // Mindestens ein Link, der wirklich irgendwohin fuehrt.
+     35|     expect(page).toMatch(/href="\/"/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  21:23:39
+   Duration  898ms (transform 221ms, setup 0ms, import 293ms, tests 45ms, environment 0ms)
+
+EXIT=1

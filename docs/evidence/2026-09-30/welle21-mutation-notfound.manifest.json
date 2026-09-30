@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: die 404-Seite verliert ihren Kopf",
+  "log": "welle21-mutation-notfound.log",
+  "commit": "48f37df0b69601f6648be4ae921f01d961bf54da",
+  "commitSubject": "docs: SAML ist in 2.68.0 ausgeliefert, nicht in 2.67.0",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}
