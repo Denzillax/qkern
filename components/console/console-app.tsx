@@ -266,7 +266,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
             <LanguageSwitcher locale={locale} label={t("Sprache wählen")}/>
             <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>{t("Suchen")}</span><kbd>⌘ K</kbd></button>
             {snapshot && !error && <span className="system-online"><i/> {t("Verbunden")}</span>}
-            <ThemeToggle/><button className="icon-button is-placeholder" aria-label={t("Benachrichtigungen")} disabled title={t("Benachrichtigungen sind noch nicht verbunden")}><Bell size={16}/></button>
+            <ThemeToggle labels={{ dark: t("Dark Mode aktivieren"), light: t("Light Mode aktivieren") }}/><button className="icon-button is-placeholder" aria-label={t("Benachrichtigungen")} disabled title={t("Benachrichtigungen sind noch nicht verbunden")}><Bell size={16}/></button>
           </div>
         </header>
 

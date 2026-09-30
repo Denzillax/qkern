@@ -17,17 +17,17 @@ export async function SiteHeader() {
     <header className="site-header">
       <div className="container header-inner">
         <Link href="/" aria-label={t.home}><QKERNLogo size="md" /></Link>
-        <nav className="desktop-nav" aria-label="Hauptnavigation">
+        <nav className="desktop-nav" aria-label={t.mainNav}>
           {t.nav.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
         </nav>
         <div className="header-actions">
           <LanguageSwitcher locale={locale} label={t.language} />
-          <ThemeToggle />
+          <ThemeToggle labels={{ dark: t.themeDark, light: t.themeLight }} />
           <Link className="text-link desktop-only" href="/login"><StableLabel current={t.login} variants={Object.values(LANDING).map((entry) => entry.header.login)}/></Link>
           {/* Gleiche Beschriftung wie auf der Seite. Zwei Woerter fuer dieselbe
               Handlung zwingen den Leser, sie fuer zwei zu halten. */}
           <Link className="button small desktop-only" href="/register"><StableLabel current={t.createProject} variants={Object.values(LANDING).map((entry) => entry.header.createProject)}/></Link>
-          <SiteMenu links={t.nav} labels={{ open: t.menuOpen, close: t.menuClose, login: t.login, createProject: t.createProject }} />
+          <SiteMenu links={t.nav} labels={{ open: t.menuOpen, close: t.menuClose, login: t.login, createProject: t.createProject, mainNav: t.mainNav }} />
         </div>
       </div>
     </header>

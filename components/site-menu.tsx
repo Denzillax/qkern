@@ -14,7 +14,7 @@ import { createPortal } from "react-dom";
  */
 export function SiteMenu({ links, labels }: {
   links: ReadonlyArray<readonly [string, string]>;
-  labels: { open: string; close: string; login: string; createProject: string };
+  labels: { open: string; close: string; login: string; createProject: string; mainNav: string };
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -28,7 +28,7 @@ export function SiteMenu({ links, labels }: {
   }, [open]);
   const sheet = <>
     <div className="site-menu-backdrop" onClick={() => setOpen(false)} aria-hidden="true"/>
-    <nav id="site-menu" className="site-menu is-open" aria-label="Hauptnavigation">
+    <nav id="site-menu" className="site-menu is-open" aria-label={labels.mainNav}>
       {links.map(([label, href]) => <Link key={href} href={href} onClick={() => setOpen(false)}>{label}</Link>)}
       <div className="site-menu-actions">
         <Link className="secondary-button" href="/login" onClick={() => setOpen(false)}>{labels.login}</Link>

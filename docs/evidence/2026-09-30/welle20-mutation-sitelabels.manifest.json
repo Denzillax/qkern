@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows), Mutation: deutsche Beschriftung in einem Website-Baustein",
+  "log": "welle20-mutation-sitelabels.log",
+  "commit": "7f73bf630eccc6b6be0c2c1950a0efcbe2ea507a",
+  "commitSubject": "console: Das gewaehlte Thema steht, bevor der Browser zeichnet",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "1 failed (1)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": []
+}

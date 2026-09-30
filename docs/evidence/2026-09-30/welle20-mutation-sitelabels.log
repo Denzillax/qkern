@@ -1,0 +1,36 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/site-labels-contract.test.ts (2 tests | 1 failed) 83ms
+     × keeps German out of the site components 77ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/site-labels-contract.test.ts > site labels contract > keeps German out of the site components
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "components\\site-header.tsx:20: \"Hauptnavigation\"",
++ ]
+
+ ❯ tests/site-labels-contract.test.ts:63:19
+     61|       }
+     62|     }
+     63|     expect(found).toEqual([]);
+       |                   ^
+     64|   });
+     65|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  06:30:32
+   Duration  1.05s (transform 271ms, setup 0ms, import 344ms, tests 83ms, environment 0ms)
+
+EXIT=1
