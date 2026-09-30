@@ -13,11 +13,15 @@ import { spawnSync } from "node:child_process";
  * Das Serverlog wird am Ende mitgeschrieben: Ob eine Verbindung wirklich ueber
  * TLS kam, steht am Ende in `pg_stat_ssl`, aber ein abgewiesener Klartext-
  * Versuch steht nur hier.
+ *
+ * Der Vault gehoert zum Stack: Postgres Changes brauchen unter
+ * Production einen vault-gestuetzten Katalog, und beide Dienste muessen gesund
+ * sein, bevor der Testcontainer laeuft.
  */
 const project = process.env.COMPOSE_PROJECT_NAME?.trim() || "qkern-slice-rt";
 const compose = ["compose", "-p", project, "-f", "docker-compose.realtime-certification.yml"];
 
-const up = spawnSync("docker", [...compose, "up", "-d", "--wait", "--force-recreate", "postgres"], { stdio: "inherit" });
+const up = spawnSync("docker", [...compose, "up", "-d", "--wait", "--force-recreate", "postgres", "vault"], { stdio: "inherit" });
 let status = up.status ?? 1;
 if (up.error) console.error(`Unable to start the realtime certification stack: ${up.error.message}`);
 

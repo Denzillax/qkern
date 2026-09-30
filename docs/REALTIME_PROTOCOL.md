@@ -9,8 +9,9 @@ steht dort ein Tor mit benannten Bedingungen, und der Start dagegen ist jetzt
 belegt. Der Stack `docker-compose.realtime-certification.yml` führt ein
 PostgreSQL mit eigener CA, das jede Verbindung ohne TLS abweist; der
 ausgelieferte Prozess läuft davor unter `production` an, und `pg_stat_ssl`
-nennt für jede seiner Verbindungen Version und Cipher. Was Production heute
-nicht kann, steht unter „Grenzen unter Production".
+nennt für jede seiner Verbindungen Version und Cipher. Im selben Stack steht ein
+echter Vault, und Postgres Changes laufen unter `production` darüber. Was
+Production heute noch nicht kann, steht unter „Grenzen unter Production".
 
 ## Verbindung und Authentifizierung
 
@@ -139,14 +140,38 @@ Vertrauensanker kommt aus `NODE_EXTRA_CA_CERTS`, wenn der Server nicht auf eine
 auf, und gegen ein PostgreSQL mit `hostnossl ... reject` kam der Prozess darum
 gar nicht hoch.
 
-Nicht erreichbar unter Production sind **Postgres Changes**. Der Prozess baut
-seinen Projektdatenbank-Katalog ausschließlich über
-`createLocalProjectDatabaseCatalogFromEnv` beziehungsweise
-`createGeneratedDataApiFromEnv` auf, und beide weisen `production` ab: Sie
-verlangen einen eingespeisten, vault-gestützten Katalog. Der Migrations-Prozess
-hat diesen Zweig, der Realtime-Prozess hat ihn nicht. Wer `changes:` unter
-Production anschaltet, bekommt beim Start eine benannte Abweisung; ein leeres
-Abonnement gibt es nicht.
+**Postgres Changes** laufen unter Production. Der Prozess baut seinen
+Projektdatenbank-Katalog über dieselbe Fabrik wie der Migrations-Prozess
+(`lib/server/migrations/connection-catalog-runtime.ts`), und unter `production`
+ist das der vault-gestützte Zweig. Verlangt werden:
+
+- `QKERN_REALTIME_CHANGES_ENABLED=true` und `QKERN_GENERATED_DATA_API_ENABLED=true`.
+  Der Leser holt jede Zeile durch die Generated Data API; ohne sie würde er bei
+  jedem Lesevorgang geschlossen fallen und der Abonnent bekäme dauerhaft nichts.
+  Der Start fällt deshalb, statt diesen Zustand zuzulassen.
+- `QKERN_PROJECT_DATABASE_CATALOG_SOURCE=static-env` mit den Bindungen in
+  `QKERN_VAULT_PROJECT_DATABASE_CATALOG_JSON`. Die Bindungstabelle der Control
+  Plane gehört der Worker-Rolle; der Realtime-Prozess läuft mit der Laufzeitrolle
+  und bekäme sie nur durch ein zusätzliches Leserecht. Er verlangt darum
+  ausdrückliche Bindungen und nennt beim Start, wenn sie fehlen.
+- `QKERN_VAULT_DATABASE_URL` als `https`-Adresse einer Vault-Datenbank-Mount und
+  `QKERN_VAULT_TOKEN_FILE` als absoluter Pfad auf einen Token-Sink, der für
+  andere nicht lesbar ist. Jede Bindung trägt unter Production einen
+  Blatt-Pin (`serverCertificateSha256`) der Projektdatenbank.
+
+Ein vault-gestützter Katalog holt seine Zugangsdaten erst beim ersten Zugriff.
+Der Prozess greift deshalb vor dem Lauschen einmal je Bindung bis zur Datenbank
+durch und meldet, wie viele er erreicht hat. Ein leerer Katalog oder ein Vault,
+der für eine gültige Bindung nichts liefert, lässt den Start fallen. Ohne diesen
+Griff hätte der Prozess gelauscht und der Abonnent hätte für immer ein leeres
+`changes:`-Abonnement gehabt, ohne Fehler und ohne Hinweis.
+
+Belegt ist der Weg im Stack `docker-compose.realtime-certification.yml`: Dort
+steht neben dem TLS-PostgreSQL ein echter Vault mit einem Serverzertifikat aus
+derselben CA, und eine echte Datenbankänderung geht durch
+`qkern_internal.change_feed` bis zu einem angemeldeten Abonnenten. Gelesen wird
+mit dessen Claims; die Zeile eines anderen Nutzers kommt nicht an, weil Row Level
+Security sie nicht herausgibt.
 
 Ebenfalls offen: History und Presence liegen je Verbindung im Prozessspeicher,
 externe Rate-Limits und ein Lastprofil jenseits des Soak fehlen.
@@ -189,11 +214,13 @@ Der Zertifizierungsnachweis führt zwei Instanzen mit getrennten Pools und
 getrennten `LISTEN`-Verbindungen gegen echtes PostgreSQL, **aber im selben
 Betriebssystemprozess**. Prozessabsturz und Netzwerkausfall sind nicht geprüft.
 
-Postgres Changes (CDC) sind nicht implementiert. `lib/server/realtime/change-source.ts`
-hält den vorgesehenen Port und die offenen Entwurfsentscheidungen fest. Der
-zentrale Unterschied: Datenbankänderungen entstehen außerhalb von QKERN und
-brauchen deshalb RLS pro Ereignis und pro Abonnent; sie dürfen nicht über den
-kanalweit sichtbaren Event-Log laufen.
-
-Die Aufbewahrung ist als `prune` implementiert, wird aber von keinem Scheduler
-aufgerufen.
+Stand `1.11.0` waren Postgres Changes (CDC) nicht implementiert, und die
+Aufbewahrung lag als `prune` bereit, ohne dass jemand sie aufrief. Beides gilt
+nicht mehr: Der Feed liegt in `db/project/0003_qkern_change_feed.sql`, die
+Aufbewahrung hat mit `RealtimeRetentionRuntime` einen Besitzer im
+Realtime-Prozess, und unter `production` läuft der Feed über den
+vault-gestützten Katalog. `lib/server/realtime/change-source.ts` hält weiter die
+Entwurfsentscheidungen fest, und eine davon bleibt der zentrale Unterschied:
+Datenbankänderungen entstehen außerhalb von QKERN und brauchen deshalb RLS pro
+Ereignis und pro Abonnent; über den kanalweit sichtbaren Event-Log dürfen sie
+nicht laufen.
