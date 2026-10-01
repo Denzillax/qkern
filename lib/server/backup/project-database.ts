@@ -300,6 +300,13 @@ export type ProjectDatabaseBackupLogEvent = Readonly<{
   environment?: Environment;
   attempt?: number;
   errorCode?: ProjectDatabaseBackupErrorCode;
+  /**
+   * Welcher Schritt des Dumps gescheitert ist, wenn es einer war. Ein
+   * Fehlschlag, der nur sich selbst meldet, laesst zwischen Vault,
+   * Verbindungszeile und Kindprozess raten; der erste Lauf dieses Falls hat das
+   * vorgefuehrt.
+   */
+  step?: string;
   /** Nur die Fehlerklasse, nie eine Meldung (dieselbe Regel wie im Provisioner-Log). */
   reason?: string;
   removed?: number;
@@ -471,6 +478,7 @@ export class ProjectDatabaseBackupService {
           environment: failed.environment,
           attempt: failed.attemptCount,
           errorCode,
+          ...(dumpStep(error) ? { step: dumpStep(error) } : {}),
         });
       } catch (storeError) {
         this.log({ event: "project_database_backup.round_failed", reason: reasonOf(storeError) });
@@ -722,9 +730,28 @@ function backupErrorCode(error: unknown): ProjectDatabaseBackupErrorCode {
   return "DUMP_FAILED";
 }
 
+/** Der Schritt aus `ProjectDatabaseDumpError`, wenn einer dranhaengt. Fester Satz, kein Text. */
+function dumpStep(error: unknown): string | undefined {
+  const step = (error as { step?: unknown })?.step;
+  return typeof step === "string" && /^[a-z_]{1,32}$/.test(step) ? step : undefined;
+}
+
+/**
+ * Die Fehlerklasse, und wenn eine Datenbank dahintersteckt, ihr SQLSTATE.
+ *
+ * Ein SQLSTATE ist ein fuenfstelliger, fester Code und **keine** Meldung: er
+ * traegt keinen Tabellennamen und keinen Wert eines Mandanten. Ohne ihn sagt
+ * `PERSISTENCE_ERROR` nur "irgendetwas an der Datenbank", und der erste Lauf
+ * dieses Falls hat gezeigt, wie weit man damit kommt: nicht weit.
+ */
 function reasonOf(error: unknown): string {
   const code = (error as { code?: unknown })?.code;
-  return typeof code === "string" && /^[A-Z_]{1,64}$/.test(code) ? code : "UNKNOWN";
+  const reason = typeof code === "string" && /^[A-Z_]{1,64}$/.test(code) ? code : "UNKNOWN";
+  const cause = (error as { cause?: unknown })?.cause;
+  const sqlState = (cause as { code?: unknown })?.code;
+  return typeof sqlState === "string" && /^[0-9A-Z]{5}$/.test(sqlState)
+    ? `${reason}/${sqlState}`
+    : reason;
 }
 
 function bounded(value: number, minimum: number, maximum: number): number {

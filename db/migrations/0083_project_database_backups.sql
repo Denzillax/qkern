@@ -64,7 +64,16 @@ CREATE TABLE project_database_backups (
   artifact_sha256 text CHECK (artifact_sha256 ~ '^[a-f0-9]{64}$'),
   size_bytes bigint CHECK (size_bytes BETWEEN 1 AND 1099511627776),
   -- Der Datenschluessel dieses Backups, eingewickelt. Base64, begrenzt.
-  wrapped_data_key text CHECK (wrapped_data_key ~ '^[A-Za-z0-9+/]{32,512}={0,2}$'),
+  --
+  -- Die Obergrenze ist 255 und nicht 512, und das ist keine Schaetzung: Die
+  -- Regex-Engine von PostgreSQL laesst in einer Wiederholung hoechstens 255 zu
+  -- (`DUPMAX`). `{32,512}` ist eine **ungueltige** Regex, und sie faellt nicht
+  -- beim Anlegen der Tabelle auf, sondern erst beim ersten Schreiben, mit
+  -- SQLSTATE 2201B. Der erste Lauf des Falls (2.126) hat genau das vorgefuehrt:
+  -- Dump, Manifest, Verschluesselung und Upload liefen durch, und die Zeile kam
+  -- nicht zustande. Das Paeckchen ist ohnehin 80 Zeichen lang (12 Byte IV, 16
+  -- Byte Tag, 32 Byte Schluessel), 255 ist also reichlich.
+  wrapped_data_key text CHECK (wrapped_data_key ~ '^[A-Za-z0-9+/]{32,255}={0,2}$'),
   -- Welcher Mandanten-Schluessel ihn eingewickelt hat. Ein Name, kein Material.
   key_id text CHECK (key_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
   -- Geordnete Zeilen und Schemaobjekte, gehasht: gleich nur, wenn alles gleich

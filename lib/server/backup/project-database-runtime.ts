@@ -150,6 +150,7 @@ class ControlPlaneBackupEndpointResolver implements ProjectDatabaseBackupEndpoin
       host: binding.host,
       port: binding.port,
       database: binding.expectedDatabase,
+      ledgerOwner: binding.expectedLedgerOwner,
       caFilePath: this.shape.caFilePath,
     });
   }
@@ -255,7 +256,18 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
     accessKeyId: env[PROJECT_DATABASE_BACKUP_ENV.objectAccessKeyId]?.trim() ?? "",
     secretAccessKey: env[PROJECT_DATABASE_BACKUP_ENV.objectSecretAccessKey] ?? "",
     production,
-  }, dependencies.fetchFn, dependencies.now);
+    // **Nicht** `dependencies.now`, und das ist der Befund des ersten Laufs von
+    // (2.126): Die Uhr des Dienstes ist einspeisbar, damit eine Aufbewahrung von
+    // 30 Tagen pruefbar ist, ohne 30 Tage zu warten. Ein SigV4-Signierer braucht
+    // dagegen die **echte** Uhr: er schreibt den Zeitpunkt in die Signatur, und
+    // der Objektspeicher weist eine Signatur ab, die mehr als 15 Minuten neben
+    // seiner Uhr liegt (`RequestTimeTooSkewed`). Mit der vorgestellten Uhr des
+    // Falls kam genau das zurueck, und zwar erst beim Aufraeumen.
+    //
+    // Die Trennung ist keine Testbequemlichkeit: Geschaeftszeit und
+    // Protokollzeit sind zwei Dinge, und ein Dienst, dessen Uhr ein Betreiber
+    // verstellt, soll an der Aufbewahrung etwas aendern und nicht am Hochladen.
+  }, dependencies.fetchFn);
 
   const keys = new FileBackupDataKeyProtector({
     directory: env[PROJECT_DATABASE_BACKUP_ENV.keyDirectory]?.trim() ?? "",
@@ -280,7 +292,16 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
         connectionString: poolUrl(input.endpoint, input.credential, input.databaseName),
         applicationName: "qkern-project-database-backup",
         max: 1,
-        ssl: production ? { rejectUnauthorized: true } : false,
+        // TLS, sobald ein Vertrauensanker eingestellt ist, und nicht erst unter
+        // `production`: Diese Verbindung geht in eine Projektdatenbank, und die
+        // verlangt TLS auch in einem Stack. Der Anker selbst kommt aus
+        // `NODE_EXTRA_CA_CERTS` -- `PostgresPoolConfig` hat kein Feld fuer eine
+        // CA-Datei, und eines dafuer einzufuehren waere eine zweite Stelle, an
+        // der ein Anker eingestellt wird. Den Blatt-Pin traegt der lange Pool
+        // des Katalogs; diese Verbindung lebt fuer eine Messung.
+        ssl: caFilePath
+          ? { rejectUnauthorized: true, servername: input.endpoint.host }
+          : production ? { rejectUnauthorized: true } : false,
       });
       return { database: pool, close: () => pool.end() };
     },

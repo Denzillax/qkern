@@ -64,9 +64,12 @@ SQL
 
 psql --username "$POSTGRES_USER" --dbname "$PROJECT_DATABASE" --no-psqlrc --set ON_ERROR_STOP=1 <<SQL
 GRANT CONNECT ON DATABASE ${PROJECT_DATABASE} TO qkern_project_migrator, qkern_project_backup, qkern_project_restore_admin;
--- Der Leser braucht `USAGE` auf den Schemata; `pg_read_all_data` bringt es
--- clusterweit mit, aber nicht fuer ein Schema, dem `PUBLIC` ausdruecklich
+-- Der Leser braucht USAGE auf den Schemata; pg_read_all_data bringt es
+-- clusterweit mit, aber nicht fuer ein Schema, dem PUBLIC ausdruecklich
 -- entzogen wurde. Darum hier noch einmal und ausdruecklich.
+-- (Keine Backticks in diesem Heredoc: es ist unquoted, damit
+-- ${PROJECT_DATABASE} eingesetzt wird, und eine Backtick-Folge waere dann eine
+-- Kommandosubstitution. Der erste Lauf hat genau das vorgefuehrt.)
 GRANT USAGE ON SCHEMA public TO qkern_project_backup;
 SQL
 

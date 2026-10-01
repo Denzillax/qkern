@@ -63,11 +63,23 @@ export const MAX_MANIFEST_TABLES = 2_000;
 const TENANT_SCHEMA_FILTER =
   "nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg\\_toast%' AND nspname NOT LIKE 'pg\\_temp%'";
 
+/**
+ * Welcher Teil des Manifests nicht gelesen werden konnte. Fester Satz, kein
+ * Text aus einer Datenbankmeldung: eine Meldung aus einer Projektdatenbank kann
+ * Tabellennamen eines Mandanten tragen. Dieselbe Lehre wie beim Schritt des
+ * Dumps -- ein Fehlschlag, der nur sich selbst meldet, laesst raten.
+ */
+export type ProjectDatabaseManifestStep =
+  | "tables" | "columns" | "constraints" | "indexes"
+  | "policies" | "extensions" | "sequences" | "grants" | "rows";
+
 export class ProjectDatabaseManifestError extends Error {
   readonly code = "MANIFEST_UNAVAILABLE";
-  constructor() {
+  readonly step: ProjectDatabaseManifestStep;
+  constructor(step: ProjectDatabaseManifestStep) {
     super("The project database manifest could not be read.");
     this.name = "ProjectDatabaseManifestError";
+    this.step = step;
   }
 }
 recognisedByName(ProjectDatabaseManifestError, "ProjectDatabaseManifestError");
@@ -81,7 +93,7 @@ recognisedByName(ProjectDatabaseManifestError, "ProjectDatabaseManifestError");
 export async function readProjectDatabaseManifest(
   database: SqlQueryable,
 ): Promise<ProjectDatabaseManifest> {
-  const schema = await rowsAsText(database, `
+  const schema = await rowsAsText(database, "columns", `
     SELECT format('%s.%s %s %s %s %s %s',
              n.nspname, c.relname, a.attname, format_type(a.atttypid, a.atttypmod),
              a.attnotnull, coalesce(pg_get_expr(d.adbin, d.adrelid), ''), c.relrowsecurity) AS line
@@ -89,48 +101,42 @@ export async function readProjectDatabaseManifest(
     JOIN pg_namespace AS n ON n.oid = c.relnamespace
     JOIN pg_attribute AS a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
     LEFT JOIN pg_attrdef AS d ON d.adrelid = c.oid AND d.adnum = a.attnum
-    WHERE ${TENANT_SCHEMA_FILTER} AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-    ORDER BY line COLLATE "C"`);
+    WHERE ${TENANT_SCHEMA_FILTER} AND c.relkind IN ('r', 'p', 'v', 'm', 'f')`);
 
-  const constraints = await rowsAsText(database, `
+  const constraints = await rowsAsText(database, "constraints", `
     SELECT format('%s.%s %s %s', n.nspname, c.relname, t.conname, pg_get_constraintdef(t.oid)) AS line
     FROM pg_constraint AS t
     JOIN pg_class AS c ON c.oid = t.conrelid
     JOIN pg_namespace AS n ON n.oid = c.relnamespace
-    WHERE ${TENANT_SCHEMA_FILTER}
-    ORDER BY line COLLATE "C"`);
+    WHERE ${TENANT_SCHEMA_FILTER}`);
 
-  const indexes = await rowsAsText(database, `
+  const indexes = await rowsAsText(database, "indexes", `
     SELECT format('%s.%s %s', schemaname, tablename, indexdef) AS line
     FROM pg_indexes
-    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-    ORDER BY line COLLATE "C"`);
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`);
 
-  const policies = await rowsAsText(database, `
+  const policies = await rowsAsText(database, "policies", `
     SELECT format('%s.%s %s %s %s %s %s %s',
              schemaname, tablename, policyname, permissive,
              coalesce(array_to_string(roles, ','), ''), cmd,
              coalesce(qual, ''), coalesce(with_check, '')) AS line
     FROM pg_policies
-    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-    ORDER BY line COLLATE "C"`);
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`);
 
-  const extensions = await rowsAsText(database, `
+  const extensions = await rowsAsText(database, "extensions", `
     SELECT format('%s %s %s', e.extname, e.extversion, n.nspname) AS line
     FROM pg_extension AS e
-    JOIN pg_namespace AS n ON n.oid = e.extnamespace
-    ORDER BY line COLLATE "C"`);
+    JOIN pg_namespace AS n ON n.oid = e.extnamespace`);
 
   // Sequenzen mit ihrem Stand. Ohne ihn stimmt das Schema und der naechste
   // INSERT kollidiert, und genau das ist der Fehler, den eine Wiederherstellung
   // ohne Sequenzen macht.
-  const sequences = await rowsAsText(database, `
+  const sequences = await rowsAsText(database, "sequences", `
     SELECT format('%s.%s %s %s %s %s',
              schemaname, sequencename, coalesce(last_value::text, 'unset'),
              start_value, increment_by, cycle) AS line
     FROM pg_sequences
-    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-    ORDER BY line COLLATE "C"`);
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`);
 
   // Die Rechte kommen aus `pg_class.relacl` und **nicht** aus
   // `information_schema.table_privileges`. Die Sicht zeigt nur Rechte, bei
@@ -140,7 +146,7 @@ export async function readProjectDatabaseManifest(
   // ist fuer jeden gleich. `aclexplode` zerlegt es in Zeilen, `::regrole`
   // macht aus einer Oid einen Namen; die Oid selbst waere nach einer
   // Wiederherstellung eine andere Zahl fuer dieselbe Rolle.
-  const grants = await rowsAsText(database, `
+  const grants = await rowsAsText(database, "grants", `
     SELECT line FROM (
       SELECT format('%s.%s %s %s %s',
                n.nspname, c.relname,
@@ -170,8 +176,7 @@ export async function readProjectDatabaseManifest(
                acl.privilege_type) AS line
       FROM pg_default_acl AS d
       CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
-    ) AS collected
-    ORDER BY line COLLATE "C"`);
+    ) AS collected`);
 
   const { digest: rowsDigest, tableCount, rowCount } = await rowDigest(database);
 
@@ -220,12 +225,15 @@ async function rowDigest(database: SqlQueryable): Promise<{ digest: string; tabl
       JOIN pg_namespace AS n ON n.oid = c.relnamespace
       WHERE ${TENANT_SCHEMA_FILTER} AND c.relkind IN ('r', 'p')
         AND c.relispartition = false
-      ORDER BY label COLLATE "C"`);
+      -- Nicht ueber den Ausgabenamen: siehe rowsAsText, derselbe Grund. Hier
+      -- steht der Ausdruck selbst, weil die Abfrage zwei Spalten liefert und ein
+      -- Rahmen sie beide durchreichen muesste.
+      ORDER BY (n.nspname || '.' || c.relname) COLLATE "C"`);
     tables = result.rows.map((row) => ({ qualified: String(row.qualified), label: String(row.label) }));
   } catch {
-    throw new ProjectDatabaseManifestError();
+    throw new ProjectDatabaseManifestError("tables");
   }
-  if (tables.length > MAX_MANIFEST_TABLES) throw new ProjectDatabaseManifestError();
+  if (tables.length > MAX_MANIFEST_TABLES) throw new ProjectDatabaseManifestError("tables");
 
   const lines: string[] = [];
   let rowCount = 0;
@@ -240,18 +248,39 @@ async function rowDigest(database: SqlQueryable): Promise<{ digest: string; tabl
       lines.push(`${table.label} ${row?.digest ?? "none"} ${row?.rows ?? "0"}`);
       rowCount += Number(row?.rows ?? 0);
     } catch {
-      throw new ProjectDatabaseManifestError();
+      throw new ProjectDatabaseManifestError("rows");
     }
   }
   return { digest: digest(lines), tableCount: tables.length, rowCount };
 }
 
-async function rowsAsText(database: SqlQueryable, text: string): Promise<string[]> {
+/**
+ * Fuehrt eine Teilabfrage aus und ordnet sie **im Rahmen** und nicht in der
+ * Abfrage selbst.
+ *
+ * Das ist der Befund des ersten Laufs dieses Falls: `ORDER BY line COLLATE "C"`
+ * direkt hinter einem `SELECT format(...) AS line` ist kein Verweis auf die
+ * Ausgabespalte. PostgreSQL erlaubt den Ausgabenamen nur als **nackten** Namen;
+ * sobald eine Klausel wie `COLLATE` dazukommt, ist es ein Ausdruck ueber die
+ * Eingabespalten, und `line` gibt es dort nicht. Die Abfrage scheiterte mit
+ * "column line does not exist", und das Manifest meldete nur
+ * `MANIFEST_UNAVAILABLE`.
+ *
+ * Der Rahmen loest beides: die Ordnung liegt ueber einer echten Spalte, und
+ * jede Teilabfrage braucht sie nicht mehr selbst zu nennen.
+ */
+async function rowsAsText(
+  database: SqlQueryable,
+  step: ProjectDatabaseManifestStep,
+  text: string,
+): Promise<string[]> {
   try {
-    const result = await database.query<{ line: string }>(text);
+    const result = await database.query<{ line: string }>(
+      `SELECT line FROM (${text}) AS collected ORDER BY line COLLATE "C"`,
+    );
     return result.rows.map((row) => String(row.line));
   } catch {
-    throw new ProjectDatabaseManifestError();
+    throw new ProjectDatabaseManifestError(step);
   }
 }
 

@@ -127,10 +127,17 @@ services:
       - backup-certification-certs:/certs:ro
       - backup-certification-wal:/wal-archive
     healthcheck:
-      # Ueber TLS, weil pg_hba alles andere abweist. Die Rolle des Backup-Lesers
-      # entsteht im letzten Init-Script; vorher kann die Probe nicht bestehen,
-      # und damit wartet `--wait` auf eine fertig eingerichtete Datenbank.
-      test: ["CMD-SHELL", "PGPASSWORD=qkern_project_backup_local_only psql 'host=127.0.0.1 sslmode=require user=qkern_project_backup dbname=project_database' -tAc 'SELECT 1' | grep -qx 1"]
+      # Ueber TLS, weil pg_hba alles andere abweist. Geprueft wird mit dem
+      # Provisioner-Login, dass **beide** Backup-Rollen da sind; sie entstehen im
+      # letzten Init-Script, und damit wartet `--wait` auf eine fertig
+      # eingerichtete Datenbank.
+      #
+      # Nicht mit dem Backup-Login selbst, und das ist der Befund des ersten
+      # Laufs: Der Vault dreht beim Anlegen seiner statischen Rolle das Passwort
+      # dieses Benutzers. Eine Probe mit dem Startpasswort schlaegt ab diesem
+      # Augenblick fehl und erklaert den Container fuer krank, obwohl alles
+      # laeuft.
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_provisioner_local_only psql 'host=127.0.0.1 sslmode=require user=qkern_provisioner_app dbname=qkern_control' -tAc \"SELECT count(*) = 2 FROM pg_roles WHERE rolname IN ('qkern_project_backup', 'qkern_project_restore_admin')\" | grep -qx t"]
       interval: 2s
       timeout: 5s
       retries: 40

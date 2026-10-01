@@ -48,25 +48,6 @@ export type ProjectDatabaseBackupEndpoint = Readonly<{
   host: string;
   port: number;
   database: string;
-  /**
-   * Der Ledger-Eigentuemer der Projektdatenbank.
-   *
-   * Er steht hier, weil die **Zieldatenbank ihm gehoeren muss**, und das ist
-   * der Befund des ersten Laufs von (2.126): Ein Dump traegt
-   * `ALTER ... OWNER TO <ledger-owner>` fuer jedes Objekt, und PostgreSQL
-   * verlangt dafuer nicht nur, dass der Ausfuehrende Mitglied des neuen
-   * Eigentuemers ist, sondern dass der **neue Eigentuemer** CREATE auf dem
-   * Schema hat. In einer frisch angelegten Datenbank hat er das nur, wenn er
-   * ihr Eigentuemer ist (ueber `pg_database_owner`). Legt die
-   * Wiederherstellung die Datenbank auf sich selbst an, scheitert sie an der
-   * ersten `ALTER SEQUENCE ... OWNER TO`-Zeile mit "permission denied for
-   * schema public" -- und zwar erst nach dem halben Dump.
-   *
-   * `db/docker/998-project-database.sh` legt die lebende Projektdatenbank
-   * genauso an: `CREATE DATABASE project_database OWNER qkern_ledger_owner`.
-   * Die Wiederherstellung tut damit dasselbe wie das Bereitstellen.
-   */
-  ledgerOwner?: string;
   /** Pfad zum Vertrauensanker. Ein Pfad, kein Geheimnis. */
   caFilePath?: string;
 }>;
@@ -280,7 +261,6 @@ export class PsqlProjectDatabaseRestoreTargetPort implements ProjectDatabaseRest
   ): Promise<void> {
     assertName(input.databaseName);
     const endpoint = await this.options.admin.endpoint(input.databaseInstanceRef);
-    if (endpoint.ledgerOwner !== undefined) assertName(endpoint.ledgerOwner);
     const credential = await this.options.admin.credential(input.databaseInstanceRef, signal);
     await runProcess({
       command: this.psqlPath,
@@ -289,13 +269,10 @@ export class PsqlProjectDatabaseRestoreTargetPort implements ProjectDatabaseRest
         "--no-psqlrc",
         "--set", "ON_ERROR_STOP=1",
         "--dbname", connectionString({ ...endpoint, database: this.maintenanceDatabase }, credential.username),
-        // Beide Namen sind durch `assertName` auf `[a-z_][a-z0-9_]*` begrenzt;
-        // der eine kommt aus der Backup-Id, der andere aus der Bindung, und
-        // keiner aus einer Anfrage. Ein Name mit einem Anfuehrungszeichen kommt
-        // hier nicht an.
-        "--command", endpoint.ledgerOwner
-          ? `CREATE DATABASE ${input.databaseName} OWNER ${endpoint.ledgerOwner}`
-          : `CREATE DATABASE ${input.databaseName}`,
+        // Der Name ist durch `assertName` auf `[a-z_][a-z0-9_]*` begrenzt und
+        // kommt aus der Backup-Id, nicht aus einer Anfrage. Ein Name, der ein
+        // Anfuehrungszeichen enthaelt, kommt hier nicht an.
+        "--command", `CREATE DATABASE ${input.databaseName}`,
       ],
       password: credential.password,
       timeoutMs: this.timeoutMs,
