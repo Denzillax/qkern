@@ -2329,7 +2329,7 @@ bearbeitet: Ein geändertes Ziel oder ein geänderter Bereich würde die Zusage
 ändern, unter der ein Nutzer zugestimmt hat, und die Datenbank hat auf dieser
 Tabelle darum gar kein `UPDATE`-Recht.
 
-**Es gibt neun Bereiche.** `identity:read` gibt Kennung und E-Mail-Adresse des
+**Es gibt zehn Bereiche.** `identity:read` gibt Kennung und E-Mail-Adresse des
 Nutzers, abrufbar unter `GET /auth/oauth/userinfo`, und sonst nichts: kein
 `user_metadata`, kein `app_metadata`, keine Sitzung, keine Angabe über einen
 zweiten Faktor. `data:read` erlaubt Lesen durch die Data API, `data:write`
