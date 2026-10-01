@@ -26,6 +26,14 @@
  * stehen in jeder Antwort der Trace-Route. Das kostet eine Kopfzeile, einen
  * Leser dafuer und zwei Spalten.
  *
+ * **Und seit 2.124 laeuft er auch wieder hinaus.** 2.72.0 hat ihn nur
+ * hereingelassen: Die Spur hoerte an der QKERN-Grenze auf, obwohl sie draussen
+ * anfing und draussen weiterging. Ein Claim liefert jetzt einen `traceparent`
+ * mit, der die Spur dieser Nachricht fortsetzt (`projectQueueClaimTraceparent`),
+ * und eine ausgehende Webhook-Zustellung traegt ihn in ihren Kopfzeilen. Dafuer
+ * braucht jede Station eine eigene Span-Id; wer sie erzeugt und warum sie in der
+ * Datenbank steht, entscheidet Migration 0082 und begruendet es dort.
+ *
  * Was es ausdruecklich **nicht** kostet: QKERN entscheidet an diesen beiden
  * Werten nichts. Kein Claim, kein Retry, kein Dead Letter sieht sie an.
  * Fehlen sie, traegt die Spur sich weiter selbst. Ein `traceparent`, der nicht
@@ -64,6 +72,7 @@
  * oder aus fremdem Code. Was bleibt, sind Zeitpunkte, feste Codes, die
  * Wirt-Kennung und Zaehler.
  */
+import { randomBytes } from "node:crypto";
 import type { ProjectQueue, ProjectQueueFailureCode } from "@/lib/server/project-queues/model";
 
 export const PROJECT_QUEUE_TRACE_STATIONS = [
@@ -83,13 +92,23 @@ export type ProjectQueueTraceAnchor = Readonly<{
   parentSpanId: string;
 }>;
 
-/** Eine Station, wie sie der Leser herausgibt. Kein Inhalt, nie. */
+/**
+ * Eine Station, wie sie der Leser herausgibt. Kein Inhalt, nie.
+ *
+ * `spanId` ist die Span dieser Station, von QKERN erzeugt (2.124). Sie steht in
+ * der Antwort, weil sie sonst unsichtbar waere: Der Claim gibt genau eine davon
+ * als `traceparent` heraus, und ein Betreiber, der in seinem Collector eine
+ * Span-Id sieht und wissen will, welche Station von QKERN sie war, hat ohne
+ * diese Angabe keinen Weg zurueck. Woher sie kommt und warum sie nicht aus den
+ * Koordinaten der Zeile abgeleitet wird, steht in Migration 0082.
+ */
 export type ProjectQueueTraceEntry = Readonly<{
   sequence: number;
   station: ProjectQueueTraceStation;
   attempt: number;
   workerId: string | null;
   failureCode: ProjectQueueFailureCode | null;
+  spanId: string;
   occurredAt: string;
 }>;
 
@@ -228,21 +247,92 @@ export function parseProjectQueueTraceparent(header: string | null | undefined):
  * Die Flags stehen auf `01` (sampled): Eine Spur, die QKERN herausgibt, hat
  * Stationen, also ist sie aufgezeichnet. `00` zu melden hiesse, dem naechsten
  * Dienst zu sagen, es sei nichts aufgeschrieben, waehrend es das ist.
+ *
+ * Seit 2.124 ist das keine Behauptung mehr, sondern die Sampling-Entscheidung
+ * dieses Dienstes, und sie steht in Migration 0082 mit ihrem Preis: Die Flags
+ * des Aufrufers werden nicht gespeichert, wer draussen `00` setzt, bekommt
+ * hinter QKERN `01`. Nach W3C beschreiben die Flags die Span, die im Kopf
+ * **steht**, und das ist hier eine Station von QKERN. Die ist aufgezeichnet.
  */
 export function formatProjectQueueTraceparent(anchor: ProjectQueueTraceAnchor): string {
   return `00-${anchor.traceId}-${anchor.parentSpanId}-01`;
 }
 
+/**
+ * Eine neue Span-Id: acht Zufallsbytes in Kleinhex.
+ *
+ * Wer in QKERN Spans erzeugt, ist damit entschieden: QKERN selbst, einmal je
+ * Station, beim Schreiben der Station. Die Begruendung in voller Laenge steht in
+ * Migration 0082, inklusive der beiden verworfenen Alternativen (der Aufrufer
+ * liefert sie mit; sie wird aus `message_id` und `sequence` abgeleitet).
+ *
+ * Die Nullspan wird ausgeschlossen und nicht erneut gewuerfelt: Sie ist einer von
+ * 2^64 Werten, eine Wiederholung waere ein Zweig, den kein Fall je betritt, und
+ * ein unbetretener Zweig ist eine Zusage ohne Beleg. Ein gesetztes Bit ist
+ * genauso zufaellig wie der Rest und macht aus dem Wert keine Mustervorgabe.
+ */
+export function projectQueueTraceSpanId(): string {
+  const bytes = randomBytes(8);
+  if (bytes.every((byte) => byte === 0)) bytes[7] = 1;
+  return bytes.toString("hex");
+}
+
+/**
+ * Der `traceparent`, den ein Worker im Claim mitbekommt (2.124).
+ *
+ * **Die Fortsetzung, nicht die Wiederholung.** Spur-Id bleibt die der Nachricht,
+ * also die, die von draussen kam. Der Eltern-Span ist aber **nicht** mehr der
+ * Span des Aufrufers, sondern der der `claimed`-Station: Was der Worker jetzt
+ * tut, haengt an der Abholung und nicht am Einreihen, und zwischen beiden liegt
+ * im Zweifel eine Woche. Den Span des Aufrufers weiterzugeben hiesse, dem
+ * Collector zu sagen, der Aufrufer habe den Worker gerufen; gerufen hat ihn der
+ * Claim.
+ *
+ * `null`, wenn die Nachricht keinen Anschluss hat, und das ist die Haelfte der
+ * Entscheidung, die 0082 begruendet: QKERN erfindet keine Spur-Id. Ein Worker,
+ * der hier `null` bekommt, weiss damit etwas Wahres ("zu dieser Nachricht gibt
+ * es keine Spur von draussen") statt etwas Erfundenes.
+ *
+ * `null` auch dann, wenn die Station gar nicht geschrieben wurde, weil die Spur
+ * ihre Mengengrenze erreicht hat: Dann gibt es keine Span, an die sich jemand
+ * haengen koennte, und eine Id fuer eine Zeile, die es nicht gibt, waere eine
+ * Luege mit sechzehn Zeichen.
+ */
+export function projectQueueClaimTraceparent(
+  traceId: string | null,
+  stationSpanId: string | null,
+): string | null {
+  if (!traceId || !stationSpanId) return null;
+  return formatProjectQueueTraceparent({ traceId, parentSpanId: stationSpanId });
+}
+
 /* Offen, und hier aufgeschrieben statt woanders behauptet:
  *
- * - **QKERN gibt keinen `traceparent` weiter.** Der Anschluss kommt herein und
- *   steht in der Spur; ein Worker, der eine Nachricht verarbeitet, bekommt ihn
- *   im Claim nicht mitgeliefert, und ein Webhook, der danach feuert, traegt ihn
- *   nicht. Das ist der naechste Schritt und nicht dieser: Er braucht eine
- *   eigene Span-Id je Station und damit eine Entscheidung darueber, wer in
- *   QKERN Spans erzeugt.
  * - **Es gibt keine Suche nach Spur-Id.** Gelesen wird je Nachricht. Eine
  *   Abfrage "alle Nachrichten dieser fremden Spur" braucht einen Index und
  *   eine Seitenform, und ohne einen Betreiber, der sie verlangt, waere beides
- *   geraten.
+ *   geraten. Mit den Span-Ids aus 2.124 wird die Frage haeufiger werden, denn
+ *   jetzt steht QKERN in fremden Spuren drin.
+ * - **QKERN exportiert keine Spans.** Es erzeugt Span-Ids und gibt einen
+ *   Anschluss heraus; es spricht kein OTLP und meldet nichts an einen
+ *   Collector. Die Stationen bleiben in `project_queue_message_traces` und
+ *   werden ueber die Trace-Route gelesen. Wer beide Seiten in einem Werkzeug
+ *   sehen will, muss QKERN's Stationen dort selbst einspeisen.
+ * - **Innerhalb einer Spur gibt es keine Span-Kanten.** Jede Station hat ihre
+ *   eigene Span-Id, aber keine Zeile sagt, welche Station die Eltern der
+ *   naechsten ist. Die Ordnung einer Spur ist `sequence`, und eine zweite
+ *   Darstellung derselben Ordnung liefe irgendwann auseinander. Nach draussen
+ *   gegeben wird genau eine Kante, die vom Claim zum Worker.
+ * - **Ein ausgehender Webhook traegt den Anschluss, aber kein ausgelieferter
+ *   Sammler setzt ihn.** Die Zustellung kann ihn fuehren (0082,
+ *   `WebhookOutbox.enqueue`), und der Zusteller macht die Kopfzeile daraus.
+ *   Wer ihn mitgeben koennte, hat ihn heute nicht: Die Datenbank-Bruecke liest
+ *   einen Change Feed, der Dashboard-Sammler eine Audit-Kette, der
+ *   Log-Drain-Sammler ein Protokoll. Keine dieser drei Quellen traegt einen
+ *   `traceparent`. Das ist die naechste Luecke und sie steht hier, statt dass
+ *   jemand sie fuer geschlossen haelt.
+ * - **Der Function-Aufruf aus der Queue traegt ihn nicht.**
+ *   `ProjectQueueFunctionDispatch` reicht die Nachricht an einen Sandbox-Port
+ *   weiter, nicht an eine HTTP-Gegenstelle; ein `traceparent` muesste in den
+ *   Aufrufvertrag der Sandbox, und der ist eine andere Grenze als diese.
  */

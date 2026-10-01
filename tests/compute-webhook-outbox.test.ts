@@ -30,7 +30,7 @@ function repository(maxAttempts: number | null = 5) {
       return input.leases.slice(0, 1).map((lease) => ({
         ...scope, id: "delivery-1", webhookId: "hook-1", eventType: "order.created",
         payload: { ok: true }, occurredAt: new Date("2026-08-04T12:00:00.000Z"),
-        attemptCount: 0, leaseToken: lease.token,
+        attemptCount: 0, trace: null, leaseToken: lease.token,
       }));
     },
     async settle(_scope, input) {

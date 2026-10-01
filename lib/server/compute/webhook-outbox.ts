@@ -1,5 +1,7 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { createHash, randomBytes } from "node:crypto";
+import { parseProjectQueueTraceparent } from "@/lib/server/project-queues/trace";
+import type { ProjectQueueTraceAnchor } from "@/lib/server/project-queues/trace";
 import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
 
 export type WebhookOutboxScope = {
@@ -15,6 +17,16 @@ export type WebhookOutboxEntry = WebhookOutboxScope & {
   payload: ProjectQueueJson;
   occurredAt: Date;
   attemptCount: number;
+  /**
+   * Die Spur, die diese Zustellung ausgeloest hat (2.125), oder `null`.
+   *
+   * Der Zusteller macht daraus die Kopfzeile `traceparent`. Gespeichert wird er,
+   * weil zwischen Einreihen und Versand eine Lease, ein Wiederholungsplan und
+   * im Zweifel ein Prozessneustart liegen; die Begruendung steht in Migration
+   * 0082. Dieselbe Form wie der Anschluss einer Queue-Nachricht, und absichtlich
+   * derselbe Typ: Zwei Darstellungen desselben Werts laufen auseinander.
+   */
+  trace: ProjectQueueTraceAnchor | null;
 };
 
 export type WebhookClaim = WebhookOutboxEntry & { leaseToken: string };
@@ -34,7 +46,7 @@ recognisedByName(WebhookOutboxError, "WebhookOutboxError");
 export interface WebhookOutboxRepository {
   enqueue(scope: WebhookOutboxScope, input: {
     id: string; webhookId: string; eventType: string; payload: ProjectQueueJson;
-    occurredAt: Date; createdAt: Date;
+    occurredAt: Date; createdAt: Date; trace: ProjectQueueTraceAnchor | null;
   }): Promise<WebhookOutboxEntry>;
   claim(scope: WebhookOutboxScope, input: {
     workerId: string; limit: number; now: Date; visibilityMs: number;
@@ -92,8 +104,25 @@ export class WebhookOutbox {
     this.retryMaxMs = bounded(options.retryMaxMs ?? 300_000, this.retryBaseMs, 3_600_000);
   }
 
+  /**
+   * Reiht eine Zustellung ein.
+   *
+   * `traceparent` ist der Anschluss an die Spur, die diese Zustellung ausgeloest
+   * hat (2.125). Er wird **gelesen und nicht geprueft**: Passt er nicht zur
+   * Form, wird er weggelassen und die Zustellung laeuft weiter. Das ist dieselbe
+   * Regel, die das Einreihen einer Queue-Nachricht seit 2.72.0 anwendet, und sie
+   * stimmt hier auch, und zwar aus demselben Grund und einem zweiten: Ein
+   * Beobachtungskopf ist kein Teil des Auftrags, und wer hier abweist, verliert
+   * ein Ereignis, das es wirklich gegeben hat. Ein Change-Feed-Eintrag oder eine
+   * Audit-Zeile kommt nicht wieder.
+   *
+   * Wer einen Anschluss mitgeben darf, entscheidet der Aufrufer. Welcher
+   * ausgelieferte Sammler heute einen hat, steht unter "Offen" in `trace.ts`:
+   * keiner.
+   */
   async enqueue(scope: WebhookOutboxScope, input: {
     webhookId: string; eventType: string; payload: ProjectQueueJson; occurredAt?: Date;
+    traceparent?: string | null;
   }): Promise<WebhookOutboxEntry> {
     if (!EVENT_TYPE.test(input.eventType)) {
       throw new WebhookOutboxError("WEBHOOK_OUTBOX_INVALID_INPUT");
@@ -106,6 +135,7 @@ export class WebhookOutbox {
       payload: input.payload,
       occurredAt: input.occurredAt ?? now,
       createdAt: now,
+      trace: parseProjectQueueTraceparent(input.traceparent),
     });
   }
 

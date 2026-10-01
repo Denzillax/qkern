@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "tracepass-postgres-run1.log",
+  "commit": "91e8299f422f96b24a98c1d7a014212c565ed1f5",
+  "commitSubject": "QKERN gibt den Anschluss weiter, nach innen und nach aussen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 76,
+  "testFiles": "31 passed (31)",
+  "tests": "254 passed (254)",
+  "passed": 254,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

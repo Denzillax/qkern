@@ -44,6 +44,21 @@ function incidentSignatureMatches(header, timestamp, body) {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
+/**
+ * Was der Empfaenger je Zustellung wirklich gesehen hat (2.125).
+ *
+ * Der Zusteller gibt dem Testlauf nur Status und Bestaetigungskennung zurueck;
+ * eine Kopfzeile kaeme dort nie an. Eine Zusage ueber eine **ausgehende**
+ * Kopfzeile laesst sich darum nur an der Gegenstelle pruefen, und das ist genau
+ * der Zweck dieses Stacks. Gemerkt werden Kopfzeilennamen und der Wert von
+ * `traceparent`, nichts weiter: Der Fall prueft die Form des Anschlusses und
+ * dass sonst nichts mitgeht.
+ *
+ * Nur im Speicher und ohne Obergrenze noetig: Der Prozess lebt die Dauer eines
+ * Laufs und sieht ein paar Zustellungen.
+ */
+const seen = new Map();
+
 function readBody(request) {
   return new Promise((resolve) => {
     const chunks = [];
@@ -71,6 +86,17 @@ const server = createServer(options, async (request, response) => {
       response.writeHead(401, { "content-type": "application/json" });
       response.end('{"error":"signature"}');
       return;
+    }
+    // Erst nach der Signaturpruefung aufschreiben: Was nicht signiert war, ist
+    // keine Zustellung von QKERN, und ihre Kopfzeilen zu merken hiesse, dem Fall
+    // eine fremde Beobachtung unterzuschieben.
+    const deliveryId = request.headers["x-qkern-delivery-id"];
+    if (typeof deliveryId === "string") {
+      seen.set(deliveryId, {
+        headerNames: Object.keys(request.headers).sort(),
+        traceparent: request.headers["traceparent"] ?? null,
+        tracestate: request.headers["tracestate"] ?? null,
+      });
     }
     const headers = { "content-type": "application/json" };
     // Nur der eine Pfad spiegelt die Kennung zurueck. Der andere belegt, dass
@@ -158,6 +184,16 @@ const server = createServer(options, async (request, response) => {
         bootstrapContractSha256: process.env.QKERN_RECEIVER_BOOTSTRAP_CONTRACT_SHA256 ?? "",
       },
     }));
+    return;
+  }
+
+  // Die Beobachtung des Empfaengers, abgefragt vom Testlauf ueber dieselbe
+  // TLS-Verbindung. Ohne Signatur, weil es keine Zustellung ist, sondern die
+  // Frage "was hast du gesehen" an den Empfaenger selbst.
+  if (path.startsWith("/seen/")) {
+    const record = seen.get(path.slice("/seen/".length));
+    response.writeHead(record ? 200 : 404, { "content-type": "application/json" });
+    response.end(JSON.stringify(record ?? { error: "unknown delivery" }));
     return;
   }
 

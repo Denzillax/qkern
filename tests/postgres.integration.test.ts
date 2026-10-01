@@ -15491,7 +15491,11 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(columns.rows.map((row) => row.column_name)).toEqual([
         "attempt", "environment", "expires_at", "failure_code", "id", "message_id",
         "occurred_at", "organization_id", "parent_span_id", "project_id", "queue_id",
-        "sequence", "source_message_id", "station", "trace_id", "worker_id",
+        // `span_id` kommt aus 0082 und traegt die Span dieser Station. Dass sie
+        // hier mitgezaehlt wird, ist Absicht: Dieser Fall ist die Liste, an der
+        // eine neue Spalte auffaellt, und eine neue Spalte auf einer Logflaeche
+        // soll auffallen. Begruendet wird sie in (2.124).
+        "sequence", "source_message_id", "span_id", "station", "trace_id", "worker_id",
       ]);
       // Und die Antwort traegt weder die Nutzlast noch irgendeinen Verifikator:
       // kein Dedupe-Hash, kein Lease-Hash, beide sind 64 Hex-Zeichen. Die
@@ -15780,6 +15784,290 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // kommt aus einer eingespeisten Uhr.
   }, 30_000);
 
+
+  it("(2.124) hands a worker a traceparent that continues the trace of its message, generates one span per station in the database, invents no trace id where none came in, chains a replay to the dead letter instead of to the caller, and keeps the anchor of an outgoing delivery immutable", async () => {
+    // Der Anschluss wird weitergegeben (2.124) gegen die echten Tabellen aus
+    // 0081 und 0082.
+    //
+    // **Die Frage.** 2.72.0 hat die Spur hereingelassen und sie dort enden
+    // lassen: `trace.ts` fuehrt es selbst unter "Offen". Ein Worker bekam im
+    // Claim keinen `traceparent`, also hoerte eine Spur an der QKERN-Grenze auf,
+    // obwohl sie draussen anfing und draussen weiterging. Dieser Fall prueft die
+    // Richtung nach innen und die Form, in der sie entsteht.
+    //
+    // **Warum zwei Dienstinstanzen mit zwei Repositories.** Der Claim gibt eine
+    // Span-Id heraus, die in einer **anderen** Anfrage als dem Einreihen
+    // entstanden ist. Stuende sie im Prozess, waere sie hier weg. Genau deshalb
+    // entscheidet 0082, sie in die Datenbank zu legen, und genau deshalb laeuft
+    // der Claim hier auf einer Instanz, die das Einreihen nie gesehen hat.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.121 und 2.122:
+    // `createQueue` schreibt eine Audit-Zeile, und eine Organisation mit
+    // Audit-Zeilen laesst sich wegen `audit_logs_organization_id_fkey` nicht mehr
+    // loeschen. Sie bleibt als erwarteter Rest im Wegwerf-Stack.
+    const passOwner = randomUUID();
+    const passOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [passOwner, `trace-pass-owner-${passOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Trace Pass', $2, $3)`,
+    [passOrganization, `trace-pass-${passOrganization}`, passOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: passOrganization, projectId, environment: "development" as const };
+    const admin = {
+      organizationId: passOrganization, actorRef: "trace-pass@qkern.test",
+      role: "admin" as const, subject: passOwner,
+    };
+    const worker = {
+      organizationId: passOrganization, actorRef: "service-role:pass-host",
+      role: "service_role" as const, subject: "pass-host",
+    };
+    const queueName = `pass-${randomUUID().slice(0, 8)}`;
+    // Die fremde Spur. Dieselben Beispielwerte wie in der W3C-Spezifikation und
+    // wie in 2.121, damit beide Faelle ueber denselben Wert sprechen.
+    const foreignTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const foreignSpanId = "00f067aa0ba902b7";
+    const traceparent = `00-${foreignTraceId}-${foreignSpanId}-01`;
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Trace Pass', $3, 'test', 'ready', $4)`,
+    [projectId, passOrganization, `trace-pass-${projectId}`, passOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [passOrganization, projectId, `managed:${projectId}`]);
+
+    const plane = new PostgresControlPlane(runtime);
+    const enqueueSide = new ProjectQueueService({ repository: new PostgresProjectQueueRepository(plane) });
+    const claimSide = new ProjectQueueService({ repository: new PostgresProjectQueueRepository(plane) });
+
+    await enqueueSide.createQueue(admin, scope, {
+      name: queueName, maxAttempts: 1, visibilityTimeoutSeconds: 30, retentionSeconds: 60,
+    });
+
+    // --- Nach innen: der Claim traegt die Spur fort ------------------------
+    const receipt = await enqueueSide.enqueue(admin, scope, queueName, {
+      payload: { task: "ship" }, traceparent,
+    });
+    const claims = await claimSide.claim(worker, scope, queueName, { workerId: "pass-host" });
+    expect(claims).toHaveLength(1);
+    const handed = claims[0]!.traceparent;
+
+    // Die Form ist die der Spezifikation, Version `00` und Kleinhex. Geprueft
+    // wird sie hier buchstabenweise und nicht mit derselben Funktion, die sie
+    // baut: Eine Zusage, die ihren eigenen Erzeuger befragt, prueft nichts.
+    expect(handed).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    const [, handedTraceId, handedSpanId, handedFlags] = handed!.split("-");
+    // Dieselbe Spur wie draussen: Darum geht es.
+    expect(handedTraceId).toBe(foreignTraceId);
+    // Und **nicht** dieselbe Span: Was der Worker jetzt tut, haengt an der
+    // Abholung und nicht am Einreihen. Den Span des Aufrufers weiterzugeben
+    // hiesse dem Collector zu sagen, der Aufrufer habe den Worker gerufen.
+    expect(handedSpanId).not.toBe(foreignSpanId);
+    // Die Sampling-Entscheidung von QKERN, begruendet in 0082: Eine Station ist
+    // immer aufgezeichnet, also sagt der Kopf das auch.
+    expect(handedFlags).toBe("01");
+
+    // Der Eltern-Span ist genau die Station, die dieser Claim geschrieben hat,
+    // und das sagt die Spur selbst. Damit ist der Wert im Kopf keine zweite
+    // Wahrheit neben der Tabelle.
+    const trace = await claimSide.readTrace(admin, scope, queueName, receipt.id);
+    expect(trace.stations.map((entry) => entry.station)).toEqual(["enqueued", "claimed"]);
+    expect(trace.stations[1]!.spanId).toBe(handedSpanId);
+    // Jede Station hat ihre eigene Span, auch die erste, die niemand
+    // herausgibt: Eine Station ist ein Span, ob jemand danach fragt oder nicht.
+    expect(trace.stations[0]!.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(trace.stations[0]!.spanId).not.toBe(trace.stations[1]!.spanId);
+
+    // --- Die Spalte, und dass sie keine Nutzlast traegt --------------------
+    // Dieselbe Pruefung wie in 2.121, eine Spalte weiter. Nur `span_id` ist
+    // dazugekommen; eine Spalte fuer Inhalt gibt es weiterhin nicht.
+    const columns = await owner.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='project_queue_message_traces'
+        ORDER BY column_name`);
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      "attempt", "environment", "expires_at", "failure_code", "id", "message_id",
+      "occurred_at", "organization_id", "parent_span_id", "project_id", "queue_id",
+      "sequence", "source_message_id", "span_id", "station", "trace_id", "worker_id",
+    ]);
+    expect(columns.rows.find((row) => row.column_name === "span_id")?.is_nullable).toBe("NO");
+
+    // Keine Station ohne Span, und keine zwei Stationen einer Nachricht mit
+    // derselben. Das zweite ist eine Zusage und keine Hoffnung: Der CHECK und
+    // der UNIQUE aus 0082 stehen dafuer, und hier fallen beide um, wenn jemand
+    // sie wegnimmt.
+    await expect(owner.query(
+      `INSERT INTO project_queue_message_traces
+         (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
+          span_id,occurred_at,expires_at)
+       SELECT organization_id,project_id,environment,queue_id,message_id,60,'enqueued',0,
+              repeat('0',16),occurred_at,expires_at
+         FROM project_queue_message_traces
+        WHERE organization_id=$1 AND message_id=$2 AND sequence=1`,
+      [passOrganization, receipt.id],
+    )).rejects.toMatchObject({ code: "23514" });
+    await expect(owner.query(
+      `INSERT INTO project_queue_message_traces
+         (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
+          span_id,occurred_at,expires_at)
+       SELECT organization_id,project_id,environment,queue_id,message_id,61,'enqueued',0,
+              span_id,occurred_at,expires_at
+         FROM project_queue_message_traces
+        WHERE organization_id=$1 AND message_id=$2 AND sequence=1`,
+      [passOrganization, receipt.id],
+    )).rejects.toMatchObject({ code: "23505" });
+
+    // --- Ohne Anschluss bleibt es leer, und zwar ehrlich ------------------
+    // Keine erfundene Spur-Id. Eine erfundene waere draussen eine Spur mit
+    // einem Teilnehmer, und in der Antwort der Trace-Route waere sie von einer
+    // echten nicht zu unterscheiden. Die Begruendung steht in 0082.
+    const plainQueue = `plain-${randomUUID().slice(0, 8)}`;
+    await enqueueSide.createQueue(admin, scope, {
+      name: plainQueue, maxAttempts: 1, visibilityTimeoutSeconds: 30, retentionSeconds: 60,
+    });
+    const plain = await enqueueSide.enqueue(admin, scope, plainQueue, { payload: { task: "plain" } });
+    const plainClaims = await claimSide.claim(worker, scope, plainQueue, { workerId: "pass-host" });
+    expect(plainClaims[0]?.traceparent).toBeNull();
+    const plainStored = await owner.query<{ trace_id: string | null; span_id: string }>(
+      `SELECT trace_id, span_id FROM project_queue_message_traces
+        WHERE organization_id=$1 AND message_id=$2 ORDER BY sequence`,
+      [passOrganization, plain.id]);
+    expect(plainStored.rows.map((row) => row.trace_id)).toEqual([null, null]);
+    // Span-Ids gibt es trotzdem: Die Station ist ein Ereignis, auch wenn
+    // niemand draussen nach ihr fragt.
+    for (const row of plainStored.rows) expect(row.span_id).toMatch(/^[0-9a-f]{16}$/);
+
+    // Ein Kopf, der nicht zur Form passt, wird **weggelassen und nicht
+    // abgewiesen** (die Regel aus 2.72.0, hier fuer die neue Richtung
+    // nachgeprueft): Das Einreihen laeuft, und der Claim traegt dann eben
+    // nichts. Eine 400 auf einen Beobachtungskopf hiesse, eine Nachricht an
+    // einem Kopf scheitern zu lassen, den niemand braucht.
+    const brokenQueue = `broken-${randomUUID().slice(0, 8)}`;
+    await enqueueSide.createQueue(admin, scope, {
+      name: brokenQueue, maxAttempts: 1, visibilityTimeoutSeconds: 30, retentionSeconds: 60,
+    });
+    for (const broken of [
+      "00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01",
+      `01-${foreignTraceId}-${foreignSpanId}-01`,
+      `00-${"0".repeat(32)}-${foreignSpanId}-01`,
+      `00-${foreignTraceId}-${"0".repeat(16)}-01`,
+      "nonsense",
+    ]) {
+      const dropped = await enqueueSide.enqueue(admin, scope, brokenQueue, {
+        payload: { task: "broken" }, traceparent: broken,
+      });
+      const droppedClaim = await claimSide.claim(worker, scope, brokenQueue, { workerId: "pass-host" });
+      expect(droppedClaim[0]?.id, `traceparent: ${broken}`).toBe(dropped.id);
+      expect(droppedClaim[0]?.traceparent, `traceparent: ${broken}`).toBeNull();
+      await claimSide.acknowledge(worker, scope, brokenQueue, dropped.id, {
+        workerId: "pass-host", leaseToken: droppedClaim[0]!.leaseToken,
+      });
+    }
+
+    // --- Das Wiedereinreihen haengt an der Quelle, nicht am Aufrufer -------
+    const failed = await claimSide.fail(worker, scope, queueName, receipt.id, {
+      workerId: "pass-host", leaseToken: claims[0]!.leaseToken, failureCode: "HANDLER_ERROR",
+    });
+    expect(failed.status).toBe("dead_lettered");
+    const dead = await claimSide.readTrace(admin, scope, queueName, receipt.id);
+    const lastStation = dead.stations[dead.stations.length - 1]!;
+    expect(lastStation.station).toBe("dead_lettered");
+
+    const replay = await claimSide.replayDeadLetter(admin, scope, queueName, receipt.id);
+    const replayTrace = await claimSide.readTrace(admin, scope, queueName, replay.id);
+    // Dieselbe Spur wie 2.121 zusagt: Draussen bleibt die Kette durch das Dead
+    // Letter hindurch **eine** Spur.
+    expect(replayTrace.traceId).toBe(foreignTraceId);
+    // Und der Eltern-Span bleibt der von draussen. Der erste Entwurf dieses
+    // Falls liess ihn an `lastStation.spanId` haengen, also am Dead Letter, mit
+    // dem Argument: Verursacht hat das Wiedereinreihen das Dead Letter. (2.121)
+    // hat diesen Entwurf umgeworfen, und zwar zu Recht: `parent_span_id` heisst
+    // "die Span draussen, an der diese Nachricht haengt", und eine Spalte mit
+    // zwei Bedeutungen laeuft auseinander. Die Ursache steht genauer in
+    // `source_message_id`. Die Begruendung in voller Laenge steht an
+    // `traceAnchor` im Postgres-Port.
+    expect(replayTrace.parentSpanId).toBe(foreignSpanId);
+    expect(replayTrace.parentSpanId).not.toBe(lastStation.spanId);
+    // Und der Claim der wiedereingereihten Nachricht setzt die Kette fort.
+    const replayClaim = await claimSide.claim(worker, scope, queueName, { workerId: "pass-host" });
+    expect(replayClaim[0]?.id).toBe(replay.id);
+    expect(replayClaim[0]?.traceparent).toMatch(new RegExp(`^00-${foreignTraceId}-[0-9a-f]{16}-01$`));
+
+    // --- Kein Geheimnis, kein Inhalt --------------------------------------
+    // Weder Dedupe-Verifikator noch Lease-Verifikator noch Lease-Token
+    // erscheinen in der Spur; beide Verifikatoren sind 64 Hexzeichen, das
+    // Lease-Token traegt sein eigenes Praefix. Die Spur-Id hat 32 Zeichen, die
+    // Span-Id 16, und beide bleiben damit erlaubt.
+    const serialised = JSON.stringify(replayTrace) + JSON.stringify(dead);
+    expect(serialised).not.toMatch(/[0-9a-f]{64}/);
+    expect(serialised).not.toContain("qk_lease_");
+
+    // --- Nach aussen: der Anschluss einer Zustellung -----------------------
+    // Hier wird die Zeile geprueft, nicht die Kopfzeile: Die Kopfzeile beim
+    // echten Empfaenger ist Fall (2.125) im Empfaenger-Stack, weil ein
+    // eingespeistes `fetch` ueber eine ausgehende Kopfzeile nichts belegt.
+    const definitions = new ComputeDefinitionService({
+      repository: new PostgresComputeDefinitionRepository(plane),
+    });
+    const hook = await definitions.createWebhook(admin, scope, {
+      name: `pass-hook-${randomUUID().slice(0, 8)}`,
+      url: "https://receiver.example.com/hooks",
+      eventTypes: ["order.created"],
+      signingSecretRef: "vault:webhook/trace-pass",
+      timeoutMs: 5_000,
+      maxAttempts: 3,
+    });
+    const outboxRepository = new PostgresWebhookOutboxRepository(plane);
+    const outbox = new WebhookOutbox({ repository: outboxRepository });
+    const entry = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "pass-1" },
+      traceparent: replayClaim[0]!.traceparent,
+    });
+    expect(entry.trace).toEqual({
+      traceId: foreignTraceId, parentSpanId: replayClaim[0]!.traceparent!.split("-")[2],
+    });
+
+    // Und er kommt aus der Zeile zurueck, also auch auf einer Instanz, die das
+    // Einreihen nie gesehen hat. Das ist der Grund, warum 0082 ihn in die
+    // Datenbank legt: Zwischen Einreihen und Versand liegen eine Lease, ein
+    // Wiederholungsplan und im Zweifel ein Prozessneustart.
+    const secondOutbox = new WebhookOutbox({ repository: new PostgresWebhookOutboxRepository(plane) });
+    const claimedDelivery = await secondOutbox.claim(scope, { workerId: "pass-deliverer", limit: 5 });
+    expect(claimedDelivery.find((candidate) => candidate.id === entry.id)?.trace)
+      .toEqual(entry.trace);
+
+    // Unveraenderlich wie die Nutzlast, und aus demselben Grund eine Ebene
+    // hoeher: Ein zweiter Versuch, der eine andere Spur nennt als der erste,
+    // haengt denselben Vorgang an zwei Orte. Geprueft wird der Trigger aus
+    // 0082, denn ein Recht liesse sich mit einem GRANT umdrehen.
+    await expect(owner.query(
+      `UPDATE project_webhook_deliveries SET trace_id=$3
+        WHERE organization_id=$1 AND id=$2`,
+      [passOrganization, entry.id, "a".repeat(32)],
+    )).rejects.toMatchObject({ code: "55000" });
+    await expect(owner.query(
+      `UPDATE project_webhook_deliveries SET parent_span_id=NULL
+        WHERE organization_id=$1 AND id=$2`,
+      [passOrganization, entry.id],
+    )).rejects.toMatchObject({ code: "55000" });
+    // Eine Eltern-Span ohne Spur ist nach W3C nichts, und das steht im CHECK.
+    await expect(owner.query(
+      `INSERT INTO project_webhook_deliveries
+         (id, organization_id, project_id, environment, webhook_id, event_type, payload,
+          occurred_at, status, attempt_count, available_at, created_at, parent_span_id)
+       VALUES (gen_random_uuid(),$1,$2,'development',$3,'order.created','{}',now(),
+               'pending',0,now(),now(),$4)`,
+      [passOrganization, projectId, hook.id, foreignSpanId],
+    )).rejects.toMatchObject({ code: "23514" });
+
+    // Eine Zustellung ohne Anschluss traegt `null` und keinen Platzhalter.
+    const anchorless = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "pass-2" },
+    });
+    expect(anchorless.trace).toBeNull();
+    // Ohne eigenes Zeitbudget: ein Projekt, vier Queues, ein paar Nachrichten,
+    // zwei Zustellungen und Katalogabfragen. Es wird auf keine Uhr gewartet.
+  });
 });
 
 /**

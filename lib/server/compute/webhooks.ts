@@ -1,6 +1,7 @@
 import { recognisedByName } from "@/lib/server/errors/identity";
 import type { WebhookDefinition, WebhookDelivery } from "@/lib/server/compute/model";
 import { unsafeHostname, validateJson } from "@/lib/server/compute/functions";
+import { formatProjectQueueTraceparent } from "@/lib/server/project-queues/trace";
 
 export interface WebhookSignerPort {
   sign(secretRef: string, canonicalPayload: string): Promise<{ keyId: string; signature: string }>;
@@ -56,6 +57,7 @@ export class WebhookDeliverer {
             "x-qkern-event": delivery.eventType,
             "x-qkern-timestamp": timestamp,
             "x-qkern-signature": `v1=${signed.signature};key=${signed.keyId}`,
+            ...traceparentHeader(delivery),
           }),
           body,
         }), { signal: controller.signal })).catch(() => {
@@ -73,6 +75,34 @@ export class WebhookDeliverer {
       signal?.removeEventListener("abort", abort);
     }
   }
+}
+
+/**
+ * Der Anschluss nach draussen als Kopfzeile, oder gar keine Kopfzeile (2.125).
+ *
+ * **Nicht in der Signatur, und das ist Absicht.** Signiert wird
+ * `${timestamp}.${body}`, und dabei bleibt es. Eine Beobachtungskopfzeile in die
+ * kanonische Form zu nehmen hiesse, dass ein Proxy, der `traceparent` anfasst
+ * (und Proxys fassen Tracing-Kopfzeilen an, dafuer sind sie da), die Signatur
+ * bricht und der Empfaenger ein echtes Ereignis mit 401 abweist. Was signiert
+ * ist, ist der Auftrag; was daneben steht, ist die Beobachtung.
+ *
+ * **Hier kommt kein Geheimnis hinaus.** Der Wert besteht aus genau vier Feldern
+ * fester Form: Version, 32 Hexzeichen Spur-Id, 16 Hexzeichen Span-Id, zwei
+ * Hexzeichen Flags. Spur-Id und Span-Id sind beide von aussen gekommen
+ * beziehungsweise von QKERN gewuerfelt; weder die URL noch die Referenz auf das
+ * Signaturgeheimnis noch der Lease-Verifikator noch die Nutzlast koennen hier
+ * hineingeraten, weil `formatProjectQueueTraceparent` nichts anderes
+ * hineinlaesst. `traceparent` ist oeffentlich lesbar, und genau darum ist die
+ * Form so eng.
+ *
+ * Fehlt der Anschluss, fehlt die Kopfzeile ganz. Eine leere oder eine mit
+ * Nullspur waere nach W3C ungueltig, und ein Empfaenger, der sie liest, haengt
+ * sich an eine Spur, die es nicht gibt.
+ */
+function traceparentHeader(delivery: WebhookDelivery): Readonly<Record<string, string>> {
+  if (!delivery.trace) return {};
+  return { traceparent: formatProjectQueueTraceparent(delivery.trace) };
 }
 
 /**

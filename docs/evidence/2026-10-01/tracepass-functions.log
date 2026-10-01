@@ -1,0 +1,31 @@
+
+> qkern-platform@2.72.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-slice-tracepass_default Creating 
+ Network qkern-slice-tracepass_default Created 
+ Container qkern-slice-tracepass-registry-1 Creating 
+ Container qkern-slice-tracepass-postgres-1 Creating 
+ Container qkern-slice-tracepass-registry-1 Created 
+ Container qkern-slice-tracepass-postgres-1 Created 
+ Container qkern-slice-tracepass-registry-1 Starting 
+ Container qkern-slice-tracepass-postgres-1 Starting 
+ Container qkern-slice-tracepass-registry-1 Started 
+ Container qkern-slice-tracepass-postgres-1 Started 
+ Container qkern-slice-tracepass-postgres-1 Waiting 
+ Container qkern-slice-tracepass-registry-1 Waiting 
+ Container qkern-slice-tracepass-registry-1 Healthy 
+ Container qkern-slice-tracepass-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:f6ffbb371196a068ab7085049cd9d0fb8d5e9750f5dc146bf5b1caa2e267055d (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-realtime
+
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  22:57:08
+   Duration  55.23s (transform 367ms, setup 0ms, import 542ms, tests 54.24s, environment 0ms)
+
+EXIT=0
+FUNCTIONS=0

@@ -1,0 +1,21 @@
+{
+  "stack": "Node 24 HTTPS-Empfaenger und PostgreSQL 17",
+  "log": "tracepass-receiver-run1.log",
+  "commit": "91e8299f422f96b24a98c1d7a014212c565ed1f5",
+  "commitSubject": "QKERN gibt den Anschluss weiter, nach innen und nach aussen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "17 passed (17)",
+  "passed": 17,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine",
+    "node:24.7.0-alpine",
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}
