@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle25-run1.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 77,
+  "testFiles": "31 passed (31)",
+  "tests": "254 passed (254)",
+  "passed": 254,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

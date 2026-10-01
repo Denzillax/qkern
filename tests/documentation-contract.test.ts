@@ -15,7 +15,13 @@ describe("living documentation contract", () => {
     const packageJson = JSON.parse(await read("package.json")) as { version: string };
     const [status, handbook] = await Promise.all([read("STATUS.md"), read("docs/HANDBUCH.md")]);
     expect(status).toContain(`Release: \`${packageJson.version}\``);
-    expect(handbook).toContain(packageJson.version);
+    // Die Kopfzeile, nicht irgendeine Stelle im Text. `toContain` auf der ganzen
+    // Datei liess die Kopfzeile von `2.64.0` bis `2.72.0` auf 2.64.0 stehen: Es
+    // genuegte, dass die laufende Version irgendwo im Handbuch vorkam, und das
+    // tat sie, weil ein korrigierter Absatz sie nannte. Neun Releases lang war
+    // die Zusage damit leer.
+    const gilt = /^Dieses Handbuch gilt für `([0-9]+\.[0-9]+\.[0-9]+)`/m.exec(handbook);
+    expect(gilt?.[1]).toBe(packageJson.version);
   });
 
   it("keeps the current release note discoverable from the packaged version", async () => {

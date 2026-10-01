@@ -6577,3 +6577,62 @@ einer Spur-Id, und die Trace-Route ist Admin-only. Die Spur ist nicht unter Last
 gemessen und steht in keiner Metrik. Keine Zahlungsanbindung und keine
 Selbstbedienung fuer Pauschalen. Die lesenden Storage- und Queue-Werkzeuge
 laufen ueber MCP weiter als Betreiber. Die Console ist weiterhin ungesehen.
+
+## Welle fuenfundzwanzig (2.73): ein Teil aus einem Objekt, ein Anschluss nach draussen, und ein Backup, das es nie gab
+
+Drei Schnitte: `UploadPartCopy` und `ListObjects` Version 1 am S3-Endpunkt (Fall
+2.123, ohne Migration), `traceparent` nach innen und nach aussen (Faelle 2.124 und
+2.125, Migration 0082), sowie Backup und Wiederherstellung einer
+**Projektdatenbank** (Fall 2.126, Migration 0083).
+
+Das Backup ist der schwerste Teil, weil es eine Zusage einloest, die bisher nur
+fuer die Steuerungsdatenbank galt. Gefahren wird es vom vorhandenen Provisioner
+und nicht von einem neunten Prozess, weil ein neunter eine zweite Stelle mit
+`CREATEDB` im Cluster waere. Die Rolle ist eine eigene, und der Fall belegt
+warum: Unter der Rolle der Data API sieht ein Mandant 6 von 10 Zeilen, der
+Backup-Weg sichert 10. Der Dump ist logisch und nicht physisch, weil
+`pg_basebackup` den ganzen Cluster zieht und damit fremde Mandanten mit.
+Wiederhergestellt wird in eine neue Datenbank; in diesem Weg steht kein
+`DROP DATABASE` und kein `TRUNCATE`, und ein Vertrag prueft das. Der Betreiber
+kann ein Backup lesen, denn kundengehaltene Schluessel gibt es nicht.
+
+Sechs echte Fehler kamen dabei heraus, fuenf erst im Lauf gegen echte Dienste:
+eine Regex-Wiederholung ueber 255, die PostgreSQL beim `CREATE TABLE` annimmt und
+erst beim ersten Schreiben abweist; `ORDER BY <alias> COLLATE "C"`, das kein
+Verweis auf die Ausgabespalte ist; eine Zieldatenbank, deren eigener Eigentuemer
+`ALTER … OWNER TO` scheitern laesst, weil PostgreSQL vom neuen Eigentuemer
+`CREATE` auf dem Schema verlangt; die einspeisbare Uhr des Dienstes, die nicht
+die Uhr des SigV4-Signierers sein darf; ein Healthcheck, der an einem Passwort
+hing, das der Vault dreht; und ein unquotiertes Heredoc, das Kommandos ausfuehrt.
+
+Beim Anschluss fielen drei Entscheidungen: Ohne Kopf von draussen erfindet QKERN
+keine Spur-Id, `tracestate` geht nicht mit, und die Kopfzeile nach draussen wird
+nicht signiert. Ein ausgelieferter Fall hat einen Entwurf umgeworfen: Der erste
+Versuch liess ein wiedereingereihtes Dead Letter an der letzten Station seiner
+Quelle haengen, und `(2.121)` verlangt, dass der Eltern-Span der von draussen
+bleibt. Dazu der Fund, dass `2.72.0` einen Formatierer ohne einen einzigen
+Aufrufer im Produkt ausgeliefert hat.
+
+Zum Verfahren zwei Korrekturen am Pruefaufbau selbst. Vier der acht
+Zertifizierungslaeufer lasen `COMPOSE_PROJECT_NAME` nicht, trugen also einen
+festen Projektnamen; zwei parallele Schnitte am selben Stack raeumen sich damit
+gegenseitig ab, und der Fehlschlag sieht wie ein Befund des Produkts aus. Ein
+Vertrag haelt es jetzt fuer alle acht. Und `docs/HANDBUCH.md` sagte seit `2.64.0`,
+es gelte fuer `2.64.0`: Der Vertrag prueft, dass die laufende Version im Handbuch
+vorkommt, und sie kam vor, nur an einer anderen Stelle. Er bindet jetzt die
+Kopfzeile selbst.
+
+Checkpoint `2.73.0` am 2. Oktober 2026: PostgreSQL 17 mit 254 von 254 zweimal,
+versitygw und ClamAV mit 12 von 12, echter HTTPS-Empfaenger mit 17 von 17, Backup
+und Restore mit 2 von 2, Realtime unter Production mit 19 von 19, Functions mit
+33 von 33, Mailpit und Dex mit 11 von 11, Vault mit 8 von 8, alle exit 0; Lokal
+2549 bestanden, 0 fehlgeschlagen, zweimal reproduziert. Vier Mutationsproben auf
+dem gemergten Stand mit genau ihren Faellen.
+
+Nicht erbracht: Das Backup geht durch den Speicher mit Obergrenze 256 MiB, und
+der Dump im Fall ist 14 kB, also ist die Grenze durch keinen Lauf geprueft. Kein
+Zeitpunkt fuer Projektdaten, keine Route und kein Knopf fuer ein Backup, kein
+Zeitplan. Der Backup-Prozess ist nur als direkt gerufene Runde belegt, nicht als
+laufender Prozess. Kundengehaltene Schluessel fehlen. Kein Sammler setzt den
+Anschluss von sich aus, und QKERN exportiert keine Spans. Die AWS CLI und rclone
+haben den S3-Endpunkt nie gesehen. Die Console ist weiterhin ungesehen.

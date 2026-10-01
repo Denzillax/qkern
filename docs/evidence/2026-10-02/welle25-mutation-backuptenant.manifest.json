@@ -1,0 +1,21 @@
+{
+  "stack": "Mutation die Backup-Policy liest ohne Mandantengrenze",
+  "log": "welle25-mutation-backuptenant.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 77,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "versity/versitygw:v1.8.0",
+    "node:24-alpine"
+  ]
+}

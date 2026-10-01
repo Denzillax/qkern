@@ -1,0 +1,21 @@
+{
+  "stack": "Ausgehender Weg gegen echten HTTPS-Empfaenger",
+  "log": "welle25-receiver.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "17 passed (17)",
+  "passed": 17,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine",
+    "node:24.7.0-alpine",
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}

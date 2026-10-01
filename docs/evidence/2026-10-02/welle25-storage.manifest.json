@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle25-storage.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "12 passed (12)",
+  "passed": 12,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

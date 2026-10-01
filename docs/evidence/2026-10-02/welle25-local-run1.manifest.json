@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle25-local-run1.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "350 passed | 41 skipped (391)",
+  "tests": "2549 passed | 373 skipped (2922)",
+  "passed": 2549,
+  "failed": 0,
+  "skipped": 373,
+  "images": []
+}

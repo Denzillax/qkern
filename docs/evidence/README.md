@@ -1983,3 +1983,29 @@ grüne ist.
 Die beiden Mutationsproben liefen auf dem gemergten Stand und nicht in den
 Scheiben: Alle drei Scheiben dieser Welle schreiben in dieselbe Testdatei, und
 nur der Lauf nach dem Merge zeigt, dass die Fälle dort immer noch beissen.
+
+## Läufe zu Release 2.73 (2. Oktober 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-02/welle25-run1.log` | PostgreSQL 17 | 254 von 254, exit 0 |
+| `2026-10-02/welle25-run2.log` | PostgreSQL 17 | 254 von 254, exit 0 |
+| `2026-10-02/welle25-storage.log` | versitygw und ClamAV | 12 von 12, exit 0 |
+| `2026-10-02/welle25-receiver.log` | Ausgehender Weg gegen echten HTTPS-Empfänger | 17 von 17, exit 0 |
+| `2026-10-02/welle25-backup.log` | Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv | 2 von 2, exit 0 |
+| `2026-10-02/welle25-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 19 von 19, exit 0 |
+| `2026-10-02/welle25-functions.log` | Functions gegen Docker plus PostgreSQL | 33 von 33, exit 0 |
+| `2026-10-02/welle25-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-10-02/welle25-vault.log` | Webhook-Signatur gegen echten Vault | 8 von 8, exit 0 |
+| `2026-10-02/welle25-mutation-claimspan.log` | Mutation: der Claim nennt eine fremde Span | **253 von 254, exit 1 – absichtlich** |
+| `2026-10-02/welle25-mutation-noheader.log` | Mutation: die Zustellung lässt `traceparent` weg | **16 von 17, exit 1 – absichtlich** |
+| `2026-10-02/welle25-mutation-copyrange.log` | Mutation: die Teilkopie ignoriert den Bytebereich | **11 von 12, exit 1 – absichtlich** |
+| `2026-10-02/welle25-mutation-backuptenant.log` | Mutation: die Backup-Policy liest ohne Mandantengrenze | **1 von 2, exit 1 – absichtlich** |
+| `2026-10-02/welle25-local-run1.log` | Vitest lokal (Windows) | 2549 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-02/welle25-local-run2.log` | Vitest lokal (Windows) | 2549 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Neun Stacks statt der üblichen sechs: Die drei Scheiben dieser Welle berühren
+zusammen den Empfänger-, Backup- und Vault-Weg, und Migration `0082` und `0083`
+laufen in jedem Stack mit. Alle vier Mutationsproben liefen nach dem Merge, weil
+jede Scheibe in dieselben Dokumentdateien schreibt und zwei davon in dieselbe
+Testdatei.

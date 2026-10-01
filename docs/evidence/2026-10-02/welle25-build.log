@@ -1,0 +1,202 @@
+
+> qkern-platform@2.73.0 build
+> npm run build:packages && next build
+
+
+> qkern-platform@2.73.0 build:packages
+> npm run build:sdk && npm run build:cli
+
+
+> qkern-platform@2.73.0 build:sdk
+> tsc -p sdk/typescript/tsconfig.build.json
+
+
+> qkern-platform@2.73.0 build:cli
+> tsc -p cli/tsconfig.build.json
+
+▲ Next.js 16.2.12 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 9.1s
+  Running TypeScript ...
+  Finished TypeScript in 28.0s ...
+  Collecting page data using 19 workers ...
+  Generating static pages using 19 workers (0/20) ...
+  Generating static pages using 19 workers (5/20) 
+  Generating static pages using 19 workers (10/20) 
+  Generating static pages using 19 workers (15/20) 
+✓ Generating static pages using 19 workers (20/20) in 247ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /api/health
+├ ƒ /api/internal/v1/projects/provisioning/metrics
+├ ƒ /api/openapi
+├ ƒ /api/v1/approvals/[approvalId]/decision
+├ ƒ /api/v1/auth/console-settings
+├ ƒ /api/v1/auth/login
+├ ƒ /api/v1/auth/logout
+├ ƒ /api/v1/auth/register
+├ ƒ /api/v1/auth/session
+├ ƒ /api/v1/changesets
+├ ƒ /api/v1/changesets/[changeSetId]/apply
+├ ƒ /api/v1/console
+├ ƒ /api/v1/migrations/[jobId]/delivery
+├ ƒ /api/v1/migrations/[jobId]/delivery/retry
+├ ƒ /api/v1/migrations/[jobId]/review/reconciliation
+├ ƒ /api/v1/migrations/delivery/health
+├ ƒ /api/v1/migrations/incidents
+├ ƒ /api/v1/migrations/incidents/[incidentId]/acknowledgement
+├ ƒ /api/v1/migrations/incidents/[incidentId]/delivery/retry
+├ ƒ /api/v1/migrations/incidents/[incidentId]/resolution/verification
+├ ƒ /api/v1/migrations/incidents/delivery/health
+├ ƒ /api/v1/migrations/reviews
+├ ƒ /api/v1/projects
+├ ƒ /api/v1/projects/[projectId]/change-flow
+├ ƒ /api/v1/projects/[projectId]/environments
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/advisors/health
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/advisors/performance
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/advisors/security
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/api-keys
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/api-keys/[keyId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/.well-known/jwks.json
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/access
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/audit
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/audit/series
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/hooks
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/mail
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/mfa
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/oauth-clients
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/oauth-clients/[clientId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/oauth-consents/[consentId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/oauth-tokens/[tokenId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/passkeys
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/password-protection
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/providers
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/rate-limits
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/return-targets
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/saml
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/third-party
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/third-party/[providerId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/users
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/users/[userId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/users/[userId]/sessions
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/admin/users/[userId]/sessions/[sessionId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/logout
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/magic-link
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/mfa/challenge
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/mfa/enroll
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oauth/authorize
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oauth/consents
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oauth/token
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oauth/userinfo
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oidc/[provider]/authorize
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oidc/[provider]/callback
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/oidc/providers
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/passkeys
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/passkeys/register
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/passkeys/signin
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/password-reset
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/acs
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/authorize
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/saml/[provider]/metadata
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/saml/providers
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/signup
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/token
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/user
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/auth/verify
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/automation-policy
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/cron
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/cron/[cronId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/cron/[cronId]/occurrences
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/dashboard-webhooks
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/dashboard-webhooks/[dashboardWebhookId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/database-webhooks
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/database-webhooks/[databaseWebhookId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/functions
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/functions/[functionId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/functions/[functionId]/deployments
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/functions/[functionId]/invocations
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/functions/[functionId]/secrets
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/invocations
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/invocations/[invocationId]/output
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/invoke/[name]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/log-drains
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/log-drains/[logDrainId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/output
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/secrets
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/webhooks
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/webhooks/[webhookId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/compute/webhooks/[webhookId]/deliveries
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/activity
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/backups/point-in-time
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/health
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/runtime
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/settings
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/database/statements
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/generated-openapi
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/graphql
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/logs/search
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/provisioning
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/query
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/query/explain
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/claims
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/dead-letters
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/dead-letters/[messageId]/replay
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/messages
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/messages/[messageId]/ack
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/messages/[messageId]/fail
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/messages/[messageId]/lease
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/messages/[messageId]/trace
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/[queue]/status
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/queues/metrics
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/realtime/log
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/realtime/settings
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/rpc/[function]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/column-privileges
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/enum-types
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/extensions
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/foreign-data-wrappers
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/foreign-keys
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/functions
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/indexes
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/policies
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/publications
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/replication
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/roles
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/schema/triggers
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets/[bucketId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets/[bucketId]/downloads
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets/[bucketId]/objects
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets/[bucketId]/uploads
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/buckets/[bucketId]/uploads/multipart
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/lifecycle
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/objects
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/s3-keys
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/s3-keys/[keyId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/scans/[objectId]
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/uploads/[uploadId]/complete
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/uploads/[uploadId]/multipart
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/storage/uploads/[uploadId]/parts
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/tables/[table]/aggregate
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/tables/[table]/rows
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/usage
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/usage/billing
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/usage/invoices
+├ ƒ /api/v1/projects/[projectId]/environments/[environment]/usage/series
+├ ƒ /api/v1/projects/provisioning/health
+├ ƒ /console
+├ ƒ /docs/[[...slug]]
+├ ƒ /login
+├ ƒ /register
+├ ƒ /s3
+└ ƒ /s3/[...path]
+
+
+ƒ  (Dynamic)  server-rendered on demand
+

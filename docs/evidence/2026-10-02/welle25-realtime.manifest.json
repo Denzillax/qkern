@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "welle25-realtime.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 77,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

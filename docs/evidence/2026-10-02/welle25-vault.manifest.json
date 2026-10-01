@@ -1,0 +1,18 @@
+{
+  "stack": "Webhook-Signatur gegen echten Vault",
+  "log": "welle25-vault.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "hashicorp/vault:1.18.3",
+    "node:24.7.0-alpine"
+  ]
+}

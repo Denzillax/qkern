@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "welle25-functions.log",
+  "commit": "d6291ac962222fb97b1eaf26f31426f3585a71bb",
+  "commitSubject": "merge: Backup und Wiederherstellung einer Projektdatenbank aus slice/backupdrill",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "33 passed (33)",
+  "passed": 33,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}
