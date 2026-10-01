@@ -1,20 +1,20 @@
 {
   "schemaVersion": "qkern.backup-restore-evidence/v1",
-  "keyId": "drill-2026-09-25",
+  "keyId": "drill-2026-10-01",
   "evidence": {
-    "evidenceId": "6d5c14cb-4e76-434e-9503-97034e48544d",
+    "evidenceId": "3430de84-094a-4d1b-a383-2ec4988c174a",
     "deployment": "production",
     "scope": "control_plane",
-    "backupSnapshotAt": "2026-09-25T21:22:34.000Z",
-    "backupCompletedAt": "2026-09-25T21:22:39.000Z",
-    "restoreStartedAt": "2026-09-25T21:22:39.000Z",
-    "restoreCompletedAt": "2026-09-25T21:22:54.000Z",
-    "verifiedAt": "2026-09-25T21:22:54.000Z",
-    "recoveryPointLagSeconds": 5,
-    "restoreDurationSeconds": 15,
-    "backupArtifactSha256": "935abb6ddca259061b7441445ecdffac91ca29d14c19a2ebbd4e21d4df1a7fef",
-    "sourceDataManifestSha256": "afb220138f86346e10ed99f3263643105931b6938357fefae378bfbe41bbd1c2",
-    "restoredDataManifestSha256": "afb220138f86346e10ed99f3263643105931b6938357fefae378bfbe41bbd1c2",
+    "backupSnapshotAt": "2026-10-01T21:45:49.000Z",
+    "backupCompletedAt": "2026-10-01T21:45:55.000Z",
+    "restoreStartedAt": "2026-10-01T21:45:55.000Z",
+    "restoreCompletedAt": "2026-10-01T21:46:00.000Z",
+    "verifiedAt": "2026-10-01T21:46:00.000Z",
+    "recoveryPointLagSeconds": 6,
+    "restoreDurationSeconds": 5,
+    "backupArtifactSha256": "663e4fcab36d83edc46e89f98cbc3b6a296b9fd14f2a2d2c74b4d349c99e47e3",
+    "sourceDataManifestSha256": "d95d71e969ead681d744643362569adf06dde77e301f24895dfb2a06a430cd99",
+    "restoredDataManifestSha256": "d95d71e969ead681d744643362569adf06dde77e301f24895dfb2a06a430cd99",
     "encrypted": true,
     "checksumVerified": true,
     "schemaVerified": true,
@@ -22,5 +22,5 @@
     "auditChainVerified": true,
     "result": "passed"
   },
-  "signature": "ywi1Gd6KdgAf5dGsZDfjZ65M__P8Ox57W67dEB8CgF4G5jV9NnoA0yo_aIBk8wUEot1HerGe8ykKIzV3gIwPBA"
+  "signature": "RuD3GA7n-nnG9IV2tFt_4fiTM0FiGtTa6xylHCkSeUK3SA18xbrNKj524PFcG9xLi7fFUSJTokhXUhfOu2WKBQ"
 }

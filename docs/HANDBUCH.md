@@ -406,6 +406,34 @@ Die drei Angaben kommen darum aus der Umgebung und sind Angaben des Betreibers:
 | `QKERN_BACKUP_WAL_ARCHIVE_RETENTION_DAYS` | Aufbewahrung in Tagen, 1 bis 730. |
 | `QKERN_BACKUP_WAL_ARCHIVE_SINCE` | Beginn der Archivierung als UTC-Zeitstempel mit Millisekunden. |
 
+### Backup einer Projektdatenbank (2.126)
+
+Diese Variablen schalten den Backup-Weg im **Provisioner-Prozess** ein. Fehlt
+`QKERN_PROJECT_BACKUP_ENABLED`, wird nichts gebaut und der Prozess verhält sich
+wie vorher; eine halbe Einstellung lässt den Start fallen. Keine dieser Variablen
+trägt ein Passwort, einen Schlüssel oder eine Datenbankadresse: die Adresse kommt
+aus der Bindung, das Zugangsdatum aus einer statischen Vault-Rolle, der
+Mandanten-Schlüssel aus einer Datei, die ein Vault Agent schreibt.
+
+| Variable | Bedeutung |
+| --- | --- |
+| `QKERN_PROJECT_BACKUP_ENABLED` | `true` schaltet die Leerlauf-Pflicht des Provisioners ein. |
+| `QKERN_PROJECT_BACKUP_ORGANIZATION_ID` | Die Organisation, für die dieser Prozess arbeitet. Wie beim Provisionierer eine und keine zweite. |
+| `QKERN_PROJECT_BACKUP_WORKER_ID` | Kennung des Wirts in der Lease. |
+| `QKERN_PROJECT_BACKUP_DB_ROLE` | Lesende Rolle, Vorgabe `qkern_project_backup`. |
+| `QKERN_PROJECT_BACKUP_VAULT_ROLE_SUFFIX` | Zusatz am Vault-Rollenstamm der Bindung, Vorgabe `-backup`. |
+| `QKERN_PROJECT_RESTORE_ADMIN_DB_ROLE` | Rolle für `CREATE DATABASE` und den Restore, Vorgabe `qkern_project_restore_admin`. |
+| `QKERN_PROJECT_RESTORE_ADMIN_VAULT_ROLE_SUFFIX` | Zusatz dafür, Vorgabe `-restore-admin`. |
+| `QKERN_PROJECT_RESTORE_MAINTENANCE_DATABASE` | Datenbank, in der `CREATE DATABASE` läuft, Vorgabe `postgres`. Nie die Projektdatenbank. |
+| `QKERN_PROJECT_BACKUP_CA_FILE` | Absoluter Pfad zum Vertrauensanker. `pg_dump` läuft damit unter `sslmode=verify-full`. |
+| `QKERN_PROJECT_BACKUP_KEY_DIRECTORY` | Verzeichnis, in das der Vault Agent die Mandanten-Schlüssel schreibt. |
+| `QKERN_PROJECT_BACKUP_KEY_ID` | Name des aktuellen Schlüssels, ohne Pfad und ohne Endung. |
+| `QKERN_PROJECT_BACKUP_S3_ENDPOINT` | Objektspeicher, exakte Origin. Klartext-HTTP nur gegen Loopback und nur ausserhalb von `production`. |
+| `QKERN_PROJECT_BACKUP_S3_REGION`, `..._S3_BUCKET` | Region und Bucket der Ablage. |
+| `QKERN_PROJECT_BACKUP_S3_ACCESS_KEY_ID`, `..._S3_SECRET_ACCESS_KEY` | Zugangsdaten des Objektspeichers, wie bei Project Storage. |
+| `QKERN_PROJECT_BACKUP_RETENTION_DAYS` | Aufbewahrung in Tagen, 1 bis 730, Vorgabe 30. |
+| `QKERN_VAULT_DATABASE_URL`, `QKERN_VAULT_TOKEN_FILE` | Dieselben Namen wie beim Verbindungskatalog; es gibt keinen zweiten Weg zu einem Zugangsdatum. |
+
 Eine vierte Variable gibt es nicht, und insbesondere keine für den Ort des
 Archivs. So kann über diese Seite keine Verbindungszeile, kein Bucket und kein
 Schlüssel hinausgehen. Ein unbrauchbar gesetzter Wert wird nicht geraten: er
@@ -449,10 +477,14 @@ fehlt, ist das neue Projekt.
 
 Den Broker-Client gibt es, und er ist gehärtet: HMAC-signiert, Host-Allowlist,
 HTTPS erzwungen, begrenzte Antwort. Den Dienst dahinter gibt es nicht, in keiner
-Form. QKERN legt auch selbst keine Datenbank an: Migration `0020` erzeugt die
-Rolle `qkern_provisioner` mit `NOCREATEDB` und `NOCREATEROLE`, und im ganzen
-Produktquelltext steht kein `CREATE DATABASE`. Ohne erreichbaren Broker endet ein
-Provisionierungsauftrag mit `PROVIDER_UNAVAILABLE`.
+Form. Für die Provisionierung legt QKERN auch selbst keine Datenbank an: Migration
+`0020` erzeugt die Rolle `qkern_provisioner` mit `NOCREATEDB` und `NOCREATEROLE`.
+Ohne erreichbaren Broker endet ein Provisionierungsauftrag mit
+`PROVIDER_UNAVAILABLE`. Seit `2.126` steht `CREATE DATABASE` an genau **einer**
+Stelle im Produktquelltext, und zwar im Ziel einer Wiederherstellung
+(`lib/server/backup/project-database-dump.ts`). Es läuft dort mit einer eigenen
+Rolle, `qkern_project_restore_admin`, und nicht mit der des Provisionierers; an
+der Provisionierungskette ändert das nichts.
 
 Eine zweite Umgebung entsteht heute nirgends. Es gibt genau eine Stelle im
 Quelltext, die in `project_environments` einfügt, und sie läuft einmal bei der
@@ -468,10 +500,12 @@ stillschweigend auf eine andere Datenbank gelenkt werden. Für eine
 Wiederherstellung heisst es, dass ein zweiter Server nicht an die Stelle eines
 laufenden treten kann.
 
-**Was QKERN über seine Backups weiss.** Wenig, und die Seite sagt es zuerst.
-Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder
-Wiederherstellungsläufe an; einen Katalog vergangener Läufe gibt es darum nicht.
-Grössen führt QKERN nirgends: Die Evidenz trägt einen SHA-256 über das
+**Was QKERN über seine Backups weiss.** Seit `2.126` einen Katalog, und zwar für
+Projektdatenbanken: Migration `0083` legt `project_database_backups` an. **Diese
+Seite liest ihn nicht** — sie liest die Route unter `point-in-time`, und die
+kennt nur die Erklärung des Betreibers und die signierte Drill-Evidenz. Für das
+Basisbackup der Kontrollebene gibt es weiterhin keinen Katalog.
+Grössen führt die Evidenz nicht: Sie trägt einen SHA-256 über das
 Artefakt, aber keine Bytezahl, und der Hash verlässt die Route ohnehin nicht.
 Verschlüsselung ist keine Angabe, sondern eine Bedingung des Verifiers: Er nimmt
 nur Evidenz an, in der `encrypted`, `checksumVerified`, `schemaVerified`,
@@ -489,10 +523,9 @@ PostgreSQL-Server. Eine neue Umgebung provisionieren zu lassen und den Lauf von
 Hand darauf zeigen zu lassen, ist heute kein gangbarer Weg, weil beide Hälften
 fehlen. Die Seite behauptet darum auch keinen Notbehelf.
 
-Die Seite liest nichts Neues, und das ist selbst ein Befund: Weil die
-Kontrollebene über Backups nichts führt, gibt es nichts zu lesen ausser der
-signierten Drill-Evidenz, und die holt schon die Route
-`/database/backups/point-in-time`. Es gibt darum keine neue Route und keinen
+Die Seite liest nichts Neues, und das ist selbst ein Befund: Was diese Route
+tragen kann, ist die Erklärung des Betreibers und die signierte Drill-Evidenz,
+und beides holt sie schon. Es gibt darum keine neue Route und keinen
 Fall gegen die echte Datenbank. Stattdessen prüft
 `tests/console-restore-to-new-project-contract.test.ts`, dass die Sätze der
 Seite stimmen: Er liest das Backup-Skript, den Stack, den Verifier, die
@@ -510,16 +543,18 @@ Seit `2.63.0` zeigt **Datenbank → Backups** keinen abgeschalteten Knopf
 was QKERN sonst nirgends duldet: eine Schaltfläche, die eine Fähigkeit
 behauptet, die es nicht gibt.
 
-**Die Prüfung zuerst.** Gesucht wurde ein Weg im Produktcode, der ein
-Basisbackup einer Projektdatenbank anstösst. Es gibt keinen. Kein Modul unter
-`lib/server`, kein Worker, kein Befehl des CLI und keine Route ruft
-`pg_basebackup`, `pg_dump`, `pg_dumpall` oder `pg_receivewal` auf. Der Ordner
-`lib/server/backup`, in dem man es vermuten würde, hält drei Dateien, und alle
-drei lesen: das Fenster einer Wiederherstellung, den Verifier der Evidenz und
-dessen Aufbau aus der Umgebung. Unter den Backup-Routen einer Umgebung steht
-genau ein Pfad, `point-in-time`, und er kennt nur `GET`. Der Knopf hat also
-nicht auf ein fehlendes Stück Oberfläche gewartet, sondern auf einen Weg, den
-es nicht gibt. Er ist darum weg, und an seiner Stelle steht, warum.
+**Die Prüfung zuerst, und was sich seither geändert hat.** Gesucht wurde ein Weg
+im Produktcode, der ein Basisbackup einer Projektdatenbank anstösst. Zu `2.63.0`
+gab es keinen, und darum ist der Knopf weg.
+
+Seit `2.126` gibt es einen Weg, aber nicht den, der hier gesucht wurde: QKERN
+sichert eine Projektdatenbank **logisch** (`pg_dump` genau dieser Datenbank),
+nicht als Basisbackup, und der Auftrag entsteht im Dienst und nicht über HTTP.
+`pg_basebackup`, `pg_dumpall` und `pg_receivewal` ruft im Produkt weiterhin keine
+Stelle auf. Unter den Backup-Routen einer Umgebung steht weiterhin genau ein
+Pfad, `point-in-time`, und er kennt nur `GET`. Der Knopf bleibt darum weg: Er
+hätte auch heute keine Route, an die er sich hängen könnte. Der vollständige
+Weg steht in `docs/BACKUP_RESTORE_EVIDENCE_RUNBOOK.md`.
 
 **Produktweg und Prüfweg.** Die eine Stelle im ganzen Baum, die wirklich ein
 Basisbackup zieht, liegt unter `tests/`. `npm run test:backup:docker` fährt
@@ -532,12 +567,14 @@ Produktweg, und der Unterschied ist kein Wortspiel: Ein Betreiber, der diesen
 Befehl in einen Zeitplan hängt, sichert nicht seine Daten, sondern belegt ein
 Verfahren.
 
-**Und gesichert wird die Kontrollebene.** Der Quellserver des Stacks trägt die
-Datenbank `qkern_control`; der Drill schreibt darin in `users`, `organizations`
-und `audit_logs`. Die Evidenz trägt den Bereich `control_plane`, der Verifier
-kennt keinen zweiten und weist jede Evidenz mit einem anderen Bereich ab. Über
-ein Backup einer Projektdatenbank sagt der Drill nichts, und die Seite sagt
-genau das.
+**Und die signierte Evidenz gilt der Kontrollebene.** Der Quellserver des Stacks
+trägt die Datenbank `qkern_control`; der Drill aus `2.29.0` schreibt darin in
+`users`, `organizations` und `audit_logs`. Die Evidenz trägt den Bereich
+`control_plane`, der Verifier kennt keinen zweiten und weist jede Evidenz mit
+einem anderen Bereich ab. Der Fall `(2.126)` im selben Stack sichert dagegen
+wirklich eine Projektdatenbank und stellt sie wieder her; er schreibt **keine**
+signierte Evidenz, sondern nur seine Kennzahlen, und der Verifier kennt ihn
+nicht. Was er belegt, belegt der Fall selbst.
 
 **Was die Seite zeigt.** Oben die Frage „Wer sichert diese Projektdatenbank, und
 wann zuletzt?“ mit ihrer Antwort, darunter den Befund in fünf Zeilen (kein

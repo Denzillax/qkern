@@ -1,0 +1,1536 @@
+
+> qkern-platform@2.72.0 test:backup:docker
+> node scripts/backup-certification.mjs
+
+ Network qkern-slice-backupdrill_default Creating 
+ Network qkern-slice-backupdrill_default Created 
+ Volume qkern-slice-backupdrill_backup-certification-wal Creating 
+ Volume qkern-slice-backupdrill_backup-certification-wal Created 
+ Volume qkern-slice-backupdrill_backup-certification-certs Creating 
+ Volume qkern-slice-backupdrill_backup-certification-certs Created 
+ Container qkern-slice-backupdrill-objects-1 Creating 
+ Container qkern-slice-backupdrill-certs-1 Creating 
+ Container qkern-slice-backupdrill-certs-1 Created 
+ Container qkern-slice-backupdrill-postgres-1 Creating 
+ Container qkern-slice-backupdrill-objects-1 Created 
+ Container qkern-slice-backupdrill-postgres-1 Created 
+ Container qkern-slice-backupdrill-vault-1 Creating 
+ Container qkern-slice-backupdrill-vault-1 Created 
+ Container qkern-slice-backupdrill-objects-1 Starting 
+ Container qkern-slice-backupdrill-certs-1 Starting 
+ Container qkern-slice-backupdrill-objects-1 Started 
+ Container qkern-slice-backupdrill-certs-1 Started 
+ Container qkern-slice-backupdrill-certs-1 Waiting 
+ Container qkern-slice-backupdrill-certs-1 Exited 
+ Container qkern-slice-backupdrill-postgres-1 Starting 
+ Container qkern-slice-backupdrill-postgres-1 Started 
+ Container qkern-slice-backupdrill-postgres-1 Waiting 
+ Container qkern-slice-backupdrill-postgres-1 Healthy 
+ Container qkern-slice-backupdrill-vault-1 Starting 
+ Container qkern-slice-backupdrill-vault-1 Started 
+ Container qkern-slice-backupdrill-postgres-1 Waiting 
+ Container qkern-slice-backupdrill-vault-1 Waiting 
+ Container qkern-slice-backupdrill-objects-1 Waiting 
+ Container qkern-slice-backupdrill-certs-1 Waiting 
+ Container qkern-slice-backupdrill-objects-1 Healthy 
+ Container qkern-slice-backupdrill-certs-1 Exited 
+ Container qkern-slice-backupdrill-postgres-1 Healthy 
+ Container qkern-slice-backupdrill-vault-1 Healthy 
+ Container qkern-slice-backupdrill-drill-run-9227eee43410 Creating 
+ Container qkern-slice-backupdrill-drill-run-9227eee43410 Created 
+  * If you need ICU with non-English locales and legacy charset support, install
+  * package icu-data-full.
+  * 
+  * If you want to use JIT in PostgreSQL, install postgresql17-jit or
+  * postgresql-jit (if you didn't install specific major version of postgresql).
+  * 
+* find: /usr/share/man: No such file or directory
+* Setting postgresql17 as the default version
+* find: /usr/share/man: No such file or directory
+* WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/APKINDEX.tar.gz: No such file or directory
+* WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/APKINDEX.tar.gz: No such file or directory
+vault-seed: static role qkern-project-backup rotated, ttl 86400
+vault-seed: static role qkern-project-restore-admin rotated, ttl 86400
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+NOTICE:  all required WAL segments have been archived
+
+added 240 packages, and audited 241 packages in 15s
+
+61 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (6 moderate, 3 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+
+{"event":"project_database_backup.claimed","backupId":"5f7ed437-2982-454c-a9dc-5de32153031f","projectId":"745109ea-97d6-4344-87e9-f3181d255e4c","environment":"production","attempt":1}
+{"event":"project_database_backup.succeeded","backupId":"5f7ed437-2982-454c-a9dc-5de32153031f","projectId":"745109ea-97d6-4344-87e9-f3181d255e4c","environment":"production","attempt":1}
+{"event":"project_database_backup.claimed","backupId":"d8b5f19e-e87c-4a89-8b45-6be51bc1774e","projectId":"5096864f-4d70-4139-bc1a-3a41d9b07c00","environment":"production","attempt":1}
+{"event":"project_database_backup.succeeded","backupId":"d8b5f19e-e87c-4a89-8b45-6be51bc1774e","projectId":"5096864f-4d70-4139-bc1a-3a41d9b07c00","environment":"production","attempt":1}
+{"event":"project_database_backup.restored","backupId":"5f7ed437-2982-454c-a9dc-5de32153031f","projectId":"745109ea-97d6-4344-87e9-f3181d255e4c","environment":"production"}
+{"event":"project_database_backup.pruned","removed":1}
+QKERN_PROJECT_BACKUP_EVIDENCE_BASE64 eyJzY2hlbWFWZXJzaW9uIjoicWtlcm4ucHJvamVjdC1kYXRhYmFzZS1iYWNrdXAtZHJpbGwvdjEiLCJiYWNrdXBCeXRlcyI6MTQxMDQsIm1hbmlmZXN0U2hhMjU2IjoiZjRkMjFjOTYzYjI2YmI0NmU4MzkxNzdhOTE1NTZhNDVkNjFlYzEwZjgwZGIzY2Y4MWJlODk2NGM5NGYwYTQzOSIsInJlc3RvcmVkTWFuaWZlc3RTaGEyNTYiOiJmNGQyMWM5NjNiMjZiYjQ2ZTgzOTE3N2E5MTU1NmE0NWQ2MWVjMTBmODBkYjNjZjgxYmU4OTY0Yzk0ZjBhNDM5IiwidGFibGVzIjo0LCJyb3dzIjoxMH0=
+ [32m✓[39m tests/project-database-backup-drill.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 669[2mms[22m[39m
+     [33m[2m✓[22m[39m backs up a tenant project database, restores it into a new database, and holds the tenant boundary [33m 549[2mms[22m[39m
+waiting for server to start........ done
+server started
+QKERN_BACKUP_EVIDENCE_BASE64 ewogICJzY2hlbWFWZXJzaW9uIjogInFrZXJuLmJhY2t1cC1yZXN0b3JlLWV2aWRlbmNlL3YxIiwKICAia2V5SWQiOiAiZHJpbGwtMjAyNi0xMC0wMSIsCiAgImV2aWRlbmNlIjogewogICAgImV2aWRlbmNlSWQiOiAiMzQzMGRlODQtMDk0YS00ZDFiLWEzODMtMmVjNDk4OGMxNzRhIiwKICAgICJkZXBsb3ltZW50IjogInByb2R1Y3Rpb24iLAogICAgInNjb3BlIjogImNvbnRyb2xfcGxhbmUiLAogICAgImJhY2t1cFNuYXBzaG90QXQiOiAiMjAyNi0xMC0wMVQyMTo0NTo0OS4wMDBaIiwKICAgICJiYWNrdXBDb21wbGV0ZWRBdCI6ICIyMDI2LTEwLTAxVDIxOjQ1OjU1LjAwMFoiLAogICAgInJlc3RvcmVTdGFydGVkQXQiOiAiMjAyNi0xMC0wMVQyMTo0NTo1NS4wMDBaIiwKICAgICJyZXN0b3JlQ29tcGxldGVkQXQiOiAiMjAyNi0xMC0wMVQyMTo0NjowMC4wMDBaIiwKICAgICJ2ZXJpZmllZEF0IjogIjIwMjYtMTAtMDFUMjE6NDY6MDAuMDAwWiIsCiAgICAicmVjb3ZlcnlQb2ludExhZ1NlY29uZHMiOiA2LAogICAgInJlc3RvcmVEdXJhdGlvblNlY29uZHMiOiA1LAogICAgImJhY2t1cEFydGlmYWN0U2hhMjU2IjogIjY2M2U0ZmNhYjM2ZDgzZWRjNDZlODlmOThjYmMzYjZhMjk2YjlmZDE0ZjJhMmQyYzc0YjRkMzQ5Yzk5ZTQ3ZTMiLAogICAgInNvdXJjZURhdGFNYW5pZmVzdFNoYTI1NiI6ICJkOTVkNzFlOTY5ZWFkNjgxZDc0NDY0MzM2MjU2OWFkZjA2ZGRlNzdlMzAxZjI0ODk1ZGZiMmEwNmE0MzBjZDk5IiwKICAgICJyZXN0b3JlZERhdGFNYW5pZmVzdFNoYTI1NiI6ICJkOTVkNzFlOTY5ZWFkNjgxZDc0NDY0MzM2MjU2OWFkZjA2ZGRlNzdlMzAxZjI0ODk1ZGZiMmEwNmE0MzBjZDk5IiwKICAgICJlbmNyeXB0ZWQiOiB0cnVlLAogICAgImNoZWNrc3VtVmVyaWZpZWQiOiB0cnVlLAogICAgInNjaGVtYVZlcmlmaWVkIjogdHJ1ZSwKICAgICJyb3dDb3VudHNWZXJpZmllZCI6IHRydWUsCiAgICAiYXVkaXRDaGFpblZlcmlmaWVkIjogdHJ1ZSwKICAgICJyZXN1bHQiOiAicGFzc2VkIgogIH0sCiAgInNpZ25hdHVyZSI6ICJSdUQzR0E3bi1ubkc5SVYydEZ0XzRmaVRNMEZpR3RUYTZ4eWxIQ2tTZVVLM1NBMTh4YnJOS2o1MjRQRmNHOXhMaTdmRlVTSlRva2hYVWhmT3UyV0tCUSIKfQ==
+QKERN_BACKUP_VERIFIER_KEY_BASE64 ewogICJzY2hlbWFWZXJzaW9uIjogInFrZXJuLmJhY2t1cC1yZXN0b3JlLXZlcmlmaWVyLWtleS92MSIsCiAgImtleUlkIjogImRyaWxsLTIwMjYtMTAtMDEiLAogICJwdWJsaWNLZXkiOiAiRDdyX3NLcmYyTkc3WkhWNElra1daSUJnWnNtalBCaXZPMFJCd2tOaEo1VSIKfQ==
+ [32m✓[39m tests/backup-restore-drill.integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 13109[2mms[22m[39m
+     [33m[2m✓[22m[39m performs a point-in-time restore from the encrypted base backup and the WAL archive, and proves it [33m 11447[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 21:45:47
+[2m   Duration [22m 14.42s[2m (transform 278ms, setup 0ms, import 384ms, tests 13.78s, environment 0ms)[22m
+
+postgres-1  | The files belonging to this database system will be owned by user "postgres".
+postgres-1  | This user must also own the server process.
+postgres-1  | 
+postgres-1  | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1  | The default database encoding has accordingly been set to "UTF8".
+postgres-1  | The default text search configuration will be set to "english".
+postgres-1  | 
+postgres-1  | Data page checksums are disabled.
+postgres-1  | 
+postgres-1  | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1  | creating subdirectories ... ok
+postgres-1  | selecting dynamic shared memory implementation ... posix
+postgres-1  | selecting default "max_connections" ... 100
+postgres-1  | selecting default "shared_buffers" ... 128MB
+postgres-1  | selecting default time zone ... UTC
+postgres-1  | creating configuration files ... ok
+postgres-1  | running bootstrap script ... ok
+postgres-1  | sh: locale: not found
+postgres-1  | 2026-10-01 21:45:14.637 UTC [36] WARNING:  no usable system locales were found
+postgres-1  | performing post-bootstrap initialization ... ok
+postgres-1  | syncing data to disk ... ok
+postgres-1  | 
+postgres-1  | 
+postgres-1  | Success. You can now start the database server using:
+postgres-1  | 
+postgres-1  |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1  | 
+postgres-1  | initdb: warning: enabling "trust" authentication for local connections
+postgres-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1  | waiting for server to start....2026-10-01 21:45:14.959 UTC [42] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-10-01 21:45:14.963 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-10-01 21:45:14.966 UTC [45] LOG:  database system was shut down at 2026-10-01 21:45:14 UTC
+postgres-1  | 2026-10-01 21:45:14.969 UTC [42] LOG:  database system is ready to accept connections
+postgres-1  |  done
+postgres-1  | server started
+postgres-1  | CREATE DATABASE
+postgres-1  | 
+postgres-1  | 
+postgres-1  | /usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/000-certification-init.sh
+postgres-1  | certification-init: applying 0001_control_plane.sql
+postgres-1  | CREATE EXTENSION
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applying 0002_repository_hardening.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | DROP POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0003_auth_and_memberships.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | DO
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0004_artifact_and_workspace_integrity.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0005_migration_apply_queue.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0006_worker_runtime_boundary.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0007_migration_claim_sequence.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0008_migration_reconciliation_quarantine.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0009_migration_review_commands.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0010_migration_incident_escalations.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0011_migration_incident_outbox.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | INSERT 0 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0012_migration_incident_dead_letters.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0013_migration_incident_delivery_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0014_migration_incident_delivery_visibility.sql
+postgres-1  | BEGIN
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0015_migration_incident_delivery_failure_classification.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | DROP FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0016_migration_incident_delivery_recovery_binding.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0017_migration_incident_verified_resolution.sql
+postgres-1  | ALTER TYPE
+postgres-1  | BEGIN
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TYPE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0018_migration_incident_delivery_recovery_generation.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | LOCK TABLE
+postgres-1  | UPDATE 0
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0019_migration_apply_delivery_resilience.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0020_project_database_provisioning.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | CREATE TYPE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0021_project_database_provisioning_health.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0022_project_automation_policies.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0023_project_api_keys.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0024_project_auth.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0025_project_storage.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0026_project_queues.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0027_project_queue_dead_letter_replay.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0028_usage_metering.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0029_project_queue_definition_row_lock.sql
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | certification-init: applying 0030_realtime_event_log.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0031_project_cron.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0032_project_webhooks.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0033_project_functions.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0034_project_functions_registry.sql
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | certification-init: applying 0035_project_function_slots.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0036_provisioner_heartbeat_upsert_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0037_provisioner_binding_returning_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0038_runtime_outbox_arbiter_grant.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0039_billing_rate_cards.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0040_billing_invoices.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0041_project_storage_multipart.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0042_project_function_deployments.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0043_project_storage_upload_id_check_fix.sql
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | certification-init: applying 0044_billing_invoice_numbers.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | INSERT 0 0
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0045_project_function_invocations.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0046_project_auth_audit.sql
+postgres-1  | BEGIN
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | CREATE POLICY
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0047_audit_chain_order.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0048_project_auth_mfa_enforcement.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0049_project_database_webhooks.sql
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0050_project_database_webhook_cursors.sql
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | certification-init: applying 0051_project_auth_return_targets.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0052_project_auth_rate_limits.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0053_project_auth_password_protection.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0054_project_log_drains.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0055_user_console_settings.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0056_project_log_drain_cursors.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0057_project_dashboard_webhooks.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0058_project_auth_hooks.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0059_project_storage_s3_access_keys.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0060_project_auth_passkeys.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0061_project_auth_third_party_providers.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0062_project_auth_oauth_server.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0063_project_auth_expiry_retention.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0064_project_auth_oauth_consents.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0065_project_storage_s3_access_key_secrets.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0066_project_cron_time_zone.sql
+postgres-1  | ALTER TABLE
+postgres-1  | certification-init: applying 0069_project_function_invocation_output.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0070_project_auth_saml.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TRIGGER
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0071_project_storage_s3_multipart.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0073_project_auth_oauth_tool_scopes.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0075_log_drain_function_output_source.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE FUNCTION
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0077_realtime_presence.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0078_project_auth_oauth_storage_write_scope.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0080_billing_invoice_positions.sql
+postgres-1  | BEGIN
+postgres-1  | ALTER TABLE
+postgres-1  | UPDATE 0
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0081_project_queue_message_traces.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE FUNCTION
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applying 0083_project_database_backups.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE INDEX
+postgres-1  | CREATE TRIGGER
+postgres-1  | ALTER TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE POLICY
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | certification-init: applied 76 migrations
+postgres-1  | CREATE EXTENSION
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | 2026-10-01 21:45:16.996 UTC [316] WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.996 UTC [316] WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.996 UTC [316] WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.996 UTC [316] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_auth_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_worker_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_provisioner_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | 2026-10-01 21:45:16.997 UTC [316] WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_runtime" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_auth" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_worker" by role "qkern"
+postgres-1  | WARNING:  role "qkern_project_api_app" has not been granted membership in role "qkern_provisioner" by role "qkern"
+postgres-1  | REVOKE ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE DATABASE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | ALTER DEFAULT PRIVILEGES
+postgres-1  | ALTER DEFAULT PRIVILEGES
+postgres-1  | ALTER DEFAULT PRIVILEGES
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | ALTER ROLE
+postgres-1  | project-database: project_database mit qkern_ledger_owner, qkern_project_reader und qkern_project_api_app angelegt
+postgres-1  | 
+postgres-1  | /usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/001-backup-project-database.sh
+postgres-1  | CREATE ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | CREATE ROLE
+postgres-1  | GRANT ROLE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | backup-project-database: applying 0001_qkern_migration_ledger.sql
+postgres-1  | BEGIN
+postgres-1  | DO
+postgres-1  | CREATE SCHEMA
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | backup-project-database: applying 0002_qkern_migration_fence.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | ALTER TABLE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | backup-project-database: applying 0003_qkern_change_feed.sql
+postgres-1  | BEGIN
+postgres-1  | CREATE TABLE
+postgres-1  | CREATE INDEX
+postgres-1  | ALTER TABLE
+postgres-1  | CREATE FUNCTION
+postgres-1  | ALTER FUNCTION
+postgres-1  | REVOKE
+postgres-1  | REVOKE
+postgres-1  | GRANT
+postgres-1  | GRANT
+postgres-1  | COMMIT
+postgres-1  | GRANT
+postgres-1  | backup-project-database: applied 3 project migrations, backup and restore roles present
+postgres-1  | 
+postgres-1  | waiting for server to shut down....2026-10-01 21:45:17.144 UTC [42] LOG:  received fast shutdown request
+postgres-1  | 2026-10-01 21:45:17.144 UTC [42] LOG:  aborting any active transactions
+postgres-1  | 2026-10-01 21:45:17.146 UTC [42] LOG:  background worker "logical replication launcher" (PID 49) exited with exit code 1
+postgres-1  | 2026-10-01 21:45:17.146 UTC [43] LOG:  shutting down
+postgres-1  | 2026-10-01 21:45:17.150 UTC [43] LOG:  checkpoint starting: shutdown immediate
+postgres-1  | 2026-10-01 21:45:17.164 UTC [43] LOG:  checkpoint complete: wrote 2220 buffers (13.5%); 0 WAL file(s) added, 0 removed, 2 recycled; write=0.010 s, sync=0.002 s, total=0.015 s; sync files=1082, longest=0.001 s, average=0.000 s; distance=27704 kB, estimate=27704 kB; lsn=0/3000028, redo lsn=0/3000028
+postgres-1  | 2026-10-01 21:45:17.171 UTC [42] LOG:  database system is shut down
+postgres-1  |  done
+postgres-1  | server stopped
+postgres-1  | 
+postgres-1  | PostgreSQL init process complete; ready for start up.
+postgres-1  | 
+postgres-1  | 2026-10-01 21:45:17.257 UTC [1] LOG:  starting PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-10-01 21:45:17.258 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1  | 2026-10-01 21:45:17.258 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1  | 2026-10-01 21:45:17.265 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-10-01 21:45:17.268 UTC [346] LOG:  database system was shut down at 2026-10-01 21:45:17 UTC
+postgres-1  | 2026-10-01 21:45:17.271 UTC [1] LOG:  database system is ready to accept connections
+postgres-1  | 2026-10-01 21:45:49.082 UTC [344] LOG:  checkpoint starting: immediate force wait
+postgres-1  | 2026-10-01 21:45:49.085 UTC [344] LOG:  checkpoint complete: wrote 422 buffers (2.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.003 s; sync files=130, longest=0.001 s, average=0.000 s; distance=6016 kB, estimate=6016 kB; lsn=0/35E02E0, redo lsn=0/35E0288
+postgres-1  | 2026-10-01 21:45:49.303 UTC [501] FATAL:  pg_hba.conf rejects connection for host "172.25.0.2", user "qkern", database "qkern_control", no encryption
+postgres-1  | 2026-10-01 21:45:49.340 UTC [344] LOG:  checkpoint starting: immediate force wait
+postgres-1  | 2026-10-01 21:45:49.340 UTC [344] LOG:  checkpoint complete: wrote 57 buffers (0.3%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.001 s; sync files=42, longest=0.001 s, average=0.000 s; distance=10367 kB, estimate=10367 kB; lsn=0/4000080, redo lsn=0/4000028
+ Container qkern-slice-backupdrill-objects-1 Stopping 
+ Container qkern-slice-backupdrill-vault-1 Stopping 
+ Container qkern-slice-backupdrill-vault-1 Stopped 
+ Container qkern-slice-backupdrill-vault-1 Removing 
+ Container qkern-slice-backupdrill-vault-1 Removed 
+ Container qkern-slice-backupdrill-postgres-1 Stopping 
+ Container qkern-slice-backupdrill-objects-1 Stopped 
+ Container qkern-slice-backupdrill-objects-1 Removing 
+ Container qkern-slice-backupdrill-objects-1 Removed 
+ Container qkern-slice-backupdrill-postgres-1 Stopped 
+ Container qkern-slice-backupdrill-postgres-1 Removing 
+ Container qkern-slice-backupdrill-postgres-1 Removed 
+ Container qkern-slice-backupdrill-certs-1 Stopping 
+ Container qkern-slice-backupdrill-certs-1 Stopped 
+ Container qkern-slice-backupdrill-certs-1 Removing 
+ Container qkern-slice-backupdrill-certs-1 Removed 
+ Network qkern-slice-backupdrill_default Removing 
+ Volume qkern-slice-backupdrill_backup-certification-wal Removing 
+ Volume qkern-slice-backupdrill_backup-certification-certs Removing 
+ Volume qkern-slice-backupdrill_backup-certification-wal Removed 
+ Volume qkern-slice-backupdrill_backup-certification-certs Removed 
+ Network qkern-slice-backupdrill_default Removed 
+Evidenz abgelegt: docs/evidence/backup-restore/drill.evidence.json
+Evidenz abgelegt: docs/evidence/backup-restore/project-database-drill.evidence.json
+EXIT=0

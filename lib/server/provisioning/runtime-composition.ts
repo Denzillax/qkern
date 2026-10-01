@@ -65,6 +65,12 @@ export function createProjectDatabaseProvisioningWorkerFromEnv(
     now?: () => Date;
     signingKeyProvider?: ProvisioningBrokerSigningKeyProvider;
     probe?: RuntimeProbeObserver;
+    /**
+     * Die Leerlauf-Pflicht (2.126). Sie wird hier nicht gebaut, sondern
+     * hereingegeben: wer sie baut, muss sie auch schliessen, und das ist der
+     * Prozess und nicht die Komposition des Workers.
+     */
+    idleDuty?: { runRound(signal?: AbortSignal): Promise<unknown> };
   } = {},
 ): ProjectDatabaseProvisioningWorker {
   const config = projectProvisionerRuntimeConfigurationFromEnv(env);
@@ -88,6 +94,7 @@ export function createProjectDatabaseProvisioningWorkerFromEnv(
       logger: dependencies.logger,
       now: dependencies.now,
       probe: dependencies.probe,
+      idleDuty: dependencies.idleDuty,
     },
   );
 }
