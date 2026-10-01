@@ -10,6 +10,16 @@ import type {
   ProjectQueueStatus,
 } from "@/lib/server/project-queues/model";
 import { sameProjectQueueScope } from "@/lib/server/project-queues/model";
+import type {
+  ProjectQueueTrace,
+  ProjectQueueTraceAnchor,
+  ProjectQueueTraceEntry,
+  ProjectQueueTraceStation,
+} from "@/lib/server/project-queues/trace";
+import {
+  PROJECT_QUEUE_TRACE_MAX_STATIONS,
+  projectQueueTraceExpiresAt,
+} from "@/lib/server/project-queues/trace";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 
 /**
@@ -43,6 +53,12 @@ export interface ProjectQueueRepository {
     message: ProjectQueueMessage,
     now: Date,
     meter?: ProjectQueueMeter,
+    /**
+     * Der Anschluss an eine fremde Spur, falls der Aufrufer einen
+     * `traceparent` mitgebracht hat. Er landet auf der ersten Station und
+     * nirgends sonst; siehe `trace.ts`.
+     */
+    trace?: ProjectQueueTraceAnchor | null,
   ): Promise<{ message: ProjectQueueMessage; deduplicated: boolean }>;
   claim(
     principal: ProjectQueuePrincipal,
@@ -98,13 +114,49 @@ export interface ProjectQueueRepository {
     replayId: string,
     now: Date,
   ): Promise<{ message: ProjectQueueMessage; created: boolean }>;
+  /**
+   * Die Spur einer Nachricht (2.121), in Zeitreihenfolge.
+   *
+   * `null` heisst: In dieser Queue dieses Scopes gibt es zu dieser Id weder
+   * eine Nachricht noch eine Station. Eine Nachricht ohne Stationen gibt es
+   * nicht, aber Stationen ohne Nachricht schon: Die Spur ueberlebt das
+   * Aufraeumen der Nachricht, und genau dafuer ist sie da.
+   */
+  readTrace(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<ProjectQueueTrace | null>;
 }
+
+/**
+ * Eine Station, bevor sie eine Zeile ist. Sequenz und Frist rechnet der Port
+ * aus, weil nur er weiss, wie viele Zeilen schon stehen.
+ */
+export type ProjectQueueTraceRecord = {
+  station: ProjectQueueTraceStation;
+  attempt: number;
+  workerId: string | null;
+  failureCode: ProjectQueueMessage["lastFailureCode"];
+  occurredAt: Date;
+  trace?: ProjectQueueTraceAnchor | null;
+  sourceMessageId?: string | null;
+};
 
 export class MemoryProjectQueueRepository implements ProjectQueueRepository {
   readonly durability = "ephemeral" as const;
   private readonly queues = new Map<string, ProjectQueue>();
   private readonly messages = new Map<string, ProjectQueueMessage>();
   private readonly locks = new Map<string, Promise<void>>();
+  /**
+   * Die Stationen, je Nachricht. Eine eigene Ablage und nicht ein Feld an der
+   * Nachricht: Der Postgres-Port haelt sie aus demselben Grund in einer
+   * eigenen Tabelle ohne Fremdschluessel, und eine Spur, die mit ihrer
+   * Nachricht aus der Map faellt, waere ein Port, der etwas anderes zusagt als
+   * das Produkt.
+   */
+  private readonly traces = new Map<string, StoredTraceStation[]>();
 
   async listQueues(principal: ProjectQueuePrincipal, scope: ProjectQueueScope) {
     return [...this.queues.values()].filter((queue) => queue.organizationId === principal.organizationId &&
@@ -134,10 +186,12 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
     message: ProjectQueueMessage,
     now: Date,
     meter?: ProjectQueueMeter,
+    trace?: ProjectQueueTraceAnchor | null,
   ) {
     return await this.exclusive(queue, async () => {
       this.assertQueue(principal, scope, queue);
       this.cleanupCompleted(queue, now);
+      this.pruneTraces(queue, now);
       if (message.dedupeKeyHash && queue.dedupeWindowSeconds > 0) {
         const earliest = now.getTime() - queue.dedupeWindowSeconds * 1_000;
         const duplicate = [...this.messages.values()].find((candidate) => sameProjectQueueScope(candidate, scope) &&
@@ -145,6 +199,12 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
           candidate.createdAt.getTime() >= earliest);
         if (duplicate) {
           await meter?.();
+          // Die Station gehoert dem Zwilling: Die zweite Anfrage hat keine
+          // eigene Nachricht, und sie bekommt auch keine eigene Spur.
+          this.record(queue, duplicate.id, {
+            station: "deduplicated", attempt: duplicate.attemptCount,
+            workerId: null, failureCode: null, occurredAt: now,
+          });
           return { message: cloneMessage(duplicate), deduplicated: true };
         }
       }
@@ -159,6 +219,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
       // schwächer als ein Rollback und für einen Entwicklungsport genug.
       await meter?.();
       this.messages.set(message.id, cloneMessage(message));
+      this.record(queue, message.id, {
+        station: "enqueued", attempt: 0, workerId: null, failureCode: null,
+        occurredAt: message.createdAt, trace,
+      });
       return { message: cloneMessage(message), deduplicated: false };
     });
   }
@@ -185,6 +249,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         message.leaseTokenHash = lease.tokenHash;
         message.leaseExpiresAt = new Date(input.now.getTime() + queue.visibilityTimeoutSeconds * 1_000);
         this.messages.set(message.id, message);
+        this.record(queue, message.id, {
+          station: "claimed", attempt: message.attemptCount,
+          workerId: input.workerId, failureCode: null, occurredAt: input.now,
+        });
         return {
           id: message.id,
           queue: queue.name,
@@ -214,6 +282,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
       message.completedAt = new Date(now);
       clearLease(message);
       this.messages.set(message.id, message);
+      this.record(queue, message.id, {
+        station: "completed", attempt: message.attemptCount,
+        workerId, failureCode: null, occurredAt: now,
+      });
       return cloneMessage(message);
     });
   }
@@ -242,6 +314,10 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         message.availableAt = new Date(now.getTime() + delay * 1_000);
       }
       this.messages.set(message.id, message);
+      this.record(queue, message.id, {
+        station: message.status === "dead_lettered" ? "dead_lettered" : "retry_scheduled",
+        attempt: message.attemptCount, workerId, failureCode, occurredAt: now,
+      });
       return cloneMessage(message);
     });
   }
@@ -268,6 +344,7 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
       this.assertQueue(principal, scope, queue);
       this.recoverExpiredLeases(queue, now);
       this.cleanupCompleted(queue, now);
+      this.pruneTraces(queue, now);
       const messages = [...this.messages.values()].filter((message) => sameProjectQueueScope(message, scope) &&
         message.queueId === queue.id);
       const ready = messages.filter((message) => message.status === "available" && message.availableAt <= now);
@@ -346,8 +423,98 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         replayedFromMessageId: source.id,
       };
       this.messages.set(replay.id, replay);
+      // Die neue Nachricht erbt den Anschluss der alten: Eine Kette durch ein
+      // Dead Letter bleibt damit draussen eine Spur.
+      this.record(queue, replay.id, {
+        station: "replayed", attempt: 0, workerId: null, failureCode: null,
+        occurredAt: new Date(now), sourceMessageId: source.id,
+        trace: this.anchorOf(source.id),
+      });
       return { message: cloneMessage(replay), created: true };
     });
+  }
+
+  async readTrace(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<ProjectQueueTrace | null> {
+    return await this.exclusive(queue, async () => {
+      this.assertQueue(principal, scope, queue);
+      const stored = (this.traces.get(messageId) ?? []).filter((station) =>
+        station.organizationId === scope.organizationId && station.projectId === scope.projectId &&
+        station.environment === scope.environment && station.queueId === queue.id);
+      const message = this.messages.get(messageId);
+      const owned = message !== undefined && sameProjectQueueScope(message, scope) &&
+        message.queueId === queue.id;
+      if (stored.length === 0 && !owned) return null;
+      const ordered = [...stored].sort((left, right) => left.sequence - right.sequence);
+      const first = ordered[0];
+      const replay = [...this.traces.values()].flat().find((station) =>
+        station.station === "replayed" && station.sourceMessageId === messageId &&
+        station.organizationId === scope.organizationId && station.projectId === scope.projectId &&
+        station.environment === scope.environment && station.queueId === queue.id);
+      return Object.freeze({
+        messageId,
+        queue: queue.name,
+        traceId: first?.traceId ?? null,
+        parentSpanId: first?.parentSpanId ?? null,
+        sourceMessageId: first?.sourceMessageId ?? null,
+        replayedIntoMessageId: replay?.messageId ?? null,
+        messageExists: owned,
+        complete: ordered.length < PROJECT_QUEUE_TRACE_MAX_STATIONS,
+        stations: Object.freeze(ordered.map(publicTraceEntry)),
+      });
+    });
+  }
+
+  /**
+   * Haengt eine Station an und schweigt, wenn die Grenze erreicht ist.
+   *
+   * Schweigen und nicht werfen: Eine Spur ist Beobachtung und keine
+   * Ausfuehrungsgewalt. Dass die Grenze erreicht wurde, sagt der Leser ueber
+   * `complete`, und das ist die Stelle, an der es jemanden interessiert.
+   */
+  private record(queue: ProjectQueue, messageId: string, record: ProjectQueueTraceRecord) {
+    const existing = this.traces.get(messageId) ?? [];
+    if (existing.length >= PROJECT_QUEUE_TRACE_MAX_STATIONS) return;
+    const anchor = existing.length === 0 ? record.trace ?? null : null;
+    existing.push({
+      organizationId: queue.organizationId,
+      projectId: queue.projectId,
+      environment: queue.environment,
+      queueId: queue.id,
+      messageId,
+      sequence: existing.length + 1,
+      station: record.station,
+      attempt: record.attempt,
+      workerId: record.workerId,
+      failureCode: record.failureCode,
+      traceId: anchor?.traceId ?? null,
+      parentSpanId: anchor?.parentSpanId ?? null,
+      sourceMessageId: record.sourceMessageId ?? null,
+      occurredAt: new Date(record.occurredAt),
+      expiresAt: projectQueueTraceExpiresAt(queue, record.occurredAt),
+    });
+    this.traces.set(messageId, existing);
+  }
+
+  /** Der Anschluss der ersten Station einer Nachricht, falls sie einen hat. */
+  private anchorOf(messageId: string): ProjectQueueTraceAnchor | null {
+    const first = (this.traces.get(messageId) ?? []).find((station) => station.sequence === 1);
+    return first?.traceId ? Object.freeze({ traceId: first.traceId, parentSpanId: first.parentSpanId! }) : null;
+  }
+
+  /** Geschnitten wird am Ablauf der Station. Siehe `trace.ts`. */
+  private pruneTraces(queue: ProjectQueue, now: Date) {
+    for (const [messageId, stations] of this.traces) {
+      const kept = stations.filter((station) =>
+        station.queueId !== queue.id || station.expiresAt > now);
+      if (kept.length === stations.length) continue;
+      if (kept.length === 0) this.traces.delete(messageId);
+      else this.traces.set(messageId, kept);
+    }
   }
 
   private assertQueue(principal: ProjectQueuePrincipal, scope: ProjectQueueScope, queue: ProjectQueue) {
@@ -380,6 +547,9 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
     for (const message of this.messages.values()) {
       if (message.queueId !== queue.id || message.status !== "in_flight" ||
           !message.leaseExpiresAt || message.leaseExpiresAt > now) continue;
+      // Der Wirt, der die Pacht verloren hat, steht in der Station. Gelesen
+      // wird er **vor** `clearLease`, danach ist er weg.
+      const workerId = message.leaseWorkerId;
       clearLease(message);
       message.lastFailureCode = "LEASE_EXPIRED";
       if (message.attemptCount >= queue.maxAttempts) {
@@ -390,6 +560,11 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         message.availableAt = new Date(now);
       }
       this.messages.set(message.id, message);
+      this.record(queue, message.id, {
+        station: message.status === "dead_lettered" ? "dead_lettered" : "lease_expired",
+        attempt: message.attemptCount, workerId,
+        failureCode: "LEASE_EXPIRED", occurredAt: now,
+      });
     }
   }
 
@@ -415,6 +590,42 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
     try { return await work(); }
     finally { release(); if (this.locks.get(key) === gate) this.locks.delete(key); }
   }
+}
+
+/** Eine Station im Speicher-Port, in der Form, die die Tabelle aus 0081 hat. */
+type StoredTraceStation = {
+  organizationId: string;
+  projectId: string;
+  environment: ProjectQueueScope["environment"];
+  queueId: string;
+  messageId: string;
+  sequence: number;
+  station: ProjectQueueTraceStation;
+  attempt: number;
+  workerId: string | null;
+  failureCode: ProjectQueueMessage["lastFailureCode"];
+  traceId: string | null;
+  parentSpanId: string | null;
+  sourceMessageId: string | null;
+  occurredAt: Date;
+  expiresAt: Date;
+};
+
+/**
+ * Was eine Station nach draussen zeigt. Der Scope, die Queue-Id, der Ablauf,
+ * der Anschluss und die Herkunft bleiben drinnen: Scope und Queue kennt der
+ * Aufrufer schon, und Anschluss, Herkunft und Ablauf stehen einmal am Kopf der
+ * Spur statt an jeder Zeile.
+ */
+function publicTraceEntry(station: StoredTraceStation): ProjectQueueTraceEntry {
+  return Object.freeze({
+    sequence: station.sequence,
+    station: station.station,
+    attempt: station.attempt,
+    workerId: station.workerId,
+    failureCode: station.failureCode,
+    occurredAt: station.occurredAt.toISOString(),
+  });
 }
 
 function clearLease(message: ProjectQueueMessage) {

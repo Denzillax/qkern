@@ -15,7 +15,20 @@ import {
   ProjectQueueConflictError,
   type ProjectQueueMeter,
   type ProjectQueueRepository,
+  type ProjectQueueTraceRecord,
 } from "@/lib/server/project-queues/repository";
+import type {
+  ProjectQueueTrace,
+  ProjectQueueTraceAnchor,
+  ProjectQueueTraceEntry,
+  ProjectQueueTraceStation,
+} from "@/lib/server/project-queues/trace";
+import {
+  PROJECT_QUEUE_TRACE_MAX_STATIONS,
+  PROJECT_QUEUE_TRACE_PRUNE_BATCH,
+  PROJECT_QUEUE_TRACE_STATIONS,
+  projectQueueTraceExpiresAt,
+} from "@/lib/server/project-queues/trace";
 
 type Row = Record<string, unknown>;
 type QueueDatabase = Pick<PostgresControlPlane, "withTenant">;
@@ -84,9 +97,10 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
     message: ProjectQueueMessage,
     now: Date,
     meter?: ProjectQueueMeter,
+    trace?: ProjectQueueTraceAnchor | null,
   ) {
     return this.withTenant(principal, false, async (database) => {
-      const result = await this.enqueueWithin(database, scope, queue, message, now);
+      const result = await this.enqueueWithin(database, scope, queue, message, now, trace);
       // Nach dem Schreiben, vor dem Festschreiben — und in **dieser**
       // Transaktion. Wirft der Haken, verschwindet die Nachricht mit ihm.
       //
@@ -104,6 +118,7 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
     queue: ProjectQueue,
     message: ProjectQueueMessage,
     now: Date,
+    trace?: ProjectQueueTraceAnchor | null,
   ): Promise<{ message: ProjectQueueMessage; deduplicated: boolean }> {
     {
       const current = await this.lockQueue(database, scope, queue.id);
@@ -119,7 +134,14 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
           ...scopeValues(scope), current.id, message.dedupeKeyHash, now,
         ]);
         if (duplicate.rows[0]) {
-          return { message: messageFromRow(duplicate.rows[0]), deduplicated: true };
+          const twin = messageFromRow(duplicate.rows[0]);
+          // Die Station gehoert dem Zwilling: Die zweite Anfrage hat keine
+          // eigene Nachricht, und sie bekommt auch keine eigene Spur.
+          await recordTrace(database, scope, current, twin.id, {
+            station: "deduplicated", attempt: twin.attemptCount,
+            workerId: null, failureCode: null, occurredAt: now,
+          });
+          return { message: twin, deduplicated: true };
         }
       }
       const pending = await database.query<{ count: unknown }>(`SELECT count(*)::int AS count
@@ -139,6 +161,11 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
       const dedupeExpiresAt = dedupeKeyHash
         ? new Date(now.getTime() + current.dedupeWindowSeconds * 1_000)
         : null;
+      // Die Station steht **nach** dem try, nicht darin. Ein 23505 aus der
+      // Spur-Tabelle waere im Fangzweig sonst eine Aussage ueber den
+      // Dedupe-Index, also ein "jemand war schneller", das nie stattgefunden
+      // hat. Dieselbe Falle, die 1.64 beim erschoepften Pool gestellt hat.
+      let created: ProjectQueueMessage;
       try {
         const inserted = await database.query(`INSERT INTO project_queue_messages
           (id,organization_id,project_id,environment,queue_id,payload,status,owner_subject,
@@ -151,7 +178,7 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
           message.queueId, message.payload as Record<string, unknown>, message.ownerSubject,
           dedupeKeyHash, dedupeExpiresAt, message.availableAt, message.createdAt,
         ]);
-        return { message: messageFromRow(inserted.rows[0]), deduplicated: false };
+        created = messageFromRow(inserted.rows[0]);
       } catch (error) {
         if ((error as { code?: string }).code === "23505") {
           if (dedupeKeyHash) {
@@ -161,13 +188,23 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
               ...scopeValues(scope), current.id, dedupeKeyHash, now,
             ]);
             if (duplicate.rows[0]) {
-              return { message: messageFromRow(duplicate.rows[0]), deduplicated: true };
+              const twin = messageFromRow(duplicate.rows[0]);
+              await recordTrace(database, scope, current, twin.id, {
+                station: "deduplicated", attempt: twin.attemptCount,
+                workerId: null, failureCode: null, occurredAt: now,
+              });
+              return { message: twin, deduplicated: true };
             }
           }
           throw new ProjectQueueConflictError("QUEUE_CONFLICT");
         }
         throw error;
       }
+      await recordTrace(database, scope, current, created.id, {
+        station: "enqueued", attempt: 0, workerId: null, failureCode: null,
+        occurredAt: created.createdAt, trace,
+      });
+      return { message: created, deduplicated: false };
     }
   }
 
@@ -210,6 +247,10 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         ]);
         if (!updated.rows[0]) throw new ProjectQueueConflictError("QUEUE_CONFLICT");
         const claimed = messageFromRow(updated.rows[0]);
+        await recordTrace(database, scope, current, claimed.id, {
+          station: "claimed", attempt: claimed.attemptCount,
+          workerId: input.workerId, failureCode: null, occurredAt: input.now,
+        });
         claims.push({
           id: claimed.id,
           queue: current.name,
@@ -245,7 +286,12 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         ...scopeValues(scope), messageId, queue.id, workerId, leaseTokenHash, now,
       ]);
       if (!result.rows[0]) throw new ProjectQueueConflictError("QUEUE_LEASE_LOST");
-      return messageFromRow(result.rows[0]);
+      const acknowledged = messageFromRow(result.rows[0]);
+      await recordTrace(database, scope, queue, acknowledged.id, {
+        station: "completed", attempt: acknowledged.attemptCount,
+        workerId, failureCode: null, occurredAt: now,
+      });
+      return acknowledged;
     });
   }
 
@@ -284,10 +330,21 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         deadLettered ? now : null,
       ]);
       if (!result.rows[0]) throw new ProjectQueueConflictError("QUEUE_LEASE_LOST");
-      return messageFromRow(result.rows[0]);
+      const settled = messageFromRow(result.rows[0]);
+      await recordTrace(database, scope, queue, settled.id, {
+        station: deadLettered ? "dead_lettered" : "retry_scheduled",
+        attempt: settled.attemptCount, workerId, failureCode, occurredAt: now,
+      });
+      return settled;
     });
   }
 
+  /**
+   * Die Erneuerung bekommt **keine** Station, und das ist eine Entscheidung,
+   * nicht eine Luecke. Die Begruendung steht in `trace.ts`: Ein Herzschlag
+   * alle zehn Sekunden protokolliert den Takt und nicht die Arbeit, und ob
+   * eine Pacht gehalten hat, sagt der Ausgang.
+   */
   renewLease(
     principal: ProjectQueuePrincipal,
     scope: ProjectQueueScope,
@@ -429,6 +486,15 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
           replayId, scope.organizationId, scope.projectId, scope.environment, queue.id,
           original.payload as Record<string, unknown>, original.ownerSubject, now, messageId,
         ]);
+        // Die neue Nachricht erbt den Anschluss der alten: Eine Kette durch ein
+        // Dead Letter bleibt damit draussen eine Spur. Gelesen wird die erste
+        // Station der Quelle, nicht die Quelle selbst, denn der Anschluss steht
+        // nur dort.
+        await recordTrace(database, scope, queue, replayId, {
+          station: "replayed", attempt: 0, workerId: null, failureCode: null,
+          occurredAt: now, sourceMessageId: messageId,
+          trace: await traceAnchor(database, scope, messageId),
+        });
         await audit?.append({
           projectId: scope.projectId,
           environment: scope.environment,
@@ -451,6 +517,59 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         }
         throw error;
       }
+    });
+  }
+
+  /**
+   * Die Spur einer Nachricht, in Zeitreihenfolge.
+   *
+   * Lesend und damit in einer Lesetransaktion: Die Spur wird hier nicht
+   * aufgeraeumt. Das Aufraeumen haengt am Einreihen und am Status, also an den
+   * schreibenden Wegen; ein Leser, der loescht, waere eine Ansicht mit
+   * Nebenwirkung.
+   */
+  readTrace(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<ProjectQueueTrace | null> {
+    return this.withTenant(principal, true, async (database) => {
+      const stations = await database.query(`SELECT sequence,station,attempt,worker_id,
+          failure_code,trace_id,parent_span_id,source_message_id,occurred_at
+        FROM project_queue_message_traces
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+          AND message_id=$5
+        ORDER BY sequence ASC LIMIT $6`, [
+        ...scopeValues(scope), queue.id, messageId, PROJECT_QUEUE_TRACE_MAX_STATIONS,
+      ]);
+      const message = await database.query<{ id: unknown }>(`SELECT id
+        FROM project_queue_messages
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+          AND id=$5`, [...scopeValues(scope), queue.id, messageId]);
+      const exists = message.rows.length === 1;
+      if (stations.rows.length === 0 && !exists) return null;
+      const replay = await database.query<{ message_id: unknown }>(`SELECT message_id
+        FROM project_queue_message_traces
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+          AND source_message_id=$5
+        ORDER BY occurred_at ASC,message_id ASC LIMIT 1`, [
+        ...scopeValues(scope), queue.id, messageId,
+      ]);
+      const first = stations.rows[0];
+      return Object.freeze({
+        messageId,
+        queue: queue.name,
+        traceId: first?.trace_id === null || first?.trace_id === undefined ? null : String(first.trace_id),
+        parentSpanId: first?.parent_span_id === null || first?.parent_span_id === undefined
+          ? null : String(first.parent_span_id),
+        sourceMessageId: first?.source_message_id === null || first?.source_message_id === undefined
+          ? null : String(first.source_message_id),
+        replayedIntoMessageId: replay.rows[0] ? String(replay.rows[0].message_id) : null,
+        messageExists: exists,
+        complete: stations.rows.length < PROJECT_QUEUE_TRACE_MAX_STATIONS,
+        stations: Object.freeze(stations.rows.map(traceEntryFromRow)),
+      });
     });
   }
 
@@ -493,12 +612,33 @@ const MESSAGE_COLUMNS = `id,organization_id,project_id,environment,queue_id,payl
 const MESSAGE_SELECT = `SELECT ${MESSAGE_COLUMNS} FROM project_queue_messages`;
 const UPDATE_MESSAGE = "UPDATE project_queue_messages";
 
+/**
+ * Gibt verfallene Pachten frei und schreibt je Nachricht ihre Station.
+ *
+ * Bis 2.121 war das **eine** Anweisung, ein UPDATE ohne RETURNING. Fuer die
+ * Spur fehlten damit zwei Angaben: welche Nachrichten es waren und welcher Wirt
+ * die Pacht gehalten hatte. Letzteres kann RETURNING nicht liefern, denn
+ * dieselbe Anweisung setzt `lease_worker_id` auf NULL, und RETURNING gibt den
+ * neuen Wert. Darum steht jetzt ein `SELECT ... FOR UPDATE` davor.
+ *
+ * Das kostet keine Zusage: `FOR UPDATE` sperrt genau die Zeilen, die das UPDATE
+ * danach anfasst, und eine zweite Instanz, die gleichzeitig erholt, sieht nach
+ * dem Freigeben der Sperre, dass die Bedingung `status='in_flight'` nicht mehr
+ * gilt, und ueberspringt die Zeile. Es entsteht also auch keine zweite Station
+ * zum selben Verfall.
+ */
 async function recoverExpiredLeases(
   database: SqlQueryable,
   scope: ProjectQueueScope,
   queue: ProjectQueue,
   now: Date,
 ) {
+  const expired = await database.query<{ id: unknown; attempt_count: unknown; lease_worker_id: unknown }>(
+    `SELECT id,attempt_count,lease_worker_id FROM project_queue_messages
+     WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+       AND status='in_flight' AND lease_expires_at <= $5
+     ORDER BY id ASC FOR UPDATE`, [...scopeValues(scope), queue.id, now]);
+  if (expired.rows.length === 0) return;
   await database.query(`${UPDATE_MESSAGE}
     SET status=CASE WHEN attempt_count >= $6 THEN 'dead_lettered' ELSE 'available' END,
         available_at=CASE WHEN attempt_count >= $6 THEN available_at ELSE $5 END,
@@ -509,6 +649,98 @@ async function recoverExpiredLeases(
       AND status='in_flight' AND lease_expires_at <= $5`, [
     ...scopeValues(scope), queue.id, now, queue.maxAttempts,
   ]);
+  for (const row of expired.rows) {
+    const attempt = safeInteger(row.attempt_count);
+    await recordTrace(database, scope, queue, String(row.id), {
+      station: attempt >= queue.maxAttempts ? "dead_lettered" : "lease_expired",
+      attempt,
+      workerId: row.lease_worker_id === null ? null : String(row.lease_worker_id),
+      failureCode: "LEASE_EXPIRED",
+      occurredAt: now,
+    });
+  }
+}
+
+/**
+ * Haengt eine Station an die Spur einer Nachricht, in einer Anweisung.
+ *
+ * Die Sequenz rechnet die Datenbank aus, und zwar in derselben Anweisung, die
+ * schreibt: Zwei Abfragen daraus zu machen hiesse, zwischen Lesen und Schreiben
+ * ein Fenster zu lassen, in dem eine zweite Station dieselbe Nummer bekommt.
+ * Die Mengengrenze steht im `WHERE` und nicht im TypeScript: Eine Grenze, die
+ * im Code steht, gilt nur fuer den Code, der sie kennt.
+ *
+ * Der Anschluss nach draussen landet nur auf Sequenz eins, auch wenn der
+ * Aufrufer ihn mitgibt; `project_queue_message_traces_trace_anchor` aus 0081
+ * verlangt genau das, und die Entscheidung steht in `trace.ts`.
+ *
+ * Erreicht die Spur die Grenze, schreibt die Anweisung keine Zeile und wirft
+ * nicht: Eine Beobachtung ist keine Ausfuehrungsgewalt. Dass die Grenze
+ * erreicht ist, sagt der Leser ueber `complete`.
+ */
+async function recordTrace(
+  database: SqlQueryable,
+  scope: ProjectQueueScope,
+  queue: ProjectQueue,
+  messageId: string,
+  record: ProjectQueueTraceRecord,
+) {
+  await database.query(`INSERT INTO project_queue_message_traces
+      (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
+       worker_id,failure_code,trace_id,parent_span_id,source_message_id,occurred_at,expires_at)
+    SELECT $1::uuid,$2::uuid,$3::qkern_environment,$4::uuid,$5::uuid,next.sequence,
+      $6::text,$7::int,$8::text,$9::text,
+      CASE WHEN next.sequence=1 THEN $10::text ELSE NULL END,
+      CASE WHEN next.sequence=1 THEN $11::text ELSE NULL END,
+      $12::uuid,$13::timestamptz,$14::timestamptz
+    FROM (SELECT coalesce(max(sequence),0)+1 AS sequence FROM project_queue_message_traces
+          WHERE organization_id=$1::uuid AND project_id=$2::uuid
+            AND environment=$3::qkern_environment AND message_id=$5::uuid) AS next
+    WHERE next.sequence <= $15::int`, [
+    ...scopeValues(scope), queue.id, messageId, record.station, record.attempt,
+    record.workerId, record.failureCode, record.trace?.traceId ?? null,
+    record.trace?.parentSpanId ?? null, record.sourceMessageId ?? null,
+    record.occurredAt, projectQueueTraceExpiresAt(queue, record.occurredAt),
+    PROJECT_QUEUE_TRACE_MAX_STATIONS,
+  ]);
+}
+
+/** Der Anschluss nach draussen einer Nachricht, also ihre erste Station. */
+async function traceAnchor(
+  database: SqlQueryable,
+  scope: ProjectQueueScope,
+  messageId: string,
+): Promise<ProjectQueueTraceAnchor | null> {
+  const result = await database.query<{ trace_id: unknown; parent_span_id: unknown }>(
+    `SELECT trace_id,parent_span_id FROM project_queue_message_traces
+     WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND message_id=$4
+       AND sequence=1`, [...scopeValues(scope), messageId]);
+  const row = result.rows[0];
+  if (!row || row.trace_id === null || row.trace_id === undefined) return null;
+  return Object.freeze({
+    traceId: String(row.trace_id),
+    parentSpanId: String(row.parent_span_id),
+  });
+}
+
+function traceEntryFromRow(row: Row): ProjectQueueTraceEntry {
+  const station = String(row.station);
+  if (!(PROJECT_QUEUE_TRACE_STATIONS as readonly string[]).includes(station)) {
+    throw new Error("Invalid queue trace station");
+  }
+  const failure = row.failure_code === null ? null : String(row.failure_code);
+  if (failure !== null && !["HANDLER_ERROR", "HANDLER_TIMEOUT", "DEPENDENCY_UNAVAILABLE",
+    "INVALID_PAYLOAD", "LEASE_EXPIRED"].includes(failure)) {
+    throw new Error("Invalid queue trace failure code");
+  }
+  return Object.freeze({
+    sequence: boundedInteger(row.sequence, 1, PROJECT_QUEUE_TRACE_MAX_STATIONS),
+    station: station as ProjectQueueTraceStation,
+    attempt: boundedInteger(row.attempt, 0, 20),
+    workerId: row.worker_id === null ? null : String(row.worker_id),
+    failureCode: failure as ProjectQueueFailureCode | null,
+    occurredAt: date(row.occurred_at).toISOString(),
+  });
 }
 
 async function cleanup(
@@ -528,6 +760,23 @@ async function cleanup(
     WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
       AND status='completed' AND completed_at < $5 AND dedupe_key_hash IS NULL`, [
     ...scopeValues(scope), queue.id, cutoff,
+  ]);
+  // Die Spuren danach, und mit eigener Frist: Geschnitten wird an `expires_at`
+  // der Station und nie am Ausgang der Nachricht. Die Begruendung steht in
+  // `trace.ts`; die Reihenfolge der beiden Loeschungen ist dagegen frei, denn
+  // zwischen Nachricht und Spur gibt es keinen Fremdschluessel. Genau das ist
+  // der Zweck: Die Spur ueberlebt die Nachricht, die sie beschreibt.
+  //
+  // Eine Portion je Aufruf, nicht die ganze Altlast. Dieses Aufraeumen haengt
+  // am Einreihen und am Status, also an Wegen, auf die jemand wartet; eine
+  // unbegrenzte Loeschung wuerde dort die Tabelle so lange halten, wie sie
+  // dauert. Was liegen bleibt, holt der naechste Aufruf (das Muster aus 0063).
+  await database.query(`DELETE FROM project_queue_message_traces
+    WHERE ctid IN (SELECT ctid FROM project_queue_message_traces
+      WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+        AND expires_at <= $5
+      ORDER BY expires_at ASC LIMIT $6)`, [
+    ...scopeValues(scope), queue.id, now, PROJECT_QUEUE_TRACE_PRUNE_BATCH,
   ]);
 }
 

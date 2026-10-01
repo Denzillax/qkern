@@ -95,7 +95,12 @@ export function withProjectQueueCors(request: NextRequest, response: NextRespons
   const origin = request.headers.get("origin");
   if (origin && projectQueueOriginAllowed(request)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
-    response.headers.set("Access-Control-Allow-Headers", "authorization, content-type, x-qkern-key");
+    // `traceparent` steht mit auf der Liste, seit das Einreihen ihn liest
+    // (2.121). Er ist keine der von CORS freigestellten Kopfzeilen; ohne den
+    // Eintrag haette ein Browser ihn bei der Vorabanfrage verworfen, und der
+    // Anschluss an eine fremde Spur haette genau aus dem Browser nie
+    // funktioniert, also von dort, wo eine Spur meistens anfaengt.
+    response.headers.set("Access-Control-Allow-Headers", "authorization, content-type, traceparent, x-qkern-key");
     response.headers.append("Vary", "Origin");
   }
   return response;

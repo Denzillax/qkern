@@ -10,6 +10,7 @@ import {
   type ProjectQueueMeter,
 } from "@/lib/server/project-queues/repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+import type { ProjectQueueTraceAnchor } from "@/lib/server/project-queues/trace";
 
 /**
  * Memory-Port mit dem CHECK der echten Tabelle.
@@ -30,6 +31,9 @@ class DedupePairCheckingRepository extends MemoryProjectQueueRepository {
     message: ProjectQueueMessage,
     now: Date,
     meter?: ProjectQueueMeter,
+    // Der Anschluss an eine fremde Spur (2.121) muss durch: Ein Port, der ihn
+    // auf dem Weg verliert, waere eine Attrappe, die den Fehler versteckt.
+    trace?: ProjectQueueTraceAnchor | null,
   ) {
     // Genau die Rechnung des Postgres-Ports: ohne Fenster keine Frist.
     const dedupeExpiresAt = message.dedupeKeyHash && queue.dedupeWindowSeconds > 0
@@ -42,7 +46,7 @@ class DedupePairCheckingRepository extends MemoryProjectQueueRepository {
         '"project_queue_messages_dedupe_pair"');
     }
     this.lastWritten = message;
-    return await super.enqueue(principal, scope, queue, message, now, meter);
+    return await super.enqueue(principal, scope, queue, message, now, meter, trace);
   }
 }
 

@@ -124,6 +124,7 @@ Autorität.
 - `GET .../queues/{queue}/status`
 - `GET .../queues/{queue}/dead-letters`
 - `POST .../queues/{queue}/dead-letters/{messageId}/replay`
+- `GET .../queues/{queue}/messages/{messageId}/trace`
 
 Browser-App-Routen verwenden eine exakte CORS-Allowlist. Session-Mutationen
 benötigen zusätzlich die bestehende Same-Origin-CSRF-Grenze. Cache-Control ist
@@ -158,6 +159,74 @@ Migration 0026 kontrolliert anwenden. Danach Queue als Owner/Administrator über
 REST anlegen und einen zum Environment passenden Project Key verwenden. Nur im
 Memory-Modus geht der Zustand bei Prozessneustart verloren.
 
+## Die Spur einer Nachricht
+
+Seit (2.121) trägt jede Nachricht ein Protokoll ihrer Stationen. Migration
+`0081_project_queue_message_traces.sql` legt die Tabelle an, und jede Zeile
+entsteht **in derselben Transaktion** wie der Zustandswechsel, den sie
+beschreibt. Es gibt damit keine Station ohne ihren Zustandswechsel und keinen
+Zustandswechsel ohne seine Station, und beides übersteht einen Neustart des
+Wirts und zwei Instanzen.
+
+Gelesen wird je Nachricht, nur als Owner oder Administrator:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/queues/{queue}/messages/{messageId}/trace
+```
+
+Acht Stationen, je mit Zeitpunkt, Versuch und, wo es einen gibt, Wirt und
+festem Fehlercode:
+
+| Station | entsteht | Wirt | Grund |
+| --- | --- | --- | --- |
+| `enqueued` | Einstellen einer neuen Nachricht | nein | nein |
+| `deduplicated` | Einstellen trifft einen gültigen Zwilling | nein | nein |
+| `replayed` | Wiedereinreihen eines Dead Letters | nein | nein |
+| `claimed` | ein Worker bekommt die Pacht | ja | nein |
+| `completed` | Ack | ja | nein |
+| `retry_scheduled` | Fail, Nachricht kommt zurück | ja | ja |
+| `dead_lettered` | Fail ohne Versuch mehr, oder verfallene Pacht ohne | ja | ja |
+| `lease_expired` | verfallene Pacht gibt die Nachricht frei | ja | `LEASE_EXPIRED` |
+
+**Zusammengehalten wird eine Spur von der Nachrichten-Id.** Das ist keine neue
+Kennung: Sie steht in der Quittung des Einreihens, kommt im Claim zurück,
+benennt Ack, Fail und Lease und steht in der Dead-Letter-Liste.
+
+**W3C Trace Context ist der Anschluss nach draussen.** Das Einreihen liest eine
+Kopfzeile `traceparent`; ihre Spur-Id und Eltern-Span landen auf der ersten
+Station und stehen am Kopf jeder Antwort. QKERN entscheidet an diesen beiden
+Werten nichts, und ein Kopf, der nicht zur Form passt, wird weggelassen statt
+abgewiesen: Ein Beobachtungskopf darf ein Einreihen nicht umbringen. Eine
+wiedereingereihte Nachricht erbt den Anschluss ihrer Quelle, damit eine Kette
+durch ein Dead Letter draussen **eine** Spur bleibt.
+
+**Kein Inhalt.** Die Tabelle hat keine Spalte für eine Nutzlast, für einen
+Dedupe-Verifikator, für ein Lease-Token oder für eine Fehlermeldung. Was bleibt,
+sind Zeitpunkte, feste Codes, die Wirt-Kennung und Zähler.
+
+**Grenzen.** 64 Stationen je Nachricht, durchgesetzt in der Anweisung, die
+schreibt. Die Rechnung: zwanzig Versuche mal zwei Stationen plus die erste sind
+41, und die einzige Station, die ein Aufrufer beliebig oft erzeugen kann, ist
+`deduplicated`. An der Grenze schreibt der Port nichts mehr und wirft nicht; der
+Leser sagt dann `complete: false`.
+
+**Aufbewahrung.** Jede Zeile trägt ihr eigenes `expires_at`, und geschnitten
+wird dort und **nie** am Ausgang der Nachricht: Eine Fehlersuche fängt nach dem
+Ausgang an, nicht davor. Die Frist ist
+`max(retention_seconds der Queue, ein Betriebstag)` — nie kürzer als die
+Aufbewahrung der Nachricht, denn eine Nachricht ohne Spur sieht aus wie eine,
+für die nie Stationen geschrieben wurden, und mindestens einen Betriebstag, denn
+nach dem Aufräumen der Nachricht ist die Spur das Einzige, was von ihr übrig
+ist. Aufgeräumt wird im vorhandenen `cleanup()` je Queue, also beim Einreihen
+und beim Status, häppchenweise mit fester Obergrenze. Die Spur hat deshalb
+**keinen** Fremdschlüssel auf die Nachricht: Eine Kaskade nähme sie genau dann
+weg, wenn sie am meisten wert ist.
+
+**Was absichtlich fehlt**: eine Station für die Erneuerung der Pacht (ein
+Herzschlag alle zehn Sekunden protokolliert den Takt und nicht die Arbeit; ob
+eine Pacht gehalten hat, sagt der Ausgang), ein weitergegebener `traceparent` an
+einen Worker oder an einen Webhook, und eine Suche nach einer Spur-Id.
+
 ## Bewusste Alpha-Grenzen
 
 - PostgreSQL-Adapter vorhanden, aber reale Multi-Instance-/Crash-/Load-Läufe in
@@ -165,8 +234,10 @@ Memory-Modus geht der Zustand bei Prozessneustart verloren.
 - seit `1.42.0` verarbeitet `npm run worker:queues` Nachrichten wirklich; der
   Wirt kann genau eines — eine Nachricht an eine hinterlegte Function geben —
   und ein allgemeiner Handler-Host sowie ein Consumer-SDK fehlen weiter;
-- redigierte Prozesszähler vorhanden; seit `1.88.0` ein Metrics-Export je Scope (`GET queues/metrics`, Prometheus-Textformat); kein Tracing,
-  Last-/Soak-Test oder archiviertes Real-Broker-E2E;
+- redigierte Prozesszähler vorhanden; seit `1.88.0` ein Metrics-Export je Scope
+  (`GET queues/metrics`, Prometheus-Textformat); seit (2.121) eine Spur je
+  Nachricht (siehe unten); kein Last-/Soak-Test und kein archiviertes
+  Real-Broker-E2E;
 - keine Production-Freigabe.
 
 `NODE_ENV=production` akzeptiert ausschließlich `QKERN_RUNTIME_MODE=postgres` oder

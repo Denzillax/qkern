@@ -11,6 +11,14 @@ import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-reposit
 import { PostgresRealtimeLogReader } from "@/lib/server/realtime/log-reader";
 import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
 import { ProjectQueueService } from "@/lib/server/project-queues/service";
+// Die Spur einer Nachricht (2.121, 2.122): dieselben Grenzen und dieselbe
+// Fristformel, die der Port anwendet. Eine zweite Zahl im Test waere eine
+// zweite Antwort auf die Frage, wie lange eine Station steht.
+import {
+  PROJECT_QUEUE_TRACE_MAX_STATIONS,
+  PROJECT_QUEUE_TRACE_MIN_RETENTION_SECONDS,
+  projectQueueTraceRetentionSeconds,
+} from "@/lib/server/project-queues/trace";
 import { withTenantTransaction } from "@/lib/server/db/transaction";
 import { isProjectDataPlaneError, LOG_DESTINATION_TARGETS, ProjectDataPlaneService } from "@/lib/server/data-plane/service";
 import type { ProjectDatabaseHealthResult } from "@/lib/server/data-plane/service";
@@ -14735,6 +14743,434 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query("DELETE FROM users WHERE id = $1", [presenceOwner]);
     }
   }, 60_000);
+
+  it("(2.121) follows one message from its enqueue to its dead letter across a dead host and two instances, carries the foreign trace into its replay, shows it to no other organization and has no column for a payload", async () => {
+    // Die Spur einer Nachricht (2.121) gegen die echte Tabelle aus 0081.
+    //
+    // **Die Frage.** Was ist mit dieser einen Nachricht passiert? Die
+    // Zustandsspalten aus 0026 koennen sie nicht beantworten: `attempt_count`
+    // sagt zwei Versuche und nicht, wann, von welchem Wirt und woran der erste
+    // scheiterte. `last_failure_code` traegt genau einen Code und vergisst die
+    // vorherigen. Und `ProjectQueueWorkerLogger` schreibt jede Station in den
+    // Prozess, also an die Stelle, die ein Neustart leert.
+    //
+    // **Darum laeuft dieser Fall ueber zwei Dienstinstanzen mit zwei
+    // Repositories**, und die erste gibt ihre Pacht nie zurueck. Das ist der
+    // abgestuerzte Wirt: Niemand schreibt ein Fail, die Pacht verfaellt, und
+    // eine zweite Instanz holt die Nachricht. Haette die Spur im Prozess
+    // gestanden, waere an dieser Stelle die Haelfte weg. Jede Station entsteht
+    // hier ueber den echten Dienst; von Hand eingefuegt wird keine, denn eine
+    // eingefuegte Station belegt nichts ueber den Weg, auf dem sie entsteht.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie die Faelle 2.35, 2.36 und
+    // 2.42: `createQueue` schreibt eine Audit-Zeile, und eine Organisation mit
+    // Audit-Zeilen laesst sich wegen `audit_logs_organization_id_fkey` nicht
+    // mehr loeschen. Sie bleibt als erwarteter Rest im Wegwerf-Stack.
+    const traceOwner = randomUUID();
+    const traceOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [traceOwner, `queue-trace-owner-${traceOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Queue Trace', $2, $3)`,
+    [traceOrganization, `queue-trace-${traceOrganization}`, traceOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: traceOrganization, projectId, environment: "development" as const };
+    const admin = {
+      organizationId: traceOrganization, actorRef: "queue-trace@qkern.test",
+      role: "admin" as const, subject: traceOwner,
+    };
+    const workerA = {
+      organizationId: traceOrganization, actorRef: "service-role:host-a",
+      role: "service_role" as const, subject: "host-a",
+    };
+    const workerB = { ...workerA, actorRef: "service-role:host-b", subject: "host-b" };
+    const queueName = `trace-${randomUUID().slice(0, 8)}`;
+    // Die fremde Spur. Sie kommt als `traceparent` nach W3C herein und ist der
+    // einzige Teil der Spur, der von aussen stammt.
+    const foreignTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const foreignSpanId = "00f067aa0ba902b7";
+    const traceparent = `00-${foreignTraceId}-${foreignSpanId}-01`;
+    const payloadMarker = "darf-nicht-in-der-spur-stehen";
+    try {
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Queue Trace', $3, 'test', 'ready', $4)`,
+      [projectId, traceOrganization, `queue-trace-${projectId}`, traceOwner]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`, [traceOrganization, projectId, `managed:${projectId}`]);
+
+      // Zwei Instanzen, zwei Repositories, eine Datenbank. Die Uhr von B liegt
+      // hinter dem Verfall der Pacht von A: fuenf Sekunden ist die kuerzeste
+      // Sichtbarkeitsfrist, die 0026 zulaesst.
+      const plane = new PostgresControlPlane(runtime);
+      const instanceA = new ProjectQueueService({ repository: new PostgresProjectQueueRepository(plane) });
+      const start = new Date();
+      const later = new Date(start.getTime() + 6_000);
+      const instanceB = new ProjectQueueService({
+        repository: new PostgresProjectQueueRepository(plane), now: () => later,
+      });
+
+      // Zwei Versuche und fuenf Sekunden Pacht: Damit kostet ein verfallener
+      // Lease genau einen Versuch, und der zweite endet im Dead Letter.
+      await instanceA.createQueue(admin, scope, {
+        name: queueName, maxAttempts: 2, visibilityTimeoutSeconds: 5, retentionSeconds: 60,
+      });
+
+      // --- Station 1: eingestellt, mit fremder Spur -------------------------
+      const receipt = await instanceA.enqueue(admin, scope, queueName, {
+        payload: { task: "send", customer: payloadMarker },
+        traceparent,
+      });
+      const messageId = receipt.id;
+
+      // --- Station 2: beansprucht von Wirt A, der danach stirbt -------------
+      const claimA = await instanceA.claim(workerA, scope, queueName, { workerId: "host-a" });
+      expect(claimA).toHaveLength(1);
+      expect(claimA[0]?.id).toBe(messageId);
+      // Hier endet Wirt A. Kein Ack, kein Fail, keine Erneuerung.
+
+      // --- Station 3 und 4: Pacht verfallen, dann Wirt B --------------------
+      // Dieselbe Abholung erholt die verfallene Pacht und beansprucht neu. Das
+      // ist der Weg des Produkts und kein Eingriff des Falls.
+      const claimB = await instanceB.claim(workerB, scope, queueName, { workerId: "host-b" });
+      expect(claimB).toHaveLength(1);
+      expect(claimB[0]?.id).toBe(messageId);
+      expect(claimB[0]?.attempt).toBe(2);
+
+      // --- Station 5: Dead Letter ------------------------------------------
+      const failed = await instanceB.fail(workerB, scope, queueName, messageId, {
+        workerId: "host-b", leaseToken: claimB[0]!.leaseToken, failureCode: "HANDLER_ERROR",
+      });
+      expect(failed.status).toBe("dead_lettered");
+
+      // --- Die Spur ---------------------------------------------------------
+      const trace = await instanceB.readTrace(admin, scope, queueName, messageId);
+      expect(trace.messageId).toBe(messageId);
+      expect(trace.queue).toBe(queueName);
+      expect(trace.messageExists).toBe(true);
+      expect(trace.complete).toBe(true);
+      // Der Anschluss nach draussen steht am Kopf und kam aus der Kopfzeile.
+      expect(trace.traceId).toBe(foreignTraceId);
+      expect(trace.parentSpanId).toBe(foreignSpanId);
+      // Fuenf Stationen in Zeitreihenfolge, mit beiden Wirten. Der Weg ueber
+      // die Prozessgrenze steht hier und nirgends sonst: `host-a` hat
+      // beansprucht, seine Pacht ist verfallen, `host-b` hat weitergemacht.
+      expect(trace.stations.map((entry) => [entry.sequence, entry.station, entry.attempt, entry.workerId]))
+        .toEqual([
+          [1, "enqueued", 0, null],
+          [2, "claimed", 1, "host-a"],
+          [3, "lease_expired", 1, "host-a"],
+          [4, "claimed", 2, "host-b"],
+          [5, "dead_lettered", 2, "host-b"],
+        ]);
+      expect(trace.stations.map((entry) => entry.failureCode))
+        .toEqual([null, null, "LEASE_EXPIRED", null, "HANDLER_ERROR"]);
+      // Die Reihenfolge ist aufsteigend und nicht von der Uhr abhaengig: Die
+      // Stationen 3 und 4 entstehen in derselben Transaktion mit derselben
+      // eingespeisten Uhr und tragen deshalb denselben Zeitstempel. Genau dafuer
+      // hat 0081 eine eigene Ordnungsspalte.
+      expect(trace.stations[2]!.occurredAt).toBe(trace.stations[3]!.occurredAt);
+
+      // --- Kein Inhalt, und zwar strukturell --------------------------------
+      // Die Tabelle hat keine Spalte, in die eine Nutzlast passen koennte. Das
+      // ist der Beleg: Eine Absicht im Code liesse sich aendern, eine fehlende
+      // Spalte nicht.
+      const columns = await owner.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='project_queue_message_traces'
+          ORDER BY column_name`);
+      expect(columns.rows.map((row) => row.column_name)).toEqual([
+        "attempt", "environment", "expires_at", "failure_code", "id", "message_id",
+        "occurred_at", "organization_id", "parent_span_id", "project_id", "queue_id",
+        "sequence", "source_message_id", "station", "trace_id", "worker_id",
+      ]);
+      // Und die Antwort traegt weder die Nutzlast noch irgendeinen Verifikator:
+      // kein Dedupe-Hash, kein Lease-Hash, beide sind 64 Hex-Zeichen. Die
+      // fremde Spur-Id hat 32 und bleibt damit erlaubt.
+      const serialised = JSON.stringify(trace);
+      expect(serialised).not.toContain(payloadMarker);
+      expect(serialised).not.toMatch(/[0-9a-f]{64}/);
+      // Auch nicht in der Tabelle selbst, ueber alle Spalten gelesen.
+      const stored = await owner.query<{ row: string }>(
+        `SELECT to_jsonb(trace)::text AS row FROM project_queue_message_traces AS trace
+          WHERE organization_id=$1 AND message_id=$2`, [traceOrganization, messageId]);
+      expect(stored.rows).toHaveLength(5);
+      for (const row of stored.rows) expect(row.row).not.toContain(payloadMarker);
+
+      // --- Das Wiedereinreihen traegt die fremde Spur weiter ----------------
+      const replay = await instanceB.replayDeadLetter(admin, scope, queueName, messageId);
+      const replayTrace = await instanceB.readTrace(admin, scope, queueName, replay.id);
+      expect(replayTrace.stations.map((entry) => entry.station)).toEqual(["replayed"]);
+      expect(replayTrace.sourceMessageId).toBe(messageId);
+      // Geerbt, nicht neu erfunden: Draussen bleibt die Kette durch das Dead
+      // Letter hindurch **eine** Spur.
+      expect(replayTrace.traceId).toBe(foreignTraceId);
+      expect(replayTrace.parentSpanId).toBe(foreignSpanId);
+      // Und die Spur laeuft auch vorwaerts, aus einer Zeile in beide Richtungen.
+      const sourceTrace = await instanceB.readTrace(admin, scope, queueName, messageId);
+      expect(sourceTrace.replayedIntoMessageId).toBe(replay.id);
+
+      // --- Append-only -------------------------------------------------------
+      // Eine Station ist ein Ereignis, das stattgefunden hat. Die Laufzeitrolle
+      // hat kein UPDATE-Recht, und der Trigger faengt auch den, der sich eines
+      // nachtraeglich gibt. Geprueft wird der Trigger, denn das Recht allein
+      // liesse sich mit einem GRANT umdrehen.
+      await expect(withTenantTransaction(runtime, { organizationId: traceOrganization }, (transaction) =>
+        transaction.query(
+          `UPDATE project_queue_message_traces SET station='completed'
+            WHERE organization_id=$1 AND message_id=$2`, [traceOrganization, messageId],
+        ))).rejects.toBeTruthy();
+      await expect(owner.query(
+        `UPDATE project_queue_message_traces SET station='completed'
+          WHERE organization_id=$1 AND message_id=$2`, [traceOrganization, messageId],
+      )).rejects.toMatchObject({ code: "55000" });
+
+      // --- Die Tenantgrenze -------------------------------------------------
+      // Eine fremde Organisation sieht die Spur nicht, und zwar durch RLS und
+      // nicht durch eine Bedingung im Code.
+      const foreign = await withTenantTransaction(runtime,
+        { organizationId: organizationB, readOnly: true },
+        (transaction) => transaction.query<{ count: string }>(
+          "SELECT count(*) AS count FROM project_queue_message_traces WHERE message_id=$1",
+          [messageId],
+        ));
+      expect(Number(foreign.rows[0]?.count)).toBe(0);
+      const own = await withTenantTransaction(runtime,
+        { organizationId: traceOrganization, readOnly: true },
+        (transaction) => transaction.query<{ count: string }>(
+          "SELECT count(*) AS count FROM project_queue_message_traces WHERE message_id=$1",
+          [messageId],
+        ));
+      expect(Number(own.rows[0]?.count)).toBe(5);
+      // Und der Dienst sagt einem fremden Mandanten nicht einmal, dass es die
+      // Queue gibt.
+      await expect(instanceB.readTrace(
+        { organizationId: organizationB, actorRef: "fremd@qkern.test", role: "admin", subject: secondUserId },
+        { ...scope, organizationId: organizationB }, queueName, messageId,
+      )).rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+
+      // --- Die Rollengrenze -------------------------------------------------
+      // Dieselbe Rolle, die die Nachrichten schreibt, und keine zweite.
+      const privileges = await owner.query<{
+        role: string; may_select: boolean; may_insert: boolean;
+        may_update: boolean; may_delete: boolean;
+      }>(
+        `SELECT role AS role,
+                has_table_privilege(role, 'project_queue_message_traces', 'SELECT') AS may_select,
+                has_table_privilege(role, 'project_queue_message_traces', 'INSERT') AS may_insert,
+                has_table_privilege(role, 'project_queue_message_traces', 'UPDATE') AS may_update,
+                has_table_privilege(role, 'project_queue_message_traces', 'DELETE') AS may_delete
+           FROM unnest(ARRAY['qkern_runtime','qkern_auth','qkern_worker','qkern_provisioner'])
+             AS role
+          ORDER BY role`);
+      expect(privileges.rows).toEqual([
+        { role: "qkern_auth", may_select: false, may_insert: false, may_update: false, may_delete: false },
+        { role: "qkern_provisioner", may_select: false, may_insert: false, may_update: false, may_delete: false },
+        { role: "qkern_runtime", may_select: true, may_insert: true, may_update: false, may_delete: true },
+        { role: "qkern_worker", may_select: false, may_insert: false, may_update: false, may_delete: false },
+      ]);
+    } finally {
+      // Weggeraeumt wird nur, was das Produkt wegraeumen laesst: Die
+      // Audit-Zeile von `createQueue` haelt die Organisation fest, und die
+      // Nachrichten der Queue duerfen vor ihrer Aufbewahrung nicht fallen. Der
+      // Fall arbeitet mit eigener Organisation und eigenem Projekt; der
+      // Wegwerf-Stack faellt nach dem Lauf weg.
+    }
+    // Ohne eigenes Zeitbudget: ein Projekt, eine Queue, eine Nachricht, zwei
+    // Abholungen und ein paar Katalogabfragen. Es wird auf keine Uhr gewartet;
+    // der Verfall der Pacht entsteht aus einer eingespeisten Uhr und nicht aus
+    // einem Schlaf.
+  });
+
+  it("(2.122) cuts a trace at its own expiry and never at the outcome of its message, keeps it when the message is already pruned, never shorter than the queue retention, and stops at sixty-four stations", async () => {
+    // Grenzen und Aufbewahrung der Spur (2.122) gegen die echte Tabelle aus 0081.
+    //
+    // **Die Frage.** Wann verschwindet eine Spur? Zwei Antworten waren
+    // denkbar, und nur eine taugt. Am Ausgang der Nachricht zu schneiden ist
+    // die naheliegende: Die Nachricht ist fertig, also weg mit dem Protokoll.
+    // Genau dann ist es aber am meisten wert, denn eine Fehlersuche fangt nach
+    // dem Ausgang an und nicht davor. Also schneidet die Spur an ihrem eigenen
+    // Ablauf, und dieser Fall zeigt den Unterschied an derselben Nachricht:
+    // Ihre Zeile ist schon weggeraeumt, ihre Spur steht noch.
+    //
+    // **Die Untergrenze** ist die Aufbewahrung der Queue, und darunter ein
+    // Betriebstag. Eine Spur, die vor ihrer Nachricht faellt, laesst die
+    // Console eine Nachricht ohne Spur zeigen, und ein Betreiber schliesst
+    // daraus, dass nie Stationen geschrieben wurden.
+    const limitOwner = randomUUID();
+    const limitOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [limitOwner, `queue-trace-limits-owner-${limitOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Queue Trace Limits', $2, $3)`,
+    [limitOrganization, `queue-trace-limits-${limitOrganization}`, limitOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: limitOrganization, projectId, environment: "development" as const };
+    const admin = {
+      organizationId: limitOrganization, actorRef: "queue-trace-limits@qkern.test",
+      role: "admin" as const, subject: limitOwner,
+    };
+    const worker = {
+      organizationId: limitOrganization, actorRef: "service-role:limits",
+      role: "service_role" as const, subject: "limits",
+    };
+    const shortQueue = `tl-short-${randomUUID().slice(0, 8)}`;
+    const longQueue = `tl-long-${randomUUID().slice(0, 8)}`;
+    const dedupeQueue = `tl-dedupe-${randomUUID().slice(0, 8)}`;
+    try {
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Queue Trace Limits', $3, 'test', 'ready', $4)`,
+      [projectId, limitOrganization, `queue-trace-limits-${projectId}`, limitOwner]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`, [limitOrganization, projectId, `managed:${projectId}`]);
+
+      const plane = new PostgresControlPlane(runtime);
+      const start = new Date();
+      const at = (seconds: number) => new Date(start.getTime() + seconds * 1_000);
+      const service = (seconds: number) => new ProjectQueueService({
+        repository: new PostgresProjectQueueRepository(plane), now: () => at(seconds),
+      });
+      const now = service(0);
+
+      /*
+       * **Die Uhr dieses Falls liegt zwei Minuten zurueck, und das ist kein
+       * Trick, sondern die einzige Art, das Aufraeumen der Nachricht echt
+       * laufen zu lassen.**
+       *
+       * `qkern_validate_project_queue_message_delete` aus 0026 fragt
+       * `clock_timestamp()`, also die Uhr des Servers, und laesst eine
+       * erledigte Nachricht erst gehen, wenn ihr Ausgang auch dort lange genug
+       * zurueckliegt. Eine eingespeiste Uhr in der Zukunft wuerde die Zeile
+       * auswaehlen und am Trigger scheitern; ein Fall mit einer echten Minute
+       * Schlaf wuerde die Suite verlangsamen, ohne mehr zu zeigen. Also laeuft
+       * der Lebenslauf der Nachricht zwei Minuten **vor** jetzt, und das
+       * Aufraeumen danach mit der echten Uhr. Beide Seiten sind damit echt.
+       */
+      const lifecycle = service(-120);
+
+      // --- Die kuerzeste Aufbewahrung, die 0026 zulaesst: eine Minute -------
+      await lifecycle.createQueue(admin, scope, {
+        name: shortQueue, maxAttempts: 1, visibilityTimeoutSeconds: 5, retentionSeconds: 60,
+      });
+      const receipt = await lifecycle.enqueue(admin, scope, shortQueue, { payload: { task: "a" } });
+      const claim = await lifecycle.claim(worker, scope, shortQueue, { workerId: "limits" });
+      await lifecycle.acknowledge(worker, scope, shortQueue, receipt.id, {
+        workerId: "limits", leaseToken: claim[0]!.leaseToken,
+      });
+
+      // Die Frist der Spur ist ein Tag, obwohl die Queue eine Minute aufbewahrt:
+      // Die Untergrenze ist der Betriebstag, und sie greift hier.
+      expect(projectQueueTraceRetentionSeconds({ retentionSeconds: 60 }))
+        .toBe(PROJECT_QUEUE_TRACE_MIN_RETENTION_SECONDS);
+      const span = await owner.query<{ seconds: number }>(
+        `SELECT DISTINCT extract(epoch FROM (expires_at - occurred_at))::int AS seconds
+           FROM project_queue_message_traces
+          WHERE organization_id=$1 AND message_id=$2`, [limitOrganization, receipt.id]);
+      expect(span.rows.map((row) => Number(row.seconds)))
+        .toEqual([PROJECT_QUEUE_TRACE_MIN_RETENTION_SECONDS]);
+
+      // --- Keine Kaskade von der Nachricht auf die Spur ---------------------
+      // Der eine Fremdschluessel der Tabelle zeigt auf die Queue und nicht auf
+      // die Nachricht. Das ist die strukturelle Zusage hinter allem, was danach
+      // kommt: Eine Kaskade naehme die Spur genau dann weg, wenn sie das
+      // Einzige ist, was von der Nachricht noch erzaehlen kann.
+      const references = await owner.query<{ referenced: string }>(
+        `SELECT DISTINCT target.relname AS referenced
+           FROM pg_constraint AS fk
+           JOIN pg_class AS source ON source.oid = fk.conrelid
+           JOIN pg_class AS target ON target.oid = fk.confrelid
+          WHERE fk.contype = 'f' AND source.relname = 'project_queue_message_traces'
+          ORDER BY referenced`);
+      expect(references.rows.map((row) => row.referenced)).toEqual(["project_queues"]);
+
+      // --- Der Unterschied zwischen Ablauf und Verbrauch --------------------
+      // Jetzt, also eine Minute nach dem Ausgang, raeumt der Status die
+      // Nachricht weg. Das ist der Verbrauch, und er laeuft ueber den echten
+      // Weg des Produkts, Loeschwaechter aus 0026 inklusive.
+      await now.status(admin, scope, shortQueue);
+      const pruned = await owner.query<{ count: string }>(
+        `SELECT count(*) AS count FROM project_queue_messages
+          WHERE organization_id=$1 AND id=$2`, [limitOrganization, receipt.id]);
+      expect(Number(pruned.rows[0]?.count)).toBe(0);
+      // Die Spur steht trotzdem, vollstaendig, und sagt offen, dass die
+      // Nachricht weg ist. **Das ist der Kern des Falls**: Geschnitten wird am
+      // Ablauf der Station, nicht am Ausgang der Nachricht.
+      const survived = await now.readTrace(admin, scope, shortQueue, receipt.id);
+      expect(survived.messageExists).toBe(false);
+      expect(survived.stations.map((entry) => entry.station))
+        .toEqual(["enqueued", "claimed", "completed"]);
+
+      // Einen Tag spaeter ist die Spur selbst abgelaufen, und derselbe
+      // Aufraeumer nimmt sie weg. Das ist der Ablauf.
+      await service(86_400).status(admin, scope, shortQueue);
+      await expect(service(86_400).readTrace(admin, scope, shortQueue, receipt.id))
+        .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+
+      // --- Nie kuerzer als die Aufbewahrung der Queue -----------------------
+      // Sieben Tage ist die laengste, die 0026 zulaesst. Die Spur zieht mit und
+      // bleibt damit nie hinter ihrer Nachricht zurueck.
+      await now.createQueue(admin, scope, {
+        name: longQueue, maxAttempts: 1, retentionSeconds: 604_800,
+      });
+      const long = await now.enqueue(admin, scope, longQueue, { payload: { task: "b" } });
+      const longSpan = await owner.query<{ seconds: number }>(
+        `SELECT extract(epoch FROM (expires_at - occurred_at))::int AS seconds
+           FROM project_queue_message_traces
+          WHERE organization_id=$1 AND message_id=$2`, [limitOrganization, long.id]);
+      expect(Number(longSpan.rows[0]?.seconds)).toBe(604_800);
+
+      // --- Die Mengengrenze je Nachricht ------------------------------------
+      // Genau eine Station kann ein Aufrufer beliebig oft erzeugen: der
+      // Dedupe-Treffer. Er gehoert dem Zwilling, also waechst die Spur **einer**
+      // Nachricht, waehrend die Nachricht eine bleibt. Hier kommt derselbe
+      // Schluessel siebzigmal.
+      await now.createQueue(admin, scope, {
+        name: dedupeQueue, maxAttempts: 1, dedupeWindowSeconds: 3_600, retentionSeconds: 60,
+      });
+      const twin = await now.enqueue(admin, scope, dedupeQueue, {
+        payload: { task: "c" }, dedupeKey: "immer-derselbe",
+      });
+      for (let round = 0; round < 69; round += 1) {
+        const again = await now.enqueue(admin, scope, dedupeQueue, {
+          payload: { task: "c" }, dedupeKey: "immer-derselbe",
+        });
+        expect(again.id).toBe(twin.id);
+        expect(again.deduplicated).toBe(true);
+      }
+      // Die Grenze steht in der Anweisung und nicht im TypeScript: Gezaehlt wird
+      // in der Datenbank, und die einundsiebzigste Station entsteht nicht.
+      const count = await owner.query<{ count: string }>(
+        `SELECT count(*) AS count FROM project_queue_message_traces
+          WHERE organization_id=$1 AND message_id=$2`, [limitOrganization, twin.id]);
+      expect(Number(count.rows[0]?.count)).toBe(PROJECT_QUEUE_TRACE_MAX_STATIONS);
+      // Und der Leser behauptet nicht, die Spur sei vollstaendig. Das ist die
+      // vorsichtige Richtung: Eine Spur genau auf der Grenze koennte
+      // vollstaendig sein, und der Leser kann es nicht wissen.
+      const capped = await now.readTrace(admin, scope, dedupeQueue, twin.id);
+      expect(capped.stations).toHaveLength(PROJECT_QUEUE_TRACE_MAX_STATIONS);
+      expect(capped.complete).toBe(false);
+      expect(capped.stations[0]?.station).toBe("enqueued");
+      expect(new Set(capped.stations.slice(1).map((entry) => entry.station)))
+        .toEqual(new Set(["deduplicated"]));
+      // Das Einreihen hat trotzdem jedes Mal funktioniert: Eine Beobachtung an
+      // ihrer Grenze darf keine Ausfuehrung umbringen.
+      const messages = await owner.query<{ count: string }>(
+        `SELECT count(*) AS count FROM project_queue_messages
+          WHERE organization_id=$1 AND id=$2`, [limitOrganization, twin.id]);
+      expect(Number(messages.rows[0]?.count)).toBe(1);
+    } finally {
+      // Wie bei 2.121: Die Audit-Zeilen von `createQueue` halten die
+      // Organisation fest, und eine Nachricht mit Dedupe-Verifikator darf vor
+      // Ablauf ihrer Aufbewahrung nicht fallen (0026). Eigene Organisation,
+      // eigenes Projekt, Wegwerf-Stack.
+    }
+    // Eigenes Budget: Die siebzig Einreihungen sperren je die Definitionszeile
+    // der Queue und laufen nacheinander. Keine wartet auf eine Uhr; die Zeit
+    // kommt aus einer eingespeisten Uhr.
+  }, 30_000);
 
 });
 
