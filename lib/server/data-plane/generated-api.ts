@@ -30,8 +30,16 @@ const MAX_COLUMNS = 100;
 const MAX_FILTERS = DATA_API_LIMITS.maxFilters;
 const MAX_EMBEDS = DATA_API_LIMITS.maxEmbeds;
 const MAX_EMBED_ROWS = DATA_API_LIMITS.maxEmbedRows;
-/** Fremdschluessel an einer Tabelle, die der Katalog fuer eine Anfrage hergibt; mehr ist ein Grenzfall. */
-const MAX_EMBED_FOREIGN_KEYS = 200;
+/** Ebenen einer Einbettung (2.111); die Rechnung dazu steht in lib/data-api-limits.ts. */
+const MAX_EMBED_DEPTH = DATA_API_LIMITS.maxEmbedDepth;
+/** Einbettungen in einer Einbettung (2.111). */
+const MAX_NESTED_EMBEDS = DATA_API_LIMITS.maxNestedEmbeds;
+/**
+ * Fremdschluessel zwischen zwei genannten Tabellen, die der Katalog hergibt.
+ * Zwei sind schon mehrdeutig; die Abfrage holt drei, damit die Ablehnung nicht
+ * davon abhaengt, wie viele es genau sind.
+ */
+const MAX_EMBED_FOREIGN_KEYS = 2;
 /** PostgreSQL erlaubt 32 Spalten je Schluessel; dieselbe Zahl wie in service.ts. */
 const MAX_FOREIGN_KEY_COLUMNS = 32;
 /** Eindeutige Schluessel an einer Tabelle, die der Katalog fuer einen Upsert hergibt (2.105). */
@@ -126,13 +134,25 @@ export type GeneratedTable = {
  * mehr als einen Schluessel zwischen den beiden Tabellen, wird die Einbettung
  * als mehrdeutig abgewiesen; ein Hinweis auf den Schluessel, wie PostgREST ihn
  * kennt, gibt es hier nicht.
+ *
+ * Seit 2.111 darf eine Einbettung eine zweite tragen (`beitraege(autor(name))`),
+ * und zwar nur in der Richtung `one`; die Rechnung dazu steht bei
+ * `DATA_API_LIMITS.maxEmbedDepth`. Seit 2.112 darf `schema` die Nachbartabelle
+ * in ein anderes Schema legen.
  */
 export type GeneratedEmbed = {
   /** Der Schluessel in der Antwortzeile; ohne `alias:` der Name der Beziehung. */
   alias: string;
   relation: string;
+  /**
+   * Das Schema der Nachbartabelle (2.112); fehlt es, das Schema der
+   * Basistabelle. Die Tabelle geht in jedem Fall durch dieselbe Pruefung.
+   */
+  schema?: string;
   /** Spalten der Nachbartabelle; fehlt die Liste, alle waehlbaren, nicht sensiblen. */
   columns?: string[];
+  /** Die zweite Ebene (2.111), hoechstens `DATA_API_LIMITS.maxNestedEmbeds` Eintraege. */
+  embed?: GeneratedEmbed[];
 };
 
 export type GeneratedEmbedResult = {
@@ -144,6 +164,15 @@ export type GeneratedEmbedResult = {
   constraint: string;
   /** Mindestens eine Elternzeile hatte mehr als `DATA_API_LIMITS.maxEmbedRows` Nachbarn. */
   truncated: boolean;
+  /**
+   * Das Schema der Nachbartabelle, **nur wenn es ein anderes ist** als das der
+   * Basistabelle (2.112). Fehlt der Schluessel, lief die Einbettung im selben
+   * Schema; so traegt die Antwort einer gewoehnlichen Einbettung kein Feld, das
+   * nichts sagt.
+   */
+  schema?: string;
+  /** Eine Angabe je Einbettung der zweiten Ebene (2.111); fehlt ohne zweite Ebene. */
+  embeds?: GeneratedEmbedResult[];
 };
 
 export type GeneratedListInput = {
@@ -174,6 +203,12 @@ export type GeneratedMutationResult = {
   table: GeneratedTable;
   rows: Array<Record<string, unknown>>;
   rowCount: number;
+  /**
+   * Eine Angabe je Einbettung der Mutation (2.111), in der Reihenfolge der
+   * Anfrage; leer ohne Einbettung. Dieselbe Form wie bei einer Lesung, weil es
+   * dieselbe Einbettung ist.
+   */
+  embeds: GeneratedEmbedResult[];
 };
 
 /**
@@ -185,10 +220,29 @@ export type GeneratedMutationResult = {
  * `onConflict` macht aus dem Einfuegen einen Upsert (2.105): die Spalten des
  * Konfliktschluessels, die es im Katalog als Primaerschluessel oder eindeutigen
  * Index geben muss. Siehe `insertWithin`.
+ *
+ * `embed` haengt der Antwort die Nachbarzeilen der geschriebenen Zeilen an
+ * (2.111). Es ist **ein Lesen und kein Schreiben**: Was in `embed` steht, wird
+ * nach der Mutation und in derselben Transaktion gelesen, mit denselben
+ * Grenzen und derselben Tuer wie bei einer Lesung. Ein Schreiben ueber eine
+ * Beziehung gibt es an dieser Flaeche nicht, und die GraphQL-Grammatik weist es
+ * mit eigenem Grund ab (`nested_write_not_supported`).
+ *
+ * Ein Loeschen traegt `embed` nicht. Die Nachbarzeilen einer geloeschten Zeile
+ * sind nach dem Loeschen entweder mitgeloescht oder haetten das Loeschen
+ * verhindert; was dann noch zu lesen waere, haengt an der Regel des
+ * Fremdschluessels und nicht an der Anfrage. Eine Antwort, die davon abhaengt,
+ * ist keine Zusage.
  */
 export type GeneratedMutation =
-  | { kind: "insert"; table: string; rows: Array<Record<string, unknown>>; onConflict?: string[] }
-  | { kind: "update"; table: string; filters: GeneratedDataFilter[]; values: Record<string, unknown>; atMost?: number }
+  | {
+    kind: "insert"; table: string; rows: Array<Record<string, unknown>>;
+    onConflict?: string[]; embed?: GeneratedEmbed[];
+  }
+  | {
+    kind: "update"; table: string; filters: GeneratedDataFilter[];
+    values: Record<string, unknown>; atMost?: number; embed?: GeneratedEmbed[];
+  }
   | { kind: "delete"; table: string; filters: GeneratedDataFilter[]; atMost?: number };
 
 export type GeneratedMutationBatchInput = { schema: string; mutations: GeneratedMutation[] };
@@ -437,21 +491,26 @@ const METADATA_SQL = `
   LIMIT $3`;
 
 /**
- * Die Fremdschluessel an einer Tabelle, in beide Richtungen (2.66).
+ * Der Fremdschluessel zwischen zwei genannten Tabellen, in beide Richtungen
+ * (2.66, Schemas seit 2.112).
  *
- * Dieselbe Katalogabfrage wie `FOREIGN_KEYS_SQL` in service.ts (2.41), auf
- * eine Tabelle verengt: Schluessel, die von ihr weg zeigen, und Schluessel,
- * die auf sie zeigen. `unnest ... WITH ORDINALITY` haelt die Reihenfolge der
- * Spalten fest, damit bei `FOREIGN KEY (b, a) REFERENCES p (y, x)` `b` zu `y`
- * gehoert und nicht zu `x`.
+ * Dieselbe Katalogabfrage wie `FOREIGN_KEYS_SQL` in service.ts (2.41), auf ein
+ * Paar verengt: Schluessel, die von der Basistabelle auf die Nachbartabelle
+ * zeigen, und Schluessel, die von ihr auf die Basistabelle zeigen.
+ * `unnest ... WITH ORDINALITY` haelt die Reihenfolge der Spalten fest, damit bei
+ * `FOREIGN KEY (b, a) REFERENCES p (y, x)` `b` zu `y` gehoert und nicht zu `x`.
  *
- * Beide Seiten muessen im abgefragten Schema liegen. Ein Schluessel in ein
- * anderes Schema bleibt draussen: Die Einbettung nennt nur einen Tabellennamen,
- * und ein Name ohne Schema waere zwischen zwei Schemas nicht eindeutig.
+ * Bis 2.111 musste die Nachbartabelle im Schema der Anfrage liegen, weil die
+ * Einbettung nur einen Tabellennamen nennen konnte und ein Name ohne Schema
+ * zwischen zwei Schemas nicht eindeutig waere. Seit 2.112 nennt die Einbettung
+ * das Schema, also fragt diese Abfrage nach beiden Seiten mit Schema und Namen.
+ * Ob die Nachbartabelle bedient werden darf, entscheidet `assertTableBoundary`.
  */
 const EMBED_FOREIGN_KEYS_SQL = `
   SELECT fk.conname AS constraint_name,
+         fk_namespace.nspname AS table_schema,
          relation.relname AS table_name,
+         referenced_namespace.nspname AS referenced_schema,
          referenced.relname AS referenced_table,
          COALESCE((SELECT array_agg(attribute.attname::text ORDER BY key.ordinality)
                    FROM unnest(fk.conkey) WITH ORDINALITY AS key(attnum, ordinality)
@@ -467,11 +526,12 @@ const EMBED_FOREIGN_KEYS_SQL = `
   JOIN pg_catalog.pg_class AS referenced ON referenced.oid = fk.confrelid
   JOIN pg_catalog.pg_namespace AS referenced_namespace ON referenced_namespace.oid = referenced.relnamespace
   WHERE fk.contype = 'f'
-    AND fk_namespace.nspname = $1
-    AND referenced_namespace.nspname = $1
-    AND (relation.relname = $2 OR referenced.relname = $2)
+    AND ((fk_namespace.nspname = $1 AND relation.relname = $2
+          AND referenced_namespace.nspname = $3 AND referenced.relname = $4)
+      OR (fk_namespace.nspname = $3 AND relation.relname = $4
+          AND referenced_namespace.nspname = $1 AND referenced.relname = $2))
   ORDER BY fk.conname ASC
-  LIMIT $3`;
+  LIMIT $5`;
 
 /**
  * Die eindeutigen Schluessel einer Tabelle, aus dem Katalog (2.105).
@@ -538,7 +598,9 @@ type UniqueKey = { name: string; columns: string[] };
 
 type EmbedForeignKeyRow = {
   constraint_name: string;
+  table_schema: string;
   table_name: string;
+  referenced_schema: string;
   referenced_table: string;
   columns: string[];
   referenced_columns: string[];
@@ -546,8 +608,10 @@ type EmbedForeignKeyRow = {
 
 type EmbedForeignKey = {
   name: string;
+  schema: string;
   table: string;
   columns: string[];
+  referencedSchema: string;
   referencedTable: string;
   referencedColumns: string[];
 };
@@ -559,6 +623,10 @@ type EmbedForeignKey = {
 type ResolvedEmbed = {
   embed: GeneratedEmbed;
   target: InternalTable;
+  /** Das Schema der Nachbartabelle; gleich dem der Basistabelle, wenn `embed.schema` fehlt. */
+  schema: string;
+  /** Ob das Schema ein anderes ist als das der Basistabelle (2.112). */
+  foreignSchema: boolean;
   kind: "one" | "many";
   constraint: string;
   /** Spalten der Basistabelle, ueber die verknuepft wird. */
@@ -567,48 +635,53 @@ type ResolvedEmbed = {
   remoteKey: string[];
   /** Die Spalten, die der Aufrufer von der Nachbartabelle bekommt. */
   columns: string[];
+  /** Die zweite Ebene (2.111), schon aufgeloest; leer ohne zweite Ebene. */
+  nested: ResolvedEmbed[];
 };
 
 const SELECT_EMBED = new RegExp(
-  `^(?:(${DATA_IDENTIFIER_PATTERN}):)?(${DATA_IDENTIFIER_PATTERN})\\((.*)\\)$`);
+  `^(?:(${DATA_IDENTIFIER_PATTERN}):)?(?:(${DATA_IDENTIFIER_PATTERN})\\.)?(${DATA_IDENTIFIER_PATTERN})\\((.*)\\)$`);
 
 /**
  * Liest den `select`-Parameter der Zeilenliste (2.66).
  *
  * Bis 2.65 war er eine Liste von Spaltennamen. Seit 2.66 darf ein Eintrag
  * eine Einbettung sein, in der Schreibweise von PostgREST:
- * `select=id,titel,autor:autoren(name),kommentare(text)`. Genau eine Ebene:
- * Eine Klammer in einer Klammer ist keine tiefere Einbettung, sondern ein
- * Fehler des Aufrufs. `*` steht fuer alle waehlbaren, nicht sensiblen Spalten,
- * allein oder in einer Einbettung; neben benannten Spalten ist es ein Fehler,
- * weil dann unklar waere, was gemeint ist.
+ * `select=id,titel,autor:autoren(name),kommentare(text)`. `*` steht fuer alle
+ * waehlbaren, nicht sensiblen Spalten, allein oder in einer Einbettung; neben
+ * benannten Spalten ist es ein Fehler, weil dann unklar waere, was gemeint ist.
+ *
+ * Seit 2.111 darf eine Einbettung eine zweite tragen,
+ * `beitraege(titel,autor(name))`, bis `DATA_API_LIMITS.maxEmbedDepth` Ebenen
+ * und `DATA_API_LIMITS.maxNestedEmbeds` je Einbettung. Eine Klammer eine Ebene
+ * zu tief ist weiterhin ein Fehler des Aufrufs.
+ *
+ * Seit 2.112 darf vor dem Namen der Beziehung ein Schema stehen,
+ * `autor:verlag.autoren(name)`. Der Punkt gehoert nicht in einen Bezeichner, er
+ * trennt also eindeutig, und ohne Schema bleibt es das Schema der Anfrage.
  *
  * Gibt `null` zurueck, wenn der Text nicht zur Grammatik gehoert. Was zurueck
- * kommt, ist geprueft in der Form, nicht in der Sache: Ob eine Spalte oder
- * eine Beziehung existiert, entscheidet `listRows` gegen den Katalog.
+ * kommt, ist geprueft in der Form, nicht in der Sache: Ob eine Spalte, ein
+ * Schema oder eine Beziehung existiert, entscheidet `listRows` gegen den
+ * Katalog.
  */
 export function parseGeneratedSelect(text: string): { select?: string[]; embed: GeneratedEmbed[] } | null {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (const character of text) {
-    if (character === "(") {
-      depth += 1;
-      if (depth > 1) return null;
-    } else if (character === ")") {
-      depth -= 1;
-      if (depth < 0) return null;
-    }
-    if (character === "," && depth === 0) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-    current += character;
-  }
-  if (depth !== 0) return null;
-  parts.push(current);
+  const parsed = parseSelectLevel(text, 1);
+  if (!parsed) return null;
+  return { ...(parsed.columns ? { select: parsed.columns } : {}), embed: parsed.embed };
+}
 
+/**
+ * Eine Ebene der Liste. `level` ist die Ebene der Einbettungen, die in diesem
+ * Text stehen: 1 fuer `select` selbst, 2 fuer das, was in einer Klammer steht.
+ *
+ * `columns` fehlt, wenn `*` dastand oder nur Einbettungen; beides heisst alle
+ * waehlbaren, nicht sensiblen Spalten. Ein leerer Text ist hier ein Fehler; der
+ * Aufrufer entscheidet, ob eine leere Klammer erlaubt ist.
+ */
+function parseSelectLevel(text: string, level: number): { columns?: string[]; embed: GeneratedEmbed[] } | null {
+  const parts = splitSelectParts(text);
+  if (!parts) return null;
   const select: string[] = [];
   const embed: GeneratedEmbed[] = [];
   let star = false;
@@ -622,15 +695,27 @@ export function parseGeneratedSelect(text: string): { select?: string[]; embed: 
     }
     const match = SELECT_EMBED.exec(part);
     if (match) {
-      const relation = match[2]!;
-      const inner = match[3]!.trim();
-      const columns = inner === "" || inner === "*"
-        ? undefined
-        : inner.split(",").map((value) => value.trim());
-      if (columns?.some((value) => !safeIdentifier(value)) || (columns && new Set(columns).size !== columns.length)) {
-        return null;
+      // Eine Einbettung auf einer Ebene, die es nicht gibt. Die Grenze steht
+      // vor dem Katalog, weil sonst eine Anfrage mit zehn Ebenen erst zehn
+      // Aufloesungen kostete.
+      if (level > MAX_EMBED_DEPTH) return null;
+      const relation = match[3]!;
+      const inner = match[4]!.trim();
+      let columns: string[] | undefined;
+      let nested: GeneratedEmbed[] = [];
+      if (inner !== "") {
+        const parsedInner = parseSelectLevel(inner, level + 1);
+        if (!parsedInner) return null;
+        columns = parsedInner.columns;
+        nested = parsedInner.embed;
       }
-      embed.push({ alias: match[1] ?? relation, relation, ...(columns ? { columns } : {}) });
+      embed.push({
+        alias: match[1] ?? relation,
+        relation,
+        ...(match[2] ? { schema: match[2] } : {}),
+        ...(columns ? { columns } : {}),
+        ...(nested.length > 0 ? { embed: nested } : {}),
+      });
       continue;
     }
     if (!safeIdentifier(part)) return null;
@@ -638,11 +723,43 @@ export function parseGeneratedSelect(text: string): { select?: string[]; embed: 
   }
   if (star && select.length > 0) return null;
   if (!star && select.length === 0 && embed.length === 0) return null;
+  // Die Zahl der Einbettungen gilt je Ebene: drei oben, und in einer Klammer
+  // die kleinere Zahl der zweiten Ebene.
+  if (embed.length > (level === 1 ? MAX_EMBEDS : MAX_NESTED_EMBEDS)) return null;
   // Ein Alias, der mit einer Spalte oder einem anderen Alias zusammenfaellt,
   // wuerde in der Antwortzeile einen Wert ueberschreiben, und zwar still.
   const keys = [...select, ...embed.map((entry) => entry.alias)];
   if (new Set(keys).size !== keys.length) return null;
-  return { ...(star || select.length === 0 ? {} : { select }), embed };
+  return { ...(star || select.length === 0 ? {} : { columns: select }), embed };
+}
+
+/**
+ * Teilt einen Text an den Kommas der eigenen Ebene. Klammern duerfen so tief
+ * gehen, wie es Ebenen gibt; tiefer ist ein Fehler, und zwar schon hier, damit
+ * ein Text mit tausend Klammern nicht erst rekursiv zerlegt wird.
+ */
+function splitSelectParts(text: string): string[] | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const character of text) {
+    if (character === "(") {
+      depth += 1;
+      if (depth > MAX_EMBED_DEPTH) return null;
+    } else if (character === ")") {
+      depth -= 1;
+      if (depth < 0) return null;
+    }
+    if (character === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (depth !== 0) return null;
+  parts.push(current);
+  return parts;
 }
 
 /**
@@ -883,16 +1000,10 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     // erst das Ergebnis verwerfen.
     if (!Number.isSafeInteger(limit) || limit < MIN_ROWS || limit > MAX_ROWS ||
         (input.select?.length ?? 0) > MAX_COLUMNS ||
-        (input.filters?.length ?? 0) > MAX_FILTERS ||
-        !Array.isArray(embeds) || embeds.length > MAX_EMBEDS) {
+        (input.filters?.length ?? 0) > MAX_FILTERS) {
       throw invalidInput();
     }
-    for (const embed of embeds) {
-      if (!isPlainRecord(embed) || !safeIdentifier(embed.alias) || !safeIdentifier(embed.relation) ||
-          (embed.columns !== undefined && (!Array.isArray(embed.columns) || embed.columns.length > MAX_COLUMNS))) {
-        throw invalidInput();
-      }
-    }
+    assertEmbedInput(embeds, 1);
 
     return this.run(context, scope, false, async (client) => {
       const table = await this.loadTable(client, input.schema, input.table);
@@ -964,20 +1075,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       const result = await client.query<Record<string, unknown>>(sql, values);
       const selected = result.rows.slice(0, limit);
       const projected = selected.map((row) => projectRow(row, selectedNames));
-      const embedResults: GeneratedEmbedResult[] = [];
-      for (const resolved of resolvedEmbeds) {
-        const loaded = await this.loadEmbed(client, input.schema, resolved, selected);
-        for (const [index, row] of projected.entries()) {
-          row[resolved.embed.alias] = loaded.byRow[index];
-        }
-        embedResults.push({
-          alias: resolved.embed.alias,
-          relation: resolved.embed.relation,
-          kind: resolved.kind,
-          constraint: resolved.constraint,
-          truncated: loaded.truncated,
-        });
-      }
+      const embedResults = await this.attachEmbeds(client, resolvedEmbeds, selected, projected);
       const rows = boundedRows(projected, MAX_RESPONSE_BYTES);
       if (selected.length > 0 && rows.length === 0) {
         throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
@@ -989,10 +1087,7 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       // `hasMore` zu bestimmen, und verlässt QKERN nie. Eingebettete Zeilen
       // zaehlen mit: Sie sind gelesene Zeilen, auch wenn sie in einer anderen
       // Zeile stecken.
-      const embeddedRowCount = rows.reduce((sum, row) => sum + resolvedEmbeds.reduce((inner, resolved) => {
-        const value = row[resolved.embed.alias];
-        return inner + (Array.isArray(value) ? value.length : value ? 1 : 0);
-      }, 0), 0);
+      const embeddedRowCount = rows.reduce((sum, row) => sum + countEmbeddedRows(row, embedResults), 0);
       await this.meterRowReads(context, scope, rows.length + embeddedRowCount);
       return {
         source: "postgres",
@@ -1153,9 +1248,15 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       if (mutation.kind === "insert") {
         assertInsertInput(mutation.rows);
         assertConflictInput(mutation.onConflict);
+        assertEmbedInput(mutation.embed ?? [], 1);
         continue;
       }
       if (mutation.kind !== "update" && mutation.kind !== "delete") throw invalidInput();
+      // Ein Loeschen traegt keine Einbettung (2.111); warum, steht bei
+      // `GeneratedMutation`. Ein `embed` daran ist ein Fehler des Aufrufs und
+      // nicht ein Feld, das still verfaellt.
+      if (mutation.kind === "delete" && "embed" in mutation) throw invalidInput();
+      if (mutation.kind === "update") assertEmbedInput(mutation.embed ?? [], 1);
       // Aendern und Loeschen ohne Bedingung gibt es hier nicht. Eine Mutation
       // ohne Filter traefe jede Zeile, die die Policy hergibt, und "jede
       // Zeile" ist nie das, was ein Formular meint.
@@ -1176,15 +1277,22 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       for (const mutation of input.mutations) {
         if (mutation.kind === "insert") {
           results.push(await this.insertWithin(
-            client, input.schema, mutation.table, mutation.rows, mutation.onConflict));
+            client, input.schema, mutation.table, mutation.rows, mutation.onConflict, mutation.embed));
         } else if (mutation.kind === "update") {
           results.push(await this.updateWithin(client, input.schema, mutation.table,
-            { filters: mutation.filters }, mutation.values, mutation.atMost ?? MAX_INSERT_ROWS));
+            { filters: mutation.filters }, mutation.values, mutation.atMost ?? MAX_INSERT_ROWS,
+            mutation.embed));
         } else {
           results.push(await this.deleteWithin(client, input.schema, mutation.table,
             { filters: mutation.filters }, mutation.atMost ?? MAX_INSERT_ROWS));
         }
       }
+      // Eingebettete Zeilen einer Mutation (2.111) sind gelesene Zeilen und
+      // werden wie die einer Lesung abgerechnet. Die geschriebenen Zeilen
+      // selbst zaehlt diese Flaeche nicht; daran aendert der Schnitt nichts.
+      const embeddedRowCount = results.reduce((sum, result) =>
+        sum + result.rows.reduce((inner, row) => inner + countEmbeddedRows(row, result.embeds), 0), 0);
+      if (embeddedRowCount > 0) await this.meterRowReads(context, scope, embeddedRowCount);
       return { source: "postgres" as const, results };
     });
   }
@@ -1239,10 +1347,16 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     tableName: string,
     rows: Array<Record<string, unknown>>,
     onConflict?: string[],
+    embeds?: GeneratedEmbed[],
   ): Promise<GeneratedMutationResult> {
     const table = await this.loadTable(client, schema, tableName);
     assertTableBoundary(table, "insert");
     if (onConflict) assertTableBoundary(table, "update");
+    // Die Einbettungen (2.111) stehen vor dem Schreiben: Katalog, Richtung und
+    // Tuer der Nachbartabelle entscheiden sich, bevor eine Zeile entsteht.
+    const resolvedEmbeds = embeds?.length
+      ? await this.resolveEmbeds(client, schema, table, embeds, safeReturningColumns(table))
+      : [];
     const byName = new Map(table.columns.map((column) => [column.name, column]));
     const columns = Object.keys(rows[0]!).sort();
     if (columns.length > MAX_COLUMNS || rows.some((row) => Object.keys(row).sort().join("\0") !== columns.join("\0")) ||
@@ -1306,7 +1420,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         values,
       );
     }
-    return mutationResult(table, result.rows, MAX_INSERT_ROWS);
+    return this.withMutationEmbeds(
+      client, resolvedEmbeds, result.rows, mutationResult(table, result.rows, MAX_INSERT_ROWS));
   }
 
   /**
@@ -1366,9 +1481,13 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     target: MutationTarget,
     values: Record<string, unknown>,
     maximum: number,
+    embeds?: GeneratedEmbed[],
   ): Promise<GeneratedMutationResult> {
     const table = await this.loadTable(client, schema, tableName);
     assertTableBoundary(table, "update");
+    const resolvedEmbeds = embeds?.length
+      ? await this.resolveEmbeds(client, schema, table, embeds, safeReturningColumns(table))
+      : [];
     const byName = new Map(table.columns.map((column) => [column.name, column]));
     const columns = Object.keys(values).sort();
     if (columns.length < 1 || columns.length > MAX_COLUMNS || columns.some((name) => {
@@ -1388,7 +1507,8 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
        WHERE ${where} RETURNING ${returning.map(quoted).join(", ")}`,
       parameters,
     );
-    return mutationResult(table, result.rows, maximum);
+    return this.withMutationEmbeds(
+      client, resolvedEmbeds, result.rows, mutationResult(table, result.rows, maximum));
   }
 
   /** Das Loeschen selbst, mit derselben Bedingung und derselben Obergrenze wie das Aendern. */
@@ -1561,15 +1681,28 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
    * Loest die Einbettungen einer Liste gegen den Katalog auf (2.66).
    *
    * Fuer jede Einbettung muss es zwischen Basistabelle und Nachbartabelle
-   * genau einen Fremdschluessel im Schema geben. Zeigt er von der Basistabelle
-   * weg, ist die Einbettung `one`; zeigt er auf sie, `many`. Zwei Schluessel,
-   * gleich in welcher Richtung, sind mehrdeutig und werden abgewiesen, und
-   * eine Tabelle, die auf sich selbst zeigt, faellt damit ebenfalls.
+   * genau einen Fremdschluessel geben. Zeigt er von der Basistabelle weg, ist
+   * die Einbettung `one`; zeigt er auf sie, `many`. Zwei Schluessel, gleich in
+   * welcher Richtung, sind mehrdeutig und werden abgewiesen.
+   *
+   * **Eine Tabelle auf sich selbst faellt auch.** Bis 2.110 behauptete der
+   * Kommentar hier das, und der Code tat es nicht: Der eine Schluessel von
+   * `kategorien.eltern_id` auf `kategorien.id` passte auf beide Richtungen,
+   * `candidates.length` war 1, und die Einbettung lief still als `one`. Dabei
+   * ist genau hier nicht entscheidbar, was gemeint war, der Elternknoten oder
+   * die Kinder. Seit 2.111 faellt der Fall als mehrdeutig, wie der Kommentar es
+   * immer sagte.
    *
    * Die Nachbartabelle geht durch dieselbe Tuer wie die Basistabelle:
    * `assertTableBoundary(..., "select")`. Ohne Zeilensicherheit gibt es
-   * `GENERATED_DATA_API_RLS_REQUIRED`, ohne Leserecht `_FORBIDDEN`. Die
-   * Mutationsprobe dieses Schnitts nimmt genau diese Zeile heraus.
+   * `GENERATED_DATA_API_RLS_REQUIRED`, ohne Leserecht `_FORBIDDEN`. Das gilt
+   * auch fuer eine Nachbartabelle in einem anderen Schema (2.112): Die Policy
+   * haengt an der Tabelle, und die Pruefung ist dieselbe. Die Mutationsprobe
+   * dieses Schnitts nimmt genau diese Zeile heraus.
+   *
+   * Die zweite Ebene (2.111) wird hier gleich mit aufgeloest, und nur in der
+   * Richtung `one`. Warum, steht mit den Zahlen bei
+   * `DATA_API_LIMITS.maxEmbedDepth`.
    */
   private async resolveEmbeds(
     client: SqlPoolClient,
@@ -1577,36 +1710,52 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     table: InternalTable,
     embeds: GeneratedEmbed[],
     selectedNames: string[],
+    level = 1,
   ): Promise<ResolvedEmbed[]> {
     if (embeds.length === 0) return [];
     // Ein View traegt keine Fremdschluessel; eine Einbettung an ihm hat nichts,
     // woran sie haengen koennte.
     if (table.kind !== "table") throw invalidInput();
+    if (level > MAX_EMBED_DEPTH || embeds.length > (level === 1 ? MAX_EMBEDS : MAX_NESTED_EMBEDS)) {
+      throw invalidInput();
+    }
     const taken = new Set(selectedNames);
     for (const embed of embeds) {
       if (taken.has(embed.alias)) throw invalidInput();
       taken.add(embed.alias);
     }
-    const foreignKeys = await this.loadEmbedForeignKeys(client, schema, table.name);
     const byName = new Map(table.columns.map((column) => [column.name, column]));
     const resolved: ResolvedEmbed[] = [];
     for (const embed of embeds) {
-      const candidates = foreignKeys.filter((fk) =>
-        (fk.table === table.name && fk.referencedTable === embed.relation) ||
-        (fk.referencedTable === table.name && fk.table === embed.relation));
-      if (candidates.length !== 1) {
-        // Unbekannt oder mehrdeutig: Beides ist ein Fehler des Aufrufs, und
-        // die Antwort sagt nicht, welches von beiden. Der Unterschied verriete,
-        // ob eine Tabelle dieses Namens existiert.
+      const targetSchema = embed.schema ?? schema;
+      // Ein Systemschema ist keines, das diese Flaeche bedient, und die Grenze
+      // steht hier genauso wie am Schema der Anfrage selbst.
+      if (!isDataSchemaName(targetSchema)) throw invalidInput();
+      const candidates = await this.loadEmbedForeignKeys(
+        client, schema, table.name, targetSchema, embed.relation);
+      // Unbekannt, mehrdeutig oder eine Tabelle auf sich selbst: alles drei ist
+      // ein Fehler des Aufrufs, und die Antwort sagt nicht, welches davon. Der
+      // Unterschied verriete, ob eine Tabelle dieses Namens existiert.
+      const selfReference = targetSchema === schema && embed.relation === table.name;
+      if (candidates.length !== 1 || selfReference) {
         throw new GeneratedDataApiError("GENERATED_DATA_API_INVALID_INPUT", {
-          cause: new Error(candidates.length === 0 ? "unknown relation" : "ambiguous relation"),
+          cause: new Error(selfReference ? "self relation"
+            : candidates.length === 0 ? "unknown relation" : "ambiguous relation"),
         });
       }
       const fk = candidates[0]!;
-      const kind: "one" | "many" = fk.table === table.name ? "one" : "many";
+      const kind: "one" | "many" = fk.schema === schema && fk.table === table.name ? "one" : "many";
+      // Die zweite Ebene traegt nur `one`. Eine zweite Ebene als `many` waere
+      // maxEmbedRows mal maxEmbedRows Zeilen je Wurzelzeile; die Rechnung steht
+      // in lib/data-api-limits.ts.
+      if (level > 1 && kind !== "one") {
+        throw new GeneratedDataApiError("GENERATED_DATA_API_INVALID_INPUT", {
+          cause: new Error("nested many relation"),
+        });
+      }
       const localKey = kind === "one" ? fk.columns : fk.referencedColumns;
       const remoteKey = kind === "one" ? fk.referencedColumns : fk.columns;
-      const target = await this.loadTable(client, schema, embed.relation);
+      const target = await this.loadTable(client, targetSchema, embed.relation);
       assertTableBoundary(target, "select");
       if (target.kind !== "table") throw invalidInput();
       // Eine Liste braucht eine Ordnung, sonst waere der Schnitt bei
@@ -1634,22 +1783,48 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
         ? uniqueIdentifiers(embed.columns)
         : target.columns.filter((column) => column.selectable && !column.sensitive).map((column) => column.name);
       if (columns.length === 0 || columns.some((name) => !usable(targetByName, name))) throw invalidInput();
-      resolved.push({ embed, target, kind, constraint: fk.name, localKey, remoteKey, columns });
+      // Die zweite Ebene steht unter der Nachbartabelle, also mit ihr als
+      // Basistabelle und ihrem Schema; ihre Aliasse duerfen nicht auf die
+      // Spalten der Nachbartabelle fallen.
+      const nested = await this.resolveEmbeds(
+        client, targetSchema, target, embed.embed ?? [], columns, level + 1);
+      resolved.push({
+        embed,
+        target,
+        schema: targetSchema,
+        foreignSchema: targetSchema !== schema,
+        kind,
+        constraint: fk.name,
+        localKey,
+        remoteKey,
+        columns,
+        nested,
+      });
     }
     return resolved;
   }
 
-  private async loadEmbedForeignKeys(client: SqlPoolClient, schema: string, table: string): Promise<EmbedForeignKey[]> {
+  /**
+   * Die Fremdschluessel zwischen zwei genannten Tabellen, in beide Richtungen.
+   * Mehr als einer ist mehrdeutig; die Abfrage holt einen mehr, damit der
+   * Aufrufer das entscheiden kann, statt hier eine Grenze zu reissen.
+   */
+  private async loadEmbedForeignKeys(
+    client: SqlPoolClient,
+    schema: string,
+    table: string,
+    targetSchema: string,
+    targetTable: string,
+  ): Promise<EmbedForeignKey[]> {
     const result = await client.query<EmbedForeignKeyRow>(
-      EMBED_FOREIGN_KEYS_SQL, [schema, table, MAX_EMBED_FOREIGN_KEYS + 1]);
-    if (result.rows.length > MAX_EMBED_FOREIGN_KEYS) {
-      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
-    }
+      EMBED_FOREIGN_KEYS_SQL, [schema, table, targetSchema, targetTable, MAX_EMBED_FOREIGN_KEYS + 1]);
     return result.rows.map((row) => {
       const names = (value: unknown): value is string[] => Array.isArray(value) &&
         value.length >= 1 && value.length <= MAX_FOREIGN_KEY_COLUMNS && value.every(safeIdentifier);
       if (!safeIdentifier(row.constraint_name) || !safeIdentifier(row.table_name) ||
-          !safeIdentifier(row.referenced_table) || !names(row.columns) || !names(row.referenced_columns) ||
+          !safeIdentifier(row.referenced_table) || !isDataSchemaName(row.table_schema) ||
+          !isDataSchemaName(row.referenced_schema) ||
+          !names(row.columns) || !names(row.referenced_columns) ||
           // Ein Fremdschluessel hat auf beiden Seiten gleich viele Spalten.
           // Stimmt das nicht, hat die Abfrage eine verloren, und die Zuordnung
           // waere falsch.
@@ -1660,12 +1835,77 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       }
       return {
         name: row.constraint_name,
+        schema: row.table_schema,
         table: row.table_name,
         columns: row.columns,
+        referencedSchema: row.referenced_schema,
         referencedTable: row.referenced_table,
         referencedColumns: row.referenced_columns,
       };
     });
+  }
+
+  /**
+   * Haengt die Einbettungen einer Mutation an deren Antwortzeilen (2.111).
+   *
+   * Lesend und nur lesend: Die Mutation hat schon geschrieben, und was hier
+   * passiert, ist dieselbe Einbettung wie bei einer Lesung, mit derselben
+   * Aufloesung, denselben Grenzen und derselben Tuer. Sie laeuft in derselben
+   * Transaktion und auf derselben Verbindung, also unter denselben Anspruechen:
+   * Der Aufrufer sieht in `records` keine Zeile, die ihm eine Lesung nicht auch
+   * gaebe.
+   *
+   * Die Aliasse duerfen nicht auf die zurueckgegebenen Spalten fallen. Eine
+   * Mutation gibt alle waehlbaren, nicht sensiblen Spalten zurueck, und ein
+   * Alias darauf wuerde einen Wert still ueberschreiben.
+   *
+   * Die Groesse wird nach dem Anhaengen noch einmal gemessen. `mutationResult`
+   * hat die Zeilen ohne Nachbarn gemessen, und mit ihnen sind sie groesser.
+   *
+   * Aufgeloest sind die Einbettungen schon, und zwar **vor** dem Schreiben: Eine
+   * Mutation mit einer Einbettung, die der Katalog nicht hergibt, soll nicht
+   * erst schreiben und dann zurueckrollen.
+   */
+  private async withMutationEmbeds(
+    client: SqlPoolClient,
+    resolved: ResolvedEmbed[],
+    raw: Array<Record<string, unknown>>,
+    result: GeneratedMutationResult,
+  ): Promise<GeneratedMutationResult> {
+    if (resolved.length === 0) return result;
+    const embedResults = await this.attachEmbeds(client, resolved, raw, result.rows);
+    if (boundedRows(result.rows, MAX_RESPONSE_BYTES).length !== result.rows.length) {
+      throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
+    }
+    return { ...result, embeds: embedResults };
+  }
+
+  /**
+   * Haengt die aufgeloesten Einbettungen an die Antwortzeilen (2.66).
+   *
+   * `source` sind die Zeilen, wie die Datenbank sie hergegeben hat, mit allen
+   * Schluesselspalten; `target` sind dieselben Zeilen, schon auf die bestellten
+   * Spalten beschnitten. Beide Listen haben dieselbe Laenge und dieselbe
+   * Reihenfolge, und daran haengt die Zuordnung.
+   *
+   * Eine Lesung und eine Mutation benutzen genau diese Methode, damit es keine
+   * zweite Stelle gibt, an der eine Einbettung anders entsteht.
+   */
+  private async attachEmbeds(
+    client: SqlPoolClient,
+    resolvedEmbeds: ResolvedEmbed[],
+    source: Array<Record<string, unknown>>,
+    target: Array<Record<string, unknown>>,
+  ): Promise<GeneratedEmbedResult[]> {
+    const results: GeneratedEmbedResult[] = [];
+    for (const resolved of resolvedEmbeds) {
+      const loaded = await this.loadEmbed(client, resolved, source);
+      for (const [index, row] of target.entries()) {
+        row[resolved.embed.alias] = loaded.byRow[index];
+      }
+      results.push(embedResult(resolved, loaded.truncated, loaded.nested));
+    }
+    return results;
   }
 
   /**
@@ -1675,20 +1915,27 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
    * Anspruechen wie die Liste: `WHERE (schluessel) IN (...)` ueber die
    * Schluesselwerte der gelesenen Zeilen. Die Zeilensicherheit der
    * Nachbartabelle gilt damit von PostgreSQL her; es gibt keinen Weg an ihr
-   * vorbei, weil es keine zweite Verbindung und keine zweite Rolle gibt.
+   * vorbei, weil es keine zweite Verbindung und keine zweite Rolle gibt. Das
+   * gilt auch fuer eine Nachbartabelle in einem anderen Schema (2.112): Dieselbe
+   * Verbindung, dieselbe Rolle, dieselbe Transaktion.
    *
    * `many` begrenzt je Elternzeile mit `row_number()` ueber den
    * Primaerschluessel der Nachbartabelle und liest eine Zeile mehr, um
    * `truncated` sagen zu koennen. `one` braucht keine Grenze: Die Zielspalten
    * eines Fremdschluessels sind eindeutig.
+   *
+   * Die zweite Ebene (2.111) laeuft ueber dieselbe Methode, mit den Zeilen
+   * dieser Einbettung als Eltern. Sie laeuft **einmal fuer alle** Elternzeilen
+   * und nicht je Elternzeile: eine Abfrage je Einbettung und Ebene, nicht eine
+   * je Zeile.
    */
   private async loadEmbed(
     client: SqlPoolClient,
-    schema: string,
     resolved: ResolvedEmbed,
     parents: Array<Record<string, unknown>>,
-  ): Promise<{ byRow: unknown[]; truncated: boolean }> {
+  ): Promise<{ byRow: unknown[]; truncated: boolean; nested: GeneratedEmbedResult[] }> {
     const empty = resolved.kind === "many" ? () => [] as unknown[] : () => null;
+    const nestedEmpty: GeneratedEmbedResult[] = resolved.nested.map((nested) => embedResult(nested, false, []));
     const parentKeys = parents.map((row) => {
       const values = resolved.localKey.map((name) => row[name]);
       return values.some((value) => value === null || value === undefined) ? null : values;
@@ -1697,7 +1944,9 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     for (const key of parentKeys) {
       if (key) distinct.set(embedKey(key), key);
     }
-    if (distinct.size === 0) return { byRow: parents.map(empty), truncated: false };
+    if (distinct.size === 0) {
+      return { byRow: parents.map(empty), truncated: false, nested: nestedEmpty };
+    }
 
     const values: SqlValue[] = [];
     const tuples = [...distinct.values()].map((key) => {
@@ -1715,8 +1964,14 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     const keyList = resolved.remoteKey.length === 1
       ? quoted(resolved.remoteKey[0]!)
       : `(${resolved.remoteKey.map(quoted).join(", ")})`;
-    const readColumns = [...new Set([...resolved.remoteKey, ...resolved.columns, ...resolved.target.primaryKey])];
-    const target = qualified(schema, resolved.target.name);
+    // Die Schluesselspalten der zweiten Ebene werden mitgelesen, auch wenn der
+    // Aufrufer sie nicht bestellt hat; in die Antwort kommen sie nur, wenn sie
+    // in der Spaltenliste dieser Einbettung stehen.
+    const nestedKeyColumns = resolved.nested.flatMap((nested) => nested.localKey);
+    const readColumns = [...new Set([
+      ...resolved.remoteKey, ...resolved.columns, ...resolved.target.primaryKey, ...nestedKeyColumns,
+    ])];
+    const target = qualified(resolved.schema, resolved.target.name);
 
     let rows: Array<Record<string, unknown>>;
     if (resolved.kind === "one") {
@@ -1743,20 +1998,62 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
       throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
     }
 
+    // Zuerst zuordnen und beschneiden, dann die zweite Ebene. Die Reihenfolge
+    // ist der Grund, warum die Rechnung in lib/data-api-limits.ts aufgeht: Eine
+    // Zeile, die der Schnitt bei maxEmbedRows wegnimmt, kostet keine Abfrage auf
+    // der zweiten Ebene. Umgekehrt waere die Zahl der Elternzeilen dort um die
+    // eine Zeile je Elternzeile hoeher, die nur den Schnitt feststellt.
     const grouped = new Map<string, Array<Record<string, unknown>>>();
     for (const row of rows) {
       const key = embedKey(resolved.remoteKey.map((name) => row[name]));
-      grouped.set(key, [...(grouped.get(key) ?? []), projectRow(row, resolved.columns)]);
+      grouped.set(key, [...(grouped.get(key) ?? []), row]);
     }
     let truncated = false;
-    const byRow = parentKeys.map((key) => {
-      if (!key) return empty();
+    const perParent = parentKeys.map((key) => {
+      if (!key) return null;
       const matched = grouped.get(embedKey(key)) ?? [];
-      if (resolved.kind === "one") return matched[0] ?? null;
+      if (resolved.kind === "one") return matched.slice(0, 1);
       if (matched.length > MAX_EMBED_ROWS) truncated = true;
       return matched.slice(0, MAX_EMBED_ROWS);
     });
-    return { byRow, truncated };
+
+    // Die zweite Ebene laeuft ueber die Zeilen, die der Aufrufer wirklich
+    // bekommt, und bevor sie auf ihre Spalten beschnitten werden: Sonst waeren
+    // die Schluesselspalten der zweiten Ebene schon fort. Eine Zeile, die an
+    // mehreren Elternzeilen haengt, steht hier nur einmal.
+    const kept: Array<Record<string, unknown>> = [];
+    const position = new Map<Record<string, unknown>, number>();
+    for (const matched of perParent) {
+      for (const row of matched ?? []) {
+        if (position.has(row)) continue;
+        position.set(row, kept.length);
+        kept.push(row);
+      }
+    }
+    const nestedResults: GeneratedEmbedResult[] = [];
+    const nestedValues = new Map<string, unknown[]>();
+    for (const nested of resolved.nested) {
+      const loaded = await this.loadEmbed(client, nested, kept);
+      nestedValues.set(nested.embed.alias, loaded.byRow);
+      nestedResults.push(embedResult(nested, loaded.truncated, loaded.nested));
+    }
+
+    // Jede gelesene Zeile wird genau einmal auf ihre Spalten gebracht, auch
+    // wenn sie an mehreren Elternzeilen haengt; die Antwort traegt dann dasselbe
+    // Objekt zweimal, und das ist beim Serialisieren dasselbe Ergebnis.
+    const projected = kept.map((row) => {
+      const value = projectRow(row, resolved.columns);
+      for (const [alias, byRow] of nestedValues) {
+        value[alias] = byRow[position.get(row)!];
+      }
+      return value;
+    });
+    const byRow = perParent.map((matched) => {
+      if (!matched) return empty();
+      const values = matched.map((row) => projected[position.get(row)!]!);
+      return resolved.kind === "one" ? values[0] ?? null : values;
+    });
+    return { byRow, truncated, nested: nestedResults };
   }
 
   private async loadTable(client: SqlPoolClient, schema: string, table: string): Promise<InternalTable> {
@@ -2184,6 +2481,47 @@ function embedKey(values: unknown[]): string {
   }));
 }
 
+/**
+ * Die Angabe zu einer Einbettung, wie der Aufrufer sie bekommt (2.111).
+ *
+ * `schema` steht nur dort, wo es ein anderes ist als das der Basistabelle, und
+ * `embeds` nur dort, wo es eine zweite Ebene gibt. Eine gewoehnliche
+ * Einbettung traegt damit genau die Felder, die sie bis 2.110 trug.
+ */
+function embedResult(
+  resolved: ResolvedEmbed,
+  truncated: boolean,
+  nested: GeneratedEmbedResult[],
+): GeneratedEmbedResult {
+  return {
+    alias: resolved.embed.alias,
+    relation: resolved.embed.relation,
+    kind: resolved.kind,
+    constraint: resolved.constraint,
+    truncated,
+    ...(resolved.foreignSchema ? { schema: resolved.schema } : {}),
+    ...(nested.length > 0 ? { embeds: nested } : {}),
+  };
+}
+
+/**
+ * Die eingebetteten Zeilen einer Antwortzeile, ueber alle Ebenen gezaehlt
+ * (2.111). Sie sind gelesene Zeilen, auch wenn sie in einer anderen Zeile
+ * stecken, und die Abrechnung zaehlt sie darum mit.
+ */
+function countEmbeddedRows(row: Record<string, unknown>, embeds: GeneratedEmbedResult[]): number {
+  let total = 0;
+  for (const embed of embeds) {
+    const value = row[embed.alias];
+    const rows = Array.isArray(value) ? value : value ? [value] : [];
+    total += rows.length;
+    for (const inner of rows) {
+      if (isPlainRecord(inner)) total += countEmbeddedRows(inner, embed.embeds ?? []);
+    }
+  }
+  return total;
+}
+
 function projectRow(row: Record<string, unknown>, columns: string[]): Record<string, unknown> {
   return Object.fromEntries(columns.map((name) => [name, normalizeDataValue(row[name])]));
 }
@@ -2212,7 +2550,7 @@ function mutationResult(table: InternalTable, raw: Array<Record<string, unknown>
   const columns = safeReturningColumns(table);
   const rows = boundedRows(raw.map((row) => projectRow(row, columns)), MAX_RESPONSE_BYTES);
   if (rows.length !== raw.length) throw new GeneratedDataApiError("GENERATED_DATA_API_BOUNDARY_REJECTED");
-  return { source: "postgres", table: publicTable(table), rows, rowCount: rows.length };
+  return { source: "postgres", table: publicTable(table), rows, rowCount: rows.length, embeds: [] };
 }
 
 function assertPrimaryKeyMatch(table: InternalTable, match: Record<string, unknown>): void {
@@ -2257,6 +2595,29 @@ function mutationTargetSql(table: InternalTable, target: MutationTarget, values:
 }
 
 /** Die Form eines Einfuegens, vor der Datenbank; von `insertRows` und `mutateRows` geteilt. */
+/**
+ * Die Form der Einbettungen, vor der Datenbank (2.66, Ebenen seit 2.111).
+ *
+ * Die Zahl je Ebene faellt hier und nicht erst nach dem Lesen: Jede weitere
+ * Einbettung waere eine weitere Abfrage, und die Grenze soll die Arbeit sparen
+ * und nicht erst das Ergebnis verwerfen. Was eine Beziehung oder eine Spalte in
+ * der Sache ist, entscheidet danach der Katalog in `resolveEmbeds`.
+ */
+function assertEmbedInput(embeds: unknown, level: number): asserts embeds is GeneratedEmbed[] {
+  if (!Array.isArray(embeds) || embeds.length > (level === 1 ? MAX_EMBEDS : MAX_NESTED_EMBEDS)) {
+    throw invalidInput();
+  }
+  if (embeds.length > 0 && level > MAX_EMBED_DEPTH) throw invalidInput();
+  for (const embed of embeds) {
+    if (!isPlainRecord(embed) || !safeIdentifier(embed.alias) || !safeIdentifier(embed.relation) ||
+        (embed.schema !== undefined && !isDataSchemaName(embed.schema)) ||
+        (embed.columns !== undefined && (!Array.isArray(embed.columns) || embed.columns.length > MAX_COLUMNS))) {
+      throw invalidInput();
+    }
+    if (embed.embed !== undefined) assertEmbedInput(embed.embed, level + 1);
+  }
+}
+
 function assertInsertInput(rows: unknown): asserts rows is Array<Record<string, unknown>> {
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > MAX_INSERT_ROWS ||
       byteLength(rows) > MAX_INPUT_BYTES || rows.some((row) => !isPlainRecord(row))) {

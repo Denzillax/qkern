@@ -63,6 +63,10 @@ export const GRAPHQL_LIMIT_DEPTH =
 export const GRAPHQL_LIMIT_MUTATIONS =
   "Je Anfrage gilt eine Zahl von Mutationen und je Mutation eine Zahl von Zeilen: beim Einfügen die Zeilen in objects, beim Ändern und Löschen die Zeilen, die die Bedingung trifft. Trifft sie mehr, wird die Mutation abgewiesen und die Transaktion zurückgerollt. atMost setzt eine engere Grenze.";
 
+/** Die Beziehungen in records, und was sie kosten. */
+export const GRAPHQL_LIMIT_EMBEDS =
+  "Seit 2.111 darf records Beziehungen tragen, und zwar nur lesend. Jede ist eine weitere Lesung in derselben Transaktion: höchstens drei auf der ersten Ebene, eine in einer Beziehung, zwei Ebenen tief, und auf der zweiten Ebene nur ein Fremdschlüssel, der von der Nachbartabelle weg zeigt. Die andere Richtung wären zwanzig mal zwanzig Zeilen je Wurzelzeile. Die Nachbartabelle geht durch dieselbe Tür wie die Tabelle selbst und darf mit dem Argument schema in einem anderen Schema liegen. Ein Löschen trägt keine Beziehung, und geschrieben wird über eine nie.";
+
 /** Die Felder, und warum Aliasse mitzählen. */
 export const GRAPHQL_LIMIT_FIELDS =
   "Gezählt wird jedes Feld einzeln, Aliasse eingeschlossen. Sonst wäre a: id b: id c: id ein Weg, die Grenze zu umgehen, ohne sie zu verletzen. Aliasse sind erlaubt, weil dieselbe Tabelle sonst nicht zweimal abfragbar wäre; sie kosten nur, was sie kosten.";
@@ -100,6 +104,7 @@ export const GRAPHQL_ACCEPTED_TEXTS: Record<ProjectGraphqlAccepted, string> = {
   mutations: "Mutationen: insertInto<Tabelle>Collection(objects: […]), update<Tabelle>Collection(set: {…}, where: […]) und deleteFrom<Tabelle>Collection(where: […]), mit affectedCount und records in der Antwort.",
   row_objects: "Flache Eingabeobjekte als Zeile oder Zuweisung in einer Mutation, nur mit Zahl, Zeichenkette, true, false und null.",
   upserts: "Ein Upsert: das Einfügen nimmt onConflict mit den Spalten eines vorhandenen Primärschlüssels oder eindeutigen Index. Trifft eine Zeile den Schlüssel, wird sie geändert, und die Policy entscheidet darüber wie bei einem Ändern.",
+  mutation_relations: "Beziehungen in records, nur lesend: nach dem Einfügen, Ändern oder Upsert kommen die Nachbarzeilen der geschriebenen Zeilen mit, höchstens drei je Ebene und zwei Ebenen tief. Die zweite Ebene läuft nur über einen Fremdschlüssel, der von der Nachbartabelle weg zeigt. Gelesen wird in derselben Transaktion und unter denselben Ansprüchen wie eine Lesung, die Nachbartabelle braucht dieselbe Row Level Security, und mit dem Argument schema darf sie in einem anderen Schema liegen. Ein Löschen trägt keine Beziehung.",
 };
 
 /** Was er abweist, je Eintrag mit Grund. */
@@ -113,7 +118,8 @@ export const GRAPHQL_REFUSED_TEXTS: Record<ProjectGraphqlRefused, string> = {
   filter_objects: "Eingabeobjekte als Filter, also where: { … }. Ein Filter ist eine Zeichenkette in derselben Form wie der Parameter filter der Data API, in Abfragen wie in Mutationen.",
   block_strings: "Block-Zeichenketten mit drei Anführungszeichen.",
   multiple_operations: "Mehrere Operationen in einem Dokument. Ohne Operationsnamen in der Anfrage wäre nicht entscheidbar, welche gemeint ist.",
-  relations: "Beziehungen zwischen Tabellen. Ein Feld, das die zugehörigen Zeilen einer anderen Tabelle nachlädt, ist genau die Abfrage, die je Zeile eine weitere Lesung auslöst.",
+  query_relations: "Beziehungen in einer Abfrage. Ein Tabellenfeld liefert Spalten und sonst nichts. Eingebettete Beziehungen stehen lesend an der Data API, und in einer Mutation an records; eine Abfrage hier kennt sie nicht.",
+  nested_writes: "Schreiben über eine Beziehung, also ein Eingabeobjekt in einem Eingabeobjekt. Eine Mutation schreibt genau eine Tabelle. Ein verschachteltes Anlegen müsste die Reihenfolge und das Zurücknehmen über mehrere Tabellen zusagen; die Fläche sagt das nicht zu und weist es mit eigenem Grund ab.",
   views: "Views. Sie haben keinen Primärschlüssel und damit keine Ordnung, auf der ein Cursor stehen könnte. Über die Data API sind sie lesbar, hier nicht.",
   aggregates: "Aggregate wie count oder sum. Sie stehen an der eigenen Route der Data API, mit ihren eigenen Regeln für numerische und sortierbare Spalten.",
 };
@@ -160,9 +166,10 @@ export const GRAPHQL_REJECTIONS: Record<string, string> = {
   enum_not_supported: "Enum-Werte gibt es hier nicht. Nennen Sie den Wert als Zeichenkette.",
   object_argument_not_supported: "Ein Objekt als Argumentwert gibt es hier nicht. Ein Filter ist eine Zeichenkette.",
   nested_list_not_supported: "Eine Liste in einer Liste gibt es hier nicht.",
-  nested_object_not_supported: "Ein Objekt in einem Objekt oder eine Liste in einem Objekt gibt es hier nicht. Eine Zeile ist flach.",
+  nested_object_not_supported: "Eine Liste in einem Objekt gibt es hier nicht. Eine Zeile ist flach.",
+  nested_write_not_supported: "Ein Objekt in einem Objekt wäre ein Schreiben über eine Beziehung. Eine Mutation schreibt genau eine Tabelle; Beziehungen stehen in records und nur lesend.",
   object_fields_exceeded: "Das Eingabeobjekt hat mehr Felder als eine Zeile haben kann.",
-  depth_exceeded: "Die Abfrage ist tiefer als die zwei Ebenen, die es gibt.",
+  depth_exceeded: "Die Abfrage ist tiefer als die Ebenen, die es gibt: zwei in einer Abfrage, und in einer Mutation die Hülle records und zwei Ebenen Beziehungen darin. Zwanzig Zeilen je Elternzeile auf einer dritten Ebene wären achttausend Zeilen je Wurzelzeile.",
   fields_exceeded: "Die Abfrage holt mehr Felder als erlaubt. Aliasse zählen einzeln mit.",
   tables_exceeded: "Die Abfrage nennt mehr Tabellen als erlaubt. Auch zwei Aliasse auf dieselbe Tabelle sind zwei Lesungen.",
   rows_exceeded: "Die Zeilen aller Felder zusammen überschreiten die Grenze der Abfrage.",
@@ -184,6 +191,7 @@ export const GRAPHQL_REJECTIONS: Record<string, string> = {
   mutation_rows_exceeded: "Die Mutation nennt oder trifft mehr Zeilen als erlaubt.",
   filter_required: "Ändern und Löschen brauchen eine Bedingung in where. Ohne sie träfe die Mutation jede Zeile, die die Policy hergibt.",
   argument_required: "Ein Pflichtargument fehlt: objects beim Einfügen, set beim Ändern.",
+  embeds_exceeded: "Mehr Beziehungen an dieser Stelle als erlaubt. Jede ist eine weitere Lesung, und die zweite Ebene hat ihre eigene, kleinere Zahl.",
 };
 
 /* ------------------------------------------------------------------ *
@@ -220,6 +228,7 @@ export function integrationsGraphqlTexts(): string[] {
     GRAPHQL_LIMIT_FIELDS,
     GRAPHQL_LIMIT_ROWS,
     GRAPHQL_LIMIT_MUTATIONS,
+    GRAPHQL_LIMIT_EMBEDS,
     GRAPHQL_SEQUENTIAL,
     GRAPHQL_NO_INTROSPECTION,
     GRAPHQL_OWN_PARSER,

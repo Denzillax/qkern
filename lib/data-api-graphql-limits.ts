@@ -13,6 +13,12 @@ import { DATA_API_LIMITS } from "@/lib/data-api-limits";
  * Aufrufer merkt davon nichts. Die Grenzen stehen deshalb vor der Datenbank
  * und nicht in einem Zeitlimit hinter ihr.
  */
+/**
+ * Die Tiefe einer Abfrage, einmal als Zahl, damit `maxMutationDepth` sie
+ * verrechnen kann, ohne dass sie zweimal im Code steht.
+ */
+const DATA_API_GRAPHQL_MAX_DEPTH = 2;
+
 export const DATA_API_GRAPHQL_LIMITS = {
   /**
    * Die Abfrage selbst. 8 KiB sind mehr als jede Abfrage braucht, die diese
@@ -21,11 +27,24 @@ export const DATA_API_GRAPHQL_LIMITS = {
    */
   maxQueryBytes: 8_192,
   /**
-   * Zwei Ebenen, und mehr gibt es nicht zu holen: die Tabelle und ihre
-   * Spalten. Es gibt keine Beziehungen an dieser Fläche, also wäre eine dritte
-   * Ebene entweder leer oder ein Feld auf einem Skalar.
+   * Zwei Ebenen in einer Abfrage, und mehr gibt es dort nicht zu holen: die
+   * Tabelle und ihre Spalten. Eine Abfrage kennt keine Beziehungen, also wäre
+   * eine dritte Ebene entweder leer oder ein Feld auf einem Skalar.
    */
-  maxDepth: 2,
+  maxDepth: DATA_API_GRAPHQL_MAX_DEPTH,
+  /**
+   * Ebenen in einer Mutation (2.111). Eine Mutation ist tiefer, weil ihre
+   * Antwort eine Hülle hat und seit 2.111 Beziehungen tragen darf:
+   * `insertIntoBeitraegeCollection { records { titel autor { name } } }`. Das
+   * sind Mutationsfeld, `records`, die Einbettung und die Spalte, und mit der
+   * zweiten Ebene einer Einbettung eine mehr.
+   *
+   * Gerechnet und nicht geschrieben, damit die Zahl nicht neben den beiden
+   * Tabellen steht, aus denen sie kommt: `maxDepth` für Tabelle und Spalte,
+   * eine Ebene für `records`, und `DATA_API_LIMITS.maxEmbedDepth` für die
+   * Einbettungen darin.
+   */
+  maxMutationDepth: DATA_API_LIMITS.maxEmbedDepth + DATA_API_GRAPHQL_MAX_DEPTH + 1,
   /**
    * Alle Felder der Abfrage zusammen, **jedes Vorkommen einzeln**. Ein Alias
    * zählt mit: sonst wäre `a: id b: id c: id …` ein Weg, die Grenze zu

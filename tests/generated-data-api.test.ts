@@ -334,18 +334,32 @@ describe("generated project data API", () => {
     return (table: string | null) => table === null ? Object.values(tables).flat() : tables[table] ?? [];
   }
   const embedForeignKeys = [
-    { constraint_name: "orders_customer_id_fkey", table_name: "orders", referenced_table: "customers",
+    { constraint_name: "orders_customer_id_fkey", table_schema: "public", table_name: "orders",
+      referenced_schema: "public", referenced_table: "customers",
       columns: ["customer_id"], referenced_columns: ["id"] },
-    { constraint_name: "items_order_id_fkey", table_name: "items", referenced_table: "orders",
+    { constraint_name: "items_order_id_fkey", table_schema: "public", table_name: "items",
+      referenced_schema: "public", referenced_table: "orders",
       columns: ["order_id"], referenced_columns: ["id"] },
-    { constraint_name: "open_notes_order_id_fkey", table_name: "open_notes", referenced_table: "orders",
+    { constraint_name: "open_notes_order_id_fkey", table_schema: "public", table_name: "open_notes",
+      referenced_schema: "public", referenced_table: "orders",
       columns: ["order_id"], referenced_columns: ["id"] },
   ];
+  /**
+   * Seit 2.111 fragt die Data API den Katalog je Paar und nicht je Tabelle; der
+   * gestellte Treiber muss darum dasselbe tun wie die echte Abfrage, sonst
+   * waere jede Einbettung mehrdeutig. $1/$2 ist die Basistabelle, $3/$4 die
+   * Nachbartabelle, in beide Richtungen.
+   */
+  const embedForeignKeysFor = (values?: readonly unknown[]) => embedForeignKeys.filter((fk) =>
+    (fk.table_schema === values?.[0] && fk.table_name === values?.[1] &&
+      fk.referenced_schema === values?.[2] && fk.referenced_table === values?.[3]) ||
+    (fk.table_schema === values?.[2] && fk.table_name === values?.[3] &&
+      fk.referenced_schema === values?.[0] && fk.referenced_table === values?.[1]));
   const order1 = "00000000-0000-4000-8000-000000000001";
   const order2 = "00000000-0000-4000-8000-000000000002";
   const customer1 = "00000000-0000-4000-8000-00000000000a";
 
-  it("reads the select grammar with embeds one level deep and refuses what does not belong to it (2.66)", () => {
+  it("reads the select grammar with embeds, a second level and a schema, and refuses what does not belong to it (2.66)", () => {
     expect(parseGeneratedSelect("id,status")).toEqual({ select: ["id", "status"], embed: [] });
     expect(parseGeneratedSelect("*")).toEqual({ embed: [] });
     expect(parseGeneratedSelect("id, customer:customers(name), items()")).toEqual({
@@ -355,9 +369,33 @@ describe("generated project data API", () => {
     expect(parseGeneratedSelect("*,items(*)")).toEqual({ embed: [{ alias: "items", relation: "items" }] });
     // Nur eine Einbettung und keine Spalte: die Spalten der Tabelle kommen alle.
     expect(parseGeneratedSelect("items(sku)")).toEqual({ embed: [{ alias: "items", relation: "items", columns: ["sku"] }] });
+    // Die zweite Ebene (2.111) und das Schema der Nachbartabelle (2.112).
+    expect(parseGeneratedSelect("id,items(sku,bestellung:orders(status))")).toEqual({
+      select: ["id"],
+      embed: [{
+        alias: "items", relation: "items", columns: ["sku"],
+        embed: [{ alias: "bestellung", relation: "orders", columns: ["status"] }],
+      }],
+    });
+    expect(parseGeneratedSelect("id,autor:verlag.autoren(name)")).toEqual({
+      select: ["id"],
+      embed: [{ alias: "autor", relation: "autoren", schema: "verlag", columns: ["name"] }],
+    });
+    // Eine Einbettung in einer Einbettung ohne eigene Spalten: alle kommen.
+    expect(parseGeneratedSelect("items(orders())")).toEqual({
+      embed: [{ alias: "items", relation: "items", embed: [{ alias: "orders", relation: "orders" }] }],
+    });
     for (const invalid of [
-      "", "id,", ",id", "items(sku,)", "items(order(id))", "items(sku", "items)sku(", "*,id", "id,id",
+      "", "id,", ",id", "items(sku,)", "items(sku", "items)sku(", "*,id", "id,id",
       "items(sku),items(id)", "id,items(sku,sku)", "items(sku);drop", "items (sku)",
+      // Eine dritte Ebene gibt es nicht.
+      "items(orders(items(sku)))",
+      // Zwei Einbettungen in einer Einbettung: eine mehr als die zweite Ebene traegt.
+      "items(orders(id),customers(id))",
+      // Ein Schema ohne Beziehungsnamen und zwei Punkte.
+      "verlag.(name)", "a.b.autoren(name)",
+      // Ein Alias der zweiten Ebene auf einer Spalte derselben Klammer.
+      "items(sku,sku:orders(status))",
     ]) {
       expect(parseGeneratedSelect(invalid), invalid).toBeNull();
     }
@@ -365,7 +403,7 @@ describe("generated project data API", () => {
 
   it("embeds a one and a many relation through the foreign keys, in the same transaction and with bounded rows (2.66)", async () => {
     const built = fixture((text, values) => {
-      if (text.includes("pg_catalog.pg_constraint AS fk")) return embedForeignKeys;
+      if (text.includes("pg_catalog.pg_constraint AS fk")) return embedForeignKeysFor(values);
       if (text.includes('FROM "public"."customers"')) return [{ id: values?.[0], name: "Anna" }];
       if (text.includes('FROM "public"."items"')) {
         return Array.from({ length: DATA_API_LIMITS.maxEmbedRows + 1 }, (_, index) => ({
@@ -415,8 +453,8 @@ describe("generated project data API", () => {
   });
 
   it("refuses an unknown relation, an embed over the limit, a neighbour without row security and an alias on a column (2.66)", async () => {
-    const build = () => fixture((text) => {
-      if (text.includes("pg_catalog.pg_constraint AS fk")) return embedForeignKeys;
+    const build = () => fixture((text, values) => {
+      if (text.includes("pg_catalog.pg_constraint AS fk")) return embedForeignKeysFor(values);
       if (text.includes('FROM "public"."orders"')) return [{ id: order1, status: "paid", customer_id: customer1 }];
       return [];
     }, embedMetadata());
@@ -441,7 +479,7 @@ describe("generated project data API", () => {
     expect(at.embeds).toHaveLength(DATA_API_LIMITS.maxEmbeds);
 
     // Die Nachbartabelle ohne Zeilensicherheit: derselbe Code wie fuer die Tabelle selbst.
-    const noRls = fixture((text) => text.includes("pg_catalog.pg_constraint AS fk") ? embedForeignKeys : [],
+    const noRls = fixture((text, values) => text.includes("pg_catalog.pg_constraint AS fk") ? embedForeignKeysFor(values) : [],
       embedMetadata({ open_notes: { row_security_enabled: false } }));
     await expect(noRls.service.listRows(context, scope, {
       schema: "public", table: "orders", embed: [{ alias: "notes", relation: "open_notes" }],

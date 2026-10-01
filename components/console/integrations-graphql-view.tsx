@@ -12,6 +12,7 @@ import {
   GRAPHQL_CONSOLE_ROLE,
   GRAPHQL_LIMIT_DEPTH,
   GRAPHQL_LIMIT_FIELDS,
+  GRAPHQL_LIMIT_EMBEDS,
   GRAPHQL_LIMIT_MUTATIONS,
   GRAPHQL_LIMIT_ROWS,
   GRAPHQL_MUTATION_ARGUMENT_TEXTS,
@@ -344,6 +345,7 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
       <p className="muted">{t(GRAPHQL_WHY_LIMITS)}</p>
       <div className="detail-list">
         <div><span>{t("Tiefe")}</span><strong>{formatNumber(limits.maxDepth)}</strong></div>
+        <div><span>{t("Tiefe einer Mutation")}</span><strong>{formatNumber(limits.maxMutationDepth)}</strong></div>
         <div><span>{t("Felder je Abfrage")}</span><strong>{formatNumber(limits.maxFields)}</strong></div>
         <div><span>{t("Tabellen je Abfrage")}</span><strong>{formatNumber(limits.maxTables)}</strong></div>
         <div><span>{t("Zeilen je Feld")}</span><strong>{formatNumber(limits.maxRowsPerField)}</strong></div>
@@ -358,6 +360,7 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
       <p className="muted">{t(GRAPHQL_LIMIT_FIELDS)}</p>
       <p className="muted">{t(GRAPHQL_LIMIT_ROWS)}</p>
       <p className="muted">{t(GRAPHQL_LIMIT_MUTATIONS)}</p>
+      <p className="muted">{t(GRAPHQL_LIMIT_EMBEDS)}</p>
       <p className="muted">{t(GRAPHQL_SEQUENTIAL)}</p>
       <p className="muted">{t(GRAPHQL_NO_INTROSPECTION)}</p>
       <p className="muted">{t(GRAPHQL_NO_COST_ESTIMATE)}</p>

@@ -766,14 +766,37 @@ lesbaren, nicht sensiblen Spalten der Nachbartabelle. Steht in `select` nur eine
 Einbettung und keine Spalte, kommen alle Spalten der Tabelle mit.
 
 Die Grenzen stehen in `lib/data-api-limits.ts` und die Console zeigt sie unter
-Einstellungen → Data API: höchstens 3 Einbettungen je Anfrage (`maxEmbeds`) und
+Einstellungen → Data API: höchstens 3 Einbettungen je Ebene (`maxEmbeds`) und
 höchstens 20 Zeilen je Einbettung und Elternzeile (`maxEmbedRows`); mehr wird
-beschnitten und die Antwort sagt es an der Einbettung mit `truncated: true`.
-Genau eine Ebene: Eine Klammer in einer Klammer ist ein `400`, ebenso eine
-unbekannte Beziehung, ein Alias, der mit einer Spalte zusammenfällt, oder zwei
-Fremdschlüssel zwischen denselben Tabellen, weil dann nicht feststeht, welcher
-gemeint ist. Eine Tabelle, die auf sich selbst zeigt, fällt aus demselben
-Grund. Fremdschlüssel in ein anderes Schema kennt die Einbettung nicht.
+beschnitten und die Antwort sagt es an der Einbettung mit `truncated: true`. Ein
+`400` gibt es für eine unbekannte Beziehung, einen Alias, der mit einer Spalte
+zusammenfällt, und für zwei Fremdschlüssel zwischen denselben Tabellen, weil dann
+nicht feststeht, welcher gemeint ist. Eine Tabelle, die auf sich selbst zeigt,
+fällt aus demselben Grund: Ob der Elternknoten oder die Kinder gemeint sind,
+steht nicht in der Anfrage.
+
+**Zwei Ebenen (seit 2.111), die zweite nur nach `one`.** Eine Einbettung darf
+eine zweite tragen, `select=titel,kommentare(text,verfasser:autoren(name))`:
+`maxEmbedDepth` ist 2 und `maxNestedEmbeds` ist 1. Auf der zweiten Ebene läuft
+nur ein Fremdschlüssel, der von der Nachbartabelle weg zeigt, also eine Zeile je
+Elternzeile. Die andere Richtung ist ein `400`, und zwar wegen der Zahlen: 20
+Zeilen je Elternzeile auf zwei Ebenen sind 400 Zeilen je Wurzelzeile, bei 100
+Wurzelzeilen 40 000 und über drei Einbettungen 120 000 Zeilen aus einer Anfrage,
+die acht Worte lang ist. Mit `one` auf der zweiten Ebene bleibt es bei
+höchstens 12 100 Zeilen und sieben Abfragen je Anfrage, gegen 6100 Zeilen und
+vier Abfragen vor 2.111. Eine dritte Ebene gibt es nicht; 20 Zeilen je
+Elternzeile wären dort 8000 Zeilen je Wurzelzeile.
+
+**Über Schemagrenzen (seit 2.112).** Vor dem Namen der Beziehung darf ein Schema
+stehen, `select=titel,autor:verlag.autoren(name)`. Hier geht es um die Tür und
+nicht um die Menge. Die Nachbartabelle im anderen Schema geht durch genau
+dieselbe Prüfung wie eine Basistabelle dieses Schemas, also Zeilensicherheit
+(`409`), nicht im Besitz der Aufruferrolle und Leserecht (`403`). Die Policy
+hängt an der Tabelle und nicht am Schema, und ein Schemawechsel ist darum kein
+Weg an einer Policy vorbei. Systemschemata bleiben abgewiesen. Die Antwort nennt
+`schema` an der Einbettung, und nur dort, wo es ein anderes ist als das der
+Anfrage. Eine zweite Ebene unter einer Einbettung im Nachbarschema bleibt in
+diesem Schema, ohne es noch einmal zu nennen.
 
 Die Nachbartabelle geht durch dieselbe Tür wie die Tabelle selbst: Sie braucht
 Row Level Security (`409`, `GENERATED_DATA_API_RLS_REQUIRED`) und lesbare, nicht
@@ -783,7 +806,8 @@ Zeilen der Liste; der Aufrufer sieht in der Einbettung genau die Zeilen, die die
 Policy der Nachbartabelle ihm erlaubt, und eine nicht sichtbare Elternzeile
 steht als `null`. Die Antwort führt je Einbettung `alias`, `relation`, `kind`
 (`one` oder `many`), den Namen des Fremdschlüssels und `truncated`. Geschrieben
-wird über eine Einbettung nie; `POST`, `PATCH` und `DELETE` kennen sie nicht.
+wird über eine Einbettung nie. An REST kennen `POST`, `PATCH` und `DELETE` sie
+nicht; an GraphQL trägt `records` sie seit 2.111, lesend (siehe unten).
 
 Beispiel mit einem bereits einmalig kopierten Key:
 
@@ -4462,6 +4486,43 @@ Obergrenze getroffener Zeilen. Jede Mutation antwortet mit `affectedCount` und
 `records`, beides mit Alias, und `records` nimmt dieselben Spalten wie ein
 Tabellenfeld.
 
+**Beziehungen in `records` (`2.111`), nur lesend.** Ein Feld in `records` mit
+eigener Auswahl ist eine Beziehung und keine Spalte:
+
+```graphql
+mutation {
+  updatebeitraegeCollection(set: { titel: "neu" }, where: ["id:eq:7"]) {
+    affectedCount
+    records {
+      titel
+      autor: autoren { name }
+      kommentare { text verfasser: autoren { name } }
+    }
+  }
+}
+```
+
+Was dort steht, ist dieselbe Einbettung wie an der Data API: dieselben Grenzen,
+dieselbe Tür, dieselbe Richtung und dieselben zwei Ebenen. Gelesen wird **in der
+Transaktion der Mutation** und unter denselben Ansprüchen, also sieht der
+Aufrufer in `records` keine Zeile, die ihm eine Lesung nicht auch gäbe. Die
+zweite Mutation einer Anfrage sieht dabei, was die erste gerade geschrieben hat.
+Mit `schema` an der Beziehung liegt die Nachbartabelle in einem anderen Schema
+(`2.112`); ein Punkt ist kein Feldname, darum steht es als Argument. Die Antwort
+führt die Angaben zu den Beziehungen unter `mutations[].embeds`, mit `kind`, dem
+Namen des Fremdschlüssels und `truncated`, damit ein Schnitt bei zwanzig
+Nachbarn nicht wie “es sind genau zwanzig“ aussieht.
+
+Ein Löschen trägt keine Beziehung: Die Nachbarzeilen einer gelöschten Zeile sind
+nach dem Löschen entweder mitgelöscht oder hätten das Löschen verhindert, und was
+dann zu lesen wäre, hängt an der Regel des Fremdschlüssels. **Geschrieben wird
+über eine Beziehung nie.** Ein Eingabeobjekt in einem Eingabeobjekt, also ein
+verschachteltes Anlegen, wird mit eigenem Grund abgewiesen
+(`nested_write_not_supported`), und die Grammatik führt es als `nested_writes`
+unter dem, was bewusst fehlt. Die Beziehungen stehen nicht im SDL: Das Dokument
+entsteht aus der Liste der lesbaren Tabellen, und die trägt keine
+Fremdschlüssel.
+
 **Upsert (`2.105`).** Das Einfügen nimmt ein weiteres Argument, `onConflict`,
 und wird damit zu `INSERT ... ON CONFLICT (…) DO UPDATE`:
 
@@ -4532,7 +4593,8 @@ genug, um die Datenbank beliebig lange zu beschäftigen.
 
 | Grenze | Wert | Warum |
 | --- | --- | --- |
-| Tiefe | 2 | Tabelle und Spalten, mehr gibt es nicht zu holen; eine Mutation hat eine Ebene mehr für `records` |
+| Tiefe | 2 | Tabelle und Spalten, mehr gibt es in einer Abfrage nicht zu holen |
+| Tiefe einer Mutation | 5 | gerechnet, nicht geschrieben: Tiefe einer Abfrage, eine Ebene für `records`, dazu `maxEmbedDepth` für die Beziehungen darin |
 | Felder je Abfrage | 60 | jedes Vorkommen einzeln, **Aliasse zählen mit** |
 | Tabellen je Abfrage | 5 | jedes Vorkommen ist eine eigene Lesung |
 | Zeilen je Feld | 100 | dieselbe Obergrenze wie die Data API |
