@@ -73,6 +73,39 @@ describe("Realtime standalone runtime contract", () => {
     expect(source).toContain("const changeSource = changesEnabled");
   });
 
+  it("stores presence durably, renews the lease in a tick and hands it to the retention", async () => {
+    // Dasselbe Muster, das dieses Projekt schon beim Poller, beim dauerhaften
+    // Log, bei der Webhook-Outbox und bei den Usage-Emittern gefunden hat:
+    // gebaut, zertifiziert und trotzdem nicht angeschlossen. Presence hat drei
+    // Haken, und jeder einzeln fehlende macht sie halb -- und halb dauerhafte
+    // Presence ist schlimmer als ehrlich fluechtige.
+    const source = await readFile(new URL("../workers/realtime-runtime.mts", import.meta.url), "utf8");
+    expect(source).toContain("new PostgresRealtimePresenceStore(new PostgresControlPlane(getPostgresPool()))");
+    // Der Takt: Ohne ihn laeuft die Pacht der eigenen Verbindungen aus, und eine
+    // Waise bleibt in einem stillen Kanal fuer immer sichtbar.
+    expect(source).toContain("void service.sweepPresence()");
+    expect(source).toContain("clearInterval(presenceTimer)");
+    // Der Hinweis zwischen den Instanzen.
+    expect(source).toContain("void service.deliverRemotePresence(reference)");
+    // Und der Aufraeumer, der die abgelaufene Zeile wirklich wegnimmt.
+    expect(source).toContain("presence: presence as PostgresRealtimePresenceStore");
+    expect(source).toContain("QKERN_REALTIME_PRESENCE_RETENTION_MS");
+    // Der Memory-Store nur hinter demselben ausdruecklichen Opt-in wie der
+    // Memory-Log, nie als stiller Rueckfall.
+    const memoryIndex = source.indexOf("new MemoryRealtimePresenceStore");
+    expect(memoryIndex).toBeGreaterThan(source.indexOf("ephemeralLog"));
+  });
+
+  it("gives a changes subscription the feed as its history instead of a second source", async () => {
+    // Ohne diese Zeile bliebe ein Cursor auf einem `changes:`-Kanal unerfuellbar,
+    // und ein Abonnent faenge nach einem Abbruch stillschweigend am Ende wieder
+    // an. Eine zweite Quelle waeren zwei Pool-Saetze auf denselben Feed.
+    const source = await readFile(new URL("../workers/realtime-runtime.mts", import.meta.url), "utf8");
+    expect(source).toContain("changeHistory: changeSource");
+    expect(source).toContain("QKERN_REALTIME_HISTORY_LIMIT");
+    expect(source).toContain("QKERN_REALTIME_HISTORY_MAX_AGE_MS");
+  });
+
   it("keeps poller errors out of this process log", async () => {
     // Eine Datenbankmeldung kann Tabellennamen oder Werte enthalten.
     const source = await readFile(new URL("../workers/realtime-runtime.mts", import.meta.url), "utf8");

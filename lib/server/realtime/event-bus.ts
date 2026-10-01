@@ -18,11 +18,39 @@ export type RealtimeEventReference = RealtimeScope & {
   origin: string;
 };
 
+/**
+ * Hinweis, dass sich die Presence eines Kanals geändert hat.
+ *
+ * Er trägt **keine Einträge**, nicht einmal einen Schlüssel. Der Grund ist
+ * derselbe wie beim Ereignisverweis, und er wiegt hier schwerer: Presence liegt
+ * seit 0077 in einer Tabelle, deren Lesung RLS-geprüft ist und deren Pacht über
+ * die Sichtbarkeit entscheidet. Einen Eintrag über `NOTIFY` zu schicken hieße,
+ * genau diese beiden Prüfungen zu umgehen — und eine Pacht, die unterwegs
+ * abläuft, käme als anwesend an. Die empfangende Instanz liest den Kanal
+ * stattdessen frisch und bildet die Differenz zu dem, was sie zuletzt
+ * zugestellt hat.
+ */
+export type RealtimePresenceReference = RealtimeScope & {
+  channel: string;
+  /** Instanz, in der sich etwas geändert hat. Verhindert doppelte Zustellung. */
+  origin: string;
+};
+
 export interface RealtimeEventBus {
   /** Meldet ein neu geschriebenes Ereignis an alle anderen Instanzen. */
   publish(reference: RealtimeEventReference): Promise<void>;
-  /** Registriert genau einen Empfänger. Ein zweiter Aufruf ist ein Fehler. */
-  subscribe(handler: (reference: RealtimeEventReference) => void): Promise<void>;
+  /** Meldet eine geänderte Presence an alle anderen Instanzen. */
+  publishPresence(reference: RealtimePresenceReference): Promise<void>;
+  /**
+   * Registriert genau einen Empfänger je Art. Ein zweiter Aufruf ist ein
+   * Fehler. Der Presence-Empfänger ist optional: Ohne ihn bleibt
+   * instanzübergreifende Presence ein Schnappschuss beim Abonnieren, und das
+   * ist eine andere Zusage als keine.
+   */
+  subscribe(
+    handler: (reference: RealtimeEventReference) => void,
+    presenceHandler?: (reference: RealtimePresenceReference) => void,
+  ): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -33,6 +61,7 @@ export interface RealtimeEventBus {
  */
 export class MemoryRealtimeEventBus implements RealtimeEventBus {
   private readonly handlers = new Set<(reference: RealtimeEventReference) => void>();
+  private readonly presenceHandlers = new Set<(reference: RealtimePresenceReference) => void>();
 
   async publish(reference: RealtimeEventReference): Promise<void> {
     for (const handler of this.handlers) {
@@ -41,22 +70,42 @@ export class MemoryRealtimeEventBus implements RealtimeEventBus {
     }
   }
 
-  async subscribe(handler: (reference: RealtimeEventReference) => void): Promise<void> {
+  async publishPresence(reference: RealtimePresenceReference): Promise<void> {
+    for (const handler of this.presenceHandlers) {
+      if (reference.origin === handlerOrigin.get(handler)) continue;
+      handler({ ...reference });
+    }
+  }
+
+  async subscribe(
+    handler: (reference: RealtimeEventReference) => void,
+    presenceHandler?: (reference: RealtimePresenceReference) => void,
+  ): Promise<void> {
     this.handlers.add(handler);
+    if (presenceHandler) this.presenceHandlers.add(presenceHandler);
   }
 
   /** Bindet einen Empfänger an eine Instanz, damit er sein eigenes Ereignis überspringt. */
-  subscribeAs(origin: string, handler: (reference: RealtimeEventReference) => void): void {
+  subscribeAs(
+    origin: string,
+    handler: (reference: RealtimeEventReference) => void,
+    presenceHandler?: (reference: RealtimePresenceReference) => void,
+  ): void {
     handlerOrigin.set(handler, origin);
     this.handlers.add(handler);
+    if (presenceHandler) {
+      handlerOrigin.set(presenceHandler, origin);
+      this.presenceHandlers.add(presenceHandler);
+    }
   }
 
   async close(): Promise<void> {
     this.handlers.clear();
+    this.presenceHandlers.clear();
   }
 }
 
-const handlerOrigin = new WeakMap<(reference: RealtimeEventReference) => void, string>();
+const handlerOrigin = new WeakMap<object, string>();
 
 export type PostgresRealtimeEventBusOptions = {
   /** Eigene Verbindung. `LISTEN` belegt sie dauerhaft und gehört nicht in einen Pool. */
@@ -101,8 +150,16 @@ export class PostgresRealtimeEventBus implements RealtimeEventBus {
   }
 
   async publish(reference: RealtimeEventReference): Promise<void> {
+    await this.notify(encode(reference));
+  }
+
+  async publishPresence(reference: RealtimePresenceReference): Promise<void> {
+    await this.notify(encodePresence(reference));
+  }
+
+  private async notify(body: Record<string, unknown>): Promise<void> {
     if (this.closed) return;
-    const payload = JSON.stringify(encode(reference));
+    const payload = JSON.stringify(body);
     if (Buffer.byteLength(payload, "utf8") > MAX_NOTIFICATION_BYTES) {
       throw new RealtimeError("REALTIME_PAYLOAD_TOO_LARGE");
     }
@@ -110,14 +167,29 @@ export class PostgresRealtimeEventBus implements RealtimeEventBus {
     await this.publisher.query("SELECT pg_notify($1, $2)", [this.channelName, payload]);
   }
 
-  async subscribe(handler: (reference: RealtimeEventReference) => void): Promise<void> {
+  async subscribe(
+    handler: (reference: RealtimeEventReference) => void,
+    presenceHandler?: (reference: RealtimePresenceReference) => void,
+  ): Promise<void> {
     if (this.listener) throw new RealtimeError("REALTIME_INVALID_MESSAGE");
     const connection = await this.options.connect();
     this.listener = connection;
 
     connection.on("notification", (message) => {
       if (message.channel !== this.channelName || !message.payload) return;
-      const reference = decode(message.payload);
+      // Ein Kanal fuer beide Arten, und zwar derselbe: `LISTEN` belegt eine
+      // Verbindung dauerhaft, und eine zweite davon nur fuer Presence waere ein
+      // zweiter dauerhafter Platz in `max_connections` ohne Gegenwert. Die Art
+      // steht im Koerper, im Feld `k`.
+      const parsed = parse(message.payload);
+      if (!parsed) return;
+      if (parsed.k === "p") {
+        const presence = decodePresence(parsed);
+        if (!presence || presence.origin === this.origin) return;
+        presenceHandler?.(presence);
+        return;
+      }
+      const reference = decode(parsed);
       // Das eigene Ereignis wurde lokal bereits zugestellt.
       if (!reference || reference.origin === this.origin) return;
       handler(reference);
@@ -157,28 +229,58 @@ function encode(reference: RealtimeEventReference) {
   };
 }
 
+/** Presence trägt keine Sequenz: Es gibt keine, nur einen Kanal, der sich geändert hat. */
+function encodePresence(reference: RealtimePresenceReference) {
+  return {
+    k: "p",
+    o: reference.organizationId,
+    p: reference.projectId,
+    e: reference.environment,
+    c: reference.channel,
+    i: reference.origin,
+  };
+}
+
 /** Gibt `null` zurück, statt bei fremder oder beschädigter Nutzlast zu werfen. */
-function decode(payload: string): RealtimeEventReference | null {
+function parse(payload: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-    const sequence = parsed.s;
-    if (
-      typeof parsed.o !== "string" || typeof parsed.p !== "string" || typeof parsed.e !== "string"
-      || typeof parsed.c !== "string" || typeof parsed.i !== "string"
-      || typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence < 1
-      || parsed.c.length > 128 || parsed.i.length > 64
-    ) {
-      return null;
-    }
-    return {
-      organizationId: parsed.o,
-      projectId: parsed.p,
-      environment: parsed.e as Environment,
-      channel: parsed.c,
-      sequence,
-      origin: parsed.i,
-    };
+    const parsed = JSON.parse(payload) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+/** Der gemeinsame Teil beider Arten: Scope, Kanal und Ursprung. */
+function decodeScope(parsed: Record<string, unknown>): (RealtimeScope & {
+  channel: string; origin: string;
+}) | null {
+  if (
+    typeof parsed.o !== "string" || typeof parsed.p !== "string" || typeof parsed.e !== "string"
+    || typeof parsed.c !== "string" || typeof parsed.i !== "string"
+    || parsed.c.length > 128 || parsed.i.length > 64
+  ) {
+    return null;
+  }
+  return {
+    organizationId: parsed.o,
+    projectId: parsed.p,
+    environment: parsed.e as Environment,
+    channel: parsed.c,
+    origin: parsed.i,
+  };
+}
+
+function decode(parsed: Record<string, unknown>): RealtimeEventReference | null {
+  const base = decodeScope(parsed);
+  const sequence = parsed.s;
+  if (!base || typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence < 1) {
+    return null;
+  }
+  return { ...base, sequence };
+}
+
+function decodePresence(parsed: Record<string, unknown>): RealtimePresenceReference | null {
+  return decodeScope(parsed);
 }

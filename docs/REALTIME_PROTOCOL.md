@@ -86,15 +86,79 @@ einen HMAC-signierten, Scope- und Channel-gebundenen `qk_rt_...`-Cursor.
 - Überschreitet der Catch-up das konfigurierte Replaylimit, antwortet der Server
   fail-closed mit `REALTIME_CURSOR_STALE`; er überspringt keine Events. Die App muss
   ihren Zustand über die normale Daten-API neu laden und danach neu abonnieren.
-- Alpha 1 hält History im Prozessspeicher. Ein Neustart verliert die History; bei
-  zufälligem lokalem Cursor-Secret werden außerdem frühere Cursors ungültig.
+- Der Log liegt in PostgreSQL und überlebt einen Neustart. Bei zufälligem lokalem
+  Cursor-Secret werden frühere Cursors ungültig; unter Production verlangt das Tor
+  deshalb ein gesetztes Geheimnis.
+
+### Nachreichen auf einem `changes:`-Kanal
+
+Ein `changes:`-Kanal hat keinen Event-Log und kann keinen haben: Was dort ankommt,
+entsteht in der Projektdatenbank. Sein Cursor zeigt deshalb auf eine Position im
+Änderungs-Feed, nicht auf eine Kanalsequenz. Jede `change`-Nachricht trägt ihre
+Position als Zahl und denselben signierten Cursor darauf.
+
+- Subscribe ohne Cursor beginnt am aktuellen Ende des Feeds.
+- Subscribe mit Cursor reicht die verpassten Änderungen dieser Tabelle nach, mit
+  `replay: true`.
+- **Jede nachgereichte Zeile wird einzeln mit den Claims des Abonnenten gelesen.**
+  Row Level Security entscheidet dabei neu, und zwar durch dieselbe Generated Data
+  API wie im Livebetrieb. Der Feed hält keine Zeilenwerte, nur Primärschlüssel; es
+  gibt hier also keinen Weg, auf dem eine Zeile an RLS vorbeikäme. `subscribed.replayed`
+  nennt die Zahl der Zeilen, die dieser Abonnent wirklich bekommt, nicht die Zahl im
+  Feed. Löschungen erreichen weiterhin nur `service_role`.
+- Zwei harte Grenzen, und beide fallen geschlossen mit `REALTIME_CURSOR_STALE`:
+  mehr Zeilen als `QKERN_REALTIME_HISTORY_LIMIT`, und eine älteste Zeile jenseits
+  von `QKERN_REALTIME_HISTORY_MAX_AGE_MS`. Ebenso, wenn die Aufbewahrung den
+  angeforderten Bereich bereits entfernt hat oder die Position hinter dem Feed liegt.
+  Ohne konfigurierte Quelle wird ein Cursor abgewiesen und nicht als „ab jetzt“
+  gelesen: Ein ignorierter Cursor wäre eine verschwiegene Lücke.
+- Eine Verbindung bekommt keine Position zweimal. Das Nachreichen und der Poller
+  laufen unter derselben Kanal-Serialisierung, und jede Verbindung führt die
+  höchste Position, die sie gesehen hat.
 
 ## Presence
 
 Presence enthält nur einen HMAC-abgeleiteten `qk_presence_...`-Schlüssel und den
 begrenzten JSON-State. User-ID, Project-Key, Token und Connection-ID werden nicht
 ausgegeben. Neue Subscriber erhalten einen Snapshot; Track/Untrack und Disconnect
-erzeugen Join-/Leave-Nachrichten.
+erzeugen Join-/Leave-Nachrichten. Ein geänderter State ist ein Join unter demselben
+Schlüssel.
+
+### Dauerhaft, und was das heißt
+
+Presence liegt in `realtime_presence` (Migration 0077) und nicht mehr in einer Map
+je Verbindung. Der Snapshot beim Abonnieren liest diese Tabelle und trägt darum die
+Abonnenten **aller** Instanzen; eine Änderung in einer Instanz erreicht die anderen
+über denselben `LISTEN`/`NOTIFY`-Kanal wie ein Ereignisverweis. Der Hinweis trägt
+keinen Eintrag, nur den Kanal: Die empfangende Instanz liest frisch und bildet die
+Differenz zu dem, was ihre Abonnenten zuletzt gesehen haben.
+
+### Die Pacht, und was mit einer verschwundenen Verbindung passiert
+
+Eine Verbindung verschwindet auch ohne Abmeldung: gekapptes Netz, getöteter Prozess,
+abgestürzter Rechner. Ein Leave schreibt dann niemand. Jeder Eintrag trägt deshalb
+ein `expires_at`, das der Prozess mit der Verbindung alle
+`QKERN_REALTIME_PRESENCE_SWEEP_MS` erneuert; nur er darf das, eine fremde Instanz
+nicht.
+
+Läuft die Pacht aus, wirkt das in zwei Stufen:
+
+1. **Die Sichtbarkeit endet am Ablauf.** Jede Lesung filtert auf `expires_at > now`.
+   Ab dieser Sekunde zählt der Eintrag für niemanden mehr.
+2. **Die Zeile fällt eine Frist später.** Der Aufräumer löscht bei
+   `expires_at < now - QKERN_REALTIME_PRESENCE_RETENTION_MS` (Vorgabe zehn Minuten),
+   damit eine Fehlersuche unmittelbar nach einem Vorfall die Waise noch findet.
+
+Derselbe Takt, der die eigenen Pachten erneuert, rechnet jeden Kanal mit lokalen
+Abonnenten neu und stellt den Ablauf als Leave zu. Ohne ihn bliebe eine Waise in
+einem Kanal, in dem nichts mehr passiert, für immer sichtbar.
+
+Eine geordnete Trennung wartet nicht auf die Pacht: Ein geschlossener Socket nimmt
+den Eintrag sofort weg. Die Pacht ist für den ungeordneten Fall da.
+
+Ein wieder aufsetzender Client bekommt einen neuen Presence-Schlüssel, weil er in
+die Verbindungskennung eingeht. Was den Neustart überlebt, ist die Presence des
+Kanals, nicht die Identität eines einzelnen Eintrags.
 
 ## Fehler und Schutzlimits
 
@@ -173,8 +237,7 @@ derselben CA, und eine echte Datenbankänderung geht durch
 mit dessen Claims; die Zeile eines anderen Nutzers kommt nicht an, weil Row Level
 Security sie nicht herausgibt.
 
-Ebenfalls offen: History und Presence liegen je Verbindung im Prozessspeicher,
-externe Rate-Limits und ein Lastprofil jenseits des Soak fehlen.
+Ebenfalls offen: externe Rate-Limits und ein Lastprofil jenseits des Soak fehlen.
 
 ## Dauerhaftigkeit und Mehrinstanzbetrieb (Release 1.11)
 

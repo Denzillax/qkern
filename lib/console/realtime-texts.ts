@@ -137,6 +137,26 @@ export const REALTIME_LIMIT_TEXTS: Record<string, RealtimeLimitText> = {
     label: "Felder in einem Presence-Zustand",
     explains: "Mehr Felder werden als zu gross abgelehnt.",
   },
+  presenceLimit: {
+    label: "Angezeigte Anwesende je Kanal",
+    explains: "So viele Einträge trägt ein Schnappschuss höchstens, geordnet nach Schlüssel.",
+  },
+  presenceLeaseMs: {
+    label: "Pacht eines Presence-Eintrags",
+    explains: "So lange gilt ein Eintrag ohne Erneuerung. Danach zählt er für niemanden mehr, auch wenn die Zeile noch steht.",
+  },
+  presenceSweepMs: {
+    label: "Takt der Presence-Erneuerung",
+    explains: "In diesem Takt erneuert der Prozess die Pacht seiner eigenen Verbindungen und meldet abgelaufene als gegangen.",
+  },
+  historyLimit: {
+    label: "Nachgereichte Änderungen beim Abonnieren",
+    explains: "So viele Änderungen holt ein Cursor auf einem changes-Kanal höchstens nach. Liegt mehr dazwischen, ist er veraltet.",
+  },
+  historyMaxAgeMs: {
+    label: "Alter, bis zu dem nachgereicht wird",
+    explains: "Älteres gilt als veraltet, auch wenn noch Zeilen im Feed liegen.",
+  },
   changePollMs: {
     label: "Takt der Änderungsabfrage",
     explains: "So oft fragt der Poller eine beobachtete Projektdatenbank nach neuen Zeilen.",
@@ -160,6 +180,10 @@ export const REALTIME_LIMIT_TEXTS: Record<string, RealtimeLimitText> = {
   retentionIntervalMs: {
     label: "Takt des Aufräumens",
     explains: "Aufgeräumt wird nur für Projekte, die ausdrücklich in der Umgebung stehen.",
+  },
+  presenceRetentionMs: {
+    label: "Frist bis zum Löschen einer abgelaufenen Presence",
+    explains: "Die Zeile fällt erst diese Frist nach dem Ablauf, damit eine Fehlersuche sie noch findet.",
   },
   usageFlushAt: {
     label: "Gezählte Nachrichten bis zum Schreiben",

@@ -45,6 +45,9 @@ import path from "node:path";
 import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto";
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
+// Dauerhafte Presence (2.113): der echte Store ueber die echte Laufzeitrolle,
+// weil der Fall Rechte, Policies und die Pacht der Tabelle aus 0077 prueft.
+import { PostgresRealtimePresenceStore } from "@/lib/server/realtime/postgres-presence-store";
 // S3-Zugang (2.78): echte Buckets ueber das Produkt-Repository, echte Ausgabe,
 // echter Widerruf. Der Hash wird nachgerechnet, damit der Fall sagen kann, dass
 // die Liste ihn nicht kennt.
@@ -13238,6 +13241,204 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       }
     }
   });
+
+  it("(2.113) keeps a presence entry only as long as its lease, lets the runtime role write one but not move it to another channel, and shows it to no other organization", async () => {
+    // Dauerhafte Presence (2.113) gegen die echte Tabelle aus 0077.
+    //
+    // Presence ist die einzige Angabe im Produkt, die etwas **Lebendes**
+    // behauptet: "dieser Abonnent ist jetzt da". Jede andere Zeile sagt, dass
+    // etwas geschehen ist. Daraus folgt alles, was dieser Fall prueft.
+    //
+    // **Die Frage.** Was passiert mit dem Eintrag einer Verbindung, die ohne
+    // Abmeldung verschwindet? Ein gekapptes Netz, ein getoeteter Prozess, ein
+    // abgestuerzter Rechner -- ein Leave schreibt in diesen Faellen niemand. Der
+    // Eintrag bliebe stehen und zeigte auf Dauer Abwesende an, und das ist
+    // schlimmer als keine Presence: Eine leere Liste ist ehrlich, eine falsche
+    // nicht.
+    //
+    // **Die Antwort sind zwei Stufen, und beide stehen hier.** Die Sichtbarkeit
+    // endet am Ablauf der Pacht, nicht am Loeschen: `list` filtert, und die
+    // Zeile zaehlt ab der Sekunde fuer niemanden mehr. Die Zeile selbst fallt
+    // eine kurze Frist spaeter, damit eine Fehlersuche unmittelbar nach dem
+    // Vorfall die Waise noch findet. Wer eine der beiden Stufen wegnimmt, hat
+    // entweder ein Fenster, in dem Abwesende als anwesend gelten, oder eine
+    // Tabelle, die von Waisen lebt.
+    const presenceOwner = randomUUID();
+    const presenceOrganization = randomUUID();
+    const presenceProject = randomUUID();
+    const presenceScope = {
+      organizationId: presenceOrganization, projectId: presenceProject,
+      environment: "development" as const,
+    };
+    const channel = `public:presence-${randomUUID().slice(0, 8)}`;
+
+    // Ein Bezugspunkt, und die Uhr des Falls zeigt genau darauf. Mit der
+    // Wanduhr laege die Grenze je Lauf woanders, und der Fall pruefte die
+    // Laufzeit statt die Pacht.
+    const base = Date.now();
+    const at = (ms: number) => new Date(base + ms);
+    const leaseMs = 30_000;
+
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [presenceOwner, `presence-owner-${presenceOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Durable Presence 2.113', $2, $3)`,
+    [presenceOrganization, `presence-${presenceOrganization}`, presenceOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Durable Presence 2.113', $3, 'test', 'ready', $4)`,
+    [presenceProject, presenceOrganization, `presence-${presenceProject}`, presenceOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`,
+    [presenceOrganization, presenceProject, `managed:${presenceProject}`]);
+
+    try {
+      // Der echte Store ueber die echte Laufzeitrolle. Keine Attrappe: Es geht
+      // hier um Rechte, Policies und Bedingungen der Tabelle.
+      const store = new PostgresRealtimePresenceStore(new PostgresControlPlane(runtime));
+
+      await store.put(presenceScope, channel, {
+        presenceKey: "qk_presence_2113alive0000000000",
+        state: { seat: 1 },
+        instanceId: "instance-a",
+        trackedAt: at(0),
+        expiresAt: at(leaseMs),
+      });
+      await store.put(presenceScope, channel, {
+        presenceKey: "qk_presence_2113ghost0000000000",
+        state: { seat: 2 },
+        instanceId: "instance-b",
+        trackedAt: at(0),
+        expiresAt: at(leaseMs),
+      });
+
+      // --- Stufe eins: die Sichtbarkeit endet am Ablauf -------------------
+      expect((await store.list(presenceScope, channel, at(leaseMs - 1), 10))
+        .map((entry) => entry.presenceKey)).toEqual([
+        "qk_presence_2113alive0000000000", "qk_presence_2113ghost0000000000",
+      ]);
+
+      // Die lebende Verbindung erneuert ihre Pacht, die verschwundene nicht.
+      await expect(store.renew(presenceScope, channel, "instance-a",
+        ["qk_presence_2113alive0000000000"], at(leaseMs * 4))).resolves.toBe(1);
+      // Und keine Instanz erneuert die Pacht einer fremden Verbindung. Ohne
+      // diese Grenze koennte eine Instanz die Waisen einer anderen beliebig
+      // lange am Leben halten, und die Pacht waere wirkungslos.
+      await expect(store.renew(presenceScope, channel, "instance-a",
+        ["qk_presence_2113ghost0000000000"], at(leaseMs * 4))).resolves.toBe(0);
+
+      // Eine Pacht spaeter zaehlt nur noch die lebende -- obwohl **beide**
+      // Zeilen noch in der Tabelle stehen.
+      expect((await store.list(presenceScope, channel, at(leaseMs + 1), 10))
+        .map((entry) => entry.presenceKey)).toEqual(["qk_presence_2113alive0000000000"]);
+      const standing = await owner.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM realtime_presence
+          WHERE organization_id=$1 AND channel=$2`, [presenceOrganization, channel]);
+      expect(standing.rows[0]!.count).toBe("2");
+
+      // --- Stufe zwei: die Zeile fallt eine Frist spaeter ------------------
+      //
+      // Der Aufraeumer schneidet bei `expires_at < now - Frist`, und der Store
+      // bekommt genau diesen Schnitt. Die Rechnung steht hier ausgeschrieben,
+      // weil sie der Gegenstand des Falls ist: Die Waise lief bei `leaseMs` ab,
+      // die lebende Pacht reicht bis `leaseMs * 4`.
+      const graceMs = 600_000;
+      const cutoffAt = (nowMs: number) => at(nowMs - graceMs);
+
+      // Eine Minute nach dem Ablauf: Der Schnitt liegt noch vor dem Anfang der
+      // Zeit, also bleibt die Waise liegen.
+      await expect(store.prune(presenceScope, cutoffAt(leaseMs + 60_000), 100))
+        .resolves.toBe(0);
+
+      // Eine Frist spaeter faellt sie, und die lebende bleibt: Ihr `expires_at`
+      // liegt bei `leaseMs * 4` und damit hinter dem Schnitt.
+      const late = leaseMs + 60_000 + graceMs;
+      expect(cutoffAt(late).getTime()).toBeLessThan(at(leaseMs * 4).getTime());
+      await expect(store.prune(presenceScope, cutoffAt(late), 100)).resolves.toBe(1);
+      await expect(store.prune(presenceScope, cutoffAt(late), 100)).resolves.toBe(0);
+      expect((await store.list(presenceScope, channel, at(leaseMs + 1), 10))
+        .map((entry) => entry.presenceKey)).toEqual(["qk_presence_2113alive0000000000"]);
+
+      // --- Die Bedingung der Tabelle --------------------------------------
+      // Eine Pacht, die vor ihrem Beginn endet, ist keine. Der CHECK aus 0077
+      // sagt das, und der Store sagt es vor der Datenbank noch einmal.
+      //
+      // Die Meldung des Treibers kommt gekapselt an: `withTenantTransaction`
+      // macht aus einer Verletzung einen `InvalidRecordError`, dessen Text keine
+      // Tabelle und keinen Wert nennt. Geprueft wird darum der Code, und die
+      // Bedingung selbst steht in der Ursache -- genau dort gehoert sie hin.
+      const backwards = await withTenantTransaction(
+        runtime, { organizationId: presenceOrganization },
+        (transaction) => transaction.query(
+          `INSERT INTO realtime_presence (organization_id, project_id, environment, channel,
+             presence_key, instance_id, state, tracked_at, expires_at)
+           VALUES ($1,$2,'development',$3,'qk_presence_2113backwards','instance-a','{}',$4,$5)`,
+          [presenceOrganization, presenceProject, channel, at(0), at(0)],
+        ),
+      ).then(() => null, (error: unknown) => error);
+      expect(backwards).toMatchObject({ code: "INVALID_RECORD" });
+      expect((backwards as { cause?: { constraint?: string } }).cause?.constraint)
+        .toBe("realtime_presence_lease_forward");
+
+      // --- Die Spaltenrechte ----------------------------------------------
+      // Die Laufzeitrolle darf den Zustand und die Pacht fortschreiben. Den
+      // Kanal und den Schluessel darf sie nicht umschreiben: Das waere keine
+      // Erneuerung, sondern ein Umhaengen einer Presence auf einen anderen
+      // Kanal -- und damit eine Anwesenheit, die niemand behauptet hat.
+      // Ueber den rohen Pool der Laufzeitrolle, nicht ueber die Transaktion: Ein
+      // Spaltenrecht wird vor jeder Policy geprueft, und die Meldung soll
+      // unverpackt lesbar sein.
+      await expect(runtime.query(
+        `UPDATE realtime_presence SET channel='public:hijacked'
+          WHERE organization_id=$1 AND channel=$2`, [presenceOrganization, channel],
+      )).rejects.toThrowError(/permission denied/i);
+      await expect(runtime.query(
+        `UPDATE realtime_presence SET presence_key='qk_presence_2113stolen'
+          WHERE organization_id=$1 AND channel=$2`, [presenceOrganization, channel],
+      )).rejects.toThrowError(/permission denied/i);
+      // Und die Gegenprobe, damit die beiden oben nicht an etwas anderem
+      // scheitern: Die Pacht selbst darf dieselbe Rolle fortschreiben.
+      await expect(store.renew(presenceScope, channel, "instance-a",
+        ["qk_presence_2113alive0000000000"], at(leaseMs * 4))).resolves.toBe(1);
+
+      // --- Die Rollengrenze ------------------------------------------------
+      // Presence entsteht auf demselben Weg wie ein Broadcast, also gehoert sie
+      // derselben Rolle. Keine andere bekommt hier ein Recht; `qkern_auth` haelt
+      // Anmeldungen, und eine Anwesenheit ist keine.
+      const privileges = await owner.query<{
+        role: string; may_select: boolean; may_insert: boolean; may_delete: boolean;
+      }>(
+        `SELECT role AS role,
+                has_table_privilege(role, 'realtime_presence', 'SELECT') AS may_select,
+                has_table_privilege(role, 'realtime_presence', 'INSERT') AS may_insert,
+                has_table_privilege(role, 'realtime_presence', 'DELETE') AS may_delete
+           FROM unnest(ARRAY['qkern_runtime','qkern_auth','qkern_worker','qkern_provisioner'])
+             AS role
+          ORDER BY role`);
+      expect(privileges.rows).toEqual([
+        { role: "qkern_auth", may_select: false, may_insert: false, may_delete: false },
+        { role: "qkern_provisioner", may_select: false, may_insert: false, may_delete: false },
+        { role: "qkern_runtime", may_select: true, may_insert: true, may_delete: true },
+        { role: "qkern_worker", may_select: false, may_insert: false, may_delete: false },
+      ]);
+
+      // --- Die Tenantgrenze ------------------------------------------------
+      // Eine fremde Organisation sieht die Zeile nicht, und zwar durch RLS und
+      // nicht durch eine Bedingung im Code.
+      expect(await store.list(
+        { ...presenceScope, organizationId: organizationB }, channel, at(0), 10,
+      )).toEqual([]);
+      // Und sie raeumt sie auch nicht weg.
+      await expect(store.prune(
+        { ...presenceScope, organizationId: organizationB }, at(leaseMs * 100), 100,
+      )).resolves.toBe(0);
+      expect(await store.list(presenceScope, channel, at(leaseMs + 1), 10)).toHaveLength(1);
+    } finally {
+      await owner.query("DELETE FROM organizations WHERE id = $1", [presenceOrganization]);
+      await owner.query("DELETE FROM users WHERE id = $1", [presenceOwner]);
+    }
+  }, 60_000);
 
 });
 

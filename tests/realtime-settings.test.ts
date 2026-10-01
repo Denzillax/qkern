@@ -73,13 +73,17 @@ describe("realtime settings", () => {
     }
   });
 
-  it("reads the three switches without ever reading an address", () => {
-    expect(realtimeFeatures({})).toEqual({ enabled: false, changes: false, durableLog: true });
+  it("reads the four switches without ever reading an address", () => {
+    expect(realtimeFeatures({})).toEqual({
+      enabled: false, changes: false, durableLog: true, durablePresence: true,
+    });
     expect(realtimeFeatures({
       QKERN_REALTIME_ENABLED: "true",
       QKERN_REALTIME_CHANGES_ENABLED: "true",
       QKERN_REALTIME_EPHEMERAL_LOG: "true",
-    })).toEqual({ enabled: true, changes: true, durableLog: false });
+    })).toEqual({
+      enabled: true, changes: true, durableLog: false, durablePresence: false,
+    });
     // Nur das ausdrueckliche Ja zaehlt, wie in der Runtime.
     expect(realtimeFeatures({ QKERN_REALTIME_ENABLED: "1" }).enabled).toBe(false);
   });

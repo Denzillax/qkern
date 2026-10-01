@@ -13,6 +13,7 @@ import type {
   RealtimeSink,
 } from "@/lib/server/realtime/model";
 import { PrefixRealtimeAuthorization } from "@/lib/server/realtime/policy";
+import { PostgresRealtimePresenceStore } from "@/lib/server/realtime/postgres-presence-store";
 import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
 import { RealtimeRetentionRuntime } from "@/lib/server/realtime/retention-runtime";
 import { RealtimeService } from "@/lib/server/realtime/service";
@@ -74,7 +75,10 @@ describe.runIf(enabled)("Realtime PostgreSQL certification", () => {
   });
 
   /** Baut eine eigenstaendige Instanz: eigener Pool, eigener Bus, eigener Dienst. */
-  async function instance(name: string) {
+  async function instance(name: string, options: {
+    presenceLeaseMs?: number;
+    clock?: { now: Date };
+  } = {}) {
     const pool = verifyDatabaseBoundary(
       createPostgresPool({ connectionString: runtimeUrl!, max: 4 }), "runtime",
     );
@@ -90,14 +94,25 @@ describe.runIf(enabled)("Realtime PostgreSQL certification", () => {
     });
     buses.push(bus);
 
+    const controlPlane = new PostgresControlPlane(pool);
     const service = new RealtimeService({
-      eventLog: new PostgresRealtimeEventLog(new PostgresControlPlane(pool)),
+      eventLog: new PostgresRealtimeEventLog(controlPlane),
+      // Presence liegt seit 0077 in der Datenbank. Derselbe Pool, dieselbe
+      // tenantgebundene Transaktion, dieselbe Rolle wie beim Log.
+      presence: new PostgresRealtimePresenceStore(controlPlane),
       eventBus: bus,
       instanceId: name,
       authorization: new PrefixRealtimeAuthorization(),
       cursor,
+      ...(options.presenceLeaseMs ? { presenceLeaseMs: options.presenceLeaseMs } : {}),
+      // Die Uhr des Falls, nicht die der Wand: Eine Pacht, die man nicht
+      // ablaufen lassen kann, ist keine.
+      ...(options.clock ? { now: () => new Date(options.clock!.now) } : {}),
     });
-    await bus.subscribe((reference) => { void service.deliverRemote(reference); });
+    await bus.subscribe(
+      (reference) => { void service.deliverRemote(reference); },
+      (reference) => { void service.deliverRemotePresence(reference); },
+    );
     return service;
   }
 
@@ -206,6 +221,127 @@ describe.runIf(enabled)("Realtime PostgreSQL certification", () => {
     );
     expect(seen.events).toEqual([]);
     expect(seen.latestSequence).toBe(0);
+  });
+
+  it("merges the presence of two instances and keeps it across a restart of the one that wrote it", async () => {
+    // Presence lag bis zu diesem Slice in einer Map je Verbindung. Ein Abonnent
+    // der zweiten Instanz erfuhr von den Abonnenten der ersten nichts, und ein
+    // Neustart loeschte alles. Beides steht hier gegen echtes PostgreSQL.
+    const a = await instance(`pres-a-${randomUUID().slice(0, 8)}`);
+    const b = await instance(`pres-b-${randomUUID().slice(0, 8)}`);
+    const channel = `public:presence-${randomUUID().slice(0, 8)}`;
+
+    const aliceSink = new Sink();
+    const alice = a.connect(scope, principal("alice"), aliceSink);
+    await a.subscribe(alice, "r1", channel);
+    await a.trackPresence(alice, "r2", channel, { seat: 1 });
+
+    // Der Schnappschuss der zweiten Instanz traegt den Abonnenten der ersten.
+    const bobSink = new Sink();
+    const bob = b.connect(scope, principal("bob"), bobSink);
+    await b.subscribe(bob, "r3", channel);
+    const snapshot = bobSink.messages.filter((message) => message.type === "presence");
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0]).toMatchObject({ channel, leaves: [] });
+    expect(snapshot[0].type === "presence" && snapshot[0].joins.map((entry) => entry.state))
+      .toEqual([{ seat: 1 }]);
+
+    // Und der Beitritt in der zweiten erreicht die erste ueber `LISTEN`/`NOTIFY`.
+    await b.trackPresence(bob, "r4", channel, { seat: 2 });
+    await until(() => aliceSink.messages.some((message) => message.type === "presence"
+      && message.joins.some((entry) => JSON.stringify(entry.state) === '{"seat":2}')));
+
+    // Die Zeile liegt in der Tabelle, mit Pacht und ohne Subjekt im Klartext.
+    const rows = await owner.query<{ presence_key: string; state: unknown; expires_at: Date }>(
+      `SELECT presence_key, state, expires_at FROM realtime_presence
+        WHERE organization_id=$1 AND project_id=$2 AND environment='development' AND channel=$3
+        ORDER BY presence_key`,
+      [organizationId, projectId, channel]);
+    expect(rows.rows).toHaveLength(2);
+    for (const row of rows.rows) {
+      expect(row.presence_key.startsWith("qk_presence_")).toBe(true);
+      expect(JSON.stringify(row)).not.toContain("alice");
+      expect(JSON.stringify(row)).not.toContain("bob");
+    }
+
+    // Ein frischer Dienst mit frischem Pool entspricht einem Neustart. Er sieht
+    // beide Eintraege, obwohl er keine der Verbindungen haelt.
+    const restarted = await instance(`pres-r-${randomUUID().slice(0, 8)}`);
+    const lateSink = new Sink();
+    const late = restarted.connect(scope, principal("late"), lateSink);
+    await restarted.subscribe(late, "r5", channel);
+    const seen = lateSink.messages.filter((message) => message.type === "presence");
+    expect(seen[0]?.type === "presence" && seen[0].joins).toHaveLength(2);
+  });
+
+  it("lets the presence of a connection that vanished without a goodbye expire, reports the leave and removes the row a grace later", async () => {
+    // **Die Frage, die dauerhafte Presence stellt.** Ein Eintrag, der ewig
+    // bliebe, zeigte Leute an, die nicht da sind, und das ist schlimmer als keine
+    // Presence.
+    const leaseMs = 30_000;
+    const clock = { now: new Date() };
+    const ghostInstance = await instance(`ghost-${randomUUID().slice(0, 8)}`, {
+      presenceLeaseMs: leaseMs, clock,
+    });
+    const watcherInstance = await instance(`watch-${randomUUID().slice(0, 8)}`, {
+      presenceLeaseMs: leaseMs, clock,
+    });
+    const channel = `public:ghost-${randomUUID().slice(0, 8)}`;
+
+    const ghost = ghostInstance.connect(scope, principal("ghost"), new Sink());
+    await ghostInstance.subscribe(ghost, "r1", channel);
+    await ghostInstance.trackPresence(ghost, "r2", channel, { online: true });
+
+    const watcherSink = new Sink();
+    const watcher = watcherInstance.connect(scope, principal("watcher"), watcherSink);
+    await watcherInstance.subscribe(watcher, "r3", channel);
+    expect(watcherSink.messages.filter((message) => message.type === "presence")).toHaveLength(1);
+
+    // Die Instanz, die die Verbindung hielt, antwortet nicht mehr. Nur die Uhr
+    // laeuft weiter -- es gibt kein `disconnect`, denn das waere eine Abmeldung.
+    clock.now = new Date(clock.now.getTime() + leaseMs + 5_000);
+
+    // Der Takt der ueberlebenden Instanz sammelt die Waise ein.
+    await watcherInstance.sweepPresence();
+    const leave = watcherSink.messages.filter((message) => message.type === "presence").at(-1);
+    expect(leave?.type === "presence" && leave.joins).toEqual([]);
+    expect(leave?.type === "presence" && leave.leaves).toHaveLength(1);
+
+    // Die Zeile steht noch -- und zaehlt trotzdem fuer niemanden. Zwei Stufen,
+    // und beide noetig: Ohne die erste gaebe es ein Fenster, in dem Abwesende als
+    // anwesend gelten, ohne die zweite lebte die Tabelle von Waisen.
+    const before = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM realtime_presence
+        WHERE organization_id=$1 AND channel=$2`, [organizationId, channel]);
+    expect(Number(before.rows[0].count)).toBe(1);
+
+    const presenceStore = new PostgresRealtimePresenceStore(
+      new PostgresControlPlane(pools[pools.length - 1]),
+    );
+    const sweep = () => new RealtimeRetentionRuntime({
+      eventLog: { async prune() { return 0; } },
+      presence: presenceStore,
+      scopes: [scope],
+      eventRetentionMs: 60_000,
+      changeRetentionMs: 60_000,
+      presenceRetentionMs: 600_000,
+      now: () => new Date(clock.now),
+    }).runOnce();
+
+    // Innerhalb der Frist bleibt sie liegen.
+    await expect(sweep()).resolves.toMatchObject({ presence: 0 });
+    // Eine Frist spaeter ist sie weg. Gezaehlt wird mindestens eine, weil der
+    // Aufraeumer je Scope arbeitet und die Eintraege der anderen Faelle dieser
+    // Datei im selben Scope liegen; welche Zeile verschwunden ist, sagt die
+    // Zaehlung je Kanal darunter.
+    clock.now = new Date(clock.now.getTime() + 600_000);
+    const swept = await sweep();
+    expect(swept.presence).toBeGreaterThanOrEqual(1);
+
+    const after = await owner.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM realtime_presence
+        WHERE organization_id=$1 AND channel=$2`, [organizationId, channel]);
+    expect(Number(after.rows[0].count)).toBe(0);
   });
 
   it("refuses to change a stored event", async () => {
