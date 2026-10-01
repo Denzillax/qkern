@@ -49,6 +49,30 @@ verbliebenen Konsolen-Platzhalter (Abrechnung, Data-API-Einstellungen),
 Sessions/Audit/Secrets gegen lokale Dienste, Schemanamen mit
 Grossbuchstaben.
 
+- Neu in diesem Zweig: 2.119 (Zweig `slice/addons`) **Eine Rechnungsposition
+  traegt eine Bezeichnung, und eine Rechnung mehr als sechs Positionen.**
+  Migration `0080_billing_invoice_positions.sql` gibt `billing_invoice_lines`
+  die Spalten `line_key` und `label`, macht `metric` nullbar und ersetzt
+  `UNIQUE (invoice_id, metric)` durch `UNIQUE (invoice_id, line_key)`. Der
+  Schluessel ist abgeleitet, nicht erzeugt: `metric:<kennung>` oder
+  `charge:<code>`. **Die wichtige Unterscheidung:** Die Idempotenz des
+  Rechnungslaufs traegt weiterhin allein
+  `UNIQUE (organization_id, project_id, environment, period_start)` auf der
+  Rechnung; der Schluessel je Position verhindert nur, dass eine Rechnung
+  dieselbe Sache zweimal nennt. Pauschalen liegen in der neuen append-only
+  Tabelle `billing_charges` je (Organisation, Projekt, Umgebung, Code) mit
+  Bezeichnung, Betrag, Waehrung und Gueltig-ab-Datum; Betrag 0 beendet sie,
+  gelesen wird je Code die juengste Zeile. Eine Pauschale kommt mit Menge 1 und
+  Bezugsgroesse 1 zu ihrem Betrag, es gibt **keinen** Positionstyp mit
+  eingetragenem Betrag. Gesetzt wird sie von einem Operator ueber
+  `BillingService.setCharge`, ohne REST-Flaeche; eine Waehrung je Organisation
+  gilt jetzt fuer beide Blaetter. Der Rechnungslauf besucht Umgebungen nun auch
+  wegen einer Pauschale, nicht nur wegen Zaehlern. Projektion
+  (`GET .../usage/billing`) traegt `charges`, die Rechnungsliste je Position
+  `lineKey`, `label` und `kind`. Die Add-ons-Seite sagt deshalb etwas anderes
+  als in 2.62 und begruendet es neu. Fall `(2.119)` in
+  `postgres.integration.test.ts`.
+
 - Neu in diesem Zweig: 2.79 (Zweig `slice/passkeys`) **Anmeldung mit Passkeys
   fuer Project Auth, mit jeder Pruefung, die wirklich laeuft.** Der Platzhalter
   `auth-passkeys` ist echt, Migration
@@ -775,10 +799,9 @@ Grossbuchstaben.
   Broadcast geschickt hat.** Zugestellte Datenbankaenderungen werden je
   Abonnent mit dessen Anspruechen gelesen und nie gemeinsam gespeichert,
   Presence gar nicht. Verbindungen liegen in einer Map im Prozessspeicher.
-  Drittens: **Eine Rechnungszeile hat kein Feld fuer eine Bezeichnung**, und
-  die Eindeutigkeit je Metrik begrenzt sie auf sechs. Eine Pauschale haette
-  keine Menge und damit keinen Weg zu einem Betrag; deshalb gibt es keine
-  Add-ons und nicht bloss keine Oberflaeche dafuer.
+  Drittens, damals: **Eine Rechnungszeile hatte kein Feld fuer eine
+  Bezeichnung**, und die Eindeutigkeit je Metrik begrenzte sie auf sechs. Dieser
+  Befund ist mit Migration `0080` abgearbeitet; siehe den Eintrag 2.119 oben.
 
   Der Fall `(2.88)` liegt in `provisioning-port-postgres.integration.test.ts`
   und nicht in `postgres.integration.test.ts`: Dieselbe Beweiskraft, aber die

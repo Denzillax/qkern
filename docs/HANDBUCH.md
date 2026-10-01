@@ -5362,29 +5362,24 @@ Vermittler für das Einspielen auf Produktion und das Ziel für
 Störungsmeldungen. Sie stehen mit Namen und **ohne** Zustand da; sie als nicht
 eingerichtet zu zeigen wäre eine Behauptung, sie wegzulassen eine Lücke.
 
-**Add-ons: es gibt nichts, was extra kostet.** Der Platzhalter versprach
-„Zusatzleistungen wie eigene Domain oder mehr Backups“. Geprüft wurde die
-Abrechnung, und dort fehlt nicht eine Oberfläche, sondern die Form. Abgerechnet
-wird ausschliesslich je Metrik, und die Liste ist geschlossen: Dieselben sechs
-Kennungen stehen als Prüfbedingung in `0039_billing_rate_cards.sql`, noch
-einmal in `0040_billing_invoices.sql` und ein drittes Mal als Aufzählung in
-`lib/openapi.ts`. Eine Rechnungszeile trägt eine dieser sechs, eine Menge,
-einen Stückpreis, eine Bezugsgrösse und den Betrag daraus; ein Feld für eine
-Bezeichnung oder eine Beschreibung gibt es nicht, und `UNIQUE (invoice_id,
-metric)` begrenzt eine Rechnung auf höchstens sechs Zeilen. Eine Pauschale
-hätte keine Menge und damit keinen Weg zu einem Betrag. Ein Posten „eigene
-Domain“ ist also nicht bloss nicht eingerichtet, sondern nicht ausdrückbar.
+**Add-ons: damals fehlte die Form, und das ist inzwischen behoben.** Der
+Platzhalter versprach „Zusatzleistungen wie eigene Domain oder mehr Backups“.
+Geprüft wurde die Abrechnung, und dort fehlte damals keine Oberfläche, sondern
+die Form: Eine Rechnungszeile hatte kein Feld für eine Bezeichnung,
+`UNIQUE (invoice_id, metric)` begrenzte eine Rechnung auf höchstens sechs
+Zeilen, und eine Pauschale hätte ohne Menge keinen Weg zu einem Betrag gehabt.
+Dieser Befund ist mit Migration `0080` abgearbeitet; was heute gilt, steht im
+nächsten Abschnitt. Die Seite zeigt seitdem den ganzen Katalog der sechs
+Metriken **und** die Pauschalen der Umgebung.
 
-Die Seite wiederholt deshalb nicht die Projektion aus Einstellungen →
-Abrechnung, sondern zeigt den **ganzen** Katalog, auch die Metriken ohne
-Preis: Die Frage lautet nicht „was kostet es“, sondern „was kann überhaupt
-etwas kosten“. Gelesen wird dieselbe Route `GET .../usage/billing`, Geld läuft
-durch das Ledgerformat aus `2.37`. Dazu steht dort, was es ausserdem nicht
-gibt: keine Zahlungsanbindung, keine Tarife (die drei Pakete auf der Startseite
-hängen an keiner Zeile der Abrechnung), kein gekauftes Kontingent. Und wer
-einen Preis setzen will, tut es als Operator ausserhalb der Console: Das
-Preisblatt hat keine REST-Fläche, und seine Zeilen lassen sich weder ändern
-noch löschen, weil es dafür keine Zeilenpolitik gibt.
+Gelesen wird dafür dieselbe Route `GET .../usage/billing`, Geld läuft durch das
+Ledgerformat aus `2.37`. Dazu steht dort, was es weiterhin nicht gibt: keine
+Zahlungsanbindung, keine Tarife (die drei Pakete auf der Startseite hängen an
+keiner Zeile der Abrechnung), kein gekauftes Kontingent und keine Stelle, an
+der jemand selbst etwas dazubucht. Einen Preis oder eine Pauschale setzt ein
+Operator ausserhalb der Console: Beide Blätter haben keine schreibende
+REST-Fläche, und ihre Zeilen lassen sich weder ändern noch löschen, weil es
+dafür keine Zeilenpolitik gibt.
 
 **Der Fall gegen die echte Datenbank.** Neu ist genau eine Lesung, der Zustand
 des Provisionierungsauftrags, und sie ist belegt: `(2.88)` in
@@ -5403,6 +5398,68 @@ nicht bloss, dass die Sätze dastehen, sondern dass sie stimmen: Er liest
 `0020`, `0039`, `0040`, den Arbeiter, den Vermittler-Adapter, alle Migrationen
 auf ein `GRANT` an `qkern_runtime` und den ganzen Baum auf ein Modul, das doch
 mit einem Git-Hoster spricht.
+
+### Eine Rechnung mit mehr als sechs Positionen
+
+Eine Rechnung konnte genau sechs Positionen tragen, eine je Metrik, und nichts
+anderes. Drei Dinge standen dem im Weg, und Migration `0080` räumt alle drei
+weg.
+
+**Eine Position trägt jetzt eine Bezeichnung und einen stabilen Schlüssel.**
+Der Schlüssel sagt, was die Position ist: `metric:<kennung>` für einen
+gemessenen Posten, `charge:<code>` für eine Pauschale. Die Eindeutigkeit hängt
+an ihm, `UNIQUE (invoice_id, line_key)` statt `UNIQUE (invoice_id, metric)`.
+Das ist die wichtige Unterscheidung dieser Ausgabe: Die alte Eindeutigkeit hat
+zwei Dinge zugleich getan, und nur eines davon war gewollt. Sie hat verhindert,
+dass eine Rechnung dieselbe Sache zweimal nennt, und als Nebenwirkung die Zahl
+der Zeilen auf sechs begrenzt. Die Idempotenz des Rechnungslaufs hat sie nie
+getragen: Die trägt `UNIQUE (organization_id, project_id, environment,
+period_start)` auf der Rechnung selbst, und sie ist unberührt. Verliert ein
+zweiter Lauf desselben Monats dort im `ON CONFLICT`, schreibt er keine einzige
+Position, weil die Posten erst nach der gewonnenen Rechnung entstehen. Der
+Schlüssel ist abgeleitet und nicht erzeugt, also ergibt dieselbe Quelle
+denselben Schlüssel.
+
+**Eine Pauschale kommt mit einer Menge von eins zu ihrem Betrag.** Es gibt
+keinen zweiten Positionstyp mit eingetragenem Betrag. Der Betrag jeder Position
+bleibt gerechnet, `menge * stückpreis / bezugsgrösse`, und eine Pauschale ist
+der entartete Fall davon: Menge eins, Bezugsgrösse eins, Stückpreis gleich dem
+Monatsbetrag. Ein eingetragener Betrag wäre die einzige Zahl auf einer
+Rechnung, die niemand nachrechnen könnte.
+
+**Pauschalen liegen in einem eigenen Blatt.** `billing_charges` hängt an
+Organisation, Projekt, Umgebung und einem Code, trägt Bezeichnung, Betrag,
+Währung und ein Gültig-ab-Datum, und es gilt je Code die jüngste Zeile mit
+einem Stichtag in der Vergangenheit. Das Preisblatt aus `0039` ist unberührt:
+Es beantwortet, was eine Einheit einer Metrik kostet, und das ist eine andere
+Frage als die, was ein Projekt im Monat kostet. Beide Blätter sind append-only,
+beide ohne `UPDATE`- und ohne `DELETE`-Politik. Beendet wird eine Pauschale
+darum mit einem Betrag von null und einem späteren Gültig-ab-Datum; ab dann
+schreibt sie keine Position mehr. Eine Währung gilt je Organisation für beide
+Blätter.
+
+Angelegt wird eine Pauschale von einem Operator über `BillingService.setCharge`,
+nicht über die Console und nicht über REST. Die Projektion des laufenden Monats
+zeigt sie sofort unter `charges`, der Rechnungslauf schreibt sie in den
+abgeschlossenen Monat, und die Rechnungsliste gibt jede Position mit `lineKey`,
+`label` und `kind` zurück. Nebenbei schliesst das eine Lücke, die nichts mit
+Add-ons zu tun hatte: Bis `0080` bestimmten allein die Zähler, welche Umgebung
+der Rechnungslauf besucht. Ein Projekt mit einer Pauschale und ohne jede
+Nutzung hätte nie eine Rechnung gesehen.
+
+**Der Fall gegen die echte Datenbank.** `(2.119)` in
+`tests/postgres.integration.test.ts` legt zwei Projekte einer Organisation an,
+eines mit Zählern und zwei Pauschalen, eines nur mit einer Pauschale. Der echte
+Rechnungslauf schreibt mit der Worker-Rolle, und der Fall prüft vier Positionen
+mit Bezeichnung, rechnet jeden Betrag aus Menge, Stückpreis und Bezugsgrösse
+nach und belegt, dass die beendete Pauschale auf keiner Rechnung steht. Er
+prüft, dass auf den Positionen genau eine Eindeutigkeit liegt und dass sie auf
+dem Schlüssel liegt, und dass die Datenbank eine zweite Zeile mit demselben
+Schlüssel nicht annimmt. Der zweite Lauf desselben Monats lässt Rechnung,
+Positionen und Betrag unberührt und verbrennt keine Nummer: Die nächsten
+Rechnungen bekommen die dritte und die vierte, der Kreis bleibt lückenlos.
+Zuletzt zählt eine fremde Organisation Rechnungen, Positionen und Pauschalen
+ohne jeden Filter und findet keine einzige Zeile.
 
 ## 10. MCP für KI-Agenten
 

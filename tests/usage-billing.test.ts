@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   BillingService,
+  MemoryBillingChargeRepository,
   MemoryBillingRateCardRepository,
 } from "@/lib/server/usage/billing";
 import type { UsagePrincipal, UsageScope } from "@/lib/server/usage/model";
@@ -40,6 +41,7 @@ function usageWith(quantities: Partial<Record<string, bigint>>): Pick<UsageRepos
 function service(quantities: Partial<Record<string, bigint>>, now = new Date("2026-08-16T12:00:00Z")) {
   return new BillingService({
     rateCards: new MemoryBillingRateCardRepository(),
+    charges: new MemoryBillingChargeRepository(),
     usage: usageWith(quantities),
     now: () => now,
   });
@@ -133,6 +135,80 @@ describe("billing projection", () => {
     ]) {
       await expect(billing.setRate(operator, input)).rejects.toBeInstanceOf(UsageError);
     }
+  });
+
+  /**
+   * Pauschalen in der Projektion (0080).
+   *
+   * Die Projektion muss dasselbe sagen, was der Rechnungslauf spaeter
+   * schreibt. Faellt die Pauschale hier heraus, waere die Summe des laufenden
+   * Monats kleiner als die Rechnung, und niemand wuesste warum.
+   */
+  it("carries the flat charges of the environment in the projection and in the total", async () => {
+    const billing = service({ api_requests: 1_000n });
+    await billing.setRate(operator, {
+      metric: "api_requests", unitPriceMicros: 2n, currency: "CHF", effectiveFrom: "2026-01-01",
+    });
+    await billing.setCharge(operator, {
+      projectId: scope.projectId, environment: scope.environment, code: "support-retainer",
+      label: "Betreuung", amountMicros: 5_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+    });
+    const projection = await billing.readBillingProjection(reader, scope);
+    expect(projection.charges).toEqual([
+      { code: "support-retainer", label: "Betreuung", amountMicros: "5000000", amount: "5.000000" },
+    ]);
+    expect(projection.totalMicros).toBe((2_000n + 5_000_000n).toString());
+
+    // Beendet wird eine Pauschale mit null und einem spaeteren Stichtag. Danach
+    // steht sie in keiner Projektion und in keiner Summe.
+    await billing.setCharge(operator, {
+      projectId: scope.projectId, environment: scope.environment, code: "support-retainer",
+      label: "Betreuung", amountMicros: 0n, currency: "CHF", effectiveFrom: "2026-08-01",
+    });
+    const after = await billing.readBillingProjection(reader, scope);
+    expect(after.charges).toEqual([]);
+    expect(after.totalMicros).toBe("2000");
+  });
+
+  it("lets a flat charge carry the currency when no rate card applies", async () => {
+    const billing = service({});
+    await billing.setCharge(operator, {
+      projectId: scope.projectId, environment: scope.environment, code: "support-retainer",
+      label: "Betreuung", amountMicros: 5_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+    });
+    const projection = await billing.readBillingProjection(reader, scope);
+    expect(projection.currency).toBe("CHF");
+    expect(projection.totalMicros).toBe("5000000");
+  });
+
+  it("keeps one currency and the operator boundary for flat charges too", async () => {
+    const billing = service({});
+    await billing.setRate(operator, {
+      metric: "api_requests", unitPriceMicros: 1n, currency: "CHF", effectiveFrom: "2026-01-01",
+    });
+    const charge = {
+      projectId: scope.projectId, environment: scope.environment, code: "support-retainer",
+      label: "Betreuung", amountMicros: 5_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+    };
+    await expect(billing.setCharge(operator, { ...charge, currency: "EUR" }))
+      .rejects.toMatchObject({ code: "USAGE_POLICY_CONFLICT" });
+    await expect(billing.setCharge(reader, charge))
+      .rejects.toMatchObject({ code: "USAGE_ACCESS_DENIED" });
+    for (const broken of [
+      { ...charge, code: "Nicht Erlaubt" },
+      { ...charge, label: "" },
+      { ...charge, amountMicros: -1n },
+      { ...charge, currency: "chf" },
+      { ...charge, effectiveFrom: "01.01.2026" },
+    ]) {
+      await expect(billing.setCharge(operator, broken)).rejects.toBeInstanceOf(UsageError);
+    }
+    // Und ein Blatt ohne Pauschalen weist das Setzen ab statt still nichts zu tun.
+    const without = new BillingService({
+      rateCards: new MemoryBillingRateCardRepository(), usage: usageWith({}),
+    });
+    await expect(without.setCharge(operator, charge))
+      .rejects.toMatchObject({ code: "USAGE_METERING_DISABLED" });
   });
 
   it("denies a foreign organization's reader", async () => {

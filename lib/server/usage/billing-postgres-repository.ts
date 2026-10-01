@@ -3,6 +3,8 @@ import type { UsageMetric, UsagePrincipal } from "@/lib/server/usage/model";
 import { UsageError } from "@/lib/server/usage/service";
 import {
   microsToDecimal,
+  type BillingCharge,
+  type BillingChargeRepository,
   type BillingInvoiceLine,
   type BillingInvoiceReader,
   type BillingInvoiceSummary,
@@ -83,6 +85,103 @@ export class PostgresBillingRateCardRepository implements BillingRateCardReposit
   }
 }
 
+const CHARGE_COLUMNS = `
+  project_id, environment, code, label, amount_micros::text AS amount_micros,
+  currency, effective_from::text AS effective_from, created_by`;
+
+type ChargeRow = {
+  project_id: string;
+  environment: string;
+  code: string;
+  label: string;
+  amount_micros: string;
+  currency: string;
+  effective_from: string;
+  created_by: string;
+};
+
+/**
+ * Pauschalen gegen echtes PostgreSQL — dieselbe Tenant-Transaktion wie das
+ * Preisblatt, dieselbe append-only Regel (Migration 0080).
+ */
+export class PostgresBillingChargeRepository implements BillingChargeRepository {
+  constructor(private readonly database: Pick<PostgresControlPlane, "withTenant">) {}
+
+  insert(principal: UsagePrincipal, charge: BillingCharge & { organizationId: string }) {
+    return this.database.withTenant(
+      { organizationId: principal.organizationId, actorRef: principal.actorRef },
+      async (repositories) => {
+        try {
+          const result = await repositories.transaction.query<ChargeRow>(
+            `INSERT INTO billing_charges
+               (organization_id, project_id, environment, code, label, amount_micros,
+                currency, effective_from, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9)
+             RETURNING ${CHARGE_COLUMNS}`,
+            [charge.organizationId, charge.projectId, charge.environment, charge.code,
+              charge.label, charge.amountMicros.toString(), charge.currency,
+              charge.effectiveFrom, charge.createdBy],
+          );
+          return chargeFromRow(result.rows[0]!);
+        } catch (error) {
+          // Zweimal derselbe Stichtag fuer dieselbe Pauschale ist ein Konflikt
+          // des Blattes, kein Infrastrukturfehler.
+          if (error instanceof ConflictError) throw new UsageError("USAGE_POLICY_CONFLICT");
+          throw error;
+        }
+      });
+  }
+
+  effectiveCharges(
+    principal: UsagePrincipal,
+    scope: Pick<UsageScope, "organizationId" | "projectId" | "environment">,
+    at: Date,
+  ) {
+    return this.database.withTenant(
+      { organizationId: scope.organizationId, actorRef: principal.actorRef, readOnly: true },
+      async (repositories) => {
+        // Je Code die juengste Zeile, deren Stichtag nicht nach `at` liegt —
+        // dieselbe Regel wie beim Preisblatt, damit beide Blaetter auf
+        // denselben Stichtag antworten.
+        const result = await repositories.transaction.query<ChargeRow>(
+          `SELECT DISTINCT ON (code) ${CHARGE_COLUMNS}
+           FROM billing_charges
+           WHERE organization_id = $1 AND project_id = $2 AND environment = $3
+             AND effective_from <= $4::date
+           ORDER BY code, effective_from DESC`,
+          [scope.organizationId, scope.projectId, scope.environment,
+            at.toISOString().slice(0, 10)],
+        );
+        return result.rows.map(chargeFromRow);
+      });
+  }
+
+  currencies(principal: UsagePrincipal, organizationId: string) {
+    return this.database.withTenant(
+      { organizationId, actorRef: principal.actorRef, readOnly: true },
+      async (repositories) => {
+        const result = await repositories.transaction.query<{ currency: string }>(
+          "SELECT DISTINCT currency FROM billing_charges WHERE organization_id = $1",
+          [organizationId],
+        );
+        return result.rows.map((row) => row.currency);
+      });
+  }
+}
+
+function chargeFromRow(row: ChargeRow): BillingCharge {
+  return {
+    projectId: row.project_id,
+    environment: row.environment,
+    code: row.code,
+    label: row.label,
+    amountMicros: BigInt(row.amount_micros),
+    currency: row.currency,
+    effectiveFrom: row.effective_from,
+    createdBy: row.created_by,
+  };
+}
+
 function cardFromRow(row: CardRow): BillingRateCard {
   return {
     metric: row.metric as UsageMetric,
@@ -127,20 +226,27 @@ export class PostgresBillingInvoiceReader implements BillingInvoiceReader {
         );
         if (invoices.rows.length === 0) return [];
         const lines = await repositories.transaction.query<{
-          invoice_id: string; metric: string; quantity: string;
+          invoice_id: string; line_key: string; label: string; metric: string | null;
+          quantity: string;
           unit_price_micros: string; per_units: string; amount_micros: string;
         }>(
-          `SELECT invoice_id, metric, quantity::text AS quantity,
+          // Gemessene Positionen zuerst, dann die Pauschalen, beide nach ihrem
+          // stabilen Schluessel. Innerhalb der Metriken ist das dieselbe
+          // Reihenfolge wie vorher, weil der Schluessel die Metrik enthaelt.
+          `SELECT invoice_id, line_key, label, metric, quantity::text AS quantity,
                   unit_price_micros::text AS unit_price_micros,
                   per_units::text AS per_units, amount_micros::text AS amount_micros
            FROM billing_invoice_lines
            WHERE organization_id = $1 AND invoice_id = ANY($2::uuid[])
-           ORDER BY metric`,
+           ORDER BY (metric IS NULL), line_key`,
           [scope.organizationId, invoices.rows.map((row) => row.id)],
         );
         const byInvoice = new Map<string, BillingInvoiceLine[]>();
         for (const line of lines.rows) {
           const entry: BillingInvoiceLine = {
+            lineKey: line.line_key,
+            label: line.label,
+            kind: line.metric === null ? "flat" : "metered",
             metric: line.metric as BillingInvoiceLine["metric"],
             quantity: line.quantity,
             unitPriceMicros: line.unit_price_micros,

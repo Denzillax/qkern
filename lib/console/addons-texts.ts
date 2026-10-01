@@ -11,53 +11,66 @@
  *
  * Das Modul ist rein: keine Farbe, keine Datenbank, kein React.
  *
- * Der Platzhalter versprach „Zusatzleistungen wie eigene Domain oder mehr
- * Backups". Nachgesehen in der Abrechnung gibt es beides nicht, und zwar
- * nicht, weil es noch fehlt, sondern weil die Abrechnung keine Stelle hat, an
- * der eine Zusatzleistung stehen koennte.
+ * ## Warum diese Seite nicht mehr dasselbe sagt wie in 2.62
  *
- * Abgerechnet wird ausschliesslich je Metrik. Das Preisblatt kennt genau
- * sechs Kennungen, und dieselben sechs stehen als Pruefbedingung in zwei
- * Migrationen und als Aufzaehlung in der OpenAPI-Beschreibung. Eine
- * Rechnungszeile traegt eine dieser sechs Kennungen und sonst nichts; je
- * Rechnung darf jede Kennung genau einmal vorkommen. Ein Posten „eigene
- * Domain" waere also nicht bloss nicht eingerichtet, sondern nicht
- * ausdrueckbar.
+ * Bis 2.62 stand hier, es gebe keine Zusatzleistungen, und zwar nicht, weil
+ * sie fehlten, sondern weil die Abrechnung keine Stelle hatte, an der eine
+ * stehen koennte. Eine Rechnungszeile hatte kein Feld fuer eine Bezeichnung,
+ * die Eindeutigkeit je Metrik begrenzte eine Rechnung auf sechs Zeilen, und
+ * eine Pauschale haette ohne Menge keinen Weg zu einem Betrag gehabt.
  *
- * Die Seite wiederholt darum nicht die Projektion aus Einstellungen ->
- * Abrechnung, sondern beantwortet die andere Frage: Was kostet extra. Die
- * Antwort ist nichts, und der Beleg dafuer ist die vollstaendige Liste der
- * sechs Metriken, auch der unbepreisten.
+ * Mit Migration 0080 gilt das nicht mehr. Eine Position traegt eine
+ * Bezeichnung und einen stabilen Schluessel, die Eindeutigkeit haengt am
+ * Schluessel statt an der Metrik, und eine Pauschale kommt mit einer Menge von
+ * eins zu ihrem Betrag. Pauschalen liegen in einem eigenen append-only Blatt,
+ * das an Projekt und Umgebung haengt.
+ *
+ * Darum sagt die Seite jetzt etwas anderes, und sie sagt es genauso belegt:
+ * Was kosten kann, sind sechs Metriken und die Pauschalen dieser Umgebung.
+ * Was es weiterhin nicht gibt, ist eine Stelle, an der jemand selbst etwas
+ * dazubucht, und eine Zahlungsanbindung.
  */
 
 export const ADDONS_TEXTS = {
   kicker: "EINSTELLUNGEN",
-  title: "Add-ons: es gibt nichts, was extra kostet",
-  /** Der Satz, der die Seite eroeffnet. Er sagt nicht „noch nicht". */
-  noAddons:
-    "Zusatzleistungen gibt es bei QKERN nicht, und sie fehlen nicht bloss noch. Es gibt keine eigene Domain zu buchen, kein zusätzliches Backup-Paket, keinen Tarif und keine Stufe. Abgerechnet wird ausschliesslich, was gemessen wurde, und gemessen werden sechs Dinge. Diese Seite zeigt alle sechs, damit die Antwort belegt ist und nicht nur behauptet.",
-  /** Warum eine Zusatzleistung nicht einmal ausdrueckbar waere. */
+  title: "Add-ons: was extra kosten kann, und wer es festlegt",
+  /** Der Satz, der die Seite eroeffnet. */
+  addons:
+    "Extra kosten kann zweierlei. Gemessen wird, was anfällt, und dafür gibt es sechs Metriken mit je einem Preis. Daneben kann eine Pauschale an dieser Umgebung hängen, zum Beispiel für Betreuung oder eine Bereitstellung; sie trägt eine eigene Bezeichnung und einen festen Betrag im Monat. Diese Seite zeigt beides vollständig, auch die Metriken ohne Preis.",
+  /** Was es weiterhin nicht gibt, und warum das keine fehlende Oberflaeche ist. */
+  noSelfService:
+    "Dazubuchen lässt sich hier nichts. Es gibt keinen Knopf, kein Formular und keine Schnittstelle, die eine Pauschale anlegt, weil eine kaufmännische Zusage keine Projektfläche ist. Eine Pauschale legt ein Operator an, auf demselben Weg wie einen Preis, und sie erscheint danach hier und in der Abrechnung.",
+  /** Die Metrikliste bleibt geschlossen. */
   closedList:
-    "Die Liste ist geschlossen, nicht bloss kurz. Dieselben sechs Kennungen stehen als Prüfbedingung in der Migration des Preisblatts, noch einmal in der Migration der Rechnungszeilen und ein drittes Mal als Aufzählung in der Schnittstellenbeschreibung. Eine siebte Kennung nimmt die Datenbank nicht an. Ein Posten für eine Domain oder ein Backup hätte also keine Zeile, in der er stehen könnte.",
+    "Die Liste der Metriken ist geschlossen, nicht bloss kurz. Dieselben sechs Kennungen stehen als Prüfbedingung in der Migration des Preisblatts und ein zweites Mal als Aufzählung in der Schnittstellenbeschreibung. Eine siebte Kennung nimmt die Datenbank nicht an. Eine Pauschale braucht deshalb auch keine Kennung: Sie hängt an keiner Metrik.",
   /** Die Abgrenzung gegen die Seite, die es schon gibt. */
   scope:
-    "Was dieser Monat bisher kostet und welche Rechnungen es gibt, steht unter Einstellungen → Abrechnung und wird hier nicht wiederholt. Dort stehen die bepreisten Zeilen; hier steht die ganze Liste, auch die Metriken ohne Preis, denn die Frage lautet nicht „was kostet es\", sondern „was kann überhaupt etwas kosten\".",
+    "Was dieser Monat bisher kostet und welche Rechnungen es gibt, steht unter Einstellungen → Abrechnung und wird hier nicht wiederholt. Dort stehen die Beträge des laufenden Monats; hier steht, was überhaupt einen Betrag haben kann, also auch die Metriken ohne Preis.",
 
   /* Die Liste selbst. */
   catalogTitle: "Alles, was etwas kosten kann",
   catalogMeaning:
-    "Sechs Metriken, und das ist der ganze Katalog. Zu jeder steht hier, ob für diese Organisation ein Preis gesetzt ist und wie hoch der Stückpreis ist. Eine Metrik ohne Preis wird gemessen, aber nicht berechnet; sie erscheint in keiner Summe und in keiner Rechnungszeile.",
+    "Sechs Metriken, und das ist der ganze Katalog der gemessenen Posten. Zu jeder steht hier, ob für diese Organisation ein Preis gesetzt ist und wie hoch der Stückpreis ist. Eine Metrik ohne Preis wird gemessen, aber nicht berechnet; sie erscheint in keiner Summe und in keiner Rechnungszeile.",
   catalogPriceSource:
     "Der Preis kommt aus der Projektion des laufenden Monats und ist der Preis, der am Ende der Periode gilt. Ein Gültig-ab-Datum liefert die Schnittstelle nicht, und ein Preis, der mitten im Monat gewechselt hat, ist von hier aus nicht zu sehen.",
   catalogNoPrices:
     "Für diese Organisation ist noch kein einziger Preis gesetzt. Das heisst, dass gemessen wird und nichts berechnet wird, nicht, dass etwas fehlerhaft ist.",
 
+  /* Die Pauschalen dieser Umgebung. */
+  chargesTitle: "Pauschalen dieser Umgebung",
+  chargesMeaning:
+    "Eine Pauschale hängt an Projekt und Umgebung, trägt eine Bezeichnung und einen Betrag im Monat und steht als eigene Position auf der Rechnung. Eine Menge hat sie nicht, und ihr Betrag hängt an keiner Messung. Der Rechnungslauf schreibt sie in denselben abgeschlossenen Monat wie die gemessenen Posten.",
+  chargesNone:
+    "Für diese Umgebung gilt keine Pauschale. Abgerechnet wird dann ausschliesslich, was gemessen wurde.",
+  chargesEnd:
+    "Das Blatt der Pauschalen ist append-only wie das Preisblatt. Eine Pauschale wird darum nicht gelöscht, sondern mit einem Betrag von null und einem späteren Gültig-ab-Datum beendet. Ab diesem Tag schreibt sie keine Position mehr, und die Rechnungen davor bleiben nachvollziehbar.",
+
   /* Wer Preise setzt. */
-  whoSetsTitle: "Wer einen Preis setzt",
+  whoSetsTitle: "Wer einen Preis oder eine Pauschale setzt",
   whoSetsMeaning:
-    "Preise setzt ein Operator, und zwar nicht über die Console: Das Preisblatt hat keine REST-Fläche, und es gibt hier deshalb auch kein Eingabefeld und keinen Knopf. Die Kontrollebene selbst darf nur lesen und anlegen; eine Zeile im Preisblatt lässt sich nicht ändern und nicht löschen, weil es dafür keine Zeilenpolitik gibt.",
+    "Beides setzt ein Operator, und zwar nicht über die Console: Preisblatt und Pauschalenblatt haben keine schreibende REST-Fläche, und es gibt hier deshalb auch kein Eingabefeld und keinen Knopf. Die Kontrollebene selbst darf nur lesen und anlegen; eine Zeile in einem der beiden Blätter lässt sich nicht ändern und nicht löschen, weil es dafür keine Zeilenpolitik gibt.",
   whoSetsHistory:
-    "Ein neuer Preis ist eine neue Zeile mit einem eigenen Gültig-ab-Datum. Der alte Preis bleibt stehen, damit eine bereits gestellte Rechnung nachvollziehbar bleibt. Das ist der Grund, warum es hier nichts zu ändern gibt und nicht bloss eine fehlende Oberfläche.",
+    "Ein neuer Preis ist eine neue Zeile mit einem eigenen Gültig-ab-Datum, und für eine Pauschale gilt dasselbe. Der alte Wert bleibt stehen, damit eine bereits gestellte Rechnung nachvollziehbar bleibt. Das ist der Grund, warum es hier nichts zu ändern gibt und nicht bloss eine fehlende Oberfläche.",
 
   /* Was es nicht gibt, mit Grund. */
   noPaymentTitle: "Was es ausserdem nicht gibt",
@@ -66,19 +79,19 @@ export const ADDONS_TEXTS = {
   noPaymentNoPlans:
     "Es gibt auch keine Tarife. Die drei Pakete auf der Startseite sind ein Entwurf für den Auftritt und hängen an keiner Zeile der Abrechnung; kein Preis dort erreicht das Preisblatt, und kein Paket schaltet etwas frei.",
   noPaymentNoQuota:
-    "Ein gekauftes Kontingent gibt es ebenfalls nicht. Grenzen entstehen aus Quotas, die eine Anfrage abweisen können, nicht aus einem Volumen, das jemand dazugebucht hätte.",
+    "Ein gekauftes Kontingent gibt es ebenfalls nicht. Eine Pauschale ist ein Betrag, kein Volumen: Sie hebt keine Grenze und schaltet nichts frei. Grenzen entstehen aus Quotas, die eine Anfrage abweisen können.",
 
   /* Fuer Betreiber. */
   operatorTitle: "Wenn Sie wirklich etwas dazu verkaufen wollen",
   operatorSteps:
-    "Eine Zusatzleistung wäre keine Oberfläche, sondern eine Migration. Nötig wäre eine Zeile, die nicht an eine Metrik gebunden ist, also ein eigener Zeilentyp in der Rechnung, ein eigener Betrag ohne Menge und ein eigener Weg, sie einem Projekt zuzuordnen. Nichts davon gibt es, und diese Seite tut nicht so, als wäre es bloss noch nicht eingeschaltet.",
+    "Eine Pauschale ist keine Migration mehr, sondern eine Zeile im Pauschalenblatt: Projekt, Umgebung, Code, Bezeichnung, Betrag, Währung und Gültig-ab-Datum. Angelegt wird sie von einem Operator über den Billing-Dienst. Ab dem nächsten Rechnungslauf steht sie als Position mit ihrer Bezeichnung auf der Rechnung, und die Projektion zeigt sie schon im laufenden Monat.",
   operatorMeter:
-    "Was heute geht, ist eine weitere Metrik. Auch sie wäre eine Migration, denn die sechs Kennungen stehen an drei Stellen fest. Wer nur wissen will, wie viel gerade anfällt, findet die Reihen unter Berichte und die Summen unter Nutzung & Limits.",
+    "Eine weitere Metrik ist weiterhin eine Migration, denn die sechs Kennungen stehen fest. Und eine Währung gilt je Organisation für beide Blätter; eine Pauschale in einer zweiten Währung weist der Dienst ab. Wer nur wissen will, wie viel gerade anfällt, findet die Reihen unter Berichte und die Summen unter Nutzung & Limits.",
 } as const;
 
 /**
- * Was eine Rechnungszeile tragen kann, benannt. Das ist die Form, die eine
- * Zusatzleistung nicht hat.
+ * Was eine Rechnungszeile tragen kann, benannt. Seit 0080 traegt sie eine
+ * Bezeichnung und einen stabilen Schluessel, und genau das steht hier.
  */
 export type InvoiceShapeNote = {
   title: string;
@@ -87,20 +100,24 @@ export type InvoiceShapeNote = {
 
 export const INVOICE_SHAPE: readonly InvoiceShapeNote[] = [
   {
-    title: "Eine Zeile je Metrik, höchstens einmal",
-    body: "Eine Rechnungszeile trägt eine der sechs Kennungen, eine Menge, einen Stückpreis, eine Bezugsgrösse und den Betrag daraus. Je Rechnung darf jede Kennung genau einmal vorkommen; eine Rechnung hat deshalb höchstens sechs Zeilen.",
+    title: "Eine Position je Schlüssel, höchstens einmal",
+    body: "Jede Position trägt einen stabilen Schlüssel, der sagt, was sie ist: die Kennung einer Metrik oder der Code einer Pauschale. Je Rechnung darf ein Schlüssel genau einmal vorkommen, und eine Rechnung kann deshalb so viele Positionen tragen, wie es Metriken mit Preis und geltende Pauschalen gibt.",
   },
   {
-    title: "Kein Betrag ohne Menge",
-    body: "Der Betrag einer Zeile wird aus Menge und Stückpreis gerechnet, nicht eingetragen. Eine Pauschale hätte keine Menge und damit keinen Weg, zu einem Betrag zu kommen.",
+    title: "Eine Bezeichnung, und sie bleibt stehen",
+    body: "Eine Position trägt ein Feld für ihre Bezeichnung, bis zu zweihundert Zeichen. Es wird mit der Rechnung eingefroren wie jeder andere Wert. Eine Metrik nennt zusätzlich ihre Kennung, eine Pauschale hat keine und wird allein über ihre Bezeichnung gelesen.",
   },
   {
-    title: "Kein freier Text",
-    body: "Es gibt kein Feld für eine Bezeichnung und keines für eine Beschreibung. Was auf einer Rechnung steht, ist der Name einer Metrik, und der steht nicht in der Zeile, sondern kommt aus der Kennung.",
+    title: "Kein Betrag, der nicht gerechnet ist",
+    body: "Der Betrag jeder Position entsteht aus Menge, Stückpreis und Bezugsgrösse. Eine Pauschale trägt die Menge eins und als Stückpreis ihren Monatsbetrag; damit gilt dieselbe Formel für alle Positionen. Ein eingetragener Betrag wäre die einzige Zahl auf der Rechnung, die niemand nachrechnen könnte.",
   },
   {
     title: "Nur abgeschlossene Monate",
-    body: "Der Rechnungslauf nimmt nur Perioden, die vorbei sind. Ein laufender Monat lässt sich nicht abrechnen, und ein Monat ohne einen einzigen bepreisten Posten erzeugt keine Rechnung über null, sondern gar keine.",
+    body: "Der Rechnungslauf nimmt nur Perioden, die vorbei sind. Ein laufender Monat lässt sich nicht abrechnen, und ein Monat ohne eine einzige bepreiste Position erzeugt keine Rechnung über null, sondern gar keine.",
+  },
+  {
+    title: "Zweimal derselbe Lauf, einmal dieselbe Rechnung",
+    body: "Je Projekt, Umgebung und Periode gibt es höchstens eine Rechnung, und diese Eindeutigkeit trägt die Idempotenz des Laufs. Ein zweiter Lauf desselben Monats verliert sie und schreibt keine einzige Position, auch nicht bei vielen Positionen; die Rechnungsnummern bleiben dabei lückenlos.",
   },
   {
     title: "Abgerundet zugunsten des Kunden",
@@ -110,10 +127,11 @@ export const INVOICE_SHAPE: readonly InvoiceShapeNote[] = [
 
 /** Zustaende, die die Ansicht ueber t(variable) zeigt. */
 export const ADDONS_STATES = {
-  disabled: "Usage Metering ist für diese Installation abgeschaltet. Ohne Zähler gibt es weder Preise noch Rechnungen, und darum steht hier auch keine Liste mit Preisen. Dass es keine Zusatzleistungen gibt, gilt trotzdem: Das hängt nicht an der Messung, sondern an der Form der Abrechnung.",
-  unavailable: "Die Abrechnung ist gerade nicht erreichbar. Welche Preise gesetzt sind, steht deshalb hier nicht, und geschätzt wird es nicht.",
+  disabled: "Usage Metering ist für diese Installation abgeschaltet. Ohne Zähler gibt es weder Preise noch Rechnungen, und darum steht hier auch keine Liste mit Preisen und keine Pauschale. Angelegt werden können beide trotzdem nicht über diese Seite: Das hängt nicht an der Messung, sondern daran, wer eine kaufmännische Zusage gibt.",
+  unavailable: "Die Abrechnung ist gerade nicht erreichbar. Welche Preise gesetzt sind und welche Pauschalen gelten, steht deshalb hier nicht, und geschätzt wird es nicht.",
   failed: "Die Preise konnten nicht geladen werden.",
   noPrice: "kein Preis gesetzt",
+  perMonth: "im Monat",
 } as const;
 
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */
