@@ -28,7 +28,15 @@ export function createProjectQueueMessageHandlers(service: ProjectQueueService) 
         const body = schema.safeParse(await safeJson(request));
         if (!body.success || !context.raw.queue) return projectQueueNoStore({ error: "Invalid queue request" }, 400);
         return withProjectQueueCors(request, projectQueueNoStore({
-          data: await service.enqueue(context.principal, context.scope, context.raw.queue, body.data),
+          data: await service.enqueue(context.principal, context.scope, context.raw.queue, {
+            ...body.data,
+            // Der Anschluss an eine fremde Spur kommt als Kopfzeile und nicht
+            // im Rumpf (2.121): `traceparent` ist nach W3C eine Kopfzeile, und
+            // ein zweiter Weg daneben waere eine zweite Schreibweise derselben
+            // Angabe. Das Schema bleibt `strict`, ein `traceparent` im Rumpf
+            // ist damit weiterhin eine 400.
+            traceparent: request.headers.get("traceparent"),
+          }),
         }, 202));
       } catch (error) { return projectQueueRouteError(error, request); }
     },

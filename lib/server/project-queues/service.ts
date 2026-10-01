@@ -18,6 +18,7 @@ import {
   type ProjectQueueRepository,
 } from "@/lib/server/project-queues/repository";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
+import { parseProjectQueueTraceparent } from "@/lib/server/project-queues/trace";
 
 const QUEUE_NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -138,6 +139,16 @@ export class ProjectQueueService {
     payload: unknown;
     dedupeKey?: string;
     scheduledAt?: string;
+    /**
+     * Der `traceparent` des Aufrufers, falls er einen geschickt hat (2.121).
+     *
+     * Er wird gelesen und nicht geprueft: Passt er nicht zur Form, wird er
+     * weggelassen, und das Einreihen laeuft weiter. Ein Beobachtungskopf ist
+     * kein Teil des Auftrags, und eine 400 darauf hiesse, eine Nachricht an
+     * einem Kopf scheitern zu lassen, den niemand braucht. Die Begruendung
+     * steht in `trace.ts`.
+     */
+    traceparent?: string | null;
   }) {
     assertPrincipal(principal, scope);
     const queue = await this.queue(principal, scope, queueName);
@@ -213,6 +224,7 @@ export class ProjectQueueService {
     try {
       const result = await this.dependencies.repository.enqueue(
         principal, scope, queue, message, now, meter,
+        parseProjectQueueTraceparent(input.traceparent),
       );
       return {
         id: result.message.id,
@@ -332,6 +344,34 @@ export class ProjectQueueService {
       catch (error) { throw mapError(error); }
     }
     return { generatedAt: now.toISOString(), queues: statuses };
+  }
+
+  /**
+   * Die Spur einer Nachricht (2.121).
+   *
+   * Nur Admin, wie der Status und die Dead-Letter-Liste: Eine Spur sagt, wann
+   * welcher Wirt woran gearbeitet hat, und das ist eine Betriebsangabe und
+   * keine Angabe fuer die Anwendung, die eingereiht hat.
+   *
+   * Eine Id ohne Spur und ohne Nachricht ist `QUEUE_RESOURCE_NOT_FOUND` und
+   * nicht eine leere Spur: Eine leere Spur hiesse "diese Nachricht gibt es,
+   * und es ist nichts mit ihr passiert", und das stimmt nie. Jede Nachricht
+   * hat mindestens ihre erste Station.
+   */
+  async readTrace(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queueName: string,
+    messageId: string,
+  ) {
+    await this.assertAdmin(principal, scope);
+    if (!IDENTIFIER.test(messageId)) throw new ProjectQueueError("QUEUE_INVALID_INPUT");
+    const queue = await this.queue(principal, scope, queueName);
+    let trace;
+    try { trace = await this.dependencies.repository.readTrace(principal, scope, queue, messageId); }
+    catch (error) { throw mapError(error); }
+    if (!trace) throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
+    return trace;
   }
 
   async listDeadLetters(

@@ -149,6 +149,44 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.121 **Eine Nachricht der Queues laesst sich jetzt verfolgen.** Migration
+  `0081_project_queue_message_traces.sql` legt `project_queue_message_traces` an:
+  je Station eine Zeile, geschrieben **in derselben Transaktion** wie der
+  Zustandswechsel, den sie beschreibt. Acht Stationen: `enqueued`,
+  `deduplicated`, `replayed`, `claimed`, `completed`, `retry_scheduled`,
+  `dead_lettered`, `lease_expired`. Gelesen wird ueber
+  `GET .../queues/{queue}/messages/{messageId}/trace`, nur als Admin, und die
+  Console zeigt es unter Queues.
+
+  **Die Form.** Zusammengehalten wird eine Spur von der **Nachrichten-Id**, und
+  das ist keine neue Kennung: Sie steht in der Quittung, im Claim, in Ack, Fail
+  und Lease und in der Dead-Letter-Liste. W3C Trace Context kommt dazu, aber nur
+  am Rand: Das Einreihen liest einen `traceparent`, und Spur-Id und Eltern-Span
+  landen auf der ersten Station, damit eine Spur ueber QKERN hinaus
+  zusammenhaengt. QKERN entscheidet an diesen beiden Werten nichts; ein kaputter
+  Kopf wird weggelassen und nicht abgewiesen.
+
+  **Kein Fremdschluessel auf die Nachricht, und das ist der Zweck.** `cleanup()`
+  loescht erledigte Nachrichten nach `retention_seconds`. Eine Kaskade waere
+  genau dann weg, wenn die Spur das Einzige ist, was noch erzaehlen kann. Die
+  Spur haengt an der Queue und hat ihre eigene Frist:
+  `max(retention_seconds der Queue, ein Betriebstag)`, geschnitten an
+  `expires_at` der Station und **nie** am Ausgang der Nachricht. Aufgeraeumt wird
+  im vorhandenen `cleanup()` je Queue, haeppchenweise.
+
+  **Grenzen.** 64 Stationen je Nachricht, in der Anweisung durchgesetzt und
+  nicht im TypeScript. Die Rechnung: 20 Versuche mal zwei Stationen plus die
+  erste sind 41; die einzige Station, die ein Aufrufer beliebig oft erzeugen
+  kann, ist `deduplicated`. An der Grenze schreibt der Port nichts mehr und
+  wirft nicht, und der Leser sagt `complete: false`.
+
+  **Was absichtlich fehlt**: eine Station fuer die Erneuerung der Pacht (das
+  waere der Takt und nicht die Arbeit), jede Nutzlast (0081 hat keine Spalte
+  dafuer), ein weitergegebener `traceparent` an Worker oder Webhook, und eine
+  Suche nach Spur-Id. Faelle `(2.121)` und `(2.122)` in
+  `tests/postgres.integration.test.ts`, dazu `tests/project-queue-trace.test.ts`
+  ohne Stack.
+
 - 2.115 **MCP und das TypeScript-SDK upserten jetzt auch.** `onConflict` am
   Werkzeug `qkern_table_rows_insert` (`mcp/server.ts`) und als zweites Argument
   an `insert` des SDK (`sdk/typescript/src/index.ts`). Beide gehen denselben Weg

@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Inbox, Plus, RefreshCw, RotateCcw } from "lucide-react";
+import { Inbox, Plus, RefreshCw, RotateCcw, Route } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
-import { formatMoment } from "@/components/console/console-display";
+import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { tAll } from "@/components/console/console-i18n";
 
@@ -27,6 +27,20 @@ type QueueStatus = {
 };
 type DeadLetter = { id: string; queue: string; attempt: number; failureCode: string; createdAt: string; deadLetteredAt: string; replayed: boolean };
 
+/**
+ * Die Spur einer Nachricht (2.121), so wie die Trace-Route sie herausgibt.
+ * Keine Nutzlast: Die Route hat keine, und diese Ansicht erwartet auch keine.
+ */
+type TraceStation = {
+  sequence: number; station: string; attempt: number;
+  workerId: string | null; failureCode: string | null; occurredAt: string;
+};
+type Trace = {
+  messageId: string; queue: string; traceId: string | null; parentSpanId: string | null;
+  sourceMessageId: string | null; replayedIntoMessageId: string | null;
+  messageExists: boolean; complete: boolean; stations: TraceStation[];
+};
+
 type LoadState = "loading" | "ready" | "unavailable" | "error";
 
 export function QueuesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: LoadState }) {
@@ -38,6 +52,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
   const [open, setOpen] = useState<string | null>(null);
   const [deadLetters, setDeadLetters] = useState<DeadLetter[]>([]);
   const [busy, setBusy] = useState("");
+  const [trace, setTrace] = useState<Trace | null>(null);
 
   const load = useCallback(async () => {
     setState("loading"); setMessage("");
@@ -67,6 +82,27 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     await load();
   }
 
+  /**
+   * Holt die Spur einer Nachricht.
+   *
+   * Die Id kommt entweder aus einer Dead-Letter-Zeile, die sie schon kennt,
+   * oder aus der Eingabe: Eine Queue hat keine Liste ihrer Nachrichten, und
+   * eine Liste wuerde die Nutzlasten der Umgebung in eine zweite Flaeche
+   * holen. Wer eine Spur sucht, hat die Id aus der Quittung.
+   */
+  async function showTrace(queueName: string, messageId: string | null) {
+    const id = (messageId ?? window.prompt(t("Nachrichten-Id, deren Spur Sie sehen wollen"), "") ?? "").trim();
+    if (!id) return;
+    if (trace?.messageId === id) { setTrace(null); return; }
+    setBusy(id);
+    const response = await fetch(`${base}/${queueName}/messages/${encodeURIComponent(id)}/trace`, { cache: "no-store" });
+    setBusy("");
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) { setTrace(null); setMessage(payload.error ?? t("Spur nicht verfügbar")); return; }
+    setMessage("");
+    setTrace(payload.data as Trace);
+  }
+
   async function showDeadLetters(queue: QueueItem) {
     if (open === queue.name) { setOpen(null); setDeadLetters([]); return; }
     const response = await fetch(`${base}/${queue.name}/dead-letters?limit=50`, { cache: "no-store" });
@@ -88,6 +124,25 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
   if (state === "loading" && queues.length === 0) return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Queues werden geladen…")}</h3></div>;
   if (state === "unavailable" || state === "error") return <div className="console-card live-module-state"><Inbox size={26}/><h3>{state === "unavailable" ? t("Project Queues nicht verbunden") : t("Queues nicht verfügbar")}</h3><p>{message}</p><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Noch einmal")}</button></div>;
 
+  /**
+   * Die Stationen als Wortlaut. Die Zuordnung steht in der Ansicht und nicht
+   * auf dem Server: Der Server gibt feste Codes heraus, und ein Wortlaut, der
+   * von dort kaeme, waere ein deutscher Satz in einer API-Antwort.
+   */
+  function stationLabel(station: string) {
+    const labels: Record<string, string> = {
+      enqueued: t("eingestellt"),
+      deduplicated: t("als Doppel erkannt"),
+      replayed: t("wieder eingereiht"),
+      claimed: t("beansprucht"),
+      completed: t("abgeschlossen"),
+      retry_scheduled: t("Wiederholung geplant"),
+      dead_lettered: t("als Dead Letter abgelegt"),
+      lease_expired: t("Pacht verfallen"),
+    };
+    return labels[station] ?? station;
+  }
+
   const totals = Object.values(status).reduce((sum, entry) => ({
     available: sum.available + entry.available, inFlight: sum.inFlight + entry.inFlight, deadLettered: sum.deadLettered + entry.deadLettered,
   }), { available: 0, inFlight: 0, deadLettered: 0 });
@@ -108,15 +163,47 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
           <span title={s?.oldestAvailableAt ? `${t("Älteste wartet seit")} ${formatMoment(s.oldestAvailableAt)}` : undefined}>{s ? `${s.available} ${t("wartend")} · ${s.inFlight} ${t("in Bearbeitung")} · ${s.completed} ${t("erledigt")}` : t("Status nicht verfügbar")}</span>
           <span className={s && s.deadLettered > 0 ? "risk high" : "muted"}>{s ? `${s.deadLettered} ${t("Dead Letters")}` : "–"}</span>
           <button className="plain-button" onClick={() => void showDeadLetters(queue)}><StableLabel current={open === queue.name ? t("Ausblenden") : t("Dead Letters")} variants={tAll("Ausblenden", "Dead Letters")}/></button>
+          <button className="plain-button" onClick={() => void showTrace(queue.name, null)}><Route size={13}/> {t("Spur")}</button>
         </div>
         {open === queue.name && <div className="detail-list">
           {deadLetters.length === 0 ? <div><span>{t("Keine Dead Letters")}</span><strong className="muted">–</strong></div> : deadLetters.map((letter) => <div key={letter.id}>
-            <span><code>{letter.id.slice(0, 8)}</code><small>{t("Versuch")} {letter.attempt} · {letter.failureCode} · {formatMoment(letter.deadLetteredAt)}</small></span>
+            <span><code>{letter.id.slice(0, 8)}</code><small>{t("Versuch")} {formatNumber(letter.attempt)} · {letter.failureCode} · {formatMoment(letter.deadLetteredAt)}</small></span>
+            <button className="plain-button" disabled={busy === letter.id} onClick={() => void showTrace(letter.queue, letter.id)}><Route size={13}/> {t("Spur")}</button>
             {letter.replayed ? <strong className="muted">{t("wieder eingereiht")}</strong> : <button className="plain-button" disabled={busy === letter.id} onClick={() => void replay(letter)}><RotateCcw size={13}/> {t("Wieder einreihen")}</button>}
           </div>)}
         </div>}
       </div>; })}
     </article>
+    {trace && <article className="console-card span-2">
+      <div className="card-head">
+        <div><span>{t("SPUR")} · {trace.queue}</span><h3>{t("Eine Nachricht von ihrem Einstellen bis zu ihrem Ausgang")}</h3></div>
+        <div><button className="secondary-button" onClick={() => setTrace(null)}>{t("Schliessen")}</button></div>
+      </div>
+      <p className="muted">
+        <code>{trace.messageId}</code>
+        {" · "}{formatNumber(trace.stations.length)} {t("Stationen")}
+        {trace.complete ? "" : ` · ${t("Grenze erreicht, es können weitere Stationen gefolgt sein")}`}
+        {trace.messageExists ? "" : ` · ${t("Die Nachricht selbst ist schon weggeräumt; die Spur bleibt.")}`}
+      </p>
+      {trace.traceId
+        ? <p className="muted">{t("Fremde Spur")}: <code>{trace.traceId}</code>{trace.parentSpanId ? <> · <code>{trace.parentSpanId}</code></> : null}</p>
+        : <p className="muted">{t("Kein traceparent beim Einstellen. Die Spur hält allein über die Nachrichten-Id zusammen, und die endet an der Grenze von QKERN.")}</p>}
+      {trace.sourceMessageId && <p className="muted">{t("Entstanden aus")} <code>{trace.sourceMessageId}</code></p>}
+      {trace.replayedIntoMessageId && <p className="muted">{t("Wieder eingereiht als")} <code>{trace.replayedIntoMessageId}</code></p>}
+      <div className="detail-list">
+        {trace.stations.map((station) => <div key={station.sequence}>
+          <span>
+            <strong>{formatNumber(station.sequence)}. {stationLabel(station.station)}</strong>
+            <small>
+              {formatMoment(station.occurredAt)} · {t("Versuch")} {formatNumber(station.attempt)}
+              {station.workerId ? ` · ${t("Wirt")} ${station.workerId}` : ""}
+              {station.failureCode ? ` · ${station.failureCode}` : ""}
+            </small>
+          </span>
+        </div>)}
+      </div>
+      <p className="muted">{t("Die Spur trägt keine Nutzlast. Eine Station steht in derselben Transaktion wie der Zustandswechsel, den sie beschreibt, und übersteht darum einen Neustart des Wirts und zwei Instanzen. Eine Erneuerung der Pacht ist absichtlich keine Station: sie wäre der Takt und nicht die Arbeit.")}</p>
+    </article>}
     <article className="console-card"><div className="card-head"><div><span>{t("METRICS")}</span><h3>{t("Export für Prometheus")}</h3></div></div><p className="muted">{t("Jeder Scrape holt den Stand des Augenblicks über alle Queues dieser Umgebung, im Prometheus-Textformat und mit derselben Admin-Grenze wie diese Ansicht.")}</p><code className="endpoint-code">GET {base}/metrics</code></article>
   </div>;
 }
