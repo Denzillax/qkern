@@ -27,7 +27,9 @@ import {
   PROJECT_QUEUE_TRACE_MAX_STATIONS,
   PROJECT_QUEUE_TRACE_PRUNE_BATCH,
   PROJECT_QUEUE_TRACE_STATIONS,
+  projectQueueClaimTraceparent,
   projectQueueTraceExpiresAt,
+  projectQueueTraceSpanId,
 } from "@/lib/server/project-queues/trace";
 
 type Row = Record<string, unknown>;
@@ -247,10 +249,11 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
         ]);
         if (!updated.rows[0]) throw new ProjectQueueConflictError("QUEUE_CONFLICT");
         const claimed = messageFromRow(updated.rows[0]);
-        await recordTrace(database, scope, current, claimed.id, {
+        const station = await recordTrace(database, scope, current, claimed.id, {
           station: "claimed", attempt: claimed.attemptCount,
           workerId: input.workerId, failureCode: null, occurredAt: input.now,
         });
+        const traceId = await traceIdOf(database, scope, claimed.id);
         claims.push({
           id: claimed.id,
           queue: current.name,
@@ -260,6 +263,10 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
           leaseToken: lease.token,
           leaseExpiresAt: claimed.leaseExpiresAt!.toISOString(),
           createdAt: claimed.createdAt.toISOString(),
+          // Der Anschluss nach innen (2.124): Spur-Id dieser Nachricht,
+          // Eltern-Span die Station, die dieser Claim gerade geschrieben hat.
+          // Dieselbe Anweisung hat beides, also kostet es keine zweite Abfrage.
+          traceparent: projectQueueClaimTraceparent(traceId, station.spanId),
         });
       }
       return claims;
@@ -536,7 +543,7 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
   ): Promise<ProjectQueueTrace | null> {
     return this.withTenant(principal, true, async (database) => {
       const stations = await database.query(`SELECT sequence,station,attempt,worker_id,
-          failure_code,trace_id,parent_span_id,source_message_id,occurred_at
+          failure_code,trace_id,parent_span_id,span_id,source_message_id,occurred_at
         FROM project_queue_message_traces
         WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
           AND message_id=$5
@@ -674,9 +681,18 @@ async function recoverExpiredLeases(
  * Aufrufer ihn mitgibt; `project_queue_message_traces_trace_anchor` aus 0081
  * verlangt genau das, und die Entscheidung steht in `trace.ts`.
  *
+ * Die Span-Id dagegen wuerfelt der Prozess und nicht die Datenbank (2.124), und
+ * sie kommt ueber `RETURNING` zurueck. Die Entscheidung, wer Spans erzeugt,
+ * steht in Migration 0082; dass der Wert hier und nicht in einem Vorgabewert der
+ * Spalte entsteht, hat einen einzigen Grund: Ein Vorgabewert wuerde einen
+ * Schreiber, der die Spalte vergisst, still bedienen, und `RETURNING` koennte
+ * dann nicht mehr unterscheiden, wer sie gesetzt hat.
+ *
  * Erreicht die Spur die Grenze, schreibt die Anweisung keine Zeile und wirft
  * nicht: Eine Beobachtung ist keine Ausfuehrungsgewalt. Dass die Grenze
- * erreicht ist, sagt der Leser ueber `complete`.
+ * erreicht ist, sagt der Leser ueber `complete`, und der Claim traegt dann
+ * keinen `traceparent` hinaus, weil es keine Station gibt, die er benennen
+ * koennte.
  */
 async function recordTrace(
   database: SqlQueryable,
@@ -684,28 +700,90 @@ async function recordTrace(
   queue: ProjectQueue,
   messageId: string,
   record: ProjectQueueTraceRecord,
-) {
-  await database.query(`INSERT INTO project_queue_message_traces
+): Promise<{ spanId: string | null }> {
+  const result = await database.query<{ span_id: unknown }>(
+    `INSERT INTO project_queue_message_traces
       (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
-       worker_id,failure_code,trace_id,parent_span_id,source_message_id,occurred_at,expires_at)
+       worker_id,failure_code,trace_id,parent_span_id,span_id,source_message_id,
+       occurred_at,expires_at)
     SELECT $1::uuid,$2::uuid,$3::qkern_environment,$4::uuid,$5::uuid,next.sequence,
       $6::text,$7::int,$8::text,$9::text,
       CASE WHEN next.sequence=1 THEN $10::text ELSE NULL END,
       CASE WHEN next.sequence=1 THEN $11::text ELSE NULL END,
-      $12::uuid,$13::timestamptz,$14::timestamptz
+      $12::text,$13::uuid,$14::timestamptz,$15::timestamptz
     FROM (SELECT coalesce(max(sequence),0)+1 AS sequence FROM project_queue_message_traces
           WHERE organization_id=$1::uuid AND project_id=$2::uuid
             AND environment=$3::qkern_environment AND message_id=$5::uuid) AS next
-    WHERE next.sequence <= $15::int`, [
+    WHERE next.sequence <= $16::int
+    RETURNING span_id`, [
     ...scopeValues(scope), queue.id, messageId, record.station, record.attempt,
     record.workerId, record.failureCode, record.trace?.traceId ?? null,
-    record.trace?.parentSpanId ?? null, record.sourceMessageId ?? null,
+    record.trace?.parentSpanId ?? null, projectQueueTraceSpanId(),
+    record.sourceMessageId ?? null,
     record.occurredAt, projectQueueTraceExpiresAt(queue, record.occurredAt),
     PROJECT_QUEUE_TRACE_MAX_STATIONS,
   ]);
+  // `RETURNING` ohne Zeile heisst: Die Grenze war erreicht, es wurde nichts
+  // geschrieben. Dann gibt es auch keine Span, an die sich jemand haengen
+  // koennte, und der Claim traegt nichts hinaus.
+  const written = result.rows[0]?.span_id;
+  return { spanId: written === null || written === undefined ? null : String(written) };
 }
 
-/** Der Anschluss nach draussen einer Nachricht, also ihre erste Station. */
+/**
+ * Die Spur-Id einer Nachricht, also der Wert auf ihrer ersten Station.
+ *
+ * Eine eigene Anweisung und kein zweiter Rueckgabewert von `recordTrace`: Beide
+ * laufen in derselben Transaktion, also ist nichts an der einen Anweisung
+ * atomarer als an zwei, und eine `INSERT ... RETURNING`-Anweisung, die
+ * nebenbei eine fremde Zeile mitliest, waere die Art Abfrage, die beim naechsten
+ * Lesen niemand mehr versteht. Gerufen wird sie nur im Claim, also hoechstens
+ * zehnmal je Abholung, und sie liest ueber
+ * `project_queue_message_traces_order_key` genau eine Zeile.
+ */
+async function traceIdOf(
+  database: SqlQueryable,
+  scope: ProjectQueueScope,
+  messageId: string,
+): Promise<string | null> {
+  const result = await database.query<{ trace_id: unknown }>(
+    `SELECT trace_id FROM project_queue_message_traces
+      WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+        AND message_id=$4 AND sequence=1`, [...scopeValues(scope), messageId]);
+  const value = result.rows[0]?.trace_id;
+  return value === null || value === undefined ? null : String(value);
+}
+
+/**
+ * Der Anschluss nach draussen einer Nachricht, also ihre erste Station.
+ *
+ * **Eltern-Span bleibt der Span von draussen, auch beim Wiedereinreihen**, und
+ * das ist eine Entscheidung aus 2.124, die anders ausgefallen ist als zuerst
+ * gedacht. Der erste Entwurf liess eine wiedereingereihte Nachricht an der
+ * letzten Station ihrer Quelle haengen, also an `dead_lettered`, mit dem
+ * Argument: Verursacht hat das Wiedereinreihen das Dead Letter und nicht der
+ * Aufruf von vorletzter Woche. Fall (2.121) hat ihn umgeworfen, und zwar zu
+ * Recht.
+ *
+ * Der Grund ist die Bedeutung der Spalte. `parent_span_id` heisst "die Span
+ * **draussen**, an der diese Nachricht haengt"; genau das sagt 0081 mit dem
+ * CHECK, der sie an Sequenz eins und an eine Spur-Id bindet. Haengt sie bei
+ * einer wiedereingereihten Nachricht an einer Station von QKERN, hat eine
+ * Spalte zwei Bedeutungen, und welche gilt, erkennt der Leser nur daran, ob
+ * `source_message_id` gesetzt ist. Zwei Bedeutungen in einer Spalte laufen
+ * auseinander.
+ *
+ * Die Ursache steht ausserdem schon da, und zwar genauer: `source_message_id`
+ * nennt das Dead Letter, aus dem diese Nachricht entstanden ist, und die Spur
+ * laeuft darueber in beide Richtungen. Eine zweite Darstellung derselben
+ * Beziehung waere keine Verbesserung.
+ *
+ * Fuer die Span-Kette nach draussen heisst das: QKERN gibt genau **eine** Kante
+ * heraus, die vom Claim zum Worker, und die traegt die Span der
+ * `claimed`-Station. Dass zwei Claims derselben Spur (einer vor und einer nach
+ * dem Dead Letter) dieselbe Eltern-Span von draussen teilen, ist richtig: Beide
+ * gehen wirklich auf denselben Aufruf zurueck.
+ */
 async function traceAnchor(
   database: SqlQueryable,
   scope: ProjectQueueScope,
@@ -739,8 +817,18 @@ function traceEntryFromRow(row: Row): ProjectQueueTraceEntry {
     attempt: boundedInteger(row.attempt, 0, 20),
     workerId: row.worker_id === null ? null : String(row.worker_id),
     failureCode: failure as ProjectQueueFailureCode | null,
+    // Die Form steht im CHECK aus 0082. Hier wird sie nochmals geprueft, weil
+    // der Leser diesen Wert in eine Kopfzeile schreiben laesst und eine
+    // Kopfzeile mit kaputtem Hex schlimmer ist als keine.
+    spanId: hexSpan(row.span_id),
     occurredAt: date(row.occurred_at).toISOString(),
   });
+}
+
+function hexSpan(value: unknown): string {
+  const candidate = String(value);
+  if (!/^[0-9a-f]{16}$/.test(candidate)) throw new Error("Invalid queue trace span id");
+  return candidate;
 }
 
 async function cleanup(

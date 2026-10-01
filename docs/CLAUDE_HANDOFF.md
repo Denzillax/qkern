@@ -149,6 +149,64 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.124 / 2.125 **QKERN gibt den Anschluss jetzt weiter.** Migration
+  `0082_trace_spans_and_outbound_anchor.sql` schliesst die Luecke, die `trace.ts`
+  seit 2.72.0 selbst unter "Offen" fuehrte: Eine Spur hoerte an der
+  QKERN-Grenze auf, obwohl sie draussen anfing und draussen weiterging.
+
+  **Wer in QKERN Spans erzeugt: QKERN, eine je Station, beim Schreiben der
+  Station.** Neue Spalte `span_id` auf `project_queue_message_traces`, acht
+  Zufallsbytes, NOT NULL fuer jede Station. Verworfen wurden zwei Alternativen,
+  und zwar begruendet in der Migration: Der Aufrufer kann sie nicht liefern (die
+  Stationen entstehen Tage spaeter, teils ohne dass irgendwer etwas aufruft), und
+  eine Ableitung aus `message_id` und `sequence` faellt doppelt (die
+  Nachrichten-Id gibt QKERN heraus, also waere die Span nachrechenbar, und eine
+  Sequenznummer kann nach einem Schnitt des Aufraeumers wiederkehren). Die
+  vorhandenen Zeilen aus 2.72.0 bekommen ihre Span-Ids ueber einen fluechtigen
+  Vorgabewert beim `ADD COLUMN`, der je Zeile ausgewertet wird; ein `UPDATE`
+  waere am Append-only-Trigger aus 0081 gescheitert, und einen Trigger in einer
+  Migration zu umgehen heisst, ihn zu entwerten.
+
+  **Nach innen.** `ProjectQueueClaim.traceparent` traegt die Spur-Id der
+  Nachricht und als Eltern-Span die `claimed`-Station dieses Claims, nicht den
+  Span des Einreichers. Die Route gibt ihn unveraendert heraus, OpenAPI
+  beschreibt ihn.
+
+  **Ohne Anschluss bleibt es leer.** QKERN erfindet keine Spur-Id: Eine
+  erfundene waere draussen eine Spur mit einem Teilnehmer, und in der Antwort der
+  Trace-Route von einem echten Anschluss nicht zu unterscheiden. `trace-flags`
+  stehen immer auf `01` und werden nicht gespeichert, weil die Flags nach W3C die
+  Span beschreiben, die im Kopf steht, und eine Station von QKERN immer
+  aufgezeichnet ist; der Preis (eine draussen abgeschaltete Spur wird hinter
+  QKERN wieder eingeschaltet) steht in der Migration. `tracestate` geht nicht
+  mit: QKERN ist kein Tracing-Anbieter, ein durchkopierter Blob waere eine
+  Nutzlast auf einer Logflaeche, und er ist die eine Stelle, an der ein Geheimnis
+  in einer Kopfzeile hinausreisen koennte.
+
+  **Ein Dead-Letter-Replay erbt den Anschluss unveraendert**, Eltern-Span
+  inklusive. Der erste Entwurf liess ihn an der letzten Station der Quelle
+  haengen; Fall (2.121) hat ihn umgeworfen, und zwar zu Recht, denn
+  `parent_span_id` heisst "die Span draussen, an der diese Nachricht haengt", und
+  eine Spalte mit zwei Bedeutungen laeuft auseinander. Die Ursache steht genauer
+  in `source_message_id`. **Das ist der Produktfehler, den der Stack gefunden
+  hat**, und er stand im ersten Entwurf dieses Releases und nicht in 2.72.0.
+
+  **Nach aussen.** `project_webhook_deliveries` traegt `trace_id` und
+  `parent_span_id`, so unveraenderlich wie die Nutzlast (derselbe Waechter aus
+  0032, erweitert), und `WebhookDeliverer` macht daraus die Kopfzeile
+  `traceparent`. **Nicht signiert**: Ein Proxy, der Tracing-Koepfe anfasst,
+  wuerde sonst die Signatur brechen und ein echtes Ereignis bekaeme 401.
+
+  **Offen, und hier aufgeschrieben statt woanders behauptet**: Kein
+  ausgelieferter Webhook-Sammler setzt den Anschluss, weil Change Feed,
+  Audit-Kette und Log-Protokoll selbst keinen `traceparent` tragen; der
+  Function-Aufruf aus der Queue traegt ihn nicht, weil er ueber einen
+  Sandbox-Port laeuft und nicht ueber HTTP; QKERN exportiert keine Spans an einen
+  Collector; innerhalb einer Spur gibt es keine Span-Kanten, die Ordnung ist
+  `sequence`. Faelle `(2.124)` in `tests/postgres.integration.test.ts` und
+  `(2.125)` in `tests/receiver.integration.test.ts`, letzterer am echten
+  HTTPS-Empfaenger, der sagt, was bei ihm angekommen ist.
+
 - 2.121 **Eine Nachricht der Queues laesst sich jetzt verfolgen.** Migration
   `0081_project_queue_message_traces.sql` legt `project_queue_message_traces` an:
   je Station eine Zeile, geschrieben **in derselben Transaktion** wie der
@@ -182,8 +240,8 @@ Grossbuchstaben.
 
   **Was absichtlich fehlt**: eine Station fuer die Erneuerung der Pacht (das
   waere der Takt und nicht die Arbeit), jede Nutzlast (0081 hat keine Spalte
-  dafuer), ein weitergegebener `traceparent` an Worker oder Webhook, und eine
-  Suche nach Spur-Id. Faelle `(2.121)` und `(2.122)` in
+  dafuer) und eine Suche nach Spur-Id. Der weitergegebene `traceparent` an Worker
+  und Webhook stand hier bis 2.124 auch; er ist jetzt da, siehe oben. Faelle `(2.121)` und `(2.122)` in
   `tests/postgres.integration.test.ts`, dazu `tests/project-queue-trace.test.ts`
   ohne Stack.
 

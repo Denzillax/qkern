@@ -14,6 +14,11 @@ import { FetchWebhookTransport } from "@/lib/server/compute/webhook-transport";
 import { WebhookDeliverer } from "@/lib/server/compute/webhooks";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
+// Der Anschluss nach draussen (2.125) faengt in der Queue an: Die Spur, die die
+// Zustellung ausloest, kommt aus einer echten Queue-Nachricht und nicht aus
+// einem Literal im Test.
+import { PostgresProjectQueueRepository } from "@/lib/server/project-queues/postgres-repository";
+import { ProjectQueueService } from "@/lib/server/project-queues/service";
 import { createGuardedFetch } from "@/lib/server/net/guarded-fetch";
 import type { SqlPool } from "@/lib/server/db/sql";
 import type { FunctionDefinition } from "@/lib/server/compute/model";
@@ -309,6 +314,148 @@ describe.runIf(enabled)("Receiver certification", () => {
       .rejects.toMatchObject({ code: "ERR_TLS_CERT_ALTNAME_INVALID" });
   });
 
+
+  it("(2.125) carries the trace of the message that triggered it out to the real receiver as traceparent, keeps it across a retry, sends none where none came in, and lets nothing else ride along", async () => {
+    // Der Anschluss nach draussen (2.125) gegen den **echten** Empfaenger.
+    //
+    // **Warum dieser Stack und nicht der PostgreSQL-Stack.** Fall (2.124) prueft
+    // die Zeile: dass der Anschluss gespeichert ist, unveraenderlich bleibt und
+    // einen Prozesswechsel ueberlebt. Was er nicht pruefen kann, ist die
+    // Kopfzeile: Der Zusteller gibt dem Aufrufer nur Status und
+    // Bestaetigungskennung zurueck, und ein eingespeistes `fetch` wuerde nur
+    // belegen, dass der Test dasselbe denkt wie der Code. Also fragt dieser Fall
+    // den Empfaenger, was bei ihm angekommen ist, ueber dieselbe TLS-Verbindung.
+    //
+    // **Die Spur ist nicht erfunden, sie laeuft durch.** Der Fall reiht eine
+    // Queue-Nachricht mit einem `traceparent` von draussen ein, holt sie wie ein
+    // Worker ab und nimmt den `traceparent` aus dem Claim als Anschluss der
+    // Zustellung. Das ist die ganze Kette: Kopfzeile herein, Spur in der
+    // Datenbank, Claim an den Worker, Kopfzeile wieder hinaus. Die Rolle des
+    // Workers spielt hier der Fall, weil genau das ein Worker tut.
+    const foreignTraceId = "0af7651916cd43dd8448eb211c80319c";
+    const foreignSpanId = "b7ad6b7169203331";
+
+    const queues = new ProjectQueueService({
+      repository: new PostgresProjectQueueRepository(new PostgresControlPlane(runtime)),
+    });
+    const queueName = `pass-${randomUUID().slice(0, 8)}`;
+    await queues.createQueue(admin, scope, {
+      name: queueName, maxAttempts: 1, visibilityTimeoutSeconds: 60, retentionSeconds: 60,
+    });
+    await queues.enqueue(admin, scope, queueName, {
+      payload: { orderId: "A-trace" },
+      traceparent: `00-${foreignTraceId}-${foreignSpanId}-01`,
+    });
+    const claimed = await queues.claim({
+      organizationId, actorRef: "service-role:receiver-worker",
+      role: "service_role", subject: "receiver-worker",
+    }, scope, queueName, { workerId: "receiver-certification" });
+    const carried = claimed[0]?.traceparent;
+    // Dieselbe Spur, eine eigene Span. Die Begruendung steht in 0082; hier
+    // interessiert nur, dass der Worker etwas Gueltiges in der Hand hat.
+    expect(carried).toMatch(new RegExp(`^00-${foreignTraceId}-[0-9a-f]{16}-01$`));
+    expect(carried).not.toContain(foreignSpanId);
+
+    /** Was der Empfaenger bei dieser Zustellung wirklich gesehen hat. */
+    async function askReceiver(deliveryId: string) {
+      // Kein `createGuardedFetch` hier: Das ist nicht der ausgehende Weg des
+      // Produkts, sondern der Testlauf, der den Empfaenger nach seiner eigenen
+      // Beobachtung fragt. Das Zertifikat ist dasselbe, ueber
+      // NODE_EXTRA_CA_CERTS.
+      const response = await fetch(`${ORIGIN}/seen/${deliveryId}`);
+      expect(response.status, "Der Empfaenger hat diese Zustellung nicht gesehen").toBe(200);
+      return await response.json() as {
+        headerNames: string[]; traceparent: string | null; tracestate: string | null;
+      };
+    }
+
+    // --- Die Kopfzeile kommt an, und sie ist die richtige ------------------
+    const hook = await defineWebhook("/hooks");
+    const traced = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "A-trace" },
+      traceparent: carried,
+    });
+    const tracedRun = await new WebhookDeliveryRuntime({
+      outbox, deliverer, definitions: outboxRepository, scope,
+      workerId: "receiver-certification", batchSize: 1,
+    }).runOnce();
+    expect(tracedRun).toMatchObject({ delivered: 1, failed: 0 });
+
+    const seen = await askReceiver(traced.id);
+    // Buchstabengleich der Wert aus dem Claim. Nicht bloss formgueltig: Eine
+    // formgueltige Kopfzeile mit einer anderen Spur-Id waere genau der Fehler,
+    // den dieser Fall finden soll.
+    expect(seen.traceparent).toBe(carried);
+    // `tracestate` geht nicht mit, und das ist entschieden und nicht vergessen.
+    // Die drei Gruende stehen in 0082; der dritte ist dieser: Ein
+    // durchkopierter Anbieterzustand ist die eine Stelle, an der ein Geheimnis
+    // mitreisen koennte, das niemand angesehen hat.
+    expect(seen.tracestate).toBeNull();
+    expect(seen.headerNames).not.toContain("tracestate");
+    // Und sonst nichts Neues: Genau eine Kopfzeile ist dazugekommen, und die
+    // vier des Produkts stehen weiter. Kein zweiter Tracing-Kopf, kein
+    // `x-qkern-trace-...`, kein `b3`.
+    expect(seen.headerNames.filter((name) => name.startsWith("x-qkern-")).sort()).toEqual([
+      "x-qkern-delivery-id", "x-qkern-event", "x-qkern-signature", "x-qkern-timestamp",
+    ]);
+    expect(seen.headerNames.filter((name) => /trace|span|b3/.test(name))).toEqual(["traceparent"]);
+
+    // --- Ohne Anschluss keine Kopfzeile -----------------------------------
+    // Kein Platzhalter, keine Nullspur, keine erfundene Spur-Id. Ein Empfaenger,
+    // der eine Nullspur liest, haengt sich an eine Spur, die es nicht gibt.
+    const plain = await outbox.enqueue(scope, {
+      webhookId: hook.id, eventType: "order.created", payload: { orderId: "A-plain" },
+    });
+    const plainRun = await new WebhookDeliveryRuntime({
+      outbox, deliverer, definitions: outboxRepository, scope,
+      workerId: "receiver-certification", batchSize: 1,
+    }).runOnce();
+    expect(plainRun).toMatchObject({ delivered: 1, failed: 0 });
+    const plainSeen = await askReceiver(plain.id);
+    expect(plainSeen.traceparent).toBeNull();
+    expect(plainSeen.headerNames).not.toContain("traceparent");
+
+    // --- Der zweite Versuch traegt denselben Anschluss --------------------
+    // `/hooks/no-echo` antwortet 200 ohne die Kennung zu spiegeln, also ist der
+    // erste Versuch ein Fehlschlag. Der Empfaenger merkt sich trotzdem, was er
+    // gesehen hat; er hat die Signatur geprueft und die Zustellung war echt.
+    //
+    // Dass der zweite Versuch dieselbe Spur nennt, ist die Zusage aus 0082: Der
+    // Anschluss kommt aus der Zeile, nicht aus dem Prozess. Eine eigene Outbox
+    // mit kurzer Wartezeit, damit der zweite Versuch in diesem Fall faellt und
+    // nicht in fuenf Sekunden Leerlauf; die Wartezeit ist Konfiguration und
+    // keine abgeschwaechte Erwartung.
+    const retryOutbox = new WebhookOutbox({ repository: outboxRepository, retryBaseMs: 100 });
+    const retryHook = await defineWebhook("/hooks/no-echo", "receiver.qkern.test", 3);
+    const retried = await retryOutbox.enqueue(scope, {
+      webhookId: retryHook.id, eventType: "order.created", payload: { orderId: "A-retry" },
+      traceparent: carried,
+    });
+    const retryRuntime = new WebhookDeliveryRuntime({
+      outbox: retryOutbox, deliverer, definitions: outboxRepository, scope,
+      workerId: "receiver-certification", batchSize: 1,
+    });
+    expect(await retryRuntime.runOnce()).toMatchObject({ delivered: 0, failed: 1 });
+    const firstAttempt = await askReceiver(retried.id);
+    expect(firstAttempt.traceparent).toBe(carried);
+
+    // Auf den zweiten Versuch wird gewartet, mit Budget und mit Diagnose: Die
+    // Zeile ist erst nach `retryBaseMs` wieder faellig.
+    const deadline = Date.now() + 10_000;
+    let attempts = 0;
+    let second = { delivered: 0, failed: 0, skipped: 0 };
+    while (Date.now() < deadline && second.failed === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      second = await retryRuntime.runOnce();
+      attempts += 1;
+    }
+    const counted = await owner.query<{ attempt_count: number }>(
+      "SELECT attempt_count FROM project_webhook_deliveries WHERE id=$1", [retried.id]);
+    expect(second.failed, `Runden: ${attempts}, Versuche: ${counted.rows[0]?.attempt_count}`).toBe(1);
+    expect(counted.rows[0]?.attempt_count).toBe(2);
+    const secondAttempt = await askReceiver(retried.id);
+    expect(secondAttempt.traceparent).toBe(carried);
+  }, 60_000);
   describe("function egress", () => {
     const egress = new MediatedFunctionEgress();
     let stored: FunctionDefinition;

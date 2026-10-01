@@ -31,6 +31,7 @@ function claim(overrides: Partial<WebhookClaim> = {}): WebhookClaim {
     payload: { id: 7 },
     occurredAt: new Date("2026-08-05T10:00:00.000Z"),
     attemptCount: 1,
+    trace: null,
     leaseToken: "a".repeat(43),
     ...overrides,
   };

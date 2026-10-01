@@ -101,6 +101,11 @@ export class WebhookDeliveryRuntime {
           eventType: claim.eventType,
           occurredAt: claim.occurredAt.toISOString(),
           payload: claim.payload,
+          // Der Anschluss kommt aus der Zeile und nicht aus diesem Prozess
+          // (2.125). Deshalb traegt ihn auch der zweite Versuch nach einem
+          // verfallenen Lease, und zwar denselben: Ein Versuch, der eine andere
+          // Spur nennt als der erste, haengt denselben Vorgang an zwei Orte.
+          trace: claim.trace,
         });
         await this.options.outbox.acknowledge(this.options.scope, claim.id, {
           workerId: this.options.workerId, leaseToken: claim.leaseToken,

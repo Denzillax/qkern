@@ -10,6 +10,7 @@ import {
   type WebhookOutboxScope,
 } from "@/lib/server/compute/webhook-outbox";
 import type { ProjectQueueJson } from "@/lib/server/project-queues/model";
+import type { ProjectQueueTraceAnchor } from "@/lib/server/project-queues/trace";
 
 type WebhookDatabase = Pick<PostgresControlPlane, "withTenant">;
 
@@ -20,6 +21,8 @@ type DeliveryRow = {
   payload: ProjectQueueJson;
   occurred_at: Date;
   attempt_count: number;
+  trace_id: string | null;
+  parent_span_id: string | null;
 };
 
 type DefinitionRow = {
@@ -31,7 +34,8 @@ type DefinitionRow = {
   timeout_ms: number;
 };
 
-const COLUMNS = "id, webhook_id, event_type, payload, occurred_at, attempt_count";
+const COLUMNS =
+  "id, webhook_id, event_type, payload, occurred_at, attempt_count, trace_id, parent_span_id";
 
 /**
  * Gibt Zustellungen frei, deren Lease abgelaufen ist.
@@ -84,17 +88,19 @@ implements WebhookOutboxRepository, WebhookDefinitionSource {
 
   async enqueue(scope: WebhookOutboxScope, input: {
     id: string; webhookId: string; eventType: string; payload: ProjectQueueJson;
-    occurredAt: Date; createdAt: Date;
+    occurredAt: Date; createdAt: Date; trace: ProjectQueueTraceAnchor | null;
   }): Promise<WebhookOutboxEntry> {
     return await this.withTenant(scope, false, async (database) => {
       const inserted = await database.query<DeliveryRow>(
         `INSERT INTO project_webhook_deliveries
            (id, organization_id, project_id, environment, webhook_id, event_type, payload,
-            occurred_at, status, attempt_count, available_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',0,$9,$9)
+            occurred_at, status, attempt_count, available_at, created_at,
+            trace_id, parent_span_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',0,$9,$9,$10,$11)
          RETURNING ${COLUMNS}`,
         [input.id, scope.organizationId, scope.projectId, scope.environment, input.webhookId,
-          input.eventType, input.payload as never, input.occurredAt, input.createdAt],
+          input.eventType, input.payload as never, input.occurredAt, input.createdAt,
+          input.trace?.traceId ?? null, input.trace?.parentSpanId ?? null],
       );
       const row = inserted.rows[0];
       if (!row) throw new WebhookOutboxError("WEBHOOK_OUTBOX_CONFLICT");
@@ -284,5 +290,11 @@ function toEntry(scope: WebhookOutboxScope, row: DeliveryRow): WebhookOutboxEntr
     payload: row.payload,
     occurredAt: new Date(row.occurred_at),
     attemptCount: row.attempt_count,
+    // Die Form steht im CHECK aus 0082. Beide Werte oder keiner: Eine
+    // Eltern-Span ohne Spur ist nach W3C nichts, und der Zusteller koennte aus
+    // der Haelfte keine gueltige Kopfzeile bauen.
+    trace: row.trace_id && row.parent_span_id
+      ? Object.freeze({ traceId: row.trace_id, parentSpanId: row.parent_span_id })
+      : null,
   };
 }

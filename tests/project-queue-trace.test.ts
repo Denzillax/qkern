@@ -152,6 +152,64 @@ describe("project queue trace in the memory port", () => {
     expect(replayed.traceId).toBe(TRACE_ID);
     const source = await service.readTrace(admin, scope, "replay-queue", receipt.id);
     expect(source.replayedIntoMessageId).toBe(replay.id);
+    // Der Eltern-Span bleibt der von draussen, auch beim Wiedereinreihen: Die
+    // Spalte heisst "die Span draussen, an der diese Nachricht haengt", und die
+    // Ursache steht genauer in `source_message_id` (2.124, siehe `traceAnchor`
+    // im Postgres-Port).
+    expect(replayed.parentSpanId).toBe(SPAN_ID);
+    expect(replayed.parentSpanId).not.toBe(source.stations[source.stations.length - 1]!.spanId);
+  });
+
+  it("hands the claim a traceparent that continues the trace with its own span", async () => {
+    const { service } = setup(() => new Date("2026-10-01T08:00:00.000Z"));
+    await service.createQueue(admin, scope, { name: "pass-queue", maxAttempts: 1 });
+    const receipt = await service.enqueue(admin, scope, "pass-queue", {
+      payload: { task: "x" }, traceparent: `00-${TRACE_ID}-${SPAN_ID}-01`,
+    });
+    const claim = await service.claim(worker, scope, "pass-queue", { workerId: "host-a" });
+    expect(claim[0]?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    const trace = await service.readTrace(admin, scope, "pass-queue", receipt.id);
+    // Dieselbe Spur, aber die Span der Station, die dieser Claim geschrieben
+    // hat. Nicht der Span des Einreichers: Was der Worker jetzt tut, haengt an
+    // der Abholung.
+    expect(claim[0]?.traceparent)
+      .toBe(`00-${TRACE_ID}-${trace.stations[1]!.spanId}-01`);
+    expect(claim[0]?.traceparent).not.toContain(SPAN_ID);
+    // Jede Station hat ihre eigene Span, auch die, die niemand herausgibt.
+    expect(trace.stations.map((entry) => entry.spanId))
+      .toEqual(trace.stations.map((entry) => entry.spanId).filter((value) => /^[0-9a-f]{16}$/.test(value)));
+    expect(new Set(trace.stations.map((entry) => entry.spanId)).size).toBe(trace.stations.length);
+  });
+
+  it("invents no trace id where none came in, and says so with null", async () => {
+    const { service } = setup(() => new Date("2026-10-01T08:00:00.000Z"));
+    await service.createQueue(admin, scope, { name: "plain-queue", maxAttempts: 1 });
+    const receipt = await service.enqueue(admin, scope, "plain-queue", { payload: { task: "x" } });
+    const claim = await service.claim(worker, scope, "plain-queue", { workerId: "host-a" });
+    // Eine erfundene Spur-Id waere draussen eine Spur mit einem Teilnehmer, und
+    // in der Antwort der Trace-Route von einem echten Anschluss nicht zu
+    // unterscheiden. Die Begruendung steht in Migration 0082.
+    expect(claim[0]?.traceparent).toBeNull();
+    const trace = await service.readTrace(admin, scope, "plain-queue", receipt.id);
+    expect(trace.traceId).toBeNull();
+    // Span-Ids gibt es trotzdem: Eine Station ist ein Span, ob jemand danach
+    // fragt oder nicht.
+    for (const station of trace.stations) expect(station.spanId).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("drops a header that does not fit the shape instead of refusing the enqueue", async () => {
+    const { service } = setup(() => new Date("2026-10-01T08:00:00.000Z"));
+    await service.createQueue(admin, scope, { name: "broken-queue", maxAttempts: 1 });
+    // Die Regel aus 2.72.0, hier fuer die Richtung nach innen nachgeprueft: Ein
+    // Beobachtungskopf ist kein Teil des Auftrags, und eine 400 darauf hiesse,
+    // eine Nachricht an einem Kopf scheitern zu lassen, den niemand braucht.
+    const receipt = await service.enqueue(admin, scope, "broken-queue", {
+      payload: { task: "x" }, traceparent: `00-${TRACE_ID.toUpperCase()}-${SPAN_ID}-01`,
+    });
+    expect(receipt.status).toBe("available");
+    const claim = await service.claim(worker, scope, "broken-queue", { workerId: "host-a" });
+    expect(claim[0]?.id).toBe(receipt.id);
+    expect(claim[0]?.traceparent).toBeNull();
   });
 
   it("stops at the station limit without stopping the enqueue", async () => {

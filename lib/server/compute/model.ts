@@ -1,4 +1,5 @@
 import type { ProjectQueueJson, ProjectQueueScope } from "@/lib/server/project-queues/model";
+import type { ProjectQueueTraceAnchor } from "@/lib/server/project-queues/trace";
 
 export type ComputeScope = ProjectQueueScope;
 
@@ -43,6 +44,14 @@ export type WebhookDelivery = Readonly<{
   eventType: string;
   occurredAt: string;
   payload: ProjectQueueJson;
+  /**
+   * Der Anschluss an die Spur, die diese Zustellung ausgeloest hat (2.125).
+   *
+   * Fehlt er, geht keine Kopfzeile `traceparent` hinaus. Das ist die Haelfte der
+   * Entscheidung aus Migration 0082: QKERN erfindet keine Spur-Id, auch nicht
+   * hier. Eine erfundene waere draussen eine Spur mit einem Teilnehmer.
+   */
+  trace?: ProjectQueueTraceAnchor | null;
 }>;
 
 export type CronDefinition = ComputeScope & Readonly<{

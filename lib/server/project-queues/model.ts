@@ -94,6 +94,20 @@ export type ProjectQueueClaim = {
   leaseToken: string;
   leaseExpiresAt: string;
   createdAt: string;
+  /**
+   * Der Anschluss an die Spur dieser Nachricht, in W3C-Kopfzeilenform (2.124).
+   *
+   * `null`, wenn die Nachricht ohne `traceparent` eingereiht wurde. QKERN
+   * erfindet dann keine Spur-Id; die Begruendung steht in Migration 0082. Der
+   * Eltern-Span ist die `claimed`-Station dieses Claims und nicht der Span des
+   * Einreichers, siehe `projectQueueClaimTraceparent`.
+   *
+   * Hier steht nie ein Geheimnis: Spur-Id und Span-Id sind beide oeffentlich
+   * lesbare Beobachtungswerte, und ein Lease-Token oder Dedupe-Verifikator kommt
+   * hier auch nicht versehentlich mit hinein, weil der Wert aus genau zwei
+   * Hexfeldern gebaut wird.
+   */
+  traceparent: string | null;
 };
 
 export type ProjectQueueStatus = {

@@ -194,11 +194,58 @@ benennt Ack, Fail und Lease und steht in der Dead-Letter-Liste.
 
 **W3C Trace Context ist der Anschluss nach draussen.** Das Einreihen liest eine
 Kopfzeile `traceparent`; ihre Spur-Id und Eltern-Span landen auf der ersten
-Station und stehen am Kopf jeder Antwort. QKERN entscheidet an diesen beiden
-Werten nichts, und ein Kopf, der nicht zur Form passt, wird weggelassen statt
-abgewiesen: Ein Beobachtungskopf darf ein Einreihen nicht umbringen. Eine
-wiedereingereihte Nachricht erbt den Anschluss ihrer Quelle, damit eine Kette
-durch ein Dead Letter draussen **eine** Spur bleibt.
+Station und stehen am Kopf jeder Antwort. Kein Claim, kein Retry und kein Dead
+Letter entscheidet etwas an diesen beiden Werten, und ein Kopf, der nicht zur
+Form passt, wird weggelassen statt abgewiesen: Ein Beobachtungskopf darf ein
+Einreihen nicht umbringen. Eine wiedereingereihte Nachricht erbt den Anschluss
+ihrer Quelle, damit eine Kette durch ein Dead Letter draussen **eine** Spur
+bleibt.
+
+**Und der Anschluss laeuft wieder hinaus (2.124, 2.125, Migration 0082).** Bis
+`2.72.0` hoerte eine Spur an der QKERN-Grenze auf, obwohl sie draussen anfing
+und draussen weiterging. Jetzt gilt:
+
+- **Jede Station hat ihre eigene Span-Id** (`span_id`), von QKERN erzeugt beim
+  Schreiben der Station und in der Datenbank gespeichert. Nicht abgeleitet aus
+  `message_id` und `sequence`: Die Nachrichten-Id gibt QKERN dem Aufrufer heraus,
+  eine abgeleitete Span liesse sich also nachrechnen, und eine Sequenznummer kann
+  nach dem Aufräumen ein zweites Mal vorkommen. Die Spalte steht in jeder
+  Antwort der Trace-Route.
+- **Der Claim liefert einen `traceparent` mit.** Spur-Id der Nachricht,
+  Eltern-Span die `claimed`-Station dieses Claims. Nicht der Span des
+  Einreichers: Was der Worker jetzt tut, hängt an der Abholung, und zwischen
+  beiden liegt im Zweifel eine Woche.
+- **Ohne Anschluss bleibt der Claim leer.** QKERN erfindet keine Spur-Id. Eine
+  erfundene wäre draussen eine Spur mit einem Teilnehmer, und in der Antwort der
+  Trace-Route wäre sie von einem echten Anschluss nicht zu unterscheiden.
+- **Die Flags stehen immer auf `01`.** Nach W3C beschreiben sie die Span, die im
+  Kopf steht, und das ist eine Station von QKERN; die ist immer aufgezeichnet.
+  Der Preis: Wer draussen `00` setzt, um eine Spur gar nicht aufzuzeichnen,
+  bekommt sie hinter QKERN wieder eingeschaltet.
+- **`tracestate` geht nicht mit.** QKERN ist kein Tracing-Anbieter und hätte
+  nichts hineinzuschreiben; was bliebe, wäre ein durchkopierter Blob auf einer
+  Logfläche, und genau das verbietet die Regel „kein Inhalt" eine Zeile weiter
+  unten.
+- **Ein Dead-Letter-Replay erbt den Anschluss unverändert**, Eltern-Span
+  inklusive. Der erste Entwurf von 2.124 liess ihn an der letzten Station der
+  Quelle hängen, weil das Wiedereinreihen ja vom Dead Letter verursacht wird;
+  Fall (2.121) hat ihn umgeworfen, und zwar zu Recht. `parent_span_id` heisst
+  „die Span **draussen**, an der diese Nachricht hängt", und eine Spalte mit zwei
+  Bedeutungen läuft auseinander. Die Ursache steht genauer in
+  `source_message_id`. Für die Span-Kette heisst das: QKERN gibt genau **eine**
+  Kante heraus, die vom Claim zum Worker; zwei Claims derselben Spur vor und nach
+  einem Dead Letter teilen dieselbe Eltern-Span von draussen, und das ist
+  richtig, weil beide auf denselben Aufruf zurückgehen.
+- **Eine ausgehende Webhook-Zustellung trägt ihn als Kopfzeile `traceparent`.**
+  Der Anschluss steht in `project_webhook_deliveries` und ist dort so
+  unveränderlich wie die Nutzlast, damit ein zweiter Versuch nicht eine andere
+  Spur nennt als der erste. Er wird **nicht** signiert: Ein Proxy, der
+  Tracing-Köpfe anfasst, würde sonst die Signatur brechen und ein echtes
+  Ereignis bekäme 401.
+
+Keiner der ausgelieferten Sammler setzt diesen Anschluss heute: Change Feed,
+Audit-Kette und Log-Protokoll tragen selbst keinen `traceparent`. Der Weg ist
+da, der Erzeuger fehlt noch.
 
 **Kein Inhalt.** Die Tabelle hat keine Spalte für eine Nutzlast, für einen
 Dedupe-Verifikator, für ein Lease-Token oder für eine Fehlermeldung. Was bleibt,
@@ -224,8 +271,11 @@ weg, wenn sie am meisten wert ist.
 
 **Was absichtlich fehlt**: eine Station für die Erneuerung der Pacht (ein
 Herzschlag alle zehn Sekunden protokolliert den Takt und nicht die Arbeit; ob
-eine Pacht gehalten hat, sagt der Ausgang), ein weitergegebener `traceparent` an
-einen Worker oder an einen Webhook, und eine Suche nach einer Spur-Id.
+eine Pacht gehalten hat, sagt der Ausgang) und eine Suche nach einer Spur-Id.
+Dazu, offen und nicht absichtlich: QKERN exportiert keine Spans an einen
+Collector, innerhalb einer Spur gibt es keine Span-Kanten (die Ordnung ist
+`sequence`), und der Function-Aufruf aus der Queue trägt den `traceparent`
+nicht, weil er über einen Sandbox-Port geht und nicht über HTTP.
 
 ## Bewusste Alpha-Grenzen
 

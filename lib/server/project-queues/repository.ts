@@ -18,7 +18,9 @@ import type {
 } from "@/lib/server/project-queues/trace";
 import {
   PROJECT_QUEUE_TRACE_MAX_STATIONS,
+  projectQueueClaimTraceparent,
   projectQueueTraceExpiresAt,
+  projectQueueTraceSpanId,
 } from "@/lib/server/project-queues/trace";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 
@@ -249,7 +251,7 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
         message.leaseTokenHash = lease.tokenHash;
         message.leaseExpiresAt = new Date(input.now.getTime() + queue.visibilityTimeoutSeconds * 1_000);
         this.messages.set(message.id, message);
-        this.record(queue, message.id, {
+        const spanId = this.record(queue, message.id, {
           station: "claimed", attempt: message.attemptCount,
           workerId: input.workerId, failureCode: null, occurredAt: input.now,
         });
@@ -262,6 +264,11 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
           leaseToken: lease.token,
           leaseExpiresAt: message.leaseExpiresAt.toISOString(),
           createdAt: message.createdAt.toISOString(),
+          // Spur-Id von der ersten Station, Eltern-Span von der gerade
+          // geschriebenen. Ohne Anschluss bleibt es `null`; siehe 0082.
+          traceparent: projectQueueClaimTraceparent(
+            this.traceIdOf(message.id), spanId,
+          ),
         };
       });
     });
@@ -476,10 +483,11 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
    * Ausfuehrungsgewalt. Dass die Grenze erreicht wurde, sagt der Leser ueber
    * `complete`, und das ist die Stelle, an der es jemanden interessiert.
    */
-  private record(queue: ProjectQueue, messageId: string, record: ProjectQueueTraceRecord) {
+  private record(queue: ProjectQueue, messageId: string, record: ProjectQueueTraceRecord): string | null {
     const existing = this.traces.get(messageId) ?? [];
-    if (existing.length >= PROJECT_QUEUE_TRACE_MAX_STATIONS) return;
+    if (existing.length >= PROJECT_QUEUE_TRACE_MAX_STATIONS) return null;
     const anchor = existing.length === 0 ? record.trace ?? null : null;
+    const spanId = projectQueueTraceSpanId();
     existing.push({
       organizationId: queue.organizationId,
       projectId: queue.projectId,
@@ -493,14 +501,27 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
       failureCode: record.failureCode,
       traceId: anchor?.traceId ?? null,
       parentSpanId: anchor?.parentSpanId ?? null,
+      spanId,
       sourceMessageId: record.sourceMessageId ?? null,
       occurredAt: new Date(record.occurredAt),
       expiresAt: projectQueueTraceExpiresAt(queue, record.occurredAt),
     });
     this.traces.set(messageId, existing);
+    return spanId;
   }
 
-  /** Der Anschluss der ersten Station einer Nachricht, falls sie einen hat. */
+  /** Die Spur-Id einer Nachricht, also der Wert auf ihrer ersten Station. */
+  private traceIdOf(messageId: string): string | null {
+    return (this.traces.get(messageId) ?? []).find((station) => station.sequence === 1)?.traceId ?? null;
+  }
+
+  /**
+   * Der Anschluss der ersten Station einer Nachricht, falls sie einen hat.
+   *
+   * Eine wiedereingereihte Nachricht erbt ihn vollstaendig, Eltern-Span
+   * inklusive. Warum nicht die letzte Station der Quelle: siehe `traceAnchor` im
+   * Postgres-Port, dort steht die Begruendung in voller Laenge.
+   */
   private anchorOf(messageId: string): ProjectQueueTraceAnchor | null {
     const first = (this.traces.get(messageId) ?? []).find((station) => station.sequence === 1);
     return first?.traceId ? Object.freeze({ traceId: first.traceId, parentSpanId: first.parentSpanId! }) : null;
@@ -605,6 +626,7 @@ type StoredTraceStation = {
   workerId: string | null;
   failureCode: ProjectQueueMessage["lastFailureCode"];
   traceId: string | null;
+  spanId: string;
   parentSpanId: string | null;
   sourceMessageId: string | null;
   occurredAt: Date;
@@ -624,6 +646,7 @@ function publicTraceEntry(station: StoredTraceStation): ProjectQueueTraceEntry {
     attempt: station.attempt,
     workerId: station.workerId,
     failureCode: station.failureCode,
+    spanId: station.spanId,
     occurredAt: station.occurredAt.toISOString(),
   });
 }
