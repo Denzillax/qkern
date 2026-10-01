@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "welle23-realtime.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 73,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

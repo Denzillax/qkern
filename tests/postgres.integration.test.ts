@@ -13404,6 +13404,39 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       }`);
       expect(flach.mutations[0]!.embeds.map((embed) => embed.kind)).toEqual(["one"]);
 
+      // --- Zusage 5: eine dritte Ebene faellt, und zwar an der Tiefe ---------
+      //
+      // Diese Zusage fehlte, und eine Mutationsprobe hat es gezeigt: Mit
+      // `maxEmbedDepth` von 2 auf 3 blieben alle 249 Faelle gruen. Die Grenze
+      // stand an fuenf Stellen im Quelltext und wurde von keinem Fall
+      // gehalten, also war "hoechstens zwei Ebenen" eine Behauptung.
+      //
+      // Die Kette `kommentare` -> `beitraege` -> `autoren` ist dreistufig und
+      // laeuft ab der zweiten Stufe nur nach `one`, vervielfacht die Zeilen
+      // also nicht. Wenn sogar sie faellt, faellt jede dritte Ebene. Dass die
+      // Tiefe und nicht die Richtung entscheidet, zeigt der Vergleich darunter:
+      // dieselbe Kette eine Stufe kuerzer geht durch.
+      //
+      // Abgewiesen wird sie an der **Grammatik**, nicht an der Data API, und
+      // das ist kein Zufall: `maxMutationDepth` leitet sich aus
+      // `DATA_API_LIMITS.maxEmbedDepth` ab, also schneidet dieselbe Zahl schon
+      // das Dokument. Ein erster Entwurf dieser Zusage erwartete
+      // `GENERATED_DATA_API_INVALID_INPUT` und fiel darum auch auf dem
+      // gesunden Stand. Der Fall nennt jetzt den Mechanismus, der wirklich
+      // greift, sonst stuende hier eine Zusage ueber eine Stelle, die gar
+      // nicht gefragt wird.
+      expect(await fails(`mutation {
+        updatebeitraegeCollection(set: { titel: "x" }, where: ["besitzer:eq:${mine}"]) {
+          records { id kommentare { text beitraege { titel autoren { name } } } }
+        }
+      }`)).toMatchObject({ name: "ProjectGraphqlError" });
+      const zweistufig = await mutate(mine, `mutation {
+        updatebeitraegeCollection(set: { titel: "geaendert" }, where: ["besitzer:eq:${mine}"]) {
+          records { id kommentare { text beitraege { titel } } }
+        }
+      }`);
+      expect(zweistufig.mutations[0]!.embeds.map((embed) => embed.kind)).toEqual(["many"]);
+
       // --- Zusage 5: dieselbe Transaktion ----------------------------------
       //
       // Die erste Mutation legt einen Beitrag an, die zweite einen Kommentar

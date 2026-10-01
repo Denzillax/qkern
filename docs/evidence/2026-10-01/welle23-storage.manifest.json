@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle23-storage.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "11 passed (11)",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: die Tiefengrenze steht auf drei",
+  "log": "welle23-mutation-embeddepth.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 73,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 248 passed (249)",
+  "passed": 248,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

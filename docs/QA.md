@@ -6492,3 +6492,40 @@ GraphQL-Mutationen und Joins ueber zwei Ebenen fehlen. Die Entdeckung laeuft
 nur beim Start, uebergreifend bleibt sie unmoeglich. Wer Inhaltslogs an einen
 Drain haengt, schickt sie ungestrichen hinaus, und kein echter Empfaenger hat
 eine solche Ladung gesehen. Die Console ist weiterhin ungesehen.
+
+## Welle dreiundzwanzig (2.71): Nachbarn, Anwesenheit und ein Abonnement, das aufsetzen kann
+
+Drei Schnitte: Beziehungen in GraphQL-Mutationen mit zweiter Ebene nur nach
+`one` (Faelle 2.111 und 2.112), dauerhafte Presence und Nachreichen nach einem
+Abriss (Fall 2.113, Migration 0077), sowie Upsert an MCP und SDK mit einem
+Loeschwerkzeug fuer `storage:write` (Faelle 2.115 und 2.116, Migration 0078).
+
+Der schwerste Fund betrifft eine Faehigkeit, die seit 1.57.0 als fertig galt:
+Ein `changes:`-Abonnement konnte nie wieder aufsetzen. Sein Cursor kam aus
+einer Tabelle, in die dieser Weg nie schreibt, und eine Aenderungsnachricht
+trug keinen signierten Cursor. Dazu lieferte ein Poller-Neustart den ganzen
+aufbewahrten Feed noch einmal als lebend aus, und zwischen Nachreichen und
+Livebetrieb gab es keine Ordnungszusage.
+
+Die zweite Ebene der Einbettungen ist gerechnet und nicht geschaetzt: `many`
+waeren 120 000 Zeilen aus einer achtwortigen Anfrage, also das Zwanzigfache der
+Obergrenze. Sie wird abgewiesen.
+
+Zum Verfahren: Eine Probe fiel nicht, und das war der Fund. Die Tiefengrenze
+von zwei auf drei zu setzen aenderte an 249 Faellen nichts; sie stand an fuenf
+Stellen im Quelltext und war von keinem Fall gehalten. Beim Schliessen der
+Luecke habe ich zweimal denselben Fehler gemacht, den ich sonst bei anderen
+finde: erst eine Spalte benutzt, die es im Testschema nicht gibt, dann den
+falschen Mechanismus erwartet. Abgewiesen wird die dritte Ebene von der
+Grammatik, nicht von der Data API.
+
+Checkpoint `2.71.0` am 1. Oktober 2026: PostgreSQL 17 mit 249 von 249 zweimal,
+Realtime unter Production mit 19 von 19, versitygw und ClamAV mit 11 von 11,
+Functions mit 33 von 33, Mailpit und Dex mit 11 von 11, alle exit 0; Lokal 2490
+bestanden, 0 fehlgeschlagen, zweimal reproduziert. Drei Mutationsproben mit
+genau ihren Faellen.
+
+Nicht erbracht: Beziehungen stehen nicht im SDL und nicht in GraphQL-Abfragen.
+Presence zaehlt nicht unter den Metriken, kein Soak mit Presence. Die lesenden
+Storage- und Queue-Werkzeuge laufen ueber MCP weiter als Betreiber. Die Console
+ist weiterhin ungesehen.

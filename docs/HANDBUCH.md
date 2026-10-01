@@ -2892,8 +2892,10 @@ abonnieren; QKERN überspringt keine Ereignisse still.
 
 Der Prozess bindet standardmässig Loopback; alles darüber verlangt ein
 ausdrückliches `QKERN_REALTIME_PUBLIC_BIND=true`. Der Event Log liegt seit
-`1.11.0` in PostgreSQL; Presence liegt weiter im Prozessspeicher und geht beim
-Neustart verloren.
+`1.11.0` in PostgreSQL. **Presence liegt seit `2.71.0` ebenfalls dort** und
+ueberlebt damit einen Neustart und einen Instanzwechsel; sie haengt an einer
+Pacht, die der Prozess mit der Verbindung erneuert, und endet darum von selbst,
+wenn eine Verbindung ohne Abmeldung verschwindet.
 
 `NODE_ENV=production` verweigert der Prozess nicht mehr pauschal. Seit `1.73.0`
 prüft ein Tor fünf Bedingungen einzeln und nennt jede, die fehlt: dauerhafter
@@ -5192,7 +5194,7 @@ und einmal nein.
 
 **Verbindungen schreibt niemand auf.** Der Realtime-Dienst kennt seine offenen
 Verbindungen genau: `lib/server/realtime/service.ts` führt sie in einer `Map`
-im Prozessspeicher, mit Abonnements und Presence je Verbindung, und `stats()`
+im Prozessspeicher, mit den Abonnements je Verbindung, und `stats()`
 kann sie zählen. Nur verlässt diese Map den Prozess nie. Es gibt keine Tabelle,
 in der eine Verbindung stünde, keine Route, die danach fragt, und nach einem
 Neustart ist die Zahl weg. Console und Realtime-Server sind zwei Prozesse; eine

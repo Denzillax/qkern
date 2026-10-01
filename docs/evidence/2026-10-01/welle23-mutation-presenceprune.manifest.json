@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: der Aufraeumer laesst verwaiste Presence stehen",
+  "log": "welle23-mutation-presenceprune.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 73,
+  "testFiles": "2 failed | 29 passed (31)",
+  "tests": "2 failed | 247 passed (249)",
+  "passed": 247,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

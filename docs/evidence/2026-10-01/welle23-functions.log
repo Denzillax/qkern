@@ -1,0 +1,30 @@
+
+> qkern-platform@2.70.0 test:functions:docker
+> node scripts/functions-certification.mjs
+
+Docker-Server 29.7.2
+ Network qkern-functions-certification_default Creating 
+ Network qkern-functions-certification_default Created 
+ Container qkern-functions-certification-registry-1 Creating 
+ Container qkern-functions-certification-postgres-1 Creating 
+ Container qkern-functions-certification-registry-1 Created 
+ Container qkern-functions-certification-postgres-1 Created 
+ Container qkern-functions-certification-registry-1 Starting 
+ Container qkern-functions-certification-postgres-1 Starting 
+ Container qkern-functions-certification-registry-1 Started 
+ Container qkern-functions-certification-postgres-1 Started 
+ Container qkern-functions-certification-postgres-1 Waiting 
+ Container qkern-functions-certification-registry-1 Waiting 
+ Container qkern-functions-certification-registry-1 Healthy 
+ Container qkern-functions-certification-postgres-1 Healthy 
+Test-Image 127.0.0.1:55000/qkern/probe@sha256:6feb539030cb7b0626ecc84dfe4d8d917b662f142bc057a7914bd3dfb7eca928 (lokal entfernt, wird aus der Registry geholt)
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+
+ Test Files  2 passed (2)
+      Tests  33 passed (33)
+   Start at  20:15:23
+   Duration  42.63s (transform 332ms, setup 0ms, import 486ms, tests 41.85s, environment 0ms)
+
+EXIT=0

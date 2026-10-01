@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle23-local-run2.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "346 passed | 40 skipped (386)",
+  "tests": "2490 passed | 365 skipped (2855)",
+  "passed": 2490,
+  "failed": 0,
+  "skipped": 365,
+  "images": []
+}

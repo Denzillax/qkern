@@ -1946,3 +1946,21 @@ aus dem Block darüber verdrängt. Sie steht jetzt im Block selbst.
 beiden ersten Läufen und dem Commit kamen nur Kommentarzeilen und Dokumentation
 dazu; dieser dritte Lauf belegt, dass der Stand, der im Zweig liegt, derselbe
 grüne ist.
+
+## Läufe zu Release 2.71 (1. Oktober 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-01/welle23-run2.log` | PostgreSQL 17 | 249 von 249, exit 0 |
+| `2026-10-01/welle23-run3.log` | PostgreSQL 17 | 249 von 249, exit 0, nach dem Schärfen von `(2.111)` |
+| `2026-10-01/welle23-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 19 von 19, exit 0 |
+| `2026-10-01/welle23-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-10-01/welle23-functions.log` | Functions gegen Docker plus PostgreSQL | 33 von 33, exit 0 |
+| `2026-10-01/welle23-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-10-01/welle23-mutation-presenceprune.log` | Mutation: der Aufräumer lässt verwaiste Presence stehen | **247 von 249, exit 1 – absichtlich** |
+| `2026-10-01/welle23-mutation-embeddepth.log` | Mutation: die Tiefengrenze steht auf drei | **248 von 249, exit 1 – absichtlich** |
+| `2026-10-01/welle23-mutation-replayrls.log` | Mutation: das Nachreichen prüft die Zeilensicherheit nicht erneut | **18 von 19, exit 1 – absichtlich** |
+| `2026-10-01/welle23-local-run1.log` | Vitest lokal (Windows) | 2490 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-01/welle23-local-run2.log` | Vitest lokal (Windows) | 2490 bestanden, exit 0, mit `--maxWorkers=3` |
+
+`welle23-run1` fehlt mit Absicht: Der erste Lauf lief gegen den Stand vor dem Schärfen von `(2.111)`, und `run3` ersetzt ihn. Die Tiefenprobe ist in der Datei als Wiederholung abgelegt; der erste Versuch fiel nicht, und genau das war der Befund.

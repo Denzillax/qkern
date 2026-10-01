@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle23-run3.log",
+  "commit": "67ec1f605ad862ebd57fdece075eacb93eb050c4",
+  "commitSubject": "merge: Presence und History dauerhaft aus slice/presence",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 73,
+  "testFiles": "31 passed (31)",
+  "tests": "249 passed (249)",
+  "passed": 249,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
