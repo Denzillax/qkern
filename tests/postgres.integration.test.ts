@@ -11381,10 +11381,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       try {
         const listed = (await lesend.client.listTools()).tools.map((tool) => tool.name).sort();
         // Vollstaendig und nicht "enthaelt": Die Aussage dieses Schnittes ist,
-        // was **nicht** dabei ist. Kein Migration-Preview, kein Apply, kein
-        // roher SELECT an der Zeilensicherheit vorbei, keine Queue, kein
-        // Bucket, keine Control Plane.
-        expect(listed).toEqual(["qkern_table_rows_list"]);
+        // was **nicht** dabei ist. Kein Migration-Preview, kein Apply, keine
+        // Queue, kein Bucket, keine Control Plane. Die freie Abfrage und die
+        // Schemaliste stehen seit 2.117 dabei, weil sie dort unter der
+        // Zeilensicherheit lesen; was sie dann liefern, prueft `(2.117)`.
+        expect(listed).toEqual([
+          "qkern_query_readonly", "qkern_schema_list", "qkern_table_rows_list",
+        ]);
 
         const result = await lesend.client.callTool({
           name: "qkern_table_rows_list",
@@ -11806,9 +11809,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         expect(await toolNames(controlPlane.client)).toEqual([
           "qkern_automation_policy_get", "qkern_logs_search", "qkern_project_get",
         ]);
-        // Die freie Abfrage und die Schemaliste sind auch hier nicht dabei, und
-        // sie sind es mit keinem Bereich: Sie lesen an der Zeilensicherheit
-        // vorbei, `data:read` sagt aber Lesen unter ihr zu.
+        // Die freie Abfrage und die Schemaliste sind hier nicht dabei. Sie
+        // haengen seit 2.117 an `data:read`, und dieser Token traegt ihn nicht:
+        // `project:read` sagt etwas ueber die Gestalt der Umgebung und nichts
+        // ueber die Gestalt der Daten.
         expect(await controlPlane.client.callTool({
           name: "qkern_query_readonly", arguments: { statement: "SELECT 1" },
         })).toEqual(nichtGefunden("qkern_query_readonly"));
@@ -12270,6 +12274,325 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect((await owner.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM project_storage_buckets WHERE organization_id = $1`,
         [storageOrganization])).rows[0].count).toBe("3");
+    }
+  }, 120_000);
+
+  it("(2.117) runs the free query under row level security as the consenting user, gives each user exactly their own rows, keeps a table without row level security unreachable over OAuth and answers the schema list with the readable surface only", async () => {
+    // Die aelteste Ausnahme des MCP-Servers (2.117).
+    //
+    // `qkern_query_readonly` und `qkern_schema_list` hatten seit 2.64 keinen
+    // Bereich, und die Begruendung war richtig: Sie liefen ueber
+    // `ProjectDataPlaneService`, also mit der Leserolle und ohne
+    // `request.jwt.claims`. Die Zeilensicherheit war dabei an, die Rolle traegt
+    // kein `BYPASSRLS`; nur hatte eine Policy keine Ansprueche zu lesen, und
+    // eine Tabelle ohne Policy gab alles her.
+    //
+    // Dieser Fall prueft den anderen Weg gegen die echte Datenbank: zwei echte
+    // Nutzer, zwei echte Zustimmungen, zwei echte Token, das echte Gate, ein
+    // echter MCP-Client ueber den Transport des SDK, die echte generierte Data
+    // API und zwei echte Tabellen, von denen genau eine eine Policy hat.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const rlsOwner = randomUUID();
+    const rlsOrganization = randomUUID();
+    const rlsProject = randomUUID();
+    const schema = `mcprls_${randomUUID().replaceAll("-", "_")}`;
+    const scope = {
+      organizationId: rlsOrganization, projectId: rlsProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [rlsOwner, `mcp-rls-owner-${rlsOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'MCP RLS 2.117', $2, $3)`,
+    [rlsOrganization, `mcp-rls-${rlsOrganization}`, rlsOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'MCP RLS 2.117', $3, 'test', 'ready', $4)`,
+    [rlsProject, rlsOrganization, `mcp-rls-${rlsProject}`, rlsOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [rlsOrganization, rlsProject, `managed:${rlsProject}`]);
+
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService(
+        { kid: "certification-2-117", privateKey: generateKeyPairSync("ed25519").privateKey },
+        "https://qkern.test",
+      ),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 31)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const home = "https://app.test/mcp/zurueck";
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      // --- Zwei Nutzer, die beide zustimmen -------------------------------
+      const anmelden = async () => {
+        const email = `mcp-rls-${randomUUID()}@example.test`;
+        const signup = await service.signUp(scope, {
+          email, password: "a sufficiently long certification password",
+          redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+        });
+        const signedIn = await service.consumeEmailToken(scope, {
+          token: signup.debugToken!, purpose: "email_verification",
+        });
+        if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+        const userId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+        return { accessToken: signedIn.accessToken, userId };
+      };
+      const anna = await anmelden();
+      const bruno = await anmelden();
+
+      await service.createOAuthClient(scope, {
+        name: "mcp-bridge", redirectUris: [home], scopes: ["data:read"],
+      }, { id: rlsOwner });
+
+      const tokenFuer = async (nutzer: { accessToken: string }) => {
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        await service.grantOAuthConsent(scope, nutzer.accessToken, {
+          clientId: "mcp-bridge", scopes: ["data:read"],
+        });
+        const granted = await service.authorizeOAuth(scope, nutzer.accessToken, {
+          clientId: "mcp-bridge", redirectUri: home, scopes: ["data:read"],
+          codeChallenge: challenge, state: null,
+        });
+        const issued = await service.exchangeOAuthCode(scope, {
+          clientId: "mcp-bridge", code: granted.code, redirectUri: home, codeVerifier: verifier,
+        });
+        return issued.accessToken;
+      };
+      const annaToken = await tokenFuer(anna);
+      const brunoToken = await tokenFuer(bruno);
+
+      // --- Zwei Tabellen, und genau eine hat eine Policy -------------------
+      //
+      // `notizen` steht unter einer Policy, die `sub` aus `request.jwt.claims`
+      // liest. `offen` hat keine Zeilensicherheit, und die Projektrolle hat das
+      // Leserecht an ihr. Das ist Absicht: Die Zusage dieses Schnittes ist, dass
+      // die Pruefung je Tabelle sie trotzdem nicht hergibt, und eine Tabelle
+      // ohne Leserecht haette dafuer nichts belegt.
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".notizen (
+        id uuid PRIMARY KEY, besitzer text NOT NULL, inhalt text NOT NULL,
+        api_token text NOT NULL DEFAULT 'qk_live_streng_geheim')`);
+      await owner.query(`ALTER TABLE "${schema}".notizen ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY eigene_zeilen ON "${schema}".notizen
+        FOR SELECT TO ${expectedRole} USING (
+          besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE TABLE "${schema}".offen (
+        id uuid PRIMARY KEY, inhalt text NOT NULL)`);
+      await owner.query(`INSERT INTO "${schema}".notizen (id, besitzer, inhalt) VALUES
+        ($1, $2, 'Anna eins'), ($3, $2, 'Anna zwei'), ($4, $5, 'Bruno eins')`,
+      [randomUUID(), anna.userId, randomUUID(), randomUUID(), bruno.userId]);
+      await owner.query(`INSERT INTO "${schema}".offen (id, inhalt) VALUES ($1, 'fuer alle sichtbar')`,
+        [randomUUID()]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO ${expectedRole}`);
+
+      // Und die Datenbank gibt `offen` dieser Rolle wirklich her, mit
+      // `row_security = on` und ohne Ansprueche. Ohne diese Zeile waere die
+      // Ablehnung weiter unten von zwei Sperren getragen, und die Probe haette
+      // nichts belegt.
+      const direkt = await projectApi.connect();
+      try {
+        await direkt.query("BEGIN READ ONLY");
+        await direkt.query("SET LOCAL row_security = on");
+        const offen = await direkt.query<{ inhalt: string }>(
+          `SELECT inhalt FROM "${schema}".offen`);
+        expect(offen.rows.map((row) => row.inhalt)).toEqual(["fuer alle sichtbar"]);
+        // Dieselbe Rolle sieht ohne Ansprueche keine Zeile der Tabelle **mit**
+        // Policy. Das ist der Unterschied, um den es hier geht.
+        const mitPolicy = await direkt.query(`SELECT inhalt FROM "${schema}".notizen`);
+        expect(mitPolicy.rows).toEqual([]);
+        await direkt.query("COMMIT");
+      } finally { direkt.release(); }
+
+      // --- Der echte Weg herein -------------------------------------------
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: rlsOrganization, projectId: rlsProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) => secret === "qk_public_2_117" ? keyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const generated = new GeneratedDataApiService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${rlsProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const dataPlane = new ProjectDataPlaneService(
+        { resolveTarget: async () => ({ databaseInstanceRef: `managed:${rlsProject}` }) },
+        { resolve: async () => ({
+          pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+        }) },
+      );
+      const verbinden = async (token: string) => {
+        const admission = await admitMcpOAuthRequest(
+          { authorization: `Bearer ${token}`, projectKey: "qk_public_2_117" },
+          { keys, projectAuth: service },
+        );
+        expect(admission.ok).toBe(true);
+        if (!admission.ok) throw new Error("unerreichbar");
+        const server = createQKERNMcpServer(admission.context, {
+          generatedDataApi: generated, dataPlane,
+        });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new McpClient({ name: "certification-2-117", version: "1.0.0" });
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+        return { client, close: async () => { await client.close(); await server.close(); } };
+      };
+      const toolText = (result: unknown) => {
+        const content = (result as { content: Array<{ type: string; text: string }> }).content;
+        expect(content).toHaveLength(1);
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+
+      const annaSitzung = await verbinden(annaToken);
+      try {
+        // --- Zusage 1: der Bereich oeffnet die drei lesenden Werkzeuge -----
+        expect((await annaSitzung.client.listTools()).tools.map((tool) => tool.name).sort())
+          .toEqual(["qkern_query_readonly", "qkern_schema_list", "qkern_table_rows_list"]);
+
+        // --- Zusage 2: dieselbe Abfrage liefert genau die eigenen Zeilen ---
+        const annaErgebnis = toolText(await annaSitzung.client.callTool({
+          name: "qkern_query_readonly",
+          arguments: {
+            schema,
+            statement: `SELECT inhalt FROM "${schema}".notizen ORDER BY inhalt ASC`,
+          },
+        }));
+        expect(annaErgebnis.rows).toEqual([{ inhalt: "Anna eins" }, { inhalt: "Anna zwei" }]);
+        // Die Antwort nennt die Relation, die gelesen wurde, und die Grenze.
+        expect(annaErgebnis.relations).toEqual([{ schema, name: "notizen" }]);
+        expect(annaErgebnis).toMatchObject({ rowCount: 2, truncated: false, maxRows: 20 });
+
+        // Eine Zaehlung laeuft auch, und sie zaehlt dasselbe.
+        const gezaehlt = toolText(await annaSitzung.client.callTool({
+          name: "qkern_query_readonly",
+          arguments: { schema, statement: `SELECT count(*) AS anzahl FROM "${schema}".notizen` },
+        }));
+        expect(gezaehlt.rows).toEqual([{ anzahl: "2" }]);
+
+        // --- Zusage 3: eine Spalte mit sensiblem Namen kommt nicht mit -----
+        const sternchen = toolText(await annaSitzung.client.callTool({
+          name: "qkern_query_readonly",
+          arguments: { schema, statement: `SELECT * FROM "${schema}".notizen ORDER BY inhalt ASC` },
+        }));
+        expect(sternchen.columns).toEqual(["id", "besitzer", "inhalt"]);
+        expect(sternchen.omitted).toEqual(["api_token"]);
+        expect(JSON.stringify(sternchen)).not.toContain("streng_geheim");
+
+        // --- Zusage 4: eine Tabelle ohne Zeilensicherheit ist nicht da -----
+        //
+        // Die Rolle darf sie lesen, oben steht die Gegenprobe. Was dazwischen
+        // steht, ist die Pruefung je Relation und nichts anderes.
+        const ohnePolicy = await annaSitzung.client.callTool({
+          name: "qkern_query_readonly",
+          arguments: { schema, statement: `SELECT inhalt FROM "${schema}".offen` },
+        });
+        expect((ohnePolicy as { isError?: boolean }).isError).toBe(true);
+        expect(toolText(ohnePolicy).error).toBe("GENERATED_DATA_API_RLS_REQUIRED");
+        expect(JSON.stringify(toolText(ohnePolicy))).not.toContain("fuer alle sichtbar");
+
+        // --- Zusage 5: die Form, die diese Tuer annimmt --------------------
+        //
+        // Jede Ablehnung hier faellt vor der Datenbank, und jede nennt dieselbe
+        // Form und keine Tabelle.
+        for (const statement of [
+          // Ohne Schema: die Abfrage laeuft mit `search_path = pg_catalog`, also
+          // waere ein unqualifizierter Name etwas anderes als die Lesung denkt.
+          `SELECT inhalt FROM notizen`,
+          // Ein fremdes Schema, und der Systemkatalog ist eines davon.
+          `SELECT relname FROM pg_catalog.pg_class`,
+          `SELECT table_name FROM information_schema.tables`,
+          // Eine Funktion mit Schema koennte SECURITY DEFINER sein.
+          `SELECT "${schema}".geheim() FROM "${schema}".notizen`,
+          // Eine Funktion ausserhalb der Liste, auch aus dem Systemkatalog.
+          `SELECT current_setting('request.jwt.claims')`,
+          // Und nichts Schreibendes, auch nicht in einer Klammer.
+          `DELETE FROM "${schema}".notizen`,
+          `WITH weg AS (DELETE FROM "${schema}".notizen RETURNING id) SELECT * FROM weg`,
+        ]) {
+          const abgewiesen = await annaSitzung.client.callTool({
+            name: "qkern_query_readonly", arguments: { schema, statement },
+          });
+          expect((abgewiesen as { isError?: boolean }).isError, statement).toBe(true);
+          expect(toolText(abgewiesen).error, statement).toBe("GENERATED_DATA_API_READ_ONLY");
+        }
+        // Und es ist dabei nichts verschwunden.
+        expect((await owner.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM "${schema}".notizen`)).rows[0].count).toBe("3");
+
+        // --- Zusage 6: die Schemaliste ist die lesbare Flaeche -------------
+        //
+        // Nicht der Katalog. `offen` fehlt, weil diese Flaeche sie nicht
+        // bedient, und `api_token` fehlt, weil der Name sensibel ist.
+        const liste = toolText(await annaSitzung.client.callTool({
+          name: "qkern_schema_list", arguments: { schema },
+        }));
+        const tabellen = liste.tables as Array<{ name: string; columns: Array<{ name: string }> }>;
+        expect(tabellen.map((tabelle) => tabelle.name)).toEqual(["notizen"]);
+        expect(tabellen[0].columns.map((spalte) => spalte.name))
+          .toEqual(["id", "besitzer", "inhalt"]);
+      } finally { await annaSitzung.close(); }
+
+      // --- Zusage 7: derselbe Text, der andere Nutzer, dessen Zeilen -------
+      const brunoSitzung = await verbinden(brunoToken);
+      try {
+        const brunoErgebnis = toolText(await brunoSitzung.client.callTool({
+          name: "qkern_query_readonly",
+          arguments: {
+            schema,
+            statement: `SELECT inhalt FROM "${schema}".notizen ORDER BY inhalt ASC`,
+          },
+        }));
+        expect(brunoErgebnis.rows).toEqual([{ inhalt: "Bruno eins" }]);
+      } finally { await brunoSitzung.close(); }
+
+      // --- Zusage 8: lokal bleibt beides, was es war -----------------------
+      //
+      // Der statische Bearer laeuft weiter ueber die Data Plane: ganzer Katalog
+      // und eine Abfrage ohne Policy. Das ist der Unterschied, den dieser
+      // Schnitt haelt, und er wird hier gegen dieselbe Datenbank gezeigt.
+      const lokalerServer = createQKERNMcpServer({
+        organizationId: rlsOrganization, projectId: rlsProject, environment: "development",
+        actorRef: "local-mcp-agent", access: { kind: "local_static_bearer" },
+      }, { generatedDataApi: generated, dataPlane });
+      const [lokalClientTransport, lokalServerTransport] = InMemoryTransport.createLinkedPair();
+      const lokalerClient = new McpClient({ name: "certification-2-117-lokal", version: "1.0.0" });
+      await lokalerServer.connect(lokalServerTransport);
+      await lokalerClient.connect(lokalClientTransport);
+      try {
+        const katalog = toolText(await lokalerClient.callTool({
+          name: "qkern_schema_list", arguments: { schema },
+        }));
+        expect((katalog.tables as Array<{ name: string }>).map((tabelle) => tabelle.name).sort())
+          .toEqual(["notizen", "offen"]);
+        const lokalOffen = toolText(await lokalerClient.callTool({
+          name: "qkern_query_readonly",
+          arguments: { statement: `SELECT inhalt FROM "${schema}".offen` },
+        }));
+        expect(lokalOffen.rows).toEqual([{ inhalt: "fuer alle sichtbar" }]);
+      } finally { await lokalerClient.close(); await lokalerServer.close(); }
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
     }
   }, 120_000);
 

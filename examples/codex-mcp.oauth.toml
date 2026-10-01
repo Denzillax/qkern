@@ -2,19 +2,36 @@
 #
 # The tool list below is what an OAuth token can reach at all (see
 # docs/MCP_REMOTE_AUTH.md). A token only sees the subset its own scopes open:
-# data:read opens the list tool, data:write opens the three mutations. Control
-# plane, schema, raw queries, storage, queues and migrations are not reachable
-# over OAuth and are not registered for such a session.
+# data:read opens the list tool, the schema list and the free query, data:write
+# opens the three mutations, and the remaining scopes open the project entry, the
+# audit search, storage, the queues and a migration preview. Applying a migration
+# is not reachable over OAuth and is not registered for such a session.
+#
+# This comment was wrong until 2.117: it still claimed that storage, queues,
+# control plane and migrations were unreachable, which stopped being true with
+# migration 0073 and the scopes of 2.103.
 [mcp_servers.qkern]
 url = "https://mcp.your-qkern-domain.ch/mcp"
 auth = "oauth"
 required = true
 enabled = true
 enabled_tools = [
+  "qkern_project_get",
+  "qkern_automation_policy_get",
+  "qkern_schema_list",
+  "qkern_query_readonly",
   "qkern_table_rows_list",
   "qkern_table_rows_insert",
   "qkern_table_row_update",
   "qkern_table_row_delete",
+  "qkern_storage_buckets_list",
+  "qkern_storage_objects_list",
+  "qkern_storage_object_delete",
+  "qkern_queues_list",
+  "qkern_queue_status",
+  "qkern_queue_message_enqueue",
+  "qkern_logs_search",
+  "qkern_migration_preview",
 ]
 default_tools_approval_mode = "writes"
 startup_timeout_sec = 10
@@ -27,4 +44,7 @@ approval_mode = "prompt"
 approval_mode = "prompt"
 
 [mcp_servers.qkern.tools.qkern_table_row_delete]
+approval_mode = "prompt"
+
+[mcp_servers.qkern.tools.qkern_storage_object_delete]
 approval_mode = "prompt"

@@ -1,4 +1,5 @@
 import { DATA_IDENTIFIER, DATA_IDENTIFIER_PATTERN, isDataSchemaName } from "@/lib/server/data-plane/identifiers";
+import { readFreeQuery, type FreeQueryRelation } from "@/lib/server/data-plane/free-query";
 import { DATA_API_LIMITS, SENSITIVE_COLUMN_PATTERN, type DataApiFilterOperator } from "@/lib/data-api-limits";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import { randomUUID } from "node:crypto";
@@ -269,6 +270,25 @@ export type GeneratedAggregateResult = {
   truncated: boolean;
 };
 
+export type GeneratedFreeQueryInput = {
+  schema: string;
+  statement: string;
+  limit?: number;
+};
+
+export type GeneratedFreeQueryResult = {
+  source: "postgres";
+  /** Die Relationen, die die Lesung im Text gefunden hat, jede unter der Zeilensicherheit geprueft. */
+  relations: FreeQueryRelation[];
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  /** Spalten, die wegen ihres Namens nicht ausgeliefert wurden; genannt und nicht verschwiegen. */
+  omitted: string[];
+  truncated: boolean;
+  maxRows: number;
+};
+
 export interface GeneratedDataApiPort {
   aggregateRows(
     context: GeneratedDataContext,
@@ -302,6 +322,21 @@ export interface GeneratedDataApiPort {
     scope: ProjectDataPlaneScope,
     schema: string,
   ): Promise<GeneratedTable[]>;
+  /**
+   * Eine freie lesende Abfrage **unter** der Zeilensicherheit (2.117).
+   *
+   * Dieselbe Rolle, dieselben Ansprueche und dieselbe Lesetuer wie jede andere
+   * Anfrage dieser Flaeche. Was dazukommt, ist die Lesung des Abfragetextes:
+   * `readFreeQuery` nennt die Relationen, und jede einzelne geht durch
+   * `assertTableBoundary`, bevor die Abfrage laeuft. Eine Tabelle ohne
+   * Zeilensicherheit ist auf diesem Weg darum nicht erreichbar, auch dann
+   * nicht, wenn die Projektrolle das Leserecht an ihr hat.
+   */
+  queryUnderRowSecurity(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedFreeQueryInput,
+  ): Promise<GeneratedFreeQueryResult>;
   /**
    * Zeilen einfuegen, und mit `onConflict` als Upsert (2.105).
    *
@@ -2056,6 +2091,88 @@ export class GeneratedDataApiService implements GeneratedDataApiPort {
     return { byRow, truncated, nested: nestedResults };
   }
 
+  /**
+   * Die freie Abfrage unter der Zeilensicherheit (2.117).
+   *
+   * Vier Dinge stehen hier, und jedes traegt einen Teil der Zusage:
+   *
+   * 1. **Die Lesung vor der Datenbank.** `readFreeQuery` nennt jede Relation des
+   *    Textes und weist alles ab, dessen Auflösung sie nicht nachvollziehen
+   *    kann: eine Tabelle ohne Schema, eine Tabelle aus einem fremden Schema,
+   *    eine Funktion mit Schema, einen Operator mit Schema, einen Cast mit
+   *    Schema und jede Funktion ausserhalb der Liste. Die Begruendung dieser
+   *    Regel steht in `free-query.ts`.
+   * 2. **Die Pruefung je Relation.** Jede gefundene Relation geht durch
+   *    `assertTableBoundary(..., "select")`, also durch genau die Tuer, durch die
+   *    auch `listRows` geht. Eine Tabelle ohne Zeilensicherheit endet mit
+   *    `GENERATED_DATA_API_RLS_REQUIRED`, eine Tabelle im Eigentum der
+   *    Projektrolle ohne `FORCE` mit der Grenzablehnung.
+   * 3. **`search_path = pg_catalog`.** Ohne diese Zeile waere die Lesung oben
+   *    eine Annahme. Mit ihr loest PostgreSQL unqualifizierte Namen nur im
+   *    Systemkatalog auf, und die Lesung und die Auflösung koennen nicht
+   *    auseinandergehen.
+   * 4. **Die Ausfuehrung in `this.run`.** Dieselbe Verbindung, dieselbe Rolle,
+   *    dasselbe `BEGIN READ ONLY`, dasselbe `row_security = on`, dieselben
+   *    Zeitlimits und dieselben `request.jwt.claims` wie bei einer Liste. Es
+   *    gibt hier keinen zweiten Weg in die Datenbank, denn ein zweiter Weg waere
+   *    eine zweite Antwort auf die Frage, unter welchen Anspruechen gelesen wird.
+   *
+   * Spalten mit einem Namen wie `password` oder `api_token` liefert diese
+   * Flaeche nicht aus, so wie sie sie auch aus einer Liste und aus dem
+   * generierten Dokument heraushaelt. Bei einer freien Abfrage steht der
+   * Spaltenname erst am Ergebnis fest, also fallen sie dort und werden in
+   * `omitted` genannt.
+   */
+  async queryUnderRowSecurity(
+    context: GeneratedDataContext,
+    scope: ProjectDataPlaneScope,
+    input: GeneratedFreeQueryInput,
+  ): Promise<GeneratedFreeQueryResult> {
+    assertRequest(context, scope, input.schema);
+    const limit = input.limit ?? 20;
+    if (!Number.isSafeInteger(limit) || limit < MIN_ROWS || limit > MAX_ROWS) throw invalidInput();
+    const reading = readFreeQuery(input.statement, input.schema);
+    if (!reading.ok) {
+      // Der Grund der Ablehnung gehoert zum Aufruf und nicht zum Inhalt: Er
+      // nennt die Form des Textes und keine Tabelle, keine Spalte und keine
+      // Zeile. Darum steht er als `cause` im Log und nicht in der Antwort.
+      throw new GeneratedDataApiError("GENERATED_DATA_API_READ_ONLY", {
+        cause: new Error(`free query rejected by ${reading.reason}`),
+      });
+    }
+    const statement = input.statement.trim().replace(/;\s*$/, "");
+    return this.run(context, scope, false, async (client) => {
+      for (const relation of reading.relations) {
+        assertTableBoundary(await this.loadTable(client, relation.schema, relation.name), "select");
+      }
+      await client.query(`SET LOCAL search_path = pg_catalog`);
+      // Die Grenze steht als Literal im Text und kommt vom Server: Ohne sie
+      // puffert der Treiber so viele Zeilen, wie die Abfrage hergibt, und die
+      // Grenze der Anwendung kaeme zu spaet.
+      const result = await client.query<Record<string, unknown>>(
+        `SELECT * FROM (${statement}) AS qkern_free_query LIMIT ${limit + 1}`,
+      );
+      const selected = result.rows.slice(0, limit);
+      const present = selected[0] ? Object.keys(selected[0]) : [];
+      const omitted = present.filter((name) => SENSITIVE_COLUMN.test(name));
+      const columns = present.filter((name) => !SENSITIVE_COLUMN.test(name)).slice(0, MAX_COLUMNS);
+      const rows = boundedRows(
+        selected.map((row) => projectRow(row, columns)), MAX_RESPONSE_BYTES);
+      await this.meterRowReads(context, scope, rows.length);
+      return {
+        source: "postgres" as const,
+        relations: reading.relations,
+        columns,
+        rows,
+        rowCount: rows.length,
+        omitted,
+        truncated: result.rows.length > limit || rows.length < selected.length ||
+          present.length > columns.length + omitted.length,
+        maxRows: limit,
+      };
+    });
+  }
+
   private async loadTable(client: SqlPoolClient, schema: string, table: string): Promise<InternalTable> {
     const tables = await this.loadTables(client, schema, table);
     if (tables.length !== 1) throw new GeneratedDataApiError("GENERATED_DATA_API_TABLE_NOT_FOUND");
@@ -2240,6 +2357,9 @@ export class DisabledGeneratedDataApi implements GeneratedDataApiPort {
   async listReadableTables(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _schema: string,
   ): Promise<GeneratedTable[]> { return this.disabled(); }
+  async queryUnderRowSecurity(
+    _context: GeneratedDataContext, _scope: ProjectDataPlaneScope, _input: GeneratedFreeQueryInput,
+  ): Promise<GeneratedFreeQueryResult> { return this.disabled(); }
   async insertRows(
     _context: GeneratedDataContext, _scope: ProjectDataPlaneScope,
     _input: { schema: string; table: string; rows: Array<Record<string, unknown>> },

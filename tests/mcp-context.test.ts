@@ -96,13 +96,23 @@ describe("MCP scope context", () => {
     // Vorschlagen ist nicht Anwenden.
     expect(names(withScopes("migrations:propose"))).toEqual(["qkern_migration_preview"]);
 
-    // Und die zwei, die an der Zeilensicherheit vorbeilesen, bleiben mit jedem
-    // Bereich zusammen unerreichbar.
+    // Die freie Abfrage und die Schemaliste haengen seit 2.117 an `data:read`,
+    // weil sie dort unter der Zeilensicherheit lesen. An einem anderen Bereich
+    // haengen sie nicht: `project:read` oeffnet die Gestalt der Umgebung und
+    // nicht die Gestalt der Daten.
+    expect(names(withScopes("data:read")))
+      .toEqual(["qkern_query_readonly", "qkern_schema_list", "qkern_table_rows_list"]);
+    expect(names(withScopes("project:read"))).not.toContain("qkern_query_readonly");
+    expect(names(withScopes("project:read"))).not.toContain("qkern_schema_list");
+    // Schreiben oeffnet sie auch nicht; das ist dieselbe Trennung wie oben.
+    expect(names(withScopes("data:write"))).not.toContain("qkern_query_readonly");
+
+    // Das Anwenden einer Migration bleibt mit jedem Bereich zusammen
+    // unerreichbar.
     const alles = withScopes(...PROJECT_AUTH_OAUTH_SCOPES);
-    expect(alles.qkern_query_readonly).toBeUndefined();
-    expect(alles.qkern_schema_list).toBeUndefined();
     expect(alles.qkern_migration_apply_queue).toBeUndefined();
-    // Lokal gibt es sie, und das ist der Unterschied, den dieser Schnitt haelt.
+    // Lokal gibt es alle drei, und beim Anwenden ist das der Unterschied, den
+    // dieser Schnitt haelt.
     const lokal = registeredTools(createQKERNMcpServer(localContext));
     expect(lokal.qkern_query_readonly).toBeDefined();
     expect(lokal.qkern_schema_list).toBeDefined();

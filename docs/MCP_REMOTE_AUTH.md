@@ -39,7 +39,7 @@ The mapping lives in `mcp/tool-scopes.ts` and nowhere else.
 
 | Scope | Tools |
 | --- | --- |
-| `data:read` | `qkern_table_rows_list` |
+| `data:read` | `qkern_table_rows_list`, `qkern_schema_list`, `qkern_query_readonly` |
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
@@ -50,16 +50,79 @@ The mapping lives in `mcp/tool-scopes.ts` and nowhere else.
 | `migrations:propose` | `qkern_migration_preview` |
 | `identity:read` | no tool of its own; it decides whether the request claims carry the user's email address |
 
-Three tools have no scope at all and are therefore not registered for an OAuth
-session, so they do not appear in `tools/list` either:
+One tool has no scope at all and is therefore not registered for an OAuth
+session, so it does not appear in `tools/list` either: `qkern_migration_apply_queue`
+changes control-plane state and leads to a change in the project database. An
+apply through a foreign client is the door nobody wants. It does not fall under
+`migrations:propose`, because proposing and applying are two sentences, and it
+gets no scope of its own here either.
 
-* `qkern_query_readonly` and `qkern_schema_list` read past row level security,
-  while `data:read` promises reading under it as that user. Giving them a scope
-  means first making them read under it, and that is a cut of its own.
-* `qkern_migration_apply_queue` changes control-plane state and leads to a change
-  in the project database. An apply through a foreign client is the door nobody
-  wants. It does not fall under `migrations:propose`, because proposing and
-  applying are two sentences, and it gets no scope of its own here either.
+## The free query and the schema list, under row level security since `2.117`
+
+Both carried no scope from `2.64` to `2.116`, and the reason given then was
+correct. They ran through `ProjectDataPlaneService`, which reads with the
+project's read role, with `BEGIN READ ONLY` and with `SET LOCAL row_security = on`,
+but without `request.jwt.claims`. Row level security was therefore on and the role
+carries no `BYPASSRLS`; a policy simply had no claims to read, and a table without
+a policy gave everything up. That is not reading as that user, so `data:read` would
+have been a sentence the product did not keep. The note said that whoever gives
+these two a scope has to put them under row level security first. That happened in
+`2.117`, and the two are separate decisions.
+
+**The free query** runs over OAuth through
+`GeneratedDataApiPort.queryUnderRowSecurity`, the same door as
+`qkern_table_rows_list`: role `authenticated`, the consenting user's claims,
+`row_security = on`, `BEGIN READ ONLY`, the same timeouts. What is new is a reading
+of the query text. `lib/server/data-plane/free-query.ts` names every relation in
+the statement, and each one goes through `assertTableBoundary(..., "select")`
+before the query runs, so a table without row level security is unreachable on
+this path even when the project role may select from it.
+
+That reading costs restrictions, and they are all named at the tool itself:
+
+- Every table is written with its schema, and that schema is the `schema`
+  argument. The query runs with `SET LOCAL search_path = pg_catalog`, so an
+  unqualified name would resolve somewhere other than where the reading looked.
+  System catalogs and `information_schema` are therefore unreachable by
+  construction, not by a blocklist.
+- A name from `WITH` is the only relation without a schema that passes, and it
+  counts exactly where PostgreSQL counts it: in later bindings and in the body,
+  not inside its own binding. `WITH t AS (SELECT * FROM t)` is refused, because
+  the inner `t` is the real table.
+- Functions, operators and casts must be unqualified, so they resolve in
+  `pg_catalog` only. A `SECURITY DEFINER` function of a user schema runs with its
+  owner's rights and its body is not in the query text.
+- Only these functions are accepted: `abs`, `avg`, `ceil`, `ceiling`,
+  `char_length`, `coalesce`, `concat`, `count`, `date_part`, `date_trunc`,
+  `floor`, `greatest`, `least`, `length`, `lower`, `ltrim`, `max`, `min`,
+  `nullif`, `now`, `round`, `rtrim`, `sum`, `to_char`, `trim`, `upper`. A list and
+  not a blocklist, because `pg_catalog` itself is not harmless: `query_to_xml`
+  runs a query from a text argument.
+- One `SELECT`, no DDL, no DML, no multiple statements and no `WITH RECURSIVE`
+  (the parser does not accept it, so it falls at `isReadOnlySql`).
+- At most 100 rows, 256 KiB and 5 seconds, and columns whose name looks like a
+  secret are left out and named in `omitted`.
+
+**The schema list** is a different question with a different answer. Knowing a
+schema is not reading rows, and `inspectSchema` shows every table of a schema with
+every column, including the ones without a policy and the ones without a select
+privilege. Over OAuth the tool therefore answers with `listReadableTables`: the
+tables this surface serves for reading, sensitive-named columns dropped. That is
+the same document the same token already gets over `generated-openapi` and through
+GraphQL introspection, and both of those doors ask for `data:read`. A scope that
+holds at one door and not at the other would not be a scope. `project:read` would
+have been the wrong answer: it describes the shape of the project environment, and
+the shape of the data belongs to the Data API.
+
+For the static local bearer both tools stay what they were: the whole catalog and
+a query without a policy, on the developer's machine and nowhere else.
+
+What Supabase does here is worth naming, because it is the opposite choice. Its
+MCP `execute_sql` connects with an elevated role, bypasses row level security and
+offers a `--read-only` flag as the mitigation; the server is authenticated by a
+developer's token, not by an end user's consent, and a prompt injection reading
+private tables through it has been demonstrated publicly. QKERN's free query is
+not that tool. It reads as the consenting user or it refuses.
 
 `storage:write` arrived in migration `0078` together with the one tool that
 checks it. Until then it was left out, because a scope nobody checks is a label,
@@ -131,6 +194,15 @@ first 512 characters of the MCP `instructions` field.
 Reference: [OpenAI Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
 
 ## Certification
+
+Case `(2.117)` in `tests/postgres.integration.test.ts` certifies the free query
+against the real database: two real users, two real consents, two real tokens, one
+table under a policy on `sub` and one table without row level security that the
+project role may select from. The same statement gives each user exactly their own
+rows, the table without row level security answers
+`GENERATED_DATA_API_RLS_REQUIRED` although the role can read it, and the schema
+list leaves that table and a sensitive-named column out. The reading itself is
+certified without a database in `tests/mcp-free-query.test.ts`.
 
 Case `(2.91)` in `tests/postgres.integration.test.ts` runs the whole path against
 the real database: a real user, a real client, a real code with PKCE, a real

@@ -143,38 +143,6 @@ export function createQKERNMcpServer(
     context.environment,
   )));
 
-  register("qkern_schema_list", {
-    description: "List bounded schema metadata for the current project and environment.",
-    inputSchema: { schema: z.string().max(63).default("public") },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ schema }) => {
-    try {
-      const dataPlane = dependencies.dataPlane ?? await getProjectDataPlane();
-      return text(await dataPlane.inspectSchema({
-        organizationId: context.organizationId,
-        actorRef: context.actorRef,
-      }, { projectId: context.projectId, environment: context.environment }, schema));
-    } catch (error) {
-      return dataPlaneToolError(error);
-    }
-  });
-
-  register("qkern_query_readonly", {
-    description: "Execute one bounded SELECT query through the verified read-only project data plane. DDL, DML, multiple statements and secret access are rejected.",
-    inputSchema: { statement: z.string().min(1).max(4_000), limit: z.number().int().min(1).max(100).default(20) },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ statement, limit }) => {
-    try {
-      const dataPlane = dependencies.dataPlane ?? await getProjectDataPlane();
-      return text(await dataPlane.queryReadOnly({
-        organizationId: context.organizationId,
-        actorRef: context.actorRef,
-      }, { projectId: context.projectId, environment: context.environment }, statement, limit));
-    } catch (error) {
-      return dataPlaneToolError(error);
-    }
-  });
-
   const scalar = z.union([z.string().max(4_000), z.number(), z.boolean(), z.null()]);
   /**
    * Die Ansprueche, mit denen die generierte Data API arbeitet.
@@ -211,6 +179,118 @@ export function createQKERNMcpServer(
       : { role: "authenticated" as const, subject: `agent:${context.actorRef}`.slice(0, 320) },
   };
   const dataScope = { projectId: context.projectId, environment: context.environment };
+
+  /**
+   * Die freie Abfrage und die Schemaliste, und warum sie seit 2.117 einen
+   * Bereich haben.
+   *
+   * ## Was vorher war
+   *
+   * Beide liefen ueber `ProjectDataPlaneService`, und der liest mit der
+   * Leserolle des Projekts, mit `BEGIN READ ONLY` und mit
+   * `SET LOCAL row_security = on`, aber ohne `request.jwt.claims`. Die Rolle
+   * traegt kein `BYPASSRLS`, die Zeilensicherheit war also an; nur hatte eine
+   * Policy, die `request.jwt.claim.sub` liest, nichts zu lesen, und eine Tabelle
+   * ohne Policy gab alles her. Deshalb hatten beide keinen Bereich: `data:read`
+   * sagt Lesen **unter** der Zeilensicherheit als dieser Nutzer zu, und dieser
+   * Weg hat das nicht eingeloest.
+   *
+   * ## Was jetzt gilt, und es sind zwei verschiedene Entscheidungen
+   *
+   * **Die freie Abfrage** laeuft ueber OAuth durch
+   * `GeneratedDataApiPort.queryUnderRowSecurity`, also durch dieselbe Tuer wie
+   * `qkern_table_rows_list`: dieselbe Rolle `authenticated`, dieselben
+   * Ansprueche des zustimmenden Nutzers, dasselbe `row_security = on`, dieselben
+   * Zeitlimits. Dazu kommt die Pruefung je Relation. Der Abfragetext wird
+   * gelesen (`lib/server/data-plane/free-query.ts`), jede genannte Relation geht
+   * durch `assertTableBoundary(..., "select")`, und eine Tabelle ohne
+   * Zeilensicherheit ist damit auf diesem Weg nicht erreichbar. Die
+   * Einschraenkungen, die das kostet, stehen in der Beschreibung des Werkzeugs,
+   * damit ein Agent sie liest, bevor er eine Abfrage baut.
+   *
+   * **Die Schemaliste** ist eine andere Frage, und sie bekommt eine andere
+   * Antwort. Ein Schema zu kennen ist kein Lesen von Zeilen, also haette
+   * `inspectSchema` auch unter diesem Bereich nichts zu suchen: Es zeigt jede
+   * Tabelle eines Schemas mit jeder Spalte, auch die ohne Policy und die ohne
+   * Leserecht. Ueber OAuth antwortet dieses Werkzeug darum mit
+   * `listReadableTables`, also mit genau den Tabellen, die diese Flaeche lesend
+   * bedient: Zeilensicherheit an, Leserecht da, Spalten mit sensiblem Namen
+   * heraus. Dasselbe Dokument bekommt derselbe Token heute schon ueber REST
+   * (`generated-openapi`) und ueber GraphQL-Introspektion, und ein Bereich, der
+   * an einer Tuer gilt und an der anderen nicht, waere kein Bereich.
+   *
+   * `project:read` waere die falsche Antwort gewesen. Dieser Bereich sagt etwas
+   * ueber die Gestalt der Projektumgebung, ihren Eintrag und ihre
+   * Automatisierungsregel. Die Gestalt der Daten gehoert zur Data API, und wer
+   * ihr zustimmt, stimmt dem Lesen seiner Daten zu.
+   *
+   * Beim statischen Bearer bleiben beide, was sie waren. Dort gibt es keinen
+   * Nutzer, in dessen Namen gelesen wird, der Weg ist auf
+   * `NODE_ENV !== "production"` beschraenkt, und ein Entwickler an seiner eigenen
+   * Datenbank will die ganze Gestalt sehen und ohne Policy abfragen koennen.
+   */
+  const oauthAccess = context.access.kind === "project_oauth";
+
+  register("qkern_schema_list", {
+    description: oauthAccess
+      ? "List the tables of one schema that the generated data API serves for reading: row level security enabled, select privilege present, sensitive-named columns excluded. This is the same surface the generated OpenAPI document describes."
+      : "List bounded schema metadata for the current project and environment.",
+    inputSchema: { schema: z.string().max(63).default("public") },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ schema }) => {
+    if (oauthAccess) {
+      try {
+        const generated = dependencies.generatedDataApi ?? await getGeneratedDataApi();
+        return text({
+          source: "postgres",
+          schema,
+          tables: await generated.listReadableTables(dataContext, dataScope, schema),
+        });
+      } catch (error) {
+        return generatedDataToolError(error);
+      }
+    }
+    try {
+      const dataPlane = dependencies.dataPlane ?? await getProjectDataPlane();
+      return text(await dataPlane.inspectSchema({
+        organizationId: context.organizationId,
+        actorRef: context.actorRef,
+      }, { projectId: context.projectId, environment: context.environment }, schema));
+    } catch (error) {
+      return dataPlaneToolError(error);
+    }
+  });
+
+  register("qkern_query_readonly", {
+    description: oauthAccess
+      ? "Execute one bounded SELECT query under row level security as the consenting user. Every table must be written with its schema, that schema must be the schema argument, and the table must have row level security enabled. Functions, operators and casts must be unqualified, and only these functions are accepted: abs, avg, ceil, ceiling, char_length, coalesce, concat, count, date_part, date_trunc, floor, greatest, least, length, lower, ltrim, max, min, nullif, now, round, rtrim, sum, to_char, trim, upper. No DDL, no DML, no multiple statements, no system catalogs, no WITH RECURSIVE. At most 100 rows, 256 KiB and 5 seconds per query; columns whose name looks like a secret are left out."
+      : "Execute one bounded SELECT query through the verified read-only project data plane. DDL, DML, multiple statements and secret access are rejected.",
+    inputSchema: {
+      statement: z.string().min(1).max(4_000),
+      limit: z.number().int().min(1).max(100).default(20),
+      schema: z.string().max(63).default("public"),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ statement, limit, schema }) => {
+    if (oauthAccess) {
+      try {
+        const generated = dependencies.generatedDataApi ?? await getGeneratedDataApi();
+        return text(await generated.queryUnderRowSecurity(dataContext, dataScope, { schema, statement, limit }));
+      } catch (error) {
+        return generatedDataToolError(error);
+      }
+    }
+    try {
+      const dataPlane = dependencies.dataPlane ?? await getProjectDataPlane();
+      return text(await dataPlane.queryReadOnly({
+        organizationId: context.organizationId,
+        actorRef: context.actorRef,
+      }, { projectId: context.projectId, environment: context.environment }, statement, limit));
+    } catch (error) {
+      return dataPlaneToolError(error);
+    }
+  });
+
   const storageScope = { organizationId: context.organizationId, ...dataScope };
   const storagePrincipal = {
     organizationId: context.organizationId,
@@ -564,6 +644,12 @@ function generatedDataToolError(error: unknown) {
   const code = error instanceof GeneratedDataApiError ? error.code : "GENERATED_DATA_API_UNAVAILABLE";
   const message = code === "GENERATED_DATA_API_INVALID_INPUT"
     ? "The generated data request is invalid."
+    // Seit 2.117 ist dieser Code auch die Antwort auf eine freie Abfrage, die
+    // die Lesung nicht annimmt: eine Tabelle ohne Schema, ein fremdes Schema,
+    // eine Funktion mit Schema oder eine Funktion ausserhalb der Liste. Der
+    // Satz nennt die Form und keine Tabelle.
+    : code === "GENERATED_DATA_API_READ_ONLY"
+      ? "The statement is not an accepted read-only query for this surface."
     // Ein Konfliktschluessel, den der Katalog nicht hergibt (2.115). Er hat
     // seinen eigenen Satz, weil "nicht verfuegbar" hier falsch waere: Die
     // Anfrage ist der Fehler, Wiederholen hilft nicht, und der Aufrufer soll
