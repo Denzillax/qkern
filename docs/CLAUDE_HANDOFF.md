@@ -178,6 +178,30 @@ Grossbuchstaben.
   entfernten MCP-Server. Fall `(2.116)` in `tests/postgres.integration.test.ts`
   mit drei Buckets und drei Schreibregeln.
 
+- 2.113 **Presence ist dauerhaft, und ein `changes:`-Abonnement kann wieder
+  aufsetzen.** Migration `0077_realtime_presence.sql` legt `realtime_presence` an:
+  Scope, Kanal, der `qk_presence_...`-Schluessel, die Instanz, der State und
+  `expires_at`. RLS je Organisation, DELETE und ein enges Spalten-UPDATE nur fuer
+  `qkern_runtime`. **Die Pacht ist der Kern**: Der Prozess mit der Verbindung
+  erneuert sie im Takt, eine fremde Instanz darf das nicht, und sie wirkt in zwei
+  Stufen. Jede Lesung filtert auf `expires_at > now`, also endet die Sichtbarkeit am
+  Ablauf; die Zeile faellt eine Frist spaeter
+  (`QKERN_REALTIME_PRESENCE_RETENTION_MS`, Vorgabe zehn Minuten) durch
+  `RealtimeRetentionRuntime`. Derselbe Takt (`sweepPresence`) rechnet jeden Kanal mit
+  lokalen Abonnenten neu und stellt den Ablauf als Leave zu, sonst blieb eine Waise
+  in einem stillen Kanal fuer immer sichtbar. Der Schnappschuss beim Abonnieren liest
+  die Tabelle und ist darum instanzuebergreifend; eine Aenderung meldet derselbe
+  `LISTEN`/`NOTIFY`-Kanal mit `k: "p"` und ohne jeden Eintrag.
+  **Zweiter Teil**: Ein `changes:`-Kanal bekommt seinen Cursor jetzt aus dem
+  Aenderungs-Feed statt aus `realtime_events`, in das auf diesem Weg nie etwas
+  geschrieben wird, und jede `change`-Nachricht traegt diesen Cursor und ein `replay`.
+  Nachgereicht wird je Zeile durch denselben Leser wie im Livebetrieb, also mit den
+  Claims des Abonnenten unter Zeilensicherheit. Grenzen: `QKERN_REALTIME_HISTORY_LIMIT`
+  und `QKERN_REALTIME_HISTORY_MAX_AGE_MS`, beide fallen geschlossen mit
+  `REALTIME_CURSOR_STALE`. **Offen**: Ein Nachreichen gibt es nur fuer
+  `changes:`-Kanaele mit konfigurierter Quelle; die Position des Pollers liegt
+  weiterhin je Instanz im Prozess, und eine Verbindung steht in keiner Tabelle.
+
 - 2.107 **Der Compute-Prozess findet seine Bereiche selbst, innerhalb einer
   Organisation.** `QKERN_COMPUTE_SCOPE_SOURCE=control-plane` liest
   `project_environments` fuer die Organisation aus

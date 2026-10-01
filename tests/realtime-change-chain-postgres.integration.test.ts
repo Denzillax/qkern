@@ -73,13 +73,18 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
     subject,
   });
 
+  const cursorCodec = new RealtimeCursorCodec(Buffer.alloc(32, 4));
+
   function service() {
     let connection = 0;
     return new RealtimeService({
       eventLog: new MemoryRealtimeEventLog(20),
       authorization: new PrefixRealtimeAuthorization(),
-      cursor: new RealtimeCursorCodec(Buffer.alloc(32, 4)),
+      cursor: cursorCodec,
       changeReader: reader,
+      // Dieselbe Quelle, die der Poller liest. Sie ist beides: Takt fuer den
+      // Livebetrieb und Nachreichen fuer einen Abonnenten, der wieder aufsetzt.
+      changeHistory: source,
       id: () => `chain-connection-${++connection}`,
     });
   }
@@ -168,9 +173,11 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
 
   /**
    * Erzeugt einen Poller und holt den Feed auf, **bevor** ein Abonnent
-   * verbunden wird. Ein `changes:`-Kanal liefert bewusst keine Historie: Wer
-   * spaeter abonniert, sieht ab dann. Wuerde der Test zuerst abonnieren, bekaeme
-   * er die Aenderungen der vorigen Tests und pruefte etwas anderes als gemeint.
+   * verbunden wird. Ein `changes:`-Kanal ohne Cursor beginnt am aktuellen Ende:
+   * Wer spaeter abonniert, sieht ab dann. Wuerde der Test zuerst abonnieren,
+   * bekaeme er die Aenderungen der vorigen Tests und pruefte etwas anderes als
+   * gemeint. Mit Cursor wird nachgereicht, und dafuer gibt es den eigenen Fall
+   * weiter unten.
    */
   async function caughtUpPoller(instance: RealtimeService, overloaded: string[] = []) {
     const created = new RealtimeChangePoller({
@@ -232,6 +239,68 @@ describe.runIf(enabled)("Realtime change chain PostgreSQL certification", () => 
     expect(bobSink.changes[0]).toMatchObject({ record: { owner_id: bob, label: "for bob" } });
     expect(JSON.stringify(aliceSink.changes)).not.toContain("for bob");
     expect(JSON.stringify(bobSink.changes)).not.toContain("for alice");
+  });
+
+  it("hands a reconnecting subscriber only the missed changes row level security grants it", async () => {
+    // **Der Fall, der ueber das Nachreichen entscheidet.** Zwei Abonnenten
+    // setzen mit demselben Cursor wieder auf, und die Aenderungen sind
+    // geschehen, waehrend niemand verbunden war. Jede nachgereichte Zeile geht
+    // durch dieselbe echte RLS-Policy wie eine lebende; wer hier einmal liest
+    // und das Ergebnis verteilt, baut ein Leck, das wie Livebetrieb aussieht.
+    const instance = service();
+    const channel = `changes:${schema}.${table}`;
+
+    // Die Stelle, an der beide Abonnenten stehen, bevor etwas passiert.
+    const from = await source.latestPosition(scope);
+    const resume = cursorCodec.encode(scope, channel, from);
+
+    // Zwei Zeilen, und niemand hoert zu. Genau das ist der Verbindungsabbruch.
+    const aliceRow = randomUUID();
+    const bobRow = randomUUID();
+    await admin.query(
+      `INSERT INTO "${schema}".${table} (id, owner_id, label)
+       VALUES ($1, $2, 'missed by alice'), ($3, $4, 'missed by bob')`,
+      [aliceRow, alice, bobRow, bob],
+    );
+
+    const aliceSink = new Sink();
+    const aliceConnection = instance.connect(scope, principal(alice), aliceSink);
+    await instance.subscribe(aliceConnection, "r1", channel, resume);
+
+    const bobSink = new Sink();
+    const bobConnection = instance.connect(scope, principal(bob), bobSink);
+    await instance.subscribe(bobConnection, "r2", channel, resume);
+
+    // Jeder bekommt seine Zeile und nur seine, und sie ist als nachgereicht
+    // gekennzeichnet.
+    expect(aliceSink.changes).toHaveLength(1);
+    expect(aliceSink.changes[0]).toMatchObject({
+      replay: true, record: { id: aliceRow, owner_id: alice, label: "missed by alice" },
+    });
+    expect(bobSink.changes).toHaveLength(1);
+    expect(bobSink.changes[0]).toMatchObject({
+      replay: true, record: { id: bobRow, owner_id: bob, label: "missed by bob" },
+    });
+    expect(JSON.stringify(aliceSink.changes)).not.toContain("missed by bob");
+    expect(JSON.stringify(bobSink.changes)).not.toContain("missed by alice");
+
+    // Die Zahl im `subscribed` ist die des Abonnenten und nicht die des Feeds:
+    // Sonst verraet sie, wie viele Zeilen es gibt, die er nicht sehen darf.
+    const confirmation = aliceSink.messages.find((message) => message.type === "subscribed");
+    expect(confirmation).toMatchObject({ replayed: 1 });
+
+    // Und der Cursor, den die Bestaetigung zurueckgibt, ist signiert und zeigt
+    // auf das Ende des Nachreichens. Bis zu diesem Slice trug ein
+    // `changes:`-Abonnement gar keinen brauchbaren Cursor: Er kam aus dem
+    // Event-Log, in das auf diesem Weg nie etwas geschrieben wird.
+    const handedBack = confirmation?.type === "subscribed" ? confirmation.cursor : "";
+    expect(cursorCodec.decode(handedBack, scope, channel)).toBeGreaterThanOrEqual(from + 2);
+
+    // Eine Stelle jenseits des Feeds laesst das Abonnement geschlossen fallen,
+    // statt stillschweigend am Ende anzufangen.
+    const beyond = cursorCodec.encode(scope, channel, from + 100_000);
+    await expect(instance.subscribe(aliceConnection, "r3", channel, beyond))
+      .rejects.toMatchObject({ code: "REALTIME_CURSOR_STALE" });
   });
 
   it("keeps order and delivers each change exactly once under a burst", async () => {

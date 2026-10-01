@@ -37,7 +37,9 @@ describe("project realtime settings route", () => {
     const payload = await response.json();
     expect(payload.data.projectId).toBe("project");
     expect(payload.data.environment).toBe("development");
-    expect(payload.data.features).toEqual({ enabled: true, changes: false, durableLog: true });
+    expect(payload.data.features).toEqual({
+      enabled: true, changes: false, durableLog: true, durablePresence: true,
+    });
     expect(payload.data.figures).toEqual({ available: false, reason: "separate_process" });
     const limits = payload.data.limits as Array<Record<string, unknown>>;
     expect(limits.length).toBeGreaterThan(15);

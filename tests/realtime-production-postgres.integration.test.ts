@@ -482,6 +482,214 @@ describe.runIf(enabled)("Realtime production TLS PostgreSQL certification", () =
   }, 300_000);
 
   /**
+   * Dauerhafte Presence zwischen zwei Production-Prozessen, und der Fall, der
+   * ueber sie entscheidet.
+   *
+   * Presence lag bis zu diesem Slice in einer Map je Verbindung und verliess den
+   * Prozess nie: Ein Abonnent der zweiten Instanz erfuhr von den Abonnenten der
+   * ersten nichts, und ein Neustart loeschte alles. Hier stehen beide Haelften
+   * gegen die ausgelieferten Prozesse.
+   *
+   * **Und dann wird eine Instanz getoetet, ohne dass jemand sich abmeldet.**
+   * `SIGKILL` laesst dem Prozess keine Gelegenheit, ein Leave zu schreiben --
+   * genau wie ein gekapptes Netz oder ein abgestuerzter Rechner. Der Eintrag
+   * haengt danach nur noch an seiner Pacht, und die laeuft aus. Ein Eintrag, der
+   * bliebe, zeigte auf Dauer jemanden an, der nicht da ist, und das ist
+   * schlimmer als keine Presence.
+   */
+  it("merges presence across two production instances and lets a killed instance's entry expire",
+    async () => {
+      // Pacht und Takt klein, aber im selben Verhaeltnis wie die Vorgabe: Die
+      // Runtime verlangt mindestens das Doppelte des Takts, sonst laeuft ein
+      // Eintrag zwischen zwei Erneuerungen aus.
+      const presenceEnv = (port: number) => productionEnv(port, {
+        ...projectAuthEnv,
+        QKERN_REALTIME_PRESENCE_LEASE_MS: "3000",
+        QKERN_REALTIME_PRESENCE_SWEEP_MS: "1000",
+      });
+      const [mine, theirs] = subscribers;
+      const first = start(presenceEnv(BASE_PORT + 10));
+      const second = start(presenceEnv(BASE_PORT + 11));
+      try {
+        await waitForListening(first);
+        await waitForListening(second);
+
+        const ghost = await authenticated(BASE_PORT + 10, mine.accessToken);
+        const watcher = await authenticated(BASE_PORT + 11, theirs.accessToken);
+        const seen: Extract<RealtimeServerMessage, { type: "presence" }>[] = [];
+        watcher.on("message", (raw: Buffer) => {
+          const message = JSON.parse(raw.toString("utf8")) as RealtimeServerMessage;
+          if (message.type === "presence") seen.push(message);
+        });
+        try {
+          const channel = "private:presence";
+          const ghostSubscribed = nextMessage(ghost, "subscribed");
+          ghost.send(JSON.stringify({ type: "subscribe", requestId: "sub-ghost", channel }));
+          await ghostSubscribed;
+          const tracked = nextMessage(ghost, "ack");
+          ghost.send(JSON.stringify({
+            type: "presence.track", requestId: "track-ghost", channel, state: { seat: 1 },
+          }));
+          await tracked;
+
+          // Der Schnappschuss der **zweiten** Instanz traegt den Abonnenten der
+          // ersten. Bis zu diesem Slice las er die Verbindungen seines eigenen
+          // Prozesses und war darum leer.
+          const watcherSubscribed = nextMessage(watcher, "subscribed");
+          watcher.send(JSON.stringify({ type: "subscribe", requestId: "sub-watch", channel }));
+          await watcherSubscribed;
+          const snapshot = await nextMessage(watcher, "presence");
+          expect(snapshot, `Zweite Instanz: ${second.output().slice(-400)}`)
+            .toMatchObject({ channel, leaves: [] });
+          expect(snapshot.joins.map((entry) => entry.state)).toEqual([{ seat: 1 }]);
+          // Kein Subjekt, kein Token, keine Verbindungskennung im Schluessel.
+          expect(snapshot.joins[0].presenceKey.startsWith("qk_presence_")).toBe(true);
+          expect(JSON.stringify(snapshot)).not.toContain(mine.id);
+
+          // Und ein Beitritt in der zweiten Instanz erreicht die erste ueber
+          // `LISTEN`/`NOTIFY` derselben TLS-Datenbank.
+          const remoteJoin = nextMessage(ghost, "presence");
+          watcher.send(JSON.stringify({
+            type: "presence.track", requestId: "track-watch", channel, state: { seat: 2 },
+          }));
+          expect((await remoteJoin).joins.map((entry) => entry.state)).toEqual([{ seat: 2 }]);
+
+          // --- Die Instanz stirbt, ohne sich abzumelden ---------------------
+          seen.length = 0;
+          first.child.kill("SIGKILL");
+
+          // Der Takt der ueberlebenden Instanz sammelt die Waise ein, sobald die
+          // Pacht abgelaufen ist.
+          const deadline = Date.now() + 30_000;
+          while (Date.now() < deadline && !seen.some((message) => message.leaves.length > 0)) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          const leave = seen.find((message) => message.leaves.length > 0);
+          expect(leave, `Die Waise blieb stehen: ${second.output().slice(-600)}`).toBeDefined();
+          expect(leave!.joins).toEqual([]);
+          expect(leave!.leaves).toEqual([snapshot.joins[0].presenceKey]);
+
+          // Die Zeile selbst steht noch -- und zaehlt fuer niemanden mehr. Das
+          // sind die zwei Stufen aus 0077: Die Sichtbarkeit endet am Ablauf, die
+          // Zeile eine Frist spaeter durch den Aufraeumer.
+          const standing = await owner.query<{ count: string }>(
+            `SELECT count(*)::text AS count FROM realtime_presence
+              WHERE organization_id=$1 AND channel=$2 AND expires_at <= now()`,
+            [organizationId, channel]);
+          expect(Number(standing.rows[0]!.count)).toBe(1);
+        } finally {
+          ghost.close();
+          watcher.close();
+        }
+      } finally {
+        first.child.kill();
+        second.child.kill();
+      }
+    }, 300_000);
+
+  /**
+   * Das Nachreichen auf einem `changes:`-Kanal, und der Satz, an dem es haengt:
+   * **Ein Nachreichen, das die Zeilensicherheit nicht erneut anwendet, ist ein
+   * Leck.**
+   *
+   * Der Abonnent bekommt seinen Cursor, verliert die Verbindung, und waehrend er
+   * weg ist geschehen zwei Aenderungen: eine an seiner Zeile, eine an der eines
+   * anderen Nutzers. Er setzt mit dem Cursor wieder auf und bekommt **eine**
+   * davon. Nicht weil der Prozess etwas ueber die andere wuesste, sondern weil
+   * dieselbe echte RLS-Policy sie beim Lesen nicht herausgibt -- der Feed haelt
+   * ohnehin keine Zeilenwerte, nur Primaerschluessel.
+   *
+   * Bis zu diesem Slice war das nicht einmal versuchbar: Ein
+   * `changes:`-Abonnement bekam seinen Cursor aus dem Event-Log, in das auf
+   * diesem Weg nie etwas geschrieben wird, und eine Aenderung trug keinen
+   * Cursor. Wer die Verbindung verlor, fing am Ende wieder an und erfuhr nie,
+   * dass etwas fehlte.
+   */
+  it("hands a reconnecting subscriber the change it missed and applies row level security again",
+    async () => {
+      const port = BASE_PORT + 12;
+      const [mine, theirs] = subscribers;
+      const started = start(changesEnv(port));
+      try {
+        await waitForListening(started);
+        const channel = `changes:${schema}.items`;
+
+        // Erste Sitzung: nur den Cursor holen.
+        const before = await authenticated(port, mine.accessToken);
+        let resume = "";
+        try {
+          const subscribed = nextMessage(before, "subscribed");
+          before.send(JSON.stringify({ type: "subscribe", requestId: "sub-first", channel }));
+          resume = (await subscribed).cursor;
+          expect(resume.startsWith("qk_rt_")).toBe(true);
+        } finally {
+          before.close();
+        }
+        // Abgerissen. Ab hier hoert niemand zu.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const foreignRow = randomUUID();
+        const ownRow = randomUUID();
+        await projectDb.query(
+          `INSERT INTO "${schema}".items (id, owner_id, label) VALUES ($1, $2, 'missed theirs')`,
+          [foreignRow, theirs.id],
+        );
+        await projectDb.query(
+          `INSERT INTO "${schema}".items (id, owner_id, label) VALUES ($1, $2, 'missed mine')`,
+          [ownRow, mine.id],
+        );
+
+        // Zweite Sitzung, mit dem Cursor der ersten.
+        const after = await authenticated(port, mine.accessToken);
+        const changes: Extract<RealtimeServerMessage, { type: "change" }>[] = [];
+        after.on("message", (raw: Buffer) => {
+          const message = JSON.parse(raw.toString("utf8")) as RealtimeServerMessage;
+          if (message.type === "change") changes.push(message);
+        });
+        try {
+          const subscribed = nextMessage(after, "subscribed");
+          after.send(JSON.stringify({
+            type: "subscribe", requestId: "sub-resume", channel, cursor: resume,
+          }));
+          // Die Zahl ist die des Abonnenten und nicht die des Feeds: Sonst
+          // verriete sie ihm, wie viele Zeilen es gibt, die er nicht sehen darf.
+          expect(await subscribed, `Prozessausgabe: ${started.output().slice(-600)}`)
+            .toMatchObject({ channel, replayed: 1 });
+
+          const replayed = await nextMessage(after, "change");
+          expect(replayed).toMatchObject({
+            channel, schema, table: "items", operation: "insert", replay: true,
+          });
+          expect(replayed.record).toMatchObject({
+            id: ownRow, owner_id: mine.id, label: "missed mine",
+          });
+
+          // Zeit lassen und danach zaehlen: Wenn die fremde Zeile kaeme, kaeme
+          // sie in dieser Spanne -- und eine doppelte Zustellung der eigenen
+          // ebenfalls, denn der Poller liest denselben Bereich.
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+          expect(changes.map((entry) => entry.record?.id)).toEqual([ownRow]);
+          expect(JSON.stringify(changes)).not.toContain(foreignRow);
+          expect(JSON.stringify(changes)).not.toContain("missed theirs");
+
+          // Und was danach geschieht, kommt lebend an, mit `replay: false`.
+          const liveRow = randomUUID();
+          const live = nextMessage(after, "change");
+          await projectDb.query(
+            `INSERT INTO "${schema}".items (id, owner_id, label) VALUES ($1, $2, 'live mine')`,
+            [liveRow, mine.id],
+          );
+          expect(await live).toMatchObject({ replay: false, record: { id: liveRow } });
+        } finally {
+          after.close();
+        }
+        expect(started.output()).not.toContain(mine.accessToken);
+      } finally {
+        started.child.kill();
+      }
+    }, 300_000);
+
+  /**
    * Die erste Haelfte von `verify-full`: die Kette. Ohne Vertrauensanker ist
    * das Serverzertifikat unbekannt, und der Prozess kommt nicht hoch. Faellt
    * dieser Fall nicht, prueft die Verbindung die Gegenseite nicht und

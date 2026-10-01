@@ -48,8 +48,20 @@ export type RealtimeServerMessage =
       table: string;
       operation: "insert" | "update" | "delete";
       position: number;
+      /**
+       * Signierter Cursor auf genau diese Position.
+       *
+       * Bis hierher trug eine Aenderung nur die Position als Zahl, und ein Cursor
+       * ist HMAC-signiert: Ein Client konnte sich also keinen bauen und ein
+       * `changes:`-Abonnement nach einem Abbruch gar nicht wieder aufsetzen. Die
+       * Position bleibt daneben stehen, weil sie vergleichbar ist und der Cursor
+       * es nicht ist.
+       */
+      cursor: string;
       /** Zeile, wie sie dieser Abonnent sehen darf. Bei delete nur der Schluessel. */
       record: Record<string, RealtimeJson>;
+      /** Wahr, wenn diese Aenderung nachgereicht wurde und nicht gerade entstand. */
+      replay: boolean;
     }
   | { type: "pong"; requestId: string; nonce?: string }
   | { type: "error"; requestId?: string; code: RealtimeErrorCode };

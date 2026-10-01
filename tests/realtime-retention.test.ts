@@ -33,7 +33,7 @@ describe("RealtimeRetentionRuntime", () => {
       now: () => NOW,
     });
 
-    await expect(runtime.runOnce()).resolves.toEqual({ events: 6, changes: 10 });
+    await expect(runtime.runOnce()).resolves.toEqual({ events: 6, changes: 10, presence: 0 });
     expect(events.calls.map((call) => call.scope.projectId)).toEqual(["a", "b"]);
   });
 
@@ -64,7 +64,7 @@ describe("RealtimeRetentionRuntime", () => {
       now: () => NOW,
     });
 
-    await expect(runtime.runOnce()).resolves.toEqual({ events: 0, changes: 8 });
+    await expect(runtime.runOnce()).resolves.toEqual({ events: 0, changes: 8, presence: 0 });
     expect(changes.calls).toHaveLength(2);
   });
 
@@ -74,7 +74,7 @@ describe("RealtimeRetentionRuntime", () => {
       eventLog: events, scopes: [scope("a")],
       eventRetentionMs: 60_000, changeRetentionMs: 60_000, now: () => NOW,
     });
-    await expect(runtime.runOnce()).resolves.toEqual({ events: 1, changes: 0 });
+    await expect(runtime.runOnce()).resolves.toEqual({ events: 1, changes: 0, presence: 0 });
   });
 
   it("refuses a retention window that is not a window", async () => {
@@ -92,6 +92,6 @@ describe("RealtimeRetentionRuntime", () => {
       eventRetentionMs: 60_000, changeRetentionMs: 60_000, now: () => NOW,
     });
     runtime.stop();
-    await expect(runtime.runOnce()).resolves.toEqual({ events: 0, changes: 0 });
+    await expect(runtime.runOnce()).resolves.toEqual({ events: 0, changes: 0, presence: 0 });
   });
 });

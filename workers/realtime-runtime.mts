@@ -31,6 +31,8 @@ import { PostgresRealtimeChangeSource } from "@/lib/server/realtime/postgres-cha
 import { ControlPlaneRealtimeProjectConnection } from
   "@/lib/server/realtime/project-connection";
 import { PostgresRealtimeEventLog } from "@/lib/server/realtime/postgres-repository";
+import { PostgresRealtimePresenceStore } from "@/lib/server/realtime/postgres-presence-store";
+import { MemoryRealtimePresenceStore } from "@/lib/server/realtime/presence-store";
 import { MemoryRealtimeEventLog } from "@/lib/server/realtime/repository";
 import type { RealtimeScope } from "@/lib/server/realtime/model";
 import { RealtimeRetentionRuntime } from "@/lib/server/realtime/retention-runtime";
@@ -61,6 +63,15 @@ const ephemeralLog = process.env.QKERN_REALTIME_EPHEMERAL_LOG === "true";
 const eventLog = ephemeralLog
   ? new MemoryRealtimeEventLog(integer("QKERN_REALTIME_HISTORY_PER_CHANNEL", 200, 1, 10_000))
   : new PostgresRealtimeEventLog(new PostgresControlPlane(getPostgresPool()));
+
+// Presence lag bis zu diesem Slice in einer Map je Verbindung und verliess den
+// Prozess nie. Zwei Folgen, und beide standen in `docs/PARITAET.md`: Ein
+// Neustart loeschte jeden Eintrag, und ein Abonnent der zweiten Instanz erfuhr
+// von den Abonnenten der ersten nichts. Seit 0077 liegt sie in einer Tabelle mit
+// Pacht; derselbe Schalter wie beim Log entscheidet, welcher Store es ist.
+const presence = ephemeralLog
+  ? new MemoryRealtimePresenceStore()
+  : new PostgresRealtimePresenceStore(new PostgresControlPlane(getPostgresPool()));
 
 // Ohne Bus bleibt ein Broadcast auf diesen Prozess beschraenkt. Die
 // Benachrichtigung traegt nur einen Verweis, nie eine Payload.
@@ -166,7 +177,12 @@ usageFlushTimer.unref();
 const service = new RealtimeService({
   eventLog,
   eventBus,
+  presence,
   changeReader,
+  // Dieselbe Quelle, die der Poller liest. Zwei Quellen auf denselben Feed
+  // waeren zwei Pool-Saetze auf dieselbe Datenbank, und genau das hat `2.68.0`
+  // beim Katalog aufgeraeumt.
+  changeHistory: changeSource,
   usage,
   authorization: new PrefixRealtimeAuthorization(),
   cursor: new RealtimeCursorCodec(cursorBytes),
@@ -174,6 +190,12 @@ const service = new RealtimeService({
   replayLimit: integer("QKERN_REALTIME_REPLAY_LIMIT", 100, 1, 500),
   maxPayloadBytes: integer("QKERN_REALTIME_MAX_PAYLOAD_BYTES", 16 * 1024, 256, 256 * 1024),
   maxPresenceBytes: integer("QKERN_REALTIME_MAX_PRESENCE_BYTES", 4 * 1024, 128, 32 * 1024),
+  presenceLeaseMs: presenceLeaseMs(),
+  presenceLimit: integer("QKERN_REALTIME_PRESENCE_LIMIT", 200, 1, 1_000),
+  historyLimit: integer("QKERN_REALTIME_HISTORY_LIMIT", 100, 1, 500),
+  // Nicht groesser als die Aufbewahrung des Feeds: Ein Nachreichen, das weiter
+  // zurueckreicht als die Zeilen liegen, waere ein Versprechen ohne Deckung.
+  historyMaxAgeMs: integer("QKERN_REALTIME_HISTORY_MAX_AGE_MS", 86_400_000, 60_000, 90 * 86_400_000),
 });
 const runtime = createRealtimeWebSocketServer({
   authenticator: new ProjectRealtimeAuthenticator(projectApiKeyService, () => getProjectAuthService()),
@@ -188,7 +210,23 @@ const runtime = createRealtimeWebSocketServer({
   heartbeatMs: integer("QKERN_REALTIME_HEARTBEAT_MS", 30_000, 5_000, 120_000),
 });
 
-await eventBus?.subscribe((reference) => { void service.deliverRemote(reference); });
+await eventBus?.subscribe(
+  (reference) => { void service.deliverRemote(reference); },
+  (reference) => { void service.deliverRemotePresence(reference); },
+);
+
+// Der Takt der Presence, und er hat zwei Aufgaben in einem: Er erneuert die
+// Pacht der eigenen Verbindungen, und er sammelt die Eintraege ein, deren Pacht
+// abgelaufen ist. Ohne ihn bliebe eine Verbindung, die ohne Abmeldung
+// verschwunden ist, bis zum naechsten fremden `track` sichtbar -- in einem
+// Kanal, in dem nichts mehr passiert, also fuer immer.
+//
+// Der Takt muss deutlich unter der Pacht liegen, sonst laufen die eigenen
+// Eintraege zwischen zwei Erneuerungen aus. Die Pruefung steht in
+// `presenceLeaseMs`.
+const presenceSweepMs = integer("QKERN_REALTIME_PRESENCE_SWEEP_MS", 15_000, 1_000, 600_000);
+const presenceTimer = setInterval(() => { void service.sweepPresence(); }, presenceSweepMs);
+presenceTimer.unref();
 
 let changeRegistry: RealtimeChangePollerRegistry | undefined;
 let reconcileTimer: ReturnType<typeof setInterval> | undefined;
@@ -226,9 +264,11 @@ const retention = retentionScopes.length > 0 && !ephemeralLog
   ? new RealtimeRetentionRuntime({
     eventLog: eventLog as PostgresRealtimeEventLog,
     changeSource,
+    presence: presence as PostgresRealtimePresenceStore,
     scopes: retentionScopes,
     eventRetentionMs: integer("QKERN_REALTIME_EVENT_RETENTION_MS", 7 * 86_400_000, 60_000, 90 * 86_400_000),
     changeRetentionMs: integer("QKERN_REALTIME_CHANGE_RETENTION_MS", 86_400_000, 60_000, 90 * 86_400_000),
+    presenceRetentionMs: integer("QKERN_REALTIME_PRESENCE_RETENTION_MS", 600_000, 60_000, 86_400_000),
     intervalMs: integer("QKERN_REALTIME_RETENTION_INTERVAL_MS", 3_600_000, 1_000, 86_400_000),
   })
   : undefined;
@@ -245,6 +285,7 @@ async function stop() {
   if (stopping) return;
   stopping = true;
   if (reconcileTimer) clearInterval(reconcileTimer);
+  clearInterval(presenceTimer);
   clearInterval(usageFlushTimer);
   retention?.stop();
   await retentionLoop;
@@ -269,6 +310,27 @@ function integer(name: string, fallback: number, minimum: number, maximum: numbe
     throw new Error(`${name} must be an integer between ${minimum} and ${maximum}.`);
   }
   return value;
+}
+
+/**
+ * Die Pacht einer Presence-Zeile, und die eine Pruefung, die dazugehoert.
+ *
+ * Eine Pacht, die kuerzer ist als der Takt, der sie erneuert, laeuft zwischen
+ * zwei Erneuerungen aus: Presence flackerte dann, ohne dass jemand die Verbindung
+ * verloren haette. Verlangt wird darum das Doppelte des Takts, und die Vorgabe
+ * ist das Dreifache des Heartbeats -- drei verpasste Takte, bevor jemand als
+ * abwesend gilt.
+ */
+function presenceLeaseMs() {
+  const sweepMs = integer("QKERN_REALTIME_PRESENCE_SWEEP_MS", 15_000, 1_000, 600_000);
+  const leaseMs = integer("QKERN_REALTIME_PRESENCE_LEASE_MS", 90_000, 2_000, 3_600_000);
+  if (leaseMs < sweepMs * 2) {
+    throw new Error(
+      "QKERN_REALTIME_PRESENCE_LEASE_MS must be at least twice "
+      + "QKERN_REALTIME_PRESENCE_SWEEP_MS, or a presence entry expires between two renewals.",
+    );
+  }
+  return leaseMs;
 }
 
 function allowedOrigins() {

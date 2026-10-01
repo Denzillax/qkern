@@ -79,11 +79,17 @@ export const REALTIME_LIMITS: readonly RealtimeLimitDefinition[] = [
   { id: "payloadDepth", group: "session", unit: "levels", fallback: 10 },
   { id: "payloadNodes", group: "session", unit: "nodes", fallback: 2_000 },
   { id: "presenceKeys", group: "session", unit: "keys", fallback: 16 },
+  { id: "presenceLimit", group: "session", unit: "keys", fallback: 200, variable: "QKERN_REALTIME_PRESENCE_LIMIT", minimum: 1, maximum: 1_000 },
+  { id: "presenceLeaseMs", group: "session", unit: "milliseconds", fallback: 90_000, variable: "QKERN_REALTIME_PRESENCE_LEASE_MS", minimum: 2_000, maximum: 3_600_000 },
+  { id: "presenceSweepMs", group: "session", unit: "milliseconds", fallback: 15_000, variable: "QKERN_REALTIME_PRESENCE_SWEEP_MS", minimum: 1_000, maximum: 600_000 },
   { id: "changePollMs", group: "changes", unit: "milliseconds", fallback: 500, variable: "QKERN_REALTIME_CHANGE_POLL_MS", minimum: 50, maximum: 60_000 },
   { id: "changeBatch", group: "changes", unit: "events", fallback: 100, variable: "QKERN_REALTIME_CHANGE_BATCH", minimum: 1, maximum: 500 },
   { id: "changeReconcileMs", group: "changes", unit: "milliseconds", fallback: 2_000, variable: "QKERN_REALTIME_CHANGE_RECONCILE_MS", minimum: 250, maximum: 60_000 },
+  { id: "historyLimit", group: "changes", unit: "events", fallback: 100, variable: "QKERN_REALTIME_HISTORY_LIMIT", minimum: 1, maximum: 500 },
+  { id: "historyMaxAgeMs", group: "changes", unit: "milliseconds", fallback: 86_400_000, variable: "QKERN_REALTIME_HISTORY_MAX_AGE_MS", minimum: 60_000, maximum: 86_400_000 * 90 },
   { id: "eventRetentionMs", group: "retention", unit: "milliseconds", fallback: 7 * 86_400_000, variable: "QKERN_REALTIME_EVENT_RETENTION_MS", minimum: 60_000, maximum: 90 * 86_400_000 },
-  { id: "changeRetentionMs", group: "retention", unit: "milliseconds", fallback: 86_400_000, variable: "QKERN_REALTIME_CHANGE_RETENTION_MS", minimum: 60_000, maximum: 90 * 86_400_000 },
+  { id: "changeRetentionMs", group: "retention", unit: "milliseconds", fallback: 86_400_000, variable: "QKERN_REALTIME_CHANGE_RETENTION_MS", minimum: 60_000, maximum: 86_400_000 * 90 },
+  { id: "presenceRetentionMs", group: "retention", unit: "milliseconds", fallback: 600_000, variable: "QKERN_REALTIME_PRESENCE_RETENTION_MS", minimum: 60_000, maximum: 86_400_000 },
   { id: "retentionIntervalMs", group: "retention", unit: "milliseconds", fallback: 3_600_000, variable: "QKERN_REALTIME_RETENTION_INTERVAL_MS", minimum: 1_000, maximum: 86_400_000 },
   { id: "usageFlushAt", group: "usage", unit: "messages", fallback: 500, variable: "QKERN_REALTIME_USAGE_FLUSH_AT", minimum: 1, maximum: 100_000 },
   { id: "usageFlushMs", group: "usage", unit: "milliseconds", fallback: 15_000, variable: "QKERN_REALTIME_USAGE_FLUSH_MS", minimum: 1_000, maximum: 300_000 },
@@ -115,6 +121,13 @@ export type RealtimeFeatures = {
   changes: boolean;
   /** Dauerhafter Log statt `QKERN_REALTIME_EPHEMERAL_LOG`; nur er ueberlebt einen Neustart. */
   durableLog: boolean;
+  /**
+   * Dauerhafte Presence. Derselbe Schalter wie beim Log, und darum derselbe
+   * Wert: Presence liegt in der Tabelle aus 0077, sobald der Log dauerhaft ist.
+   * Zwei Schalter dafuer waeren zwei Halbzustaende, und einen davon gaebe es
+   * nicht: Presence ohne Log hiesse eine Tabelle ohne Aufbewahrung.
+   */
+  durablePresence: boolean;
 };
 
 /**
@@ -164,6 +177,7 @@ export function realtimeFeatures(env: Readonly<Record<string, string | undefined
     enabled: env.QKERN_REALTIME_ENABLED === "true",
     changes: env.QKERN_REALTIME_CHANGES_ENABLED === "true",
     durableLog: env.QKERN_REALTIME_EPHEMERAL_LOG !== "true",
+    durablePresence: env.QKERN_REALTIME_EPHEMERAL_LOG !== "true",
   };
 }
 

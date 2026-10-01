@@ -39,7 +39,7 @@ export const REALTIME_LOG_TEXTS = {
   /* --- Verbindungen: der Satz statt der Kachel --- */
   connectionsTitle: "Verbindungen schreibt niemand auf",
   connectionsNoRecord:
-    "Der Realtime-Prozess kennt seine offenen Verbindungen genau: Er führt sie in einer Map im eigenen Speicher, mit Abonnements und Presence je Verbindung. Nur verlässt diese Map den Prozess nie. Es gibt keine Tabelle, in der eine Verbindung stünde, keine Route, die danach fragt, und nach einem Neustart ist die Zahl weg.",
+    "Der Realtime-Prozess kennt seine offenen Verbindungen genau: Er führt sie in einer Map im eigenen Speicher, mit Abonnements je Verbindung. Nur verlässt diese Map den Prozess nie. Es gibt keine Tabelle, in der eine Verbindung stünde, keine Route, die danach fragt, und nach einem Neustart ist die Zahl weg. Die Presence eines Abonnenten liegt inzwischen in einer eigenen Tabelle und überlebt den Neustart; die Verbindung, an der sie hängt, überlebt ihn nicht.",
   connectionsWhyNot:
     "Die Console und der Realtime-Server sind zwei Prozesse. Eine Leseroute der Console könnte die Zahl nur bekommen, indem sie den anderen Prozess über das Netz fragt. Das wäre eine Wirkung nach aussen und keine Lesung, und QKERN hat dafür heute keinen Weg. Die Route zu den Realtime-Grenzen sagt denselben Satz und meldet aus demselben Grund keine Betriebszahlen.",
   connectionsNoHistory:

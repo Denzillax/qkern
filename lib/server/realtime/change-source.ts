@@ -83,6 +83,71 @@ export interface RealtimeChangeSource {
   prune(scope: RealtimeScope, before: Date): Promise<number>;
 }
 
+/** Was ein Nachreichen zurückgibt. */
+export type RealtimeChangeHistoryResult = Readonly<{
+  changes: readonly RealtimeChange[];
+  /** Die höchste Position, die der Feed dieses Scopes gerade kennt. */
+  latestPosition: number;
+  /**
+   * Wahr, wenn die angeforderte Stelle nicht mehr bedient werden kann: Sie liegt
+   * hinter dem Feed, die Aufbewahrung hat den Bereich entfernt, es stehen mehr
+   * Änderungen aus als die Grenze zulässt, oder die älteste gefundene Änderung
+   * liegt jenseits des Alters. Dann wird **nichts** zugestellt.
+   */
+  stale: boolean;
+}>;
+
+/**
+ * Nachreichen ab einer Position — die zweite Hälfte dessen, was Supabase
+ * „History" nennt.
+ *
+ * ## Warum das ein eigener Port ist
+ *
+ * `RealtimeChangeSource.read` bedient den Poller: Sie liest den ganzen Feed
+ * eines Projekts, weil der Poller alle beobachteten Tabellen auf einmal
+ * abarbeitet. Ein Abonnent, der wieder aufsetzt, fragt das Gegenteil: **eine**
+ * Tabelle, ab **seiner** Stelle, mit einer Grenze an Zeilen und an Alter. Die
+ * Grenzen nachträglich auf ein Ergebnis zu legen, das für den Poller geschnitten
+ * wurde, wäre ein Filter nach dem Limit — und damit eine stille Lücke genau der
+ * Art, die der Cursor-Vertrag ausschließt.
+ *
+ * ## Zwei harte Grenzen, und beide fallen geschlossen
+ *
+ * **Zeilen.** Mehr als die Grenze bedeutet `stale`, nicht „die ersten hundert".
+ * Dasselbe Verhalten wie beim Event-Log: Der Abonnent lädt seinen Zustand über
+ * die normale Daten-API neu und abonniert dann frisch.
+ *
+ * **Alter.** Der Feed wird nach Alter aufbewahrt. Eine Position, deren Bereich
+ * älter ist als das Fenster, kann nicht mehr vollständig sein, auch wenn noch
+ * Zeilen darin stehen. Auch das ist `stale`.
+ *
+ * ## Was es ausdrücklich nicht gibt
+ *
+ * **Keine Zeilenwerte aus dem Feed.** Das Nachreichen liefert dieselben
+ * Primärschlüssel wie der Poller, und jede Zeile wird danach einzeln mit den
+ * Claims des Abonnenten gelesen. Ein Nachreichen aus gespeicherten Zeilenwerten
+ * wäre ein Leck: Es würde die Sichtbarkeit zum Zeitpunkt der Änderung
+ * unterstellen, statt sie jetzt zu prüfen, und es gibt diese Werte hier gar
+ * nicht.
+ */
+export interface RealtimeChangeHistory {
+  /** Die höchste Position des Feeds. Der Anfang für ein Abonnement ohne Cursor. */
+  latestPosition(scope: RealtimeScope): Promise<number>;
+
+  /**
+   * Änderungen einer Tabelle mit Position größer `after`, höchstens `limit`
+   * Stück, keine älter als `notBefore`.
+   */
+  history(
+    scope: RealtimeScope,
+    schema: string,
+    table: string,
+    after: number,
+    limit: number,
+    notBefore: Date,
+  ): Promise<RealtimeChangeHistoryResult>;
+}
+
 /** Claims eines Abonnenten, wie sie die Data Plane in RLS-Settings übersetzt. */
 export type RealtimeSubscriberClaims = {
   role: "anon" | "authenticated" | "service_role";

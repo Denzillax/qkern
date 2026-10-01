@@ -47,7 +47,7 @@ type Limit = {
 
 type Settings = {
   limits: Limit[];
-  features: { enabled: boolean; changes: boolean; durableLog: boolean };
+  features: { enabled: boolean; changes: boolean; durableLog: boolean; durablePresence: boolean };
   figures: { available: boolean; reason: string };
 };
 
@@ -144,6 +144,7 @@ export function RealtimeSettingsView({ projectId, environment, initialState }: {
       <div className="log-row"><span>{t("Realtime eingeschaltet")}</span><span className={settings.features.enabled ? "secure" : "muted"}>{settings.features.enabled ? t("ja") : t("nein")}</span></div>
       <div className="log-row"><span>{t("Postgres Changes eingeschaltet")}</span><span className={settings.features.changes ? "secure" : "muted"}>{settings.features.changes ? t("ja") : t("nein")}</span></div>
       <div className="log-row"><span>{t("Dauerhafter Ereignis-Log")}</span><span className={settings.features.durableLog ? "secure" : "muted"}>{settings.features.durableLog ? t("ja") : t("nein")}</span></div>
+      <div className="log-row"><span>{t("Dauerhafte Presence")}</span><span className={settings.features.durablePresence ? "secure" : "muted"}>{settings.features.durablePresence ? t("ja") : t("nein")}</span></div>
       <p className="muted">{t("Ohne Postgres Changes bleibt ein changes-Abonnement leer. Ohne dauerhaften Log überlebt kein Ereignis einen Neustart und erreicht keine zweite Instanz.")}</p>
     </article>
 
