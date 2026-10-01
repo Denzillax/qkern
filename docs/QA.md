@@ -6456,3 +6456,39 @@ Nicht erbracht: Storage und Queues laufen ueber MCP mit Betreiberrechten, nicht
 unter der Zeilensicherheit des zustimmenden Nutzers. Der Realtime-Prozess liest
 seine Bindungen nicht aus der Control Plane. Kein fremder IdP hat SAML gesehen.
 Die Console selbst liegt hinter der Anmeldung und ist ungesehen.
+
+## Welle zweiundzwanzig (2.70): was der Katalog weiss, und was niemand nachgesehen hat
+
+Drei Schnitte, und der wertvollste hat nichts gebaut. Upsert an REST und
+GraphQL ueber einen Konfliktschluessel aus `pg_index` (Fall 2.105), die
+Bereichsentdeckung des Compute-Prozesses aus der Control Plane (Faelle 2.107
+und 2.108, Migration 0075 fuer die sechste Drain-Quelle), und die Frage nach
+einem PostgreSQL-Serverlog (Faelle 2.109 und 2.110).
+
+Der Serverlog-Schnitt hat zuerst einen Fehler gefunden statt einer Luecke: An
+fuenf Stellen stand, das Serverlog liege in Dateien neben dem Datenverzeichnis.
+Der Sammler ist aus, die Datei entsteht gar nicht. Gemessen statt vermutet:
+`pg_read_server_files` oeffnet `pg_read_file` nicht, `adminpack` gibt es in
+PostgreSQL 17 nicht mehr, Supabase nimmt einen Sammler daneben. Kein Recht
+ausgeweitet; die Seite sagt jetzt, was fehlt.
+
+Die Bereichsentdeckung hat eine Annahme des Auftrags widerlegt: Die
+Laufzeitrolle liest eine fremde Organisation sehr wohl, wenn sie deren Kennung
+nennt. Was fehlt, ist die Aufzaehlung.
+
+Drei Vertragsfehler kamen dazu, zwei davon in Vertraegen dieses Projekts: Der
+Versionsvertrag aus 2.67.0 las `STATUS.md` nicht, obwohl dort zwei Verweise auf
+eine Ausgabe standen, die es nie gab. Und ein Ansichtsvertrag prueffte die Datei
+statt die Aussage, dieselbe Klasse wie (2.101).
+
+Checkpoint `2.70.0` am 1. Oktober 2026: PostgreSQL 17 mit 241 von 241 zweimal,
+Functions mit 33 von 33, Mailpit und Dex mit 11 von 11, Realtime unter
+Production mit 17 von 17, versitygw und ClamAV mit 11 von 11, alle exit 0;
+Lokal 2468 bestanden, 0 fehlgeschlagen, zweimal reproduziert. Drei
+Mutationsproben, jede mit genau ihrem Fall.
+
+Nicht erbracht: MCP und SDK koennen nicht upserten. Beziehungen in
+GraphQL-Mutationen und Joins ueber zwei Ebenen fehlen. Die Entdeckung laeuft
+nur beim Start, uebergreifend bleibt sie unmoeglich. Wer Inhaltslogs an einen
+Drain haengt, schickt sie ungestrichen hinaus, und kein echter Empfaenger hat
+eine solche Ladung gesehen. Die Console ist weiterhin ungesehen.

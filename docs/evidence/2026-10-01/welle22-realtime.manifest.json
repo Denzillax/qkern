@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "welle22-realtime.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 71,
+  "testFiles": "1 passed (1)",
+  "tests": "17 passed (17)",
+  "passed": 17,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

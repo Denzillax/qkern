@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle22-local-run2.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "344 passed | 40 skipped (384)",
+  "tests": "2468 passed | 355 skipped (2823)",
+  "passed": 2468,
+  "failed": 0,
+  "skipped": 355,
+  "images": []
+}

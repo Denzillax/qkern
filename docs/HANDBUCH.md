@@ -799,7 +799,7 @@ nur `schema` und `match`. Spalten mit Passwort-/Secret-/Token-/Key-Mustern sind
 von Lesen, Filtern, Sortieren und Mutieren ausgeschlossen. Die Console `Table
 Editor` benutzt dieselben Endpunkte und zeigt nie Beispieldaten.
 
-**Upsert (seit 2.105).** `POST` nimmt zusätzlich `onConflict` mit den Spalten
+**Upsert (seit `2.70.0`).** `POST` nimmt zusätzlich `onConflict` mit den Spalten
 des Konfliktschlüssels und wird damit zu `INSERT ... ON CONFLICT (…) DO
 UPDATE`:
 
@@ -4228,7 +4228,7 @@ feiner löst die Reihe nicht auf. Fällt es auf den ersten Abschnitt des
 Fensters, kann es früher angefangen haben.
 ### Postgres: kein Serverlog, sondern der Zustand
 
-Seit `2.57.0` ist **Logs → Postgres-Zustand** keine Platzhalterseite mehr. Der
+Seit `2.70.0` sagt die Seite auch, was ein Serverlog waere und warum QKERN keinen hat. Seit `2.57.0` ist **Logs → Postgres-Zustand** keine Platzhalterseite mehr. Der
 Platzhalter versprach „das Serverlog der Projektdatenbank: Verbindungen,
 Fehler, langsame Statements“, und die Seite sagt als Erstes, dass es dieses
 Log hier nicht gibt.

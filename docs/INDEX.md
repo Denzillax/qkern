@@ -36,7 +36,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
 | [SLICE_BERATERREGELN.md](SLICE_BERATERREGELN.md) | Regeln, die nie liefen (Schnitt aus 2.52.0, früher fälschlich RELEASE_2.57.md) |
-| [RELEASE_2.69.md](RELEASE_2.69.md) | Aktueller Release: Was unter Production wirklich läuft |
+| [RELEASE_2.70.md](RELEASE_2.70.md) | Aktueller Release: Was der Katalog weiss, und was niemand nachgesehen hat |
+| [RELEASE_2.69.md](RELEASE_2.69.md) | Was unter Production wirklich läuft |
 | [RELEASE_2.68.md](RELEASE_2.68.md) | Der Start, den es nie gab, und der letzte Anmeldeweg |
 | [RELEASE_2.67.md](RELEASE_2.67.md) | Geschrieben, gedruckt, und ein Protokoll, das es nie gab |
 | [RELEASE_2.66.md](RELEASE_2.66.md) | Die Schlüssel öffnen, die Nachbarn kommen mit |

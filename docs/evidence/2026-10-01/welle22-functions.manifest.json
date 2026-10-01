@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "welle22-functions.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "33 passed (33)",
+  "passed": 33,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}

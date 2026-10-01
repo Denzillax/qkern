@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle22-storage.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "11 passed (11)",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

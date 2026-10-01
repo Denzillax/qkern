@@ -1,0 +1,21 @@
+{
+  "stack": "Mailpit und Dex",
+  "log": "welle22-auth.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "11 passed (11)",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "axllent/mailpit:v1.21.8",
+    "dexidp/dex:v2.41.1",
+    "dexidp/dex:v2.41.1",
+    "node:24.7.0-alpine"
+  ]
+}

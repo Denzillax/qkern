@@ -1889,3 +1889,23 @@ Die Läufe der drei Agenten auf ihren Zweigen liegen daneben.
 Die erste Fassung von `welle21-mutation-mcpscope` warf elf statt zwei Fälle um; neun davon waren Zeitfälle unter Speicherdruck. Der Lauf ist unter ruhiger Maschine wiederholt, und die Datei enthält die Wiederholung.
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `slice-samlrest-*` und in ihren jeweiligen Worktrees.
+
+## Läufe zu Release 2.70 (1. Oktober 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-01/welle22-run1.log` | PostgreSQL 17 | 241 von 241, exit 0 |
+| `2026-10-01/welle22-run2.log` | PostgreSQL 17 | 241 von 241, exit 0, Wiederholung |
+| `2026-10-01/welle22-functions.log` | Functions gegen Docker plus PostgreSQL | 33 von 33, exit 0 |
+| `2026-10-01/welle22-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-10-01/welle22-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 17 von 17, exit 0 |
+| `2026-10-01/welle22-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-10-01/welle22-mutation-conflictkey.log` | Mutation: der Konfliktschlüssel kommt vom Aufrufer | **240 von 241, exit 1 – absichtlich** |
+| `2026-10-01/welle22-mutation-scopejoin.log` | Mutation: gelöschte Projekte bekommen wieder Bereiche | **240 von 241, exit 1 – absichtlich** |
+| `2026-10-01/welle22-mutation-serverlog.log` | Mutation: das Urteil über den Serverlog steht fest | **240 von 241, exit 1 – absichtlich** |
+| `2026-10-01/welle22-local-run1.log` | Vitest lokal (Windows) | 2468 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-01/welle22-local-run2.log` | Vitest lokal (Windows) | 2468 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die Kette ist einmal mitten in der dritten Probe abgebrochen, weil die Sitzung endete; der Quelltext war danach byteidentisch zurückgestellt, und die Probe ist nachgefahren. Der Produktionsbuild fiel beim ersten Versuch an einer halb geschriebenen Datei unter `.next/dev`, die ein sterbender Dev-Server hinterlassen hatte; nach dem Wegräumen grün.
+
+Die Läufe der drei Agenten auf ihren Zweigen liegen daneben.

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17, Mutation: das Urteil ueber den Serverlog steht fest",
+  "log": "welle22-mutation-serverlog.log",
+  "commit": "7d8986411acaea851909a297c38fb8c75317e055",
+  "commitSubject": "merge: Bereiche entdecken und Inhaltslogs am Drain aus slice/fnscopes",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 71,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 240 passed (241)",
+  "passed": 240,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
