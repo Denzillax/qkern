@@ -6,6 +6,8 @@ import type {
   GeneratedDataApiPort,
   GeneratedDataContext,
   GeneratedDataFilter,
+  GeneratedEmbed,
+  GeneratedEmbedResult,
   GeneratedMutation,
   GeneratedTable,
 } from "@/lib/server/data-plane/generated-api";
@@ -95,7 +97,19 @@ export type ProjectGraphqlRejection =
   | "mutations_exceeded"
   | "mutation_rows_exceeded"
   | "filter_required"
-  | "argument_required";
+  | "argument_required"
+  /**
+   * Beziehungen in `records` (2.111): mehr als die Ebene traegt. Eine Ebene zu
+   * tief faellt als `depth_exceeded`, weil die Tiefe des Dokuments aus genau
+   * dieser Zahl gerechnet ist.
+   */
+  | "embeds_exceeded"
+  /**
+   * Ein Eingabeobjekt in einem Eingabeobjekt, also ein verschachteltes Anlegen.
+   * Es gibt an dieser Flaeche kein Schreiben ueber eine Beziehung, und dieser
+   * Grund sagt genau das, statt es als Formfehler auszugeben.
+   */
+  | "nested_write_not_supported";
 
 /**
  * Eine abgewiesene Abfrage.
@@ -141,6 +155,7 @@ export const PROJECT_GRAPHQL_GRAMMAR = {
     "mutations",
     "row_objects",
     "upserts",
+    "mutation_relations",
   ] as const,
   /** Was er abweist, jedes mit eigenem Grund. */
   refused: [
@@ -153,7 +168,8 @@ export const PROJECT_GRAPHQL_GRAMMAR = {
     "filter_objects",
     "block_strings",
     "multiple_operations",
-    "relations",
+    "query_relations",
+    "nested_writes",
     "views",
     "aggregates",
   ] as const,
@@ -388,9 +404,15 @@ class Parser {
     return { kind: this.kind, operationName, fields, fieldCount: this.fieldCount };
   }
 
-  /** Die Tiefe, die dieses Dokument haben darf: bei einer Mutation eine mehr, für `records`. */
+  /**
+   * Die Tiefe, die dieses Dokument haben darf. Eine Mutation darf tiefer, weil
+   * ihre Antwort eine Hülle hat (`records`) und seit 2.111 Beziehungen darin;
+   * die Zahl steht als `maxMutationDepth` in derselben Tabelle wie die andere.
+   */
   private maxDepth(): number {
-    return DATA_API_GRAPHQL_LIMITS.maxDepth + (this.kind === "mutation" ? 1 : 0);
+    return this.kind === "mutation"
+      ? DATA_API_GRAPHQL_LIMITS.maxMutationDepth
+      : DATA_API_GRAPHQL_LIMITS.maxDepth;
   }
 
   private parseSelectionSet(depth: number): ParsedField[] {
@@ -463,10 +485,14 @@ class Parser {
     if (token.kind === "punct" && token.value === "{") {
       // Ein Eingabeobjekt. In einer Abfrage gibt es keines: Ein Filter ist
       // eine Zeichenkette. In einer Mutation ist es eine Zeile oder eine
-      // Zuweisung, flach, mit skalaren Werten; ein Objekt im Objekt wäre eine
-      // Beziehung, und Beziehungen gibt es an dieser Fläche nicht.
+      // Zuweisung, flach, mit skalaren Werten.
+      //
+      // Ein Objekt im Objekt ist ein verschachteltes Anlegen, also ein Schreiben
+      // über eine Beziehung. Seit 2.111 darf `records` Beziehungen tragen, aber
+      // nur lesend; geschrieben wird genau eine Tabelle je Mutation. Darum
+      // fällt dieser Fall mit eigenem Grund und nicht als Formfehler.
       if (this.kind !== "mutation") refuse("object_argument_not_supported");
-      if (inObject) refuse("nested_object_not_supported");
+      if (inObject) refuse("nested_write_not_supported");
       return this.parseObject();
     }
     if (token.kind === "punct" && token.value === "[") {
@@ -556,11 +582,36 @@ export type ProjectGraphqlPlan = {
   rowBudget: number;
 };
 
-/** Die Spalten hinter `records`, wie bei einem Tabellenfeld: jede einmal gelesen, Aliasse einzeln. */
+/**
+ * Eine Beziehung hinter `records` (2.111), nur lesend.
+ *
+ * Der Antwortschlüssel ist der Alias, den die Data API in die Zeile schreibt.
+ * Deshalb steht hier kein zweiter Name: Ein Alias in GraphQL und der Schlüssel
+ * in der Zeile sind dasselbe, und zwei Namen wären zwei Wahrheiten.
+ *
+ * `schema` kommt aus dem einen Argument, das ein solches Feld tragen darf
+ * (2.112), und legt die Nachbartabelle in ein anderes Schema.
+ */
+export type ProjectGraphqlEmbedPlan = {
+  responseKey: string;
+  relation: string;
+  schema?: string;
+  columns: string[];
+  selection: Array<{ responseKey: string; column: string }>;
+  /** Die zweite Ebene (2.111); leer, wenn es keine gibt. */
+  embeds: ProjectGraphqlEmbedPlan[];
+};
+
+/**
+ * Die Spalten hinter `records`, wie bei einem Tabellenfeld: jede einmal
+ * gelesen, Aliasse einzeln. Seit 2.111 dürfen daneben Beziehungen stehen.
+ */
 export type ProjectGraphqlRecordsPlan = {
   responseKey: string;
   columns: string[];
   selection: Array<{ responseKey: string; column: string }>;
+  /** Die Beziehungen dieser Antwort (2.111); leer, wenn keine verlangt sind. */
+  embeds: ProjectGraphqlEmbedPlan[];
 };
 
 /** Eine Mutation der obersten Ebene, fertig für `mutateRows` (2.97). */
@@ -625,6 +676,88 @@ export function planProjectGraphqlDocument(query: string): ProjectGraphqlDocumen
   return { kind: "query", operationName: document.operationName, fields, fieldCount, rowBudget };
 }
 
+/**
+ * Die Auswahl hinter `records` (2.111): Spalten und Beziehungen gemischt.
+ *
+ * Ein Blatt ist eine Spalte, ein Feld mit eigener Auswahl eine Beziehung. Der
+ * Unterschied steht in der Abfrage selbst und nicht in einer Liste, die
+ * irgendwo gepflegt werden müsste: `titel` ist eine Spalte, `autor { name }`
+ * eine Beziehung.
+ *
+ * `level` ist die Ebene der Beziehungen in dieser Auswahl, 1 direkt unter
+ * `records`. Die Grenzen je Ebene kommen aus derselben Tabelle, aus der die
+ * Data API sie nimmt, damit nicht zwei Zahlen dasselbe meinen.
+ *
+ * Geschrieben wird hier nichts. Eine Beziehung trägt keine Werte und kein
+ * Argument außer `schema`; ein Eingabeobjekt in einer Zeile fällt schon im
+ * Parser, mit `nested_write_not_supported`.
+ */
+function recordsSelection(fields: ParsedField[], level: number): {
+  selection: Array<{ responseKey: string; column: string }>;
+  embeds: ProjectGraphqlEmbedPlan[];
+} {
+  const selection: Array<{ responseKey: string; column: string }> = [];
+  const embeds: ProjectGraphqlEmbedPlan[] = [];
+  for (const entry of fields) {
+    if (!entry.selection) {
+      // Ein Argument auf einer Spalte wäre eine Zusage, die es nicht gibt: Es
+      // gibt keine Feldauflöser hier, nur `SELECT spalte`.
+      if (entry.argumentsByName.size > 0) refuse("column_arguments_not_supported", entry.name);
+      if (!DATA_IDENTIFIER.test(entry.name)) refuse("unknown_field", entry.name);
+      selection.push({ responseKey: entry.responseKey, column: entry.name });
+      continue;
+    }
+    // Eine Ebene zu tief faellt schon im Parser: `maxMutationDepth` ist genau
+    // so gerechnet, dass das tiefste erlaubte Dokument durchgeht und das
+    // naechste `depth_exceeded` bekommt. Hier noch einmal zu zaehlen waere eine
+    // zweite Grenze fuer dieselbe Sache.
+    if (!DATA_IDENTIFIER.test(entry.name)) refuse("unknown_table", entry.name);
+    const schema = embedSchemaArgument(entry);
+    const inner = recordsSelection(entry.selection, level + 1);
+    if (inner.selection.length === 0) refuse("selection_required", entry.name);
+    embeds.push({
+      responseKey: entry.responseKey,
+      relation: entry.name,
+      ...(schema ? { schema } : {}),
+      columns: [...new Set(inner.selection.map((column) => column.column))],
+      selection: inner.selection,
+      embeds: inner.embeds,
+    });
+    const maximum = level === 1 ? DATA_API_LIMITS.maxEmbeds : DATA_API_LIMITS.maxNestedEmbeds;
+    if (embeds.length > maximum) refuse("embeds_exceeded", entry.name);
+  }
+  return { selection, embeds };
+}
+
+/**
+ * Das einzige Argument, das ein Beziehungsfeld trägt: `schema` (2.112).
+ *
+ * Es steht als Zeichenkette da, wie ein Filter, und nicht als Enum: Es gibt an
+ * dieser Fläche keinen Enum-Typ. Ob das Schema existiert und ob die
+ * Nachbartabelle darin bedient werden darf, entscheidet die Data API; hier
+ * fällt nur, was keine Schreibweise eines Schemanamens ist.
+ */
+function embedSchemaArgument(field: ParsedField): string | undefined {
+  if (field.argumentsByName.size === 0) return undefined;
+  for (const name of field.argumentsByName.keys()) {
+    if (name !== "schema") refuse("unknown_argument", name);
+  }
+  const value = field.argumentsByName.get("schema");
+  if (typeof value !== "string" || !DATA_IDENTIFIER.test(value)) refuse("invalid_argument", "schema");
+  return value;
+}
+
+/** Aus dem Plan der Beziehung die Einbettung, wie die Data API sie kennt. */
+function generatedEmbed(plan: ProjectGraphqlEmbedPlan): GeneratedEmbed {
+  return {
+    alias: plan.responseKey,
+    relation: plan.relation,
+    ...(plan.schema ? { schema: plan.schema } : {}),
+    columns: plan.columns,
+    ...(plan.embeds.length > 0 ? { embed: plan.embeds.map(generatedEmbed) } : {}),
+  };
+}
+
 /** Die Spalten einer Auswahl: Blätter ohne Argumente, jedes ein gültiger Name. */
 function columnSelection(fields: ParsedField[]): Array<{ responseKey: string; column: string }> {
   const selection: Array<{ responseKey: string; column: string }> = [];
@@ -677,11 +810,12 @@ function planMutation(document: {
       if (entry.name === "records") {
         if (!entry.selection) refuse("selection_required", entry.name);
         if (records !== null) refuse("duplicate_response_key", entry.responseKey);
-        const selection = columnSelection(entry.selection);
+        const read = recordsSelection(entry.selection, 1);
         records = {
           responseKey: entry.responseKey,
-          columns: [...new Set(selection.map((column) => column.column))],
-          selection,
+          columns: [...new Set(read.selection.map((column) => column.column))],
+          selection: read.selection,
+          embeds: read.embeds,
         };
         continue;
       }
@@ -689,6 +823,14 @@ function planMutation(document: {
     }
 
     const mutation = mutationArguments(kind, table, field);
+    // Die Beziehungen gehen als `embed` in die Mutation, also auf denselben
+    // Weg, den eine Lesung nimmt. Ein Loeschen traegt keine: Die Nachbarzeilen
+    // einer geloeschten Zeile sind nach dem Loeschen keine Zusage mehr, und die
+    // Data API weist es ab.
+    if (records && records.embeds.length > 0) {
+      if (mutation.kind === "delete") refuse("unknown_field", `${field.name}.${records.responseKey}`);
+      mutation.embed = records.embeds.map(generatedEmbed);
+    }
     rowBudget += mutation.kind === "insert" ? mutation.rows.length
       : (mutation.atMost ?? DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation);
     mutations.push({ responseKey: field.responseKey, table, mutation, affectedCount, records });
@@ -978,6 +1120,13 @@ export function projectGraphqlSdl(types: ProjectGraphqlType[]): string {
   lines.push("# Jedes Abfragefeld ist eine Lesung, jede Mutation ein Schreiben der Data API,");
   lines.push("# beides unter der Zeilensicherheit des Aufrufers. Alle Mutationen einer Anfrage");
   lines.push("# laufen in einer Transaktion: faellt eine, wirkt keine.");
+  // Die Beziehungen in `records` (2.111) stehen hier nicht. Dieses Dokument
+  // entsteht aus der Liste der lesbaren Tabellen, und die traegt keine
+  // Fremdschluessel; sie zu nennen hiesse, sie in einem zweiten Katalogzug zu
+  // lesen und dabei eine Beziehung zu behaupten, deren Nachbartabelle dieser
+  // Aufrufer vielleicht gar nicht lesen darf. Welche Beziehung es gibt, sagt
+  // die Antwort der Data API, und welche Form sie hat, sagt die Console.
+  lines.push("# records nimmt ausserdem Beziehungen (2.111), lesend; sie stehen nicht in diesem Schema.");
   lines.push("");
   lines.push("type Query {");
   for (const type of types) lines.push(`  ${type.name}(${argumentList}): [${type.name}!]!`);
@@ -1063,6 +1212,15 @@ export type ProjectGraphqlMutationFieldResult = {
   table: string;
   kind: "insert" | "update" | "delete";
   affectedCount: number;
+  /**
+   * Eine Angabe je Beziehung in `records` (2.111), wie die Data API sie
+   * hergibt: Richtung, Fremdschlüssel und ob eine Liste beschnitten wurde.
+   *
+   * Sie steht hier und nicht in `data`, weil sie eine Aussage über die Anfrage
+   * ist und keine Zeile. Ohne sie wäre ein Schnitt bei zwanzig Nachbarn für den
+   * Aufrufer nicht von „es sind genau zwanzig“ zu unterscheiden.
+   */
+  embeds: GeneratedEmbedResult[];
 };
 
 /** Das Ergebnis einer Mutation (2.97): je Feld `affectedCount` und `records`, unter den Aliassen des Aufrufers. */
@@ -1076,6 +1234,63 @@ export type ProjectGraphqlMutationResult = {
 };
 
 export type ProjectGraphqlDocumentResult = ProjectGraphqlResult | ProjectGraphqlMutationResult;
+
+/**
+ * Eine Antwortzeile aus `records` (2.111): die Spalten unter ihren Aliassen,
+ * dann je Beziehung ihr Wert.
+ *
+ * Die Data API hat die Beziehung unter dem Antwortschlüssel in die Zeile
+ * geschrieben, als Objekt oder `null` bei `one` und als Liste bei `many`. Hier
+ * wird sie nur noch auf die Aliasse der Spalten gebracht, und zwar nach
+ * derselben Regel wie die Zeile selbst, damit es keine zweite Formregel gibt.
+ */
+function shapeRecord(
+  row: Record<string, unknown>,
+  selection: Array<{ responseKey: string; column: string }>,
+  embeds: ProjectGraphqlEmbedPlan[],
+): Record<string, unknown> {
+  const shaped: Record<string, unknown> = Object.fromEntries(
+    selection.map((column) => [column.responseKey, row[column.column] ?? null]),
+  );
+  for (const embed of embeds) {
+    const value = row[embed.responseKey];
+    if (Array.isArray(value)) {
+      shaped[embed.responseKey] = value.map((inner) =>
+        isRecordValue(inner) ? shapeRecord(inner, embed.selection, embed.embeds) : null);
+      continue;
+    }
+    shaped[embed.responseKey] = isRecordValue(value)
+      ? shapeRecord(value, embed.selection, embed.embeds)
+      : null;
+  }
+  return shaped;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Die Beziehungen gegen das Schema dieser Fläche (2.111).
+ *
+ * Geprüft wird nur, was dieses Schema kennt: eine Nachbartabelle ohne `schema`
+ * und deren Spalten. Steht `schema` daran (2.112), liegt die Tabelle außerhalb
+ * dieses Schemas, und dann entscheidet der Katalog in der Data API, durch
+ * dieselbe Tür, die eine Basistabelle nimmt. Hier zu raten wäre eine zweite
+ * Wahrheit über dieselbe Tabelle.
+ */
+function assertEmbedTypes(embeds: ProjectGraphqlEmbedPlan[], byName: Map<string, ProjectGraphqlType>): void {
+  for (const embed of embeds) {
+    if (embed.schema) continue;
+    const type = byName.get(embed.relation);
+    if (!type) refuse("unknown_table", embed.relation);
+    const columns = new Set(type.fields.map((entry) => entry.name));
+    for (const column of embed.columns) {
+      if (!columns.has(column)) refuse("unknown_field", `${embed.relation}.${column}`);
+    }
+    assertEmbedTypes(embed.embeds, byName);
+  }
+}
 
 /**
  * Die Fläche selbst.
@@ -1207,6 +1422,13 @@ export class ProjectGraphqlService {
         for (const column of field.records.columns) {
           if (!columns.has(column)) refuse("unknown_field", `${field.table}.${column}`);
         }
+        // Die Beziehungen (2.111): Eine Nachbartabelle im Schema der Anfrage
+        // steht im Schema dieser Flaeche, und ihre Spalten stehen dort auch;
+        // die Ablehnung heisst darum hier „unbekannt“ wie bei allem anderen.
+        // Eine Nachbartabelle in einem anderen Schema (2.112) kennt dieses
+        // Schema nicht, und ueber sie entscheidet der Katalog in der Data API,
+        // mit derselben Tuer.
+        assertEmbedTypes(field.records.embeds, byName);
       }
       if (field.mutation.kind === "insert") {
         const insertable = new Set(type.insertFields.map((entry) => entry.name));
@@ -1256,9 +1478,7 @@ export class ProjectGraphqlService {
       if (field.affectedCount !== null) entry[field.affectedCount] = result.rowCount;
       if (field.records) {
         const records = field.records;
-        entry[records.responseKey] = result.rows.map((row) => Object.fromEntries(
-          records.selection.map((column) => [column.responseKey, row[column.column] ?? null]),
-        ));
+        entry[records.responseKey] = result.rows.map((row) => shapeRecord(row, records.selection, records.embeds));
       }
       data[field.responseKey] = entry;
       results.push({
@@ -1266,6 +1486,7 @@ export class ProjectGraphqlService {
         table: field.table,
         kind: field.mutation.kind,
         affectedCount: result.rowCount,
+        embeds: result.embeds,
       });
     });
     return {

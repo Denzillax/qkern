@@ -26,7 +26,7 @@ type Environment = "development" | "staging" | "production";
 type SchemaTable = { name: string; kind: "table" | "partitioned_table" | "view" | "materialized_view"; rowSecurityEnabled: boolean };
 type SchemaState = { state: "loading" | "ready" | "not-ready" | "unavailable" | "error"; tables: SchemaTable[]; truncated: boolean; message: string };
 
-const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims, maxEmbeds, maxEmbedRows, mutationRowsMax, mutationsMax } = DATA_API_LIMITS;
+const { schema, rowsMin, rowsMax, maxFilters, operators, keyClaims, maxEmbeds, maxEmbedRows, maxEmbedDepth, maxNestedEmbeds, mutationRowsMax, mutationsMax } = DATA_API_LIMITS;
 
 type Payload = Record<string, unknown>;
 
@@ -136,6 +136,8 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
         <div><span>{t("Operatoren")}</span><code>{operators.join(", ")}</code></div>
         <div><span>{t("Eingebettete Beziehungen je Anfrage höchstens")}</span><strong>{maxEmbeds}</strong></div>
         <div><span>{t("Zeilen je Einbettung und Elternzeile höchstens")}</span><strong>{maxEmbedRows}</strong></div>
+        <div><span>{t("Ebenen einer Einbettung höchstens")}</span><strong>{maxEmbedDepth}</strong></div>
+        <div><span>{t("Einbettungen in einer Einbettung höchstens")}</span><strong>{maxNestedEmbeds}</strong></div>
         <div><span>{t("Zeilen je Einfügen und je GraphQL-Mutation höchstens")}</span><strong>{mutationRowsMax}</strong></div>
         <div><span>{t("GraphQL-Mutationen je Anfrage höchstens, alle in einer Transaktion")}</span><strong>{mutationsMax}</strong></div>
         <div><span>{t("Public Key setzt die Rolle")}</span><code>{keyClaims.public}</code></div>
@@ -143,7 +145,9 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
       </div>
       <p className="muted">{t("Row Level Security gilt für beide Schlüssel: Die Datenbankrolle der Data API umgeht RLS nie, die Rolle steht nur in den Claims.")}</p>
       <p className="muted">{t("Sensible Spalten werden nie zurückgegeben, gefiltert, sortiert oder geschrieben. Erkannt am Namen:")} {SENSITIVE_COLUMN_WORDS.join(", ")}.</p>
-      <p className="muted">{t("Eingebettete Beziehungen laufen über genau einen Fremdschlüssel im selben Schema, eine Ebene tief, lesend, und die Nachbartabelle braucht dieselbe Row Level Security wie die Tabelle selbst.")}</p>
+      <p className="muted">{t("Eingebettete Beziehungen laufen über genau einen Fremdschlüssel, lesend, und die Nachbartabelle braucht dieselbe Row Level Security wie die Tabelle selbst. Sie darf in einem anderen Schema liegen; die Prüfung ist dieselbe, weil die Policy an der Tabelle hängt und nicht am Schema. Eine Tabelle, die auf sich selbst zeigt, wird abgewiesen: Es wäre nicht entscheidbar, ob der Elternknoten oder die Kinder gemeint sind.")}</p>
+      <p className="muted">{t("Die zweite Ebene einer Einbettung läuft nur über einen Fremdschlüssel, der von der Nachbartabelle weg zeigt, also eine Zeile je Elternzeile. Eine zweite Ebene in der anderen Richtung wären zwanzig mal zwanzig Zeilen je Wurzelzeile, bei hundert Wurzelzeilen vierzigtausend und über drei Beziehungen hundertzwanzigtausend; sie wird abgewiesen.")}</p>
+      <p className="muted">{t("Eine GraphQL-Mutation darf dieselben Einbettungen in records tragen, mit denselben Grenzen und derselben Prüfung. Gelesen wird in der Transaktion der Mutation und unter denselben Ansprüchen. Geschrieben wird über eine Beziehung nie, und ein Löschen trägt keine.")}</p>
       <p className="muted">{t("Ein Upsert schickt onConflict mit den Spalten eines Primärschlüssels oder eindeutigen Index, den es im Katalog wirklich gibt; einen anderen Schlüssel lehnt die API ab. Er verlangt das Recht zum Einfügen und das zum Ändern, und er ändert keine Zeile, die ein UPDATE des Aufrufers nicht auch ändern dürfte: Die USING-Bedingung der Policy weist sie ab, und die ganze Anfrage rollt zurück.")}</p>
       <p className="muted">{t("Diese Ansicht zeigt nur das Standardschema. Die Data API nimmt über ?schema= auch andere an, Systemschemata nie.")}</p>
       <p className="muted">{t("Weitere Schemata und eine eigene Zeilengrenze sind noch nicht verbunden.")}</p>

@@ -275,6 +275,52 @@ describe("project graphql subset", () => {
     expect(sdl).not.toContain("type Mutation");
   });
 
+  it("plans the relations of records as embeds of the mutation, with a second level and a schema (2.111)", () => {
+    // Die Beziehungen gehen als `embed` in dieselbe Mutation, die auch die
+    // Zeilen schreibt: ein Weg, nicht zwei. Der Alias in GraphQL und der
+    // Schluessel in der Antwortzeile sind dasselbe.
+    const plan = planMutation(`mutation {
+      insertIntobeitraegeCollection(objects: [{ titel: "a" }]) {
+        affectedCount
+        records {
+          titel
+          autor: autoren(schema: "verlag") { name }
+          kommentare { text verfasser: autoren { name } }
+        }
+      }
+    }`);
+    const [insert] = plan.mutations;
+    expect(insert!.records!.embeds).toEqual([
+      {
+        responseKey: "autor", relation: "autoren", schema: "verlag", columns: ["name"],
+        selection: [{ responseKey: "name", column: "name" }], embeds: [],
+      },
+      {
+        responseKey: "kommentare", relation: "kommentare", columns: ["text"],
+        selection: [{ responseKey: "text", column: "text" }],
+        embeds: [{
+          responseKey: "verfasser", relation: "autoren", columns: ["name"],
+          selection: [{ responseKey: "name", column: "name" }], embeds: [],
+        }],
+      },
+    ]);
+    // Dieselben Beziehungen stehen an der Mutation, die an die Data API geht,
+    // und mit dem Alias als Schluessel.
+    expect(insert!.mutation).toEqual({
+      kind: "insert", table: "beitraege", rows: [{ titel: "a" }],
+      embed: [
+        { alias: "autor", relation: "autoren", schema: "verlag", columns: ["name"] },
+        {
+          alias: "kommentare", relation: "kommentare", columns: ["text"],
+          embed: [{ alias: "verfasser", relation: "autoren", columns: ["name"] }],
+        },
+      ],
+    });
+    // Die Spalten der Huelle bleiben die Spalten: `autor` und `kommentare`
+    // stehen nicht darunter, sonst wuerde die Data API sie als Spalten lesen.
+    expect(insert!.records!.columns).toEqual(["titel"]);
+  });
+
   it("plans the three mutations with their arguments, aliases and records", () => {
     const plan = planMutation(`mutation Schreiben {
       neu: insertIntoordersCollection(objects: [{ total: 10, status: "open" }, { total: 20, status: "open" }]) {
@@ -296,7 +342,7 @@ describe("project graphql subset", () => {
     expect(insert!.affectedCount).toBe("anzahl");
     expect(insert!.records).toEqual({ responseKey: "records", columns: ["id", "total"],
       selection: [{ responseKey: "id", column: "id" }, { responseKey: "nochmal", column: "id" },
-        { responseKey: "total", column: "total" }] });
+        { responseKey: "total", column: "total" }], embeds: [] });
     expect(update!.mutation).toEqual({ kind: "update", table: "orders", values: { status: "paid" }, atMost: 2,
       filters: [{ column: "status", operator: "eq", value: "open" }, { column: "total", operator: "gte", value: 10 }] });
     expect(update!.records).toBeNull();
@@ -359,7 +405,25 @@ describe("project graphql subset", () => {
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { id } }")).toBe("unknown_field");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records } }")).toBe("selection_required");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { affectedCount { x } } }")).toBe("depth_exceeded");
-    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { id { x } } } }")).toBe("depth_exceeded");
+    // Ein Feld mit eigener Auswahl in `records` ist seit 2.111 eine Beziehung,
+    // keine zu tiefe Spalte. Zwei Ebenen gehen, eine dritte faellt an der Tiefe
+    // des Dokuments: `maxMutationDepth` ist aus genau der Zahl der Ebenen
+    // gerechnet, also gibt es dafuer keinen zweiten Grund.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { x b { y } } } } }")).toBe("accepted");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { x b { y c { z } } } } } }")).toBe("depth_exceeded");
+    // Mehr Beziehungen als die Ebene traegt, und zwei in einer Beziehung.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { x } b { x } c { x } d { x } } } }")).toBe("embeds_exceeded");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { x b { y } c { y } } } } }")).toBe("embeds_exceeded");
+    // Eine Beziehung braucht eigene Spalten; eine, die nur eine weitere
+    // Beziehung traegt, hat in der Antwort keinen Wert, den der Aufrufer bestellt
+    // hat. Und sie nimmt nur das Argument schema.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { b { y } } } } }")).toBe("selection_required");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a { } } } }")).toBe("empty_selection");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a(limit: 1) { x } } } }")).toBe("unknown_argument");
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) { records { a(schema: 1) { x } } } }")).toBe("invalid_argument");
+    // Ein Loeschen traegt keine Beziehung: Die Nachbarzeilen einer geloeschten
+    // Zeile sind nach dem Loeschen keine Zusage.
+    expect(reason("mutation { deleteFromordersCollection(where: [\"id:eq:1\"]) { records { a { x } } } }")).toBe("unknown_field");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }]) }")).toBe("selection_required");
     // Argumente je Form.
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1 }], where: [\"id:eq:1\"]) { affectedCount } }")).toBe("unknown_argument");
@@ -369,7 +433,9 @@ describe("project graphql subset", () => {
     expect(reason(`mutation { deleteFromordersCollection(where: ["id:eq:1"], atMost: ${DATA_API_GRAPHQL_LIMITS.maxRowsPerMutation + 1}) { affectedCount } }`))
       .toBe("mutation_rows_exceeded");
     // Eine Zeile ist flach.
-    expect(reason("mutation { insertIntoordersCollection(objects: [{ kunde: { name: \"x\" } }]) { affectedCount } }")).toBe("nested_object_not_supported");
+    // Ein Objekt im Objekt ist ein Schreiben ueber eine Beziehung und faellt
+    // seit 2.111 mit eigenem Grund; eine Liste im Objekt bleibt ein Formfehler.
+    expect(reason("mutation { insertIntoordersCollection(objects: [{ kunde: { name: \"x\" } }]) { affectedCount } }")).toBe("nested_write_not_supported");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ tags: [1, 2] }]) { affectedCount } }")).toBe("nested_object_not_supported");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ id: 1, id: 2 }]) { affectedCount } }")).toBe("duplicate_argument");
     expect(reason("mutation { insertIntoordersCollection(objects: [{ __proto__: 1 }]) { affectedCount } }")).toBe("unknown_field");
@@ -410,6 +476,12 @@ describe("project graphql subset", () => {
     expect(PROJECT_GRAPHQL_GRAMMAR.refused).not.toContain("mutation");
     expect(PROJECT_GRAPHQL_GRAMMAR.refused).toContain("introspection");
     expect(PROJECT_GRAPHQL_GRAMMAR.accepted).toContain("aliases");
+    // Beziehungen gibt es in einer Mutation und nicht in einer Abfrage, und ein
+    // Schreiben ueber eine Beziehung gibt es nirgends. Die Seite zeigt beide
+    // Listen; faellt ein Eintrag weg, behauptet sie etwas anderes als der Parser.
+    expect(PROJECT_GRAPHQL_GRAMMAR.accepted).toContain("mutation_relations");
+    expect(PROJECT_GRAPHQL_GRAMMAR.refused).toContain("query_relations");
+    expect(PROJECT_GRAPHQL_GRAMMAR.refused).toContain("nested_writes");
     expect(new Set(PROJECT_GRAPHQL_GRAMMAR.accepted).size).toBe(PROJECT_GRAPHQL_GRAMMAR.accepted.length);
     expect(new Set(PROJECT_GRAPHQL_GRAMMAR.refused).size).toBe(PROJECT_GRAPHQL_GRAMMAR.refused.length);
   });
