@@ -125,6 +125,59 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.115 **MCP und das TypeScript-SDK upserten jetzt auch.** `onConflict` am
+  Werkzeug `qkern_table_rows_insert` (`mcp/server.ts`) und als zweites Argument
+  an `insert` des SDK (`sdk/typescript/src/index.ts`). Beide gehen denselben Weg
+  wie REST und GraphQL seit 2.105: `GeneratedDataApiService.insertRows`, und der
+  Konfliktschluessel kommt weiterhin allein aus `pg_index`
+  (`resolveConflictKey`). **Keine zweite Pruefung**: Das MCP-Schema sagt nur,
+  dass es Spaltennamen sind und wie viele; das SDK prueft nur die Gestalt der
+  Namen mit demselben `identifier`, das `select` benutzt. Ob die Spalten einen
+  eindeutigen Schluessel bilden, ob die Rolle aendern darf und ob jede Zeile den
+  Schluessel traegt, entscheidet der Dienst.
+
+  **Ein echter Produktfehler dabei**: `generatedDataToolError` in `mcp/server.ts`
+  kannte `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN` nicht, und ein unbekannter
+  Code wird dort zu "The generated data API is unavailable". Ein Agent haette
+  einen Fehler seiner Anfrage als Ausfall gelesen und die Anfrage wiederholt. Der
+  Code hat jetzt seinen eigenen Satz, wie an der REST-Route, die ihn seit 2.105
+  mit 400 beantwortet. Fall `(2.115)` in `tests/postgres.integration.test.ts`,
+  mit den echten Route-Handlern unter dem echten SDK-Transport.
+
+- 2.116 **`storage:write` kommt mit dem Werkzeug, das ihn prueft, und es ist ein
+  Loeschen.** Migration `0078_project_auth_oauth_storage_write_scope.sql`
+  ersetzt dieselben vier Scope-CHECKs wie 0073; die Liste wird von neun auf zehn
+  Bereiche erweitert, die Obergrenze je Zeile von 9 auf 10. Das Werkzeug ist
+  `qkern_storage_object_delete`.
+
+  **Warum kein Hochladen.** Ein Objekt entsteht hier in drei Schritten:
+  Reservierung mit Pruefsumme der ganzen Datei, Bytes beim Anbieter gegen einen
+  kurzlebigen Grant, Abschluss mit Abschlusstoken und Scan. Den mittleren Schritt
+  kann ein Werkzeug nicht tun, und eines, das die Bytes selbst annimmt, schiebt
+  bis fuenf Gibibyte durch einen Modellkontext und laesst das Modell die
+  Pruefsumme beglaubigen, die der Abschluss vergleicht. Ein Umbenennen gibt es im
+  Dienst ueberhaupt nicht: Der Schluessel am Objekt ist der Weg beim Anbieter,
+  also waere es Kopieren plus Loeschen mit Kontingent, Pruefsumme und Scan an der
+  neuen Stelle, und das ist eine Faehigkeit des Dienstes. Bleibt das Loeschen,
+  und es ist die Handlung, die ein Agent in einem Bucket wirklich braucht.
+
+  **Die offene Grenze aus 2.69 ist fuer diesen Weg zu.** Storage lief im
+  MCP-Server mit `role: "admin"` im Namen des Betreibers. Bei einem Loeschen waere
+  das eine Rechteausweitung durch die Zustimmung eines Endnutzers, denn die
+  Betreiberrolle gibt jedes Objekt jedes Buckets her. `qkern_storage_object_delete`
+  laeuft ueber OAuth darum mit `role: "authenticated"` und der Kennung des
+  zustimmenden Nutzers; `canWrite` wendet damit die Schreibregel des Buckets je
+  Objekt an. Beim statischen Bearer bleibt es `admin`, weil es dort keinen Nutzer
+  gibt, in dessen Namen gehandelt wird. Die lesenden Storage-Werkzeuge und die
+  Queues bleiben beim Betreiber, und das steht weiter als offen.
+
+  **Offen**: `storage:read` und `queues:read` sagen weiterhin etwas ueber die
+  Projektumgebung und nichts ueber die Daten eines Nutzers; eine Decke je Nutzer
+  braeuchte dort eine Rolle je Bucket und je Queue. Die HTTP-Tueren von Storage
+  nehmen ein OAuth-Token weiterhin nicht an, also wirkt `storage:write` nur am
+  entfernten MCP-Server. Fall `(2.116)` in `tests/postgres.integration.test.ts`
+  mit drei Buckets und drei Schreibregeln.
+
 - 2.107 **Der Compute-Prozess findet seine Bereiche selbst, innerhalb einer
   Organisation.** `QKERN_COMPUTE_SCOPE_SOURCE=control-plane` liest
   `project_environments` fuer die Organisation aus

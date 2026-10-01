@@ -75,11 +75,33 @@ export class QkernTableClient {
             query.set("cursor", input.cursor);
         return this.transport.request(`${this.path()}?${query}`, { method: "GET" });
     }
-    insert(rows) {
+    /**
+     * Zeilen einfuegen, und mit `onConflict` als Upsert (2.115).
+     *
+     * Derselbe Weg wie ohne: dieselbe Route, dasselbe Verb, derselbe Rumpf mit
+     * einem Feld mehr. Der Konfliktschluessel wird hier **nicht** geprueft, und
+     * das ist Absicht. Ob die genannten Spalten einen Primaerschluessel oder
+     * eindeutigen Index bilden, weiss nur der Katalog der Projektdatenbank, und
+     * der Server liest ihn aus `pg_index`. Eine zweite Pruefung im SDK koennte
+     * nur die Gestalt der Namen wiederholen, und genau das tut sie: `identifier`
+     * laesst durch, was ein Spaltenname sein darf, und alles Weitere beantwortet
+     * die Antwort des Servers mit `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN`.
+     */
+    insert(rows, options = {}) {
         if (!Array.isArray(rows) || rows.length < 1 || rows.length > 100)
             throw new QkernError("SDK_INVALID_INPUT", 0);
+        const onConflict = options.onConflict;
+        if (onConflict !== undefined &&
+            (!Array.isArray(onConflict) || onConflict.length < 1 || onConflict.length > 32)) {
+            throw new QkernError("SDK_INVALID_INPUT", 0);
+        }
         return this.transport.request(this.path(), {
-            method: "POST", body: { schema: this.schemaName, rows },
+            method: "POST",
+            body: {
+                schema: this.schemaName,
+                rows,
+                ...(onConflict === undefined ? {} : { onConflict: onConflict.map((column) => identifier(String(column))) }),
+            },
         });
     }
     update(match, values) {

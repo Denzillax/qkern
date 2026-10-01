@@ -131,15 +131,32 @@ import { createHash, timingSafeEqual } from "node:crypto";
  *   Migrationsvorschau. **Kein Anwenden.** Vorschlagen und Anwenden sind zwei
  *   Saetze, und ein Bereich, der beides oeffnete, saegte an dem, was er nennt.
  *
- * ## Warum `storage:write` fehlt
+ * ## `storage:write`, und warum er erst jetzt kommt (Migration 0078)
  *
- * Weil es nichts gibt, das ihn pruefen wuerde. Der MCP-Server hat kein
- * schreibendes Storage-Werkzeug, und die HTTP-Tueren von Storage nehmen ein
- * OAuth-Token weiterhin nicht an. Ein Bereich, den niemand prueft, ist eine
- * Beschriftung, und eine Beschriftung auf einer Zustimmungsseite ist schlimmer
- * als ein fehlender Eintrag: Der Nutzer liest eine Erlaubnis, die nirgends
- * wirkt, und haelt sie fuer die Grenze. Er kommt mit dem ersten Werkzeug, das
- * ihn braucht.
+ * Bis 2.115 fehlte er, und die Begruendung war, dass ihn nichts geprueft haette:
+ * Der MCP-Server hatte kein schreibendes Storage-Werkzeug, und ein Bereich, den
+ * niemand prueft, ist eine Beschriftung. Auf einer Zustimmungsseite ist eine
+ * Beschriftung schlimmer als ein fehlender Eintrag, denn der Nutzer liest eine
+ * Erlaubnis, die nirgends wirkt, und haelt sie fuer die Grenze. Er sollte mit dem
+ * ersten Werkzeug kommen, das ihn braucht, und das ist er jetzt:
+ *
+ * * `storage:write`: Das Loeschen eines Objekts in einem Bucket dieser
+ *   Projektumgebung, und nur das. **Kein Hochladen**, denn ein Hochladen ist bei
+ *   QKERN Reservierung, Bytes beim Anbieter, Abschluss mit Pruefsumme und Scan,
+ *   und ein Werkzeug, das die Bytes durch einen Modellkontext schiebt, kann die
+ *   Zusage des Abschlusses nicht halten. **Kein Bucket**, denn Anlegen, Aendern
+ *   und Entfernen eines Buckets verlangen die Betreiberrolle.
+ *
+ * Dieser Bereich traegt eine Decke, die `storage:read` nicht hat: Das
+ * Loeschwerkzeug laeuft mit `authenticated` und der Kennung des zustimmenden
+ * Nutzers, und damit entscheidet die Schreibregel des Buckets. Die
+ * Betreiberrolle bekommt es ueber OAuth nicht. Ein Bucket mit `owner` gibt nur die
+ * Objekte dieses Nutzers her, einer mit `private` keines. Der Grund steht unten
+ * bei der Grenze, die diese Bereiche sonst nicht verschieben.
+ *
+ * Die HTTP-Tueren von Storage nehmen ein OAuth-Token weiterhin nicht an. Dieser
+ * Bereich wirkt also am entfernten MCP-Server und nirgends sonst, und das sagt
+ * die Console so.
  *
  * ## Was diese sechs **nicht** aendern
  *
@@ -149,13 +166,22 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * Ablehnungen zu pruefen, und das ist je Tuer ein eigener Schnitt. Was hier
  * entsteht, ist der Satz, den eine solche Tuer dann verlangen **kann**.
  *
- * ## Und die Grenze, die diese sechs nicht verschieben
+ * ## Und die Grenze, die die lesenden nicht verschieben
  *
- * Storage und Queues laufen im MCP-Server mit `role: "admin"` im Namen des
- * Betreibers, nicht unter einer Zeilensicherheit des zustimmenden Nutzers. Ein
- * Bucket hat keine Policy je Zeile, eine Queue auch nicht. `storage:read` und
- * `queues:read` sagen darum etwas ueber diese Projektumgebung und nichts ueber
- * die Daten eines Nutzers, und die Console sagt das bei jedem der beiden.
+ * Die lesenden Storage-Werkzeuge und die Queues laufen im MCP-Server mit
+ * `role: "admin"` im Namen des Betreibers, nicht unter einer Zeilensicherheit
+ * des zustimmenden Nutzers. Ein Bucket hat keine Policy je Zeile, eine Queue
+ * auch nicht. `storage:read` und `queues:read` sagen darum etwas ueber diese
+ * Projektumgebung und nichts ueber die Daten eines Nutzers, und die Console sagt
+ * das bei jedem der beiden.
+ *
+ * Beim Loeschen eines Objekts gilt das nicht, und zwar weil es dort nicht
+ * genuegt. Eine Betreiberrolle gibt jedes Objekt jedes Buckets her, auch das
+ * eines anderen Nutzers; bei einem Lesen bleibt das eine offene Grenze, bei
+ * einem Loeschen waere es eine Rechteausweitung durch Zustimmung eines
+ * Endnutzers. `qkern_storage_object_delete` laeuft darum mit `authenticated` und
+ * der Kennung des zustimmenden Nutzers, und die Schreibregel des Buckets
+ * entscheidet je Objekt.
  *
  * Getragen wird das von der Decke am Client: Welche Bereiche eine Anwendung
  * hoechstens verlangen darf, schreibt ein Owner oder Administrator der
@@ -170,6 +196,10 @@ export const PROJECT_AUTH_OAUTH_SCOPES = [
   "data:write",
   "project:read",
   "storage:read",
+  // Neben dem lesenden und vor den Queues, weil `orderedScopes` diese
+  // Reihenfolge ausgibt und eine Zustimmungsseite die zwei Storage-Saetze
+  // nebeneinander zeigen soll.
+  "storage:write",
   "queues:read",
   "queues:write",
   "logs:read",

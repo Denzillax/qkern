@@ -1,0 +1,10 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/wt-tables
+
+
+ Test Files  344 passed | 40 skipped (384)
+      Tests  2468 passed | 357 skipped (2825)
+   Start at  19:23:20
+   Duration  47.36s (transform 11.23s, setup 0ms, import 52.80s, tests 33.43s, environment 30ms)
+
+EXIT=0

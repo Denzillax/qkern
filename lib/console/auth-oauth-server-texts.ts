@@ -120,6 +120,8 @@ export const AUTH_OAUTH_SCOPE_TEXTS = {
     "Die Gestalt dieser Projektumgebung: ihr Eintrag ohne Zugangsdaten und die geltende Automatisierungsregel mit ihrer Risikogrenze. Keine andere Umgebung, kein anderes Projekt, keine Organisation und keine Mitgliederliste. Das ist eine Angabe über das Projekt und nicht über den Nutzer, der zustimmt.",
   "storage:read":
     "Buckets mit ihren festen Zugriffsregeln, Kontingenten und dem Verbrauch, dazu begrenzte Metadaten der Objekte eines Buckets. Kein Inhalt, keine Signatur, keine Providerschlüssel. Ein Bucket hat keine Regel je Zeile, also ist das der Blick des Betreibers auf diese Umgebung und nicht der Blick des Nutzers auf seine Daten.",
+  "storage:write":
+    "Das Löschen eines Objekts in einem Bucket dieser Projektumgebung, und nur das. Kein Hochladen: Ein Hochladen ist hier eine Reservierung, die Bytes beim Anbieter und ein Abschluss mit Prüfsumme und Virenprüfung, und dieser Weg führt nicht über ein Werkzeug. Kein Bucket: Anlegen, Ändern und Entfernen eines Buckets verlangen die Betreiberrolle. Dieses Löschen läuft als der zustimmende Nutzer unter der Schreibregel des Buckets, und nicht als Betreiber: Ein Bucket mit der Regel owner gibt nur die eigenen Objekte dieses Nutzers her, einer mit private keines.",
   "queues:read":
     "Queue-Definitionen und die Zähler je Nachrichtenzustand. Keine Nachrichteninhalte. Auch das ist der Blick auf die Umgebung und nicht auf die Daten eines Nutzers.",
   "queues:write":

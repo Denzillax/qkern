@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "sdkparity-postgres-run3.log",
+  "commit": "0df82b624b2d0dedc26214550615f7fa3133532e",
+  "commitSubject": "SDK-Handbuch und die Zahl der Bereiche nachgezogen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 72,
+  "testFiles": "31 passed (31)",
+  "tests": "243 passed (243)",
+  "passed": 243,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
