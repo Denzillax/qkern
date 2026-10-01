@@ -1909,3 +1909,34 @@ Die Läufe der drei Agenten auf ihren Zweigen liegen daneben als `slice-samlrest
 Die Kette ist einmal mitten in der dritten Probe abgebrochen, weil die Sitzung endete; der Quelltext war danach byteidentisch zurückgestellt, und die Probe ist nachgefahren. Der Produktionsbuild fiel beim ersten Versuch an einer halb geschriebenen Datei unter `.next/dev`, die ein sterbender Dev-Server hinterlassen hatte; nach dem Wegräumen grün.
 
 Die Läufe der drei Agenten auf ihren Zweigen liegen daneben.
+
+## Läufe zum Schnitt `slice/sdkparity` (1. Oktober 2026)
+
+Upsert an MCP und am TypeScript-SDK (Fall `2.115`) und das schreibende
+Storage-Werkzeug mit dem Bereich `storage:write` (Fall `2.116`). Stackname
+`qkern-slice-sdkp`, je Lauf frisch aufgesetzt und danach abgeräumt.
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-01/sdkparity-postgres-run1.log` | PostgreSQL 17 | 243 von 243, exit 0, 72 Migrationen |
+| `2026-10-01/sdkparity-postgres-run2.log` | PostgreSQL 17 | 243 von 243, exit 0, Wiederholung |
+| `2026-10-01/sdkparity-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-10-01/sdkparity-mutation-upsertpassthrough.log` | Mutation: das MCP-Werkzeug reicht `onConflict` nicht durch | **242 von 243, exit 1 – absichtlich** |
+| `2026-10-01/sdkparity-mutation-operatorrole.log` | Mutation: das Löschwerkzeug läuft als Betreiber | **242 von 243, exit 1 – absichtlich** |
+| `2026-10-01/sdkparity-mutation-sdkbody.log` | Mutation: das SDK lässt `onConflict` aus dem Rumpf | **242 von 243, exit 1 – absichtlich** |
+| `2026-10-01/sdkparity-local-run1.log` | Vitest lokal (Windows) | 2468 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Jede der drei Proben fällte genau einen der zwei neuen Fälle, und jede an der
+Stelle, die sie treffen sollte: die erste am zweiten Upsert, der ohne
+Durchreichen am eindeutigen Index scheitert; die zweite an der fremden Zeile im
+`owner`-Bucket, die mit der Betreiberrolle wirklich verschwindet; die dritte am
+Rumpf, den das SDK sendet.
+
+Der erste Lauf fiel mit zwei Fällen, und beide waren Befunde dieses Schnitts.
+`(2.82)` hatte die neun Bereiche als Liste hingeschrieben, und der zehnte musste
+dort ankommen. `(2.116)` scheiterte an einer eigenen Annahme: Eine Reservierung
+geht durch dieselbe Schreibregel wie ein Löschen, also kommt in einen
+`private`-Bucket gar nichts hinein; der Bucket wird jetzt mit `owner` angelegt,
+befüllt und danach zugezogen. Die Zählung am Ende stand dabei in einem `finally`
+und hat den eigentlichen Fehler verdeckt, weil ein Fehler im `finally` den Fehler
+aus dem Block darüber verdrängt. Sie steht jetzt im Block selbst.

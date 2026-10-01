@@ -101,7 +101,21 @@ export declare class QkernTableClient<DB extends QkernDatabase, S extends Schema
         rows: Array<Table<DB, S, T>["Row"]>;
         nextCursor: string | null;
     }>;
-    insert(rows: Array<Table<DB, S, T>["Insert"]>): Promise<{
+    /**
+     * Zeilen einfuegen, und mit `onConflict` als Upsert (2.115).
+     *
+     * Derselbe Weg wie ohne: dieselbe Route, dasselbe Verb, derselbe Rumpf mit
+     * einem Feld mehr. Der Konfliktschluessel wird hier **nicht** geprueft, und
+     * das ist Absicht. Ob die genannten Spalten einen Primaerschluessel oder
+     * eindeutigen Index bilden, weiss nur der Katalog der Projektdatenbank, und
+     * der Server liest ihn aus `pg_index`. Eine zweite Pruefung im SDK koennte
+     * nur die Gestalt der Namen wiederholen, und genau das tut sie: `identifier`
+     * laesst durch, was ein Spaltenname sein darf, und alles Weitere beantwortet
+     * die Antwort des Servers mit `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN`.
+     */
+    insert(rows: Array<Table<DB, S, T>["Insert"]>, options?: {
+        onConflict?: Array<Extract<keyof Table<DB, S, T>["Row"], string>>;
+    }): Promise<{
         rows: Array<Table<DB, S, T>["Row"]>;
     }>;
     update(match: Partial<Table<DB, S, T>["Row"]>, values: Table<DB, S, T>["Update"]): Promise<{

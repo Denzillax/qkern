@@ -226,7 +226,16 @@ import { createQKERNMcpServer, type MCPContext } from "@/mcp/server";
 // Frage, welcher Bereich was oeffnet, und sie wuerde genau dann gruen bleiben,
 // wenn die erste falsch wird.
 import { MCP_TOOL_SCOPES, isMcpToolName } from "@/mcp/tool-scopes";
-import type { ProjectAuthOAuthScope } from "@/lib/server/project-auth/oauth";
+// Upsert an MCP und am SDK (2.115): die echten Handler derselben Data-API-Route,
+// die im Betrieb antwortet, und der echte Transport des SDK darueber. Es gibt
+// keinen zweiten Weg, einen Rumpf des SDK in eine Zeile zu verwandeln.
+import { createGeneratedTableHandlers } from
+  "@/app/api/v1/projects/[projectId]/environments/[environment]/tables/[table]/rows/route";
+import { createQkernClient } from "@/sdk/typescript/src/index";
+import {
+  PROJECT_AUTH_OAUTH_SCOPES,
+  type ProjectAuthOAuthScope,
+} from "@/lib/server/project-auth/oauth";
 import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
@@ -9636,6 +9645,329 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+  it("(2.115) upserts over MCP and over the TypeScript SDK on the same service path, calls an unknown conflict key by its name instead of an outage, and lets neither surface change a row its caller could not have updated", async () => {
+    // Upsert an den zwei Flaechen, die ihn nach 2.105 nicht kannten.
+    //
+    // 2.105 hat `onConflict` an REST und GraphQL gebaut. Das MCP-Werkzeug
+    // `qkern_table_rows_insert` und `insert` des TypeScript-SDK kannten ihn
+    // nicht, und das war keine Entscheidung, sondern eine Luecke: Beide rufen
+    // denselben Dienst, der eine direkt, der andere ueber dieselbe
+    // REST-Route.
+    //
+    // Echt ist, worauf es ankommt: Schema, Primaerschluessel und eindeutige
+    // Indizes in der echten Projektdatenbank, die echten Policies, die echte
+    // Projektrolle, die echte `GeneratedDataApiService`, der echte MCP-Server an
+    // einem echten MCP-Client und die echten Route-Handler der Data API unter
+    // dem echten SDK-Transport. Gestellt sind die Aufloesung des Ziels, die
+    // Verbindung, der Projekt-Key und bei MCP der Zugang, denn dass ein echtes
+    // OAuth-Token zu einer Sitzung wird, ist der Fall `(2.91)` und nicht dieser.
+    //
+    // Der Fall prueft fuenf Zusagen:
+    //
+    // 1. Das Werkzeug und das SDK tragen `onConflict` ueberhaupt: einmal im
+    //    Schema, das `tools/list` ausgibt, einmal im Rumpf, den das SDK sendet.
+    // 2. Ein Upsert legt eine neue Zeile an und aendert eine vorhandene, an
+    //    beiden Flaechen, und er legt dabei keine zweite an.
+    // 3. **Der Konfliktschluessel wird an keiner der zwei Flaechen ein zweites
+    //    Mal geprueft.** Ein Schluessel, den der Katalog nicht hergibt, faellt
+    //    im Dienst, und beide Flaechen nennen ihn mit seinem eigenen Grund. Am
+    //    MCP-Werkzeug ist das neu: Vorher waere derselbe Fall als "nicht
+    //    verfuegbar" herausgegangen, also als Ausfall, den ein Agent wiederholt.
+    // 4. Ohne das Recht zum Aendern gibt es auch hier keinen Upsert.
+    // 5. Die Zusage von 2.105 gilt an diesen Flaechen genauso: Eine fremde Zeile
+    //    bleibt unveraendert, und die Antwort nennt die Policy.
+    expect(projectApiUrl, "QKERN_TEST_PROJECT_API_DATABASE_URL fehlt").toBeTruthy();
+    const target = new URL(projectApiUrl!);
+    const expectedDatabase = target.pathname.slice(1);
+    const expectedRole = decodeURIComponent(target.username);
+
+    const schema = `mcpupsert_${randomUUID().replaceAll("-", "_")}`;
+    const parityProject = randomUUID();
+    const parityOrganization = randomUUID();
+    const scope = { projectId: parityProject, environment: "development" as const };
+    // Drei Subjekte: der zustimmende Nutzer am MCP-Weg, der Projekt-Key am
+    // SDK-Weg und ein Nachbar, der keinem der beiden gehoert.
+    const mcpUser = randomUUID();
+    const sdkKeyId = randomUUID();
+    const neighbour = randomUUID();
+
+    const projectApi = createPostgresPool({ connectionString: projectApiUrl!, max: 2 });
+    try {
+      await owner.query(`CREATE SCHEMA "${schema}"`);
+      await owner.query(`CREATE TABLE "${schema}".kunden (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        besitzer text NOT NULL,
+        email text NOT NULL,
+        name text NOT NULL,
+        punkte integer NOT NULL DEFAULT 0)`);
+      await owner.query(`CREATE UNIQUE INDEX kunden_email_key ON "${schema}".kunden (email)`);
+      // Ein Index, der kein Konfliktschluessel sein kann, und er ist wirklich
+      // da. Die Ablehnung kommt damit nicht daher, dass die Spalte unbekannt
+      // waere, sondern daher, dass dieser Index nichts Eindeutiges zusagt.
+      await owner.query(`CREATE INDEX kunden_punkte_idx ON "${schema}".kunden (punkte)`);
+      await owner.query(`ALTER TABLE "${schema}".kunden ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY lesen ON "${schema}".kunden FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY einfuegen ON "${schema}".kunden FOR INSERT TO ${expectedRole}
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY aendern ON "${schema}".kunden FOR UPDATE TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      // Nur einfuegen. Ein Upsert aendert, also gibt es hier keinen, und zwar an
+      // beiden Flaechen mit demselben Grund.
+      await owner.query(`CREATE TABLE "${schema}".eingang (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        besitzer text NOT NULL,
+        kennung text NOT NULL,
+        inhalt text NOT NULL)`);
+      await owner.query(`CREATE UNIQUE INDEX eingang_kennung_key ON "${schema}".eingang (kennung)`);
+      await owner.query(`ALTER TABLE "${schema}".eingang ENABLE ROW LEVEL SECURITY`);
+      await owner.query(`CREATE POLICY lesen ON "${schema}".eingang FOR SELECT TO ${expectedRole}
+        USING (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`CREATE POLICY einfuegen ON "${schema}".eingang FOR INSERT TO ${expectedRole}
+        WITH CHECK (besitzer = current_setting('request.jwt.claim.sub', true))`);
+      await owner.query(`INSERT INTO "${schema}".kunden (besitzer, email, name, punkte) VALUES
+        ($1, 'nachbar@example.ch', 'Nachbar', 11)`, [neighbour]);
+      await owner.query(`GRANT USAGE ON SCHEMA "${schema}" TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${schema}".kunden TO ${expectedRole}`);
+      await owner.query(`GRANT SELECT, INSERT ON "${schema}".eingang TO ${expectedRole}`);
+
+      const connections = { resolve: async () => ({
+        pool: projectApi, expectedRole, expectedDatabase, expectedLedgerOwner: "qkern",
+      }) };
+      const targets = { resolveTarget: async () => ({ databaseInstanceRef: `managed:${parityProject}` }) };
+      const generated = new GeneratedDataApiService(targets, connections);
+
+      const held = async (where: string, values: string[] = []) => {
+        const result = await owner.query<{ besitzer: string; email: string; name: string; punkte: number }>(
+          `SELECT besitzer, email, name, punkte FROM "${schema}".kunden WHERE ${where} ORDER BY email`, values);
+        return result.rows;
+      };
+
+      // --- Der MCP-Weg ------------------------------------------------------
+      const mcpContext: MCPContext = {
+        organizationId: parityOrganization,
+        projectId: parityProject,
+        environment: "development",
+        actorRef: `project-auth-oauth:upsert-bridge:${mcpUser}`,
+        access: {
+          kind: "project_oauth", clientName: "upsert-bridge", userId: mcpUser,
+          email: `upsert-${mcpUser}@example.test`, scopes: ["data:write"],
+        },
+      };
+      const server = createQKERNMcpServer(mcpContext, { generatedDataApi: generated });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new McpClient({ name: "certification-2-115", version: "1.0.0" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const toolText = (result: unknown) => {
+        const content = (result as { content: Array<{ type: string; text: string }> }).content;
+        expect(content).toHaveLength(1);
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+      const insertTool = (input: Record<string, unknown>) =>
+        client.callTool({ name: "qkern_table_rows_insert", arguments: { schema, ...input } });
+      try {
+        // --- Zusage 1a: das Werkzeug zeigt den Konfliktschluessel ------------
+        //
+        // Gelesen aus `tools/list` und nicht aus dem Quelltext: Was ein Agent
+        // nicht im Schema sieht, kann er nicht schicken.
+        const tools = (await client.listTools()).tools;
+        const insertSchema = tools.find((tool) => tool.name === "qkern_table_rows_insert")!
+          .inputSchema as { properties: Record<string, { type?: string }>; required?: string[] };
+        expect(Object.keys(insertSchema.properties).sort()).toEqual(["onConflict", "rows", "schema", "table"]);
+        expect(insertSchema.properties.onConflict?.type).toBe("array");
+        // Und er ist nicht verlangt: Ein Einfuegen ohne ihn bleibt ein Einfuegen.
+        expect(insertSchema.required ?? []).not.toContain("onConflict");
+
+        // --- Zusage 2a: anlegen, dann aendern, und keine zweite Zeile --------
+        const angelegt = toolText(await insertTool({
+          table: "kunden",
+          rows: [{ besitzer: mcpUser, email: "mcp@example.ch", name: "Ueber MCP", punkte: 1 }],
+          onConflict: ["email"],
+        }));
+        expect(angelegt.rowCount).toBe(1);
+        expect(await held("besitzer = $1", [mcpUser]))
+          .toEqual([{ besitzer: mcpUser, email: "mcp@example.ch", name: "Ueber MCP", punkte: 1 }]);
+
+        const geaendert = toolText(await insertTool({
+          table: "kunden",
+          rows: [{ besitzer: mcpUser, email: "mcp@example.ch", name: "Ueber MCP, neu", punkte: 7 }],
+          onConflict: ["email"],
+        }));
+        expect(geaendert.rowCount).toBe(1);
+        expect(await held("besitzer = $1", [mcpUser]))
+          .toEqual([{ besitzer: mcpUser, email: "mcp@example.ch", name: "Ueber MCP, neu", punkte: 7 }]);
+
+        // --- Zusage 3a: der unbekannte Schluessel hat seinen eigenen Grund ---
+        //
+        // Das ist die Stelle, an der dieser Schnitt mehr tut als durchreichen.
+        // `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN` kannte die Fehlerzuordnung
+        // des Servers nicht, und ein unbekannter Code wird dort zu "nicht
+        // verfuegbar". Ein Agent haette die Anfrage wiederholt, und sie waere
+        // jedes Mal gleich gefallen.
+        const unbekannt = await insertTool({
+          table: "kunden",
+          rows: [{ besitzer: mcpUser, email: "punkte@example.ch", name: "Punkte", punkte: 3 }],
+          onConflict: ["punkte"],
+        });
+        expect(unbekannt).toMatchObject({ isError: true });
+        expect(toolText(unbekannt)).toEqual({
+          error: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN",
+          message: "The conflict key is not a unique key of the table.",
+        });
+        // Und zwar bevor eine Zeile geschrieben ist.
+        expect(await held("email = 'punkte@example.ch'")).toEqual([]);
+
+        // --- Zusage 4a: ohne Aenderungsrecht kein Upsert --------------------
+        const nurEinfuegen = toolText(await insertTool({
+          table: "eingang",
+          rows: [{ besitzer: mcpUser, kennung: "eins", inhalt: "eins" }],
+        }));
+        expect(nurEinfuegen.rowCount).toBe(1);
+        const verweigert = await insertTool({
+          table: "eingang",
+          rows: [{ besitzer: mcpUser, kennung: "eins", inhalt: "zwei" }],
+          onConflict: ["kennung"],
+        });
+        expect(verweigert).toMatchObject({ isError: true });
+        expect(toolText(verweigert)).toEqual({
+          error: "GENERATED_DATA_API_FORBIDDEN", message: "The table was not found.",
+        });
+        expect((await owner.query<{ inhalt: string }>(
+          `SELECT inhalt FROM "${schema}".eingang ORDER BY inhalt`)).rows).toEqual([{ inhalt: "eins" }]);
+
+        // --- Zusage 5a: die fremde Zeile bleibt, wie sie ist ----------------
+        const fremd = await insertTool({
+          table: "kunden",
+          rows: [{ besitzer: mcpUser, email: "nachbar@example.ch", name: "Uebernommen", punkte: 99 }],
+          onConflict: ["email"],
+        });
+        expect(fremd).toMatchObject({ isError: true });
+        expect(toolText(fremd)).toEqual({
+          error: "GENERATED_DATA_API_POLICY_REJECTED",
+          message: "A row-level security policy rejected the write.",
+        });
+        expect(await held("besitzer = $1", [neighbour]))
+          .toEqual([{ besitzer: neighbour, email: "nachbar@example.ch", name: "Nachbar", punkte: 11 }]);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+
+      // --- Der SDK-Weg, durch die echten Route-Handler ---------------------
+      //
+      // Der Transport des SDK ist der echte; gestellt ist nur `fetch`, und zwar
+      // auf die Handler derselben Route, die im Betrieb antwortet. Damit geht
+      // der Rumpf, den das SDK baut, wirklich durch die Pruefung der Route und
+      // durch die Tuer, die den Projekt-Key verlangt.
+      const keyPrincipal = {
+        id: sdkKeyId, organizationId: parityOrganization, projectId: parityProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) => secret === "qk_public_2_115" ? keyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const handlers = createGeneratedTableHandlers(async () => generated, keys);
+      const sent: Array<Record<string, unknown>> = [];
+      const sdkFetch = async (input: string | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const table = url.pathname.split("/tables/")[1]!.split("/")[0]!;
+        const body = init?.body === undefined || init?.body === null ? undefined : String(init.body);
+        if (body) sent.push(JSON.parse(body) as Record<string, unknown>);
+        const request = new NextRequest(url, {
+          method: init?.method ?? "GET",
+          headers: init?.headers as HeadersInit,
+          body,
+        });
+        const routeContext = { params: Promise.resolve({
+          projectId: parityProject, environment: "development", table,
+        }) };
+        if (request.method === "POST") return await handlers.POST(request, routeContext);
+        return await handlers.GET(request, routeContext);
+      };
+      const sdk = createQkernClient({
+        baseUrl: "https://qkern.test", projectId: parityProject, environment: "development",
+        projectKey: "qk_public_2_115", fetch: sdkFetch,
+      });
+      const kunden = sdk.from("kunden", schema);
+
+      // --- Zusage 2b: dieselben zwei Schritte, nur ueber die Route ---------
+      //
+      // Das Subjekt ist hier der Projekt-Key, also eine andere Kennung als am
+      // MCP-Weg. Die Policies sind dieselben, und die Zeile dieses Aufrufers
+      // ist darum eine andere; genau das soll so sein.
+      const sdkAngelegt = await kunden.insert(
+        [{ besitzer: sdkKeyId, email: "sdk@example.ch", name: "Ueber SDK", punkte: 2 }],
+        { onConflict: ["email"] },
+      );
+      // Das SDK verspricht `rows`; die Route gibt daneben `rowCount` aus, und
+      // der Fall liest beides, weil die Zahl die Aussage ist.
+      expect(sdkAngelegt.rows).toHaveLength(1);
+      expect((sdkAngelegt as unknown as { rowCount: number }).rowCount).toBe(1);
+      // --- Zusage 1b: der Rumpf traegt `onConflict` wirklich ----------------
+      //
+      // Und er traegt sonst nichts Neues: Dieselbe Route, dasselbe Verb,
+      // dasselbe Feld `rows`. Die Route nimmt ausser `schema`, `rows` und
+      // `onConflict` keinen Schluessel an, also waere ein zusaetzliches Feld
+      // hier eine 400 und kein stiller Mehrwert.
+      expect(sent.at(-1)).toEqual({
+        schema, rows: [{ besitzer: sdkKeyId, email: "sdk@example.ch", name: "Ueber SDK", punkte: 2 }],
+        onConflict: ["email"],
+      });
+      await kunden.insert(
+        [{ besitzer: sdkKeyId, email: "sdk@example.ch", name: "Ueber SDK, neu", punkte: 8 }],
+        { onConflict: ["email"] },
+      );
+      expect(await held("besitzer = $1", [sdkKeyId]))
+        .toEqual([{ besitzer: sdkKeyId, email: "sdk@example.ch", name: "Ueber SDK, neu", punkte: 8 }]);
+      // Ohne `onConflict` schickt das SDK das Feld nicht mit, und der Rumpf
+      // sieht aus wie vor diesem Schnitt.
+      await kunden.insert([{ besitzer: sdkKeyId, email: "sdk2@example.ch", name: "Zweite", punkte: 1 }]);
+      expect(sent.at(-1)).toEqual({
+        schema, rows: [{ besitzer: sdkKeyId, email: "sdk2@example.ch", name: "Zweite", punkte: 1 }],
+      });
+
+      // --- Zusage 3b: derselbe Grund am anderen Weg ------------------------
+      await expect(kunden.insert(
+        [{ besitzer: sdkKeyId, email: "sdkpunkte@example.ch", name: "Punkte", punkte: 3 }],
+        { onConflict: ["punkte"] },
+      )).rejects.toMatchObject({ code: "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN", status: 400 });
+      // Eine Spalte, die es im Schema gar nicht gibt, faellt am SDK schon an der
+      // Gestalt des Namens; eine, die es gibt, faellt im Dienst. Beide Male
+      // entscheidet nicht das SDK, ob der Schluessel eindeutig ist.
+      expect(() => kunden.insert(
+        [{ besitzer: sdkKeyId, email: "x@example.ch", name: "X", punkte: 1 }],
+        { onConflict: ["email; drop"] },
+      )).toThrow("SDK_INVALID_INPUT");
+
+      // --- Zusage 4b und 5b: Aenderungsrecht und fremde Zeile -------------
+      await expect(sdk.from("eingang", schema).insert(
+        [{ besitzer: sdkKeyId, kennung: "eins", inhalt: "drei" }],
+        { onConflict: ["kennung"] },
+      )).rejects.toMatchObject({ code: "GENERATED_DATA_API_FORBIDDEN", status: 404 });
+      await expect(kunden.insert(
+        [{ besitzer: sdkKeyId, email: "nachbar@example.ch", name: "Uebernommen", punkte: 99 }],
+        { onConflict: ["email"] },
+      )).rejects.toMatchObject({ code: "GENERATED_DATA_API_POLICY_REJECTED", status: 403 });
+
+      // Am Ende steht genau das, was die beiden Wege geschrieben haben, und die
+      // fremde Zeile unveraendert daneben. Sortiert wird hier und nicht in der
+      // Datenbank: Die Reihenfolge zweier Adressen, die sich nur in einem
+      // Satzzeichen unterscheiden, haengt an der Collation des Servers.
+      expect((await held("true")).sort((left, right) => left.punkte - right.punkte)).toEqual([
+        { besitzer: sdkKeyId, email: "sdk2@example.ch", name: "Zweite", punkte: 1 },
+        { besitzer: mcpUser, email: "mcp@example.ch", name: "Ueber MCP, neu", punkte: 7 },
+        { besitzer: sdkKeyId, email: "sdk@example.ch", name: "Ueber SDK, neu", punkte: 8 },
+        { besitzer: neighbour, email: "nachbar@example.ch", name: "Nachbar", punkte: 11 },
+      ]);
+    } finally {
+      await owner.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await projectApi.end();
+    }
+  }, 120_000);
+
   it("(2.82) issues an OAuth code with PKCE, redeems it once, reads with the token under row security and refuses replay, a wrong verifier, a foreign return target and an ungranted scope", async () => {
     // Der OAuth-Server (2.82) an einem Stueck, gegen die echte Datenbank: echter
     // Nutzer, echte Anmeldung, echter Client in project_auth_oauth_clients,
@@ -9759,11 +10091,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(stored.grant).toBe("authorization_code");
       expect(stored.challengeMethod).toBe("S256");
       // Die geschlossene Liste, die dieser Server ausgibt. Seit Migration 0073
-      // sind es neun; die Reihenfolge ist die der Liste und nicht die der
-      // Eingabe, damit dieselbe Erlaubnis ueberall gleich aussieht.
+      // waren es neun, seit 0078 sind es zehn; die Reihenfolge ist die der Liste
+      // und nicht die der Eingabe, damit dieselbe Erlaubnis ueberall gleich
+      // aussieht. Die zwei Storage-Bereiche stehen nebeneinander, und `storage:write`
+      // ist das Loeschen eines Objekts (2.116).
       expect(stored.scopes).toEqual([
         "identity:read", "data:read", "data:write", "project:read", "storage:read",
-        "queues:read", "queues:write", "logs:read", "migrations:propose",
+        "storage:write", "queues:read", "queues:write", "logs:read", "migrations:propose",
       ]);
       // Die nicht gebauten Verfahren kommen aus dem Dienst und nicht aus diesem
       // Fall. Dass `implicit` und `password` darin stehen, ist die Aussage:
@@ -11390,9 +11724,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
         // Ein schreibendes Werkzeug fehlt schon in der Liste, und der direkte
         // Aufruf scheitert am Server und nicht an einer Prueffrage im Werkzeug.
-        // Dass hier ein Queue-Werkzeug steht und kein Storage-Schreibwerkzeug,
-        // ist die Aussage von `mcp/tool-scopes.ts`: Es gibt kein schreibendes
-        // Storage-Werkzeug, und darum gibt es auch keinen Bereich `storage:write`.
+        // Das gilt seit 2.116 auch fuer das Loeschwerkzeug von Storage: Es haengt
+        // an `storage:write`, und dieser Lesebereich oeffnet es nicht. Geprueft
+        // wird das im Fall `(2.116)`; hier steht die Gegenprobe mit einem
+        // Werkzeug aus einem anderen Bereich.
         expect(await lesendesStorage.client.callTool({
           name: "qkern_queue_message_enqueue",
           arguments: { queue: queueName, payload: { darf: "nicht" } },
@@ -11542,6 +11877,392 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         `SELECT COUNT(*) AS count FROM project_queue_messages
           WHERE organization_id = $1 AND project_id = $2`,
         [mcpOrganization, mcpProject])).rows[0].count).toBe("1");
+    }
+  }, 120_000);
+
+  it("(2.116) gives storage:write one deleting tool and no upload, runs it as the consenting user under the write policy of the bucket, keeps a foreign object in an owner bucket and gives the operator role only to the local bearer", async () => {
+    // Der Bereich `storage:write` und das Werkzeug, das ihn prueft (2.116).
+    //
+    // 2.69 hat den Bereich weggelassen und das begruendet: Es gab kein
+    // schreibendes Storage-Werkzeug, und ein Bereich, den nichts prueft, ist auf
+    // einer Zustimmungsseite schlimmer als ein fehlender Eintrag. Er kommt mit
+    // dem Werkzeug, und dieser Fall ist die Pruefung dieses Satzes.
+    //
+    // **Das Werkzeug ist ein Loeschen und kein Hochladen.** Ein Objekt entsteht
+    // hier in drei Schritten: Reservierung, Bytes beim Anbieter, Abschluss mit
+    // Pruefsumme und Scan. Den mittleren Schritt kann ein Werkzeug nicht tun, und
+    // eines, das die Bytes selbst annimmt, liesse das Modell die Pruefsumme
+    // beglaubigen, die der Abschluss vergleicht. Ein Umbenennen gibt es im Dienst
+    // ueberhaupt nicht. Der Fall zeigt das von der Seite, die sich pruefen laesst:
+    // Diese Namen sind keine Werkzeugnamen, also auch mit jedem Bereich nicht
+    // erreichbar.
+    //
+    // **Die Decke, auf die es ankommt.** 2.69 hat als offen notiert, dass Storage
+    // im MCP-Server mit `role: "admin"` im Namen des Betreibers laeuft. Bei einem
+    // Loeschen waere das eine Rechteausweitung durch die Zustimmung eines
+    // Endnutzers: Die Betreiberrolle gibt jedes Objekt jedes Buckets her. Das
+    // Loeschwerkzeug laeuft darum ueber OAuth mit `authenticated` und der Kennung
+    // des zustimmenden Nutzers, und die Schreibregel des Buckets entscheidet je
+    // Objekt. Der Fall faehrt drei Buckets mit drei Regeln und zeigt an jedem,
+    // was herausgegeben wird.
+    //
+    // Echt ist: der Nutzer, seine Zustimmung aus Migration 0064 mit dem Bereich
+    // aus Migration 0078, der Code mit PKCE, das Token, das Gate, der MCP-Server
+    // an einem echten MCP-Client, der echte `ProjectStorageService` mit dem
+    // echten Postgres-Repository und die echten Bucket- und Objektzeilen.
+    // Gestellt ist die Ablage selbst, weil kein Werkzeug dieses Bereichs einen
+    // Inhalt anfasst, und der Projekt-Key.
+    const storageOwner = randomUUID();
+    const storageOrganization = randomUUID();
+    const storageProject = randomUUID();
+    const scope = {
+      organizationId: storageOrganization, projectId: storageProject, environment: "development" as const,
+    };
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [storageOwner, `mcp-storage-write-owner-${storageOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'MCP Storage Write 2.116', $2, $3)`,
+    [storageOrganization, `mcp-storage-write-${storageOrganization}`, storageOwner]);
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'MCP Storage Write 2.116', $3, 'test', 'ready', $4)`,
+    [storageProject, storageOrganization, `mcp-storage-write-${storageProject}`, storageOwner]);
+    await owner.query(`INSERT INTO project_environments
+      (organization_id, project_id, environment, database_instance_ref)
+      VALUES ($1, $2, 'development', $3)`, [storageOrganization, storageProject, `managed:${storageProject}`]);
+
+    const service = new ProjectAuthService({
+      repository: new PostgresProjectAuthRepository(auth),
+      audit: new PostgresProjectAuthAuditSink(auth),
+      passwords: new Argon2idPasswordHasher({}),
+      rateLimiter: new InMemoryRateLimiter(),
+      tokens: new ProjectAuthTokenService(
+        { kid: "certification-2-116", privateKey: generateKeyPairSync("ed25519").privateKey },
+        "https://qkern.test",
+      ),
+      mfa: new ProjectAuthTotp(),
+      secrets: new ProjectAuthSecretProtector(Buffer.alloc(32, 29)),
+      delivery: new NoopDevelopmentProjectAuthDelivery(),
+      oidcCatalog: new ProjectAuthOidcCatalog([]),
+      oidcClient: new ProjectAuthOidcClient({}, async () => { throw new Error("not expected"); }),
+      callbackBaseUrl: "https://qkern.test",
+      allowedRedirectOrigins: new Set(["https://app.test"]),
+      exposeDeliveryTokens: true,
+    });
+
+    const control = new PostgresControlPlane(runtime);
+    const provider = new MemoryProjectStorageProvider();
+    const storage = new ProjectStorageService({
+      repository: new PostgresProjectStorageRepository(control),
+      provider,
+      scanner: { async scan() { return "clean" as const; } },
+    });
+    const betreiber = {
+      organizationId: storageOrganization, actorRef: "mcp-storage-write@qkern.test",
+      role: "admin" as const, subject: storageOwner,
+    };
+    // Eine Pruefsumme in der Form, die der Dienst verlangt; derselbe Inhalt in
+    // jedem Objekt, denn dieser Fall prueft keine Bytes.
+    const checksum = createHash("sha256").update("2.116", "utf8").digest("base64");
+    const home = "https://app.test/mcp/storage-write";
+    const stranger = randomUUID();
+    try {
+      // --- Der Nutzer, der zustimmt, und die Decke am Client ---------------
+      const email = `mcp-storage-write-user-${randomUUID()}@example.test`;
+      const signup = await service.signUp(scope, {
+        email, password: "a sufficiently long certification password",
+        redirectTo: "https://app.test/willkommen", rateLimitKey: randomUUID(),
+      });
+      const signedIn = await service.consumeEmailToken(scope, {
+        token: signup.debugToken!, purpose: "email_verification",
+      });
+      if ("mfaRequired" in signedIn) throw new Error("unexpected MFA");
+      const appUserId = (await service.verifyAccess(scope, signedIn.accessToken)).user.id;
+
+      await service.createOAuthClient(scope, {
+        name: "storage-agent", redirectUris: [home],
+        // Die ganze Liste, damit der Fall auch die neue Obergrenze faehrt: Zehn
+        // Bereiche sind zugleich die Zahl der Bereiche, die es gibt, und der
+        // CHECK aus Migration 0078 laesst genau das zu. Vor ihr waere diese Zeile
+        // an der Bedingung aus 0073 gefallen, und zwar sowohl an der Liste als
+        // auch an der Obergrenze 9.
+        scopes: [...PROJECT_AUTH_OAUTH_SCOPES],
+      }, { id: storageOwner });
+
+      const issueToken = async (scopes: ProjectAuthOAuthScope[]) => {
+        const verifier = randomBytes(32).toString("base64url");
+        const challenge = createHash("sha256").update(verifier, "ascii").digest("base64url");
+        await service.grantOAuthConsent(scope, signedIn.accessToken, { clientId: "storage-agent", scopes });
+        const granted = await service.authorizeOAuth(scope, signedIn.accessToken, {
+          clientId: "storage-agent", redirectUri: home, scopes, codeChallenge: challenge, state: null,
+        });
+        const issued = await service.exchangeOAuthCode(scope, {
+          clientId: "storage-agent", code: granted.code, redirectUri: home, codeVerifier: verifier,
+        });
+        expect(issued.accessToken).toMatch(/^qk_oauth_[A-Za-z0-9_-]{43}$/);
+        return issued.accessToken;
+      };
+      const writeToken = await issueToken(["storage:write"]);
+      const readToken = await issueToken(["storage:read"]);
+      // Die Zustimmung steht wirklich als Zeile da, mit genau diesem Bereich.
+      // Das ist der Teil, den die Migration traegt: Der Trigger aus 0024 laesst
+      // eine Scope-Spalte nicht nachtragen, also waere ohne 0078 hier nichts
+      // einzufuegen gewesen.
+      expect((await auth.query<{ scopes: string[] }>(
+        `SELECT scopes FROM project_auth_oauth_consents
+          WHERE organization_id = $1 AND project_id = $2 ORDER BY array_length(scopes, 1)`,
+        [storageOrganization, storageProject])).rows.map((row) => row.scopes.join(" ")).sort())
+        .toEqual(["storage:read", "storage:write"]);
+
+      // --- Drei Buckets mit drei Schreibregeln ------------------------------
+      const eigen = await storage.createBucket(betreiber, scope, {
+        name: `write-owner-${randomUUID().slice(0, 8)}`,
+        readPolicy: "owner", writePolicy: "owner",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 1_024, quotaBytes: 8_192,
+      });
+      const allen = await storage.createBucket(betreiber, scope, {
+        name: `write-auth-${randomUUID().slice(0, 8)}`,
+        readPolicy: "authenticated", writePolicy: "authenticated",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 1_024, quotaBytes: 8_192,
+      });
+      // Dieser Bucket beginnt mit `owner` und wird gleich zugezogen. Anders
+      // kaeme nichts hinein: Eine Reservierung geht durch dieselbe Schreibregel,
+      // und in einen `private`-Bucket kann ein Nutzer gar nichts ablegen. Dass
+      // ein Betreiber eine Regel nachtraeglich verschaerft, ist ohnehin der
+      // Verlauf, in dem dieser Fall ueberhaupt vorkommt.
+      const keinem = await storage.createBucket(betreiber, scope, {
+        name: `write-private-${randomUUID().slice(0, 8)}`,
+        readPolicy: "owner", writePolicy: "owner",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 1_024, quotaBytes: 8_192,
+      });
+
+      // Objekte, die wirklich durch den ganzen Weg gegangen sind: Reservierung,
+      // Bytes beim Anbieter, Abschluss. Genau dieser Weg ist der Grund, warum es
+      // kein Hochladewerkzeug gibt, und er laeuft hier einmal vollstaendig.
+      const ablegen = async (bucketId: string, subject: string, key: string) => {
+        const principal = {
+          organizationId: storageOrganization, actorRef: `project-auth-user:${subject}`,
+          role: "authenticated" as const, subject,
+        };
+        const prepared = await storage.prepareUpload(principal, scope, bucketId, {
+          key, contentType: "text/plain", sizeBytes: 5, checksumSha256: checksum,
+        });
+        provider.putForTest(prepared.upload.fields.key, {
+          sizeBytes: 5, contentType: "text/plain", checksumSha256: checksum, etag: "etag-2-116",
+        });
+        const object = await storage.completeUpload(principal, scope, {
+          uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+        });
+        expect(object.ownerSubject).toBe(subject);
+        return object;
+      };
+      const meines = await ablegen(eigen.id, appUserId, "mein/notiz.txt");
+      const fremdesImEigenen = await ablegen(eigen.id, stranger, "fremd/notiz.txt");
+      const fremdesImOffenen = await ablegen(allen.id, stranger, "fremd/offen.txt");
+      const imGeschlossenen = await ablegen(keinem.id, appUserId, "mein/zu.txt");
+      // Und jetzt zu. Die Zeile liegt drin und gehoert diesem Nutzer; der Bucket
+      // gibt sie trotzdem nicht mehr her.
+      expect(await storage.updateBucket(betreiber, scope, keinem.id, {
+        readPolicy: "private", writePolicy: "private",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 1_024, quotaBytes: 8_192,
+        retentionDays: null,
+      })).toMatchObject({ writePolicy: "private" });
+      const providerKeyOf = async (objectId: string) => (await owner.query<{ provider_key: string }>(
+        `SELECT provider_key FROM project_storage_objects WHERE id = $1`, [objectId])).rows[0]!.provider_key;
+      const lebt = async (objectId: string) => (await owner.query<{ deleted_at: Date | null }>(
+        `SELECT deleted_at FROM project_storage_objects WHERE id = $1`, [objectId])).rows[0]!.deleted_at === null;
+
+      const keyPrincipal = {
+        id: randomUUID(), organizationId: storageOrganization, projectId: storageProject,
+        environment: "development" as const, kind: "public" as const,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      };
+      const keys = {
+        authenticate: async (secret: string) => secret === "qk_public_2_116" ? keyPrincipal : null,
+      } as unknown as ProjectApiKeyService;
+      const connect = async (token: string) => {
+        const admission = await admitMcpOAuthRequest(
+          { authorization: `Bearer ${token}`, projectKey: "qk_public_2_116" },
+          { keys, projectAuth: service },
+        );
+        expect(admission.ok).toBe(true);
+        if (!admission.ok) throw new Error("unerreichbar");
+        const server = createQKERNMcpServer(admission.context, { projectStorage: storage });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new McpClient({ name: "certification-2-116", version: "1.0.0" });
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+        return { client, close: async () => { await client.close(); await server.close(); } };
+      };
+      const toolText = (result: unknown) => {
+        const content = (result as { content: Array<{ type: string; text: string }> }).content;
+        expect(content).toHaveLength(1);
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+      const nichtGefunden = (name: string) => ({
+        isError: true,
+        content: [{ type: "text", text: `MCP error -32602: Tool ${name} not found` }],
+      });
+
+      // --- Zusage 1: der Bereich oeffnet genau ein Werkzeug ----------------
+      const schreibend = await connect(writeToken);
+      try {
+        // Vollstaendig und nicht "enthaelt": Die Aussage eines Bereichs ist, was
+        // er nicht oeffnet. Schreiben schliesst Lesen auch hier nicht ein.
+        expect((await schreibend.client.listTools()).tools.map((tool) => tool.name).sort())
+          .toEqual(["qkern_storage_object_delete"]);
+
+        // --- Zusage 2: es gibt kein Hochladen und keinen Bucket ------------
+        //
+        // Nicht gesperrt, sondern nicht vorhanden. Ein Name ohne Eintrag in der
+        // Bereichstabelle ist keine Erlaubnis, und `isMcpToolName` sagt zu jedem
+        // dieser Namen nein, bevor ein Aufruf ihn versucht.
+        for (const name of [
+          "qkern_storage_object_upload", "qkern_storage_upload_prepare",
+          "qkern_storage_upload_complete", "qkern_storage_object_rename",
+          "qkern_storage_object_download", "qkern_storage_bucket_create",
+          "qkern_storage_bucket_update", "qkern_storage_bucket_delete",
+        ]) {
+          expect(isMcpToolName(name)).toBe(false);
+          expect(await schreibend.client.callTool({ name, arguments: {} }))
+            .toEqual(nichtGefunden(name));
+        }
+
+        // --- Zusage 3: das eigene Objekt im owner-Bucket geht weg ----------
+        const meinProviderKey = await providerKeyOf(meines.id);
+        expect(await provider.headObject(meinProviderKey)).not.toBeNull();
+        const geloescht = toolText(await schreibend.client.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: eigen.name, key: "mein/notiz.txt" },
+        }));
+        expect(geloescht.deleted).toBe(true);
+        expect((geloescht.object as { key: string }).key).toBe("mein/notiz.txt");
+        expect(await lebt(meines.id)).toBe(false);
+        // Und die Ablage ist wirklich leer. Ein Vermerk ohne geleerte Ablage
+        // waere ein Loeschen, das nur die Liste glauben macht.
+        expect(await provider.headObject(meinProviderKey)).toBeNull();
+
+        // --- Zusage 4: die fremde Zeile im owner-Bucket bleibt ------------
+        //
+        // Das ist die Zusage, auf die es ankommt. Mit der Betreiberrolle waere
+        // dieser Aufruf durchgegangen, und ein Endnutzer haette mit seiner
+        // Zustimmung das Objekt eines anderen entfernt.
+        const fremdesKey = await providerKeyOf(fremdesImEigenen.id);
+        const abgewiesen = await schreibend.client.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: eigen.name, key: "fremd/notiz.txt" },
+        });
+        expect(abgewiesen).toMatchObject({ isError: true });
+        expect(toolText(abgewiesen)).toEqual({
+          error: "STORAGE_RESOURCE_NOT_FOUND", message: "The storage resource was not found.",
+        });
+        expect(await lebt(fremdesImEigenen.id)).toBe(true);
+        expect(await provider.headObject(fremdesKey)).not.toBeNull();
+
+        // --- Zusage 5: im private-Bucket gibt es nichts ------------------
+        //
+        // Auch das eigene Objekt nicht. Die Regel des Buckets entscheidet und
+        // nicht die Eigentuemerschaft allein.
+        const zu = await schreibend.client.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: keinem.name, key: "mein/zu.txt" },
+        });
+        expect(zu).toMatchObject({ isError: true });
+        expect(await lebt(imGeschlossenen.id)).toBe(true);
+
+        // --- Zusage 6: im authenticated-Bucket geht auch ein fremdes -------
+        //
+        // Und das ist kein Mangel, sondern die Regel, die der Betreiber an
+        // diesen Bucket geschrieben hat. Der Fall nennt sie, damit niemand
+        // `storage:write` fuer "nur eigene Objekte" liest.
+        const offen = toolText(await schreibend.client.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: allen.name, key: "fremd/offen.txt" },
+        }));
+        expect(offen.deleted).toBe(true);
+        expect(await lebt(fremdesImOffenen.id)).toBe(false);
+
+        // Ein Schluessel, den es nicht gibt, und ein Bucket, den es nicht gibt:
+        // dieselbe Antwort, denn die Unterscheidung stuende diesem Aufrufer
+        // nicht zu.
+        for (const argumente of [
+          { bucket: eigen.name, key: "gibt/es/nicht.txt" },
+          { bucket: "gibt-es-nicht", key: "mein/notiz.txt" },
+        ]) {
+          const nichts = await schreibend.client.callTool({
+            name: "qkern_storage_object_delete", arguments: argumente,
+          });
+          expect(nichts).toMatchObject({ isError: true });
+          expect(toolText(nichts)).toEqual({
+            error: "STORAGE_RESOURCE_NOT_FOUND", message: "The storage resource was not found.",
+          });
+        }
+      } finally { await schreibend.close(); }
+
+      // --- Zusage 7: storage:read oeffnet das Loeschen nicht ---------------
+      const lesend = await connect(readToken);
+      try {
+        expect((await lesend.client.listTools()).tools.map((tool) => tool.name).sort())
+          .toEqual(["qkern_storage_buckets_list", "qkern_storage_objects_list"]);
+        expect(await lesend.client.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: eigen.name, key: "fremd/notiz.txt" },
+        })).toEqual(nichtGefunden("qkern_storage_object_delete"));
+        expect(await lebt(fremdesImEigenen.id)).toBe(true);
+      } finally { await lesend.close(); }
+
+      // --- Zusage 8: der lokale Bearer bleibt der Betreiber ---------------
+      //
+      // Das ist der Unterschied, den dieser Schnitt haelt, und er steht hier als
+      // letzte Zeile, weil er die fremde Zeile wirklich entfernt. Auf dem
+      // Rechner des Entwicklers gibt es keinen Nutzer, in dessen Namen gehandelt
+      // wird, und ein erfundenes Subjekt waere schlimmer als keines.
+      const lokal = createQKERNMcpServer({
+        organizationId: storageOrganization, projectId: storageProject,
+        environment: "development", actorRef: "local-mcp-agent",
+        access: { kind: "local_static_bearer" },
+      }, { projectStorage: storage });
+      const [lokalClientTransport, lokalServerTransport] = InMemoryTransport.createLinkedPair();
+      const lokalClient = new McpClient({ name: "certification-2-116-local", version: "1.0.0" });
+      await lokal.connect(lokalServerTransport);
+      await lokalClient.connect(lokalClientTransport);
+      try {
+        const alsBetreiber = toolText(await lokalClient.callTool({
+          name: "qkern_storage_object_delete",
+          arguments: { bucket: eigen.name, key: "fremd/notiz.txt" },
+        }));
+        expect(alsBetreiber.deleted).toBe(true);
+        expect(await lebt(fremdesImEigenen.id)).toBe(false);
+      } finally { await lokalClient.close(); await lokal.close(); }
+
+      // --- Zusage 9: die Zuordnung steht an einer Stelle ------------------
+      expect(MCP_TOOL_SCOPES.qkern_storage_object_delete).toBe("storage:write");
+      expect(PROJECT_AUTH_OAUTH_SCOPES).toContain("storage:write");
+      // Und die Spur traegt kein Token.
+      const auditRows = await owner.query<{ metadata: string }>(
+        `SELECT redacted_metadata::text AS metadata FROM audit_logs WHERE organization_id = $1`,
+        [storageOrganization]);
+      for (const token of [writeToken, readToken]) {
+        expect(JSON.stringify(auditRows.rows)).not.toContain(token);
+      }
+
+      // Am Ende lebt genau eine der vier Zeilen, und zwar die im zugezogenen
+      // Bucket. Die Zaehlung steht hier und nicht in einem `finally`: Dort haette
+      // sie beim ersten Lauf dieses Falles den eigentlichen Fehler verdeckt, denn
+      // ein Fehler im `finally` verdraengt den Fehler aus dem Block darueber.
+      expect((await owner.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_storage_objects
+          WHERE organization_id = $1 AND deleted_at IS NULL`,
+        [storageOrganization])).rows[0].count).toBe("1");
+    } finally {
+      // Die Buckets und die Objektzeilen bleiben stehen: `audit_logs` ist
+      // append-only, der Mandant gehoert diesem Fall allein, und der Stack ist
+      // ein Wegwerfcontainer. Aufgeraeumt wird nichts, und das ist dieselbe
+      // Entscheidung wie bei `(2.103)`. Gezaehlt werden sie trotzdem, damit der
+      // Rest benannt ist und nicht bloss zurueckbleibt.
+      expect((await owner.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM project_storage_buckets WHERE organization_id = $1`,
+        [storageOrganization])).rows[0].count).toBe("3");
     }
   }, 120_000);
 

@@ -221,6 +221,39 @@ export function createQKERNMcpServer(
   const queueScope = storageScope;
   const queuePrincipal = storagePrincipal;
 
+  /**
+   * Die Decke am schreibenden Storage-Werkzeug (2.116).
+   *
+   * Die lesenden Storage-Werkzeuge laufen mit `role: "admin"` im Namen des
+   * Betreibers, und 2.69 hat diese Grenze als offen notiert: `storage:read`
+   * sagt etwas ueber diese Projektumgebung und nichts ueber die Daten des
+   * Nutzers, der zugestimmt hat. Bei einem Loeschen waere dieselbe Grenze eine
+   * andere Sache. Ein fremder Client bekaeme mit einer Zustimmung eines
+   * beliebigen Endnutzers das Recht, jedes Objekt jedes Buckets dieser Umgebung
+   * zu entfernen, auch das eines anderen Nutzers, und die Decke am Client waere
+   * das Einzige, was dazwischen steht.
+   *
+   * Darum laeuft das Loeschen nicht als Betreiber. Ueber OAuth ist der Principal
+   * der zustimmende Nutzer mit `role: "authenticated"` und seiner Kennung als
+   * Subjekt, und damit entscheidet `canWrite` in `ProjectStorageService` die
+   * Schreibregel des Buckets wirklich: `owner` laesst nur eigene Objekte zu,
+   * `authenticated` jedes Objekt dieses Buckets, `private` und `service` keines.
+   * Das ist eine Decke, die jemand prueft, und nicht eine Zeile in der
+   * Dokumentation.
+   *
+   * Beim statischen Bearer bleibt es `admin`. Dort gibt es keinen Nutzer, in
+   * dessen Namen gehandelt wird, der Weg ist auf `NODE_ENV !== "production"`
+   * beschraenkt, und ein erfundenes Subjekt waere schlimmer als keines.
+   */
+  const storageWritePrincipal = context.access.kind === "project_oauth"
+    ? {
+      organizationId: context.organizationId,
+      actorRef: context.actorRef,
+      role: "authenticated" as const,
+      subject: context.access.userId,
+    }
+    : storagePrincipal;
+
   register("qkern_storage_buckets_list", {
     description: "List storage buckets, fixed access policies, quotas and usage in the current scoped project environment.",
     inputSchema: {},
@@ -245,6 +278,72 @@ export function createQKERNMcpServer(
     try {
       const storage = dependencies.projectStorage ?? getProjectStorageService();
       return text(await storage.listObjects(storagePrincipal, storageScope, bucket, { prefix, cursor, limit }));
+    } catch (error) { return projectStorageToolError(error); }
+  });
+
+  /**
+   * Das schreibende Storage-Werkzeug, und warum es ein Loeschen ist (2.116).
+   *
+   * ## Die Pruefung vorweg: was ein schreibendes Werkzeug hier tun koennte
+   *
+   * Die naheliegende Antwort ist ein Hochladen, und sie traegt nicht. Ein Objekt
+   * entsteht bei QKERN in drei Schritten, und jeder hat seinen Grund: eine
+   * Reservierung mit Schluessel, Inhaltstyp, Groesse und der Pruefsumme der
+   * ganzen Datei, die gegen Kontingent und MIME-Liste des Buckets geht; dann die
+   * Bytes beim Anbieter gegen einen kurzlebigen Grant; dann der Abschluss mit
+   * einem Abschlusstoken, der die Pruefsumme vergleicht und den Scanner anwirft,
+   * bis dahin steht das Objekt in Quarantaene.
+   *
+   * Der mittlere Schritt ist der, den ein MCP-Werkzeug nicht tun kann. Es hat
+   * keine Verbindung zum Anbieter, und ein Werkzeug, das die Bytes stattdessen
+   * selbst annimmt, schiebt sie durch den Modellkontext. Base64 kostet dort ein
+   * Drittel mehr Zeichen als Bytes, ein Objekt dieses Dienstes darf bis fuenf
+   * Gibibyte gross sein, und die Pruefsumme, die der Abschluss vergleicht, waere
+   * die Pruefsumme dessen, was das Modell weitergegeben hat. Die Zusage des
+   * Abschlusses ist, dass die Bytes beim Anbieter die zugesagten sind; ueber
+   * diesen Weg wuerde sie das Modell beglaubigen. Der ehrliche Weg zum Hochladen
+   * ist die bestehende REST- oder S3-Tuer, und ein Agent, der eine Datei ablegen
+   * soll, bekommt dort einen Grant.
+   *
+   * Ein Umbenennen gibt es ebenfalls nicht, und zwar nicht nur an diesem
+   * Werkzeug: `ProjectStorageService` kennt keines. Ein Schluessel am Objekt ist
+   * zugleich der Weg beim Anbieter, also waere ein Umbenennen ein Kopieren beim
+   * Anbieter mit anschliessendem Loeschen, mit Kontingent, Pruefsumme und Scan
+   * an der neuen Stelle. Das ist eine Faehigkeit des Dienstes und gehoert in
+   * einen eigenen Schnitt, nicht an ein Werkzeug, das sie hier erfindet.
+   *
+   * Bleibt das Loeschen. Es ist ein Schritt, es braucht keine Bytes, der Dienst
+   * kann es seit 2.27 (`deleteObject`), und es ist die Handlung, die ein Agent
+   * in einem Bucket wirklich braucht: eine Datei zuruecknehmen, die er oder sein
+   * Nutzer vorher abgelegt hat. Darum ist dieses Werkzeug ein Loeschen, und
+   * `storage:write` sagt genau das und nicht mehr.
+   *
+   * ## Was es nicht anfasst
+   *
+   * Keinen Bucket. `createBucket`, `updateBucket` und `deleteBucket` verlangen
+   * `assertAdminScope`, also die Betreiberrolle, und eine Regel oder ein
+   * Kontingent zu aendern ist eine Entscheidung des Betreibers und nicht etwas,
+   * dem ein Endnutzer zustimmen kann. Diese drei stehen in `MCP_TOOL_SCOPES`
+   * nicht, und ein Name ohne Eintrag ist keine Erlaubnis.
+   *
+   * ## Was ein Loeschen hier heisst
+   *
+   * Der Vermerk am Objekt wird gesetzt und die Ablage beim Anbieter geleert.
+   * Das Objekt ist danach weg und kommt nicht zurueck; darum `destructiveHint`
+   * und darum kein `idempotentHint`: Ein zweiter Aufruf findet nichts mehr und
+   * antwortet mit einer Ablehnung, und das soll er auch.
+   */
+  register("qkern_storage_object_delete", {
+    description: "Delete one object from one storage bucket of the current scoped project environment, named by its key. This runs under the write policy of the bucket as the consenting user, not as the operator: a bucket with the owner policy only gives up the user's own objects, and a private bucket gives up none. The object and its stored bytes are gone afterwards and do not come back. This directly mutates project data and must remain client-approved.",
+    inputSchema: {
+      bucket: z.string().min(1).max(128),
+      key: z.string().min(1).max(1024),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  }, async ({ bucket, key }) => {
+    try {
+      const storage = dependencies.projectStorage ?? getProjectStorageService();
+      return text(await storage.deleteObject(storageWritePrincipal, storageScope, bucket, key));
     } catch (error) { return projectStorageToolError(error); }
   });
 
@@ -316,17 +415,39 @@ export function createQKERNMcpServer(
     } catch (error) { return generatedDataToolError(error); }
   });
 
+  /**
+   * Einfuegen, und mit `onConflict` ein Upsert (2.115).
+   *
+   * 2.105 hat den Upsert an REST und GraphQL gebaut, und dieses Werkzeug kannte
+   * ihn nicht. Nachgezogen wird er ueber **denselben** Weg: `insertRows` des
+   * Dienstes, mit `onConflict` als Durchreiche. Hier steht keine zweite Pruefung
+   * des Konfliktschluessels, und zwar aus dem Grund, der die erste tragfaehig
+   * macht: Der Schluessel kommt aus `pg_index` und nicht vom Aufrufer
+   * (`resolveConflictKey`). Eine Pruefung an diesem Werkzeug koennte nur die
+   * Gestalt der Liste wiederholen, und sie wuerde irgendwann etwas anderes
+   * behaupten als der Katalog.
+   *
+   * Das Schema dieses Werkzeugs sagt darum nur, dass es Spaltennamen sind und
+   * wie viele es hoechstens sein duerfen. Ob sie einen eindeutigen Schluessel
+   * bilden, ob die Rolle aendern darf und ob die Zeilen den Schluessel tragen,
+   * entscheidet der Dienst, und die Ablehnung heisst dann
+   * `GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN` oder `_INVALID_INPUT`.
+   */
   register("qkern_table_rows_insert", {
-    description: "Insert up to 25 rows through the live-schema allowlist and project RLS. This directly mutates project data and must remain client-approved.",
+    description: "Insert up to 25 rows through the live-schema allowlist and project RLS, or upsert them with onConflict. The conflict key must be a primary key or unique index the catalogue really holds, and an upsert additionally requires the update right on the table. This directly mutates project data and must remain client-approved.",
     inputSchema: {
       schema: z.string().max(63).default("public"), table: z.string().min(1).max(63),
       rows: z.array(z.record(z.string(), z.unknown())).min(1).max(25),
+      onConflict: z.array(z.string().min(1).max(63)).min(1).max(32).optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ schema, table, rows }) => {
+  }, async ({ schema, table, rows, onConflict }) => {
     try {
       const api = dependencies.generatedDataApi ?? await getGeneratedDataApi();
-      return text(await api.insertRows(dataContext, dataScope, { schema, table, rows }));
+      return text(await api.insertRows(dataContext, dataScope, {
+        schema, table, rows,
+        ...(onConflict === undefined ? {} : { onConflict }),
+      }));
     } catch (error) { return generatedDataToolError(error); }
   });
 
@@ -443,6 +564,13 @@ function generatedDataToolError(error: unknown) {
   const code = error instanceof GeneratedDataApiError ? error.code : "GENERATED_DATA_API_UNAVAILABLE";
   const message = code === "GENERATED_DATA_API_INVALID_INPUT"
     ? "The generated data request is invalid."
+    // Ein Konfliktschluessel, den der Katalog nicht hergibt (2.115). Er hat
+    // seinen eigenen Satz, weil "nicht verfuegbar" hier falsch waere: Die
+    // Anfrage ist der Fehler, Wiederholen hilft nicht, und der Aufrufer soll
+    // einen Schluessel nennen, den es gibt. Dieselbe Trennung zieht die
+    // REST-Route mit 400 statt 503.
+    : code === "GENERATED_DATA_API_CONFLICT_KEY_UNKNOWN"
+      ? "The conflict key is not a unique key of the table."
     : code === "GENERATED_DATA_API_NOT_READY" || code === "GENERATED_DATA_API_RLS_REQUIRED" ||
         code === "GENERATED_DATA_API_PRIMARY_KEY_REQUIRED"
       ? "The table is not ready for the generated data API."

@@ -2345,8 +2345,16 @@ Automatisierungsregel, `storage:read` Buckets und Objektmetadaten ohne Inhalt,
 Nachricht, `logs:read` die Suche im redigierten Audit-Log, `migrations:propose`
 das Anlegen einer Vorschau. Sie wirken heute nur am MCP-Server; die HTTP-Türen
 von Storage, Queues und Functions nehmen ein OAuth-Token weiterhin nicht an.
-Einen Bereich `storage:write` gibt es nicht, weil es kein schreibendes
-Storage-Werkzeug gibt und ihn darum nichts prüfen würde.
+
+`storage:write` kommt aus Migration `0078` und mit dem Werkzeug, das ihn prüft:
+`qkern_storage_object_delete` löscht ein Objekt in einem Bucket dieser Umgebung.
+Bis dahin fehlte er mit der Begründung, ein Bereich, den nichts prüft, sei eine
+Beschriftung. Er deckt kein Hochladen, denn ein Hochladen ist hier Reservierung,
+Bytes beim Anbieter und Abschluss mit Prüfsumme und Scan, und er deckt keinen
+Bucket, denn Anlegen, Ändern und Entfernen eines Buckets verlangen die
+Betreiberrolle. Das Löschwerkzeug läuft als der zustimmende Nutzer unter der
+Schreibregel des Buckets; ein Bucket mit der Regel `owner` gibt nur die eigenen
+Objekte dieses Nutzers her, einer mit `private` keines.
 
 Was ein Bereich am Client bedeutet, ist eine Decke: Ein Owner oder
 Administrator schreibt hin, was eine namentlich hinterlegte Anwendung
@@ -5406,6 +5414,7 @@ dort:
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
+| `storage:write` | `qkern_storage_object_delete` |
 | `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
 | `queues:write` | `qkern_queue_message_enqueue` |
 | `logs:read` | `qkern_logs_search` |
@@ -5430,11 +5439,19 @@ lässt beidem zustimmen.
 und Abschluss sind bewusst aus MCP heraus, sie stehen in der Bereichstabelle
 nicht, und ein Name ohne Eintrag ist keine Erlaubnis.
 
-Storage und Queues laufen in diesem Server mit `role: admin` im Namen des
-Betreibers und nicht unter der Zeilensicherheit des zustimmenden Nutzers; ein
-Bucket hat keine Regel je Zeile, eine Queue auch nicht. `storage:read` und
-`queues:read` sagen darum etwas über diese Projektumgebung und nichts über die
-Daten eines Nutzers. Getragen wird das von der Decke am Client.
+Die lesenden Storage-Werkzeuge und die Queues laufen in diesem Server mit
+`role: admin` im Namen des Betreibers und nicht unter der Zeilensicherheit des
+zustimmenden Nutzers; ein Bucket hat keine Regel je Zeile, eine Queue auch nicht.
+`storage:read` und `queues:read` sagen darum etwas über diese Projektumgebung und
+nichts über die Daten eines Nutzers. Getragen wird das von der Decke am Client.
+
+Beim Löschen eines Objekts gilt das nicht, weil es dort nicht genügen würde. Die
+Betreiberrolle gibt jedes Objekt jedes Buckets her, auch das eines anderen
+Nutzers; bei einem Lesen bleibt das eine offene Grenze, bei einem Löschen wäre es
+eine Rechteausweitung durch die Zustimmung eines Endnutzers.
+`qkern_storage_object_delete` läuft darum mit `role: authenticated` und der
+Kennung des zustimmenden Nutzers, und die Schreibregel des Buckets entscheidet je
+Objekt. Die Decke am Client steht darüber und ist damit die zweite Grenze.
 
 Die Anfragen laufen unter der Zeilensicherheit des Nutzers, der zugestimmt hat.
 In `request.jwt.claims` stehen dieselben Angaben wie beim REST-Weg, also `sub`,

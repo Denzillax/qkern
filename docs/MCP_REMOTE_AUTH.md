@@ -43,6 +43,7 @@ The mapping lives in `mcp/tool-scopes.ts` and nowhere else.
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
+| `storage:write` | `qkern_storage_object_delete` |
 | `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
 | `queues:write` | `qkern_queue_message_enqueue` |
 | `logs:read` | `qkern_logs_search` |
@@ -60,9 +61,18 @@ session, so they do not appear in `tools/list` either:
   wants. It does not fall under `migrations:propose`, because proposing and
   applying are two sentences, and it gets no scope of its own here either.
 
-There is no `storage:write`, because there is no storage-writing tool and nothing
-else would check it. A scope nobody checks is a label, and a label on a consent
-page is worse than a missing entry: the user reads a boundary that holds nowhere.
+`storage:write` arrived in migration `0078` together with the one tool that
+checks it. Until then it was left out, because a scope nobody checks is a label,
+and a label on a consent page is worse than a missing entry: the user reads a
+boundary that holds nowhere.
+
+That tool is a delete and not an upload. An upload here is a reservation, then
+the bytes at the provider against a short-lived grant, then a completion that
+compares the checksum of the whole file and starts the scanner. A tool cannot do
+the middle step, and one that takes the bytes itself would push them through a
+model context and have the model vouch for the checksum the completion compares.
+The scope also covers no bucket: creating, changing and removing a bucket demand
+the operator role and have no entry in the table.
 
 Write does not imply read, the same way it does not at the Data API.
 `queues:write` opens enqueueing and not the queue list, and it opens no worker
@@ -73,13 +83,22 @@ permission.
 The six scopes added in migration `0073` change nothing about the HTTP doors.
 `ProjectOAuthAdmission` stays at `reject` for Queues, Functions and Storage;
 opening a door means checking its claims, its role and its refusals, which is a
-cut per door. Storage and Queues also run inside this server with `role: admin`
-on the operator's behalf rather than under the consenting user's row level
-security, so `storage:read` and `queues:read` say something about this project
-environment and nothing about that user's own data. What carries that is the
-ceiling on the client: an owner or administrator writes which scopes an
+cut per door. The reading storage tools and the queues also run inside this server
+with `role: admin` on the operator's behalf rather than under the consenting
+user's row level security, so `storage:read` and `queues:read` say something about
+this project environment and nothing about that user's own data. What carries that
+is the ceiling on the client: an owner or administrator writes which scopes an
 application may ever ask for, and a user can only consent to what already stands
 there.
+
+Deleting an object is the exception, because that ceiling alone would not be
+enough there. The operator role gives up every object of every bucket, including
+another user's; for a read that stays an open boundary, for a delete it would be a
+privilege escalation through one end user's consent.
+`qkern_storage_object_delete` therefore runs with `role: authenticated` and the
+consenting user's id, and the write policy of the bucket decides per object: an
+`owner` bucket gives up only that user's own objects, a `private` bucket none. The
+ceiling on the client still stands above it, as the second boundary.
 
 ## Claims, refusals and sessions
 

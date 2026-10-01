@@ -53,10 +53,31 @@ import {
  * Signatur, keine Providerschluessel: Das Werkzeug gibt sie nicht her, und der
  * Bereich verspricht sie darum auch nicht.
  *
- * Kein `storage:write`, und das ist kein Vergessen: Es gibt kein schreibendes
- * Storage-Werkzeug. Ein Bereich, den niemand prueft, ist eine Beschriftung, und
- * auf einer Zustimmungsseite ist eine Beschriftung schlimmer als ein fehlender
- * Eintrag. Er kommt mit dem Werkzeug, das ihn braucht.
+ * **Storage, `storage:write` seit 2.116.** 2.69 hat den Bereich weggelassen und
+ * das so begruendet: Es gab kein schreibendes Storage-Werkzeug, ein Bereich, den
+ * niemand prueft, ist eine Beschriftung, und auf einer Zustimmungsseite ist eine
+ * Beschriftung schlimmer als ein fehlender Eintrag. Er sollte mit dem Werkzeug
+ * kommen, das ihn braucht, und das ist `qkern_storage_object_delete`.
+ *
+ * Das Werkzeug ist ein Loeschen und kein Hochladen. Der Grund steht
+ * ausfuehrlich an seiner Anmeldung in `mcp/server.ts`: Ein Hochladen ist bei
+ * QKERN Reservierung, Bytes beim Anbieter, Abschluss mit Pruefsumme und Scan,
+ * und der mittlere Schritt gehoert nicht in einen Modellkontext.
+ *
+ * Der Bereich oeffnet damit genau eine Handlung an genau einem Objekt. Keinen
+ * Bucket: Anlegen, Aendern und Entfernen eines Buckets verlangen die
+ * Betreiberrolle, sie stehen in dieser Tabelle nicht, und ein Name ohne Eintrag
+ * ist keine Erlaubnis. Kein Hochladen, keinen Grant, keinen Scan.
+ *
+ * Und er traegt eine Decke, die es bei `storage:read` nicht gibt: Das
+ * Loeschwerkzeug laeuft ueber OAuth mit der Rolle `authenticated` und der
+ * Kennung des zustimmenden Nutzers als Subjekt, und die Betreiberrolle bleibt
+ * dem lokalen Bearer. Die
+ * Schreibregel des Buckets entscheidet damit wirklich, und bei `owner` gibt ein
+ * Bucket nur die Objekte dieses Nutzers her. Der Grund dafuer steht unten unter
+ * "Was ein Bereich hier nicht ist": Bei einem Lesen war die Betreiberrolle eine
+ * offene Grenze, bei einem Loeschen waere sie eine Rechteausweitung durch
+ * Zustimmung eines Endnutzers.
  *
  * **Queues, `queues:read` und `queues:write`.** `qkern_queues_list` und
  * `qkern_queue_status` lesen Definitionen und Zaehler je Nachrichtenzustand,
@@ -121,13 +142,25 @@ import {
  * Tokenzeile in diesem Mandanten liegt (`mcp/oauth-gate.ts`), und kein Bereich
  * verschiebt sie.
  *
- * Und keine Rolle. Storage und Queues laufen in diesem Server mit
- * `role: "admin"` im Namen des Betreibers, nicht unter einer Zeilensicherheit
- * des zustimmenden Nutzers; ein Bucket hat keine Policy je Zeile, eine Queue
- * auch nicht. `storage:read` und `queues:read` sagen darum etwas ueber diese
- * Projektumgebung und nichts ueber "meine Daten". Die Console sagt das bei jedem
- * der beiden, und die Decke am Client bleibt die Stelle, an der ein Betreiber
- * entscheidet, welche Anwendung so etwas ueberhaupt verlangen darf.
+ * Und meistens keine Rolle. Die lesenden Storage-Werkzeuge und die Queues laufen
+ * in diesem Server mit `role: "admin"` im Namen des Betreibers, nicht unter
+ * einer Zeilensicherheit des zustimmenden Nutzers; ein Bucket hat keine Policy
+ * je Zeile, eine Queue auch nicht. `storage:read` und `queues:read` sagen darum
+ * etwas ueber diese Projektumgebung und nichts ueber "meine Daten". Die Console
+ * sagt das bei jedem der beiden, und die Decke am Client bleibt die Stelle, an
+ * der ein Betreiber entscheidet, welche Anwendung so etwas ueberhaupt verlangen
+ * darf.
+ *
+ * `storage:write` ist die Ausnahme, und sie hat einen Grund. 2.69 hat diese
+ * Grenze als offen notiert, und bei einem Lesen war sie tragbar: Was ein
+ * Betreiber ueber seine Buckets ausgibt, sieht der Client, und mehr passiert
+ * nicht. Bei einem Loeschen waere derselbe Satz eine Rechteausweitung durch
+ * Zustimmung eines Endnutzers, denn die Betreiberrolle gibt jedes Objekt jedes
+ * Buckets her, auch das eines anderen Nutzers. Darum laeuft
+ * `qkern_storage_object_delete` ueber OAuth mit der Rolle `authenticated` und
+ * der Kennung des zustimmenden Nutzers, und die Schreibregel des Buckets
+ * entscheidet. Die Decke am Client bleibt darueber stehen; sie ist jetzt die
+ * zweite und nicht die einzige.
  */
 export const MCP_TOOL_SCOPES = {
   qkern_project_get: "project:read",
@@ -138,6 +171,10 @@ export const MCP_TOOL_SCOPES = {
   qkern_query_readonly: null,
   qkern_storage_buckets_list: "storage:read",
   qkern_storage_objects_list: "storage:read",
+  // Loeschen eines Objekts, und nur das. Kein Hochladen, kein Grant, kein
+  // Bucket. Es laeuft ueber OAuth unter der Schreibregel des Buckets als der
+  // zustimmende Nutzer; der Grund steht oben und an der Anmeldung.
+  qkern_storage_object_delete: "storage:write",
   qkern_queues_list: "queues:read",
   qkern_queue_status: "queues:read",
   // Einstellen, und nur das. Claim, Lease, Renewal und Abschluss stehen in
