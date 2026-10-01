@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import {
   AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CopyObjectCommand,
   CreateMultipartUploadCommand,
   DeleteObjectsCommand,
@@ -11,12 +12,14 @@ import {
   HeadObjectCommand,
   ListBucketsCommand,
   ListMultipartUploadsCommand,
+  ListObjectsCommand,
   ListObjectsV2Command,
   ListPartsCommand,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
   UploadPartCommand,
+  UploadPartCopyCommand,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -76,6 +79,16 @@ import { ProjectStorageService } from "@/lib/server/project-storage/service";
  * Endpunkt aus dem zusammengesetzten Objekt, der echte Scanner rechnet sie
  * nach, und erst dann ist das Objekt sauber und lesbar. Ein abgebrochener
  * Upload laesst beim echten Provider keinen begonnenen Upload stehen.
+ *
+ * Der vierte (2.123) laesst denselben Client die beiden Operationen fahren,
+ * die ein echtes Werkzeug vermisst: `UploadPartCopy` und `ListObjects` in
+ * Version 1. Beim Teil aus einem vorhandenen Objekt schickt der Client keinen
+ * Koerper und keine Pruefsumme; dass das Teil beim echten Provider trotzdem
+ * liegt, belegt, dass die Summe von QKERN kam und versitygw sie angenommen hat.
+ * Die zusammengesetzte Datei bekommt der echte Scanner, und erst sein Urteil
+ * macht sie lesbar. Bei der Liste entscheidet der Client die Form: Der Fall
+ * liest am Server mit, dass die Anfrage ohne `list-type` ankam, und folgt dem
+ * `NextMarker`, den das SDK selbst liest.
  *
  * Nicht gesehen hat den Endpunkt die AWS CLI selbst und rclone; beide
  * brauchen einen laufenden Next-Server im Stack, und den gibt es dort nicht.
@@ -406,6 +419,160 @@ describe.runIf(enabled)("real versitygw and ClamAV: the S3 endpoint", () => {
       expect((gone as S3ServiceException).name).toBe("NoSuchUpload");
       expect((await client.send(new ListMultipartUploadsCommand({ Bucket: "cert-s3-mp" }))).Uploads ?? [])
         .toEqual([]);
+      client.destroy();
+    } finally {
+      await bridge.close();
+    }
+  }, 300_000);
+
+  it("(2.123) is driven by the AWS SDK through UploadPartCopy and ListObjects version 1: a part copied out of a real object, a range of it, the whole-file checksum from the real scanner, marker paging, and every refusal by name", async () => {
+    const { s3, keys, storage } = await certificationRuntime();
+    const bridge = await bridgeTo(s3);
+    try {
+      // Ein eigener Bucket: Die Faelle daneben zaehlen die Objekte ihrer
+      // Buckets, und ein Teil ist hier grosser als das, was dort je Objekt
+      // erlaubt ist.
+      const bucket = await storage.createBucket(admin, scope, {
+        name: "cert-s3-copy", readPolicy: "service", writePolicy: "service",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 32 * 1024 * 1024, quotaBytes: 96 * 1024 * 1024,
+      });
+      const pair = await keys.create(admin, scope, {
+        name: "Zertifizierung Teilkopie", bucketIds: [bucket.id],
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      });
+      const client = new S3Client({
+        endpoint: `${bridge.origin}/s3`, region: "us-east-1", forcePathStyle: true,
+        credentials: { accessKeyId: pair.key.accessKeyId, secretAccessKey: pair.secret },
+      });
+
+      // Die Quelle: 5 MiB, weil versitygw wie S3 nur das letzte Teil kleiner
+      // als 5 MiB zusammensetzt. Der Inhalt ist nicht zufaellig, damit der
+      // Vergleich am Ende etwas aussagt.
+      const source = Buffer.alloc(5 * 1024 * 1024);
+      for (let offset = 0; offset < source.byteLength; offset += 64) {
+        source.write(`qkern upload part copy ${offset} `.padEnd(64, "."), offset, 64, "utf8");
+      }
+      await client.send(new PutObjectCommand({
+        Bucket: "cert-s3-copy", Key: "copy/source.txt", Body: source, ContentType: "text/plain",
+      }));
+
+      // --- UploadPartCopy: ein ganzes Objekt als Teil, ein Bereich als zweites
+      const started = await client.send(new CreateMultipartUploadCommand({
+        Bucket: "cert-s3-copy", Key: "copy/assembled.txt", ContentType: "text/plain",
+      }));
+      const first = await client.send(new UploadPartCopyCommand({
+        Bucket: "cert-s3-copy", Key: "copy/assembled.txt", UploadId: started.UploadId,
+        PartNumber: 1, CopySource: "cert-s3-copy/copy/source.txt",
+      }));
+      expect(first.CopyPartResult?.ETag).toMatch(/^"[^"]+"$/);
+      const second = await client.send(new UploadPartCopyCommand({
+        Bucket: "cert-s3-copy", Key: "copy/assembled.txt", UploadId: started.UploadId,
+        PartNumber: 2, CopySource: "cert-s3-copy/copy/source.txt", CopySourceRange: "bytes=0-1023",
+      }));
+      expect(second.CopyPartResult?.ETag).toMatch(/^"[^"]+"$/);
+
+      // Der Client hat die Bytes nie gesehen: Er schickte keinen Koerper und
+      // keine Pruefsumme. Beim echten Provider liegt das Teil trotzdem, und das
+      // geht nur, wenn die Summe, die QKERN selbst gerechnet hat, in der
+      // signierten Zusage stimmte — versitygw weist ein Teil mit falscher
+      // `x-amz-checksum-sha256` mit 400 ab.
+      const copyRequests = bridge.seen.filter((entry) => entry.method === "PUT" &&
+        entry.headers["x-amz-copy-source"] !== undefined && entry.query.includes("partNumber"));
+      expect(copyRequests).toHaveLength(2);
+      for (const entry of copyRequests) {
+        expect(entry.headers["content-length"] ?? "0").toBe("0");
+        for (const name of Object.keys(entry.headers)) {
+          expect(name.startsWith("x-amz-checksum-"), name).toBe(false);
+        }
+      }
+
+      // Die Teile stehen beim Dienst mit ihren Groessen, wie bei hochgeladenen.
+      const listedParts = await client.send(new ListPartsCommand({
+        Bucket: "cert-s3-copy", Key: "copy/assembled.txt", UploadId: started.UploadId,
+      }));
+      expect(listedParts.Parts?.map((part) => [part.PartNumber, part.Size]))
+        .toEqual([[1, source.byteLength], [2, 1024]]);
+
+      const completed = await client.send(new CompleteMultipartUploadCommand({
+        Bucket: "cert-s3-copy", Key: "copy/assembled.txt", UploadId: started.UploadId,
+        MultipartUpload: { Parts: [
+          { PartNumber: 1, ETag: first.CopyPartResult!.ETag },
+          { PartNumber: 2, ETag: second.CopyPartResult!.ETag },
+        ] },
+      }));
+      expect(completed.Key).toBe("copy/assembled.txt");
+
+      // Der echte Scanner hat die Summe der ganzen zusammengesetzten Datei
+      // bekommen und freigegeben; erst dann ist das Objekt da und lesbar.
+      const assembled = Buffer.concat([source, source.subarray(0, 1024)]);
+      const stored = await storage.listObjects(admin, scope, bucket.id, { prefix: "copy/" });
+      expect(stored.objects.map((object) => [object.key, object.sizeBytes, object.status])).toEqual([
+        ["copy/assembled.txt", assembled.byteLength, "clean"],
+        ["copy/source.txt", source.byteLength, "clean"],
+      ]);
+      const read = await client.send(new GetObjectCommand({ Bucket: "cert-s3-copy", Key: "copy/assembled.txt" }));
+      expect(createHash("sha256").update(Buffer.from(await read.Body!.transformToByteArray())).digest("base64"))
+        .toBe(createHash("sha256").update(assembled).digest("base64"));
+
+      // --- ListObjects Version 1, wie ein aelteres SDK sie schickt -----------
+      // Der Client entscheidet die Form: `ListObjectsCommand` sendet GET ohne
+      // `list-type`. Der Fall liest am Server mit, dass genau das ankam.
+      const v1 = await client.send(new ListObjectsCommand({ Bucket: "cert-s3-copy", Prefix: "copy/" }));
+      expect(v1.Contents?.map((entry) => entry.Key)).toEqual(["copy/assembled.txt", "copy/source.txt"]);
+      expect(v1.IsTruncated).toBe(false);
+      // Das SDK schreibt den Bucket mit Schraegstrich am Ende (`/s3/{bucket}/`),
+      // so wie bei Version 2; beides ist derselbe Bucket ohne Schluessel.
+      const v1Seen = bridge.seen.filter((entry) => entry.method === "GET" &&
+        entry.path.replace(/\/$/, "") === "/s3/cert-s3-copy" && !entry.query.includes("uploadId"));
+      expect(v1Seen.length).toBeGreaterThanOrEqual(1);
+      expect(v1Seen.every((entry) => !entry.query.includes("list-type"))).toBe(true);
+
+      // Fortsetzung mit marker/NextMarker, vom SDK selbst gelesen und gesetzt.
+      const page = await client.send(new ListObjectsCommand({ Bucket: "cert-s3-copy", Prefix: "copy/", MaxKeys: 1 }));
+      expect(page.Contents?.map((entry) => entry.Key)).toEqual(["copy/assembled.txt"]);
+      expect(page.IsTruncated).toBe(true);
+      expect(page.NextMarker).toBe("copy/assembled.txt");
+      const rest = await client.send(new ListObjectsCommand({
+        Bucket: "cert-s3-copy", Prefix: "copy/", Marker: page.NextMarker,
+      }));
+      expect(rest.Contents?.map((entry) => entry.Key)).toEqual(["copy/source.txt"]);
+      expect(rest.IsTruncated).toBe(false);
+
+      // Delimiter und CommonPrefixes in v1, wie in v2.
+      const grouped = await client.send(new ListObjectsCommand({ Bucket: "cert-s3-copy", Delimiter: "/" }));
+      expect(grouped.CommonPrefixes?.map((entry) => entry.Prefix)).toEqual(["copy/"]);
+      expect(grouped.Contents ?? []).toEqual([]);
+
+      // --- Jede Weigerung mit ihrem Namen, durch das SDK ---------------------
+      const open = await client.send(new CreateMultipartUploadCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", ContentType: "text/plain",
+      }));
+      const beyond = await client.send(new UploadPartCopyCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", UploadId: open.UploadId, PartNumber: 1,
+        CopySource: "cert-s3-copy/copy/source.txt", CopySourceRange: `bytes=0-${source.byteLength}`,
+      })).catch((error) => error);
+      expect((beyond as S3ServiceException).$metadata.httpStatusCode).toBe(416);
+      const foreign = await client.send(new UploadPartCopyCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", UploadId: open.UploadId, PartNumber: 1,
+        CopySource: "cert-s3/sdk/buffer.txt",
+      })).catch((error) => error);
+      expect((foreign as S3ServiceException).name).toBe("NoSuchBucket");
+      const missing = await client.send(new UploadPartCopyCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", UploadId: open.UploadId, PartNumber: 1,
+        CopySource: "cert-s3-copy/copy/nowhere.txt",
+      })).catch((error) => error);
+      expect((missing as S3ServiceException).name).toBe("NoSuchKey");
+      // Nichts von den Weigerungen hat Bytes gebucht.
+      const stillOpen = await client.send(new ListPartsCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", UploadId: open.UploadId,
+      }));
+      expect(stillOpen.Parts ?? []).toEqual([]);
+      await client.send(new AbortMultipartUploadCommand({
+        Bucket: "cert-s3-copy", Key: "copy/refused.txt", UploadId: open.UploadId,
+      }));
+      const settled = (await storage.listBuckets(admin, scope)).find((entry) => entry.id === bucket.id)!;
+      expect(settled.reservedBytes).toBe(0);
+      expect(settled.usedBytes).toBe(source.byteLength + assembled.byteLength);
       client.destroy();
     } finally {
       await bridge.close();

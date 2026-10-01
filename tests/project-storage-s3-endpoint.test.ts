@@ -411,14 +411,8 @@ describe("Project Storage S3 endpoint", () => {
   it("names what it does not implement instead of guessing", async () => {
     const { endpoint, issued } = await harness();
     const cases: Array<[Request, string]> = [
-      [s3(issued, "GET", "/s3/open"), "NotImplemented"],
       [s3(issued, "PUT", "/s3/new-bucket"), "NotImplemented"],
       [s3(issued, "POST", "/s3/open"), "NotImplemented"],
-      // UploadPartCopy bleibt aus: ein Teil aus einem Bereich eines anderen
-      // Objekts kreuzt Lese- und Schreibweg. Multipart selbst steht seit 2.101.
-      [s3(issued, "PUT", "/s3/open/x.txt?uploadId=1&partNumber=1", {
-        headers: { "x-amz-copy-source": "/open/y.txt", "content-length": "0" },
-      }), "NotImplemented"],
       [s3(issued, "PUT", "/s3/open/copy.txt", { headers: { "x-amz-copy-source": "/open/x.txt?versionId=3", "content-length": "0" } }), "NotImplemented"],
       [s3(issued, "GET", "/s3/open/x.txt?versionId=3"), "NotImplemented"],
     ];
@@ -430,6 +424,169 @@ describe("Project Storage S3 endpoint", () => {
     // Signature Version 2 ist keine Luecke, sondern vorbei: gesagt, nicht geraten.
     const v2 = await endpoint.handle(s3(issued, "GET", "/s3/open?list-type=2&AWSAccessKeyId=abc&Signature=def"));
     expect(v2.status).toBe(400);
+  });
+
+  it("(2.123) lists the same set in version 1 as in version 2, continues with marker and NextMarker, and refuses a mixed form", async () => {
+    const { endpoint, issued } = await harness();
+    for (const key of ["notes/2026/hallo.txt", "notes/2027/plan.txt", "readme.txt"]) {
+      const response = await endpoint.handle(s3(issued, "PUT", `/s3/open/${key}`, {
+        body: Buffer.from(key, "utf8"), headers: { "content-type": "text/plain" },
+      }));
+      expect(response.status, key).toBe(200);
+    }
+
+    // Ein GET auf den Bucket ohne `list-type` ist v1. Dieselben Schluessel wie
+    // v2, nur ohne KeyCount und mit Marker.
+    const v1 = await endpoint.handle(s3(issued, "GET", "/s3/open"));
+    expect(v1.status).toBe(200);
+    const v1Xml = await v1.text();
+    expect(v1Xml).toContain("<Marker></Marker>");
+    expect(v1Xml).not.toContain("<KeyCount>");
+    expect([...v1Xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((match) => match[1]))
+      .toEqual(["notes/2026/hallo.txt", "notes/2027/plan.txt", "readme.txt"]);
+
+    // Delimiter und CommonPrefixes verhalten sich wie in v2, und `max-keys`
+    // zaehlt Gruppen mit.
+    const grouped = await endpoint.handle(s3(issued, "GET", "/s3/open?delimiter=%2F"));
+    const groupedXml = await grouped.text();
+    expect(groupedXml).toContain("<CommonPrefixes><Prefix>notes/</Prefix></CommonPrefixes>");
+    expect(groupedXml).toContain("<Key>readme.txt</Key>");
+    expect(groupedXml).toContain("<IsTruncated>false</IsTruncated>");
+
+    // Abgeschnitten: NextMarker kommt, auch ohne Delimiter, und fuehrt genau
+    // auf den naechsten Schluessel.
+    const first = await endpoint.handle(s3(issued, "GET", "/s3/open?max-keys=1"));
+    const firstXml = await first.text();
+    expect(firstXml).toContain("<IsTruncated>true</IsTruncated>");
+    const marker = /<NextMarker>([^<]+)<\/NextMarker>/.exec(firstXml)![1];
+    expect(marker).toBe("notes/2026/hallo.txt");
+    const second = await endpoint.handle(s3(issued, "GET", `/s3/open?max-keys=1&marker=${encodeURIComponent(marker)}`));
+    const secondXml = await second.text();
+    expect(secondXml).toContain("<Key>notes/2027/plan.txt</Key>");
+    expect(secondXml).toContain(`<Marker>${marker}</Marker>`);
+    expect(secondXml).not.toContain("<Key>notes/2026/hallo.txt</Key>");
+
+    // Mit Delimiter zeigt NextMarker den letzten gesehenen Schluessel, nicht
+    // den Gruppennamen: Die Fortsetzung ueberspringt nichts.
+    const cut = await endpoint.handle(s3(issued, "GET", "/s3/open?delimiter=%2F&max-keys=1"));
+    const cutXml = await cut.text();
+    expect(cutXml).toContain("<CommonPrefixes><Prefix>notes/</Prefix></CommonPrefixes>");
+    expect(cutXml).toContain("<NextMarker>notes/2026/hallo.txt</NextMarker>");
+
+    // Gemischte Formen werden benannt, nicht ausgelegt.
+    for (const query of ["?continuation-token=abc", "?start-after=readme.txt", "?list-type=1", "?list-type=3"]) {
+      const mixed = await endpoint.handle(s3(issued, "GET", `/s3/open${query}`));
+      expect(mixed.status, query).toBe(400);
+      expect(await errorCode(mixed), query).toBe("InvalidArgument");
+    }
+  });
+
+  it("(2.123) copies a part out of an existing object, whole and as a range, computes its checksum itself and refuses a client that claims one", async () => {
+    const { endpoint, issued, storage, scans, open, providerRange, verdict } = await harness();
+    const source = Buffer.from("0123456789abcdefghij", "utf8");
+    expect((await endpoint.handle(s3(issued, "PUT", "/s3/open/source.txt", {
+      body: source, headers: { "content-type": "text/plain" },
+    }))).status).toBe(200);
+
+    const started = await endpoint.handle(s3(issued, "POST", "/s3/open/assembled.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const uploadId = /<UploadId>([^<]+)<\/UploadId>/.exec(await started.text())![1];
+
+    // Teil 1: das ganze Quellobjekt, ohne Bereich.
+    const whole = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/assembled.txt?partNumber=1&uploadId=${uploadId}`,
+      { headers: { "x-amz-copy-source": "/open/source.txt" } }));
+    expect(whole.status, await whole.clone().text()).toBe(200);
+    const wholeXml = await whole.text();
+    expect(wholeXml).toContain("<CopyPartResult");
+    const firstEtag = /<ETag>([^<]+)<\/ETag>/.exec(wholeXml)![1].replace(/&quot;/g, '"');
+
+    // Teil 2: nur ein Ausschnitt. Der Provider des Harness beherrscht Bereiche;
+    // einer, der sie ignoriert, kommt weiter unten.
+    const slice = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/assembled.txt?partNumber=2&uploadId=${uploadId}`,
+      { headers: { "x-amz-copy-source": "open/source.txt", "x-amz-copy-source-range": "bytes=10-14" } }));
+    expect(slice.status, await slice.clone().text()).toBe(200);
+    const secondEtag = /<ETag>([^<]+)<\/ETag>/.exec(await slice.text())![1].replace(/&quot;/g, '"');
+
+    // Die Teile stehen beim Dienst mit ihren Groessen, und die Reservierung hat
+    // ihre Bytes gebucht: derselbe Weg wie bei einem hochgeladenen Teil.
+    const listed = await endpoint.handle(s3(issued, "GET", `/s3/open/assembled.txt?uploadId=${uploadId}`));
+    const listedXml = await listed.text();
+    expect(listedXml).toContain("<Size>20</Size>");
+    expect(listedXml).toContain("<Size>5</Size>");
+    expect((await bucketState(storage, open.id)).reservedBytes).toBe(25);
+
+    const complete = Buffer.from(`<CompleteMultipartUpload>${
+      [[1, firstEtag], [2, secondEtag]].map(([number, etag]) =>
+        `<Part><PartNumber>${number}</PartNumber><ETag>${String(etag).replace(/"/g, "&quot;")}</ETag></Part>`).join("")
+    }</CompleteMultipartUpload>`, "utf8");
+    const completed = await endpoint.handle(s3(issued, "POST", `/s3/open/assembled.txt?uploadId=${uploadId}`, { body: complete }));
+    expect(completed.status, await completed.clone().text()).toBe(200);
+    expect(completed.headers.get("x-qkern-object-status")).toBe("clean");
+
+    // Der Kern: Der Scanner bekommt die Summe der ganzen zusammengesetzten
+    // Datei, gerechnet von QKERN aus den Bytes des Providers.
+    const expected = Buffer.concat([source, source.subarray(10, 15)]);
+    expect(scans.at(-1)!.checksumSha256).toBe(createHash("sha256").update(expected).digest("base64"));
+    expect(scans.at(-1)!.sizeBytes).toBe(expected.byteLength);
+    const read = await endpoint.handle(s3(issued, "GET", "/s3/open/assembled.txt"));
+    expect(Buffer.from(await read.arrayBuffer()).equals(expected)).toBe(true);
+
+    // Ein Provider, der den Bereich ignoriert, wird geschnitten, nicht geglaubt.
+    providerRange.honours = false;
+    const again = await endpoint.handle(s3(issued, "POST", "/s3/open/sliced.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const secondUpload = /<UploadId>([^<]+)<\/UploadId>/.exec(await again.text())![1];
+    const ignored = await endpoint.handle(s3(issued, "PUT",
+      `/s3/open/sliced.txt?partNumber=1&uploadId=${secondUpload}`,
+      { headers: { "x-amz-copy-source": "/open/source.txt", "x-amz-copy-source-range": "bytes=2-5" } }));
+    expect(ignored.status, await ignored.clone().text()).toBe(200);
+    const slicedParts = await endpoint.handle(s3(issued, "GET", `/s3/open/sliced.txt?uploadId=${secondUpload}`));
+    expect(await slicedParts.text()).toContain("<Size>4</Size>");
+    providerRange.honours = true;
+    await endpoint.handle(s3(issued, "DELETE", `/s3/open/sliced.txt?uploadId=${secondUpload}`));
+
+    // Jede Grenze beim Namen.
+    const third = await endpoint.handle(s3(issued, "POST", "/s3/open/limits.txt?uploads", {
+      headers: { "content-type": "text/plain" },
+    }));
+    const limitsUpload = /<UploadId>([^<]+)<\/UploadId>/.exec(await third.text())![1];
+    const part = (headers: Record<string, string>) => s3(issued, "PUT",
+      `/s3/open/limits.txt?partNumber=1&uploadId=${limitsUpload}`, { headers });
+    const refusals: Array<[Request, number, string]> = [
+      // Ein Client beglaubigt nichts: Er hat die Bytes nie gesehen.
+      [part({ "x-amz-copy-source": "/open/source.txt", "x-amz-checksum-sha256": createHash("sha256").update(source).digest("base64") }), 400, "InvalidRequest"],
+      // Eine offene Bereichsform wird nicht ausgelegt.
+      [part({ "x-amz-copy-source": "/open/source.txt", "x-amz-copy-source-range": "bytes=3-" }), 400, "InvalidArgument"],
+      [part({ "x-amz-copy-source": "/open/source.txt", "x-amz-copy-source-range": "bytes=-4" }), 400, "InvalidArgument"],
+      // Hinter dem Ende der Quelle.
+      [part({ "x-amz-copy-source": "/open/source.txt", "x-amz-copy-source-range": "bytes=0-99" }), 416, "InvalidRange"],
+      // Eine Quelle, die es nicht gibt, und eine in einem Bucket, den das Paar
+      // nicht lesen darf: Die Pruefung ist je Objekt, nicht je Bucket.
+      [part({ "x-amz-copy-source": "/open/nowhere.txt" }), 404, "NoSuchKey"],
+      [part({ "x-amz-copy-source": "/not-mine/source.txt" }), 404, "NoSuchBucket"],
+      [part({ "x-amz-copy-source": "/open/source.txt?versionId=3" }), 501, "NotImplemented"],
+    ];
+    for (const [request, status, code] of refusals) {
+      const response = await endpoint.handle(request);
+      expect(response.status, request.headers.get("x-amz-copy-source") ?? "").toBe(status);
+      expect(await errorCode(response)).toBe(code);
+    }
+
+    // Eine Quelle in Quarantaene ist fuer das Paar nicht sichtbar, also auch
+    // nicht kopierbar.
+    verdict.value = "pending";
+    await endpoint.handle(s3(issued, "PUT", "/s3/open/dirty.txt", {
+      body: Buffer.from("verdaechtig", "utf8"), headers: { "content-type": "text/plain" },
+    }));
+    verdict.value = "clean";
+    const quarantined = await endpoint.handle(part({ "x-amz-copy-source": "/open/dirty.txt" }));
+    expect(quarantined.status).toBe(404);
+    expect(await errorCode(quarantined)).toBe("NoSuchKey");
+    await endpoint.handle(s3(issued, "DELETE", `/s3/open/limits.txt?uploadId=${limitsUpload}`));
   });
 
   it("carries a multipart upload through the same service path, and the scanner sees the checksum of the whole file", async () => {

@@ -81,17 +81,17 @@ describe("console analytics buckets view contract", () => {
     expect(view).not.toContain("lib/server/");
   });
 
-  it("keeps the claims about the S3 endpoint true: same path, same limit, multipart built and only UploadPartCopy left at 501", async () => {
+  it("keeps the claims about the S3 endpoint true: same path, same limit, multipart built and a part copied out of an object too", async () => {
     expect(ANALYTICS_FACTS.s3EndpointPath).toBe(S3_ENDPOINT_PATH);
     expect(ANALYTICS_FACTS.s3MaxPutMiB * 1024 * 1024).toBe(S3_DEFAULT_MAX_PUT_BYTES);
     const endpoint = await code("lib/server/project-storage/s3-endpoint.ts");
-    // Schritt 2 der Seite ist seit 2.101 zur Haelfte erledigt: Multipart wird
-    // angenommen, und was am Endpunkt noch mit 501 antwortet, ist UploadPartCopy.
-    for (const operation of ["CreateMultipartUpload", "UploadPart", "CompleteMultipartUpload",
-      "AbortMultipartUpload", "ListParts", "ListMultipartUploads"]) {
+    // Schritt 2 der Seite ist seit 2.101 erledigt, und seit 2.123 nimmt der
+    // Endpunkt auch ein Teil aus einem vorhandenen Objekt an.
+    for (const operation of ["CreateMultipartUpload", "UploadPart", "UploadPartCopy",
+      "CompleteMultipartUpload", "AbortMultipartUpload", "ListParts", "ListMultipartUploads"]) {
       expect(endpoint, operation).toContain(`kind: "${operation}"`);
     }
-    expect(endpoint).toMatch(/x-amz-copy-source[\s\S]{0,200}NotImplemented[\s\S]{0,200}UploadPartCopy is not implemented/);
+    expect(endpoint).not.toContain("UploadPartCopy is not implemented");
     // Was von Schritt 2 bleibt, ist der Scanner vor jeder Datei.
     expect(ANALYTICS_NEXT_STEPS[1].body).toContain("Scanner");
     expect(ANALYTICS_BUCKET_TEXTS.s3Meaning).toContain("Multipart");
