@@ -48,14 +48,15 @@ describe("console S3 access view contract", () => {
     // Ein Paar ohne Geheimnis zaehlt nicht als gueltig.
     expect(source).toContain("!key.revokedAt && key.verifiable");
     // Die Operationen, die die Seite als fehlend nennt, sind die, die der
-    // Endpunkt mit 501 beantwortet; die seit 2.101 gebauten stehen bei "Was geht".
-    for (const missing of ["UploadPartCopy", "ListObjects in Version 1", "ACLs", "Versionen", "Tags"]) {
+    // Endpunkt mit 501 beantwortet; die seit 2.101 gebauten stehen bei "Was geht",
+    // und seit 2.123 gehoeren UploadPartCopy und die alte Listenform dazu.
+    for (const missing of ["ACLs", "Versionen", "Tags", "POST-Policy", "bucket.host"]) {
       expect(S3_ACCESS_OPERATIONS_MISSING, missing).toContain(missing);
       expect(S3_ACCESS_OPERATIONS_BUILT, missing).not.toContain(missing);
     }
     for (const built of ["Presigned", "Range", "CopyObject", "DeleteObjects", "aws-chunked", "15 Minuten",
-      "CreateMultipartUpload", "UploadPart bis 64 MiB", "ListParts", "CompleteMultipartUpload",
-      "AbortMultipartUpload"]) {
+      "CreateMultipartUpload", "UploadPart bis 64 MiB", "UploadPartCopy", "marker", "ListParts",
+      "CompleteMultipartUpload", "AbortMultipartUpload"]) {
       expect(S3_ACCESS_OPERATIONS_BUILT, built).toContain(built);
       expect(S3_ACCESS_OPERATIONS_MISSING, built).not.toContain(built);
     }

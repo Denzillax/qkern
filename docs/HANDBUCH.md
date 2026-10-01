@@ -2760,6 +2760,16 @@ Was geht:
 - `HeadBucket`, `GetBucketLocation`.
 - `ListObjectsV2` mit `prefix`, `delimiter` (ein Zeichen), `max-keys`,
   `continuation-token`, `start-after`, `encoding-type=url`. Nur saubere Objekte.
+- `ListObjects` Version 1 (seit `2.123`): dasselbe `GET /s3/{bucket}` **ohne**
+  `list-type`, mit `prefix`, `delimiter`, `max-keys`, `encoding-type=url` und
+  `marker`. Der gleiche Lauf über die Liste des Dienstes wie Version 2, nur mit
+  anderer Fortsetzung: `NextMarker` statt `NextContinuationToken`, und QKERN
+  schickt es immer, wenn die Antwort abgeschnitten ist, auch ohne Delimiter
+  (S3 schickt es nur mit Delimiter). Der Marker zeigt auf den letzten gesehenen
+  Schlüssel, nicht auf den Gruppennamen, damit die Fortsetzung nichts
+  überspringt. Ein `continuation-token` oder `start-after` in einer v1-Anfrage
+  wird mit `400 InvalidArgument` benannt statt ausgelegt, und `list-type` mit
+  einer anderen Zahl als 2 ebenso.
 - `HeadObject`, `GetObject`, ganz oder als Bytebereich (`Range: bytes=…`,
   Antwort `206` mit `Content-Range`; QKERN streamt die Bytes vom Provider
   durch, die freigegebene Menge zählt als `storage_egress_bytes`).
@@ -2785,6 +2795,18 @@ Was geht:
   `CompleteMultipartUpload` und `AbortMultipartUpload`. Ein Werkzeug, das grosse
   Dateien von sich aus teilt, braucht keine Einstellung dafür; die AWS CLI und
   das AWS SDK arbeiten mit ihrer Vorgabe.
+- `UploadPartCopy` (seit `2.123`): `PUT …?partNumber=N&uploadId=…` mit
+  `x-amz-copy-source`, wahlweise nur ein Ausschnitt über
+  `x-amz-copy-source-range: bytes=first-last`. Die Quelle muss dem Paar
+  sichtbar sein (im Bucket-Satz, nach Leseregel lesbar, sauber), also wird sie
+  je Objekt geprüft und nicht nur auf Bucket-Ebene. Die Prüfsumme des kopierten
+  Teils rechnet QKERN selbst aus den Bytes, die es vom Provider zurückbekommt;
+  eine `x-amz-checksum-*` vom Client wird mit `400 InvalidRequest` abgewiesen,
+  weil der Client die Bytes nie gesehen hat. Ein Teil ist auf 64 MiB begrenzt
+  wie ein hochgeladenes, der Bereich muss beide Enden nennen (sonst
+  `400 InvalidArgument`) und darf nicht hinter das Ende der Quelle reichen
+  (sonst `416 InvalidRange`). Gescannt wird nicht das Teil, sondern beim
+  Abschluss die ganze zusammengesetzte Datei, so wie bei `UploadPart`.
 
 **Wie Multipart am Dienstweg hängt.** Ein S3-Client nennt beim Anfang weder die
 Grösse noch die Prüfsumme der ganzen Datei, die ein fortsetzbarer Upload über
@@ -2805,11 +2827,9 @@ frei; bleibt eine liegen, räumt der Lifecycle sie über dieselbe
 Schlüssel wird beim Anfang gelöscht, weil die Reservierung ihn exklusiv hält:
 Bricht der Upload ab, ist das alte Objekt weg und kein neues da.
 
-Was nicht geht, und mit `501 NotImplemented` beim Namen genannt wird:
-`UploadPartCopy` (ein Teil aus dem Bytebereich eines anderen Objekts; ein ganzes
-Objekt legt `CopyObject` um), `ListObjects` Version 1, Buckets anlegen oder
-löschen, ACLs, Versionen, Tags, POST-Policy-Uploads, virtuell gehostete Adressen
-(`bucket.host`).
+Was nicht geht, und mit `501 NotImplemented` beim Namen genannt wird: Buckets
+anlegen oder löschen, ACLs, Versionen, Tags, POST-Policy-Uploads, virtuell
+gehostete Adressen (`bucket.host`).
 
 **Wo das Geheimnis liegt.** Eine SigV4-Signatur ist eine HMAC-Kette aus dem
 Geheimnis, also braucht der Prüfer es. Seit Migration 0065 liegt es

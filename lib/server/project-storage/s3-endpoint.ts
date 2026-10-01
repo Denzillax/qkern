@@ -54,9 +54,9 @@ import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
  *
  * ## Was gebaut ist
  *
- * ListBuckets, HeadBucket, ListObjectsV2, HeadObject, GetObject (ganz oder
- * als ein Bereich, `Range: bytes=…`), PutObject (ein Stueck, bis
- * `maxPutBytes`), CopyObject, DeleteObject, DeleteObjects.
+ * ListBuckets, HeadBucket, ListObjects (Version 1 und 2), HeadObject,
+ * GetObject (ganz oder als ein Bereich, `Range: bytes=…`), PutObject (ein
+ * Stueck, bis `maxPutBytes`), CopyObject, DeleteObject, DeleteObjects.
  *
  * Multipart (2.101): CreateMultipartUpload, UploadPart, ListParts,
  * ListMultipartUploads, CompleteMultipartUpload, AbortMultipartUpload. Der Weg
@@ -91,15 +91,24 @@ import { UsageQuotaExceededError } from "@/lib/server/usage/api-requests";
  * einmal sichtbar; es laesst sich darum nicht kopieren. Der Weg ist auf
  * `maxPutBytes` begrenzt, weil die Bytes durch QKERN laufen.
  *
+ * `UploadPartCopy` (2.123) ist genau diese Kopie, nur als ein Teil: Die Quelle
+ * wird ueber eine Lesezusage geholt, bei Bedarf nur ein Bytebereich
+ * (`x-amz-copy-source-range`), und die Bytes gehen denselben Weg wie die eines
+ * hochgeladenen Teils. Darum gibt es keine zweite Tuer: dieselbe Buchung auf
+ * die Reservierung, dieselbe Quota-Pruefung, dieselbe Zusage zum Provider,
+ * derselbe Vermerk am Teil, und beim Abschluss dieselbe Pruefsumme der ganzen
+ * Datei fuer den Scanner.
+ *
+ * `ListObjects` Version 1 (2.123) liest denselben Satz wie Version 2 und
+ * unterscheidet sich nur in der Form, in der ein Aufrufer die Fortsetzung
+ * nennt: `marker` und `NextMarker` statt `continuation-token`. Beide Formen
+ * laufen durch denselben Lauf ueber die Liste des Dienstes, damit Delimiter,
+ * `CommonPrefixes` und Grenze nicht auseinanderlaufen koennen.
+ *
  * ## Was nicht gebaut ist
  *
- * Jedes davon antwortet mit 501 statt mit einem Rateversuch: ListObjects v1,
- * Bucket anlegen oder loeschen, ACLs, Versionen, Tags, POST-Policy-Upload,
- * UploadPartCopy. Das letzte fehlt, weil ein Teil aus einem Bereich eines
- * anderen Objekts zwei Wege kreuzt, die hier getrennt bleiben: Der Endpunkt
- * muesste eine Lesezusage bereichweise anzapfen und das Ergebnis als Teil
- * buchen. `CopyObject` kopiert ein ganzes Objekt bis `maxPutBytes`, und dafuer
- * braucht niemand Multipart.
+ * Jedes davon antwortet mit 501 statt mit einem Rateversuch: Bucket anlegen
+ * oder loeschen, ACLs, Versionen, Tags, POST-Policy-Upload.
  */
 
 export const S3_ENDPOINT_PATH = "/s3";
@@ -111,6 +120,14 @@ const PAGE = 100;
 const MAX_LIST_PAGES = 10;
 const S3_XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/";
 const MAX_COMPLETE_PARTS = 10_000;
+/** Die Pruefsummen, die ein Client ueber seinen eigenen Koerper behaupten darf. */
+const CHECKSUM_HEADERS = [
+  "x-amz-checksum-crc32",
+  "x-amz-checksum-crc32c",
+  "x-amz-checksum-crc64nvme",
+  "x-amz-checksum-sha1",
+  "x-amz-checksum-sha256",
+] as const;
 
 export type ProjectStorageS3EndpointDependencies = {
   storage: ProjectStorageService;
@@ -134,6 +151,7 @@ class S3ResponseError extends Error {
 type Operation =
   | { kind: "ListBuckets" }
   | { kind: "HeadBucket"; bucket: string }
+  | { kind: "ListObjects"; bucket: string }
   | { kind: "ListObjectsV2"; bucket: string }
   | { kind: "GetObject"; bucket: string; key: string; range: string | null }
   | { kind: "HeadObject"; bucket: string; key: string }
@@ -143,6 +161,10 @@ type Operation =
   | { kind: "DeleteObjects"; bucket: string }
   | { kind: "CreateMultipartUpload"; bucket: string; key: string }
   | { kind: "UploadPart"; bucket: string; key: string; uploadId: string; partNumber: number }
+  | {
+    kind: "UploadPartCopy"; bucket: string; key: string; uploadId: string; partNumber: number;
+    source: { bucket: string; key: string }; sourceRange: string | null;
+  }
   | { kind: "CompleteMultipartUpload"; bucket: string; key: string; uploadId: string }
   | { kind: "AbortMultipartUpload"; bucket: string; key: string; uploadId: string }
   | { kind: "ListParts"; bucket: string; key: string; uploadId: string }
@@ -222,7 +244,8 @@ export class ProjectStorageS3Endpoint {
         throw new S3ResponseError(501, "NotImplemented", "POST to a bucket is only implemented for DeleteObjects (?delete); POST policy uploads are not.");
       }
       if (method === "GET") {
-        if (query.get("list-type") === "2") return { kind: "ListObjectsV2", bucket };
+        const listType = query.get("list-type");
+        if (listType === "2") return { kind: "ListObjectsV2", bucket };
         if (query.has("location")) return { kind: "HeadBucket", bucket };
         if (query.has("uploads")) return { kind: "ListMultipartUploads", bucket };
         for (const subresource of ["versioning", "acl", "policy", "cors", "lifecycle", "tagging", "versions"]) {
@@ -230,7 +253,24 @@ export class ProjectStorageS3Endpoint {
             throw new S3ResponseError(501, "NotImplemented", `The bucket subresource "${subresource}" is not implemented.`);
           }
         }
-        throw new S3ResponseError(501, "NotImplemented", "ListObjects (version 1) is not implemented; send list-type=2.");
+        // Ein GET auf einen Bucket ohne `list-type` ist ListObjects Version 1
+        // (2.123). Eine andere Zahl als 2 ist kein Rateversuch wert: Version 3
+        // gibt es nicht, und wer sie nennt, meint etwas, das dieser Endpunkt
+        // nicht kennt.
+        if (listType !== null) {
+          throw new S3ResponseError(400, "InvalidArgument", "Argument list-type must be 2; ListObjects version 1 takes no list-type at all.");
+        }
+        // Gemischte Formen werden benannt, nicht stillschweigend ausgelegt: Ein
+        // `continuation-token` oder `start-after` in einer v1-Anfrage waere ein
+        // Aufrufer, der sich fuer v2 haelt. Ihn mit `marker` weiterlaufen zu
+        // lassen hiesse, seine Fortsetzung zu erfinden, und ihn still von vorn
+        // beginnen zu lassen hiesse, Objekte doppelt zu liefern.
+        for (const v2Only of ["continuation-token", "start-after"]) {
+          if (query.has(v2Only)) {
+            throw new S3ResponseError(400, "InvalidArgument", `Argument ${v2Only} belongs to ListObjectsV2; version 1 continues with marker.`);
+          }
+        }
+        return { kind: "ListObjects", bucket };
       }
       throw new S3ResponseError(501, "NotImplemented", "Buckets are created and deleted in the QKERN console, not through S3.");
     }
@@ -252,16 +292,29 @@ export class ProjectStorageS3Endpoint {
         if (method !== "PUT") {
           throw new S3ResponseError(405, "MethodNotAllowed", "A part is sent with PUT.");
         }
-        if (request.headers.get("x-amz-copy-source") !== null) {
-          throw new S3ResponseError(501, "NotImplemented", "UploadPartCopy is not implemented; CopyObject copies a whole object up to the single-piece limit.");
-        }
         if (partNumber === "") {
           throw new S3ResponseError(400, "InvalidArgument", "Argument partNumber must be an integer between 1 and 10000.");
         }
-        return {
-          kind: "UploadPart", bucket, key, uploadId,
-          partNumber: boundedInteger(partNumber, 1, 1, 10_000, "partNumber"),
-        };
+        const number = boundedInteger(partNumber, 1, 1, 10_000, "partNumber");
+        const copySource = request.headers.get("x-amz-copy-source");
+        if (copySource !== null) {
+          // Ein Client, der ein Teil kopieren laesst, sieht die Bytes nie. Eine
+          // Pruefsumme, die er trotzdem mitschickt, beglaubigt darum nichts:
+          // Sie waere eine Behauptung ueber fremde Bytes. Sie wird abgewiesen
+          // statt ignoriert, damit niemand glaubt, sie sei geprueft worden; die
+          // Summe des kopierten Teils rechnet QKERN selbst (`uploadPartCopy`).
+          for (const name of CHECKSUM_HEADERS) {
+            if (request.headers.get(name) !== null) {
+              throw new S3ResponseError(400, "InvalidRequest", `UploadPartCopy takes no ${name}; QKERN computes the checksum of a copied part itself.`);
+            }
+          }
+          return {
+            kind: "UploadPartCopy", bucket, key, uploadId, partNumber: number,
+            source: parseCopySource(copySource),
+            sourceRange: request.headers.get("x-amz-copy-source-range"),
+          };
+        }
+        return { kind: "UploadPart", bucket, key, uploadId, partNumber: number };
       }
       if (method === "POST") return { kind: "CompleteMultipartUpload", bucket, key, uploadId };
       if (method === "DELETE") return { kind: "AbortMultipartUpload", bucket, key, uploadId };
@@ -361,7 +414,7 @@ export class ProjectStorageS3Endpoint {
       throw new S3ResponseError(400, "IncompleteBody", "You did not provide the number of bytes specified by the Content-Length HTTP header.");
     }
     const checksums: Record<string, string | null> = {};
-    for (const name of ["x-amz-checksum-crc32", "x-amz-checksum-crc32c", "x-amz-checksum-crc64nvme", "x-amz-checksum-sha1", "x-amz-checksum-sha256"]) {
+    for (const name of CHECKSUM_HEADERS) {
       checksums[name] = request.headers.get(name);
     }
     if (streaming) {
@@ -419,6 +472,10 @@ export class ProjectStorageS3Endpoint {
         }
         return new Response(null, { status: 200 });
       }
+      case "ListObjects": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.listObjectsV1(principal, scope, bucket, url.searchParams);
+      }
       case "ListObjectsV2": {
         const bucket = await this.bucket(principal, key, operation.bucket);
         return await this.listObjectsV2(principal, scope, bucket, url.searchParams);
@@ -469,6 +526,11 @@ export class ProjectStorageS3Endpoint {
         const bucket = await this.bucket(principal, key, operation.bucket);
         return await this.uploadPart(principal, scope, bucket, operation.key, operation.uploadId,
           operation.partNumber, context.body);
+      }
+      case "UploadPartCopy": {
+        const bucket = await this.bucket(principal, key, operation.bucket);
+        return await this.uploadPartCopy(principal, key, bucket, operation.key, operation.uploadId,
+          operation.partNumber, operation.source, operation.sourceRange);
       }
       case "CompleteMultipartUpload": {
         const bucket = await this.bucket(principal, key, operation.bucket);
@@ -541,6 +603,109 @@ export class ProjectStorageS3Endpoint {
     partNumber: number,
     body: Buffer,
   ): Promise<Response> {
+    const etag = await this.storePart(principal, scope, bucket, key, uploadId, partNumber, body);
+    return new Response(null, { status: 200, headers: new Headers({ ETag: quotedEtag(etag) }) });
+  }
+
+  /**
+   * `UploadPartCopy` (2.123): ein Teil, dessen Bytes nicht der Client schickt,
+   * sondern QKERN aus einem vorhandenen Objekt holt, ganz oder als Bereich
+   * (`x-amz-copy-source-range`).
+   *
+   * Die Entscheidungen, die daran haengen, der Reihe nach:
+   *
+   * **Leserechte der Quelle.** Es gibt keine Abkuerzung von Bucket zu Bucket.
+   * Die Quelle laeuft durch `bucket()` (im Satz des Paars, der Service-Rolle
+   * sichtbar) und durch `findObject()`, und das ist die Liste des Dienstes:
+   * Sie fuehrt nur Objekte, die das Paar nach der Leseregel seines Buckets
+   * sehen darf, und nur saubere. Ein Objekt in Quarantaene hat keine
+   * Lesezusage und ist hier nicht einmal sichtbar, also laesst es sich auch
+   * nicht in ein Teil kopieren. Die Pruefung ist damit je Objekt, nicht je
+   * Bucket.
+   *
+   * **Pruefsumme.** QKERN rechnet sie selbst, aus genau den Bytes, die es vom
+   * Provider zurueckbekommen hat, und nicht aus der Zeile des Objekts in der
+   * Datenbank. Ein Client beglaubigt hier nichts: Er hat die Bytes nie
+   * gesehen, eine mitgeschickte `x-amz-checksum-*` wird darum in `operation()`
+   * abgewiesen. Die Summe geht als `x-amz-checksum-sha256` in die signierte
+   * Zusage zum Provider, und der Provider weist das Teil ab, wenn sie nicht
+   * stimmt — dieselbe Kette wie bei `UploadPart`.
+   *
+   * **Virenpruefung.** Die Bytes gehen hier tatsaechlich durch QKERN, aber
+   * nicht durch den Scanner, und zwar aus demselben Grund wie bei
+   * `UploadPart`: Ein einzelnes Teil ist kein Objekt. Gescannt wird beim
+   * Abschluss die Pruefsumme der **ganzen** zusammengesetzten Datei, die
+   * `measureWholeFile` aus dem Objekt des Providers rechnet. Eine Luecke
+   * entsteht daraus nicht: Die Quelle war sauber, als sie abgelegt wurde,
+   * sonst waere sie nicht sichtbar, und das Ergebnis wird noch einmal
+   * geurteilt.
+   *
+   * **Grenzen.** Ein Teil ist auf `maxPutBytes` begrenzt wie ein
+   * hochgeladenes, weil die Bytes im Speicher dieses Prozesses liegen, waehrend
+   * sie weitergereicht werden. Der Bereich muss beide Enden nennen (S3 kennt
+   * fuer `x-amz-copy-source-range` keine offene Form). Nummer und Anzahl der
+   * Teile pruefen dieselben Stellen wie bei `UploadPart`: 1 bis 10000 in
+   * `operation()`, Reihenfolge und Vollstaendigkeit erst beim Abschluss im
+   * Dienst.
+   */
+  private async uploadPartCopy(
+    principal: ProjectStoragePrincipal,
+    key: AuthenticatedProjectStorageS3AccessKey,
+    bucket: PublicProjectStorageBucket,
+    targetKey: string,
+    uploadId: string,
+    partNumber: number,
+    source: { bucket: string; key: string },
+    sourceRange: string | null,
+  ): Promise<Response> {
+    const scope = key.scope;
+    const sourceBucket = await this.bucket(principal, key, source.bucket);
+    const sourceObject = await this.findObject(principal, scope, sourceBucket, source.key);
+    if (!sourceObject) throw noSuchKey();
+    const range = parseCopySourceRange(sourceRange, sourceObject.sizeBytes);
+    const wanted = range ? range.end - range.start + 1 : sourceObject.sizeBytes;
+    if (wanted < 1) throw new S3ResponseError(400, "InvalidArgument", "A copied part is empty.");
+    if (wanted > this.maxPutBytes) {
+      throw new S3ResponseError(400, "EntityTooLarge", `UploadPartCopy through this endpoint moves at most ${this.maxPutBytes} bytes per part; narrow x-amz-copy-source-range.`);
+    }
+    const grant = await this.storage(() => this.dependencies.storage.createDownloadGrant(
+      principal, scope, sourceBucket.id, { key: sourceObject.key }));
+    const upstream = await this.fetchFn(grant.url, {
+      method: "GET", redirect: "error",
+      ...(range ? { headers: { Range: `bytes=${range.start}-${range.end}` } } : {}),
+    }).catch(() => null);
+    if (!upstream || !upstream.ok) {
+      throw new S3ResponseError(503, "ServiceUnavailable", "The object store did not serve the source object.");
+    }
+    let body = Buffer.from(await upstream.arrayBuffer());
+    // Ein Provider, der den Bereich ignoriert und das ganze Objekt schickt,
+    // wird geschnitten statt geglaubt — so wie `getObject` es tut.
+    if (range && body.byteLength === sourceObject.sizeBytes && wanted !== sourceObject.sizeBytes) {
+      body = body.subarray(range.start, range.end + 1);
+    }
+    if (body.byteLength !== wanted) {
+      throw new S3ResponseError(503, "ServiceUnavailable", "The object store served a source range of another size.");
+    }
+    const etag = await this.storePart(principal, scope, bucket, targetKey, uploadId, partNumber, body);
+    return xml(200, `<CopyPartResult xmlns="${S3_XMLNS}"><LastModified>${
+      escapeXml(this.now().toISOString())}</LastModified><ETag>${escapeXml(quotedEtag(etag))}</ETag></CopyPartResult>`);
+  }
+
+  /**
+   * Der gemeinsame Weg beider Teile-Operationen: buchen, zum Provider
+   * reichen, vermerken. `UploadPart` und `UploadPartCopy` teilen ihn absichtlich
+   * Zeile fuer Zeile, damit es keine zweite Tuer an Quota, Teilegrenze und
+   * Vermerk vorbei gibt — nur die Herkunft der Bytes unterscheidet sie.
+   */
+  private async storePart(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    body: Buffer,
+  ): Promise<string> {
     const checksumSha256 = createHash("sha256").update(body).digest("base64");
     const grant = await this.storage(() => this.dependencies.storage.createS3PartUploadGrant(principal, scope, {
       bucketIdOrName: bucket.id, key, uploadId, partNumber, sizeBytes: body.byteLength, checksumSha256,
@@ -563,8 +728,7 @@ export class ProjectStorageS3Endpoint {
     await this.storage(() => this.dependencies.storage.confirmS3UploadPart(principal, scope, {
       bucketIdOrName: bucket.id, key, uploadId, partNumber, etag,
     }));
-    const headers = new Headers({ ETag: etag.startsWith('"') ? etag : quoteEtag(etag) });
-    return new Response(null, { status: 200, headers });
+    return etag;
   }
 
   /**
@@ -711,26 +875,47 @@ export class ProjectStorageS3Endpoint {
     return new Response(body, { status: 206, headers });
   }
 
-  private async listObjectsV2(
+  /**
+   * Der Lauf ueber die Liste des Dienstes, den beide Versionen von
+   * `ListObjects` teilen (2.123).
+   *
+   * Er ist gemeinsam, weil Delimiter und `CommonPrefixes` sonst in zwei Formen
+   * auseinanderlaufen wuerden: Ein Schluessel wird genau einmal angesehen und
+   * landet entweder in `Contents` oder als Gruppe in `CommonPrefixes`, und die
+   * Grenze `max-keys` zaehlt beide zusammen, so wie S3 es tut. Was die
+   * Versionen unterscheidet, steht hinterher in der Antwort: wie die
+   * Fortsetzung heisst.
+   *
+   * Die Fortsetzung ist in beiden Formen **ein Schluessel**, der zuletzt
+   * angesehene, und sie ist ausschliessend. Bei einer Gruppe ist das nicht der
+   * Gruppenname, sondern der letzte Schluessel darin; wer von dort weiterlaeuft,
+   * sieht die Gruppe hoechstens noch einmal und ueberspringt nichts. Das
+   * unterscheidet sich von S3, das als `NextMarker` den Gruppennamen nennt und
+   * damit die ganze Gruppe ueberspringt, und es ist die vorsichtigere Seite:
+   * Ein doppelter `CommonPrefixes`-Eintrag ueber zwei Seiten kostet den
+   * Aufrufer nichts, ein uebersprungener Schluessel kostet ihn Daten.
+   */
+  private async walkObjects(
     principal: ProjectStoragePrincipal,
     scope: ProjectStorageScope,
     bucket: PublicProjectStorageBucket,
-    query: URLSearchParams,
-  ): Promise<Response> {
-    const prefix = query.get("prefix") ?? "";
-    const delimiter = query.get("delimiter") ?? "";
-    const encode = query.get("encoding-type") === "url";
-    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 1, MAX_KEYS);
-    const token = query.get("continuation-token");
-    let cursor: string | undefined = token ? decodeToken(token) : (query.get("start-after") || undefined);
+    options: { prefix: string; delimiter: string; maxKeys: number; after: string | undefined },
+  ): Promise<{
+    contents: PublicProjectStorageObject[];
+    commonPrefixes: string[];
+    truncated: boolean;
+    nextKey: string | null;
+  }> {
+    const { prefix, delimiter, maxKeys } = options;
     if (delimiter.length > 1) {
       throw new S3ResponseError(501, "NotImplemented", "Only single-character delimiters are implemented.");
     }
+    let cursor = options.after;
     const contents: PublicProjectStorageObject[] = [];
     const commonPrefixes: string[] = [];
     const seenPrefixes = new Set<string>();
     let truncated = false;
-    let nextToken: string | null = null;
+    let nextKey: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
       const result = await this.storage(() => this.dependencies.storage.listObjects(principal, scope, bucket.id, {
         prefix: prefix || undefined, cursor, limit: PAGE,
@@ -749,23 +934,82 @@ export class ProjectStorageS3Endpoint {
           contents.push(object);
         }
         cursor = object.key;
-        nextToken = object.key;
+        nextKey = object.key;
       }
       if (truncated) break;
-      if (!result.nextCursor) { nextToken = null; break; }
+      if (!result.nextCursor) { nextKey = null; break; }
       cursor = result.nextCursor;
       if (page === MAX_LIST_PAGES - 1) truncated = true;
     }
+    return { contents, commonPrefixes, truncated, nextKey };
+  }
+
+  /**
+   * `ListObjects` Version 1 (2.123): dieselbe Liste wie Version 2, mit
+   * `marker` und `NextMarker`.
+   *
+   * `marker` ist ein Schluessel im Klartext, nicht eine Kennung wie
+   * `continuation-token`, weil v1 ihn so kennt: Ein Aufrufer darf ihn selbst
+   * setzen, und viele Werkzeuge tun das, indem sie den letzten Schluessel der
+   * vorigen Seite nehmen. Darum wird er nicht geprueft wie ein Token, sondern
+   * ausschliessend an den Dienst gereicht, so wie `start-after` bei Version 2.
+   *
+   * `NextMarker` kommt, sooft die Antwort abgeschnitten ist, auch ohne
+   * Delimiter. S3 schickt es nur mit Delimiter und erwartet sonst, dass der
+   * Aufrufer den letzten Schluessel selbst liest. Das ist eine Falle fuer jedes
+   * Werkzeug, das mit Delimiter arbeitet und ohne, und es kostet nichts, die
+   * Antwort vollstaendig zu machen: Ein Aufrufer, der `NextMarker` ignoriert
+   * und den letzten Schluessel nimmt, bekommt bei uns dieselbe Fortsetzung.
+   */
+  private async listObjectsV1(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    query: URLSearchParams,
+  ): Promise<Response> {
+    const prefix = query.get("prefix") ?? "";
+    const delimiter = query.get("delimiter") ?? "";
+    const encode = query.get("encoding-type") === "url";
+    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 1, MAX_KEYS);
+    const marker = query.get("marker") ?? "";
+    if (marker.length > 1024) {
+      throw new S3ResponseError(400, "InvalidArgument", "Argument marker is longer than an object key may be.");
+    }
+    const walk = await this.walkObjects(principal, scope, bucket, {
+      prefix, delimiter, maxKeys, after: marker || undefined,
+    });
+    const text = (value: string) => escapeXml(encode ? encodeURIComponent(value).replace(/%2F/g, "/") : value);
+    return xml(200, `<ListBucketResult xmlns="${S3_XMLNS}"><Name>${escapeXml(bucket.name)}</Name><Prefix>${
+      text(prefix)}</Prefix><Marker>${text(marker)}</Marker>${
+      delimiter ? `<Delimiter>${text(delimiter)}</Delimiter>` : ""
+    }${encode ? "<EncodingType>url</EncodingType>" : ""}<MaxKeys>${maxKeys}</MaxKeys><IsTruncated>${
+      walk.truncated}</IsTruncated>${
+      walk.truncated && walk.nextKey ? `<NextMarker>${text(walk.nextKey)}</NextMarker>` : ""
+    }${listedObjectsXml(walk.contents, walk.commonPrefixes, text)}</ListBucketResult>`);
+  }
+
+  private async listObjectsV2(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    bucket: PublicProjectStorageBucket,
+    query: URLSearchParams,
+  ): Promise<Response> {
+    const prefix = query.get("prefix") ?? "";
+    const delimiter = query.get("delimiter") ?? "";
+    const encode = query.get("encoding-type") === "url";
+    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 1, MAX_KEYS);
+    const token = query.get("continuation-token");
+    const after = token ? decodeToken(token) : (query.get("start-after") || undefined);
+    const walk = await this.walkObjects(principal, scope, bucket, { prefix, delimiter, maxKeys, after });
     const text = (value: string) => escapeXml(encode ? encodeURIComponent(value).replace(/%2F/g, "/") : value);
     return xml(200, `<ListBucketResult xmlns="${S3_XMLNS}"><Name>${escapeXml(bucket.name)}</Name><Prefix>${text(prefix)}</Prefix>${
       delimiter ? `<Delimiter>${text(delimiter)}</Delimiter>` : ""
-    }${encode ? "<EncodingType>url</EncodingType>" : ""}<KeyCount>${contents.length + commonPrefixes.length}</KeyCount><MaxKeys>${maxKeys}</MaxKeys><IsTruncated>${truncated}</IsTruncated>${
+    }${encode ? "<EncodingType>url</EncodingType>" : ""}<KeyCount>${
+      walk.contents.length + walk.commonPrefixes.length}</KeyCount><MaxKeys>${maxKeys}</MaxKeys><IsTruncated>${
+      walk.truncated}</IsTruncated>${
       token ? `<ContinuationToken>${escapeXml(token)}</ContinuationToken>` : ""
-    }${truncated && nextToken ? `<NextContinuationToken>${escapeXml(encodeToken(nextToken))}</NextContinuationToken>` : ""}${
-      contents.map((object) => `<Contents><Key>${text(object.key)}</Key><LastModified>${escapeXml(object.createdAt)}</LastModified>${
-        object.etag ? `<ETag>${escapeXml(quoteEtag(object.etag))}</ETag>` : ""
-      }<Size>${object.sizeBytes}</Size><StorageClass>STANDARD</StorageClass></Contents>`).join("")
-    }${commonPrefixes.map((common) => `<CommonPrefixes><Prefix>${text(common)}</Prefix></CommonPrefixes>`).join("")}</ListBucketResult>`);
+    }${walk.truncated && walk.nextKey ? `<NextContinuationToken>${escapeXml(encodeToken(walk.nextKey))}</NextContinuationToken>` : ""}${
+      listedObjectsXml(walk.contents, walk.commonPrefixes, text)}</ListBucketResult>`);
   }
 
   /**
@@ -1083,6 +1327,31 @@ function parseCopySource(value: string): { bucket: string; key: string } {
 }
 
 /**
+ * `x-amz-copy-source-range` fuer `UploadPartCopy`: nur `bytes=first-last`, mit
+ * beiden Enden.
+ *
+ * S3 kennt hier keine offene Form, und das ist kein Zufall: Bei `Range` auf
+ * einem GET darf ein Server den Bereich stillschweigend kuerzen, bei einem
+ * kopierten Teil nicht, denn die Groesse des Teils entscheidet mit darueber, ob
+ * die zusammengesetzte Datei die ist, die der Aufrufer gemeint hat. Eine Form,
+ * die wir nicht genau verstehen, wird darum abgewiesen und nicht ausgelegt.
+ * Ohne Kopfzeile kommt das ganze Objekt.
+ */
+function parseCopySourceRange(header: string | null, size: number): { start: number; end: number } | null {
+  if (header === null || header.trim() === "") return null;
+  const match = /^\s*bytes\s*=\s*(\d+)\s*-\s*(\d+)\s*$/.exec(header);
+  if (!match) {
+    throw new S3ResponseError(400, "InvalidArgument", "x-amz-copy-source-range must name both ends, as bytes=first-last.");
+  }
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || end >= size) {
+    throw new S3ResponseError(416, "InvalidRange", `The x-amz-copy-source-range is not satisfiable for a source of ${size} bytes.`);
+  }
+  return { start, end };
+}
+
+/**
  * Ein einzelner Bytebereich nach RFC 9110: `bytes=a-b`, `bytes=a-`,
  * `bytes=-n`. Mehrere Bereiche oder eine Form, die keine ist, gelten wie bei
  * S3 als nicht vorhanden, und das ganze Objekt kommt. Ein Bereich hinter dem
@@ -1117,6 +1386,19 @@ function sliceStream(start: number, end: number): TransformStream<Uint8Array, Ui
       controller.enqueue(chunk.subarray(from, to));
     },
   });
+}
+
+/** `Contents` und `CommonPrefixes` sind in beiden Versionen von `ListObjects` gleich gebaut. */
+function listedObjectsXml(
+  contents: ReadonlyArray<PublicProjectStorageObject>,
+  commonPrefixes: ReadonlyArray<string>,
+  text: (value: string) => string,
+): string {
+  return `${contents.map((object) => `<Contents><Key>${text(object.key)}</Key><LastModified>${
+    escapeXml(object.createdAt)}</LastModified>${
+    object.etag ? `<ETag>${escapeXml(quoteEtag(object.etag))}</ETag>` : ""
+  }<Size>${object.sizeBytes}</Size><StorageClass>STANDARD</StorageClass></Contents>`).join("")
+  }${commonPrefixes.map((common) => `<CommonPrefixes><Prefix>${text(common)}</Prefix></CommonPrefixes>`).join("")}`;
 }
 
 function objectHeaders(object: PublicProjectStorageObject): Headers {

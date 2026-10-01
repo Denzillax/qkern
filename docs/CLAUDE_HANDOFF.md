@@ -149,6 +149,54 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.123 **Der S3-Endpunkt kopiert jetzt ein Teil und listet in der alten Form.**
+  Keine Migration, kein neuer Dienstaufruf: beides steckt allein in
+  `lib/server/project-storage/s3-endpoint.ts`.
+
+  **`UploadPartCopy`** (`PUT /s3/{bucket}/{key}?partNumber=N&uploadId=…` mit
+  `x-amz-copy-source`, wahlweise `x-amz-copy-source-range: bytes=first-last`)
+  geht den Weg von `CopyObject` fuer das Lesen und den Weg von `UploadPart` fuer
+  das Schreiben: Lesezusage der Quelle, Bytes holen, dann `storePart`, das
+  `UploadPart` und `UploadPartCopy` Zeile fuer Zeile teilen
+  (`createS3PartUploadGrant` bucht auf die Reservierung, Zusage zum Provider,
+  `confirmS3UploadPart` vermerkt die Kennung). Vier Entscheidungen stehen als
+  Begruendung im Quelltext: Die **Pruefsumme** rechnet QKERN aus den geholten
+  Bytes, nicht aus der Objektzeile, und eine `x-amz-checksum-*` vom Client wird
+  mit 400 abgewiesen, weil er die Bytes nie gesehen hat. Der **Scanner** sieht
+  das Teil nicht, sondern beim Abschluss die ganze zusammengesetzte Datei, so wie
+  bei `UploadPart`; eine Luecke entsteht nicht, weil die Quelle sauber sein muss,
+  um sichtbar zu sein. Die **Leserechte** der Quelle laufen durch `bucket()` und
+  `findObject()`, also je Objekt und nicht nur je Bucket: ein Objekt in
+  Quarantaene ist dem Paar nicht sichtbar und damit nicht kopierbar. Die
+  **Grenzen** sind die von `UploadPart` (64 MiB je Teil, 1 bis 10000, Ordnung
+  erst beim Abschluss im Dienst), dazu die Bereichsform mit beiden Enden
+  (`400 InvalidArgument` sonst) und `416 InvalidRange` hinter dem Ende.
+
+  **`ListObjects` Version 1** ist `GET /s3/{bucket}` ohne `list-type`. Beide
+  Versionen laufen durch denselben `walkObjects`, damit Delimiter,
+  `CommonPrefixes` und `max-keys` nicht auseinanderlaufen; unterschiedlich ist
+  nur die Antwort. Zwei Abweichungen von S3, beide absichtlich und im Quelltext
+  begruendet: `NextMarker` kommt immer, wenn abgeschnitten wurde, auch ohne
+  Delimiter, und es zeigt auf den letzten **gesehenen Schluessel**, nicht auf den
+  Gruppennamen, damit die Fortsetzung nichts ueberspringt. Eine gemischte Form
+  wird benannt statt ausgelegt: `continuation-token` oder `start-after` in einer
+  v1-Anfrage und jedes `list-type` ausser 2 antworten `400 InvalidArgument`.
+
+  **Zertifiziert** im Storage-Stack als Fall `(2.123)` in
+  `tests/project-storage-s3-endpoint.integration.test.ts`, gefahren vom AWS SDK
+  ueber die HTTP-Bruecke (`UploadPartCopyCommand`, `ListObjectsCommand`) gegen
+  echtes versitygw und echtes ClamAV: 12 von 12 gruen, vorher 11. Der Fall
+  belegt, dass der Client bei der Teilkopie **keinen** Koerper und **keine**
+  Pruefsumme schickte und das Teil trotzdem bei versitygw liegt, dass die
+  zusammengesetzte Datei vom echten Scanner freigegeben wurde, und dass das SDK
+  dem `NextMarker` folgt. Zwei Mutationsproben, je frischer Lauf: Pruefsumme des
+  kopierten Teils auf eine Konstante, und `NextMarker` weggelassen; beide Male
+  fiel genau `(2.123)`, die elf anderen blieben gruen.
+
+  **Offen**: Die AWS CLI und rclone haben den Endpunkt weiterhin nicht gesehen.
+  Eine Quelle ueber 64 MiB laesst sich nur bereichweise in Teile kopieren, nicht
+  in einem Zug. Virtuell gehostete Adressen (`bucket.host`) bleiben 501.
+
 - 2.121 **Eine Nachricht der Queues laesst sich jetzt verfolgen.** Migration
   `0081_project_queue_message_traces.sql` legt `project_queue_message_traces` an:
   je Station eine Zeile, geschrieben **in derselben Transaktion** wie der
@@ -417,7 +465,8 @@ Grossbuchstaben.
   S3-Clients ist die SigV4-Signatur und die Bucket-Regel, und darum ist
   `ListMultipartUploads` ueberhaupt brauchbar.
 
-  **Offen**: `UploadPartCopy` antwortet mit 501. Ein vorhandener Schluessel wird
+  **Offen** (Stand 2.101; `UploadPartCopy` ist seit 2.123 gebaut, siehe dort):
+  Ein vorhandener Schluessel wird
   beim Anfang des Uploads geloescht, weil die Reservierung ihn exklusiv haelt;
   bricht der Upload ab, ist das alte Objekt weg. Der Abschluss liest das
   zusammengesetzte Objekt zweimal, einmal fuer die Pruefsumme und einmal im
@@ -566,8 +615,9 @@ Grossbuchstaben.
   completeUpload; CopyObject ist Lesezusage der Quelle plus derselbe Weg.
   Seit `2.67.0`: Presigned URLs (Query-Signatur, hoechstens 900 s), aws-chunked
   in allen drei `STREAMING-*`-Formen mit Block- und Trailer-Signatur,
-  Pruefsummen `x-amz-checksum-*`, Range. **Was fehlt, antwortet 501 und nennt
-  sich**: Multipart, ListObjects v1, Bucket anlegen oder loeschen. Paare aus
+  Pruefsummen `x-amz-checksum-*`, Range. **Was damals fehlte und 501 antwortete**:
+  Multipart (gebaut in 2.101), ListObjects v1 (gebaut in 2.123), Bucket anlegen
+  oder loeschen (bleibt 501). Paare aus
   2.59 bis 2.65 haben kein Chiffrat (`verifiable: false`) und oeffnen nichts;
   die Seite sagt es je Paar. Zertifiziert im Storage-Stack
   (`tests/project-storage-s3-endpoint.integration.test.ts`, echte Signatur aus

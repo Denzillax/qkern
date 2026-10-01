@@ -25,8 +25,8 @@
  *     Kontingent, Aufbewahrung. Keine Tabelle kennt eine Spalte, einen
  *     Namensraum oder einen Metadatenzeiger.
  *   - Der S3-Endpunkt `/s3` (2.96, erweitert 2.99) nimmt Dateien an, wie ein
- *     Iceberg-Client sie schreibt, aber nur in einem Stueck bis 64 MiB;
- *     Multipart ueber S3 antwortet mit 501.
+ *     Iceberg-Client sie schreibt: in einem Stueck bis 64 MiB, seit 2.101 auch
+ *     in Teilen, und seit 2.123 auch ein Teil aus einem vorhandenen Objekt.
  *   - Es gibt keine Route, die die Iceberg-REST-Schnittstelle spricht, und
  *     keinen Dienst dahinter; `app/api` kennt weder `iceberg` noch `parquet`.
  *   - Keine Compose-Datei faehrt eine Engine (Spark, Trino, DuckDB) oder

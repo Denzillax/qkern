@@ -79,6 +79,16 @@ describe("Project Storage provider certification harness", () => {
     expect(runner).toContain('"down", "--volumes", "--remove-orphans"');
   });
 
+  it("lets a parallel slice name its own stack, and keeps the archived name without one", () => {
+    // Wie im PostgreSQL-Laeufer: `up` und `down` muessen denselben Projektnamen
+    // tragen, sonst raeumt ein Lauf den Stack eines anderen Schnitts ab oder
+    // laesst seinen eigenen stehen.
+    expect(runner).toContain("process.env.COMPOSE_PROJECT_NAME?.trim() ||");
+    expect(runner).toContain('"qkern-storage-v140a2-certification"');
+    expect([...runner.matchAll(/process\.env\.COMPOSE_PROJECT_NAME/g)]).toHaveLength(1);
+    expect([...runner.matchAll(/\.\.\.compose,/g)].length).toBeGreaterThanOrEqual(1);
+  });
+
   it("exposes direct and disposable-container certification commands", () => {
     expect(packageJson.scripts["test:storage:provider"]).toContain(
       "project-storage-provider.integration.test.ts",
