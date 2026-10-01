@@ -10,10 +10,14 @@
 
 import { spawnSync } from "node:child_process";
 
+// Der Projektname kommt aus COMPOSE_PROJECT_NAME, wenn gesetzt, wie in den
+// anderen Laeufern: Ein paralleler Schnitt erkennt seinen Stack dann am eigenen
+// Praefix und raeumt nur ihn ab. Ohne die Variable bleibt es der Name von
+// vorher, damit die archivierte Evidenz denselben Stack nennt.
 const compose = [
   "compose",
   "-p",
-  "qkern-receiver-certification",
+  process.env.COMPOSE_PROJECT_NAME?.trim() || "qkern-receiver-certification",
   "-f",
   "docker-compose.receiver-certification.yml",
 ];
