@@ -1,0 +1,18 @@
+{
+  "stack": "Webhook-Signatur gegen echten Vault",
+  "log": "tracepass-vault.log",
+  "commit": "91e8299f422f96b24a98c1d7a014212c565ed1f5",
+  "commitSubject": "QKERN gibt den Anschluss weiter, nach innen und nach aussen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "hashicorp/vault:1.18.3",
+    "node:24.7.0-alpine"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "tracepass-functions.log",
+  "commit": "91e8299f422f96b24a98c1d7a014212c565ed1f5",
+  "commitSubject": "QKERN gibt den Anschluss weiter, nach innen und nach aussen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "33 passed (33)",
+  "passed": 33,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}
