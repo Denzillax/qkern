@@ -1920,6 +1920,7 @@ Storage-Werkzeug mit dem Bereich `storage:write` (Fall `2.116`). Stackname
 | --- | --- | --- |
 | `2026-10-01/sdkparity-postgres-run1.log` | PostgreSQL 17 | 243 von 243, exit 0, 72 Migrationen |
 | `2026-10-01/sdkparity-postgres-run2.log` | PostgreSQL 17 | 243 von 243, exit 0, Wiederholung |
+| `2026-10-01/sdkparity-postgres-run3.log` | PostgreSQL 17 | 243 von 243, exit 0, am Commit `0df82b6` |
 | `2026-10-01/sdkparity-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
 | `2026-10-01/sdkparity-mutation-upsertpassthrough.log` | Mutation: das MCP-Werkzeug reicht `onConflict` nicht durch | **242 von 243, exit 1 – absichtlich** |
 | `2026-10-01/sdkparity-mutation-operatorrole.log` | Mutation: das Löschwerkzeug läuft als Betreiber | **242 von 243, exit 1 – absichtlich** |
@@ -1940,3 +1941,8 @@ geht durch dieselbe Schreibregel wie ein Löschen, also kommt in einen
 befüllt und danach zugezogen. Die Zählung am Ende stand dabei in einem `finally`
 und hat den eigentlichen Fehler verdeckt, weil ein Fehler im `finally` den Fehler
 aus dem Block darüber verdrängt. Sie steht jetzt im Block selbst.
+
+`sdkparity-postgres-run3.log` ist der Lauf am fertigen Commit. Zwischen den
+beiden ersten Läufen und dem Commit kamen nur Kommentarzeilen und Dokumentation
+dazu; dieser dritte Lauf belegt, dass der Stand, der im Zweig liegt, derselbe
+grüne ist.
