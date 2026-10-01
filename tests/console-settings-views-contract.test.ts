@@ -349,19 +349,19 @@ describe("console settings views contract", () => {
   });
 
   // ---------------------------------------------------------------- //
-  // Add-ons: es gibt nichts, was extra kostet                         //
+  // Add-ons: was extra kosten kann, und wer es festlegt               //
   // ---------------------------------------------------------------- //
 
-  it("is right that the billable list is closed at six metrics", async () => {
+  it("is right that the measured catalogue is still closed at six metrics", async () => {
     const view = await source(ADDONS_VIEW);
-    for (const key of ["noAddons", "closedList", "scope", "catalogMeaning"] as const) {
+    for (const key of ["addons", "noSelfService", "closedList", "scope", "catalogMeaning"] as const) {
       expect(view, key).toContain(`ADDONS_TEXTS.${key}`);
     }
     expect(USAGE_SERIES_METRIC_IDS).toHaveLength(6);
     const metrics = [...USAGE_SERIES_METRIC_IDS].slice().sort();
 
-    // Dieselben sechs an allen drei Stellen, die die Seite nennt. Eine
-    // siebte Kennung an einer davon macht den Satz `closedList` falsch.
+    // Dieselben sechs an den Stellen, die die Seite nennt. Eine siebte
+    // Kennung an einer davon macht den Satz `closedList` falsch.
     const rateCards = await source("db/migrations/0039_billing_rate_cards.sql");
     const invoices = await source("db/migrations/0040_billing_invoices.sql");
     for (const [name, sql] of [["0039", rateCards], ["0040", invoices]] as const) {
@@ -374,33 +374,52 @@ describe("console settings views contract", () => {
       model.indexOf("USAGE_METRIC_DEFINITIONS"), model.indexOf("USAGE_METRIC_DEFINITIONS") + 900);
     const defined = [...definitions.matchAll(/^\s{2}([a-z_]+):\s*\{/gm)].map((match) => match[1]);
     expect(defined.slice().sort()).toEqual(metrics);
-
-    // Und eine Rechnung kann jede Kennung hoechstens einmal tragen. Das ist
-    // der Satz „hoechstens sechs Zeilen".
-    expect(invoices).toContain("UNIQUE (invoice_id, metric)");
   });
 
-  it("is right that an invoice line has no room for an add-on", async () => {
-    const invoices = await source("db/migrations/0040_billing_invoices.sql");
-    const start = invoices.indexOf("CREATE TABLE billing_invoice_lines (");
-    expect(start).toBeGreaterThan(-1);
-    const columns = [...invoices.slice(start, invoices.indexOf("\n);", start))
-      .matchAll(/^\s{2}([a-z_]+)\s+(?:uuid|text|bigint)/gm)].map((match) => match[1]);
-    // Kein Feld fuer eine Bezeichnung, keines fuer eine Beschreibung, keines
-    // fuer einen Zeilentyp. Genau das behauptet INVOICE_SHAPE.
-    for (const column of columns) {
-      expect(/label|description|title|kind|type|note/.test(column), column).toBe(false);
-    }
-    expect(columns).toContain("quantity");
-    expect(columns).toContain("amount_micros");
-    expect(INVOICE_SHAPE).toHaveLength(5);
+  it("is right that a position now has a label, a stable key and no entered amount", async () => {
+    const positions = await source("db/migrations/0080_billing_invoice_positions.sql");
 
-    // Kein Preisblatt-Eintrag laesst sich aendern oder loeschen: Es gibt
-    // keine Politik dafuer. Das ist der Satz `whoSetsHistory`.
+    // Die Bezeichnung und der stabile Schluessel: Das ist der Satz, mit dem
+    // die Seite seit 0080 etwas anderes behauptet als in 2.62.
+    expect(positions).toContain("ADD COLUMN line_key text");
+    expect(positions).toContain("ADD COLUMN label text");
+    expect(positions).toContain("UNIQUE (invoice_id, line_key)");
+    // Und die alte Eindeutigkeit je Metrik ist weg, sonst waere eine Rechnung
+    // weiterhin auf sechs Zeilen begrenzt.
+    expect(positions).toContain("DROP CONSTRAINT billing_invoice_lines_invoice_id_metric_key");
+
+    // Der Betrag bleibt gerechnet. `quantity` ist weiterhin NOT NULL, also
+    // gibt es keine Position ohne Menge und damit keinen eingetragenen Betrag:
+    // Das ist der Satz „Kein Betrag, der nicht gerechnet ist".
+    const invoices = await source("db/migrations/0040_billing_invoices.sql");
+    expect(invoices).toContain("quantity bigint NOT NULL");
+    expect(positions).not.toMatch(/ALTER COLUMN quantity DROP NOT NULL/);
+    // Und kein Feld fuer freien Zusatztext neben der Bezeichnung.
+    for (const column of ["description", "note", "comment"]) {
+      expect(positions, column).not.toContain(`ADD COLUMN ${column}`);
+    }
+
+    // Die Idempotenz des Laufs haengt weiterhin an der Rechnung, nicht an der
+    // Position: Das ist der Satz „Zweimal derselbe Lauf, einmal dieselbe
+    // Rechnung", und 0080 laesst sie unberuehrt.
+    expect(invoices).toContain("UNIQUE (organization_id, project_id, environment, period_start)");
+    expect(positions).not.toContain("billing_invoices_organization_id_project_id");
+
+    expect(INVOICE_SHAPE).toHaveLength(6);
+
+    // Weder im Preisblatt noch im Pauschalenblatt laesst sich eine Zeile
+    // aendern oder loeschen: Es gibt keine Politik dafuer. Das ist der Satz
+    // `whoSetsHistory`.
     const rateCards = await source("db/migrations/0039_billing_rate_cards.sql");
-    const policies = [...rateCards.matchAll(/CREATE POLICY \w+ ON billing_rate_cards\s+FOR (\w+)/g)]
+    const rateCardPolicies = [...rateCards.matchAll(/CREATE POLICY \w+ ON billing_rate_cards\s+FOR (\w+)/g)]
       .map((match) => match[1]);
-    expect(policies.slice().sort()).toEqual(["INSERT", "SELECT"]);
+    expect(rateCardPolicies.slice().sort()).toEqual(["INSERT", "SELECT"]);
+    const chargePolicies = [...positions.matchAll(/CREATE POLICY \w+ ON billing_charges\s+FOR (\w+)/g)]
+      .map((match) => match[1]);
+    expect(chargePolicies.slice().sort()).toEqual(["INSERT", "SELECT"]);
+    // Eine Pauschale haengt an einer echten Umgebung — der eigene Weg, sie
+    // einem Projekt zuzuordnen, den 2.62 vermisst hat.
+    expect(positions).toContain("REFERENCES project_environments (organization_id, project_id, environment)");
 
     // Und es gibt keine Zahlungsanbindung. Ein Modul dafuer waere hier zu
     // sehen, bevor der Satz der Seite still falsch wird.

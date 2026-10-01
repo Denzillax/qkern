@@ -22,10 +22,18 @@ export type BillingProjectionLine = {
   amountMicros: string | null;
 };
 
+/** Eine Pauschale des laufenden Monats: eine Bezeichnung und ein Betrag. */
+export type BillingProjectionCharge = {
+  code: string;
+  label: string;
+  amountMicros: string;
+};
+
 export type BillingProjection = {
   period: string;
   currency: string | null;
   lines: BillingProjectionLine[];
+  charges: BillingProjectionCharge[];
   totalMicros: string;
   unpricedMetrics: string[];
 };
@@ -75,12 +83,25 @@ export function billingProjectionState(status: number, payload: Record<string, u
       amountMicros: priced ? micros(line.amountMicros) : null,
     });
   }
+  // Pauschalen sind seit 0080 Teil der Antwort. Eine Antwort ohne das Feld ist
+  // kein Fehler, sondern eine Umgebung ohne Pauschale: Die Liste bleibt leer.
+  const charges: BillingProjectionCharge[] = [];
+  for (const raw of Array.isArray(data.charges) ? data.charges as unknown[] : []) {
+    if (!raw || typeof raw !== "object") return { state: "error", message };
+    const charge = raw as Record<string, unknown>;
+    const code = text(charge.code);
+    const label = text(charge.label);
+    const amountMicros = micros(charge.amountMicros);
+    if (!code || !label || amountMicros === null) return { state: "error", message };
+    charges.push({ code, label, amountMicros });
+  }
   return {
     state: "ready",
     projection: {
       period,
       currency: text(data.currency),
       lines,
+      charges,
       totalMicros,
       unpricedMetrics: Array.isArray(data.unpricedMetrics)
         ? data.unpricedMetrics.filter((metric): metric is string => typeof metric === "string")

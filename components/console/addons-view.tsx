@@ -6,30 +6,29 @@ import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
 import { billingMetricLabel, perUnits } from "@/components/console/billing-settings-view";
 import { billingProjectionState, type BillingProjectionState } from "@/lib/console/billing";
-import { formatUnitPriceMicros } from "@/lib/console/money";
+import { formatMoneyMicros, formatUnitPriceMicros } from "@/lib/console/money";
 import { USAGE_SERIES_METRIC_IDS, USAGE_SERIES_METRIC_TEXTS } from "@/lib/console/usage-series-texts";
 import { ADDONS_STATES, ADDONS_TEXTS, INVOICE_SHAPE } from "@/lib/console/addons-texts";
 
 /**
  * Einstellungen → Add-ons (2.88), nur lesend.
  *
- * Der Platzhalter versprach „Zusatzleistungen wie eigene Domain oder mehr
- * Backups". Nachgesehen in der Abrechnung gibt es beides nicht, und zwar
- * nicht, weil es noch fehlt, sondern weil die Abrechnung keine Stelle hat, an
- * der eine Zusatzleistung stehen koennte.
+ * Bis 2.62 sagte diese Seite, es gebe keine Zusatzleistungen, und begruendete
+ * das mit der Form der Abrechnung: kein Feld fuer eine Bezeichnung, eine
+ * Rechnungszeile je Metrik und damit hoechstens sechs, kein Weg von einer
+ * Pauschale zu einem Betrag. Seit Migration 0080 stimmt diese Begruendung
+ * nicht mehr. Eine Position traegt eine Bezeichnung und einen stabilen
+ * Schluessel, die Eindeutigkeit haengt am Schluessel, und eine Pauschale
+ * kommt mit einer Menge von eins zu ihrem Betrag.
  *
- * Abgerechnet wird ausschliesslich je Metrik. Dieselben sechs Kennungen
- * stehen als Pruefbedingung in der Migration des Preisblatts, noch einmal in
- * der Migration der Rechnungszeilen und ein drittes Mal als Aufzaehlung in
- * der Schnittstellenbeschreibung. Eine Rechnungszeile traegt eine dieser
- * sechs, eine Menge, einen Stueckpreis, eine Bezugsgroesse und den Betrag
- * daraus; ein Feld fuer eine Bezeichnung gibt es nicht, und je Rechnung darf
- * jede Kennung genau einmal vorkommen.
+ * Deshalb sagt die Seite jetzt, was wirklich gilt: Kosten kann, was gemessen
+ * wird, also sechs Metriken mit je einem Preis, und dazu jede Pauschale, die
+ * an dieser Umgebung haengt. Beides steht hier vollstaendig, auch die
+ * Metriken ohne Preis.
  *
- * Die Seite wiederholt darum nicht die Projektion aus Einstellungen →
- * Abrechnung. Dort stehen die bepreisten Zeilen; hier steht der ganze
- * Katalog, auch die Metriken ohne Preis, denn die Frage lautet nicht „was
- * kostet es", sondern „was kann ueberhaupt etwas kosten".
+ * Was es weiterhin nicht gibt, steht genauso da: eine Stelle, an der jemand
+ * selbst etwas dazubucht, einen Tarif, ein gekauftes Kontingent und eine
+ * Zahlungsanbindung.
  *
  * Gelesen wird dieselbe Route wie unter Abrechnung, und nur sie. Geld laeuft
  * ueber `lib/console/money.ts`; kein Betrag und keine Waehrung steht im
@@ -90,7 +89,8 @@ export function AddonsView({ projectId, environment }: { projectId: string; envi
   return <div className="module-grid">
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t(ADDONS_TEXTS.kicker)} · {environment.toUpperCase()}</span><h3>{t(ADDONS_TEXTS.title)}</h3></div><div>{reload}</div></div>
-      <p className="risk medium">{t(ADDONS_TEXTS.noAddons)}</p>
+      <p className="risk medium">{t(ADDONS_TEXTS.addons)}</p>
+      <p className="muted">{t(ADDONS_TEXTS.noSelfService)}</p>
       <p className="muted">{t(ADDONS_TEXTS.closedList)}</p>
       <p className="muted">{t(ADDONS_TEXTS.scope)}</p>
     </article>
@@ -119,6 +119,19 @@ export function AddonsView({ projectId, environment }: { projectId: string; envi
 
       {projection && pricedCount === 0 && <p className="muted">{t(ADDONS_TEXTS.catalogNoPrices)}</p>}
       <p className="muted">{t(ADDONS_TEXTS.catalogPriceSource)}</p>
+    </article>
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("PAUSCHALEN")}</span><h3>{t(ADDONS_TEXTS.chargesTitle)}</h3></div><Receipt size={18}/></div>
+      <p className="muted">{t(ADDONS_TEXTS.chargesMeaning)}</p>
+      {projection && projection.charges.length === 0 && <p className="muted">{t(ADDONS_TEXTS.chargesNone)}</p>}
+      {projection && projection.charges.length > 0 && <div className="detail-list">
+        {projection.charges.map((charge) => <div key={charge.code}>
+          <span title={charge.code}>{charge.label}<small>{t(ADDONS_STATES.perMonth)}</small></span>
+          <strong>{projection.currency ? formatMoneyMicros(charge.amountMicros, projection.currency) : "–"}</strong>
+        </div>)}
+      </div>}
+      <p className="muted">{t(ADDONS_TEXTS.chargesEnd)}</p>
     </article>
 
     <article className="console-card span-2">

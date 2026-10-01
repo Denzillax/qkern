@@ -14,10 +14,13 @@ import { MemoryUsageRepository, type UsageRepository } from "@/lib/server/usage/
 import { UsageError, UsageService } from "@/lib/server/usage/service";
 import {
   BillingService,
+  MemoryBillingChargeRepository,
   MemoryBillingRateCardRepository,
+  type BillingChargeRepository,
   type BillingRateCardRepository,
 } from "@/lib/server/usage/billing";
 import {
+  PostgresBillingChargeRepository,
   PostgresBillingInvoiceReader,
   PostgresBillingRateCardRepository,
 } from "@/lib/server/usage/billing-postgres-repository";
@@ -99,6 +102,7 @@ export function createBillingServiceFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
   dependencies: {
     rateCards?: BillingRateCardRepository;
+    charges?: BillingChargeRepository;
     usage?: UsageRepository;
   } = {},
 ) {
@@ -110,13 +114,19 @@ export function createBillingServiceFromEnv(
   const rateCards = dependencies.rateCards ?? (postgres
     ? new PostgresBillingRateCardRepository(new PostgresControlPlane(getPostgresPool(env)))
     : new MemoryBillingRateCardRepository());
+  // Die Pauschalen aus 0080 kommen aus demselben Blattwerk wie die Preise: Ohne
+  // sie waere die Projektion kleiner als die Rechnung, und die Add-ons-Seite
+  // haette nichts zu zeigen, was es doch gibt.
+  const charges = dependencies.charges ?? (postgres
+    ? new PostgresBillingChargeRepository(new PostgresControlPlane(getPostgresPool(env)))
+    : new MemoryBillingChargeRepository());
   if (env.NODE_ENV === "production" && !postgres) {
     throw new ConfigurationError("Production billing requires the durable PostgreSQL repositories.");
   }
   const invoices = postgres
     ? new PostgresBillingInvoiceReader(new PostgresControlPlane(getPostgresPool(env)))
     : undefined;
-  return new BillingService({ rateCards, usage, invoices, controlPlane: controlPlaneService });
+  return new BillingService({ rateCards, charges, usage, invoices, controlPlane: controlPlaneService });
 }
 
 type GlobalBilling = typeof globalThis & { __qkernBillingService?: BillingService };

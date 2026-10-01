@@ -82,9 +82,12 @@ describe("console billing view", () => {
         { metric: "api_requests", label: "API requests", unit: "operations", used: "12", priced: false,
           unitPriceMicros: null, perUnits: null, amountMicros: null, amount: null },
       ],
+      // Pauschalen (0080): eigene Bezeichnung, kein Verbrauch, in der Summe.
+      charges: [{ code: "support-retainer", label: "Betreuung", amountMicros: "5000000", amount: "5.000000" }],
     } });
     expect(ready).toEqual({ state: "ready", projection: {
       period: "2026-09", currency: "CHF", totalMicros: "250000", unpricedMetrics: ["api_requests"],
+      charges: [{ code: "support-retainer", label: "Betreuung", amountMicros: "5000000" }],
       lines: [
         { metric: "queue_operations", unit: "operations", used: "1000", priced: true, unitPriceMicros: "250", perUnits: "1", amountMicros: "250000" },
         { metric: "api_requests", unit: "operations", used: "12", priced: false, unitPriceMicros: null, perUnits: null, amountMicros: null },

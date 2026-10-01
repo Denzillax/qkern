@@ -38,6 +38,15 @@ import { PERFORMANCE_THRESHOLDS } from "@/lib/console/performance-advisor-texts"
 import { duration, durationFromMilliseconds, rowsPerCall, timeShare } from "@/lib/console/query-performance-texts";
 import { PostgresUsageRepository } from "@/lib/server/usage/postgres-repository";
 import { UsageService } from "@/lib/server/usage/service";
+// Add-ons und Pauschalen (2.119): der echte Rechnungslauf mit der Worker-Rolle,
+// das echte Preis- und Pauschalenblatt und der echte Leser der Rechnungen.
+import { BillingService } from "@/lib/server/usage/billing";
+import {
+  PostgresBillingChargeRepository,
+  PostgresBillingInvoiceReader,
+  PostgresBillingRateCardRepository,
+} from "@/lib/server/usage/billing-postgres-repository";
+import { BillingInvoiceRun } from "@/lib/server/usage/invoice-run";
 // Der Tabellen-Designer (2.49): Generator, Control Plane, Apply-Dienst,
 // Worker und Executor: jeder Teil des Weges als das, was er im Betrieb ist.
 import { readFile } from "node:fs/promises";
@@ -245,6 +254,8 @@ const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
 const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
 const authUrl = process.env.QKERN_TEST_AUTH_DATABASE_URL;
+// Der Rechnungslauf aus (2.119) schreibt mit der Worker-Rolle.
+const workerUrl = process.env.QKERN_TEST_WORKER_DATABASE_URL;
 const vaultKvUrl = process.env.QKERN_TEST_VAULT_KV_URL;
 const vaultTokenFile = process.env.QKERN_TEST_VAULT_TOKEN_FILE;
 const databaseWebhookSecretRef = process.env.QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF;
@@ -14735,6 +14746,280 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       await owner.query("DELETE FROM users WHERE id = $1", [presenceOwner]);
     }
   }, 60_000);
+
+  /**
+   * Add-ons, und was eine Rechnungszeile tragen kann (2.119).
+   *
+   * **Der Befund, der dahinter steht.** Bis 2.62 konnte QKERN genau sechs
+   * Positionen auf eine Rechnung schreiben, eine je Metrik, und nichts
+   * anderes. Eine Zeile hatte kein Feld fuer eine Bezeichnung, die
+   * Eindeutigkeit `UNIQUE (invoice_id, metric)` aus 0040 band die Position an
+   * eine Metrik, und eine Pauschale haette ohne Menge keinen Weg zu einem
+   * Betrag gehabt. Migration 0080 raeumt das weg.
+   *
+   * **Was dieser Fall belegen muss, und warum er dafuer die richtigen
+   * Mechanismen nennen muss.** Die alte Eindeutigkeit hat zwei verschiedene
+   * Dinge getan, und nur eines davon war gewollt. Sie hat verhindert, dass
+   * eine Rechnung dieselbe Sache zweimal nennt, und sie hat die Rechnung auf
+   * sechs Zeilen begrenzt. Die Idempotenz des Laufs ueber zwei Laeufe hinweg
+   * hat sie nie getragen: Die traegt die Eindeutigkeit auf der **Rechnung**,
+   * und sie allein. Verliert der zweite Lauf dort im ON CONFLICT, schreibt er
+   * keine einzige Position, weil die Posten erst nach der gewonnenen Rechnung
+   * entstehen.
+   *
+   * Deshalb pruefen hier zwei getrennte Erwartungen zwei getrennte Sperren:
+   *
+   * - Der zweite Lauf desselben Monats laesst Rechnung, Positionen und Betrag
+   *   unberuehrt, auch bei vier Positionen, und verbrennt keine Nummer.
+   * - Auf den Positionen liegt genau eine Eindeutigkeit, und sie liegt auf dem
+   *   stabilen Schluessel. Eine zweite Zeile mit demselben Schluessel nimmt
+   *   die Datenbank nicht an.
+   *
+   * **Die Pauschale.** Sie kommt mit einer Menge von eins zu ihrem Betrag, und
+   * dieser Fall rechnet jede Position nach: Betrag gleich Menge mal
+   * Stueckpreis durch Bezugsgroesse, auch bei der Pauschale. Ein eigener
+   * Positionstyp mit eingetragenem Betrag haette eine Zahl auf die Rechnung
+   * gesetzt, die niemand nachrechnen kann.
+   *
+   * **Und die Mandantengrenze.** Sie wird ohne Filter geprueft: drei
+   * Zaehlabfragen ohne `WHERE` in der Transaktion einer fremden Organisation.
+   * Mit einem Filter traegt die Erwartung zwei Sperren, und sie bliebe gruen,
+   * wenn die Zeilenpolitik faellt.
+   *
+   * Die Periode ist fest statt relativ, wie in
+   * `tests/billing-invoice-postgres.integration.test.ts`: Juli und Juni 2026.
+   */
+  it("(2.119) gives every invoice position a label and a stable key, bills a flat charge without a quantity, lets a second run of the same month write nothing and burn no number, and shows no invoice, position or charge of one tenant to another", async () => {
+    expect(workerUrl, "QKERN_TEST_WORKER_DATABASE_URL").toBeTruthy();
+    const addonsUser = randomUUID();
+    const addonsOrganization = randomUUID();
+    const foreignOrganization = randomUUID();
+    const meteredProject = randomUUID();
+    const flatOnlyProject = randomUUID();
+    const worker = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: workerUrl!, max: 2 }), "worker");
+    try {
+      await owner.query(`INSERT INTO users (id,email,password_hash,status)
+        VALUES ($1,$2,'$argon2id$integration-only','active')`,
+      [addonsUser, `addons-${addonsUser}@qkern.test`]);
+      await owner.query(`INSERT INTO organizations (id,name,slug,created_by)
+        VALUES ($1,'Addons',$2,$3), ($4,'Addons Foreign',$5,$3)`,
+      [addonsOrganization, `addons-${addonsOrganization}`, addonsUser,
+        foreignOrganization, `addons-foreign-${foreignOrganization}`]);
+      for (const [project, name] of [
+        [meteredProject, "Addons Metered"], [flatOnlyProject, "Addons Flat"],
+      ] as const) {
+        await owner.query(`INSERT INTO projects (id,organization_id,name,slug,region,status,created_by)
+          VALUES ($1,$2,$3,$4,'test','ready',$5)`,
+        [project, addonsOrganization, name, `addons-${project}`, addonsUser]);
+        await owner.query(`INSERT INTO project_environments
+          (organization_id,project_id,environment,database_instance_ref)
+          VALUES ($1,$2,'development',$3)`, [addonsOrganization, project, `managed:${project}`]);
+      }
+      // Zaehler fuer den Juli, als Eigentuemer eingelegt: Der Usage-Dienst
+      // schreibt in das laufende Fenster, und der Juli ist abgeschlossen. Der
+      // Schreibweg der Zaehler selbst ist seit 1.29 eigens zertifiziert.
+      for (const [metric, quantity] of [
+        ["queue_operations", 1_000], ["storage_egress_bytes", 2_000_000_000],
+      ] as const) {
+        await owner.query(`INSERT INTO usage_counters
+          (organization_id,project_id,environment,metric,window_start,window_end,quantity)
+          VALUES ($1,$2,'development',$3,'2026-07-01T00:00:00Z','2026-08-01T00:00:00Z',$4)`,
+        [addonsOrganization, meteredProject, metric, quantity]);
+      }
+
+      const control = new PostgresControlPlane(runtime);
+      const billing = new BillingService({
+        rateCards: new PostgresBillingRateCardRepository(control),
+        charges: new PostgresBillingChargeRepository(control),
+        invoices: new PostgresBillingInvoiceReader(control),
+        usage: { readWindow: async () => [] },
+      });
+      const operator = {
+        organizationId: addonsOrganization, actorRef: "system:billing",
+        subject: addonsUser, role: "operator" as const,
+      };
+      await billing.setRate(operator, {
+        metric: "queue_operations", unitPriceMicros: 250n, currency: "CHF",
+        effectiveFrom: "2026-01-01",
+      });
+      await billing.setRate(operator, {
+        metric: "storage_egress_bytes", unitPriceMicros: 90_000n, perUnits: 1_000_000_000n,
+        currency: "CHF", effectiveFrom: "2026-01-01",
+      });
+      // Zwei Pauschalen auf dem gemessenen Projekt: Damit hat eine Rechnung
+      // vier Positionen. Entscheidend ist die dritte: Das Projekt ohne jede
+      // Nutzung bekommt eine Rechnung allein wegen seiner Pauschale, und vor
+      // 0080 fuehrten ausschliesslich die Zaehler, welche Umgebung der Lauf
+      // ueberhaupt besucht.
+      await billing.setCharge(operator, {
+        projectId: meteredProject, environment: "development", code: "support-retainer",
+        label: "Betreuung", amountMicros: 5_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+      });
+      await billing.setCharge(operator, {
+        projectId: meteredProject, environment: "development", code: "domain",
+        label: "Eigene Domain", amountMicros: 1_500_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+      });
+      await billing.setCharge(operator, {
+        projectId: flatOnlyProject, environment: "development", code: "support-retainer",
+        label: "Betreuung", amountMicros: 2_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+      });
+      // Eine beendete Pauschale: Betrag null, spaeterer Stichtag. Sie darf auf
+      // der Juli-Rechnung nicht stehen.
+      await billing.setCharge(operator, {
+        projectId: flatOnlyProject, environment: "development", code: "ended",
+        label: "Abgelaufen", amountMicros: 3_000_000n, currency: "CHF", effectiveFrom: "2026-01-01",
+      });
+      await billing.setCharge(operator, {
+        projectId: flatOnlyProject, environment: "development", code: "ended",
+        label: "Abgelaufen", amountMicros: 0n, currency: "CHF", effectiveFrom: "2026-06-01",
+      });
+
+      const run = (period: string) => new BillingInvoiceRun(new PostgresControlPlane(worker), {
+        organizationId: addonsOrganization, runnerId: "certification-addons-1", period,
+      });
+      expect(await run("2026-07").runOnce()).toEqual({
+        period: "2026-07", issued: 2, existing: 0, skipped: 0,
+      });
+
+      const invoiceOf = async (project: string, periodStart: string) => {
+        const result = await owner.query<{
+          id: string; invoice_number: string; total_micros: string;
+        }>(
+          `SELECT id, invoice_number::text AS invoice_number, total_micros::text AS total_micros
+           FROM billing_invoices
+           WHERE organization_id=$1 AND project_id=$2 AND environment='development'
+             AND period_start=$3::date`,
+          [addonsOrganization, project, periodStart]);
+        expect(result.rows).toHaveLength(1);
+        return result.rows[0]!;
+      };
+      const positionsOf = async (invoiceId: string) => (await owner.query<{
+        line_key: string; label: string; metric: string | null; quantity: string;
+        unit_price_micros: string; per_units: string; amount_micros: string;
+      }>(
+        `SELECT line_key, label, metric, quantity::text AS quantity,
+                unit_price_micros::text AS unit_price_micros, per_units::text AS per_units,
+                amount_micros::text AS amount_micros
+         FROM billing_invoice_lines WHERE invoice_id=$1 ORDER BY line_key`,
+        [invoiceId])).rows;
+
+      const metered = await invoiceOf(meteredProject, "2026-07-01");
+      // 1000 mal 250 plus 2e9 mal 90000 je 1e9 plus 1500000 plus 5000000.
+      expect(metered.total_micros).toBe("6930000");
+      const positions = await positionsOf(metered.id);
+      expect(positions.map((row) => [row.line_key, row.label])).toEqual([
+        ["charge:domain", "Eigene Domain"],
+        ["charge:support-retainer", "Betreuung"],
+        ["metric:queue_operations", "Queue operations"],
+        ["metric:storage_egress_bytes", "Storage egress"],
+      ]);
+      // Jede Position traegt eine Bezeichnung, und jeder Betrag ist gerechnet.
+      for (const row of positions) {
+        expect(row.label.length, row.line_key).toBeGreaterThan(0);
+        expect(BigInt(row.amount_micros), row.line_key).toBe(
+          BigInt(row.quantity) * BigInt(row.unit_price_micros) / BigInt(row.per_units));
+      }
+      // Die Pauschale: keine Metrik, Menge eins, Bezugsgroesse eins.
+      expect(positions.filter((row) => row.metric === null)
+        .map((row) => [row.line_key, row.quantity, row.per_units, row.amount_micros])).toEqual([
+        ["charge:domain", "1", "1", "1500000"],
+        ["charge:support-retainer", "1", "1", "5000000"],
+      ]);
+
+      // Das Projekt ohne jede Nutzung: eine Rechnung, eine Position, und die
+      // beendete Pauschale steht nicht darauf.
+      const flatOnly = await invoiceOf(flatOnlyProject, "2026-07-01");
+      expect(flatOnly.total_micros).toBe("2000000");
+      expect((await positionsOf(flatOnly.id)).map((row) => row.line_key))
+        .toEqual(["charge:support-retainer"]);
+
+      // Der zweite Lauf desselben Monats: keine zweite Rechnung, keine zweite
+      // Position, kein zweiter Betrag.
+      expect(await run("2026-07").runOnce()).toEqual({
+        period: "2026-07", issued: 0, existing: 2, skipped: 0,
+      });
+      expect(await invoiceOf(meteredProject, "2026-07-01")).toEqual(metered);
+      expect(await positionsOf(metered.id)).toEqual(positions);
+      const totals = await owner.query<{ invoices: number; lines: number }>(
+        `SELECT (SELECT count(*)::int FROM billing_invoices WHERE organization_id=$1) AS invoices,
+                (SELECT count(*)::int FROM billing_invoice_lines WHERE organization_id=$1) AS lines`,
+        [addonsOrganization]);
+      expect(totals.rows[0]).toEqual({ invoices: 2, lines: 5 });
+
+      // Der Nummernkreis bleibt lueckenlos: Der verlorene Lauf hat keine
+      // Nummer mitgenommen, und die naechsten Rechnungen bekommen die dritte
+      // und die vierte.
+      await owner.query(`INSERT INTO usage_counters
+        (organization_id,project_id,environment,metric,window_start,window_end,quantity)
+        VALUES ($1,$2,'development','queue_operations','2026-06-01T00:00:00Z','2026-07-01T00:00:00Z',400)`,
+      [addonsOrganization, meteredProject]);
+      expect(await run("2026-06").runOnce()).toMatchObject({ period: "2026-06", issued: 2 });
+      const numbers = await owner.query<{ invoice_number: string }>(
+        `SELECT invoice_number::text AS invoice_number FROM billing_invoices
+         WHERE organization_id=$1 ORDER BY invoice_number::bigint ASC`, [addonsOrganization]);
+      expect(numbers.rows.map((row) => row.invoice_number)).toEqual(["1", "2", "3", "4"]);
+
+      // Die Leseflaeche: dieselben Positionen mit Bezeichnung und Art, durch
+      // die Laufzeitrolle und den echten Leser.
+      const read = await billing.listInvoices(
+        { ...operator, role: "reader" },
+        { organizationId: addonsOrganization, projectId: meteredProject, environment: "development" });
+      const july = read.find((invoice) => invoice.periodStart === "2026-07-01")!;
+      expect(july.totalMicros).toBe("6930000");
+      expect(july.lines.map((line) => [line.lineKey, line.label, line.kind, line.metric])).toEqual([
+        ["metric:queue_operations", "Queue operations", "metered", "queue_operations"],
+        ["metric:storage_egress_bytes", "Storage egress", "metered", "storage_egress_bytes"],
+        ["charge:domain", "Eigene Domain", "flat", null],
+        ["charge:support-retainer", "Betreuung", "flat", null],
+      ]);
+
+      // Erst jetzt die Sperre auf den Positionen, und zwar in dieser
+      // Reihenfolge mit Absicht. Die Zusage oben haengt an der Eindeutigkeit
+      // der **Rechnung** und bleibt gruen, wenn die Eindeutigkeit der Position
+      // wegfaellt -- genau die Falle, in der eine Erwartung von zwei Sperren
+      // getragen wird. Deshalb steht hier eine eigene Erwartung, die nur diese
+      // eine Sperre nennt: Auf den Positionen liegt genau eine Eindeutigkeit,
+      // und sie liegt auf dem stabilen Schluessel. Sie verhindert nicht den
+      // zweiten Lauf, sondern dass eine Rechnung dieselbe Sache zweimal nennt.
+      const uniques = await owner.query<{ conname: string }>(
+        `SELECT conname FROM pg_constraint
+         WHERE conrelid='billing_invoice_lines'::regclass AND contype='u' ORDER BY conname`);
+      expect(uniques.rows.map((row) => row.conname))
+        .toEqual(["billing_invoice_lines_invoice_id_line_key_key"]);
+      await expect(withTenantTransaction(
+        worker, { organizationId: addonsOrganization }, async (transaction) =>
+          transaction.query(
+            `INSERT INTO billing_invoice_lines
+               (organization_id, invoice_id, line_key, label, metric, quantity,
+                unit_price_micros, per_units, amount_micros)
+             VALUES ($1,$2,'charge:support-retainer','Betreuung noch einmal',NULL,1,5000000,1,5000000)`,
+            [addonsOrganization, metered.id]))).rejects.toBeTruthy();
+
+      // Die Mandantengrenze, ohne Filter: Nur die Zeilenpolitik kann diese
+      // drei Zahlen auf null halten.
+      const hidden = await withTenantTransaction(
+        runtime, { organizationId: foreignOrganization, readOnly: true }, async (transaction) => ({
+          invoices: (await transaction.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM billing_invoices")).rows[0]!.n,
+          lines: (await transaction.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM billing_invoice_lines")).rows[0]!.n,
+          charges: (await transaction.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM billing_charges")).rows[0]!.n,
+        }));
+      expect(hidden).toEqual({ invoices: 0, lines: 0, charges: 0 });
+      expect(await billing.listInvoices(
+        { organizationId: foreignOrganization, actorRef: "reader@qkern.test",
+          subject: addonsUser, role: "reader" },
+        { organizationId: foreignOrganization, projectId: meteredProject, environment: "development" },
+      )).toEqual([]);
+    } finally {
+      await worker.end();
+      await owner.query("DELETE FROM organizations WHERE id IN ($1,$2)",
+        [addonsOrganization, foreignOrganization]).catch(() => {});
+      await owner.query("DELETE FROM users WHERE id = $1", [addonsUser]).catch(() => {});
+    }
+  }, 120_000);
 
 });
 

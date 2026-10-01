@@ -47,6 +47,55 @@ export interface BillingRateCardRepository {
   currencies(principal: UsagePrincipal, organizationId: string): Promise<string[]>;
 }
 
+/**
+ * Eine Pauschale — das zweite append-only Blatt aus Migration 0080.
+ *
+ * Das Preisblatt sagt, was eine Einheit einer Metrik kostet. Eine Pauschale
+ * sagt, was ein Projekt im Monat kostet, ohne jede Einheit. Deshalb hängt sie
+ * an (Projekt, Umgebung, Code) und nicht an einer Metrik, und deshalb liegt
+ * sie in eigenen Zeilen: Eine Tabelle für beide Fragen hätte in jeder Zeile
+ * eine Hälfte leerer Spalten.
+ *
+ * `amountMicros` 0 beendet sie. Löschen gibt es nicht, append-only heisst
+ * append-only, und eine Pauschale über null schreibt keine Rechnungszeile.
+ */
+export type BillingCharge = Readonly<{
+  projectId: string;
+  environment: string;
+  code: string;
+  label: string;
+  amountMicros: bigint;
+  currency: string;
+  effectiveFrom: string;
+  createdBy: string;
+}>;
+
+export type BillingChargeInput = Readonly<{
+  projectId: string;
+  environment: string;
+  code: string;
+  label: string;
+  amountMicros: bigint;
+  currency: string;
+  effectiveFrom: string;
+}>;
+
+export interface BillingChargeRepository {
+  insert(principal: UsagePrincipal, charge: BillingCharge & { organizationId: string }): Promise<BillingCharge>;
+  /**
+   * Je (Projekt, Umgebung, Code) die jüngste Zeile, deren `effectiveFrom`
+   * nicht nach `at` liegt — beendete Pauschalen mit Betrag 0 eingeschlossen,
+   * damit der Aufrufer sieht, dass es sie gab.
+   */
+  effectiveCharges(
+    principal: UsagePrincipal,
+    scope: Pick<UsageScope, "organizationId" | "projectId" | "environment">,
+    at: Date,
+  ): Promise<BillingCharge[]>;
+  /** Alle bereits verwendeten Währungen der Organisation. */
+  currencies(principal: UsagePrincipal, organizationId: string): Promise<string[]>;
+}
+
 export type BillingProjectionLine = Readonly<{
   metric: UsageMetric;
   label: string;
@@ -60,6 +109,14 @@ export type BillingProjectionLine = Readonly<{
   amount: string | null;
 }>;
 
+/** Eine Pauschale in der Projektion: ein Betrag, eine Bezeichnung, kein Verbrauch. */
+export type BillingProjectionCharge = Readonly<{
+  code: string;
+  label: string;
+  amountMicros: string;
+  amount: string;
+}>;
+
 export type BillingProjection = Readonly<{
   kind: "projection";
   projectId: string;
@@ -67,13 +124,26 @@ export type BillingProjection = Readonly<{
   period: string;
   currency: string | null;
   lines: BillingProjectionLine[];
+  /** Die wirksamen Pauschalen dieser Umgebung; beendete stehen nicht darin. */
+  charges: BillingProjectionCharge[];
   totalMicros: string;
   total: string;
   unpricedMetrics: UsageMetric[];
 }>;
 
+/**
+ * Eine Position auf einer Rechnung — seit Migration 0080 mit Bezeichnung.
+ *
+ * `lineKey` ist der stabile Schlüssel der Position (`metric:<kennung>` oder
+ * `charge:<code>`); er trägt die Eindeutigkeit innerhalb einer Rechnung. Bei
+ * einer Pauschale ist `metric` null und die Menge 1: Der Betrag bleibt
+ * gerechnet, eine Formel für alle Positionen.
+ */
 export type BillingInvoiceLine = Readonly<{
-  metric: UsageMetric;
+  lineKey: string;
+  label: string;
+  kind: "metered" | "flat";
+  metric: UsageMetric | null;
   quantity: string;
   unitPriceMicros: string;
   perUnits: string;
@@ -110,6 +180,8 @@ export interface BillingInvoiceReader {
 const CURRENCY = /^[A-Z]{3}$/;
 const EFFECTIVE_FROM = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 const MAX_PRICE = 1_000_000_000_000n;
+/** Dieselbe Form wie der CHECK in Migration 0080. */
+const CHARGE_CODE = /^[a-z0-9][a-z0-9-]{0,58}$/;
 
 export class BillingService {
   constructor(private readonly dependencies: {
@@ -117,6 +189,8 @@ export class BillingService {
     usage: Pick<UsageRepository, "readWindow">;
     /** Ohne Leser gibt es keine Rechnungsliste — und keinen stillen Ersatz. */
     invoices?: BillingInvoiceReader;
+    /** Ohne Blatt gibt es keine Pauschalen, und die Projektion sagt das. */
+    charges?: BillingChargeRepository;
     controlPlane?: Pick<ControlPlaneService, "getProjectEnvironment">;
     now?: () => Date;
   }) {}
@@ -141,11 +215,9 @@ export class BillingService {
     if (!CURRENCY.test(input.currency)) throw new UsageError("USAGE_INVALID_INPUT");
     if (!EFFECTIVE_FROM.test(input.effectiveFrom)) throw new UsageError("USAGE_INVALID_INPUT");
     // Eine Währung je Organisation. Erzwungen wird das hier und nicht in der
-    // Datenbank; die Lücke steht in der Release Note offen.
-    const used = await this.dependencies.rateCards.currencies(principal, principal.organizationId);
-    if (used.some((currency) => currency !== input.currency)) {
-      throw new UsageError("USAGE_POLICY_CONFLICT");
-    }
+    // Datenbank; die Lücke steht in der Release Note offen. Seit 0080 zählen
+    // die Pauschalen mit: Sonst könnte eine Rechnung zwei Währungen tragen.
+    await this.assertSingleCurrency(principal, input.currency);
     return this.dependencies.rateCards.insert(principal, {
       organizationId: principal.organizationId,
       metric: input.metric,
@@ -155,6 +227,60 @@ export class BillingService {
       effectiveFrom: input.effectiveFrom,
       createdBy: principal.subject,
     });
+  }
+
+  /**
+   * Setzt eine Pauschale — wie ein Preis: nur ein Operator, nur anfügend.
+   *
+   * Eine Pauschale ist eine kaufmännische Zusage an ein Projekt, und damit
+   * dieselbe Autorität wie ein Preis. Der Browser kommt deshalb auch hier
+   * nicht heran: Es gibt keine REST-Fläche, die schreibt.
+   *
+   * Beendet wird eine Pauschale mit `amountMicros: 0n` und einem späteren
+   * `effectiveFrom`. Das ist der einzige Weg, weil es in einem append-only
+   * Blatt keinen anderen gibt.
+   */
+  async setCharge(principal: UsagePrincipal, input: BillingChargeInput): Promise<BillingCharge> {
+    if (principal.role !== "operator") throw new UsageError("USAGE_ACCESS_DENIED");
+    if (!this.dependencies.charges) throw new UsageError("USAGE_METERING_DISABLED");
+    if (!CHARGE_CODE.test(input.code)) throw new UsageError("USAGE_INVALID_INPUT");
+    const label = input.label.trim();
+    if (label.length < 1 || label.length > 200) throw new UsageError("USAGE_INVALID_INPUT");
+    if (input.amountMicros < 0n || input.amountMicros > MAX_PRICE) {
+      throw new UsageError("USAGE_INVALID_INPUT");
+    }
+    if (!CURRENCY.test(input.currency)) throw new UsageError("USAGE_INVALID_INPUT");
+    if (!EFFECTIVE_FROM.test(input.effectiveFrom)) throw new UsageError("USAGE_INVALID_INPUT");
+    await this.assertProject(principal, {
+      organizationId: principal.organizationId,
+      projectId: input.projectId,
+      environment: input.environment as UsageScope["environment"],
+    });
+    await this.assertSingleCurrency(principal, input.currency);
+    return this.dependencies.charges.insert(principal, {
+      organizationId: principal.organizationId,
+      projectId: input.projectId,
+      environment: input.environment,
+      code: input.code,
+      label,
+      amountMicros: input.amountMicros,
+      currency: input.currency,
+      effectiveFrom: input.effectiveFrom,
+      createdBy: principal.subject,
+    });
+  }
+
+  /** Eine Währung je Organisation, über Preisblatt und Pauschalen hinweg. */
+  private async assertSingleCurrency(principal: UsagePrincipal, currency: string) {
+    const used = [
+      ...await this.dependencies.rateCards.currencies(principal, principal.organizationId),
+      ...this.dependencies.charges
+        ? await this.dependencies.charges.currencies(principal, principal.organizationId)
+        : [],
+    ];
+    if (used.some((existing) => existing !== currency)) {
+      throw new UsageError("USAGE_POLICY_CONFLICT");
+    }
   }
 
   /**
@@ -194,14 +320,17 @@ export class BillingService {
     }
     await this.assertProject(principal, scope);
     const window = parsePeriod(input.period, this.now());
-    const [records, rates] = await Promise.all([
+    const at = new Date(window.end.getTime() - 1);
+    const [records, rates, charges] = await Promise.all([
       this.dependencies.usage.readWindow(principal, scope, window.start, window.end),
       // Massgeblich ist der Preis am Fensterende: Wer mitten im Monat den
       // Preis ändert, ändert die Projektion des ganzen Monats — die ehrliche
       // Vereinfachung, solange es keinen Periodenabschluss gibt. Sie steht in
       // der Release Note.
-      this.dependencies.rateCards.effectiveRates(
-        principal, scope.organizationId, new Date(window.end.getTime() - 1)),
+      this.dependencies.rateCards.effectiveRates(principal, scope.organizationId, at),
+      // Dieselbe Stichtagsregel für die Pauschalen: Die Projektion soll
+      // dasselbe sagen, was der Rechnungslauf später schreibt.
+      this.dependencies.charges?.effectiveCharges(principal, scope, at) ?? Promise.resolve([]),
     ]);
     const usedByMetric = new Map(records.map((record) => [record.metric, record.quantity]));
     const rateByMetric = new Map(rates.map((rate) => [rate.metric, rate]));
@@ -232,13 +361,27 @@ export class BillingService {
       };
     });
 
+    // Eine beendete Pauschale (Betrag 0) steht in keiner Projektion: Sie
+    // schreibt auch keine Rechnungszeile, und eine Zeile über null wäre eine
+    // Aussage, die niemand gemeint hat.
+    const billableCharges = charges.filter((charge) => charge.amountMicros > 0n);
+    for (const charge of billableCharges) totalMicros += charge.amountMicros;
+
     return {
       kind: "projection",
       projectId: scope.projectId,
       environment: scope.environment,
       period: period(window.start),
-      currency: rates[0]?.currency ?? null,
+      // Ohne Preisblatt kann die Währung von einer Pauschale kommen: Ein
+      // Projekt mit einer Pauschale und ohne Nutzung hat einen Betrag.
+      currency: rates[0]?.currency ?? billableCharges[0]?.currency ?? null,
       lines,
+      charges: billableCharges.map((charge) => ({
+        code: charge.code,
+        label: charge.label,
+        amountMicros: charge.amountMicros.toString(),
+        amount: decimal(charge.amountMicros),
+      })),
       totalMicros: totalMicros.toString(),
       total: decimal(totalMicros),
       unpricedMetrics: unpriced,
@@ -292,5 +435,41 @@ export class MemoryBillingRateCardRepository implements BillingRateCardRepositor
     return [...new Set(this.cards
       .filter((card) => card.organizationId === organizationId)
       .map((card) => card.currency))];
+  }
+}
+
+/** Dasselbe für Pauschalen: dieselben Zusagen, kein Bestand. */
+export class MemoryBillingChargeRepository implements BillingChargeRepository {
+  private readonly charges: (BillingCharge & { organizationId: string })[] = [];
+
+  async insert(_principal: UsagePrincipal, charge: BillingCharge & { organizationId: string }) {
+    if (this.charges.some((existing) => existing.organizationId === charge.organizationId &&
+        existing.projectId === charge.projectId && existing.environment === charge.environment &&
+        existing.code === charge.code && existing.effectiveFrom === charge.effectiveFrom)) {
+      throw new UsageError("USAGE_POLICY_CONFLICT");
+    }
+    this.charges.push(charge);
+    return charge;
+  }
+
+  async effectiveCharges(
+    _principal: UsagePrincipal,
+    scope: Pick<UsageScope, "organizationId" | "projectId" | "environment">,
+    at: Date,
+  ) {
+    const cutoff = at.toISOString().slice(0, 10);
+    const byCode = new Map<string, BillingCharge>();
+    for (const charge of [...this.charges].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))) {
+      if (charge.organizationId !== scope.organizationId || charge.projectId !== scope.projectId ||
+          charge.environment !== scope.environment || charge.effectiveFrom > cutoff) continue;
+      byCode.set(charge.code, charge);
+    }
+    return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }
+
+  async currencies(_principal: UsagePrincipal, organizationId: string) {
+    return [...new Set(this.charges
+      .filter((charge) => charge.organizationId === organizationId)
+      .map((charge) => charge.currency))];
   }
 }

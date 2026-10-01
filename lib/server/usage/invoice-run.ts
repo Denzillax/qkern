@@ -24,6 +24,23 @@ import type { PostgresControlPlane } from "@/lib/server/db/repositories";
  * Worker-Rolle. Die Lektion der Sprint gilt auch hier: Ein Rechnungslauf, den
  * niemand startet, fakturiert nichts — deshalb gehört zum Slice der Prozess
  * und sein Arbeitsnachweis, nicht nur diese Klasse.
+ *
+ * ## Mehr als sechs Positionen (Migration 0080)
+ *
+ * Eine Rechnung trug bis dahin höchstens sechs Zeilen, eine je Metrik, weil
+ * `UNIQUE (invoice_id, metric)` die Position an die Metrik band. Seit 0080
+ * trägt jede Position einen stabilen Schlüssel — `metric:<kennung>` oder
+ * `charge:<code>` — und die Eindeutigkeit hängt an ihm. Der Unterschied ist
+ * wichtig für die Zusage dieses Laufs: Die Idempotenz über zwei Läufe hinweg
+ * trägt weiterhin allein die eindeutige Beschränkung auf der **Rechnung**.
+ * Verliert der zweite Lauf dort im ON CONFLICT, schreibt er keine einzige
+ * Position, weil die Posten erst nach der gewonnenen Rechnung entstehen. Der
+ * Schlüssel je Position verhindert etwas anderes: dass eine Rechnung dieselbe
+ * Sache zweimal nennt.
+ *
+ * Eine Pauschale kommt zu ihrem Betrag mit einer Menge von 1 und einer
+ * Bezugsgrösse von 1. Es gibt keinen Positionstyp mit eingetragenem Betrag;
+ * jeder Betrag auf einer Rechnung bleibt nachrechenbar.
  */
 
 export type BillingInvoiceLogEvent = Readonly<{
@@ -39,6 +56,12 @@ export type BillingInvoiceLogEvent = Readonly<{
   issued?: number;
   existing?: number;
   skipped?: number;
+  /**
+   * Pauschalen, die der Lauf nicht fakturiert hat, weil ihre Waehrung nicht
+   * die der Rechnung ist. Der Dienst laesst sie nicht entstehen; faende der
+   * Lauf eine, waere Schweigen die schlechteste Antwort.
+   */
+  mismatchedCharges?: string[];
   /** Feste Codes, niemals Datenbankmeldungen — wie beim Provisioner seit 1.66. */
   reason?: RepositoryErrorCode | "UNKNOWN";
 }>;
@@ -51,6 +74,10 @@ export type BillingInvoiceRunResult = Readonly<{
 }>;
 
 type CounterRow = { project_id: string; environment: string; metric: string; quantity: string };
+type ChargeRow = {
+  project_id: string; environment: string; code: string; label: string;
+  amount_micros: string; currency: string;
+};
 
 export type BillingInvoiceRunOptions = {
   organizationId: string;
@@ -111,19 +138,46 @@ export class BillingInvoiceRun {
         [this.options.organizationId, window.start.toISOString()],
       );
 
-      const byEnvironment = new Map<string, CounterRow[]>();
-      for (const row of counters.rows) {
-        const key = `${row.project_id}/${row.environment}`;
-        byEnvironment.set(key, [...(byEnvironment.get(key) ?? []), row]);
-      }
+      // Die wirksamen Pauschalen des Fensters, je (Projekt, Umgebung, Code)
+      // die juengste Zeile mit Stichtag vor dem Fensterende — dieselbe Regel
+      // wie beim Preisblatt. Beendete (Betrag 0) kommen mit und fallen erst in
+      // der Komposition heraus; eine beendete Pauschale ist kein Grund, eine
+      // Umgebung ganz auszulassen, aber auch keine Zeile.
+      const charges = await repositories.transaction.query<ChargeRow>(
+        `SELECT DISTINCT ON (project_id, environment, code)
+                project_id, environment, code, label,
+                amount_micros::text AS amount_micros, currency
+         FROM billing_charges
+         WHERE organization_id = $1 AND effective_from < $2::date
+         ORDER BY project_id, environment, code, effective_from DESC`,
+        [this.options.organizationId, iso(window.end)],
+      );
+
+      // Zaehler **und** Pauschalen bestimmen, welche Umgebungen der Lauf
+      // besucht. Vor 0080 fuehrten nur die Zaehler; ein Projekt mit einer
+      // Pauschale und ohne jede Nutzung haette nie eine Rechnung gesehen.
+      const byEnvironment = new Map<string, { projectId: string; environment: string;
+        counters: CounterRow[]; charges: ChargeRow[] }>();
+      const bucket = (projectId: string, environment: string) => {
+        const key = `${projectId}/${environment}`;
+        const found = byEnvironment.get(key) ??
+          { projectId, environment, counters: [], charges: [] };
+        byEnvironment.set(key, found);
+        return found;
+      };
+      for (const row of counters.rows) bucket(row.project_id, row.environment).counters.push(row);
+      for (const row of charges.rows) bucket(row.project_id, row.environment).charges.push(row);
 
       let issued = 0; let existing = 0; let skipped = 0;
-      for (const rows of byEnvironment.values()) {
-        const projectId = rows[0]!.project_id;
-        const environment = rows[0]!.environment;
-        const computed = computeInvoice(rows.map((row) => ({
+      for (const group of byEnvironment.values()) {
+        const projectId = group.projectId;
+        const environment = group.environment;
+        const computed = computeInvoice(group.counters.map((row) => ({
           metric: row.metric as UsageMetric, quantity: BigInt(row.quantity),
-        })), rateByMetric);
+        })), rateByMetric, group.charges.map((row) => ({
+          code: row.code, label: row.label,
+          amountMicros: BigInt(row.amount_micros), currency: row.currency,
+        })));
         if (!computed) {
           // Nutzung vorhanden, aber kein einziger Preis: Eine Rechnung ueber
           // null waere eine Aussage, die niemand gemeint hat.
@@ -171,18 +225,26 @@ export class BillingInvoiceRun {
         }
         await repositories.transaction.query("RELEASE SAVEPOINT invoice_numbering");
         for (const line of computed.lines) {
+          // `line_key` ist der stabile Schluessel der Position: `metric:<kennung>`
+          // oder `charge:<code>`. Er traegt die Eindeutigkeit innerhalb der
+          // Rechnung (Migration 0080), und er ist abgeleitet, nicht erzeugt —
+          // derselbe Monat, dieselbe Quelle, derselbe Schluessel.
           await repositories.transaction.query(
             `INSERT INTO billing_invoice_lines
-               (organization_id, invoice_id, metric, quantity, unit_price_micros, per_units, amount_micros)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [this.options.organizationId, invoiceId, line.metric, line.quantity.toString(),
-              line.unitPriceMicros.toString(), line.perUnits.toString(), line.amountMicros.toString()],
+               (organization_id, invoice_id, line_key, label, metric, quantity,
+                unit_price_micros, per_units, amount_micros)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [this.options.organizationId, invoiceId, line.lineKey, line.label, line.metric,
+              line.quantity.toString(), line.unitPriceMicros.toString(),
+              line.perUnits.toString(), line.amountMicros.toString()],
           );
         }
         issued += 1;
         safeLog(this.options.logger, {
           event: "billing.invoice.issued", period: window.period, projectId, environment,
           invoiceId, totalMicros: computed.totalMicros.toString(), currency: computed.currency,
+          ...computed.mismatchedCharges.length > 0
+            ? { mismatchedCharges: computed.mismatchedCharges } : {},
         });
       }
       return { period: window.period, issued, existing, skipped };
@@ -256,24 +318,51 @@ export class BillingInvoicePeriodError extends Error {
 }
 recognisedByName(BillingInvoicePeriodError, "BillingInvoicePeriodError");
 
+/**
+ * Eine Position einer Rechnung — seit 0080 mit stabilem Schluessel und
+ * Bezeichnung.
+ *
+ * `metric` ist `null` bei einer Pauschale. Die Menge ist dann 1 und die
+ * Bezugsgroesse 1: Der Betrag bleibt gerechnet, eine Formel fuer alle
+ * Positionen.
+ */
 export type InvoiceLine = {
-  metric: UsageMetric;
+  lineKey: string;
+  label: string;
+  metric: UsageMetric | null;
   quantity: bigint;
   unitPriceMicros: bigint;
   perUnits: bigint;
   amountMicros: bigint;
 };
 
+export type InvoiceCharge = {
+  code: string;
+  label: string;
+  amountMicros: bigint;
+  currency: string;
+};
+
 /**
  * Posten und Summe einer Umgebung — reine Arithmetik, lokal getestet.
  *
- * `null`, wenn keine einzige Metrik einen Preis hat. Abgerundet auf den Mikro,
- * wie in der Projektion: der angebrochene Mikro-Franken gehoert dem Kunden.
+ * `null`, wenn weder eine Metrik einen Preis hat noch eine Pauschale gilt.
+ * Abgerundet auf den Mikro, wie in der Projektion: der angebrochene
+ * Mikro-Franken gehoert dem Kunden.
+ *
+ * Die Waehrung kommt vom Preisblatt, wenn es eine bepreiste Metrik gibt, sonst
+ * von der ersten geltenden Pauschale. Eine Pauschale in einer anderen Waehrung
+ * faellt heraus statt die Rechnung zu vermischen; erzeugen kann sie der Dienst
+ * nicht, der eine Waehrung je Organisation durchsetzt (`assertSingleCurrency`).
  */
 export function computeInvoice(
   counters: ReadonlyArray<{ metric: UsageMetric; quantity: bigint }>,
   rates: ReadonlyMap<UsageMetric, Pick<BillingRateCard, "metric" | "unitPriceMicros" | "perUnits" | "currency">>,
-): { lines: InvoiceLine[]; unpriced: UsageMetric[]; currency: string; totalMicros: bigint } | null {
+  charges: ReadonlyArray<InvoiceCharge> = [],
+): {
+  lines: InvoiceLine[]; unpriced: UsageMetric[]; currency: string;
+  totalMicros: bigint; mismatchedCharges: string[];
+} | null {
   const lines: InvoiceLine[] = [];
   const unpriced: UsageMetric[] = [];
   let totalMicros = 0n;
@@ -284,14 +373,35 @@ export function computeInvoice(
     if (!rate) { unpriced.push(counter.metric); continue; }
     const amountMicros = (counter.quantity * rate.unitPriceMicros) / rate.perUnits;
     lines.push({
+      lineKey: `metric:${counter.metric}`,
+      label: USAGE_METRIC_DEFINITIONS[counter.metric].label,
       metric: counter.metric, quantity: counter.quantity,
       unitPriceMicros: rate.unitPriceMicros, perUnits: rate.perUnits, amountMicros,
     });
     totalMicros += amountMicros;
     currency ??= rate.currency;
   }
+  // Die Pauschalen in einer festen Reihenfolge, damit zwei Laeufe desselben
+  // Monats dieselbe Rechnung ergeben wuerden — und damit die Waehrung einer
+  // reinen Pauschalenrechnung nicht von der Lesereihenfolge abhaengt.
+  const mismatchedCharges: string[] = [];
+  for (const charge of [...charges].sort((left, right) => left.code.localeCompare(right.code))) {
+    if (charge.amountMicros <= 0n) continue;
+    currency ??= charge.currency;
+    if (charge.currency !== currency) { mismatchedCharges.push(charge.code); continue; }
+    lines.push({
+      lineKey: `charge:${charge.code}`,
+      label: charge.label,
+      metric: null,
+      quantity: 1n,
+      unitPriceMicros: charge.amountMicros,
+      perUnits: 1n,
+      amountMicros: charge.amountMicros,
+    });
+    totalMicros += charge.amountMicros;
+  }
   if (currency === null) return null;
-  return { lines, unpriced, currency, totalMicros };
+  return { lines, unpriced, currency, totalMicros, mismatchedCharges };
 }
 
 function iso(date: Date) { return date.toISOString().slice(0, 10); }

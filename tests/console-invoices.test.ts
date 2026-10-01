@@ -15,7 +15,13 @@ describe("console invoices loader", () => {
       currency: "CHF", total: "0.025000", totalMicros: "25000", unpricedMetrics: ["api_requests"],
       dueAt: "2026-07-01T00:00:00.000Z",
       issuedAt: "2026-06-01T00:00:00.000Z",
-      lines: [{ metric: "queue_operations", amount: "0.025000" }],
+      lines: [
+        { lineKey: "metric:queue_operations", label: "Queue operations", kind: "metered",
+          metric: "queue_operations", amount: "0.025000" },
+        // Eine Pauschale: kein Metrikname, aber eine Bezeichnung (0080).
+        { lineKey: "charge:support-retainer", label: "Betreuung", kind: "flat",
+          metric: null, amount: "5.000000" },
+      ],
     }],
   };
 
@@ -34,7 +40,12 @@ describe("console invoices loader", () => {
         currency: "CHF", total: "0.025000", totalMicros: "25000", unpricedMetrics: ["api_requests"],
         dueAt: "2026-07-01T00:00:00.000Z",
         issuedAt: "2026-06-01T00:00:00.000Z",
-        lines: [{ metric: "queue_operations", amount: "0.025000" }],
+        lines: [
+          { lineKey: "metric:queue_operations", label: "Queue operations", kind: "metered",
+            metric: "queue_operations", amount: "0.025000" },
+          { lineKey: "charge:support-retainer", label: "Betreuung", kind: "flat",
+            metric: "", amount: "5.000000" },
+        ],
       }],
     });
   });

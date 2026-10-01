@@ -9,7 +9,19 @@
 
 import { USAGE_METERING_DISABLED_ERROR } from "@/lib/console/billing";
 
-export type ConsoleInvoiceLine = { metric: string; amount: string };
+/**
+ * Eine Position, wie die Console sie liest — seit 0080 mit Bezeichnung.
+ *
+ * `metric` ist leer bei einer Pauschale; `kind` sagt es ausdruecklich, damit
+ * die Ansicht nicht aus einer leeren Zeichenkette schliessen muss.
+ */
+export type ConsoleInvoiceLine = {
+  lineKey: string;
+  label: string;
+  kind: "metered" | "flat";
+  metric: string;
+  amount: string;
+};
 
 export type ConsoleInvoice = {
   invoiceNumber: string;
@@ -35,7 +47,7 @@ type WireInvoice = {
   invoiceNumber?: unknown; periodStart?: unknown; periodEnd?: unknown;
   currency?: unknown; total?: unknown; totalMicros?: unknown; unpricedMetrics?: unknown;
   dueAt?: unknown; issuedAt?: unknown;
-  lines?: Array<{ metric?: unknown; amount?: unknown }>;
+  lines?: Array<{ lineKey?: unknown; label?: unknown; kind?: unknown; metric?: unknown; amount?: unknown }>;
 };
 
 /**
@@ -84,7 +96,11 @@ export async function loadConsoleInvoices(
         dueAt: String(invoice.dueAt ?? ""),
         issuedAt: String(invoice.issuedAt ?? ""),
         lines: (invoice.lines ?? []).map((line) => ({
-          metric: String(line.metric ?? ""), amount: String(line.amount ?? ""),
+          lineKey: String(line.lineKey ?? ""),
+          label: String(line.label ?? ""),
+          kind: line.kind === "flat" ? "flat" as const : "metered" as const,
+          metric: String(line.metric ?? ""),
+          amount: String(line.amount ?? ""),
         })),
       })),
     };

@@ -23,6 +23,11 @@ import { formatMoneyMicros, formatUnitPriceMicros, parseMicros } from "@/lib/con
  *
  * Kein Betrag und keine Waehrung steht im Quelltext: alles kommt aus der
  * Antwort und geht durch `lib/console/money.ts`.
+ *
+ * Seit 0080 traegt die Projektion neben den Metriken auch die Pauschalen der
+ * Umgebung. Sie stehen in derselben Karte wie der laufende Monat, weil sie in
+ * derselben Summe stehen -- eine Pauschale in einer eigenen Karte waere ein
+ * Betrag, den die Summe nennt und die Seite nicht zeigt.
  */
 type Environment = "development" | "staging" | "production";
 type Payload = Record<string, unknown>;
@@ -152,6 +157,15 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
             <strong className={line.priced ? undefined : "muted"}>{line.priced && line.amountMicros !== null && projection.currency ? formatMoneyMicros(line.amountMicros, projection.currency) : t("ohne Preis")}</strong>
           </div>)}
         </div>
+        {projection.charges.length > 0 && <>
+          <p className="muted">{t("Pauschalen dieses Monats. Sie hängen an keiner Metrik und tragen ihre eigene Bezeichnung; der Betrag steht fest und ist in der Summe enthalten.")}</p>
+          <div className="detail-list">
+            {projection.charges.map((charge) => <div key={charge.code}>
+              <span title={charge.code}>{charge.label}<small>{t("ohne Menge")}</small></span>
+              <strong>{projection.currency ? formatMoneyMicros(charge.amountMicros, projection.currency) : "–"}</strong>
+            </div>)}
+          </div>
+        </>}
         {projection.unpricedMetrics.length > 0 && <p className="muted">{t("Ohne Preis und nicht in der Summe:")} {projection.unpricedMetrics.map(billingMetricLabel).join(", ")}</p>}
         <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Jede Zeile wird einzeln auf zwei Nachkommastellen abgerundet angezeigt, die Summe als Ganzes; die Zeilen können deshalb zusammen weniger ergeben als die Summe.")}</p>
       </>
