@@ -149,6 +149,69 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.126 (Zweig `slice/backupdrill`) **Eine Projektdatenbank wird gesichert und
+  wiederhergestellt.** Migration `0083_project_database_backups.sql` legt
+  `project_database_backups` an: je Backup eine Zeile mit Zustand, Lease,
+  Objektschluessel, Pruefsumme, Groesse, eingewickeltem Datenschluessel,
+  Manifest und Ablauf, unter Zeilensicherheit mit `FORCE`. Die Tabelle **ist**
+  auch die Queue; eine zweite daneben waere eine zweite Antwort auf dieselbe
+  Frage.
+
+  **Die offene Stelle, die das schliesst.** Der Drill aus `2.29.0` sichert die
+  **Steuerungsdatenbank**: physisches Basisbackup des Clusters,
+  Wiederherstellung auf einen Zeitpunkt aus dem WAL-Archiv. Die Datenbank eines
+  **Mandanten** war nie gesichert und nie wiederhergestellt, und genau das ist
+  bei Supabase die Zusage, die ein Kunde kauft.
+
+  **Wer es fahrt:** der vorhandene **Provisioner-Prozess**, in seiner
+  Leerlaufrunde. Kein neunter Prozess, und die Begruendung steht im Quelltext
+  (`lib/server/backup/project-database.ts`): Er ist der einzige Prozess mit
+  einem privilegierten, Vault-gestuetzten Weg zu einer Projektdatenbank, und das
+  Ziel einer Wiederherstellung ist eine **neue Datenbank** -- ein zweiter
+  Prozess mit `CREATEDB` waere eine zweite Stelle mit dem schaerfsten Recht im
+  Cluster. Ein wartender Projektauftrag geht immer vor.
+
+  **Mit welcher Rolle:** `qkern_project_backup`, anmeldefaehig, `BYPASSRLS`
+  (sonst sichert ein Backup die Schnittmenge der Sichtbarkeiten), Mitglied von
+  `pg_read_all_data`, `NOCREATEDB`, ohne Schreibrecht. Die Rolle der Data API
+  waere falsch. Das Zugangsdatum kommt aus einer **statischen Vault-Rolle**,
+  abgeleitet aus dem Rollenstamm der Bindung (`<stamm>-backup`,
+  `<stamm>-restore-admin`); kein Passwort im Quelltext, keines in einer
+  Umgebungsvariablen, keines in einem Log. `pg_dump` ist ein Kindprozess und
+  bekommt es ueber `PGPASSWORD` in einer **neu gebauten** Umgebung, nie in
+  `argv`.
+
+  **Logisch, nicht physisch**, und der Grund steht in 0083: ein Basisbackup
+  zieht den **Cluster** und damit fremde Mandanten mit. Umfasst sind Schema,
+  Zeilen, Policies, Erweiterungen, Sequenzen mit Stand und Rechte.
+  **Ausgelassen, mit Grund:** Cluster-Rollen (clusterweit, nicht Teil einer
+  Datenbank) und jeder Zeitpunkt **zwischen** zwei Backups (kein WAL-Archiv je
+  Projektdatenbank, also keine Wiederherstellung auf eine beliebige Sekunde --
+  das bleibt die Zusage des Control-Plane-Weges).
+
+  **Verschluesselung:** Datenschluessel je Backup (AES-256-GCM), eingewickelt in
+  einen Mandanten-Schluessel aus dem Vault; beide Ebenen binden Organisation,
+  Projekt, Umgebung und Backup-Id als AAD. **Der Betreiber kann ein Backup
+  lesen** -- QKERN hat keine kundengehaltenen Schluessel, und das steht so im
+  Quelltext und im Backup-Dokument.
+
+  **Wiederhergestellt wird nie ueber die lebende Datenbank**, sondern in eine
+  neue, angelegt mit `qkern_project_restore_admin` (`CREATEDB`, Mitglied des
+  Ledger-Eigentuemers, **kein** Superuser). Es gibt in diesem Weg kein
+  `DROP DATABASE`; der Umschwung bleibt beim Betreiber.
+
+  **Mandantengrenze, drei Riegel ohne Filter in der Anfrage:** Zeilensicherheit
+  mit `FORCE`, der aus der Zeile abgeleitete Objektschluessel, und die AAD des
+  Umschlags -- fremde Bytes gehen unter eigener Kennung nicht auf.
+  **Aufbewahrung** 30 Tage, Aufraeumer portionsweise mit Obergrenze und
+  einspeisbarer Uhr, **erst das Objekt, dann die Zeile**.
+
+  Stack: `test:backup:docker` 2 Faelle (vorher 1), Fall `(2.126)`. Der Stack hat
+  dafuer eine eigene CA, einen echten Vault und einen Objektspeicher bekommen.
+  **Offen**: Die Console liest den Katalog nicht, es gibt keine Route mit
+  Schreibverb, die ein Backup bestellt, und kein Produktweg zieht ein
+  Basisbackup der Steuerungsdatenbank.
+
 - 2.121 **Eine Nachricht der Queues laesst sich jetzt verfolgen.** Migration
   `0081_project_queue_message_traces.sql` legt `project_queue_message_traces` an:
   je Station eine Zeile, geschrieben **in derselben Transaktion** wie der

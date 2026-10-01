@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { recognisedByName } from "@/lib/server/errors/identity";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 
 /**
@@ -69,6 +70,7 @@ export class ProjectDatabaseManifestError extends Error {
     this.name = "ProjectDatabaseManifestError";
   }
 }
+recognisedByName(ProjectDatabaseManifestError, "ProjectDatabaseManifestError");
 
 /**
  * Liest das Manifest. Jede Abfrage ist geordnet, und zwar serverseitig: eine

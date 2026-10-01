@@ -48,8 +48,8 @@ export type RestoreKnowledgeItem = (typeof RESTORE_KNOWLEDGE_ITEMS)[number];
 
 export const RESTORE_KNOWLEDGE_TEXTS: Record<RestoreKnowledgeItem, { label: string; explains: string }> = {
   no_catalogue: {
-    label: "Kein Katalog vergangener Backups",
-    explains: "Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder Wiederherstellungsläufe an. Es gibt darum keine Liste vergangener Läufe und keinen Zeitpunkt eines letzten Backups ausser dem, den der Drill selbst mitbringt.",
+    label: "Ein Katalog, den diese Seite nicht liest",
+    explains: "Migration 0083 hält die Backups einer Projektdatenbank in der Kontrollebene. Diese Seite liest ihn nicht: sie liest die Route unter point-in-time, und die kennt nur die Erklärung des Betreibers und die Evidenz des Drills. Ein Zeitpunkt eines letzten Backups steht deshalb hier weiterhin nicht.",
   },
   no_sizes: {
     label: "Keine Grössen",

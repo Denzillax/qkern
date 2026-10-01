@@ -166,8 +166,12 @@ describe("console backups contract", () => {
   // Der Satz, der den Knopf gekostet hat: kein Produktweg                //
   // ------------------------------------------------------------------ //
 
-  it("finds no place in the product that pulls a backup, and exactly one in the tree that does", async () => {
-    const TOOLS = /\bpg_basebackup\b|\bpg_dumpall\b|\bpg_dump\b|\bpg_receivewal\b|\bpgbackrest\b|\bwal-g\b|\bbarman\b/;
+  it("finds no place in the product that pulls a base backup, and exactly one that dumps a project database", async () => {
+    // `pg_dump` steht hier seit 2.126 **nicht** mehr in der Liste, und das ist
+    // kein Aufweichen: Fuer die Projektdatenbank gibt es den Weg jetzt, und er
+    // wird unten einzeln festgenagelt. Was weiterhin nirgends im Produkt
+    // vorkommt, ist ein Werkzeug fuer ein Backup des ganzen Clusters.
+    const TOOLS = /\bpg_basebackup\b|\bpg_dumpall\b|\bpg_receivewal\b|\bpgbackrest\b|\bwal-g\b|\bbarman\b/;
     // Zwei Dateien sind ausgenommen, und zwar mit Grund: Die Texte dieser
     // Seite und ihre Uebersetzungen nennen die Werkzeuge selbst, um zu sagen,
     // dass niemand sie ruft. Wuerde man sie mitlesen, schluege der Fall an
@@ -181,17 +185,30 @@ describe("console backups contract", () => {
       if (EXEMPT.has(file)) continue;
       if (TOOLS.test(await code(file))) offenders.push(file);
     }
-    expect(offenders, "Jemand zieht jetzt doch ein Backup aus dem Produkt heraus").toEqual([]);
+    expect(offenders, "Jemand zieht jetzt doch ein Basisbackup aus dem Produkt heraus").toEqual([]);
 
-    // Und der Ordner, in dem man es vermuten wuerde, haelt genau drei Dateien,
-    // die alle drei lesen.
-    const backupLib = (await readdir(path.resolve(process.cwd(), "lib/server/backup"))).sort();
-    expect(backupLib).toEqual(["point-in-time.ts", "restore-evidence-runtime.ts", "restore-evidence.ts"]);
-    expect(BACKUPS_FINDING_TEXTS.product_path.verdict).toBe("missing");
+    // `pg_dump` dagegen gibt es, und genau einmal. Mehr als eine Stelle waere
+    // ein zweiter Weg zum Dump, und der Fall faellt dann.
+    const dumping: string[] = [];
+    for (const file of files) {
+      if (EXEMPT.has(file)) continue;
+      if (/\bpg_dump\b/.test(await code(file))) dumping.push(file);
+    }
+    expect(dumping).toEqual(["lib/server/backup/project-database-dump.ts"]);
+    // Und zwar als Kindprozess mit dem Passwort in der Umgebung und nicht in
+    // `argv`: in `argv` stuende es in `ps`.
+    const dump = await source("lib/server/backup/project-database-dump.ts");
+    expect(dump).toContain("PGPASSWORD: run.password");
+    expect(dump).toContain("sslmode=verify-full");
+    expect(await code("lib/server/backup/project-database-dump.ts")).not.toMatch(/password=\$\{/);
+
+    expect(BACKUPS_FINDING_TEXTS.product_path.verdict).toBe("limit");
     expect(BACKUPS_FINDING_TEXTS.product_path.explains)
-      .toContain("Unter lib/server gibt es den Ordner backup, und er enthält drei Dateien");
+      .toContain("lib/server/backup/project-database-dump.ts ruft pg_dump als Kindprozess");
+    expect(BACKUPS_FINDING_TEXTS.product_path.explains)
+      .toContain("pg_basebackup, pg_dumpall und pg_receivewal ruft im Produkt keine Stelle auf");
 
-    // Die eine Stelle, die es wirklich tut, liegt unter tests/.
+    // Die eine Stelle, die ein Basisbackup wirklich zieht, liegt unter tests/.
     expect(await source(DRILL_TEST)).toContain('execFileSync("pg_basebackup"');
   });
 
@@ -213,7 +230,7 @@ describe("console backups contract", () => {
       .toContain("steht genau ein Pfad, point-in-time, und er kennt nur GET");
   });
 
-  it("finds no table anywhere in the migrations that would hold a backup", async () => {
+  it("finds exactly one table in the migrations that holds a backup, and it is the tenant catalogue", async () => {
     const created: Array<{ migration: string; table: string }> = [];
     for (const { name, sql } of await migrations()) {
       for (const match of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
@@ -222,10 +239,23 @@ describe("console backups contract", () => {
     }
     expect(created.length).toBeGreaterThan(50);
     const backupish = created.filter(({ table }) => /backup|restore|snapshot|recovery_point|wal_/.test(table));
-    expect(backupish, "Eine Migration legt jetzt doch eine Backup-Tabelle an").toEqual([]);
+    // Seit 2.126 genau eine, und zwar der Katalog der Projektdatenbank-Backups
+    // aus 0083. Eine zweite waere eine zweite Antwort auf dieselbe Frage, und
+    // der Fall faellt dann.
+    expect(backupish).toEqual([
+      { migration: "0083_project_database_backups.sql", table: "project_database_backups" },
+    ]);
+    const catalogue = await source(`${MIGRATIONS}/0083_project_database_backups.sql`);
+    // Die Mandantengrenze steht in der Migration und nicht im Dienst.
+    expect(catalogue).toContain("ALTER TABLE project_database_backups FORCE ROW LEVEL SECURITY;");
+    expect(catalogue).toContain("organization_id = qkern_current_organization_id()");
+    expect(BACKUPS_FINDING_TEXTS.no_catalogue.verdict).toBe("exists");
     expect(BACKUPS_FINDING_TEXTS.no_catalogue.explains)
-      .toContain("Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder Wiederherstellungsläufe an");
-    expect(BACKUPS_HONESTY).toContain("QKERN führt über seine Backups keinen Katalog");
+      .toContain("Migration 0083 legt project_database_backups an");
+    expect(BACKUPS_HONESTY).toContain("Der Katalog in der Kontrollebene hält die Backups dieser Projektdatenbank");
+    // Und die Seite liest ihn noch nicht. Das ist der Satz, der sie ehrlich
+    // haelt; wer die Ansicht verdrahtet, laesst diesen Fall fallen.
+    expect(await code(VIEW)).not.toContain("project_database_backups");
   });
 
   // ------------------------------------------------------------------ //
@@ -239,7 +269,11 @@ describe("console backups contract", () => {
 
     expect(manifest.scripts["test:backup:docker"]).toBe("node scripts/backup-certification.mjs");
     expect(script).toContain('"docker-compose.backup-certification.yml"');
-    expect(stack).toContain("npx vitest run tests/backup-restore-drill.integration.test.ts");
+    // Seit 2.126 faehrt der Stack zwei Faelle in einem Lauf, und zwar
+    // hintereinander: beide greifen auf denselben Cluster zu.
+    expect(stack).toContain("tests/backup-restore-drill.integration.test.ts");
+    expect(stack).toContain("tests/project-database-backup-drill.integration.test.ts");
+    expect(stack).toContain("--no-file-parallelism");
     expect(script).toContain('mkdirSync("docs/evidence/backup-restore", { recursive: true })');
     expect(script).toContain('writeFileSync("docs/evidence/backup-restore/drill.evidence.json"');
 

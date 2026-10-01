@@ -155,7 +155,7 @@ describe("console restore to new project contract", () => {
   // "Kein Katalog vergangener Backups" und "Keine Grössen"              //
   // ------------------------------------------------------------------ //
 
-  it("finds no table anywhere in the migrations that would hold a backup", async () => {
+  it("finds exactly one table in the migrations that holds a backup, and the page still does not read it", async () => {
     const created: Array<{ migration: string; table: string }> = [];
     for (const { name, sql } of await migrations()) {
       for (const match of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
@@ -165,9 +165,15 @@ describe("console restore to new project contract", () => {
     // Ohne Tabellen waere der Fall wertlos; er muss wirklich gelesen haben.
     expect(created.length).toBeGreaterThan(50);
     const backupish = created.filter(({ table }) => /backup|restore|snapshot|recovery_point|wal_/.test(table));
-    expect(backupish, "Eine Migration legt jetzt doch eine Backup-Tabelle an").toEqual([]);
+    // Seit 2.126 gibt es den Katalog aus 0083. Was diese Seite angeht, aendert
+    // das nichts: sie liest ihn nicht, und dieser Fall haelt genau das fest.
+    expect(backupish).toEqual([
+      { migration: "0083_project_database_backups.sql", table: "project_database_backups" },
+    ]);
     expect(RESTORE_KNOWLEDGE_TEXTS.no_catalogue.explains)
-      .toContain("Keine Migration legt eine Tabelle für Backups");
+      .toContain("Migration 0083 hält die Backups einer Projektdatenbank in der Kontrollebene");
+    expect(RESTORE_KNOWLEDGE_TEXTS.no_catalogue.explains)
+      .toContain("Diese Seite liest ihn nicht");
   });
 
   it("hands out neither a size nor a digest of a backup, exactly as the page says", () => {
@@ -292,7 +298,7 @@ describe("console restore to new project contract", () => {
     // Der Stack, den die Seite nennt, ist der, den npm wirklich faehrt.
     expect(manifest.scripts["test:backup:docker"]).toBe("node scripts/backup-certification.mjs");
     expect(script).toContain('"docker-compose.backup-certification.yml"');
-    expect(stack).toContain("npx vitest run tests/backup-restore-drill.integration.test.ts");
+    expect(stack).toContain("tests/backup-restore-drill.integration.test.ts");
     expect(RESTORE_CHAIN_TEXTS.restore_run.component)
       .toContain("tests/backup-restore-drill.integration.test.ts, gefahren von npm run test:backup:docker");
 
@@ -332,7 +338,7 @@ describe("console restore to new project contract", () => {
   // Glied 2: die frische Datenbank                                      //
   // ------------------------------------------------------------------ //
 
-  it("finds no component that creates a database, and names the one that would have to", async () => {
+  it("finds exactly one component that creates a database, and it is not the provisioning chain", async () => {
     const migration = await source(`${MIGRATIONS}/0020_project_database_provisioning.sql`);
     expect(migration).toContain(
       "CREATE ROLE qkern_provisioner NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;",
@@ -344,13 +350,28 @@ describe("console restore to new project contract", () => {
     // selbst. Sie führen nichts aus; würde man sie mitlesen, schlüge der Fall
     // an seiner eigenen Behauptung fehl.
     const EXEMPT = new Set([TEXTS, "lib/i18n/console.ts"]);
-    const offenders: string[] = [];
+    const creating: string[] = [];
     for (const file of await productFiles()) {
       if (EXEMPT.has(file)) continue;
       const text = await code(file);
-      if (/CREATE\s+DATABASE/i.test(text) || /\bcreatedb\b/.test(text)) offenders.push(file);
+      if (/CREATE\s+DATABASE/i.test(text) || /\bcreatedb\b/.test(text)) creating.push(file);
     }
-    expect(offenders, "Jemand legt jetzt doch eine Datenbank an").toEqual([]);
+    // Seit 2.126 gibt es **eine** Stelle, und zwar das Ziel einer
+    // Wiederherstellung. Sie gehoert nicht zur Provisionierungskette, und sie
+    // benutzt nicht deren Rolle: `qkern_provisioner` ist weiter `NOCREATEDB`.
+    // Der Satz dieser Seite bleibt damit wahr, und dieser Fall sagt, warum.
+    expect(creating.sort()).toEqual(["lib/server/backup/project-database-dump.ts"]);
+    const restoreTarget = await source("lib/server/backup/project-database-dump.ts");
+    expect(restoreTarget).toContain("class PsqlProjectDatabaseRestoreTargetPort");
+    expect(restoreTarget).not.toContain("qkern_provisioner");
+    // Welche Rolle es ist, steht in der Verdrahtung, und sie ist nicht die des
+    // Provisionierers.
+    const wiring = await source("lib/server/backup/project-database-runtime.ts");
+    expect(wiring).toContain("qkern_project_restore_admin");
+    // Und kein `DROP DATABASE`: nie ueber die lebende Datenbank.
+    for (const file of await productFiles()) {
+      expect(await code(file), file).not.toMatch(/DROP\s+DATABASE/i);
+    }
 
     // Der Broker ist ein Client und kein Dienst: Er spricht nach draussen und
     // meldet die Unerreichbarkeit als genau den Code, den die Seite nennt.

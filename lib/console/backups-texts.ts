@@ -23,22 +23,31 @@ import type { PointInTimeRecoveryOverview } from "@/lib/server/backup/point-in-t
  * gewartet, sondern auf einen Weg, den es nicht gibt. Darum ist er weg, und
  * an seiner Stelle steht, warum, und was ein Betreiber stattdessen tut.
  *
- * Warum die Seite nichts Eigenes liest: QKERN fuehrt ueber seine Backups
- * nichts in der Kontrollebene. Die einzigen echten Angaben sind die Erklaerung
- * des Betreibers ueber sein WAL-Archiv und die signierte Evidenz des letzten
- * Restore-Drills, und beide holt schon die Route
- * `/database/backups/point-in-time`. Die Seite fragt dieselbe Route und
- * stellt eine andere Frage an dieselbe Antwort.
+ * **Was sich mit 2.126 geaendert hat.** Fuer die **Projektdatenbank** gibt es
+ * den Produktweg jetzt: `lib/server/backup/project-database.ts` sichert sie
+ * logisch, verschluesselt, in den Objektspeicher, und Migration 0083 fuehrt
+ * darueber einen Katalog. Zwei der Saetze dieser Seite sind damit umgedreht
+ * worden (`product_path` von "gibt es nicht" auf "Grenze", `no_catalogue` von
+ * "gibt es nicht" auf "gibt es wirklich"), und zwei weitere umgeschrieben. Was
+ * **nicht** dazugekommen ist: ein Knopf, eine Route mit Schreibverb und ein
+ * Produktweg zum Basisbackup der Steuerungsdatenbank. Die Seite liest darum
+ * weiterhin nur die Route unter `point-in-time` und nicht den neuen Katalog;
+ * sie zu verdrahten ist eine eigene Arbeit und keine Nebenwirkung von 2.126.
+ *
+ * Warum die Seite nichts Eigenes liest: Die einzigen Angaben, die diese Route
+ * tragen kann, sind die Erklaerung des Betreibers ueber sein WAL-Archiv und die
+ * signierte Evidenz des letzten Restore-Drills. Die Seite fragt dieselbe Route
+ * und stellt eine andere Frage an dieselbe Antwort.
  */
 
 /** Die eine Frage, die diese Seite beantwortet. */
 export const BACKUPS_QUESTION = "Wer sichert diese Projektdatenbank, und wann zuletzt?";
 
 export const BACKUPS_ANSWER =
-  "Niemand aus QKERN heraus, und darum steht hier auch kein Knopf. Im Produktquelltext ruft keine Stelle ein Backup-Werkzeug auf. Die einzige Stelle im ganzen Baum, die ein Basisbackup zieht, ist der Drill unter tests/, und er zieht es vom Wegwerf-Server seines eigenen Zertifizierungsstacks. Ein Knopf „Backup erstellen“ hätte nichts gehabt, was er hätte aufrufen können.";
+  "Seit 2.126 sichert QKERN diese Projektdatenbank selbst: ein logisches Backup genau dieser Datenbank, verschlüsselt, im Objektspeicher, mit einem Katalog in der Kontrollebene. Gefahren wird es vom Provisioner-Prozess in seiner Leerlaufrunde. Was es weiterhin nicht gibt, ist ein Knopf auf dieser Seite und eine Route, die ein Backup bestellt; und das Basisbackup der Steuerungsdatenbank zieht nach wie vor nur der Drill unter tests/.";
 
 export const BACKUPS_HONESTY =
-  "QKERN führt über seine Backups keinen Katalog. Keine Tabelle der Kontrollebene hält einen Sicherungslauf, einen Sicherungspunkt oder eine Grösse, und es gibt darum auch keinen Zeitpunkt eines letzten Backups dieser Datenbank. Diese Seite lässt die Stelle leer, statt sie zu füllen.";
+  "Der Katalog in der Kontrollebene hält die Backups dieser Projektdatenbank, und zwar unter Zeilensicherheit je Organisation. Diese Seite liest ihn noch nicht: sie liest dieselbe Route wie Point-in-time Recovery, und die kennt den Katalog nicht. Ein Zeitpunkt des letzten Backups steht deshalb in der Datenbank und nicht auf dieser Seite.";
 
 export const BACKUPS_SAME_EVIDENCE =
   "Gelesen wird dieselbe Route wie unter Point-in-time Recovery und unter „In neues Projekt wiederherstellen“, und nur sie. Eine eigene Route hätte dieselbe Erklärung und dieselbe Evidenzdatei ein zweites Mal gelesen und nichts hinzugefügt.";
@@ -82,9 +91,12 @@ export const BACKUPS_FINDING_VERDICT_TEXTS: Record<BackupsFindingVerdict, { labe
 
 export const BACKUPS_FINDING_TEXTS: Record<BackupsFindingItem, { verdict: BackupsFindingVerdict; label: string; explains: string }> = {
   product_path: {
-    verdict: "missing",
+    // Seit 2.126 keine Abwesenheit mehr, sondern eine Grenze: fuer die
+    // Projektdatenbank gibt es den Weg, fuer das Basisbackup der
+    // Steuerungsdatenbank nicht.
+    verdict: "limit",
     label: "Ein Produktweg zu einem Basisbackup",
-    explains: "Kein Modul unter lib/server, kein Worker, kein Befehl des CLI und keine Route ruft pg_basebackup, pg_dump, pg_dumpall oder pg_receivewal auf. Unter lib/server gibt es den Ordner backup, und er enthält drei Dateien: das Fenster einer Wiederherstellung, den Verifier der Evidenz und dessen Aufbau aus der Umgebung. Alle drei lesen, keine sichert.",
+    explains: "Für die Projektdatenbank gibt es ihn seit 2.126: lib/server/backup/project-database-dump.ts ruft pg_dump als Kindprozess, mit einer eigenen Leserolle und einem Zugangsdatum aus dem Vault. Für ein Basisbackup gibt es ihn nicht: pg_basebackup, pg_dumpall und pg_receivewal ruft im Produkt keine Stelle auf. Ein Basisbackup zieht nur der Drill unter tests/, und zwar vom Wegwerf-Server seines Stacks.",
   },
   test_path: {
     verdict: "exists",
@@ -97,9 +109,11 @@ export const BACKUPS_FINDING_TEXTS: Record<BackupsFindingItem, { verdict: Backup
     explains: "Der Quellserver des Drills trägt die Datenbank qkern_control, und der Drill schreibt darin in users, organizations und audit_logs. Die Evidenz trägt den Bereich control_plane, der Verifier kennt keinen zweiten und weist jede Evidenz mit einem anderen Bereich ab. Der Drill belegt darum das Verfahren und die Software, nicht ein Backup dieses Projekts.",
   },
   no_catalogue: {
-    verdict: "missing",
+    // Migration 0083 ist der Katalog. Was fehlt, ist eine Zeile fuer das
+    // Basisbackup der Steuerungsdatenbank, und das steht im Text.
+    verdict: "exists",
     label: "Ein Katalog vergangener Läufe",
-    explains: "Keine Migration legt eine Tabelle für Backups, Sicherungspunkte oder Wiederherstellungsläufe an. Es gibt darum keine Liste, keinen letzten Lauf und keine Grösse. Die einzigen Zeitpunkte, die QKERN kennt, bringt die Evidenz des Drills selbst mit.",
+    explains: "Migration 0083 legt project_database_backups an: je Backup eine Zeile mit Zustand, Objektschlüssel, Prüfsumme, Grösse, eingewickeltem Datenschlüssel, Manifest und Ablauf, mit Zeilensicherheit je Organisation. Für das Basisbackup der Steuerungsdatenbank gibt es weiterhin keine Zeile; die einzigen Zeitpunkte dort bringt die Evidenz des Drills mit.",
   },
   no_order_route: {
     verdict: "missing",
