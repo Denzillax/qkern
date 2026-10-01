@@ -103,22 +103,45 @@ import {
  * eigener Widerrufsflaeche, und die gehoert in einen eigenen Schnitt und nicht
  * als Nebenwirkung in diesen.
  *
- * ## Die zwei, die weiterhin `null` tragen, und der Grund ist der von 2.91
+ * ## Die zwei, die seit 2.117 `data:read` tragen
  *
- * * `qkern_query_readonly` fuehrt SQL durch die Data Plane, ohne Ansprueche und
- *   damit ohne Policy. Das ist kein Lesen als dieser Nutzer, sondern ein Lesen
- *   an ihm vorbei. Unter `data:read` freigegeben waere es die Umgehung genau
- *   der Grenze, die der Bereich verspricht.
- * * `qkern_schema_list` liest die Gestalt der Datenbank, nicht ihre Zeilen.
- *   Eine Policy entscheidet ueber Zeilen; ueber Spaltennamen entscheidet sie
- *   nicht. Ein fremder Client bekaeme mit `data:read` die Struktur eines
- *   Projekts, obwohl der Nutzer dem Lesen **seiner** Daten zugestimmt hat.
+ * Bis 2.116 trugen beide `null`, und die Begruendung von 2.91 war richtig:
+ * `qkern_query_readonly` fuehrte SQL durch `ProjectDataPlaneService` aus, also
+ * mit der Leserolle des Projekts und ohne `request.jwt.claims`. Die
+ * Zeilensicherheit war dabei an, die Rolle traegt kein `BYPASSRLS`; eine Policy
+ * hatte nur keine Ansprueche zu lesen, und eine Tabelle ohne Policy gab alles
+ * her. Das war kein Lesen als dieser Nutzer. 2.91 hat dazu geschrieben, wer
+ * diesen zwei einen Bereich gibt, muss sie vorher unter die Zeilensicherheit
+ * stellen, und das ist ein eigener Schnitt. Das ist dieser Schnitt.
  *
- * Es gibt fuer diese zwei auch keinen neuen Bereich mit eigenem Namen. Einen zu
- * erfinden hiesse, einen Satz hinzuschreiben, den das Produkt nicht einloest:
- * Wer ihnen einen Bereich gibt, muss vorher belegen, dass sie **unter** der
- * Zeilensicherheit lesen, und das ist eine Aenderung an der Data Plane und ein
- * eigener Schnitt.
+ * **`qkern_query_readonly`** laeuft ueber OAuth durch
+ * `GeneratedDataApiPort.queryUnderRowSecurity`, also durch dieselbe Tuer wie
+ * `qkern_table_rows_list`: Rolle `authenticated`, die Ansprueche des
+ * zustimmenden Nutzers, `row_security = on`, `BEGIN READ ONLY`, dieselben
+ * Zeitlimits. Dazu liest `lib/server/data-plane/free-query.ts` den Abfragetext
+ * und nennt jede Relation darin, und jede geht durch
+ * `assertTableBoundary(..., "select")`. Eine Tabelle ohne Zeilensicherheit ist
+ * ueber diesen Weg darum nicht erreichbar, auch mit Leserecht nicht. Was das
+ * kostet, steht in der Beschreibung des Werkzeugs: Tabellen mit Schema,
+ * Funktionen nur aus einer Liste und unqualifiziert, keine Systemkataloge, harte
+ * Grenzen bei Zeilen, Bytes und Zeit.
+ *
+ * **`qkern_schema_list`** ist eine eigene Frage und hat eine eigene Antwort. Ein
+ * Schema zu kennen ist kein Lesen von Zeilen, und `inspectSchema` zeigt jede
+ * Tabelle eines Schemas mit jeder Spalte, auch die ohne Policy. Ueber OAuth
+ * antwortet dieses Werkzeug darum mit `listReadableTables`: die Tabellen, die
+ * diese Flaeche lesend bedient, Spalten mit sensiblem Namen heraus. Das ist
+ * genau das Dokument, das derselbe Token heute schon ueber
+ * `generated-openapi` und ueber die GraphQL-Introspektion bekommt, und beide
+ * Tueren verlangen dort `data:read`. Ein Bereich, der an einer Tuer gilt und an
+ * der anderen nicht, waere kein Bereich.
+ *
+ * `project:read` waere hier die falsche Antwort. Dieser Bereich sagt etwas ueber
+ * die Gestalt der Projektumgebung, ihren Eintrag und ihre Automatisierungsregel.
+ * Die Gestalt der Daten gehoert zur Data API.
+ *
+ * Beim statischen Bearer bleiben beide, was sie waren: der ganze Katalog und
+ * eine Abfrage ohne Policy, auf dem Rechner des Entwicklers und nur dort.
  *
  * ## Warum `identity:read` hier nirgends steht
  *
@@ -165,10 +188,12 @@ import {
 export const MCP_TOOL_SCOPES = {
   qkern_project_get: "project:read",
   qkern_automation_policy_get: "project:read",
-  // Diese zwei lesen an der Zeilensicherheit vorbei. Ein Bereich dafuer waere
-  // ein Satz, den das Produkt nicht einloest; der Grund steht oben.
-  qkern_schema_list: null,
-  qkern_query_readonly: null,
+  // Seit 2.117 unter der Zeilensicherheit, und darum mit Bereich. Die
+  // Schemaliste gibt ueber OAuth die lesbaren Tabellen und nicht den ganzen
+  // Katalog, die freie Abfrage laeuft durch die Lesetuer der Data API. Beide
+  // Begruendungen stehen oben und an der Anmeldung in `mcp/server.ts`.
+  qkern_schema_list: "data:read",
+  qkern_query_readonly: "data:read",
   qkern_storage_buckets_list: "storage:read",
   qkern_storage_objects_list: "storage:read",
   // Loeschen eines Objekts, und nur das. Kein Hochladen, kein Grant, kein

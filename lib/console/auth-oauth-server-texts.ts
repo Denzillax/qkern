@@ -96,9 +96,9 @@ export const AUTH_OAUTH_SCOPES_WHAT =
 export const AUTH_OAUTH_SCOPES_WHERE_THEY_ACT =
   "Nicht jeder Bereich wirkt an jeder Tür. identity:read wirkt an /auth/oauth/userinfo, data:read und data:write an der Data API und am entfernten MCP-Server. Die Bereiche für Projekt, Storage, Queues, Logs und Migrationsvorschläge wirken heute nur am entfernten MCP-Server; die HTTP-Türen von Storage und Queues nehmen ein OAuth-Token weiterhin nicht an. Das steht hier, damit niemand einen Bereich vergibt und eine Tür erwartet, die zu ist.";
 
-/** Und die Werkzeuge, für die es weiterhin keinen gibt. */
+/** Und das Werkzeug, für das es keinen gibt. */
 export const AUTH_OAUTH_SCOPES_NOT_EVERYTHING =
-  "Zwei Werkzeuge des MCP-Servers haben weiterhin keinen Bereich und sind über OAuth gar nicht erreichbar: die freie Abfrage und die Schemaliste. Sie lesen an der Zeilensicherheit vorbei, data:read sagt aber Lesen unter der Zeilensicherheit zu. Ein Anwenden einer Migration ist ebenfalls nicht erreichbar; migrations:propose deckt nur den Vorschlag.";
+  "Ein Werkzeug des MCP-Servers hat keinen Bereich und ist über OAuth gar nicht erreichbar: das Anwenden einer Migration; migrations:propose deckt nur den Vorschlag. Die freie Abfrage und die Schemaliste gehören zu data:read, weil sie dort unter der Zeilensicherheit lesen: Die Abfrage läuft als der zustimmende Nutzer durch dieselbe Lesetür wie die Data API, jede genannte Tabelle muss ihr Schema tragen und unter einer Policy stehen, und die Schemaliste zeigt die lesbare Fläche statt des Katalogs.";
 
 /** Warum kein Bereich je Tabelle. */
 export const AUTH_OAUTH_NO_TABLE_SCOPES =
@@ -113,7 +113,7 @@ export const AUTH_OAUTH_SCOPE_TEXTS = {
   "identity:read":
     "Wer hat zugestimmt: Kennung und E-Mail-Adresse dieses Nutzers, abrufbar unter /auth/oauth/userinfo. Keine Metadaten, kein Sitzungsstand, keine Angabe über einen zweiten Faktor.",
   "data:read":
-    "Lesen durch die Data API, unter der Zeilensicherheit, als dieser Nutzer. Eine Policy entscheidet weiterhin je Zeile.",
+    "Lesen durch die Data API, unter der Zeilensicherheit, als dieser Nutzer. Eine Policy entscheidet weiterhin je Zeile. Am entfernten MCP-Server öffnet dieser Bereich zusätzlich die freie Abfrage und die Schemaliste: Die Abfrage läuft durch dieselbe Lesetür, jede genannte Tabelle muss ihr Schema tragen und unter einer Policy stehen, und die Schemaliste zeigt nur die Tabellen, die diese Fläche lesend bedient.",
   "data:write":
     "Schreiben durch die Data API, unter derselben Zeilensicherheit. Getrennt vom Lesen, weil das der Unterschied ist, den ein Nutzer wirklich versteht: Eine Anwendung, die nur anzeigt, soll nicht löschen können.",
   "project:read":

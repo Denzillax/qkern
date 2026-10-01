@@ -178,6 +178,48 @@ Grossbuchstaben.
   entfernten MCP-Server. Fall `(2.116)` in `tests/postgres.integration.test.ts`
   mit drei Buckets und drei Schreibregeln.
 
+- 2.117 **Die freie Abfrage liest jetzt unter der Zeilensicherheit, und die
+  Schemaliste gibt die lesbare Flaeche.** Keine Migration: Beide haengen an
+  `data:read`, den es seit 0062 gibt. `qkern_query_readonly` laeuft ueber OAuth
+  durch `GeneratedDataApiPort.queryUnderRowSecurity`, also durch dieselbe Tuer wie
+  `qkern_table_rows_list` (Rolle `authenticated`, die Ansprueche des zustimmenden
+  Nutzers, `row_security = on`, `BEGIN READ ONLY`, dieselben Zeitlimits). Neu ist
+  die Lesung des Abfragetextes in `lib/server/data-plane/free-query.ts`: Sie nennt
+  jede Relation, und jede geht durch `assertTableBoundary(..., "select")`, bevor
+  die Abfrage laeuft. Eine Tabelle ohne Zeilensicherheit ist damit nicht
+  erreichbar, auch mit Leserecht nicht.
+
+  **Die tragende Regel ist eine einzige**: Tabellen mit Schema, alles andere ohne.
+  Die Abfrage laeuft mit `SET LOCAL search_path = pg_catalog`, also kann die Lesung
+  nicht anders ausfallen als die Auflösung in PostgreSQL. Eine Funktion, ein
+  Operator oder ein Cast mit Schema faellt, denn ein `SECURITY DEFINER` im
+  Nutzerschema laeuft mit den Rechten seines Eigentuemers und sein Rumpf steht
+  nicht im Abfragetext. Von `pg_catalog` ist nur eine Liste von 26 Funktionen
+  erlaubt, weil `query_to_xml` dort eine Abfrage aus einem Textargument ausfuehrt.
+  Ein CTE-Name gilt nur dort, wo PostgreSQL ihn gelten laesst, also nicht in seiner
+  eigenen Bindung; sonst waere `WITH t AS (SELECT * FROM t)` der Weg um die
+  Pruefung je Tabelle herum.
+
+  **Die Schemaliste ist getrennt entschieden.** Ueber OAuth antwortet sie mit
+  `listReadableTables` und nicht mit `inspectSchema`: dieselbe Fläche, die
+  `generated-openapi` und die GraphQL-Introspektion demselben Token schon geben,
+  und beide verlangen dort `data:read`. `project:read` waere falsch, weil dieser
+  Bereich die Gestalt der Umgebung meint und nicht die Gestalt der Daten. Beim
+  statischen Bearer bleiben beide Werkzeuge, was sie waren.
+
+  **Ein echter Fehler nebenbei**: `examples/codex-mcp.oauth.toml` behauptete noch,
+  Storage, Queues, Control Plane und Migrationen seien ueber OAuth nicht
+  erreichbar. Das stimmte seit Migration 0073 nicht mehr, und die Datei nennt
+  jetzt alle sechzehn erreichbaren Werkzeuge.
+
+  **Offen**: Die Lesung verlaesst sich darauf, dass `pgsql-ast-parser` denselben
+  Text so liest wie PostgreSQL. Faende sie eine Relation nicht, die PostgreSQL
+  doch liest, bliebe die Zeilensicherheit darunter trotzdem an (die Rolle traegt
+  kein `BYPASSRLS`); verloren waere nur die Zusage ueber Tabellen **ohne** Policy.
+  Ein Fenster (`OVER`), ein Window-Frame und `WITH RECURSIVE` gibt es auf diesem
+  Weg nicht. Faelle `(2.117)` in `tests/postgres.integration.test.ts` und in
+  `tests/mcp-free-query.test.ts`.
+
 - 2.113 **Presence ist dauerhaft, und ein `changes:`-Abonnement kann wieder
   aufsetzen.** Migration `0077_realtime_presence.sql` legt `realtime_presence` an:
   Scope, Kanal, der `qk_presence_...`-Schluessel, die Instanz, der State und

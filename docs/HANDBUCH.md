@@ -5474,7 +5474,7 @@ dort:
 
 | Bereich | Werkzeuge über OAuth |
 | --- | --- |
-| `data:read` | `qkern_table_rows_list` |
+| `data:read` | `qkern_table_rows_list`, `qkern_schema_list`, `qkern_query_readonly` |
 | `data:write` | `qkern_table_rows_insert`, `qkern_table_row_update`, `qkern_table_row_delete` |
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
@@ -5485,14 +5485,57 @@ dort:
 | `migrations:propose` | `qkern_migration_preview` |
 | `identity:read` | kein eigenes Werkzeug; entscheidet, ob die E-Mail-Adresse in den Ansprüchen der Data-API-Anfrage steht |
 
-Drei Werkzeuge haben keinen Bereich und sind über OAuth nicht erreichbar; sie
-fehlen einem solchen Client schon in `tools/list`. `qkern_query_readonly` und
-`qkern_schema_list` lesen an der Zeilensicherheit vorbei, `data:read` sagt aber
-Lesen unter ihr zu; wer ihnen einen Bereich gibt, muss sie vorher unter sie
-stellen, und das ist ein eigener Schnitt. `qkern_migration_apply_queue` ändert
+Ein Werkzeug hat keinen Bereich und ist über OAuth nicht erreichbar; es fehlt
+einem solchen Client schon in `tools/list`. `qkern_migration_apply_queue` ändert
 den Zustand der Control Plane und führt zu einer Änderung an der
 Projektdatenbank; ein Apply über einen fremden Client bleibt zu, es fällt nicht
 unter `migrations:propose`, und es bekommt hier auch keinen eigenen Bereich.
+
+Die freie Abfrage und die Schemaliste hatten von `2.64.0` bis `2.116` keinen
+Bereich, und die Begründung war richtig: Sie liefen über
+`ProjectDataPlaneService`, also mit der Leserolle des Projekts und ohne
+`request.jwt.claims`. Die Zeilensicherheit war dabei an und die Rolle trägt kein
+`BYPASSRLS`; eine Policy hatte nur keine Ansprüche zu lesen, und eine Tabelle ohne
+Policy gab alles her. Seit `2.117` gibt es beide unter `data:read`, als zwei
+getrennte Entscheidungen.
+
+**Die freie Abfrage** läuft über OAuth durch dieselbe Lesetür wie
+`qkern_table_rows_list`: Rolle `authenticated`, die Ansprüche des zustimmenden
+Nutzers, `row_security = on`, `BEGIN READ ONLY`, dieselben Zeitlimits. Dazu liest
+`lib/server/data-plane/free-query.ts` den Abfragetext, nennt jede Relation darin,
+und jede geht durch dieselbe Prüfung je Tabelle wie eine Liste. Eine Tabelle ohne
+Zeilensicherheit ist über diesen Weg darum nicht erreichbar, auch dann nicht, wenn
+die Projektrolle das Leserecht an ihr hat.
+
+Das kostet Einschränkungen, und sie stehen alle an der Beschreibung des
+Werkzeugs: Jede Tabelle wird mit ihrem Schema geschrieben, und dieses Schema ist
+das Schema der Anfrage. Die Abfrage läuft mit `SET LOCAL search_path = pg_catalog`,
+also wäre ein unqualifizierter Name etwas anderes als die Lesung annimmt, und
+Systemkataloge sind damit nicht erreichbar, ohne dass eine Sperrliste sie nennt.
+Ein Name aus `WITH` ist die einzige Relation ohne Schema, die durchkommt, und er
+gilt dort, wo PostgreSQL ihn gelten lässt: in späteren Bindungen und im Hauptteil,
+nicht in seiner eigenen. Funktionen, Operatoren und Casts müssen unqualifiziert
+sein, damit sie nur im Systemkatalog auflösen; eine Funktion mit `SECURITY
+DEFINER` läuft mit den Rechten ihres Eigentümers, und ihr Rumpf steht nicht im
+Abfragetext. Von den Funktionen des Systemkatalogs sind nur `abs`, `avg`, `ceil`,
+`ceiling`, `char_length`, `coalesce`, `concat`, `count`, `date_part`,
+`date_trunc`, `floor`, `greatest`, `least`, `length`, `lower`, `ltrim`, `max`,
+`min`, `nullif`, `now`, `round`, `rtrim`, `sum`, `to_char`, `trim` und `upper`
+erlaubt; eine Liste und keine Sperrliste, weil auch der Systemkatalog nicht
+harmlos ist (`query_to_xml` führt eine Abfrage aus einem Textargument aus). Es
+bleibt ein einzelnes `SELECT` ohne DDL, ohne DML und ohne `WITH RECURSIVE`,
+höchstens 100 Zeilen, 256 KiB und 5 Sekunden, und Spalten mit einem Namen wie
+`password` oder `api_token` kommen nicht mit und werden in `omitted` genannt.
+
+**Die Schemaliste** ist eine eigene Frage. Ein Schema zu kennen ist kein Lesen von
+Zeilen, und `inspectSchema` zeigt jede Tabelle eines Schemas mit jeder Spalte,
+auch die ohne Policy. Über OAuth antwortet dieses Werkzeug darum mit der lesbaren
+Fläche: die Tabellen, die die Data API lesend bedient, Spalten mit sensiblem Namen
+heraus. Genau dieses Dokument bekommt derselbe Token heute schon über
+`generated-openapi` und über die GraphQL-Introspektion, und beide Türen verlangen
+dort `data:read`. `project:read` wäre falsch gewesen: Dieser Bereich sagt etwas
+über die Gestalt der Projektumgebung, und die Gestalt der Daten gehört zur Data
+API. Beim statischen Bearer bleiben beide Werkzeuge, was sie waren.
 
 Schreiben schließt Lesen nicht ein. Ein Token mit `data:write` bekommt die drei
 Mutationen und keine Leseliste, genauso wie an der Data API, und ein Token mit
