@@ -16,10 +16,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
  *    `docs/evidence/backup-restore/` ab, damit der Verifier des Produkts sie
  *    lesen kann.
  */
+// Der Projektname kommt aus COMPOSE_PROJECT_NAME, wenn gesetzt, wie in den
+// anderen Laeufern: Ein paralleler Schnitt erkennt seinen Stack dann am eigenen
+// Praefix und raeumt nur ihn ab. Ohne die Variable bleibt es der Name von
+// vorher, damit die archivierte Evidenz denselben Stack nennt.
 const compose = [
   "compose",
   "-p",
-  "qkern-backup-v229-certification",
+  process.env.COMPOSE_PROJECT_NAME?.trim() || "qkern-backup-v229-certification",
   "-f",
   "docker-compose.backup-certification.yml",
 ];
