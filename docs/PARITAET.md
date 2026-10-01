@@ -1,6 +1,6 @@
 # Die Lücke zu Supabase, vermessen
 
-> Stand: `2.71.0`, 1. Oktober 2026. Diese Datei wird bei jedem Release
+> Stand: `2.72.0`, 1. Oktober 2026. Diese Datei wird bei jedem Release
 > nachgeführt, das eine Zeile verändert. Zwischen `1.91.0` und `2.64.0` ist
 > das nicht geschehen; die Leiter stand 73 Releases lang auf dem Stand vom
 > 24. September. Was in dieser Zeit dazugekommen ist, steht jetzt hier, und

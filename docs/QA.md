@@ -6529,3 +6529,51 @@ Nicht erbracht: Beziehungen stehen nicht im SDL und nicht in GraphQL-Abfragen.
 Presence zaehlt nicht unter den Metriken, kein Soak mit Presence. Die lesenden
 Storage- und Queue-Werkzeuge laufen ueber MCP weiter als Betreiber. Die Console
 ist weiterhin ungesehen.
+
+## Welle vierundzwanzig (2.72): die Spur einer Nachricht, eine Zeile mit Namen, und die letzte Ausnahme
+
+Drei Schnitte: eine Spur je Queue-Nachricht von ihrem Einstellen bis zu ihrem
+Ausgang (Faelle 2.121 und 2.122, Migration 0081), Rechnungspositionen mit
+Bezeichnung und stabilem Schluessel samt Pauschalen (Fall 2.119, Migration
+0080), sowie die freie Abfrage und die Schemaliste des MCP-Servers unter der
+Zeilensicherheit des zustimmenden Nutzers (Fall 2.117, ohne Migration).
+
+Die Spur liegt je Station in derselben Transaktion wie der Zustandswechsel, den
+sie beschreibt. Zusammengehalten wird sie von der Nachrichten-Id, die es schon
+gab; `traceparent` kommt nur als Anschluss nach draussen dazu, und QKERN
+entscheidet an seinen Werten nichts. Dass keine Nutzlast mitgeht, ist
+strukturell: Die Tabelle hat keine Spalte dafuer, und der Fall vergleicht die
+Spaltenliste vollstaendig. Geschnitten wird am Ablauf der Station und nie am
+Ausgang der Nachricht, mit der Frist max(Aufbewahrung der Queue, ein
+Betriebstag), und ohne Fremdschluessel auf die Nachricht.
+
+Zwei Funde dabei: Ein Loeschwaechter als Trigger waere unpruefbar gewesen, weil
+er nur `clock_timestamp()` lesen kann, der Aufraeumer aber mit der einspeisbaren
+Uhr rechnet; und `recoverExpiredLeases` konnte den alten Wirt nicht nennen, weil
+dieselbe Anweisung ihn auf NULL setzt. Dazu haette die CORS-Liste des Einreihens
+`traceparent` verworfen.
+
+Bei den Rechnungen war die Grenze von sechs Zeilen eine Nebenwirkung: Die
+Eindeutigkeit je Metrik verhinderte Doppelnennungen und begrenzte als Folge die
+Zahl der Zeilen. Die Idempotenz des Rechnungslaufs hat sie nie getragen, anders
+als mein Auftrag behauptete; die traegt die Eindeutigkeit auf der Rechnung
+selbst. Nebenbei geschlossen: Ein Projekt mit einer Pauschale und ohne jede
+Nutzung haette nie eine Rechnung gesehen.
+
+Beim MCP-Server fiel eine Begruendung, die seit 2.64 falsch stand. Die
+Zeilensicherheit war nie aus und die Leserolle trug nie `BYPASSRLS`; eine Policy
+hatte ohne Ansprueche nichts zu lesen, und eine Tabelle ohne Policy gab alles
+her. Die Luecke lag bei der fehlenden Pruefung je Relation, und genau die steht
+jetzt vor der Abfrage.
+
+Checkpoint `2.72.0` am 1. Oktober 2026: PostgreSQL 17 mit 253 von 253 zweimal,
+Realtime unter Production mit 19 von 19, versitygw und ClamAV mit 11 von 11,
+Functions mit 33 von 33, Mailpit und Dex mit 11 von 11, alle exit 0; Lokal 2513
+bestanden, 0 fehlgeschlagen, zweimal reproduziert. Zwei Mutationsproben auf dem
+gemergten Stand mit genau ihren Faellen.
+
+Nicht erbracht: QKERN gibt keinen `traceparent` weiter, es gibt keine Suche nach
+einer Spur-Id, und die Trace-Route ist Admin-only. Die Spur ist nicht unter Last
+gemessen und steht in keiner Metrik. Keine Zahlungsanbindung und keine
+Selbstbedienung fuer Pauschalen. Die lesenden Storage- und Queue-Werkzeuge
+laufen ueber MCP weiter als Betreiber. Die Console ist weiterhin ungesehen.

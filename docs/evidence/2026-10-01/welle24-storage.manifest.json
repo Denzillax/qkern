@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "welle24-storage.log",
+  "commit": "bdde8fc232d835737109079cc896c1779e4e5991",
+  "commitSubject": "merge: Eine Nachricht der Queues laesst sich verfolgen aus slice/queuetrace",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "11 passed (11)",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

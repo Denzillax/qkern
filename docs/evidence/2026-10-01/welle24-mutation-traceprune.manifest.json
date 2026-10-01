@@ -1,0 +1,19 @@
+{
+  "stack": "Mutation die Spur wird am Ausgang der Nachricht geschnitten",
+  "log": "welle24-mutation-traceprune.log",
+  "commit": "bdde8fc232d835737109079cc896c1779e4e5991",
+  "commitSubject": "merge: Eine Nachricht der Queues laesst sich verfolgen aus slice/queuetrace",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 75,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 252 passed (253)",
+  "passed": 252,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

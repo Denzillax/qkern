@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "welle24-realtime.log",
+  "commit": "bdde8fc232d835737109079cc896c1779e4e5991",
+  "commitSubject": "merge: Eine Nachricht der Queues laesst sich verfolgen aus slice/queuetrace",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 75,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -1964,3 +1964,22 @@ grüne ist.
 | `2026-10-01/welle23-local-run2.log` | Vitest lokal (Windows) | 2490 bestanden, exit 0, mit `--maxWorkers=3` |
 
 `welle23-run1` fehlt mit Absicht: Der erste Lauf lief gegen den Stand vor dem Schärfen von `(2.111)`, und `run3` ersetzt ihn. Die Tiefenprobe ist in der Datei als Wiederholung abgelegt; der erste Versuch fiel nicht, und genau das war der Befund.
+
+## Läufe zu Release 2.72 (1. Oktober 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-01/welle24-run1.log` | PostgreSQL 17 | 253 von 253, exit 0 |
+| `2026-10-01/welle24-run2.log` | PostgreSQL 17 | 253 von 253, exit 0 |
+| `2026-10-01/welle24-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 19 von 19, exit 0 |
+| `2026-10-01/welle24-storage.log` | versitygw und ClamAV | 11 von 11, exit 0 |
+| `2026-10-01/welle24-functions.log` | Functions gegen Docker plus PostgreSQL | 33 von 33, exit 0 |
+| `2026-10-01/welle24-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-10-01/welle24-mutation-traceprune.log` | Mutation: die Spur wird am Ausgang der Nachricht geschnitten | **252 von 253, exit 1 – absichtlich** |
+| `2026-10-01/welle24-mutation-freequeryboundary.log` | Mutation: die freie Abfrage prüft die Grenze je Relation nicht | **252 von 253, exit 1 – absichtlich** |
+| `2026-10-01/welle24-local-run1.log` | Vitest lokal (Windows) | 2513 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-01/welle24-local-run2.log` | Vitest lokal (Windows) | 2513 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Die beiden Mutationsproben liefen auf dem gemergten Stand und nicht in den
+Scheiben: Alle drei Scheiben dieser Welle schreiben in dieselbe Testdatei, und
+nur der Lauf nach dem Merge zeigt, dass die Fälle dort immer noch beissen.

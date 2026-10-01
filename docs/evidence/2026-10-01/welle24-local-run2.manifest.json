@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle24-local-run2.log",
+  "commit": "bdde8fc232d835737109079cc896c1779e4e5991",
+  "commitSubject": "merge: Eine Nachricht der Queues laesst sich verfolgen aus slice/queuetrace",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "348 passed | 40 skipped (388)",
+  "tests": "2513 passed | 369 skipped (2882)",
+  "passed": 2513,
+  "failed": 0,
+  "skipped": 369,
+  "images": []
+}

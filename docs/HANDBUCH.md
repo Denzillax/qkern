@@ -2426,10 +2426,15 @@ nennen. Ein Projekt-Key bleibt bei jeder Anfrage nötig: Das Token sagt, wer der
 Aufrufer ist, der Key ist die Zusage des Projekts, dass diese Anwendung hier
 anklopfen darf.
 
-**Ein OAuth-Token öffnet nur die Data API.** Queues, Functions und Storage nehmen
-es nicht an, und das ist voreingestellt so: Es gibt heute keinen Bereich, der
-eine Queue oder eine Function beschreibt, und ein Token, das dort mitliefe, hätte
-eine Erlaubnis, die niemand hinschreiben kann.
+**Ein OAuth-Token wirkt über die Data API hinaus, aber nur über den MCP-Server.**
+Seit Migration `0073` gibt es Bereiche für Storage, Queues, Control Plane und
+Migrationen, seit `0078` dazu `storage:write`, und die Werkzeuge des MCP-Servers
+hängen daran. Die **HTTP-Türen** von Queues, Functions und Storage nehmen ein
+OAuth-Token weiterhin nicht an; dort gilt der Projekt-Key. Dieser Absatz stand
+bis `2.72.0` anders hier und behauptete, es gebe für Queues und Functions keinen
+Bereich. Das war seit `0073` falsch, und dieselbe überholte Behauptung stand noch
+in `examples/codex-mcp.oauth.toml` und in der Bereichsbeschreibung des
+OpenAPI-Dokuments.
 
 **Der grobe Widerruf geht über den Client.** Wer ihn entfernt, lässt über
 `ON DELETE CASCADE` seine Codes, alle seine Token und alle seine Zustimmungen

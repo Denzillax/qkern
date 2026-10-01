@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 1. Oktober 2026 · Release: `2.71.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 1. Oktober 2026 · Release: `2.72.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -44,7 +44,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 | Production Dependency Audit | 0 bekannte Schwachstellen |
 | SDK-/CLI-Paketbuild | ESM/DTS und CLI-JS grün; die Tarball-Prüfung läuft seit `2.14.0` auch auf Windows (npm-cli.js direkt mit Node) und ist auf allen drei Runnern belegt (`2.15.0`) |
 | Fresh-Project-Smoke | **Linux, Windows und macOS auf GitHub-Runnern grün (`2.15.0`, Lauf 36163798505, archiviert unter `docs/evidence/2026-09-25/`)** |
-| **PostgreSQL-17-Zertifizierung** | **249 von 249 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
+| **PostgreSQL-17-Zertifizierung** | **253 von 253 bestanden, exit 0, zweimal reproduziert — seit `1.90.0` mit 300 Verbindungsplätzen statt der Voreinstellung 100, geprüft im Lauf** |
 | **versitygw-/ClamAV-Zertifizierung** | **11 von 11 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-mp` mit zwei Mutationsproben (Multipart am S3-Endpunkt, `2.101`: die Prüfsumme der ganzen Datei erreicht den Scanner nicht, ein abgebrochener Upload lässt die Reservierung stehen) — der neue Fall lässt das AWS SDK eine Datei über der Multipart-Schwelle hochladen, die es selbst in Teile schneidet; seit `2.14.0` gegen versitygw statt MinIO, dessen Image von Docker Hub verschwunden ist; seit `1.78.0` räumt der Lifecycle verfallene Multipart-Reservierungen und Provider-Waisen ab und verschont lebende Uploads** |
 | **Project-Auth-Provider-Zertifizierung** | **11 von 11 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-samlrest` mit einer Mutationsprobe (die signierte `AuthnRequest` lässt das `SigAlg` aus dem unterschriebenen Text weg, und der Kopplungsfall fällt) — der neue Fall holt die Metadaten über die echte Route und prüft die Signatur der Anfrage **nur** mit dem Zertifikat aus diesem Dokument; seit `1.76.0` mit zwei echten, getrennten OIDC-Providern; seit `1.83.0` mit aufzählbarer Provider-Auswahl als Zwei-Felder-Projektion; seit `1.85.0` mit `email_verified`-Erfordernis je Provider; seit `2.99` mit SAML 2.0 über die echte Assertion-Consumer-Route — vierzehn Fälschungen fallen einzeln, dieselbe Assertion zweimal fällt am Riegel in der Datenbank, und die Gegenstelle unterschreibt mit `node:crypto` statt ein fremdes Produkt zu sein** |
 | **Functions gegen Docker plus PostgreSQL** | **33 von 33 bestanden, exit 0, zweimal reproduziert im Slice-Lauf `qkern-slice-fns` mit einer Mutationsprobe (Inhaltslogs am Drain, 2.108: wird nur die erste Ausgabezeile je Aufruf aufgelöst, fällt der neue Fall) — seit `1.89.0` mit Aufrufprotokoll, seit `2.67.0` mit Inhaltslogs am echten Container, und der neue Fall trägt genau diese Zeilen in eine Log-Drain-Ladung (2.108)** |
@@ -61,11 +61,10 @@ Gemessen wird jetzt zweiachsig je Modul:
 | **GitHub Actions** | **seit `2.15.0` belegt: Zertifizierung (161/161, 8/8, 7/7) und Developer Experience auf Ubuntu, Windows und macOS, Lauf 36164575195 und 36164575183, archiviert unter `docs/evidence/2026-09-25/`** |
 | Managed Production Go-live | noch nicht freigegeben |
 
-Die 334 übersprungenen Fälle sind Real-Service-Tests, die in den Docker-Läufen
+Die 369 übersprungenen Fälle sind Real-Service-Tests, die in den Docker-Läufen
 laufen, und POSIX-Fälle, die auf Windows nicht ausdrückbar sind. Sie gelten als
-übersprungen, nie als bestanden. Die Zahl stand bis zu diesem Slice auf 173 und
-war damit über mehrere Releases überholt; gemessen sind es 2384 bestandene und
-334 übersprungene Fälle in 378 Dateien.
+übersprungen, nie als bestanden. Gemessen sind es 2513 bestandene und 369
+übersprungene Fälle in 388 Dateien.
 
 ## Ausführbar implementiert
 

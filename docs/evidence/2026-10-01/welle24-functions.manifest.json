@@ -1,0 +1,18 @@
+{
+  "stack": "Functions gegen Docker plus PostgreSQL",
+  "log": "welle24-functions.log",
+  "commit": "bdde8fc232d835737109079cc896c1779e4e5991",
+  "commitSubject": "merge: Eine Nachricht der Queues laesst sich verfolgen aus slice/queuetrace",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "33 passed (33)",
+  "passed": 33,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "registry:2.8.3",
+    "postgres:17-alpine"
+  ]
+}
