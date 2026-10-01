@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "backupdrill-realtime.log",
+  "commit": "b107fb1293b8d6063fb87d8d7eeafcc6a787d1d7",
+  "commitSubject": "Eine Projektdatenbank wird gesichert und wiederhergestellt, Fall (2.126) gruen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 76,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

@@ -1,1 +1,1 @@
-{"schemaVersion":"qkern.project-database-backup-drill/v1","backupBytes":14103,"manifestSha256":"d732077fd33bdc12c85444f6eec9289519de4fe048a71ecc569125ac3f9c1fa2","restoredManifestSha256":"d732077fd33bdc12c85444f6eec9289519de4fe048a71ecc569125ac3f9c1fa2","tables":4,"rows":10}
+{"schemaVersion":"qkern.project-database-backup-drill/v1","backupBytes":14104,"manifestSha256":"f4d21c963b26bb46e839177a91556a45d61ec10f80db3cf81be8964c94f0a439","restoredManifestSha256":"f4d21c963b26bb46e839177a91556a45d61ec10f80db3cf81be8964c94f0a439","tables":4,"rows":10}

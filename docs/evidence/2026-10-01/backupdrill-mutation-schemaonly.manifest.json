@@ -1,0 +1,21 @@
+{
+  "stack": "Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv), Mutation: der Dump nimmt nur das Schema",
+  "log": "backupdrill-mutation-schemaonly.log",
+  "commit": "b107fb1293b8d6063fb87d8d7eeafcc6a787d1d7",
+  "commitSubject": "Eine Projektdatenbank wird gesichert und wiederhergestellt, Fall (2.126) gruen",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 76,
+  "testFiles": "1 failed | 1 passed (2)",
+  "tests": "1 failed | 1 passed (2)",
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "versity/versitygw:v1.8.0",
+    "node:24-alpine"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "backupdrill-postgres.log",
+  "commit": "b107fb1293b8d6063fb87d8d7eeafcc6a787d1d7",
+  "commitSubject": "Eine Projektdatenbank wird gesichert und wiederhergestellt, Fall (2.126) gruen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 76,
+  "testFiles": "31 passed (31)",
+  "tests": "253 passed (253)",
+  "passed": 253,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}

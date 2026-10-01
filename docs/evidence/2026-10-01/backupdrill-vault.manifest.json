@@ -1,0 +1,18 @@
+{
+  "stack": "HashiCorp Vault 1.18",
+  "log": "backupdrill-vault.log",
+  "commit": "b107fb1293b8d6063fb87d8d7eeafcc6a787d1d7",
+  "commitSubject": "Eine Projektdatenbank wird gesichert und wiederhergestellt, Fall (2.126) gruen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "8 passed (8)",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "hashicorp/vault:1.18.3",
+    "node:24.7.0-alpine"
+  ]
+}
