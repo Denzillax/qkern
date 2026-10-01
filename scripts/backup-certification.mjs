@@ -24,7 +24,14 @@ const compose = [
   "docker-compose.backup-certification.yml",
 ];
 
-const up = spawnSync("docker", [...compose, "up", "-d", "--wait", "--force-recreate", "postgres"], { stdio: "inherit" });
+// Seit 2.126 drei Dienste statt einem: PostgreSQL, der Vault und der
+// Objektspeicher. Der Drill teilt die Netzwerk-Namespace des Objektspeichers,
+// also muss der schon laufen, bevor `run --no-deps` ihn startet.
+const up = spawnSync(
+  "docker",
+  [...compose, "up", "-d", "--wait", "--force-recreate", "postgres", "vault", "objects"],
+  { stdio: "inherit" },
+);
 let status = up.status ?? 1;
 let output = "";
 
@@ -48,6 +55,7 @@ if (logs.stdout) process.stdout.write(logs.stdout);
 const down = spawnSync("docker", [...compose, "down", "--volumes", "--remove-orphans"], { stdio: "inherit" });
 if (down.error) console.error(`Unable to clean up the backup drill stack: ${down.error.message}`);
 
+const projectEvidence = /QKERN_PROJECT_BACKUP_EVIDENCE_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 const evidence = /QKERN_BACKUP_EVIDENCE_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 const key = /QKERN_BACKUP_VERIFIER_KEY_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 if (status === 0 && evidence && key) {
@@ -61,6 +69,20 @@ if (status === 0 && evidence && key) {
   const publicKey = Buffer.from(JSON.parse(keyBytes.toString("utf8")).publicKey, "base64url");
   writeFileSync("docs/evidence/backup-restore/drill.verifier-key.sha256", createHash("sha256").update(publicKey).digest("hex") + "\n");
   console.log("Evidenz abgelegt: docs/evidence/backup-restore/drill.evidence.json");
+  // Der Projektdatenbank-Drill (2.126) legt seine Kennzahlen daneben. Sie sind
+  // **nicht** signiert und tragen darum auch keinen Verifier: was sie belegen,
+  // belegt der Fall im Log, und eine zweite Signaturkette fuer dieselbe Aussage
+  // waere eine zweite Stelle zum Pflegen.
+  if (projectEvidence) {
+    writeFileSync(
+      "docs/evidence/backup-restore/project-database-drill.evidence.json",
+      Buffer.from(projectEvidence[1], "base64"),
+    );
+    console.log("Evidenz abgelegt: docs/evidence/backup-restore/project-database-drill.evidence.json");
+  } else {
+    console.error("Projektdatenbank-Drill: keine Evidenzzeile im Log gefunden.");
+    status = 1;
+  }
 } else if (status === 0) {
   console.error("Drill gruen, aber keine Evidenzzeilen im Log gefunden.");
   status = 1;

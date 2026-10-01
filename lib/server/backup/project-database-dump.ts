@@ -1,0 +1,442 @@
+import { spawn } from "node:child_process";
+import { recognisedByName } from "@/lib/server/errors/identity";
+import type { SqlPool, SqlQueryable } from "@/lib/server/db/sql";
+import type {
+  ProjectDatabaseDumpPort,
+  ProjectDatabaseRestoreTargetPort,
+} from "@/lib/server/backup/project-database";
+
+/**
+ * Dump und Wiederherstellung als Kindprozess (2.126).
+ *
+ * ## Warum `pg_dump` und nicht SQL aus dem Dienst
+ *
+ * Ein logischer Dump ist nicht "alle Tabellen auslesen". Er ist Schema in
+ * abhaengigkeitsrichtiger Reihenfolge, Policies, Sequenzstaende, Rechte,
+ * Erweiterungen, Default-Privilegien und Identitaetsspalten -- und das fuer eine
+ * Datenbank, deren Inhalt einem Mandanten gehoert und die QKERN nicht kennt.
+ * Das in TypeScript nachzubauen hiesse, `pg_dump` nachzubauen, und zwar
+ * schlechter: jede Postgres-Version brachte bisher eine Form mit, an die
+ * niemand gedacht hat.
+ *
+ * Der Preis ist ein Kindprozess, und der kostet drei Dinge, die hier
+ * ausdruecklich geregelt sind:
+ *
+ * 1. **Das Passwort.** Es geht ueber `PGPASSWORD` in die Umgebung des Kindes.
+ *    Nicht in `argv` (`ps` zeigt `argv` jedem Benutzer auf der Maschine), nicht
+ *    in eine `.pgpass`-Datei (eine Datei, die liegen bleibt), nicht in eine
+ *    Verbindungszeile in einem Log. Die Umgebung des Kindes wird **neu
+ *    gebaut** und nicht von `process.env` geerbt: ein Backup-Kindprozess hat
+ *    nichts mit dem Vault-Token des Dienstes zu tun.
+ * 2. **Die Meldung.** `stderr` des Kindes kann Tabellennamen eines Mandanten
+ *    tragen. Sie wird gelesen, aber nur, um den Fehlercode zu setzen, und
+ *    verlaesst diese Datei nicht. Der Fehler nach draussen hat einen festen
+ *    Code und kein `cause`.
+ * 3. **Die Groesse.** `stdout` wird mitgezaehlt und bei der Obergrenze
+ *    abgebrochen. Ein Dienst, der einen Dump unbegrenzt in den Speicher legt,
+ *    stirbt an einer fremden Datenbank.
+ *
+ * ## TLS
+ *
+ * `sslmode=verify-full` mit `sslrootcert`, wie im Control-Plane-Drill aus 2.29.
+ * Kein `require`: `require` verschluesselt und prueft niemanden. Der Pfad des
+ * Vertrauensankers ist ein Pfad und kein Geheimnis; fehlt er, kommt die
+ * Verbindung nicht zustande, und das ist richtig so.
+ */
+
+export type ProjectDatabaseBackupEndpoint = Readonly<{
+  host: string;
+  port: number;
+  database: string;
+  /** Pfad zum Vertrauensanker. Ein Pfad, kein Geheimnis. */
+  caFilePath?: string;
+}>;
+
+export type ProjectDatabaseBackupCredential = Readonly<{ username: string; password: string }>;
+
+/**
+ * Woher Adresse und Zugangsdatum kommen. Die Umsetzung im Produkt steht in
+ * `project-database-backup-runtime.ts` und holt beides aus dem
+ * Vault-gestuetzten Verbindungskatalog; es gibt keinen zweiten Weg.
+ */
+export interface ProjectDatabaseBackupEndpointResolver {
+  /**
+   * Asynchron, weil die Adresse aus der Control Plane kommt und nicht aus einer
+   * Umgebungsvariablen: eine Bindung ist eine Zeile unter Zeilensicherheit.
+   */
+  endpoint(databaseInstanceRef: string): Promise<ProjectDatabaseBackupEndpoint>;
+  credential(databaseInstanceRef: string, signal?: AbortSignal): Promise<ProjectDatabaseBackupCredential>;
+}
+
+export type ProjectDatabaseDumpErrorCode =
+  | "DUMP_FAILED"
+  | "ARTIFACT_TOO_LARGE"
+  | "CONNECTION_UNAVAILABLE";
+
+export class ProjectDatabaseDumpError extends Error {
+  readonly code: ProjectDatabaseDumpErrorCode;
+  constructor(code: ProjectDatabaseDumpErrorCode) {
+    super(code === "ARTIFACT_TOO_LARGE"
+      ? "The project database dump exceeded the size limit."
+      : "The project database dump failed.");
+    this.name = "ProjectDatabaseDumpError";
+    this.code = code;
+  }
+}
+recognisedByName(ProjectDatabaseDumpError, "ProjectDatabaseDumpError");
+
+export type PgDumpOptions = Readonly<{
+  endpoints: ProjectDatabaseBackupEndpointResolver;
+  /**
+   * Die Leseverbindung fuer das Manifest, mit **derselben Rolle** wie der Dump.
+   * Asynchron, weil der Pool an einer Bindung haengt, die erst gelesen werden
+   * muss; der Katalog, der ihn baut, haelt das Passwort.
+   */
+  readerPool(databaseInstanceRef: string): Promise<SqlPool>;
+  pgDumpPath?: string;
+  timeoutMs?: number;
+  maxDumpBytes?: number;
+}>;
+
+const DEFAULT_TIMEOUT_MS = 1_800_000;
+const DEFAULT_MAX_DUMP_BYTES = 256 * 1024 * 1024;
+
+export class PgDumpProjectDatabaseDumpPort implements ProjectDatabaseDumpPort {
+  private readonly pgDumpPath: string;
+  private readonly timeoutMs: number;
+  private readonly maxDumpBytes: number;
+
+  constructor(private readonly options: PgDumpOptions) {
+    this.pgDumpPath = options.pgDumpPath ?? "pg_dump";
+    this.timeoutMs = bounded(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1_000, 7_200_000);
+    this.maxDumpBytes = bounded(options.maxDumpBytes ?? DEFAULT_MAX_DUMP_BYTES, 1_024, 1_073_741_824);
+  }
+
+  async dump(input: Readonly<{ databaseInstanceRef: string }>, signal?: AbortSignal): Promise<Buffer> {
+    const endpoint = await this.options.endpoints.endpoint(input.databaseInstanceRef);
+    const credential = await this.credential(input.databaseInstanceRef, signal);
+    const dump = await runProcess({
+      command: this.pgDumpPath,
+      // `--format=plain`, damit die Wiederherstellung mit `psql` geht und kein
+      // zweites Werkzeug braucht. `--quote-all-identifiers`, damit ein
+      // Mandantenname, der zufaellig ein Schluesselwort ist, nicht die
+      // Wiederherstellung kippt. Keine `--no-owner`- und keine
+      // `--no-privileges`-Option: Eigentuemer und Rechte sind Teil des
+      // Zustandes, den ein Backup zurueckbringen soll. Was fehlt, ist
+      // `--create`: die Zieldatenbank legt der Provisioner-Weg an, nicht der
+      // Dump, denn nur der Provisioner-Weg darf eine Datenbank anlegen.
+      args: [
+        "--format=plain",
+        "--no-password",
+        "--quote-all-identifiers",
+        "--encoding=UTF8",
+        "--dbname", connectionString(endpoint, credential.username),
+      ],
+      password: credential.password,
+      timeoutMs: this.timeoutMs,
+      maxBytes: this.maxDumpBytes,
+      signal,
+    });
+    if (dump.length < 1) throw new ProjectDatabaseDumpError("DUMP_FAILED");
+    return dump;
+  }
+
+  async withReader<T>(
+    input: Readonly<{ databaseInstanceRef: string }>,
+    operation: (database: SqlQueryable) => Promise<T>,
+  ): Promise<T> {
+    let pool: SqlPool;
+    try {
+      pool = await this.options.readerPool(input.databaseInstanceRef);
+    } catch {
+      throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+    }
+    const client = await pool.connect().catch(() => {
+      throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+    });
+    try {
+      // Nur lesen, und das als Zusage an die Datenbank und nicht als Absicht im
+      // Dienst: eine read-only Transaktion weist jedes `INSERT` ab, auch eines,
+      // das jemand spaeter hier hineinschreibt.
+      await client.query("BEGIN TRANSACTION READ ONLY");
+      const result = await operation(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async credential(
+    databaseInstanceRef: string,
+    signal?: AbortSignal,
+  ): Promise<ProjectDatabaseBackupCredential> {
+    try {
+      return await this.options.endpoints.credential(databaseInstanceRef, signal);
+    } catch {
+      throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+    }
+  }
+}
+
+export type PsqlRestoreOptions = Readonly<{
+  /**
+   * Der Weg mit dem Recht, eine Datenbank anzulegen. Das ist **nicht** der
+   * Backup-Leser: der darf `NOCREATEDB` sein und ist es auch. Hier steht die
+   * Rolle des Provisioner-Weges, und sie ist der einzige Ort in diesem Weg mit
+   * `CREATEDB`.
+   */
+  admin: ProjectDatabaseBackupEndpointResolver;
+  /**
+   * Womit das Manifest der wiederhergestellten Datenbank gelesen wird.
+   *
+   * Das muss **dieselbe Rolle** sein, mit der das Manifest beim Backup gelesen
+   * wurde, und darum nicht `admin`. Teile des Manifests haengen an der
+   * lesenden Rolle, sobald sie aus einer Sicht wie
+   * `information_schema.table_privileges` kommen; der Vergleich zweier
+   * Manifeste unter zwei Rollen vergleicht dann die Rollen und nicht die
+   * Datenbanken. Das Manifest selbst meidet solche Sichten inzwischen (siehe
+   * `project-database-manifest.ts`), und trotzdem steht hier der Leser: eine
+   * Zusage, die an zwei Stellen haengt, soll an beiden stimmen.
+   */
+  reader?: ProjectDatabaseBackupEndpointResolver;
+  /** Die Wartungsdatenbank, in der `CREATE DATABASE` lauft. Nie die Projektdatenbank. */
+  maintenanceDatabase?: string;
+  psqlPath?: string;
+  /** Der Pool-Bauer fuer das Nachlesen; eingespeist, damit der Fall keinen echten Pool braucht. */
+  readerFactory: (input: Readonly<{
+    endpoint: ProjectDatabaseBackupEndpoint;
+    credential: ProjectDatabaseBackupCredential;
+    databaseName: string;
+  }>) => Promise<Readonly<{ database: SqlQueryable; close: () => Promise<void> }>>;
+  timeoutMs?: number;
+}>;
+
+/**
+ * Das Ziel einer Wiederherstellung.
+ *
+ * **Nie ueber die lebende Datenbank.** `createDatabase` legt eine neue an und
+ * laesst `CREATE DATABASE` an einer vorhandenen scheitern, statt sie zu
+ * leeren; es gibt in dieser Klasse kein `DROP DATABASE` und kein `TRUNCATE`.
+ * Wer eine Wiederherstellung uebernehmen will, tauscht danach selbst -- QKERN
+ * entscheidet das nicht fuer einen Betreiber, und ein Weg, der es koennte,
+ * waere ein Weg, eine lebende Mandantendatenbank zu verlieren.
+ */
+export class PsqlProjectDatabaseRestoreTargetPort implements ProjectDatabaseRestoreTargetPort {
+  private readonly psqlPath: string;
+  private readonly maintenanceDatabase: string;
+  private readonly timeoutMs: number;
+
+  constructor(private readonly options: PsqlRestoreOptions) {
+    this.psqlPath = options.psqlPath ?? "psql";
+    this.maintenanceDatabase = options.maintenanceDatabase ?? "postgres";
+    this.timeoutMs = bounded(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1_000, 7_200_000);
+    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(this.maintenanceDatabase)) {
+      throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+    }
+  }
+
+  async createDatabase(
+    input: Readonly<{ databaseInstanceRef: string; databaseName: string }>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    assertName(input.databaseName);
+    const endpoint = await this.options.admin.endpoint(input.databaseInstanceRef);
+    const credential = await this.options.admin.credential(input.databaseInstanceRef, signal);
+    await runProcess({
+      command: this.psqlPath,
+      args: [
+        "--no-password",
+        "--no-psqlrc",
+        "--set", "ON_ERROR_STOP=1",
+        "--dbname", connectionString({ ...endpoint, database: this.maintenanceDatabase }, credential.username),
+        // Der Name ist durch `assertName` auf `[a-z_][a-z0-9_]*` begrenzt und
+        // kommt aus der Backup-Id, nicht aus einer Anfrage. Ein Name, der ein
+        // Anfuehrungszeichen enthaelt, kommt hier nicht an.
+        "--command", `CREATE DATABASE ${input.databaseName}`,
+      ],
+      password: credential.password,
+      timeoutMs: this.timeoutMs,
+      maxBytes: 1_048_576,
+      signal,
+    });
+  }
+
+  async restore(
+    input: Readonly<{ databaseInstanceRef: string; databaseName: string; dump: Buffer }>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    assertName(input.databaseName);
+    const endpoint = await this.options.admin.endpoint(input.databaseInstanceRef);
+    const credential = await this.options.admin.credential(input.databaseInstanceRef, signal);
+    await runProcess({
+      command: this.psqlPath,
+      args: [
+        "--no-password",
+        "--no-psqlrc",
+        "--set", "ON_ERROR_STOP=1",
+        "--dbname", connectionString({ ...endpoint, database: input.databaseName }, credential.username),
+        // `--file=-` statt einer Datei: der Dump geht ueber `stdin` und liegt
+        // nie entschluesselt auf einer Platte. Genau das ist der Grund, warum
+        // der Umschlag erst im Dienst aufgeht und nicht vorher.
+        "--file", "-",
+      ],
+      password: credential.password,
+      stdin: input.dump,
+      timeoutMs: this.timeoutMs,
+      maxBytes: 16 * 1_048_576,
+      signal,
+    });
+  }
+
+  async withReader<T>(
+    input: Readonly<{ databaseInstanceRef: string; databaseName: string }>,
+    operation: (database: SqlQueryable) => Promise<T>,
+  ): Promise<T> {
+    assertName(input.databaseName);
+    const resolver = this.options.reader ?? this.options.admin;
+    const endpoint = await resolver.endpoint(input.databaseInstanceRef);
+    const credential = await resolver.credential(input.databaseInstanceRef);
+    const reader = await this.options.readerFactory({
+      endpoint,
+      credential,
+      databaseName: input.databaseName,
+    });
+    try {
+      return await operation(reader.database);
+    } finally {
+      await reader.close().catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Die Verbindungszeile fuer ein Kindprozess-Werkzeug. **Ohne Passwort.** Sie
+ * steht in `argv` und ist damit fuer jeden Benutzer der Maschine lesbar; was
+ * hier hineingeschrieben wird, ist oeffentlich.
+ */
+export function connectionString(
+  endpoint: ProjectDatabaseBackupEndpoint,
+  username: string,
+): string {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(username) || username.startsWith("pg_")) {
+    throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+  }
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(endpoint.database) ||
+      !Number.isSafeInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65_535 ||
+      !/^[A-Za-z0-9._:[\]-]{1,253}$/.test(endpoint.host)) {
+    throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+  }
+  const parts = [
+    `host=${endpoint.host}`,
+    `port=${endpoint.port}`,
+    `user=${username}`,
+    `dbname=${endpoint.database}`,
+  ];
+  if (endpoint.caFilePath) {
+    if (!endpoint.caFilePath.startsWith("/") || /[\s'"\\]/.test(endpoint.caFilePath)) {
+      throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+    }
+    parts.push("sslmode=verify-full", `sslrootcert=${endpoint.caFilePath}`);
+  }
+  return parts.join(" ");
+}
+
+type ProcessRun = {
+  command: string;
+  args: readonly string[];
+  password: string;
+  timeoutMs: number;
+  maxBytes: number;
+  stdin?: Buffer;
+  signal?: AbortSignal;
+};
+
+function runProcess(run: ProcessRun): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(run.command, [...run.args], {
+        // Eine frisch gebaute Umgebung. `process.env` traegt das Vault-Token
+        // des Dienstes, Datenbank-URLs der Control Plane und alles, was ein
+        // Betreiber je gesetzt hat; davon braucht ein `pg_dump` nichts.
+        env: {
+          PGPASSWORD: run.password,
+          PGCONNECT_TIMEOUT: "10",
+          // Eine feste Sprache, damit eine Meldung nicht von der Locale des
+          // Wirts abhaengt. Keine Zeitzone und kein `PGOPTIONS`.
+          LC_ALL: "C",
+          PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        } as unknown as NodeJS.ProcessEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+    } catch {
+      reject(new ProjectDatabaseDumpError("DUMP_FAILED"));
+      return;
+    }
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let settled = false;
+    let tooLarge = false;
+    let stderrBytes = 0;
+    const finish = (error: ProjectDatabaseDumpError | null, value?: Buffer) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      run.signal?.removeEventListener("abort", onAbort);
+      if (error) reject(error); else resolve(value!);
+    };
+    const kill = () => { try { child.kill("SIGKILL"); } catch { /* schon weg */ } };
+    const onAbort = () => { kill(); finish(new ProjectDatabaseDumpError("DUMP_FAILED")); };
+    const timer = setTimeout(() => { kill(); finish(new ProjectDatabaseDumpError("DUMP_FAILED")); }, run.timeoutMs);
+    if (run.signal?.aborted) { kill(); finish(new ProjectDatabaseDumpError("DUMP_FAILED")); return; }
+    run.signal?.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > run.maxBytes) {
+        tooLarge = true;
+        kill();
+        finish(new ProjectDatabaseDumpError("ARTIFACT_TOO_LARGE"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    // `stderr` wird verbraucht, damit das Kind nicht an einer vollen Pipe
+    // haengt, und **nicht** aufbewahrt: eine Meldung von `pg_dump` kann
+    // Tabellennamen eines Mandanten tragen. Gezaehlt wird sie, damit ein
+    // Fehlschlag nicht nach einem leeren Lauf aussieht.
+    child.stderr?.on("data", (chunk: Buffer) => { stderrBytes += chunk.length; });
+    child.on("error", () => { finish(new ProjectDatabaseDumpError("DUMP_FAILED")); });
+    child.on("close", (code) => {
+      if (tooLarge) return;
+      if (code === 0) finish(null, Buffer.concat(chunks, total));
+      else finish(new ProjectDatabaseDumpError(stderrBytes > 0 ? "DUMP_FAILED" : "CONNECTION_UNAVAILABLE"));
+    });
+
+    if (run.stdin) {
+      child.stdin?.on("error", () => undefined);
+      child.stdin?.end(run.stdin);
+    } else {
+      child.stdin?.end();
+    }
+  });
+}
+
+function assertName(value: string): void {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(value) || value.startsWith("pg_")) {
+    throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+  }
+}
+
+function bounded(value: number, minimum: number, maximum: number): number {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE");
+  }
+  return value;
+}

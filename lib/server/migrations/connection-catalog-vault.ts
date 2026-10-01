@@ -215,6 +215,74 @@ export class VaultProjectDatabaseConnectionCatalog implements ProjectDatabaseCon
   }
 }
 
+/**
+ * Ein Zugangsdatum aus derselben Vault-Static-Role, aus der der Katalog oben
+ * seine Pools baut -- fuer den **einen** Aufrufer, der keinen Pool benutzen
+ * kann (2.126).
+ *
+ * ## Warum das hier steht und nicht als zweiter Weg daneben
+ *
+ * Das Backup einer Projektdatenbank lauft ueber `pg_dump` und `psql`, und das
+ * sind Kindprozesse. Ein Kindprozess kann keinen `SqlPool` erben; er braucht
+ * das Passwort selbst. Die Antwort darauf ist nicht eine zweite Quelle fuer
+ * Zugangsdaten (eine Umgebungsvariable mit einem Passwort, eine Datei neben dem
+ * Dienst), sondern **dieselbe** Quelle mit einem zweiten Ausgang. Diese Klasse
+ * ist dieser Ausgang: dieselbe Validierung der Optionen, derselbe
+ * Token-Provider, dieselbe Pruefung der Antwort, dieselbe Bindung an
+ * `expectedRole`.
+ *
+ * ## Was sie herausgibt und was nicht
+ *
+ * Sie gibt Benutzer, Passwort und Restlaufzeit zurueck, und sonst nichts: keine
+ * Verbindungszeile, keinen Pool, keine Adresse. Wer sie benutzt, uebergibt das
+ * Passwort ueber die **Umgebung** des Kindprozesses weiter, nie in `argv`
+ * (dort stuende es in `ps`) und nie in eine Datei. Sie hat kein `toString` und
+ * kein `toJSON`, das ein Logger abgreifen koennte -- das zurueckgegebene Objekt
+ * ist eingefroren und traegt nur die drei Felder.
+ *
+ * **Sie wird nicht zwischengespeichert.** Jeder Aufruf fragt den Vault. Ein
+ * Zwischenspeicher waere ein Passwort, das im Dienst liegt, ohne dass es
+ * jemand braucht; ein Backup lauft selten, und die eine Anfrage je Lauf ist
+ * billiger als die Haltezeit.
+ */
+export class VaultStaticDatabaseCredentialSource {
+  private readonly options: ValidatedOptions;
+  private readonly bindings: ReadonlyMap<string, VaultProjectDatabaseBinding>;
+
+  constructor(options: VaultProjectDatabaseCatalogOptions) {
+    this.options = validateOptions(options);
+    const bindings = new Map<string, VaultProjectDatabaseBinding>();
+    for (const binding of this.options.bindings) {
+      if (bindings.has(binding.databaseInstanceRef)) {
+        throw new VaultProjectDatabaseCatalogError("DUPLICATE_CATALOG_BINDING");
+      }
+      bindings.set(binding.databaseInstanceRef, binding);
+    }
+    this.bindings = bindings;
+  }
+
+  binding(databaseInstanceRef: string): VaultProjectDatabaseBinding {
+    if (!isCatalogReference(databaseInstanceRef)) {
+      throw new VaultProjectDatabaseCatalogError("PROJECT_DATABASE_REFERENCE_NOT_ALLOWED");
+    }
+    const binding = this.bindings.get(databaseInstanceRef);
+    if (!binding) throw new VaultProjectDatabaseCatalogError("PROJECT_DATABASE_REFERENCE_NOT_ALLOWED");
+    return binding;
+  }
+
+  references(): readonly string[] {
+    return [...this.bindings.keys()];
+  }
+
+  async credentialFor(
+    databaseInstanceRef: string,
+    signal?: AbortSignal,
+  ): Promise<Readonly<{ username: string; password: string; ttlSeconds: number }>> {
+    const binding = this.binding(databaseInstanceRef);
+    return fetchVaultCredential(binding, this.options, signal ?? new AbortController().signal);
+  }
+}
+
 type ValidatedOptions = {
   vaultDatabaseUrl: URL;
   bindings: readonly VaultProjectDatabaseBinding[];

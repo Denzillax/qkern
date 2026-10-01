@@ -1,34 +1,72 @@
 name: qkern-backup-v229-certification
 
-# Portloser Wegwerfstack fuer den Backup-/Restore-Drill (Sprosse 10, 2.29).
+# Portloser Wegwerfstack fuer die Backup-/Restore-Drills.
+#
+# Er traegt zwei Faelle, und sie belegen zwei verschiedene Dinge:
+#
+# 1. `(2.29)` Die **Steuerungsdatenbank**: verschluesseltes physisches
+#    Basisbackup ueber `sslmode=verify-full`, Wiederherstellung bis zu einem
+#    Zeitpunkt aus dem WAL-Archiv, Schema, Zeilen, Audit-Kette und Manifest
+#    belegt.
+# 2. `(2.126)` Die **Projektdatenbank** eines Mandanten: logisches Backup der
+#    einen Datenbank, verschluesselt mit einem Datenschluessel je Backup, der in
+#    einen Mandanten-Schluessel eingewickelt ist, Bytes im Objektspeicher,
+#    Wiederherstellung in eine **neue** Datenbank, und die Mandantengrenze.
 #
 # Dieselben Regeln wie in den anderen Stacks: kein Mount in einem anderen
 # Mount, keine Produktgrenze wird fuer den Test aufgeweicht. Der Quell-
-# PostgreSQL laeuft mit TLS-Pflicht (im Stack erzeugtes Zertifikat, hostssl
-# ohne Ausnahme) und archiviert jedes WAL-Segment in ein geteiltes Archiv.
-# Der Drill-Container zieht ein verschluesseltes Basisbackup, stellt es als
-# zweiten Server aus dem WAL-Archiv bis zu einem Zeitpunkt wieder her
-# (Point-in-time Recovery) und belegt Schema, Zeilen, Audit-Kette und
-# Manifest. Lokal in Docker, wie Denzil es wollte: dieselbe Technik, die spaeter
-# beim Hoster laeuft, nur mit anderen Adressen.
+# PostgreSQL laeuft mit TLS-Pflicht (im Stack erzeugte Kette, hostssl ohne
+# Ausnahme) und archiviert jedes WAL-Segment in ein geteiltes Archiv.
+#
+# Seit 2.126 steht neben PostgreSQL ein **Vault** und ein **Objektspeicher**,
+# und die Zertifikate kommen aus einer **eigenen CA** statt aus einem
+# selbstsignierten Blatt. Beides ist noetig und keines davon Geschmack:
+#
+# - Der Projektdatenbank-Weg holt sein Zugangsdatum ueber `https` aus einer
+#   statischen Vault-Rolle. Ohne echten Vault waere der Weg nicht zu belegen,
+#   sondern nur zu behaupten.
+# - Der Node-Treiber prueft die Kette gegen einen Anker aus
+#   `NODE_EXTRA_CA_CERTS`; ein selbstsigniertes Blatt ohne `CA:true` ist dort
+#   kein Anker. libpq nahm es als `sslrootcert`, Node nimmt es nicht. Dieselbe
+#   Lehre wie im Realtime-Stack, und derselbe Aufbau.
 
 services:
   certs:
     image: alpine/openssl:3.3.2
     entrypoint: ["sh", "-ec"]
-    # Der Schluessel gehoert dem postgres-Benutzer des Alpine-Images (uid 70)
-    # mit 0600, sonst weigert sich der Server. Zwei Tage gueltig, verlaesst den
-    # Stack nicht. Das WAL-Archiv gehoert demselben Benutzer, sonst scheitert
-    # archive_command an einem Volume, das Docker root ueberlaesst.
+    # CA, Serverzertifikat und Vault-Zertifikat, zwei Tage gueltig, verlassen
+    # den Stack nicht. Der Serverschluessel gehoert dem postgres-Benutzer des
+    # Alpine-Images (uid 70) mit 0600, sonst weigert sich der Server. Das
+    # WAL-Archiv gehoert demselben Benutzer, sonst scheitert archive_command an
+    # einem Volume, das Docker root ueberlaesst.
     command:
       - |
         openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
+          -subj /CN=qkern-backup-certification-ca \
+          -addext basicConstraints=critical,CA:true \
+          -addext keyUsage=critical,keyCertSign,cRLSign \
+          -keyout /certs/ca.key -out /certs/ca.crt
+        openssl req -nodes -newkey rsa:2048 \
           -subj /CN=postgres.qkern.test \
-          -addext subjectAltName=DNS:postgres.qkern.test \
-          -keyout /certs/server.key -out /certs/server.crt
+          -keyout /certs/server.key -out /certs/server.csr
+        printf 'subjectAltName=DNS:postgres.qkern.test,IP:127.0.0.1\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > /certs/server.ext
+        openssl x509 -req -in /certs/server.csr -days 2 \
+          -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+          -extfile /certs/server.ext -out /certs/server.crt
+        openssl req -nodes -newkey rsa:2048 \
+          -subj /CN=vault.qkern.test \
+          -keyout /certs/vault.key -out /certs/vault.csr
+        printf 'subjectAltName=DNS:vault.qkern.test,IP:127.0.0.1\nbasicConstraints=critical,CA:false\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > /certs/vault.ext
+        openssl x509 -req -in /certs/vault.csr -days 2 \
+          -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+          -extfile /certs/vault.ext -out /certs/vault.crt
+        rm -f /certs/server.csr /certs/server.ext /certs/vault.csr /certs/vault.ext /certs/ca.key
         chown 70:70 /certs/server.key /certs/server.crt
-        chmod 0600 /certs/server.key
-        chmod 0644 /certs/server.crt
+        chown 100:100 /certs/vault.key /certs/vault.crt
+        chmod 0600 /certs/server.key /certs/vault.key
+        chmod 0644 /certs/server.crt /certs/vault.crt /certs/ca.crt
+        openssl verify -CAfile /certs/ca.crt /certs/server.crt
+        openssl verify -CAfile /certs/ca.crt /certs/vault.crt
         chown 70:70 /wal-archive
         chmod 0755 /wal-archive
     volumes:
@@ -71,42 +109,131 @@ services:
       QKERN_WORKER_DB_PASSWORD: qkern_worker_local_only
       QKERN_PROVISIONER_DB_PASSWORD: qkern_provisioner_local_only
       QKERN_PROJECT_API_DB_PASSWORD: qkern_project_api_local_only
+      # Setzt `998-project-database.sh` in Gang: die zweite Datenbank im selben
+      # Cluster mit Ledger-Eigentuemer und Rechten fuer den Data-API-Login.
+      QKERN_PROJECT_READER_DB_PASSWORD: qkern_project_reader_local_only
+      QKERN_PROJECT_MIGRATOR_DB_PASSWORD: qkern_project_migrator_local_only
+      # Die zwei Rollen des Backup-Weges. Startpasswoerter; der Vault dreht sie
+      # beim Seed, und der Dienst holt sie dann ueber den Verbindungskatalog.
+      QKERN_PROJECT_BACKUP_DB_PASSWORD: qkern_project_backup_local_only
+      QKERN_PROJECT_RESTORE_ADMIN_DB_PASSWORD: qkern_project_restore_admin_local_only
     tmpfs:
       - /var/lib/postgresql/data
     volumes:
       - ./db:/qkern/db:ro
       - ./db/docker/000-certification-init.sh:/docker-entrypoint-initdb.d/000-certification-init.sh:ro
+      - ./db/docker/backup-project-database.sh:/docker-entrypoint-initdb.d/001-backup-project-database.sh:ro
       - ./db/docker/backup-pg_hba.conf:/qkern/backup/pg_hba.conf:ro
       - backup-certification-certs:/certs:ro
       - backup-certification-wal:/wal-archive
     healthcheck:
-      # Ueber TLS, weil pg_hba alles andere abweist.
-      test: ["CMD-SHELL", "PGPASSWORD=qkern_local_only psql 'host=127.0.0.1 sslmode=require user=qkern dbname=qkern_control' -tAc 'SELECT 1' | grep -qx 1"]
+      # Ueber TLS, weil pg_hba alles andere abweist. Die Rolle des Backup-Lesers
+      # entsteht im letzten Init-Script; vorher kann die Probe nicht bestehen,
+      # und damit wartet `--wait` auf eine fertig eingerichtete Datenbank.
+      test: ["CMD-SHELL", "PGPASSWORD=qkern_project_backup_local_only psql 'host=127.0.0.1 sslmode=require user=qkern_project_backup dbname=project_database' -tAc 'SELECT 1' | grep -qx 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 40
+
+  # Der Vault des Stacks, wie im Realtime-Stack und aus demselben Grund: **kein
+  # Dev-Modus**, weil der Katalog eine `https`-Adresse verlangt und der
+  # Dev-Modus nur Klartext kann. Das Serverzertifikat kommt aus derselben CA wie
+  # das von PostgreSQL; ein Anker fuer beide Wege.
+  vault:
+    image: hashicorp/vault:1.18.3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - vault.qkern.test
+    environment:
+      VAULT_LOCAL_CONFIG: >-
+        {"storage": {"inmem": {}},
+         "listener": [{"tcp": {"address": "0.0.0.0:8200",
+                               "tls_cert_file": "/certs/vault.crt",
+                               "tls_key_file": "/certs/vault.key"}}],
+         "api_addr": "https://vault.qkern.test:8200",
+         "cluster_addr": "https://vault.qkern.test:8201",
+         "disable_mlock": true}
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config"]
+    volumes:
+      - backup-certification-certs:/certs:ro
+    healthcheck:
+      # `uninitcode` und `sealedcode` auf 200, weil beides beim Start zutrifft:
+      # Entsiegelt wird im Drill-Container. `--no-check-certificate` gilt nur
+      # fuer die Probe des Containers gegen sich selbst.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--no-check-certificate", "--spider", "https://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200&standbycode=200"]
       interval: 2s
       timeout: 5s
       retries: 30
 
+  # Der Objektspeicher. Dasselbe versitygw wie im Storage-Stack und aus
+  # demselben Grund (das Image minio/minio ist von Docker Hub verschwunden).
+  # Der Drill teilt seine Netzwerk-Namespace: der S3-Weg erlaubt Klartext-HTTP
+  # ausschliesslich gegen Loopback, und das ist richtig so -- ein
+  # Docker-Servicename ist kein Loopback. Statt die Produktgrenze fuer den Test
+  # aufzuweichen, wird der Objektspeicher tatsaechlich zu 127.0.0.1.
+  objects:
+    image: versity/versitygw:v1.8.0
+    command: ["-a", "qkern_cert_access", "-s", "qkern_cert_secret_change_me_32bytes", "posix", "/data"]
+    tmpfs:
+      - /data
+
   drill:
     image: node:24-alpine
     working_dir: /workspace/qkern
+    # Siehe `objects`: der Objektspeicher ist fuer den Drill 127.0.0.1. Die
+    # Namen `postgres.qkern.test` und `vault.qkern.test` loest weiterhin das
+    # DNS desselben Compose-Netzwerks auf.
+    network_mode: "service:objects"
     depends_on:
       postgres:
         condition: service_healthy
+      vault:
+        condition: service_healthy
+      objects:
+        condition: service_started
     volumes:
       - .:/qkern-src:ro
       - backup-certification-certs:/certs:ro
       - backup-certification-wal:/wal-archive:ro
     environment:
       NODE_ENV: test
+      # Ein Anker fuer beide Wege: PostgreSQL und Vault haben ihre Zertifikate
+      # aus derselben CA. Keine Pruefung wird abgeschaltet.
+      NODE_EXTRA_CA_CERTS: /certs/ca.crt
       QKERN_TEST_BACKUP_DRILL: "true"
       QKERN_TEST_BACKUP_SOURCE_HOST: postgres.qkern.test
       QKERN_TEST_BACKUP_SOURCE_USER: qkern
       QKERN_TEST_BACKUP_SOURCE_PASSWORD: qkern_local_only
       QKERN_TEST_BACKUP_SOURCE_DB: qkern_control
-      QKERN_TEST_BACKUP_CA_FILE: /certs/server.crt
+      QKERN_TEST_BACKUP_CA_FILE: /certs/ca.crt
+      QKERN_TEST_BACKUP_SERVER_CERT_FILE: /certs/server.crt
       QKERN_TEST_BACKUP_WAL_ARCHIVE: /wal-archive
       QKERN_TEST_BACKUP_WORKDIR: /drill
       QKERN_TEST_BACKUP_RESTORE_USER: postgres
+      # --- Fall (2.126): die Projektdatenbank ---
+      QKERN_TEST_PROJECT_BACKUP_DRILL: "true"
+      QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres.qkern.test:5432/qkern_control
+      QKERN_TEST_PROVISIONER_DATABASE_URL: postgresql://qkern_provisioner_app:qkern_provisioner_local_only@postgres.qkern.test:5432/qkern_control
+      QKERN_TEST_PROJECT_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres.qkern.test:5432/project_database
+      QKERN_TEST_PROJECT_DATABASE_NAME: project_database
+      QKERN_TEST_BACKUP_VAULT_ADDRESS: https://vault.qkern.test:8200
+      QKERN_TEST_BACKUP_VAULT_DATABASE_URL: https://vault.qkern.test:8200/v1/database
+      QKERN_TEST_BACKUP_VAULT_TOKEN_FILE: /run/qkern/vault-token
+      QKERN_TEST_BACKUP_VAULT_STATIC_ROLE_BASE: qkern-project
+      QKERN_TEST_BACKUP_S3_ENDPOINT: http://127.0.0.1:7070
+      QKERN_TEST_BACKUP_S3_REGION: us-east-1
+      QKERN_TEST_BACKUP_S3_BUCKET: qkern-project-database-backups
+      QKERN_TEST_BACKUP_S3_ACCESS_KEY_ID: qkern_cert_access
+      QKERN_TEST_BACKUP_S3_SECRET_ACCESS_KEY: qkern_cert_secret_change_me_32bytes
+      QKERN_TEST_BACKUP_KEY_DIRECTORY: /run/qkern/backup-keys
+      QKERN_TEST_BACKUP_KEY_ID: drill-tenant-kek
+      DATABASE_SSL: require
     command:
       - "sh"
       - "-ec"
@@ -117,7 +244,59 @@ services:
         # an; der Restore-Server laeuft als dieser, damit er das Archiv lesen
         # darf, ohne dass es fuer alle lesbar werden muss.
         mkdir -p /drill && chown postgres /drill
-        mkdir -p /workspace/qkern
+        mkdir -p /workspace/qkern /run/qkern/backup-keys
+        chmod 0700 /run/qkern/backup-keys
+        # Der Mandanten-Schluessel. Im Betrieb schreibt ihn ein Vault Agent in
+        # dieses Verzeichnis; hier tut es der Stack, mit derselben Form (64
+        # Hexzeichen) und denselben Rechten (0600), damit der Dienst dieselbe
+        # Pruefung durchlaeuft.
+        openssl rand -hex 32 > /run/qkern/backup-keys/drill-tenant-kek.key
+        chmod 0600 /run/qkern/backup-keys/drill-tenant-kek.key
+        # Vault entsiegeln, die Datenbank-Engine einrichten und die **zwei**
+        # statischen Rollen anlegen, die der Backup-Weg aus dem Rollenstamm
+        # einer Bindung ableitet: `<stamm>-backup` und `<stamm>-restore-admin`.
+        # Kein eigener Seed-Container, aus demselben Grund wie in den anderen
+        # Stacks: ein Einweg-Container haette den Lauf als beendet gezaehlt.
+        node -e "
+          import { writeFileSync } from 'node:fs';
+          const address = process.env.QKERN_TEST_BACKUP_VAULT_ADDRESS;
+          const call = async (path, options = {}, token) => {
+            const response = await fetch(address + path, {
+              method: options.body ? 'POST' : 'GET',
+              headers: {
+                'content-type': 'application/json',
+                ...(token ? { 'x-vault-token': token } : {}),
+              },
+              ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+            });
+            if (!response.ok) throw new Error(path + ': ' + response.status + ' ' + await response.text());
+            return response.status === 204 ? {} : await response.json();
+          };
+          const initialized = await call('/v1/sys/init', { body: { secret_shares: 1, secret_threshold: 1 } });
+          await call('/v1/sys/unseal', { body: { key: initialized.keys[0] } });
+          const token = initialized.root_token;
+          writeFileSync(process.env.QKERN_TEST_BACKUP_VAULT_TOKEN_FILE, token, { mode: 0o600 });
+          await call('/v1/sys/mounts/database', { body: { type: 'database' } }, token);
+          await call('/v1/database/config/project', { body: {
+            plugin_name: 'postgresql-database-plugin',
+            allowed_roles: '*',
+            connection_url: 'postgresql://{{username}}:{{password}}@postgres.qkern.test:5432/project_database?sslmode=require',
+            username: 'qkern',
+            password: 'qkern_local_only',
+            password_authentication: 'scram-sha-256',
+          } }, token);
+          const base = process.env.QKERN_TEST_BACKUP_VAULT_STATIC_ROLE_BASE;
+          for (const [suffix, user] of [['-backup', 'qkern_project_backup'], ['-restore-admin', 'qkern_project_restore_admin']]) {
+            await call('/v1/database/static-roles/' + base + suffix, { body: {
+              db_name: 'project', username: user, rotation_period: '86400',
+            } }, token);
+            const credential = await call('/v1/database/static-creds/' + base + suffix, {}, token);
+            if (credential.data.username !== user || !credential.data.password) {
+              throw new Error('static-creds did not name ' + user);
+            }
+            console.error('vault-seed: static role ' + base + suffix + ' rotated, ttl ' + credential.data.ttl);
+          }
+        " --input-type=module
         tar -C /qkern-src \
           --exclude=./node_modules \
           --exclude=./.next \
@@ -127,7 +306,12 @@ services:
           --exclude=./docs/evidence \
           -cf - . | tar -C /workspace/qkern -xf -
         npm ci --ignore-scripts
-        npx vitest run tests/backup-restore-drill.integration.test.ts
+        # `--no-file-parallelism`: die beiden Faelle greifen auf denselben
+        # Cluster zu, und einer von ihnen startet einen zweiten Server. Zwei
+        # Dateien gleichzeitig waeren Last, die mit der Zusage nichts zu tun hat.
+        npx vitest run --no-file-parallelism \
+          tests/backup-restore-drill.integration.test.ts \
+          tests/project-database-backup-drill.integration.test.ts
 
 volumes:
   backup-certification-certs:

@@ -140,6 +140,22 @@ export type ProjectDatabaseProvisioningWorkerOptions = {
   delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   now?: () => Date;
   probe?: RuntimeProbeObserver;
+  /**
+   * Die Leerlauf-Pflicht des Prozesses (2.126).
+   *
+   * Das Backup einer Projektdatenbank laeuft in **diesem** Prozess, und die
+   * Begruendung dafuer steht in `lib/server/backup/project-database.ts`. Sie
+   * laeuft genau dann, wenn der Provisioner nichts zu tun hat: ein wartender
+   * Projektauftrag geht immer vor, denn er laesst einen Kunden warten, und ein
+   * Backup laesst niemanden warten.
+   *
+   * Die Pflicht kann also lange dauern, ohne dass die Antwortzeit des
+   * Provisioners darunter leidet -- und sie darf **nicht** werfen: was in ihr
+   * schiefgeht, gehoert in ihr eigenes Log und nicht in die Runde des
+   * Provisioners. Darum ist der Aufruf hier in `catch` eingefasst, und darum
+   * nennt die Schnittstelle keinen Rueckgabewert.
+   */
+  idleDuty?: { runRound(signal?: AbortSignal): Promise<unknown> };
 };
 
 const silentLogger = { log: (_event: ProjectDatabaseProvisioningLogEvent) => undefined };
@@ -154,6 +170,7 @@ export class ProjectDatabaseProvisioningWorker {
   private readonly delay: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private readonly now: () => Date;
   private readonly probe?: RuntimeProbeObserver;
+  private readonly idleDuty?: { runRound(signal?: AbortSignal): Promise<unknown> };
   private activeOnce?: Promise<ProjectDatabaseProvisioningWorkerResult>;
   private loopRunning = false;
 
@@ -171,6 +188,7 @@ export class ProjectDatabaseProvisioningWorker {
     this.delay = options.delay ?? abortableDelay;
     this.now = options.now ?? (() => new Date());
     this.probe = options.probe;
+    this.idleDuty = options.idleDuty;
   }
 
   runOnce(signal?: AbortSignal): Promise<ProjectDatabaseProvisioningWorkerResult> {
@@ -200,6 +218,13 @@ export class ProjectDatabaseProvisioningWorker {
           this.probe,
           result.status === "claim_failed" ? "iterationFailed" : "iterationSucceeded",
         );
+        if (result.status === "idle" && this.idleDuty) {
+          // Siehe `idleDuty`: ein Fehlschlag darf die Runde des Provisioners
+          // nicht kippen. Der Abbruch des Prozesses darf sie dagegen beenden,
+          // und das Signal geht darum hinein.
+          try { await this.idleDuty.runRound(signal); } catch { /* die Pflicht loggt selbst */ }
+          if (signal.aborted) break;
+        }
         if (result.status === "idle" || result.status === "claim_failed") {
           try { await this.delay(this.idleDelayMs, signal); } catch (error) {
             if (signal.aborted || isAbortError(error)) break;
