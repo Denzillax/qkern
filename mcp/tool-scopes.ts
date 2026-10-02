@@ -84,6 +84,54 @@ import {
  * keine Nachrichteninhalte. `qkern_queue_message_enqueue` stellt eine Nachricht
  * ein, und **nur** das.
  *
+ * **Und seit 2.131 traegt `queues:read` ein drittes Werkzeug:
+ * `qkern_queue_message_trace`.** Die Entscheidung ist nach demselben Muster
+ * getroffen, mit dem 2.117 die freie Abfrage auf `data:read` gelegt hat, und sie
+ * hat zwei Haelften.
+ *
+ * *Welcher Bereich.* 2.117 hat `project:read` ausdruecklich abgelehnt: Dieser
+ * Bereich sagt etwas ueber die **Gestalt der Projektumgebung**, und die Gestalt
+ * der Daten gehoert zur Data API. Dieselbe Trennung hier: Eine Spur sagt, was mit
+ * **einer Nachricht** passiert ist, also etwas ueber die Nachrichten dieser
+ * Umgebung und nicht ueber ihre Gestalt. Sie gehoert damit zu den Queues und
+ * nicht zu `project:read`, und sie gehoert nicht zu `logs:read`: Das Audit-Log
+ * sagt, wer wann was getan hat, also etwas ueber Personen; eine Spur nennt
+ * Stationen und Fehlercodes einer Nachricht und keinen Akteur. Ein eigener
+ * Bereich waere die dritte Moeglichkeit, und er faellt an der Regel, die 2.69 fuer
+ * `storage:write` aufgeschrieben hat: Ein Bereich ohne eigenen Satz ist auf einer
+ * Zustimmungsseite eine Beschriftung, und `queues:read` hat genau den Satz, den
+ * dieses Werkzeug einloest.
+ *
+ * Was `queues:read` damit zusagt, wird dabei breiter, und das steht hier, statt
+ * dass es jemand nachrechnet: Bis 2.130 nannte der Bereich keine einzelne
+ * Nachricht, von jetzt an nennt er eine. Er gibt weiter keine Nutzlast her, kein
+ * Lease-Token und keinen Dedupe-Verifikator -- die Tabelle aus 0081 hat dafuer
+ * keine Spalte -- und auch keinen Wirt, denn die Anwendungsform der Spur hat das
+ * Feld nicht. Die Console sagt es beim Bereich mit.
+ *
+ * *Welche Rolle.* Hier geht dieses Werkzeug einen anderen Weg als die beiden
+ * lesenden Queue-Werkzeuge, und der Grund ist derselbe, der 2.116 beim
+ * Loeschwerkzeug von Storage gezogen hat. `qkern_queues_list` und
+ * `qkern_queue_status` laufen mit `role: "admin"`; das ist unten unter "Was ein
+ * Bereich hier nicht ist" seit 2.69 als offene Grenze notiert, und bei einer
+ * Definition und einem Zaehler ist sie tragbar: Es gibt dort keinen Besitzer je
+ * Zeile, an dem eine engere Rolle etwas entscheiden koennte. Bei einer Spur gibt
+ * es ihn: `project_queue_messages.owner_subject` traegt seit 0026 das Subjekt,
+ * das eingereiht hat. Als Betreiber zu lesen hiesse, dass die Zustimmung eines
+ * beliebigen Endnutzers einem fremden Client die Spur **jeder** Nachricht dieser
+ * Umgebung oeffnet, auch der eines anderen Nutzers. Darum laeuft das Werkzeug
+ * ueber OAuth mit `role: "authenticated"` und der Kennung des zustimmenden
+ * Nutzers durch die Anwendungstuer `readMessageTrace`, und es gibt genau die
+ * Nachrichten her, die dieser Nutzer selbst eingereiht hat. Beim statischen
+ * Bearer bleibt es beim Betreiber: Dort gibt es keinen Nutzer, in dessen Namen
+ * gehandelt wird, und ein erfundenes Subjekt waere schlimmer als keines.
+ *
+ * Die **Suche** nach einer Spur-Id bekommt kein Werkzeug. Sie nennt Nachrichten
+ * verschiedener Besitzer ueber mehrere Queues, es gibt also keine Rolle, unter
+ * der sie "meine Spur" waere, und eine Spur-Id kennt jeder Dienst auf ihrem Weg.
+ * Sie steht in dieser Tabelle nicht, und ein Name ohne Eintrag ist keine
+ * Erlaubnis.
+ *
  * Der Satz, auf den es bei `queues:write` ankommt: Er oeffnet keine
  * Worker-Operation. Claim, Lease, Renewal und Abschluss sind nach `STATUS.md`
  * bewusst aus MCP heraus, sie stehen in dieser Tabelle nicht, und ein Name ohne
@@ -202,6 +250,11 @@ export const MCP_TOOL_SCOPES = {
   qkern_storage_object_delete: "storage:write",
   qkern_queues_list: "queues:read",
   qkern_queue_status: "queues:read",
+  // Die Spur **einer** Nachricht, und nur die des zustimmenden Nutzers. Derselbe
+  // Bereich wie die beiden darueber, aber nicht dieselbe Rolle: Dieses Werkzeug
+  // laeuft ueber OAuth als `authenticated` mit der Kennung des Nutzers. Die
+  // Begruendung fuer beides steht oben und an der Anmeldung in `mcp/server.ts`.
+  qkern_queue_message_trace: "queues:read",
   // Einstellen, und nur das. Claim, Lease, Renewal und Abschluss stehen in
   // dieser Tabelle nicht und sind damit nicht erreichbar.
   qkern_queue_message_enqueue: "queues:write",

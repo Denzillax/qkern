@@ -123,7 +123,7 @@ export const AUTH_OAUTH_SCOPE_TEXTS = {
   "storage:write":
     "Das Löschen eines Objekts in einem Bucket dieser Projektumgebung, und nur das. Kein Hochladen: Ein Hochladen ist hier eine Reservierung, die Bytes beim Anbieter und ein Abschluss mit Prüfsumme und Virenprüfung, und dieser Weg führt nicht über ein Werkzeug. Kein Bucket: Anlegen, Ändern und Entfernen eines Buckets verlangen die Betreiberrolle. Dieses Löschen läuft als der zustimmende Nutzer unter der Schreibregel des Buckets, und nicht als Betreiber: Ein Bucket mit der Regel owner gibt nur die eigenen Objekte dieses Nutzers her, einer mit private keines.",
   "queues:read":
-    "Queue-Definitionen und die Zähler je Nachrichtenzustand. Keine Nachrichteninhalte. Auch das ist der Blick auf die Umgebung und nicht auf die Daten eines Nutzers.",
+    "Queue-Definitionen und die Zähler je Nachrichtenzustand, und seit 2.131 die Spur einer einzelnen Nachricht. Keine Nachrichteninhalte, kein Lease-Token, kein Dedupe-Verifikator und kein Wirt, der sie bearbeitet hat. Definitionen und Zähler sind der Blick auf die Umgebung; die Spur läuft als der zustimmende Nutzer und gibt nur die Nachrichten her, die er selbst eingereiht hat. Eine Suche über alle Nachrichten einer fremden Spur-Id gibt es hier nicht, die bleibt beim Betreiber.",
   "queues:write":
     "Das Einstellen einer Nachricht, und nur das. Keine Worker-Operation: kein Claim, kein Lease-Token, kein Renewal und kein Abschluss. Die gibt es über MCP überhaupt nicht, und dieser Bereich macht sie nicht erreichbar.",
   "logs:read":

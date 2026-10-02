@@ -44,7 +44,7 @@ The mapping lives in `mcp/tool-scopes.ts` and nowhere else.
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
 | `storage:write` | `qkern_storage_object_delete` |
-| `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
+| `queues:read` | `qkern_queues_list`, `qkern_queue_status`, `qkern_queue_message_trace` |
 | `queues:write` | `qkern_queue_message_enqueue` |
 | `logs:read` | `qkern_logs_search` |
 | `migrations:propose` | `qkern_migration_preview` |

@@ -34,6 +34,16 @@
  * braucht jede Station eine eigene Span-Id; wer sie erzeugt und warum sie in der
  * Datenbank steht, entscheidet Migration 0082 und begruendet es dort.
  *
+ * **Und seit 2.131 ist eine Spur auffindbar und nicht nur nachschlagbar.** Bis
+ * dahin ging Lesen nur je Nachricht: Wer die Id hatte, bekam die Spur, wer die
+ * Spur-Id hatte, bekam nichts. Das war tragbar, solange die Spur-Id nur
+ * hereinkam; seit 2.124 gibt QKERN sie auch wieder heraus und steht damit in
+ * fremden Spuren drin, und die Frage "welche Nachrichten gehoeren zu dieser
+ * Spur" wird wirklich gestellt. Es gibt sie jetzt (Migration 0085 fuer den
+ * Index, `ProjectQueueTraceSearchPage` fuer die Seitenform), eine Anwendung liest
+ * die Spur ihrer eigenen Nachricht (`ProjectQueueApplicationTrace`), und ein
+ * MCP-Werkzeug liest sie im Namen des Nutzers, der zugestimmt hat.
+ *
  * Was es ausdruecklich **nicht** kostet: QKERN entscheidet an diesen beiden
  * Werten nichts. Kein Claim, kein Retry, kein Dead Letter sieht sie an.
  * Fehlen sie, traegt die Spur sich weiter selbst. Ein `traceparent`, der nicht
@@ -113,6 +123,33 @@ export type ProjectQueueTraceEntry = Readonly<{
 }>;
 
 /**
+ * Eine Station, wie sie eine **Anwendung** herausbekommt (2.131).
+ *
+ * Dieselbe Station, ein Feld weniger: Es gibt hier kein `workerId`, und zwar
+ * nicht als `null` und nicht als redigierter Wert, sondern gar nicht. Der Wirt
+ * einer Nachricht ist ein Betriebsdetail: Er sagt, wie viele Maschinen unter
+ * welchen Namen in dieser Umgebung arbeiten und welche davon gerade lief. Eine
+ * Anwendung, die ihre eigene Nachricht verfolgt, braucht das nicht; ein
+ * Betreiber braucht genau das, und darum bleibt es an der Admin-Tuer.
+ *
+ * **Strukturell und nicht als Absicht an der Antwort**, dieselbe Haltung wie bei
+ * der Nutzlast in (2.121). Dort ist der Beleg eine fehlende Spalte, hier ein
+ * fehlendes Feld am Typ: `applicationProjectQueueTrace` baut jede Station neu
+ * auf, und kein Pfad kann einen Wirt in ein Feld schreiben, das es nicht gibt.
+ * Ein `Omit` auf `ProjectQueueTraceEntry` waere der kuerzere Weg und der
+ * schlechtere: Eine neue Spalte an der Station waere damit still auch hier
+ * draussen, und bei einer Logflaeche soll eine neue Angabe auffallen.
+ */
+export type ProjectQueueApplicationTraceEntry = Readonly<{
+  sequence: number;
+  station: ProjectQueueTraceStation;
+  attempt: number;
+  failureCode: ProjectQueueFailureCode | null;
+  spanId: string;
+  occurredAt: string;
+}>;
+
+/**
  * Eine gelesene Spur.
  *
  * `complete` ist die ehrliche Antwort auf die Mengengrenze: Sobald eine Spur
@@ -137,6 +174,181 @@ export type ProjectQueueTrace = Readonly<{
   complete: boolean;
   stations: readonly ProjectQueueTraceEntry[];
 }>;
+
+/**
+ * Die Spur ihrer **eigenen** Nachricht, so wie eine Anwendung sie sieht (2.131).
+ *
+ * ## Der offene Punkt aus 2.73.0
+ *
+ * Die Trace-Route war Admin-only, und das war bis hierher richtig begruendet:
+ * Eine Spur sagt, welcher Wirt wann woran gearbeitet hat. Nur konnte damit eine
+ * Anwendung die Spur **ihrer eigenen** Nachricht nicht lesen, obwohl sie die
+ * Nachrichten-Id aus ihrer Quittung hat und obwohl die Frage "ist mein Auftrag
+ * durchgelaufen" die haeufigste ist, die eine Anwendung ueberhaupt stellt. Sie
+ * musste ihren Betreiber fragen.
+ *
+ * ## Reicht die Nachrichten-Id als Beweis? Nein
+ *
+ * Eine Nachrichten-Id ist in der Quittung herausgegeben. Fuer den, der sie hat,
+ * ist sie ein Beweis; fuer jeden, der sie mitgelesen hat, ist sie derselbe
+ * Beweis. Sie steht in Anwendungsprotokollen, in Browserwerkzeugen und im
+ * Zwischenspeicher jedes Proxy auf dem Weg, und sie ist ratbar genau so weit,
+ * wie eine UUID ratbar ist, also nicht -- aber Nichtratbarkeit ist keine
+ * Berechtigung, sie ist nur deren Abwesenheit. Ein "wer die Id vorweist, sieht
+ * die Spur" waere ein Zugriffsrecht, das aus einem Protokolleintrag entsteht.
+ *
+ * Darum ist die Vorlage der Id die **halbe** Bedingung. Die andere Haelfte steht
+ * schon in der Datenbank: `project_queue_messages.owner_subject` traegt seit 0026
+ * das Subjekt, das eingereiht hat. Die Anwendungstuer verlangt beides, und
+ * `readMessageTrace` in `service.ts` schreibt auf, mit welchem Projekt-Key und
+ * welcher Rolle das geht und was eine Rolle jeweils sieht.
+ *
+ * ## Was eine Anwendung **nicht** sieht
+ *
+ * Den Wirt. Siehe `ProjectQueueApplicationTraceEntry`: Das Feld gibt es an
+ * diesem Typ nicht. Alles andere ist dasselbe, und das ist Absicht: Stationen,
+ * Versuche, Fehlercodes, Span-Ids und der Anschluss nach draussen sind genau das,
+ * was eine Anwendung zum Verfolgen ihres Auftrags braucht, und keiner der Werte
+ * sagt etwas ueber den Betrieb dieser Umgebung.
+ *
+ * Und die Suche nach einer Spur-Id sieht sie gar nicht. Die laeuft ueber mehrere
+ * Queues einer Umgebung und ueber Nachrichten fremder Besitzer; sie ist eine
+ * Betreiberfrage und steht an der Admin-Tuer.
+ */
+export type ProjectQueueApplicationTrace = Readonly<{
+  messageId: string;
+  queue: string;
+  traceId: string | null;
+  parentSpanId: string | null;
+  sourceMessageId: string | null;
+  replayedIntoMessageId: string | null;
+  messageExists: boolean;
+  complete: boolean;
+  stations: readonly ProjectQueueApplicationTraceEntry[];
+}>;
+
+/** Baut die Anwendungsform aus der vollen Spur, Feld fuer Feld und ohne Wirt. */
+export function applicationProjectQueueTrace(trace: ProjectQueueTrace): ProjectQueueApplicationTrace {
+  return Object.freeze({
+    messageId: trace.messageId,
+    queue: trace.queue,
+    traceId: trace.traceId,
+    parentSpanId: trace.parentSpanId,
+    sourceMessageId: trace.sourceMessageId,
+    replayedIntoMessageId: trace.replayedIntoMessageId,
+    messageExists: trace.messageExists,
+    complete: trace.complete,
+    stations: Object.freeze(trace.stations.map((station) => Object.freeze({
+      sequence: station.sequence,
+      station: station.station,
+      attempt: station.attempt,
+      failureCode: station.failureCode,
+      spanId: station.spanId,
+      occurredAt: station.occurredAt,
+    }))),
+  });
+}
+
+/**
+ * Eine Nachricht, wie die Suche nach einer Spur-Id sie nennt (2.131).
+ *
+ * ## Was eine Suche zurueckgibt: Nachrichten, nicht Stationen
+ *
+ * Gefragt ist "welche Nachrichten gehoeren zu dieser Spur", und das ist eine
+ * Frage nach Nachrichten. Die Stationen je Nachricht stehen schon hinter einer
+ * Tuer, die es gibt, und sie noch einmal mitzuliefern hiesse: bis
+ * vierundsechzig Zeilen je Treffer, eine Seitenform, deren Groesse niemand
+ * vorhersagen kann, und dieselbe Angabe in zwei Antwortformen, die irgendwann
+ * auseinanderlaufen. Also eine Zeile je Nachricht, und wer mehr will, liest die
+ * Spur dieser Nachricht.
+ *
+ * Was die Zeile traegt, kommt ausschliesslich von der **ersten** Station dieser
+ * Nachricht, und das ist kein Zufall: `trace_id` liegt nach 0081 nur dort. Damit
+ * ist `station` hier immer `enqueued` oder `replayed`, also die Antwort auf
+ * "ist diese Nachricht neu eingereiht worden oder aus einem Dead Letter
+ * entstanden" -- und `workerId` kommt gar nicht vor, weil die erste Station per
+ * CHECK keinen Wirt hat. Die Suche gibt also auch keinen heraus, und wieder
+ * nicht, weil jemand es weglaesst.
+ *
+ * `queue` steht an jeder Zeile und nicht am Kopf der Antwort: Eine fremde Spur
+ * kann durch mehrere Queues einer Umgebung laufen, und genau das ist der Fall,
+ * fuer den es diese Suche gibt.
+ */
+export type ProjectQueueTraceSearchEntry = Readonly<{
+  messageId: string;
+  queue: string;
+  station: ProjectQueueTraceStation;
+  spanId: string;
+  parentSpanId: string | null;
+  sourceMessageId: string | null;
+  occurredAt: string;
+}>;
+
+/**
+ * Eine Seite der Suche, und die Seitenform dahinter.
+ *
+ * ## Keyset und nicht Offset, und die vorhandene Form statt einer zweiten
+ *
+ * QKERN hat eine Seitenform fuer eine Liste in Zeitordnung, und sie steht am
+ * Audit-Log von Project Auth (`ProjectAuthAuditPage`, `audit-postgres.ts`): Der
+ * Cursor ist die Id der letzten gezeigten Zeile, ihre Position
+ * `(Zeitpunkt, Id)` liest die Abfrage selbst nach, und verglichen wird das Paar.
+ * Diese Form wird hier uebernommen und nicht nachgebaut. Sie traegt, und zwar
+ * aus denselben Gruenden wie dort:
+ *
+ * - **Die volle Zeitaufloesung bleibt in der Datenbank.** Ein Cursor, der den
+ *   Zeitstempel selbst mitfuehrt, muesste ihn als Text durchreichen, und
+ *   zwischen `timestamptz` und ISO-8601 geht Genauigkeit verloren. Eine Seite,
+ *   die auf einer gerundeten Grenze aufsetzt, zeigt eine Zeile zweimal.
+ * - **Ein fremder oder abgelaufener Cursor liefert schlicht nichts.** Er wird
+ *   nicht geraten und nicht gemeldet: Die Position wird nachgelesen, und wenn es
+ *   die Zeile nicht mehr gibt (der Aufraeumer schneidet an `expires_at`), ist das
+ *   Ergebnis leer. Das ist die ehrliche Antwort, denn die Seite, die jemand
+ *   wollte, existiert wirklich nicht mehr.
+ * - **Der Cursor traegt nichts, was nicht schon herausgegeben wurde.** Er ist
+ *   eine Nachrichten-Id, und die stand in der vorherigen Seite.
+ *
+ * **Der einzige Unterschied zum Audit-Log: die Richtung.** Dort wird
+ * absteigend gelesen, denn die Frage ist "was ist zuletzt passiert". Eine Spur
+ * liest man vorwaerts: Sie faengt draussen an, laeuft durch QKERN und geht
+ * weiter, und die erste Nachricht ist die, die den Rest ausgeloest hat. Also
+ * `(occurred_at, message_id) ASC` und ein `>` im Vergleich. Der Mechanismus ist
+ * derselbe, gedreht ist nur das Zeichen.
+ *
+ * **Keine Gesamtzahl.** Sie waere ein zweiter Scan ueber die ganze Spur, und sie
+ * waere im Augenblick ihrer Antwort veraltet, weil eine Spur weiterlaufen kann.
+ * `nextCursor` sagt stattdessen genau das, was stimmt: Es gibt noch mehr, oder
+ * es gibt nichts mehr.
+ */
+export type ProjectQueueTraceSearchPage = Readonly<{
+  traceId: string;
+  messages: readonly ProjectQueueTraceSearchEntry[];
+  nextCursor: string | null;
+}>;
+
+/** Die Form einer Spur-Id, so wie `traceparent` sie liefert. Keine Grossbuchstaben. */
+const TRACE_ID = /^[0-9a-f]{32}$/;
+
+/**
+ * Nimmt eine Spur-Id als Suchbegriff an, oder `null`.
+ *
+ * Anders als `parseProjectQueueTraceparent` ist das hier **der Auftrag** und
+ * nicht ein Beobachtungskopf am Rand: Wer nach einer Spur sucht, nennt sie, und
+ * ein Wert, der keine Spur-Id ist, ist eine ungueltige Anfrage und keine leere
+ * Antwort. Eine leere Antwort waere die gefaehrlichere von beiden, denn sie
+ * liest sich wie "zu dieser Spur gibt es nichts".
+ *
+ * Gross geschriebenes Hex wird abgewiesen und nicht kleingeschrieben, und die
+ * Nullspur wird abgewiesen: dieselben zwei Regeln und dieselbe Begruendung wie
+ * am `traceparent`. Eine zweite Lesart derselben Zeichenkette waere eine Suche,
+ * die etwas findet, was die Tabelle nie angenommen haette.
+ */
+export function parseProjectQueueTraceId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const candidate = value.trim();
+  if (!TRACE_ID.test(candidate) || candidate === ZERO_TRACE) return null;
+  return candidate;
+}
 
 /**
  * Die Mengengrenze je Nachricht, und die Rechnung dahinter.
@@ -308,11 +520,34 @@ export function projectQueueClaimTraceparent(
 
 /* Offen, und hier aufgeschrieben statt woanders behauptet:
  *
- * - **Es gibt keine Suche nach Spur-Id.** Gelesen wird je Nachricht. Eine
- *   Abfrage "alle Nachrichten dieser fremden Spur" braucht einen Index und
- *   eine Seitenform, und ohne einen Betreiber, der sie verlangt, waere beides
- *   geraten. Mit den Span-Ids aus 2.124 wird die Frage haeufiger werden, denn
- *   jetzt steht QKERN in fremden Spuren drin.
+ * Was 2.73.0 hier unter "Offen" fuehrte und 2.131 geschlossen hat, steht nicht
+ * mehr in dieser Liste: Es gibt eine Suche nach Spur-Id (Migration 0085 fuer den
+ * Index, `ProjectQueueTraceSearchPage` fuer die Seitenform), eine Anwendung liest
+ * die Spur ihrer eigenen Nachricht (`ProjectQueueApplicationTrace`), und MCP hat
+ * ein Trace-Werkzeug (`qkern_queue_message_trace`).
+ *
+ * - **Es gibt keine Suche nach einer Span-Id.** Die Spur-Id ist indexiert, die
+ *   Span-Id nicht: `project_queue_message_traces_span_key` aus 0082 fuehrt
+ *   `message_id` vor `span_id`, eine Suche nur nach der Span-Id koennte ihn also
+ *   nicht lesen. Ein Betreiber, der in seinem Collector eine Span von QKERN sieht
+ *   und wissen will, welche Station das war, muss darum ueber die Spur-Id gehen
+ *   und die Station in der Antwort selbst suchen. 0085 begruendet, warum dafuer
+ *   kein zweiter Index gelegt wurde: Verlangt hat ihn niemand, und genau das war
+ *   bei der Spur-Id der Unterschied.
+ * - **Die Suche nennt je Nachricht ihre erste Station und nicht ihren
+ *   Ausgang.** Wer von zwanzig Treffern wissen will, welche davon im Dead Letter
+ *   endeten, liest zwanzig Spuren. Ein Ausgang in der Trefferzeile waere ein
+ *   zweiter Zugriff je Zeile in derselben Abfrage, und die Form dafuer (die
+ *   letzte Station je Nachricht) ist eine eigene Entscheidung mit eigener
+ *   Begruendung. Sie steht hier, statt dass sie jemand fuer vorhanden haelt.
+ * - **Die zwei alten Queue-Werkzeuge in MCP laufen weiter als Betreiber.**
+ *   `qkern_queues_list` und `qkern_queue_status` tragen `queues:read` und
+ *   handeln mit `role: "admin"`; `mcp/tool-scopes.ts` fuehrt das seit 2.69 als
+ *   offene Grenze. Das neue Trace-Werkzeug macht es anders (es laeuft ueber OAuth
+ *   als der zustimmende Nutzer), aber es raeumt die beiden nicht mit auf: Eine
+ *   Queue-Definition und ein Zaehler haben keinen Besitzer je Zeile, an dem eine
+ *   engere Rolle etwas entscheiden koennte, und sie unter eine zu stellen waere
+ *   eine Aenderung an einer zugesagten Flaeche.
  * - **QKERN exportiert keine Spans.** Es erzeugt Span-Ids und gibt einen
  *   Anschluss heraus; es spricht kein OTLP und meldet nichts an einen
  *   Collector. Die Stationen bleiben in `project_queue_message_traces` und

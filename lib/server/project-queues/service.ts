@@ -18,7 +18,11 @@ import {
   type ProjectQueueRepository,
 } from "@/lib/server/project-queues/repository";
 import { DisabledUsageEmitter, type UsageEmitterPort } from "@/lib/server/usage/emitter";
-import { parseProjectQueueTraceparent } from "@/lib/server/project-queues/trace";
+import {
+  applicationProjectQueueTrace,
+  parseProjectQueueTraceId,
+  parseProjectQueueTraceparent,
+} from "@/lib/server/project-queues/trace";
 
 const QUEUE_NAME = /^[a-z][a-z0-9_-]{2,62}$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -372,6 +376,109 @@ export class ProjectQueueService {
     catch (error) { throw mapError(error); }
     if (!trace) throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
     return trace;
+  }
+
+  /**
+   * Die Spur **der eigenen** Nachricht, fuer eine Anwendung (2.131).
+   *
+   * ## Mit welchem Projekt-Key und welcher Rolle
+   *
+   * Die Tuer ist `applicationProjectQueueContext`, also derselbe Projekt-Key, mit
+   * dem eingereiht, abgeholt und quittiert wird. Was eine Rolle sieht, ist
+   * verschieden, und die Unterschiede sind die Entscheidung dieses Schnitts:
+   *
+   * - **`service_role`** -- der eigene Hintergrund dieser Umgebung. Er sieht die
+   *   Spur jeder Nachricht dieses Scopes, und das ist keine Ausweitung: Mit
+   *   demselben Key holt er jede Nachricht samt Nutzlast ab (`claim`). Ihm
+   *   Stationen zu verweigern, waehrend er den Inhalt bekommt, waere eine Grenze,
+   *   die nichts schuetzt.
+   * - **`authenticated`** -- ein angemeldeter Endnutzer. Er sieht **nur** die
+   *   Spur einer Nachricht, deren `owner_subject` sein eigenes Subjekt ist.
+   *   Vorzuweisen hat er damit zwei Dinge und nicht eines: die Id aus seiner
+   *   Quittung und den Token, mit dem er eingereiht hat. Die Id allein reicht
+   *   nicht, und warum, steht an `ProjectQueueApplicationTrace`.
+   * - **`anon`** -- nichts. Ein anonymer Aufrufer kann in keine Queue einreihen
+   *   (`canEnqueue`), also besitzt er keine Nachricht, also gibt es nichts, was
+   *   seine waere. Abgewiesen wird er hier ausdruecklich und nicht erst am
+   *   Besitzvergleich, damit der Grund im Code steht und nicht aus einem
+   *   Nebeneffekt faellt.
+   * - **`admin`** -- erlaubt, und bekommt trotzdem die Anwendungsform. Diese Tuer
+   *   ist eine Anwendungstuer; wer die Betriebsangaben will, nimmt `readTrace`.
+   *   Der Weg ist fuer den statischen MCP-Bearer da, der auf dem Rechner eines
+   *   Entwicklers im Namen keines Nutzers handelt.
+   *
+   * ## Was eine Anwendung nicht sieht
+   *
+   * Den Wirt, strukturell: `applicationProjectQueueTrace` baut eine Station ohne
+   * dieses Feld. Und eine weggeraeumte Nachricht gibt ein Endnutzer nicht mehr zu
+   * sehen -- ohne Zeile gibt es keinen Besitzer, und ein Besitzvergleich ohne
+   * Gegenueber darf nicht durchgehen. Der Betreiber behaelt das ganze Fenster der
+   * Spur; das ist der Preis dieser Grenze und er steht hier, damit ihn niemand
+   * sucht.
+   */
+  async readMessageTrace(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queueName: string,
+    messageId: string,
+  ) {
+    assertPrincipal(principal, scope);
+    if (principal.role === "anon") throw new ProjectQueueError("QUEUE_ACCESS_DENIED");
+    if (!IDENTIFIER.test(messageId)) throw new ProjectQueueError("QUEUE_INVALID_INPUT");
+    const queue = await this.queue(principal, scope, queueName);
+    if (principal.role === "authenticated") {
+      let owner;
+      try { owner = await this.dependencies.repository.findTraceMessageOwner(principal, scope, queue, messageId); }
+      catch (error) { throw mapError(error); }
+      // Dieselbe Ablehnung wie bei einer Id, die es nie gab: Eine fremde
+      // Nachricht und eine unbekannte Nachricht duerfen sich nicht
+      // unterscheiden lassen, sonst ist die Ablehnung selbst eine Antwort.
+      if (owner === null || owner !== principal.subject) {
+        throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
+      }
+    }
+    let trace;
+    try { trace = await this.dependencies.repository.readTrace(principal, scope, queue, messageId); }
+    catch (error) { throw mapError(error); }
+    if (!trace) throw new ProjectQueueError("QUEUE_RESOURCE_NOT_FOUND");
+    return applicationProjectQueueTrace(trace);
+  }
+
+  /**
+   * Die Nachrichten einer fremden Spur-Id (2.131).
+   *
+   * Nur Admin, und zwar aus einem anderen Grund als beim Lesen je Nachricht: Eine
+   * Suche laeuft ueber mehrere Queues einer Umgebung und ueber Nachrichten, die
+   * verschiedenen Besitzern gehoeren. Es gibt hier also keine Lesart, in der sie
+   * "die eigene" waere, und eine Spur-Id ist ein Wert von draussen, den jeder
+   * Dienst auf dem Weg kennt. Haette eine Anwendung diese Tuer, waere eine
+   * mitgelesene Spur-Id eine Liste fremder Nachrichten-Ids.
+   *
+   * Nie ueber Umgebungen oder Organisationen hinaus, und das steht in **keinem**
+   * Filter dieser Methode: Der Scope kommt von der Route und dem Principal, der
+   * Port gibt ihn in `WHERE` und in den Index, und darunter liegt die Policy aus
+   * 0081. Drei Schichten, von denen die unterste auch dann noch haelt, wenn jemand
+   * die obere wegnimmt; Fall `(2.131)` dreht genau das um.
+   *
+   * Eine Spur-Id, die keine ist, ist `QUEUE_INVALID_INPUT` und nicht eine leere
+   * Antwort. Begruendung an `parseProjectQueueTraceId`.
+   */
+  async searchTraces(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    input: { traceId: string; limit?: number; cursor?: string },
+  ) {
+    await this.assertAdmin(principal, scope);
+    const traceId = parseProjectQueueTraceId(input.traceId);
+    if (!traceId) throw new ProjectQueueError("QUEUE_INVALID_INPUT");
+    const limit = integer(input.limit ?? 50, 1, 100);
+    const cursor = input.cursor?.trim();
+    if (cursor !== undefined && !IDENTIFIER.test(cursor)) throw new ProjectQueueError("QUEUE_INVALID_INPUT");
+    try {
+      return await this.dependencies.repository.searchTraces(principal, scope, {
+        traceId, limit, cursor: cursor ?? null,
+      });
+    } catch (error) { throw mapError(error); }
   }
 
   async listDeadLetters(

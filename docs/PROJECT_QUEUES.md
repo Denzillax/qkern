@@ -125,6 +125,8 @@ Autorität.
 - `GET .../queues/{queue}/dead-letters`
 - `POST .../queues/{queue}/dead-letters/{messageId}/replay`
 - `GET .../queues/{queue}/messages/{messageId}/trace`
+- `GET .../queues/{queue}/messages/{messageId}/own-trace` (Projekt-Key, seit `2.131`)
+- `GET .../environments/{environment}/queue-traces?traceId=` (seit `2.131`)
 
 Browser-App-Routen verwenden eine exakte CORS-Allowlist. Session-Mutationen
 benötigen zusätzlich die bestehende Same-Origin-CSRF-Grenze. Cache-Control ist
@@ -136,6 +138,9 @@ Für einen fest konfigurierten MCP-Scope existieren:
 
 - `qkern_queues_list` — read-only;
 - `qkern_queue_status` — read-only;
+- `qkern_queue_message_trace` — read-only; die Spur **einer** Nachricht, über
+  OAuth als der zustimmende Nutzer und nur für dessen eigene Nachrichten, ohne
+  Wirt und ohne Nutzlast. Die Suche nach einer Spur-Id gibt es hier nicht;
 - `qkern_queue_message_enqueue` — nicht destruktiver Write, ohne globale
   Idempotenzbehauptung; für Retry-sichere Agentenabläufe einen stabilen
   `dedupeKey` setzen.
@@ -168,10 +173,24 @@ beschreibt. Es gibt damit keine Station ohne ihren Zustandswechsel und keinen
 Zustandswechsel ohne seine Station, und beides übersteht einen Neustart des
 Wirts und zwei Instanzen.
 
-Gelesen wird je Nachricht, nur als Owner oder Administrator:
+Gelesen wird je Nachricht, als Owner oder Administrator:
 
 ```
 GET /api/v1/projects/{projectId}/environments/{environment}/queues/{queue}/messages/{messageId}/trace
+```
+
+Seit `2.131` liest auch eine **Anwendung** die Spur ihrer eigenen Nachricht,
+mit Projekt-Key und ohne den Wirt:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/queues/{queue}/messages/{messageId}/own-trace
+```
+
+Und eine fremde Spur-Id lässt sich suchen, über alle Queues **einer**
+Umgebung, Admin-only und mit Keyset-Cursor:
+
+```
+GET /api/v1/projects/{projectId}/environments/{environment}/queue-traces?traceId=<32 Hex>&limit=50&cursor=<messageId>
 ```
 
 Acht Stationen, je mit Zeitpunkt, Versuch und, wo es einen gibt, Wirt und
@@ -269,13 +288,62 @@ und beim Status, häppchenweise mit fester Obergrenze. Die Spur hat deshalb
 **keinen** Fremdschlüssel auf die Nachricht: Eine Kaskade nähme sie genau dann
 weg, wenn sie am meisten wert ist.
 
+## Eine Spur suchen, und wer was davon sieht
+
+Seit `2.131` ist eine Spur auffindbar und nicht nur nachschlagbar. Vorher ging
+Lesen nur je Nachricht: Wer die Id hatte, bekam die Spur; wer die Spur-Id aus
+seinem Collector hatte, bekam nichts. Das war tragbar, solange die Spur-Id nur
+hereinkam — seit (2.124) gibt QKERN sie wieder heraus und steht damit in
+fremden Spuren drin.
+
+**Der Index.** Migration `0085_project_queue_trace_search.sql` legt genau einen
+Teilindex: `(organization_id, project_id, environment, trace_id, occurred_at,
+message_id) WHERE trace_id IS NOT NULL`. Der Scope steht vorn, damit die
+Mandantengrenze im Index steht und nicht erst in der Policy; eine Spur-Id
+entsteht in einem fremden Dienst, und zwei Organisationen hinter demselben
+Gateway tragen dieselbe. `queue_id` steht nicht drin, denn eine Spur gehört
+keiner Queue. Teilindex, weil der Anschluss nur auf Sequenz eins liegt — damit
+liefert die Suche je Nachricht höchstens eine Zeile, ohne `DISTINCT`.
+
+**Die Seitenform** ist die vorhandene: Keyset wie am Audit-Log von Project
+Auth. Der Cursor ist die Nachrichten-Id der letzten Zeile, ihre Position liest
+die Abfrage selbst nach, und ein Cursor, dessen Zeile weggeräumt ist, liefert
+eine leere Seite statt der ersten. Geordnet wird aufsteigend, denn eine Spur
+liest man vorwärts. Eine Gesamtzahl gibt es nicht: Sie wäre ein zweiter Scan
+und im Augenblick der Antwort veraltet.
+
+**Eine Zeile je Nachricht**, nicht je Station: Die Stationen haben ihre eigene
+Tür. Die Zeile nennt Queue, erste Station (`enqueued` oder `replayed`),
+Span-Id, den Eltern-Span des Aufrufers und bei einem Replay das Dead Letter.
+Keinen Wirt — die erste Station hat per CHECK keinen.
+
+**Nie über Umgebungen oder Organisationen hinaus.** `traceId` ist das Einzige,
+was ein Aufrufer zur Auswahl beiträgt; Projekt und Umgebung kommen aus dem
+Pfad, die Organisation aus der Sitzung, und darunter liegt die
+Zeilensicherheit aus 0081.
+
+**Was eine Anwendung sehen darf.** Die Nachrichten-Id ist die halbe Bedingung:
+Sie ist in der Quittung herausgegeben, also ein Beweis für den, der sie hat,
+und derselbe für jeden, der sie mitgelesen hat. Die andere Hälfte ist
+`owner_subject` an der Nachricht. Ein `authenticated` Projekt-Key sieht nur
+seine eigene Nachricht, ein `service_role` Key jede dieser Umgebung (mit
+demselben Key holt er sie samt Nutzlast ab), ein `anon` Key keine. Der Wirt
+fehlt dabei, und nicht als `null`: Er ist ein Betriebsdetail, und die
+Anwendungsform der Spur hat das Feld gar nicht. Der Preis: Ist die Nachricht
+weggeräumt, gibt es keinen Besitzer zum Vergleichen, und ein Endnutzer bekommt
+nichts mehr; der Betreiber behält das ganze Fenster. Die Suche bleibt beim
+Betreiber, denn sie nennt Nachrichten verschiedener Besitzer.
+
 **Was absichtlich fehlt**: eine Station für die Erneuerung der Pacht (ein
 Herzschlag alle zehn Sekunden protokolliert den Takt und nicht die Arbeit; ob
-eine Pacht gehalten hat, sagt der Ausgang) und eine Suche nach einer Spur-Id.
+eine Pacht gehalten hat, sagt der Ausgang).
 Dazu, offen und nicht absichtlich: QKERN exportiert keine Spans an einen
 Collector, innerhalb einer Spur gibt es keine Span-Kanten (die Ordnung ist
-`sequence`), und der Function-Aufruf aus der Queue trägt den `traceparent`
-nicht, weil er über einen Sandbox-Port geht und nicht über HTTP.
+`sequence`), der Function-Aufruf aus der Queue trägt den `traceparent`
+nicht, weil er über einen Sandbox-Port geht und nicht über HTTP, es gibt keine
+Suche nach einer **Span**-Id (der UNIQUE aus 0082 führt `message_id` vor
+`span_id`), und die Trefferzeile der Suche nennt die erste Station und nicht
+den Ausgang.
 
 ## Bewusste Alpha-Grenzen
 
@@ -286,7 +354,7 @@ nicht, weil er über einen Sandbox-Port geht und nicht über HTTP.
   und ein allgemeiner Handler-Host sowie ein Consumer-SDK fehlen weiter;
 - redigierte Prozesszähler vorhanden; seit `1.88.0` ein Metrics-Export je Scope
   (`GET queues/metrics`, Prometheus-Textformat); seit (2.121) eine Spur je
-  Nachricht (siehe unten); kein Last-/Soak-Test und kein archiviertes
+  Nachricht und seit (2.131) eine Suche nach ihrer Spur-Id (siehe unten); kein Last-/Soak-Test und kein archiviertes
   Real-Broker-E2E;
 - keine Production-Freigabe.
 

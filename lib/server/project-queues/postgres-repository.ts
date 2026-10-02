@@ -21,6 +21,8 @@ import type {
   ProjectQueueTrace,
   ProjectQueueTraceAnchor,
   ProjectQueueTraceEntry,
+  ProjectQueueTraceSearchEntry,
+  ProjectQueueTraceSearchPage,
   ProjectQueueTraceStation,
 } from "@/lib/server/project-queues/trace";
 import {
@@ -580,6 +582,93 @@ export class PostgresProjectQueueRepository implements ProjectQueueRepository {
     });
   }
 
+  /**
+   * Der Besitzer einer Nachricht (2.131), fuer die Anwendungstuer.
+   *
+   * Eine eigene Abfrage und nicht ein zusaetzliches Feld in `readTrace`: Der
+   * Besitzer soll in der Antwort der Admin-Route nicht auftauchen, und ein Wert,
+   * der durch den Leser laeuft, taucht irgendwann dort auf. Gelesen wird
+   * ausdruecklich nur `owner_subject`, nicht die Zeile.
+   */
+  findTraceMessageOwner(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<string | null> {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query<{ owner_subject: unknown }>(`SELECT owner_subject
+        FROM project_queue_messages
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND queue_id=$4
+          AND id=$5`, [...scopeValues(scope), queue.id, messageId]);
+      return result.rows[0] ? String(result.rows[0].owner_subject) : null;
+    });
+  }
+
+  /**
+   * Die Nachrichten einer Spur-Id (2.131), haeppchenweise.
+   *
+   * ## Was die Abfrage liest, und wie der Index aus 0085 sie traegt
+   *
+   * Die Bedingung ist Scope plus `trace_id`, die Ordnung ist
+   * `(occurred_at, message_id)` aufsteigend, und genau diese sechs Spalten stehen
+   * in dieser Reihenfolge im Teilindex. Der Scope steht vorn, damit die
+   * Mandantengrenze nicht erst von der Policy kommt; die Begruendung in voller
+   * Laenge steht in 0085.
+   *
+   * **Je Nachricht hoechstens eine Zeile, ohne DISTINCT.** `trace_id` liegt nach
+   * `project_queue_message_traces_trace_anchor` (0081) nur auf Sequenz eins. Die
+   * Zusage kommt also aus der Tabelle und nicht aus einer Gruppierung, die jemand
+   * richtig geschrieben haben muss.
+   *
+   * **Der Verbund auf `project_queues` nennt die Queue je Zeile** und ist ein
+   * INNER JOIN, der nichts verliert: Der Fremdschluessel aus 0081 haengt die Spur
+   * mit `ON DELETE CASCADE` an die Queue, eine Station ohne ihre Queue gibt es
+   * also nicht. Verbunden wird ueber alle vier Spalten des Schluessels und nicht
+   * nur ueber `queue_id`, damit der Verbund dieselbe Grenze fuehrt wie das
+   * `WHERE`.
+   *
+   * **Der Cursor liest seine eigene Position nach.** Dieselbe Form wie im
+   * Audit-Log von Project Auth: Die Abfrage holt `(occurred_at, message_id)` der
+   * Cursor-Zeile selbst, und ein Cursor, dessen Zeile weggeraeumt ist, macht den
+   * Vergleich zu NULL und die Seite damit leer. Verglichen wird
+   * `message_id::text`, weil der Cursor von draussen kommt und eine
+   * Zeichenkette ist, die keine UUID sein muss; ein `$5::uuid` wuerde an einem
+   * krummen Cursor mit einem Datenbankfehler scheitern statt mit einer leeren
+   * Seite. Die Ordnung selbst bleibt dabei auf `uuid` und nicht auf Text: Beide
+   * Seiten des Tupelvergleichs kommen aus der Spalte.
+   */
+  searchTraces(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    input: { traceId: string; limit: number; cursor: string | null },
+  ): Promise<ProjectQueueTraceSearchPage> {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`SELECT trace.message_id,trace.station,trace.span_id,
+          trace.parent_span_id,trace.source_message_id,trace.occurred_at,queue.name AS queue
+        FROM project_queue_message_traces AS trace
+        JOIN project_queues AS queue
+          ON queue.organization_id=trace.organization_id AND queue.project_id=trace.project_id
+            AND queue.environment=trace.environment AND queue.id=trace.queue_id
+        WHERE trace.organization_id=$1 AND trace.project_id=$2 AND trace.environment=$3
+          AND trace.trace_id=$4
+          AND ($5::text IS NULL OR (trace.occurred_at,trace.message_id) > (
+            SELECT cursor_row.occurred_at,cursor_row.message_id
+            FROM project_queue_message_traces AS cursor_row
+            WHERE cursor_row.organization_id=$1 AND cursor_row.project_id=$2
+              AND cursor_row.environment=$3 AND cursor_row.trace_id=$4
+              AND cursor_row.message_id::text=$5::text))
+        ORDER BY trace.occurred_at ASC,trace.message_id ASC
+        LIMIT $6`, [...scopeValues(scope), input.traceId, input.cursor, input.limit + 1]);
+      const messages = result.rows.slice(0, input.limit).map(traceSearchEntryFromRow);
+      return Object.freeze({
+        traceId: input.traceId,
+        messages: Object.freeze(messages),
+        nextCursor: result.rows.length > input.limit ? messages[messages.length - 1]!.messageId : null,
+      });
+    });
+  }
+
   private lockQueue(database: SqlQueryable, scope: ProjectQueueScope, queueId: string) {
     return this.queue(database, scope, queueId, true);
   }
@@ -821,6 +910,27 @@ function traceEntryFromRow(row: Row): ProjectQueueTraceEntry {
     // der Leser diesen Wert in eine Kopfzeile schreiben laesst und eine
     // Kopfzeile mit kaputtem Hex schlimmer ist als keine.
     spanId: hexSpan(row.span_id),
+    occurredAt: date(row.occurred_at).toISOString(),
+  });
+}
+
+/**
+ * Eine Trefferzeile der Suche. Die Station wird gegen die Liste geprueft wie
+ * ueberall, und ein Wirt kommt hier nicht vor: Die erste Station hat per CHECK
+ * keinen, und die Abfrage liest die Spalte nicht einmal.
+ */
+function traceSearchEntryFromRow(row: Row): ProjectQueueTraceSearchEntry {
+  const station = String(row.station);
+  if (!(PROJECT_QUEUE_TRACE_STATIONS as readonly string[]).includes(station)) {
+    throw new Error("Invalid queue trace station");
+  }
+  return Object.freeze({
+    messageId: String(row.message_id),
+    queue: String(row.queue),
+    station: station as ProjectQueueTraceStation,
+    spanId: hexSpan(row.span_id),
+    parentSpanId: row.parent_span_id === null ? null : String(row.parent_span_id),
+    sourceMessageId: row.source_message_id === null ? null : String(row.source_message_id),
     occurredAt: date(row.occurred_at).toISOString(),
   });
 }

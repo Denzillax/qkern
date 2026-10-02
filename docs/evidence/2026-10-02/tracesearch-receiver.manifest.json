@@ -1,0 +1,21 @@
+{
+  "stack": "Ausgehender Weg gegen echten HTTPS-Empfaenger",
+  "log": "tracesearch-receiver.log",
+  "commit": "f4d612440a1bfae21ae6a7ae26d89c0019d65b66",
+  "commitSubject": "release: 2.73.0 Ein Teil aus einem Objekt, ein Anschluss nach draussen, und ein Backup, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "17 passed (17)",
+  "passed": 17,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine",
+    "node:24.7.0-alpine",
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}

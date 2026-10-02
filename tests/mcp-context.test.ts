@@ -83,8 +83,13 @@ describe("MCP scope context", () => {
     // **nicht** oeffnet.
     expect(names(withScopes("storage:read")))
       .toEqual(["qkern_storage_buckets_list", "qkern_storage_objects_list"]);
+    // `qkern_queue_message_trace` seit 2.131. Dieselbe Begruendung wie bei den
+    // beiden anderen (eine Spur sagt etwas ueber die Nachrichten dieser Umgebung
+    // und nicht ueber ihre Gestalt), aber nicht dieselbe Rolle: Es laeuft ueber
+    // OAuth als der zustimmende Nutzer. Dass es hier mitgezaehlt wird, ist
+    // Absicht; eine Erweiterung eines Bereichs soll auffallen.
     expect(names(withScopes("queues:read")))
-      .toEqual(["qkern_queue_status", "qkern_queues_list"]);
+      .toEqual(["qkern_queue_message_trace", "qkern_queue_status", "qkern_queues_list"]);
     // Einstellen schliesst Lesen nicht ein, genau wie bei der Data API. Und es
     // oeffnet keine Worker-Operation; die gibt es hier gar nicht.
     expect(names(withScopes("queues:write"))).toEqual(["qkern_queue_message_enqueue"]);
@@ -194,4 +199,76 @@ describe("MCP scope context", () => {
     });
     expect(tools.qkern_queue_claim).toBeUndefined();
   });
+
+  it("(2.131) runs the queue trace tool as the consenting user over OAuth and as the operator only for the local bearer", async () => {
+    // Die Rolle des Trace-Werkzeugs, und warum sie hier geprueft wird.
+    //
+    // Die beiden lesenden Queue-Werkzeuge laufen mit `role: "admin"`, und
+    // `mcp/tool-scopes.ts` fuehrt das seit 2.69 als offene Grenze: Eine
+    // Definition und ein Zaehler haben keinen Besitzer je Zeile, an dem eine
+    // engere Rolle etwas entscheiden koennte. Eine Nachricht hat einen
+    // (`owner_subject` aus 0026). Als Betreiber zu lesen hiesse hier: Die
+    // Zustimmung eines beliebigen Endnutzers oeffnet einem fremden Client die
+    // Spur jeder Nachricht dieser Umgebung, auch der eines anderen Nutzers.
+    //
+    // Geprueft wird der Principal, mit dem das Werkzeug den Dienst ruft, und
+    // nicht die Antwort: Die Antwort haengt am Besitzvergleich im Dienst, und der
+    // ist Fall `(2.131)` im PostgreSQL-Stack. Hier steht die Haelfte, die der
+    // Server entscheidet.
+    const gesehen: Array<Record<string, unknown>> = [];
+    const queues = {
+      readMessageTrace: async (principal: Record<string, unknown>) => {
+        gesehen.push(principal);
+        return { messageId: "m", queue: "q", stations: [] };
+      },
+    } as unknown as NonNullable<Parameters<typeof createQKERNMcpServer>[1]>["projectQueues"];
+
+    const ueberOAuth = createQKERNMcpServer({
+      organizationId: "org", projectId: "project", environment: "development",
+      actorRef: "project-auth-oauth:ai-bridge:nutzer",
+      access: {
+        kind: "project_oauth", clientName: "ai-bridge", userId: "nutzer-id",
+        email: "nutzer@example.test", scopes: ["queues:read"],
+      },
+    }, { projectQueues: queues });
+    await callTool(ueberOAuth, "qkern_queue_message_trace", { queue: "orders", messageId: "m" });
+    expect(gesehen).toEqual([{
+      organizationId: "org",
+      actorRef: "project-auth-oauth:ai-bridge:nutzer",
+      // Nicht `admin`: Das ist die ganze Entscheidung dieses Falles.
+      role: "authenticated",
+      // Das Subjekt ist der Nutzer, der zugestimmt hat, und nicht der Agent.
+      subject: "nutzer-id",
+    }]);
+
+    // Beim statischen Bearer bleibt es beim Betreiber: Es gibt dort keinen
+    // Nutzer, in dessen Namen gehandelt wird, der Weg ist auf
+    // `NODE_ENV !== "production"` beschraenkt, und ein erfundenes Subjekt waere
+    // schlimmer als keines.
+    gesehen.length = 0;
+    const lokal = createQKERNMcpServer(localContext, { projectQueues: queues });
+    await callTool(lokal, "qkern_queue_message_trace", { queue: "orders", messageId: "m" });
+    expect(gesehen).toEqual([{
+      organizationId: "org", actorRef: "test-agent", role: "admin", subject: "agent:test-agent",
+    }]);
+
+    // Und die Suche nach einer Spur-Id gibt es ueber MCP gar nicht: Sie nennt
+    // Nachrichten verschiedener Besitzer, und ein Name ohne Eintrag in der
+    // Bereichstabelle ist keine Erlaubnis.
+    expect(Object.hasOwn(MCP_TOOL_SCOPES, "qkern_queue_traces_search")).toBe(false);
+    expect(registeredTools(ueberOAuth).qkern_queue_traces_search).toBeUndefined();
+  });
 });
+
+/** Ruft ein angemeldetes Werkzeug ueber seinen Rueckruf, ohne Transport. */
+async function callTool(
+  server: ReturnType<typeof createQKERNMcpServer>,
+  name: string,
+  args: Record<string, unknown>,
+) {
+  const tool = (server as unknown as {
+    _registeredTools: Record<string, { handler: (input: unknown, extra: unknown) => Promise<unknown> }>;
+  })._registeredTools[name];
+  if (!tool) throw new Error('MCP tool ' + name + ' is not registered.');
+  return tool.handler(args, {});
+}

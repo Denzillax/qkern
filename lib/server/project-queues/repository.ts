@@ -14,6 +14,8 @@ import type {
   ProjectQueueTrace,
   ProjectQueueTraceAnchor,
   ProjectQueueTraceEntry,
+  ProjectQueueTraceSearchEntry,
+  ProjectQueueTraceSearchPage,
   ProjectQueueTraceStation,
 } from "@/lib/server/project-queues/trace";
 import {
@@ -130,6 +132,44 @@ export interface ProjectQueueRepository {
     queue: ProjectQueue,
     messageId: string,
   ): Promise<ProjectQueueTrace | null>;
+  /**
+   * Das Subjekt, das diese Nachricht eingereiht hat (2.131).
+   *
+   * `null` heisst: Es gibt die Zeile nicht mehr oder sie gehoert nicht in diese
+   * Queue dieses Scopes. Beides fuehrt an der Anwendungstuer zur selben
+   * Ablehnung, und das ist Absicht: Ohne Besitzer gibt es nichts zu vergleichen,
+   * und ein Vergleich, der ohne Gegenueber durchgeht, ist keiner.
+   *
+   * Eine eigene Methode und **nicht** ein Feld an `ProjectQueueTrace`: Der
+   * Besitzer ist die Bedingung der Anwendungstuer und nicht Teil der Spur. Haengte
+   * er an der Spur, stuende er in jeder Antwort der Admin-Route, also waere eine
+   * Nutzerkennung aus Project Auth in einer Betriebsansicht, in der sie nichts
+   * beantwortet.
+   */
+  findTraceMessageOwner(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<string | null>;
+  /**
+   * Die Nachrichten einer Spur-Id (2.131), ueber alle Queues **eines** Scopes.
+   *
+   * Ohne Queue-Parameter, und das ist die Entscheidung: Eine fremde Spur laeuft
+   * durch die Umgebung und nicht durch eine Queue. Ueber die Umgebung hinaus
+   * laeuft sie nie, und das traegt nicht ein Filter in der Anfrage, sondern der
+   * Scope, den der Dienst setzt, und die Zeilensicherheit unter ihm; der Index aus
+   * 0085 fuehrt dieselben drei Spalten vorn.
+   *
+   * `cursor` ist die Nachrichten-Id der letzten gezeigten Zeile. Ihre Position
+   * liest der Port selbst nach; die Begruendung steht an
+   * `ProjectQueueTraceSearchPage`.
+   */
+  searchTraces(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    input: { traceId: string; limit: number; cursor: string | null },
+  ): Promise<ProjectQueueTraceSearchPage>;
 }
 
 /**
@@ -476,6 +516,62 @@ export class MemoryProjectQueueRepository implements ProjectQueueRepository {
     });
   }
 
+  async findTraceMessageOwner(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    queue: ProjectQueue,
+    messageId: string,
+  ): Promise<string | null> {
+    return await this.exclusive(queue, async () => {
+      this.assertQueue(principal, scope, queue);
+      const message = this.messages.get(messageId);
+      if (!message || !sameProjectQueueScope(message, scope) || message.queueId !== queue.id) return null;
+      return message.ownerSubject;
+    });
+  }
+
+  /**
+   * Dieselbe Ordnung und dieselbe Seitenform wie der Postgres-Port, in
+   * JavaScript gerechnet: Zeitpunkt, dann Nachrichten-Id, aufsteigend, und der
+   * Cursor ist die Id der letzten gezeigten Zeile.
+   *
+   * Gelesen werden nur die Stationen mit einem Anschluss, und das sind nach 0081
+   * genau die ersten je Nachricht. Der Port filtert darum auf `traceId` und nicht
+   * zusaetzlich auf `sequence === 1`: Eine zweite Bedingung fuer dieselbe Zusage
+   * waere eine, die irgendwann von der Tabelle abweicht.
+   */
+  async searchTraces(
+    principal: ProjectQueuePrincipal,
+    scope: ProjectQueueScope,
+    input: { traceId: string; limit: number; cursor: string | null },
+  ): Promise<ProjectQueueTraceSearchPage> {
+    if (principal.organizationId !== scope.organizationId) throw new ProjectQueueConflictError("QUEUE_CONFLICT");
+    const queues = new Map([...this.queues.values()]
+      .filter((queue) => queue.organizationId === scope.organizationId && sameProjectQueueScope(queue, scope))
+      .map((queue) => [queue.id, queue.name] as const));
+    const anchors = [...this.traces.values()].flat()
+      .filter((station) => station.traceId === input.traceId &&
+        station.organizationId === scope.organizationId && station.projectId === scope.projectId &&
+        station.environment === scope.environment && queues.has(station.queueId))
+      .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime() ||
+        left.messageId.localeCompare(right.messageId));
+    let start = 0;
+    if (input.cursor !== null) {
+      const position = anchors.findIndex((station) => station.messageId === input.cursor);
+      // Ein Cursor, dessen Zeile es nicht mehr gibt, liefert nichts. Dieselbe
+      // Antwort wie im Postgres-Port, wo die nachgelesene Position NULL ist.
+      if (position < 0) return Object.freeze({ traceId: input.traceId, messages: Object.freeze([]), nextCursor: null });
+      start = position + 1;
+    }
+    const page = anchors.slice(start, start + input.limit + 1);
+    const messages = page.slice(0, input.limit).map((station) => searchEntry(station, queues.get(station.queueId)!));
+    return Object.freeze({
+      traceId: input.traceId,
+      messages: Object.freeze(messages),
+      nextCursor: page.length > input.limit ? messages[messages.length - 1]!.messageId : null,
+    });
+  }
+
   /**
    * Haengt eine Station an und schweigt, wenn die Grenze erreicht ist.
    *
@@ -647,6 +743,22 @@ function publicTraceEntry(station: StoredTraceStation): ProjectQueueTraceEntry {
     workerId: station.workerId,
     failureCode: station.failureCode,
     spanId: station.spanId,
+    occurredAt: station.occurredAt.toISOString(),
+  });
+}
+
+/**
+ * Eine Trefferzeile der Suche. Kein Wirt, und nicht weil er weggelassen wird:
+ * Die erste Station einer Nachricht hat per CHECK keinen.
+ */
+function searchEntry(station: StoredTraceStation, queue: string): ProjectQueueTraceSearchEntry {
+  return Object.freeze({
+    messageId: station.messageId,
+    queue,
+    station: station.station,
+    spanId: station.spanId,
+    parentSpanId: station.parentSpanId,
+    sourceMessageId: station.sourceMessageId,
     occurredAt: station.occurredAt.toISOString(),
   });
 }
