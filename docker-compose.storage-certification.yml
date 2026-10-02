@@ -45,6 +45,37 @@ services:
     # Docker-Servicename ist kein Loopback. Statt die Produktgrenze fuer den
     # Test aufzuweichen, wird MinIO tatsaechlich zu 127.0.0.1. ClamAV bleibt
     # ueber die DNS-Konfiguration desselben Compose-Netzwerks erreichbar.
+    #
+    # Kein Next-Dienst daneben (2.127). Die AWS CLI und rclone brauchen einen
+    # echten HTTP-Endpunkt, und den gibt es im Stack jetzt, aber nicht aus
+    # `npm run build && npm start`. Drei Gruende, der Reihe nach gewogen:
+    #
+    # 1. Der Endpunkt im Next-Server haengt an `getProjectStorageS3Endpoint()`,
+    #    und das zieht `getProjectStorageService()` und
+    #    `getProjectStorageS3AccessKeyService()`. Im Betriebsmodus `memory`
+    #    bauen diese beiden **je ihre eigene** MemoryProjectStorageRepository
+    #    (lib/server/project-storage/runtime.ts und s3-access-keys-runtime.ts);
+    #    die Maps liegen in der Instanz, nicht im Modul. Ein Bucket, den der
+    #    Dienst anlegt, existiert fuer den Schluesseldienst dann nicht, und ein
+    #    Paar fuer diesen Bucket laesst sich gar nicht ausstellen. Der
+    #    Next-Weg verlangt damit Betriebsmodus `postgres`, also PostgreSQL,
+    #    Migrationen, Provisionierung und einen Projektschluessel im Stack:
+    #    genau die zweite Verdrahtung neben der vorhandenen, die hier nicht
+    #    entstehen soll. (Der Befund selbst steht in STATUS.md.)
+    # 2. Der Stack ist gemessen 62 Sekunden lang. `npm run build` kommt als
+    #    Vielfaches davon obendrauf, dazu der PostgreSQL-Aufbau aus Punkt 1.
+    #    Ein Stack, der fuenfzehn Minuten braucht, wird nicht mehr gefahren.
+    # 3. `app/s3/route.ts` und `app/s3/[...path]/route.ts` sind je eine Zeile:
+    #    `handle(request)`. Zwischen Next und dem Endpunkt liegt nichts, was
+    #    ein Signaturfehler waere.
+    #
+    # Der echte HTTP-Endpunkt kommt deshalb aus der Bruecke, die der Fall selbst
+    # auf 127.0.0.1 oeffnet (`bridgeTo()` in
+    # tests/project-storage-s3-endpoint.integration.test.ts, seit 2.99 da und
+    # von vier Faellen gefahren). Darauf sprechen die CLI und rclone als eigene
+    # Prozesse, ueber TCP, mit ihrer eigenen Signaturimplementierung. Was der
+    # Next-Weg zusaetzlich belegen wuerde, ist Nexts eigene Umwandlung von
+    # node:http nach `Request`; das bleibt offen und steht so in der Doku.
     network_mode: "service:minio"
     depends_on:
       minio:
@@ -63,10 +94,24 @@ services:
       QKERN_TEST_STORAGE_S3_SECRET_ACCESS_KEY: qkern_cert_secret_change_me_32bytes
       QKERN_TEST_STORAGE_CLAMAV_HOST: clamav
       QKERN_TEST_STORAGE_CLAMAV_PORT: "3310"
+      # Seit 2.127 fahren zwei fremde Clients den S3-Endpunkt (2.127 AWS CLI,
+      # 2.128 rclone). Die Faelle suchen die Binaerdateien unter diesen Namen
+      # und scheitern mit einer Diagnose, wenn eine fehlt, statt sich zu
+      # ueberspringen: Ein uebersprungener Fall sieht gruen aus und belegt nichts.
+      QKERN_TEST_STORAGE_AWS_CLI: aws
+      QKERN_TEST_STORAGE_RCLONE: rclone
     command:
       - "sh"
       - "-ec"
       - |
+        # Die zwei fremden Clients (2.127, 2.128). Sie kommen aus apk und nicht
+        # als eigene Compose-Dienste, weil die Faelle sie als Kindprozess
+        # starten muessen: Der Zugangsschluessel entsteht erst im Lauf und geht
+        # dem Client ueber seine Umgebung zu, und eine Umgebungsvariable reicht
+        # nicht von einem Container in einen anderen. Gemessen kostet das 18
+        # Sekunden auf 62 Sekunden Stack, also ein Drittel mehr fuer den ersten
+        # Zeugen, der nicht von AWS oder von uns geschrieben ist.
+        apk add --no-cache aws-cli rclone
         mkdir -p /workspace/qkern
         tar -C /qkern-src \
           --exclude=./node_modules \

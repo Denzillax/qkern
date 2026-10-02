@@ -2803,10 +2803,17 @@ Was geht:
   anderer Fortsetzung: `NextMarker` statt `NextContinuationToken`, und QKERN
   schickt es immer, wenn die Antwort abgeschnitten ist, auch ohne Delimiter
   (S3 schickt es nur mit Delimiter). Der Marker zeigt auf den letzten gesehenen
-  Schlüssel, nicht auf den Gruppennamen, damit die Fortsetzung nichts
-  überspringt. Ein `continuation-token` oder `start-after` in einer v1-Anfrage
-  wird mit `400 InvalidArgument` benannt statt ausgelegt, und `list-type` mit
-  einer anderen Zahl als 2 ebenso.
+  Schlüssel der Gruppe, nicht auf den Gruppennamen, damit die Fortsetzung
+  nichts überspringt. Eine begonnene Gruppe wird dabei auf ihrer Seite zu Ende
+  gelesen (seit `2.127`), damit derselbe `CommonPrefixes`-Eintrag nicht auf
+  zwei Seiten steht; gezählt wird weiter ein Eintrag je Gruppe. Ein
+  `continuation-token` oder `start-after` in einer v1-Anfrage wird mit
+  `400 InvalidArgument` benannt statt ausgelegt, und `list-type` mit einer
+  anderen Zahl als 2 ebenso.
+- `max-keys=0` gibt in beiden Versionen eine leere Liste mit
+  `IsTruncated=false` und ohne Fortsetzung (seit `2.127`), so wie S3 es tut.
+  Vorher war es `400 InvalidArgument`, woran `aws s3api list-objects --max-keys 0`
+  mit Code 254 abbrach. Eine negative Zahl bleibt ein Fehler.
 - `HeadObject`, `GetObject`, ganz oder als Bytebereich (`Range: bytes=…`,
   Antwort `206` mit `Content-Range`; QKERN streamt die Bytes vom Provider
   durch, die freigegebene Menge zählt als `storage_egress_bytes`).
@@ -2923,6 +2930,39 @@ kommt über `GetObject` byteidentisch zurück; ein widerrufenes Paar, eine
 falsche Signatur, eine auf einen anderen Pfad verschobene Signatur und ein
 fremder Bucket fallen; EICAR wird abgewiesen. Die Signaturen rechnet der Fall
 selbst aus `node:crypto`.
+
+### Welche Clients den Endpunkt wirklich gefahren haben
+
+Vier Implementierungen, nicht eine. Das AWS SDK für JavaScript seit `2.99`,
+und seit `2.127` zwei Werkzeuge, die QKERN nicht geschrieben hat und AWS zum
+Teil auch nicht:
+
+- **AWS CLI v2** (Fall `2.127`). Sie bringt die AWS-CRT in C mit und wählt
+  darum eine andere Form als das SDK: Sie puffert die Datei, signiert die
+  Nutzlast als Ganzes und legt die Prüfsumme in einen **Header**, nicht als
+  Trailer hinter `aws-chunked`. Ihr Standardalgorithmus ist CRC64NVME, nicht
+  CRC32, und sie fragt mit `Expect: 100-continue` nach, bevor sie den Körper
+  schickt. Gefahren im Fall: `aws s3 ls`, `aws s3 cp` hin und zurück,
+  `aws s3 cp` mit einer Datei über der Multipart-Schwelle, die sie selbst in
+  Teile schneidet, `aws s3 sync` zweimal (beim zweiten Mal geht nichts hoch),
+  `aws s3api list-objects` in Version 1 und `--checksum-algorithm SHA256`.
+- **rclone** (Fall `2.128`). In Go geschrieben, ohne AWS-Code darin. Gefahren:
+  `rclone copy` hin und zurück mit `--s3-upload-cutoff`, also von rclone selbst
+  geteilt, `rclone lsjson`, `rclone check` gegen die Dateien und
+  `rclone delete`. Einrichtung ohne Konfigurationsdatei, über
+  `RCLONE_CONFIG_<REMOTE>_*`, mit `provider = Other` und
+  `force_path_style = true`.
+
+Beide laufen im Storage-Stack als eigene Prozesse gegen einen echten
+HTTP-Endpunkt, nicht gegen einen Next-Server: die Begründung dafür steht in
+`docker-compose.storage-certification.yml`. Was dadurch offen bleibt, ist
+Nexts eigene Umwandlung von `node:http` nach `Request`; `app/s3/route.ts` und
+`app/s3/[...path]/route.ts` sind je eine Zeile, die `handle(request)` aufruft,
+und mehr liegt nicht dazwischen.
+
+Was die zwei gefunden haben, steht oben in der Liste `Was geht`: `max-keys=0`
+war ein Fehler statt einer leeren Liste, und derselbe `CommonPrefixes`-Eintrag
+stand auf zwei Seiten. Beides ist behoben.
 
 ## 8. Realtime lokal testen
 
