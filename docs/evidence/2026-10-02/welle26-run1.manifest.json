@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle26-run1.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 79,
+  "testFiles": "31 passed (31)",
+  "tests": "256 passed (256)",
+  "passed": 256,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

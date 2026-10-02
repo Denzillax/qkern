@@ -1,6 +1,6 @@
 {
   "name": "qkern-platform",
-  "version": "2.73.0",
+  "version": "2.74.0",
   "license": "Apache-2.0",
   "private": true,
   "engines": {
@@ -24,6 +24,7 @@
     "test:realtime:docker": "node scripts/realtime-certification.mjs",
     "storage:bucket": "node scripts/storage-create-bucket.mjs",
     "dev:bind-project-database": "node scripts/dev-bind-project-database.mjs",
+    "dev:seed-example-project": "node scripts/dev-seed-example-project.mjs",
     "verify:backup-restore": "node --import tsx scripts/verify-backup-restore-evidence.ts",
     "render:runtime-deployments": "node --import tsx scripts/render-background-runtime-deployments.ts",
     "verify:runtime-deployments": "node --import tsx scripts/verify-background-runtime-deployments.ts",

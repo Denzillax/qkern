@@ -1,0 +1,20 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "welle26-realtime.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 79,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

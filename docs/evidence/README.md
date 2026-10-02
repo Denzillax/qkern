@@ -2009,3 +2009,27 @@ zusammen den Empfänger-, Backup- und Vault-Weg, und Migration `0082` und `0083`
 laufen in jedem Stack mit. Alle vier Mutationsproben liefen nach dem Merge, weil
 jede Scheibe in dieselben Dokumentdateien schreibt und zwei davon in dieselbe
 Testdatei.
+
+## Läufe zu Release 2.74 (2. Oktober 2026)
+
+| Datei | Stack | Ergebnis |
+| --- | --- | --- |
+| `2026-10-02/welle26-run1.log` | PostgreSQL 17 | 256 von 256, exit 0 |
+| `2026-10-02/welle26-run2.log` | PostgreSQL 17 | 256 von 256, exit 0 |
+| `2026-10-02/welle26-storage.log` | versitygw und ClamAV | 14 von 14, exit 0 |
+| `2026-10-02/welle26-receiver.log` | Ausgehender Weg gegen echten HTTPS-Empfänger | 17 von 17, exit 0 |
+| `2026-10-02/welle26-backup.log` | Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv | 3 von 3, exit 0 |
+| `2026-10-02/welle26-realtime.log` | Realtime unter Production gegen TLS-PostgreSQL | 19 von 19, exit 0 |
+| `2026-10-02/welle26-functions.log` | Functions gegen Docker plus PostgreSQL | 33 von 33, exit 0 |
+| `2026-10-02/welle26-auth.log` | Mailpit und Dex | 11 von 11, exit 0 |
+| `2026-10-02/welle26-vault.log` | Webhook-Signatur gegen echten Vault | 8 von 8, exit 0 |
+| `2026-10-02/welle26-mutation-maxkeyszero.log` | Mutation: `max-keys=0` gibt wieder einen Fehler | **13 von 14, exit 1 – absichtlich** |
+| `2026-10-02/welle26-mutation-tracescope.log` | Mutation: die Spursuche prüft die Umgebung nicht | **255 von 256, exit 1 – absichtlich** |
+| `2026-10-02/welle26-mutation-sealchain.log` | Mutation: die Siegelkette wird nicht fortgeschrieben | **2 von 3, exit 1 – absichtlich** |
+| `2026-10-02/welle26-local-run1.log` | Vitest lokal (Windows) | 2604 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-02/welle26-local-run2.log` | Vitest lokal (Windows) | 2604 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Dieselben neun Stacks wie zu 2.73: Die drei Scheiben berühren zusammen den
+Storage-, Backup-, Vault- und Empfängerweg, und die Migrationen `0084` und
+`0085` laufen in jedem Stack mit. Die Proben liegen nach dem Merge, weil zwei
+der drei Scheiben in dieselbe Testdatei schreiben.

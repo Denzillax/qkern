@@ -1,0 +1,21 @@
+{
+  "stack": "Mutation die Siegelkette wird nicht fortgeschrieben",
+  "log": "welle26-mutation-sealchain.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 79,
+  "testFiles": "1 failed | 2 passed (3)",
+  "tests": "1 failed | 2 passed (3)",
+  "passed": 2,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "versity/versitygw:v1.8.0",
+    "node:24-alpine"
+  ]
+}

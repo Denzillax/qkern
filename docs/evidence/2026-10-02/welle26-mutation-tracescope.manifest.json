@@ -1,0 +1,19 @@
+{
+  "stack": "Mutation die Spursuche prueft die Umgebung nicht",
+  "log": "welle26-mutation-tracescope.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 79,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 255 passed (256)",
+  "passed": 255,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

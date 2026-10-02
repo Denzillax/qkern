@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle26-local-run1.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "355 passed | 42 skipped (397)",
+  "tests": "2604 passed | 378 skipped (2982)",
+  "passed": 2604,
+  "failed": 0,
+  "skipped": 378,
+  "images": []
+}

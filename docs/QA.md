@@ -6636,3 +6636,47 @@ Zeitplan. Der Backup-Prozess ist nur als direkt gerufene Runde belegt, nicht als
 laufender Prozess. Kundengehaltene Schluessel fehlen. Kein Sammler setzt den
 Anschluss von sich aus, und QKERN exportiert keine Spans. Die AWS CLI und rclone
 haben den S3-Endpunkt nie gesehen. Die Console ist weiterhin ungesehen.
+
+## Welle sechsundzwanzig (2.74): fremde Clients, eine Spur mit Suche, und ein Backup ohne Deckel
+
+Drei Schnitte: die AWS CLI und rclone am S3-Endpunkt (Fall 2.127, ohne
+Migration), die Suche nach einer Spur-Id und die Spur der eigenen Nachricht fuer
+eine Anwendung (Fall 2.131, Migration 0085), sowie das stueckweise, bestellbare
+und getaktete Backup einer Projektdatenbank (Faelle 2.129 und 2.130, Migration
+0084).
+
+Der fremde Client war den Aufwand wert. Beide in 2.73.0 benannten Abweichungen
+von S3 sind echt und behoben: `max-keys=0` gab einen Fehler statt einer leeren
+Liste, und derselbe Gruppeneintrag stand auf zwei Seiten. Die CLI bringt eine
+eigene Implementierung in C mit, signiert die Nutzlast als Ganzes, legt die
+Pruefsumme in eine Kopfzeile statt als Trailer und nimmt CRC64NVME statt CRC32;
+dieser Weg war von keinem echten Client gefahren.
+
+Beim Backup faellt die Grenze von 256 MiB auf 625 GiB, gerechnet aus nutzbaren
+Bytes je Teil mal Teilegrenze des S3-Protokolls und geprueft mit derselben
+Rechnung in klein. Ein Siegel je Teil bindet Nummer, Endezeichen und das Tag des
+Vorgaengers; die Gesamtzahl steht bewusst nicht in der AAD, weil sie beim ersten
+Teil unbekannt ist. Zwei echte Fehler fand der erste Stacklauf und nicht die
+lokale Suite: Der Takt hielt einen fremden Auftrag fuer seinen eigenen, und eine
+Wiederherstellung liess sich nach einem Fehlschlag nicht neu bestellen.
+
+Zum Verfahren drei Korrekturen am Pruefaufbau. Vier Laeufe der Kette zu 2.73.0
+fuetterten die Startseite nicht, weil ihre Beschriftung in keinem Anspruch
+stand; Realtime fehlte in dieser Liste ueberhaupt, die Seite nannte sieben
+Pruefstaende statt acht. Und `docs/HANDBUCH.md` sagte seit 2.64.0, es gelte fuer
+2.64.0. Alle drei haengen jetzt an einem Vertrag, und eine Mutationsprobe muss
+rot sein, sonst faellt sie auf.
+
+Checkpoint `2.74.0` am 2. Oktober 2026: PostgreSQL 17 mit 256 von 256 zweimal,
+versitygw und ClamAV mit 14 von 14, echter HTTPS-Empfaenger mit 17 von 17,
+Backup und Restore mit 3 von 3, Realtime unter Production mit 19 von 19,
+Functions mit 33 von 33, Mailpit und Dex mit 11 von 11, Vault mit 8 von 8, alle
+exit 0; Lokal 2604 bestanden, 0 fehlgeschlagen, zweimal reproduziert. Drei
+Mutationsproben auf dem gemergten Stand mit genau ihren Faellen.
+
+Nicht erbracht: Dass 625 GiB durchgehen, belegt kein Lauf; der groesste Dump auf
+diesem Weg war 12,6 MB gross. Der Backup-Prozess ist als laufender Prozess nicht
+belegt, die Console liest den Backup-Katalog nicht, und keine Route aendert den
+Takt. Keine Suche nach einer Span-Id. Die lesenden Queue-Werkzeuge laufen ueber
+MCP weiter als Betreiber. Die neuen HTTP-Routen sind nicht ueber echtes HTTP
+aufgerufen worden.

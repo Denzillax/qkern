@@ -1,0 +1,21 @@
+{
+  "stack": "Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv",
+  "log": "welle26-backup.log",
+  "commit": "68247b8a175bbc6ebcef80192c07749af8cb8c76",
+  "commitSubject": "merge: Das Backup geht stueckweise, ist bestellbar und laeuft nach Takt aus slice/backupstream",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 79,
+  "testFiles": "3 passed (3)",
+  "tests": "3 passed (3)",
+  "passed": 3,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "versity/versitygw:v1.8.0",
+    "node:24-alpine"
+  ]
+}

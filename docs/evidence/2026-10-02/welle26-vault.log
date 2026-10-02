@@ -1,0 +1,163 @@
+
+> qkern-platform@2.73.0 test:vault:docker
+> node scripts/vault-certification.mjs
+
+ Network qkern-vault-certification_default Creating 
+ Network qkern-vault-certification_default Created 
+ Container qkern-vault-certification-vault-1 Creating 
+ Container qkern-vault-certification-vault-1 Created 
+ Container qkern-vault-certification-certification-1 Creating 
+ Container qkern-vault-certification-certification-1 Created 
+Attaching to certification-1, vault-1
+ Container qkern-vault-certification-vault-1 Starting 
+ Container qkern-vault-certification-vault-1 Started 
+ Container qkern-vault-certification-vault-1 Waiting 
+vault-1  | ==> Vault server configuration:
+vault-1  | 
+vault-1  | Administrative Namespace: 
+vault-1  |              Api Address: http://0.0.0.0:8200
+vault-1  |                      Cgo: disabled
+vault-1  |          Cluster Address: https://0.0.0.0:8201
+vault-1  |    Environment Variables: GOTRACEBACK, HOME, HOSTNAME, NAME, PATH, PWD, SHLVL, VAULT_DEV_LISTEN_ADDRESS, VAULT_DEV_ROOT_TOKEN_ID, VERSION
+vault-1  |               Go Version: go1.23.3
+vault-1  |               Listener 1: tcp (addr: "0.0.0.0:8200", cluster address: "0.0.0.0:8201", disable_request_limiter: "false", max_request_duration: "1m30s", max_request_size: "33554432", tls: "disabled")
+vault-1  |                Log Level: 
+vault-1  |                    Mlock: supported: true, enabled: false
+vault-1  |            Recovery Mode: false
+vault-1  |                  Storage: inmem
+vault-1  |                  Version: Vault v1.18.3, built 2024-12-16T14:00:53Z
+vault-1  |              Version Sha: 7ae4eca5403bf574f142cd8f987b8d83bafcd1de
+vault-1  | 
+vault-1  | ==> Vault server started! Log data will stream in below:
+vault-1  | 
+vault-1  | 2026-10-02T19:40:20.853Z [INFO]  proxy environment: http_proxy="" https_proxy="" no_proxy=""
+vault-1  | 2026-10-02T19:40:20.853Z [INFO]  incrementing seal generation: generation=1
+vault-1  | 2026-10-02T19:40:20.853Z [WARN]  no `api_addr` value specified in config or in VAULT_API_ADDR; falling back to detection if possible, but this value should be manually set
+vault-1  | 2026-10-02T19:40:20.853Z [INFO]  core: Initializing version history cache for core
+vault-1  | 2026-10-02T19:40:20.853Z [INFO]  events: Starting event system
+vault-1  | 2026-10-02T19:40:20.854Z [INFO]  core: security barrier not initialized
+vault-1  | 2026-10-02T19:40:20.854Z [INFO]  core: security barrier initialized: stored=1 shares=1 threshold=1
+vault-1  | 2026-10-02T19:40:20.854Z [INFO]  core: post-unseal setup starting
+vault-1  | 2026-10-02T19:40:20.860Z [INFO]  core: loaded wrapping token key
+vault-1  | 2026-10-02T19:40:20.860Z [INFO]  core: successfully setup plugin runtime catalog
+vault-1  | 2026-10-02T19:40:20.860Z [INFO]  core: successfully setup plugin catalog: plugin-directory=""
+vault-1  | 2026-10-02T19:40:20.860Z [INFO]  core: no mounts; adding default mount table
+vault-1  | 2026-10-02T19:40:20.862Z [INFO]  core: successfully mounted: type=cubbyhole version="v1.18.3+builtin.vault" path=cubbyhole/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.862Z [INFO]  core: successfully mounted: type=system version="v1.18.3+builtin.vault" path=sys/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.863Z [INFO]  core: successfully mounted: type=identity version="v1.18.3+builtin.vault" path=identity/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.865Z [INFO]  core: successfully mounted: type=token version="v1.18.3+builtin.vault" path=token/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.865Z [INFO]  rollback: Starting the rollback manager with 256 workers
+vault-1  | 2026-10-02T19:40:20.865Z [INFO]  rollback: starting rollback manager
+vault-1  | 2026-10-02T19:40:20.865Z [INFO]  core: restoring leases
+vault-1  | 2026-10-02T19:40:20.866Z [INFO]  expiration: lease restore complete
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  identity: entities restored
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  identity: groups restored
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  core: Recorded vault version: vault version=1.18.3 upgrade time="2026-10-02 19:40:20.867225068 +0000 UTC" build date=2024-12-16T14:00:53Z
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  core: post-unseal setup complete
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  core: root token generated
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  core: pre-seal teardown starting
+vault-1  | 2026-10-02T19:40:20.867Z [INFO]  rollback: stopping rollback manager
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core: pre-seal teardown complete
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core.cluster-listener.tcp: starting listener: listener_address=0.0.0.0:8201
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core.cluster-listener: serving cluster requests: cluster_listen_address=[::]:8201
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core: post-unseal setup starting
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core: loaded wrapping token key
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core: successfully setup plugin runtime catalog
+vault-1  | 2026-10-02T19:40:20.868Z [INFO]  core: successfully setup plugin catalog: plugin-directory=""
+vault-1  | 2026-10-02T19:40:20.869Z [INFO]  core: successfully mounted: type=system version="v1.18.3+builtin.vault" path=sys/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.869Z [INFO]  core: successfully mounted: type=identity version="v1.18.3+builtin.vault" path=identity/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.870Z [INFO]  core: successfully mounted: type=cubbyhole version="v1.18.3+builtin.vault" path=cubbyhole/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.870Z [INFO]  core: successfully mounted: type=token version="v1.18.3+builtin.vault" path=token/ namespace="ID: root. Path: "
+vault-1  | 2026-10-02T19:40:20.871Z [INFO]  rollback: Starting the rollback manager with 256 workers
+vault-1  | 2026-10-02T19:40:20.871Z [INFO]  rollback: starting rollback manager
+vault-1  | 2026-10-02T19:40:20.871Z [INFO]  core: restoring leases
+vault-1  | 2026-10-02T19:40:20.872Z [INFO]  identity: entities restored
+vault-1  | 2026-10-02T19:40:20.872Z [INFO]  identity: groups restored
+vault-1  | 2026-10-02T19:40:20.872Z [INFO]  expiration: lease restore complete
+vault-1  | 2026-10-02T19:40:20.873Z [INFO]  core: post-unseal setup complete
+vault-1  | 2026-10-02T19:40:20.873Z [INFO]  core: vault is unsealed
+vault-1  | 2026-10-02T19:40:20.877Z [INFO]  expiration: revoked lease: lease_id=auth/token/root/h09cf3630ebcdf9afd927ad124a007860cf960dd830d64eeb8b22f7543144459d
+vault-1  | 2026-10-02T19:40:20.880Z [INFO]  core: successful mount: namespace="" path=secret/ type=kv version="v0.20.0+builtin"
+vault-1  | WARNING! dev mode is enabled! In this mode, Vault runs entirely in-memory
+vault-1  | and starts unsealed with a single unseal key. The root token is already
+vault-1  | authenticated to the CLI, so you can immediately begin using Vault.
+vault-1  | 
+vault-1  | You may need to set the following environment variables:
+vault-1  | 
+vault-1  |     $ export VAULT_ADDR='http://0.0.0.0:8200'
+vault-1  | 
+vault-1  | The unseal key and root token are displayed below in case you want to
+vault-1  | seal/unseal the Vault or re-authenticate.
+vault-1  | 
+vault-1  | Unseal Key: xcj1N8TJ7tqXcwafmHFMAlGVfONb4UZ3KppUIj0mXuY=
+vault-1  | Root Token: qkern-certification-root-token
+vault-1  | 
+vault-1  | Development mode should NOT be used in production installations!
+vault-1  | 
+ Container qkern-vault-certification-vault-1 Healthy 
+ Container qkern-vault-certification-certification-1 Starting 
+ Container qkern-vault-certification-certification-1 Started 
+certification-1  | vault-seed: two secrets written
+certification-1  | 
+certification-1  | added 322 packages, and audited 323 packages in 13s
+certification-1  | 
+certification-1  | 93 packages are looking for funding
+certification-1  |   run `npm fund` for details
+certification-1  | 
+certification-1  | 10 vulnerabilities (6 moderate, 3 high, 1 critical)
+certification-1  | 
+certification-1  | To address issues that do not require attention, run:
+certification-1  |   npm audit fix
+certification-1  | 
+certification-1  | To address all issues, run:
+certification-1  |   npm audit fix --force
+certification-1  | 
+certification-1  | Run `npm audit` for details.
+certification-1  | npm notice
+certification-1  | npm notice New minor version of npm available! 11.5.1 -> 11.21.0
+certification-1  | npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.21.0
+certification-1  | npm notice To update run: npm install -g npm@11.21.0
+certification-1  | npm notice
+certification-1  | 
+certification-1  | > qkern-platform@2.73.0 test:vault
+certification-1  | > vitest run tests/webhook-vault.integration.test.ts
+certification-1  | 
+certification-1  | 
+certification-1  | [1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/workspace/qkern[39m
+certification-1  | 
+certification-1  |  [32m✓[39m tests/webhook-vault.integration.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 97[2mms[22m[39m
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+certification-1  | [2m      Tests [22m [1m[32m8 passed[39m[22m[90m (8)[39m
+certification-1  | [2m   Start at [22m 19:40:39
+certification-1  | [2m   Duration [22m 392ms[2m (transform 115ms, setup 0ms, import 152ms, tests 97ms, environment 0ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container qkern-vault-certification-certification-1 Stopping 
+ Container qkern-vault-certification-certification-1 Stopped 
+ Container qkern-vault-certification-vault-1 Stopping 
+vault-1          | ==> Vault shutdown triggered
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  core: marked as sealed
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  core: pre-seal teardown starting
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  rollback: stopping rollback manager
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  core: pre-seal teardown complete
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  core: stopping cluster listeners
+vault-1          | 2026-10-02T19:40:40.024Z [INFO]  core.cluster-listener: forwarding rpc listeners stopped
+vault-1          | 2026-10-02T19:40:40.391Z [INFO]  core.cluster-listener: rpc listeners successfully shut down
+vault-1          | 2026-10-02T19:40:40.391Z [INFO]  core: cluster listeners successfully shut down
+vault-1          | 2026-10-02T19:40:40.391Z [INFO]  core: vault is sealed
+ Container qkern-vault-certification-vault-1 Stopped 
+[Kvault-1 exited with code 0
+ Container qkern-vault-certification-certification-1 Stopping 
+ Container qkern-vault-certification-certification-1 Stopped 
+ Container qkern-vault-certification-certification-1 Removing 
+ Container qkern-vault-certification-certification-1 Removed 
+ Container qkern-vault-certification-vault-1 Stopping 
+ Container qkern-vault-certification-vault-1 Stopped 
+ Container qkern-vault-certification-vault-1 Removing 
+ Container qkern-vault-certification-vault-1 Removed 
+ Network qkern-vault-certification_default Removing 
+ Network qkern-vault-certification_default Removed 
+EXIT=0
+EXIT=0
