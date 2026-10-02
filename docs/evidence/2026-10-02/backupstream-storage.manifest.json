@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "backupstream-storage.log",
+  "commit": "832d7b0a3e75fc1ad5fb405e20963692ca90c4e9",
+  "commitSubject": "Ein Backup, das nicht mehr durch den Speicher geht, bestellbar und getaktet",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 78,
+  "testFiles": "2 passed (2)",
+  "tests": "12 passed (12)",
+  "passed": 12,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4",
+    "node:24-alpine"
+  ]
+}

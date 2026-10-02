@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "backupstream-postgres-run1.log",
+  "commit": "832d7b0a3e75fc1ad5fb405e20963692ca90c4e9",
+  "commitSubject": "Ein Backup, das nicht mehr durch den Speicher geht, bestellbar und getaktet",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 78,
+  "testFiles": "31 passed (31)",
+  "tests": "255 passed (255)",
+  "passed": 255,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
