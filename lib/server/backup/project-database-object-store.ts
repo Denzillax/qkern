@@ -26,19 +26,33 @@ import {
  * aufzurufen waere ein Umweg mit einer zusaetzlichen Stelle, an der eine URL
  * mit Signatur in einem Log landen kann.
  *
- * Darum ein eigener, enger Port mit vier Verben (`put`, `get`, `delete`) und
- * keinem weiteren. Es gibt **kein** `list`: wer auflisten kann, kann ueber das
- * Praefix eines fremden Mandanten auflisten, und die Liste der Backups steht in
- * der Control Plane unter Zeilensicherheit. Der Objektspeicher ist hier eine
- * Ablage, kein Verzeichnis.
+ * Darum ein eigener, enger Port. Es gibt **kein** `list`: wer auflisten kann,
+ * kann ueber das Praefix eines fremden Mandanten auflisten, und die Liste der
+ * Backups steht in der Control Plane unter Zeilensicherheit. Der Objektspeicher
+ * ist hier eine Ablage, kein Verzeichnis.
  *
  * ## Integritaet
  *
- * Jedes `put` sendet `x-amz-checksum-sha256`; S3 (und versitygw im Stack) weist
- * einen Koerper ab, dessen Summe nicht passt. Jedes `get` rechnet die Summe neu
- * und vergleicht sie mit der, die der Aufrufer erwartet -- und zwar **bevor**
- * der Umschlag aufgeht. Dieselbe Reihenfolge wie im Dienst: ein verstuemmeltes
- * Artefakt soll das sagen und nicht wie ein Schluesselfehler aussehen.
+ * Jedes Hochladen sendet `x-amz-checksum-sha256`; S3 (und versitygw im Stack)
+ * weist einen Koerper ab, dessen Summe nicht passt. Jedes `get` rechnet die
+ * Summe neu und vergleicht sie mit der, die der Aufrufer erwartet -- und zwar
+ * **bevor** der Umschlag aufgeht. Dieselbe Reihenfolge wie im Dienst: ein
+ * verstuemmeltes Artefakt soll das sagen und nicht wie ein Schluesselfehler
+ * aussehen.
+ *
+ * ## Stueckweise (2.129)
+ *
+ * Seit 2.129 geht ein Backup als **Multipart-Upload** hinaus, weil der Dump als
+ * Strom kommt und seine Groesse vorher niemand kennt. Hochgeladen wird mit
+ * demselben Signierer und derselben Pruefsumme je Teil; der Abschluss nennt die
+ * ETags in Reihenfolge, und S3 weist eine Liste ab, deren Nummern nicht
+ * aufsteigen.
+ *
+ * **`put` gibt es nicht mehr.** Ein einzelner Schreibweg daneben waere eine
+ * zweite Tuer in den Objektspeicher, und niemand im Produkt haette ihn gerufen;
+ * das ist genau das Muster, das 2.73.0 an drei Stellen gefunden hat. Gelesen
+ * wird dagegen weiter ganz (`get`, fuer Artefakte im Format von 2.73.0) **und**
+ * in Bereichen (`getRange`, fuer den stueckweisen Weg).
  */
 
 export type ProjectDatabaseBackupObjectStoreErrorCode =
@@ -92,21 +106,129 @@ export class S3ProjectDatabaseBackupObjectStore implements ProjectDatabaseBackup
     }
   }
 
-  async put(key: string, bytes: Buffer, signal?: AbortSignal): Promise<void> {
+  /** Eroeffnet einen Multipart-Upload und gibt seine Kennung. */
+  async beginMultipart(key: string, signal?: AbortSignal): Promise<string> {
     assertKey(key);
-    if (bytes.length > this.maxObjectBytes) {
-      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_TOO_LARGE");
-    }
-    const response = await this.request("PUT", key, bytes, {
+    const response = await this.request("POST", key, undefined, {
       "content-type": "application/octet-stream",
-      "content-length": String(bytes.length),
-      "x-amz-checksum-sha256": createHash("sha256").update(bytes).digest("base64"),
-    }, signal);
+    }, signal, { uploads: "" });
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
       throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
     }
+    const uploadId = /<UploadId>([^<]{1,1024})<\/UploadId>/.exec(await response.text())?.[1];
+    // Die Kennung geht spaeter in eine Query und wird darum hier auf eine Form
+    // gebracht, bevor sie irgendwo hin geht.
+    if (!uploadId || !/^[A-Za-z0-9+/=._~-]{1,1024}$/.test(uploadId)) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+    }
+    return uploadId;
+  }
+
+  async putPart(input: Readonly<{
+    key: string; uploadId: string; partNumber: number; bytes: Buffer;
+  }>, signal?: AbortSignal): Promise<Readonly<{ partNumber: number; etag: string }>> {
+    assertKey(input.key);
+    assertUploadId(input.uploadId);
+    if (!Number.isSafeInteger(input.partNumber) || input.partNumber < 1 || input.partNumber > 10_000 ||
+        input.bytes.length < 1 || input.bytes.length > this.maxObjectBytes) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_TOO_LARGE");
+    }
+    const response = await this.request("PUT", input.key, input.bytes, {
+      "content-type": "application/octet-stream",
+      "content-length": String(input.bytes.length),
+      "x-amz-checksum-sha256": createHash("sha256").update(input.bytes).digest("base64"),
+    }, signal, { partNumber: String(input.partNumber), uploadId: input.uploadId });
+    const etag = response.headers.get("etag");
     await response.body?.cancel().catch(() => undefined);
+    if (!response.ok || !etag || !/^"?[A-Za-z0-9-]{1,254}"?$/.test(etag)) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+    }
+    return Object.freeze({ partNumber: input.partNumber, etag });
+  }
+
+  async completeMultipart(input: Readonly<{
+    key: string; uploadId: string; parts: ReadonlyArray<Readonly<{ partNumber: number; etag: string }>>;
+  }>, signal?: AbortSignal): Promise<void> {
+    assertKey(input.key);
+    assertUploadId(input.uploadId);
+    if (input.parts.length < 1 || input.parts.length > 10_000) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+    }
+    let previous = 0;
+    for (const part of input.parts) {
+      if (!Number.isSafeInteger(part.partNumber) || part.partNumber <= previous ||
+          !/^"?[A-Za-z0-9-]{1,254}"?$/.test(part.etag)) {
+        throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+      }
+      previous = part.partNumber;
+    }
+    const body = Buffer.from(`<CompleteMultipartUpload>${input.parts.map((part) =>
+      `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${
+        part.etag.replace(/"/g, "&quot;")}</ETag></Part>`).join("")}</CompleteMultipartUpload>`, "utf8");
+    const response = await this.request("POST", input.key, body, {
+      "content-type": "application/xml",
+      "content-length": String(body.length),
+    }, signal, { uploadId: input.uploadId });
+    // S3 kann 200 antworten und den Fehler in den Rumpf legen; dieselbe Lehre
+    // wie im Storage-Provider. Wer nur den Status liest, haelt einen
+    // abgebrochenen Abschluss fuer gelungen -- und haette dann ein Backup ohne
+    // Bytes im Katalog.
+    const text = await response.text().catch(() => "<Error>");
+    if (!response.ok || text.includes("<Error>")) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+    }
+  }
+
+  /**
+   * Bricht einen Upload ab. Ein Fehlschlag hier ist kein Fehlschlag des Laufs:
+   * was liegen bleibt, sind Teile ohne Objekt, und die raeumt die
+   * Lebenszyklus-Regel des Buckets. Darum wirft die Methode nicht.
+   */
+  async abortMultipart(key: string, uploadId: string, signal?: AbortSignal): Promise<void> {
+    try {
+      assertKey(key);
+      assertUploadId(uploadId);
+      const response = await this.request("DELETE", key, undefined, {}, signal, { uploadId });
+      await response.body?.cancel().catch(() => undefined);
+    } catch {
+      // bewusst still
+    }
+  }
+
+  /**
+   * Ein Bytebereich. Das ist die Seite, auf der die Wiederherstellung ohne das
+   * Ganze im Speicher auskommt: sie holt Teil fuer Teil.
+   *
+   * Ein Server, der `Range` **nicht** befolgt, antwortet mit 200 und dem ganzen
+   * Objekt. Das wird hier abgewiesen und nicht stillschweigend angenommen: sonst
+   * zieht ein Leser bei jedem Teil das ganze Artefakt und merkt es nur am
+   * Speicher.
+   */
+  async getRange(
+    key: string, offset: number, length: number, signal?: AbortSignal,
+  ): Promise<Buffer> {
+    assertKey(key);
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) ||
+        length < 1 || length > this.maxObjectBytes) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_TOO_LARGE");
+    }
+    const response = await this.request("GET", key, undefined, {
+      range: `bytes=${offset}-${offset + length - 1}`,
+    }, signal);
+    if (response.status === 404) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_NOT_FOUND");
+    }
+    if (response.status !== 206) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+    }
+    const bytes = await this.boundedBody(response);
+    if (bytes.length !== length) {
+      throw new ProjectDatabaseBackupObjectStoreError("OBJECT_CHECKSUM_MISMATCH");
+    }
+    return bytes;
   }
 
   async get(key: string, signal?: AbortSignal): Promise<Buffer> {
@@ -135,14 +257,19 @@ export class S3ProjectDatabaseBackupObjectStore implements ProjectDatabaseBackup
   }
 
   private async request(
-    method: "PUT" | "GET" | "DELETE",
+    method: "PUT" | "GET" | "DELETE" | "POST",
     key: string,
     body: Buffer | undefined,
     extraHeaders: Record<string, string>,
     signal?: AbortSignal,
+    query?: Record<string, string>,
   ): Promise<Response> {
     const url = new URL(this.endpoint);
     url.pathname = `/${encodeURIComponent(this.config.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    // Die Query wird **vor** dem Signieren gesetzt: `signSigV4Request` nimmt
+    // `url.search` in die kanonische Anfrage, und eine danach angehaengte
+    // Angabe faellt beim Anbieter mit `SignatureDoesNotMatch`.
+    for (const [name, value] of Object.entries(query ?? {})) url.searchParams.set(name, value);
     const headers = signSigV4Request({
       method,
       url,
@@ -334,6 +461,18 @@ recognisedByName(ProjectDatabaseBackupKeyError, "ProjectDatabaseBackupKeyError")
 
 function assertKey(key: string): void {
   if (!OBJECT_KEY.test(key)) {
+    throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
+  }
+}
+
+/**
+ * Die Kennung eines Multipart-Uploads kommt vom Anbieter und geht in eine
+ * Query. Sie wird darum auf eine Form gebracht, bevor sie dort landet -- auch
+ * wenn `beginMultipart` sie schon geprueft hat: eine Kennung kann aus einer
+ * Zeile kommen, die jemand anders geschrieben hat.
+ */
+function assertUploadId(uploadId: string): void {
+  if (!/^[A-Za-z0-9+/=._~-]{1,1024}$/.test(uploadId)) {
     throw new ProjectDatabaseBackupObjectStoreError("OBJECT_STORE_UNAVAILABLE");
   }
 }

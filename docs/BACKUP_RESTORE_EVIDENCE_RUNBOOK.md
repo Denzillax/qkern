@@ -9,8 +9,9 @@ Seit 2.126 gibt es in QKERN **zwei** Backup-Wege, und sie sichern Verschiedenes:
 | Was | physisches Basisbackup des Clusters | logisches Backup genau einer Datenbank |
 | Wer fährt es | ein externer Drill-Runner, nicht QKERN | der Provisioner-Prozess von QKERN, in seiner Leerlaufrunde |
 | Wiederherstellung auf einen Zeitpunkt | ja, aus dem WAL-Archiv | **nein**, nur auf den Stand eines Backups |
-| Katalog in QKERN | keiner | `project_database_backups` (Migration 0083) |
-| Nachweis | signierte Evidenz, von QKERN verifiziert | Fall `(2.126)` im Backup-Stack |
+| Katalog in QKERN | keiner | `project_database_backups` (0083), Zeitplan `project_database_backup_schedules` (0084) |
+| Bestellbar über HTTP | nein | ja, seit `2.129`, hinter der Rollenmatrix der Kontrollebene |
+| Nachweis | signierte Evidenz, von QKERN verifiziert | Fälle `(2.126)`, `(2.129)` im Backup-Stack und `(2.130)` im PostgreSQL-Stack |
 
 Der Rest dieses Dokuments beschreibt den **ersten** Weg, also die Evidenz der
 Steuerungsdatenbank. Der zweite steht im Abschnitt danach.
@@ -229,7 +230,7 @@ einem Cluster mit mehreren Projektdatenbanken wäre das Artefakt eines Mandanten
 ein Backup fremder Mandanten mit, und keine Verschlüsselung repariert das — wer
 sein eigenes Backup entschlüsseln darf, entschlüsselt es ganz.
 
-### Wohin die Bytes gehen
+### Wohin die Bytes gehen, und in welcher Form
 
 In den Objektspeicher, den QKERN für Project Storage schon betreibt, über
 denselben SigV4-Signierer. Nicht auf die Platte des Dienstes: ein Prozess, der
@@ -238,9 +239,60 @@ der Zeile abgeleitet und nie aus einer Anfrage:
 `project-database-backups/<organisation>/<projekt>/<umgebung>/<id>.qkbak`.
 Migration 0083 prüft die Form noch einmal in der Datenbank.
 
-Der Port kennt `put`, `get` und `delete` und **kein `list`**: wer auflisten kann,
-kann über das Präfix eines fremden Mandanten auflisten. Die Liste der Backups
-steht in der Control Plane unter Zeilensicherheit.
+Der Port kennt **kein `list`**: wer auflisten kann, kann über das Präfix eines
+fremden Mandanten auflisten. Die Liste der Backups steht in der Control Plane
+unter Zeilensicherheit.
+
+#### Stückweise, als Strom (2.129)
+
+`2.73.0` trug den Dump in **einem** Stück durch den Speicher und hatte darum eine
+Obergrenze von 256 MiB. Für eine echte Mandantendatenbank ist das zu klein, und
+die Grenze selbst war durch keinen Lauf geprüft. Seit `2.129` gilt:
+
+- **Die Ausgabe von `pg_dump` geht als Strom** durch die Verschlüsselung in die
+  Teile eines Multipart-Uploads. Strom und nicht Datei, und der Grund ist nicht
+  Platzersparnis: eine Datei auf der Platte wäre ein **entschlüsselter** Dump
+  einer Mandantendatenbank auf einem Wirt des Betreibers. Dieselbe Zusage stand
+  für die Wiederherstellung schon da; sie beim Sichern zu brechen wäre eine
+  Zusage, die nur in eine Richtung gilt.
+- **Ein Siegel je Teil**, nicht eines über das Ganze. Das ist der Preis des
+  Stroms, und er ist bezahlt: Die zusätzlichen Daten (AAD) eines Teils binden
+  seine **Nummer**, ein **`final`-Zeichen** und das **Tag des Vorgängers**. Damit
+  hält der Umschlag gegen Vertauschen (die Nummer), Weglassen in der Mitte (die
+  Kette), Abschneiden am Ende (nur der letzte Teil trägt `final`) und Einfügen
+  (beides).
+- **Die Gesamtzahl steht nicht in der AAD**, und das ist eine Entscheidung: Beim
+  Siegeln des ersten Teils ist sie unbekannt, und sie zu kennen hieße, den ganzen
+  Dump vorher zu haben. Sie steht in der Katalogzeile (`part_count`), weil ein
+  Leser daraus die Bytebereiche rechnet; weicht sie von Kette und `final`-Zeichen
+  ab, gewinnt der Umschlag und nicht die Zeile.
+- **Die Obergrenze ist gerechnet und nicht gesetzt:** Nutzbytes je Teil mal
+  Teilegrenze des S3-Protokolls. Mit den Voreinstellungen `64 MiB × 10 000 =
+  **625 GiB**`. Beide Zahlen lassen sich im Betrieb verschieben
+  (`QKERN_PROJECT_BACKUP_PART_BYTES`, `QKERN_PROJECT_BACKUP_MAX_PARTS`); der Weg
+  ist derselbe Code. Nach unten begrenzt die Teilegröße das S3-Protokoll (5 MiB
+  für jeden Teil außer dem letzten), nach oben der Speicher des Wirts (ein Teil
+  liegt beim Siegeln einmal als Klartext und einmal als Geheimtext im Heap, also
+  kostet 64 MiB etwa 130 MiB Spitze — der Weg aus `2.73.0` kostete dort 512 MiB).
+- **Die Wiederherstellung liest in Bytebereichen**, Teil für Teil, und schiebt
+  jeden entschlüsselten Teil in `stdin` von `psql`. Nichts liegt als Ganzes im
+  Speicher, und nichts liegt entschlüsselt auf einer Platte.
+- **Artefakte aus `2.73.0` bleiben lesbar.** Ihre Zeile trägt `artifact_format =
+  'single'`, und dafür gibt es weiter den alten Leseweg mit der alten Grenze. Ein
+  Weg, der sein eigenes altes Format nicht mehr liest, ist eine Aufbewahrung, die
+  mit dem Release endet. Neu entsteht kein `single`-Artefakt mehr.
+
+**Was die Prüfung dabei kostet, ausgeschrieben:** Der SHA-256 des ganzen
+Artefakts ist beim stückweisen Lesen nicht mehr der Riegel **vor** dem Lesen, der
+er in `2.73.0` war — wer streamt, kennt die Summe des Ganzen erst am Ende. An
+seine Stelle tritt das GCM-Tag je Teil, und das ist eine **geschlüsselte** Prüfung
+und damit schärfer; geprüft wird es, bevor der Klartext eines Teils hinausgeht.
+Der SHA-256 bleibt als Aussage "dieses Objekt ist das, das die Zeile vermerkt
+hat" und fällt am Ende. Ein Fehlschlag dort trifft eine Wiederherstellung, in die
+`psql` schon Teile gespielt hat — tragbar, **weil** sie in eine neue Datenbank
+geht: zurück bleibt eine halbe neue Datenbank und ein Fehler, nicht eine
+beschädigte lebende Datenbank. Ein Objekt, das kürzer ist als seine Zeile, fällt
+am Bytebereich auf, mit dem Code des Objektspeichers.
 
 ### Verschlüsselung, Schlüssel, und wer ein Backup lesen kann
 
@@ -291,11 +343,104 @@ Drei Riegel, keiner davon ein Filter in einer Anfrage:
    abgeleitet.
 3. **Die AAD des Umschlags**, siehe oben.
 
+### Die Route, und wer sie benutzen darf (2.129)
+
+| Verb und Pfad | Was es tut | Recht |
+| --- | --- | --- |
+| `GET .../database/backups` | Katalog dieser Umgebung **und** ihr Zeitplan | `project_backup_read` |
+| `POST .../database/backups` | bestellt ein Backup (202, oder 200 wenn eines wartet) | `project_backup_request` |
+| `GET .../database/backups/{backupId}` | Zustand eines Backups, samt bestellter Wiederherstellung | `project_backup_read` |
+| `POST .../database/backups/{backupId}/restore` | stößt eine Wiederherstellung an (202) | `project_backup_restore` |
+
+| Recht | Rollen |
+| --- | --- |
+| `project_backup_read` | Eigentümer, Administrator, Deployer, Support |
+| `project_backup_request` | Eigentümer, Administrator |
+| `project_backup_restore` | **nur** Eigentümer |
+
+**Kein Projekt-Key.** Die Route unter `point-in-time` nimmt einen; diese nicht,
+und das ist der wichtigste Satz dieses Abschnitts. Ein Projekt-Key liegt in einer
+Anwendung — in einer Funktion, in einem Worker, in einem CI-Lauf. Wer irgendwo
+einen findet, könnte damit den Dump jeder Zeile der Datenbank anstoßen; dass er
+ihn nicht lesen kann, ändert daran nichts, denn er kann Last erzeugen und über
+die Wiederherstellung eine zweite Datenbank im Cluster anlegen lassen. Darum geht
+diese Route durch die Rollenmatrix der Kontrollebene, wie `provisioning` und
+`api-keys`. Eine Rolle ohne Recht bekommt **404** und nicht 403: sie soll nicht
+erfahren, dass es dieses Projekt gibt.
+
+**Warum nur der Eigentümer zurückholen darf.** Eine Wiederherstellung ist kein
+Lesen, und zwar aus drei Gründen: Sie legt eine **neue Datenbank** an, die Geld
+kostet, bis jemand sie wegnimmt. Sie bringt **gelöschte Daten zurück** — hat ein
+Mandant Daten auf Verlangen einer Person gelöscht, steht sie danach in einer
+zweiten Datenbank, die niemand in einem Löschauftrag genannt hat. Und sie ist
+**nicht wiederholbar**: ein Fehlschlag lässt eine halb gebaute Datenbank liegen,
+die ein Mensch ansehen muss. Ein Administrator darf ein Backup bestellen und den
+Katalog lesen; die Datenbank zurückholen darf der, der für die Organisation
+haftet.
+
+**Die Route führt die Wiederherstellung nicht aus.** `CREATEDB` hat in QKERN
+genau einen Prozess, und der Next-Prozess ist es nicht; er hat auch kein `psql`,
+kein `pg_dump` und keinen Vault-Weg in eine Projektdatenbank. Die Route schreibt
+einen Auftrag in die Katalogzeile, antwortet 202 und ist fertig. Der Provisioner
+nimmt ihn in derselben Runde, in der er Backups fährt, und **vor** einem Backup:
+dort wartet ein Mensch. Das Ergebnis liest man über `GET` auf das Backup, unter
+`restore.status` und bei einem Fehlschlag `restore.errorCode`.
+
+Dafür bekommt die Laufzeitrolle `qkern_runtime` ein `UPDATE` auf **vier Spalten**
+und nicht auf die Tabelle. Die Zusage aus 0083 — "ein Weg, der einen Zustand von
+Hand auf `available` setzen kann, wäre ein Weg, ein Backup zu behaupten" — bleibt
+damit wortwörtlich stehen. Fall `(2.130)` prüft das an der Rolle selbst.
+
+**Was die Antwort nicht trägt:** keinen Objektschlüssel, keinen eingewickelten
+Datenschlüssel, keinen Schlüsselnamen, keine Prüfsumme des Artefakts und keinen
+Verweis auf die Datenbankinstanz. Das Manifest-Digest geht hinaus: es ist eine
+Zahl über den **eigenen** Stand und die Angabe, mit der ein Betreiber zwei
+Backups unterscheidet.
+
+### Der Zeitplan (2.129)
+
+Bis `2.129` stellte niemand von sich aus einen Auftrag ein, und `pruneExpired`
+rief niemand.
+
+**Geprüft wurde zuerst, ob der vorhandene Cron-Weg das trägt.** Er trägt es
+nicht, und zwar aus vier Gründen: Eine Cron-Definition zeigt auf eine
+**Compute-Funktion des Mandanten** und schiebt eine Nachricht in eine
+Projekt-Queue; sie läuft im **Compute-Prozess** und nicht im Provisioner; sie ist
+**mandantenbearbeitbar**, also könnte ihr Besitzer sie abschalten oder umbiegen;
+und ein Backup braucht keinen Cron-Ausdruck, sondern einen Takt — ein Ausdruck
+brächte Zeitzone und Sommerzeit in einen Weg, der sie nicht braucht.
+
+**Und doch ist kein zweiter Scheduler entstanden.** Es gibt keinen Timer, keine
+neunte Schleife und kein `setInterval`: Der Takt ist eine Pflicht in der Runde,
+die es schon gibt. `ProjectDatabaseBackupService.runRound` ruft ihn, und diese
+Runde ruft der Provisioner in seiner Leerlaufrunde. Wer den Zeitplan laufen sehen
+will, startet den Provisioner.
+
+| Frage | Antwort |
+| --- | --- |
+| Wo steht der Takt | `project_database_backup_schedules.interval_hours`, Voreinstellung 24 (Supabase sichert auf den bezahlten Stufen täglich) |
+| **Wo steht die Frist je Umgebung** | `retention_days` in derselben Zeile. Vorher stand sie in `QKERN_PROJECT_BACKUP_RETENTION_DAYS`, also für alle Projekte und Umgebungen eines Prozesses gleich; die Variable bleibt als **Vorgabe** für eine Umgebung ohne Zeile |
+| Wer legt eine Zeile an | ein **Trigger** auf `project_database_bindings`. "Jede bereitgestellte Projektdatenbank hat einen Zeitplan" ist eine Aussage über den Zustand und nicht über einen Aufrufer; als Aufrufer wäre sie an genau einem Pfad wahr |
+| `development` | Zeile vorhanden, aber **abgeschaltet**. Eine Entwicklungsdatenbank ist eine, die ein Entwickler wegwirft; ein täglicher Dump davon ist Kosten ohne Zusage |
+| Ein Lauf findet den vorigen noch laufend | Es entsteht **kein** zweiter Auftrag (`enqueue` gibt den vorhandenen zurück). Der Takt wird trotzdem fortgeschrieben, sonst wäre jede Runde des Provisioners ein weiterer fälliger Takt. Gezählt wird es in `busy_count` — in der Zeile und nicht nur im Log, weil ein Log nach vier Wochen weg ist |
+| Nachholen nach einem Ausfall | **nichts.** Fortgeschrieben wird auf `now() + interval` und nicht auf `next_due_at + interval`: Ein nachgeholtes Backup von vorletzter Woche sichert den Stand von heute und ist damit nicht, was es vorgibt |
+| Zwei Wirte, ein fälliger Takt | Holen und Fortschreiben sind **eine** Anweisung (`UPDATE … RETURNING` über `FOR UPDATE SKIP LOCKED`). Zwei Anweisungen würden beide dieselbe fällige Zeile sehen |
+| Wer ruft `pruneExpired` | derselbe Takt, höchstens einmal je `pruneIntervalMs` (Voreinstellung eine Stunde). Der Zeitpunkt steht **im Prozess** und nicht in einer Spalte: Aufräumen ist idempotent, und ein Neustart kostet höchstens eine zusätzliche leere Abfrage |
+
+**Der Preis, ausgeschrieben:** Fortgeschrieben wird in derselben Anweisung, die
+die fälligen Zeilen holt, also **vor** dem Einstellen des Auftrags. Scheitert das
+Einstellen danach, fällt dieser Takt aus und der nächste kommt nach
+`interval_hours`. Die andere Reihenfolge wäre ein Takt, der nach einem Fehlschlag
+jede Runde wieder feuert, und das ist bei einem dauerhaft kaputten Weg eine
+Schleife.
+
 ### Aufbewahrung
 
 30 Tage (Supabase gibt auf den bezahlten Stufen sieben bis 28 Tage; kürzer wäre
 eine Zusage unter dem Vergleichsprodukt). Obergrenze 730 Tage, dieselbe wie bei
-der Erklärung zum WAL-Archiv. Der Aufräumer arbeitet portionsweise, mit
+der Erklärung zum WAL-Archiv. Seit `2.129` steht die Frist **je Umgebung** in der
+Zeitplanzeile; die Prozessvariable ist nur noch die Vorgabe für eine Umgebung
+ohne Zeile. Der Aufräumer arbeitet portionsweise, mit
 Obergrenze und mit einspeisbarer Uhr, und in dieser Reihenfolge: **erst das
 Objekt, dann die Zeile.** Umgekehrt wäre eine Zeile weg, deren Objekt noch liegt,
 und dann kennt niemand mehr den Schlüssel, unter dem es liegt.
@@ -307,9 +452,15 @@ Aufbewahrung auch eine Löschung der Tatsache.
 
 ### Was es nicht gibt
 
-- Keine Route mit Schreibverb, die ein Backup bestellt, und keinen Knopf in der
-  Console. Ein Auftrag entsteht heute über den Dienst, nicht über HTTP.
-- Die Console liest den Katalog nicht; die Seite "Datenbank → Backups" liest
-  weiter nur die Route unter `point-in-time`.
+- **Keinen Knopf in der Console.** Die Route gibt es seit `2.129`; die Seite
+  "Datenbank → Backups" ruft sie nicht und liest weiter nur die Route unter
+  `point-in-time`. Was dort fehlt, ist seither die **Verdrahtung** und nicht mehr
+  der Weg, und die Texte der Seite sagen genau das.
+- **Keinen Beleg, dass 625 GiB wirklich durchgehen.** Geprüft ist die Rechnung,
+  mit `5 MiB × 2` gegen einen Dump von 12 MB. Der größte Dump, der je durch
+  diesen Weg lief, ist 12 MB groß.
 - Keine Wiederherstellung auf einen Zeitpunkt für Projektdaten.
-- Keine kundengehaltenen Schlüssel.
+- Keine kundengehaltenen Schlüssel, und die Rotation eines Mandanten-Schlüssels
+  ist durch keinen Fall belegt.
+- Keine Route, die den Zeitplan ändert. Takt, Frist und `enabled` ändert heute
+  nur, wer in die Tabelle schreiben darf, also der Provisioner.

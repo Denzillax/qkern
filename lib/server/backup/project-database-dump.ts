@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import type { SqlPool, SqlQueryable } from "@/lib/server/db/sql";
 import type {
   ProjectDatabaseDumpPort,
+  ProjectDatabaseDumpStream,
   ProjectDatabaseRestoreTargetPort,
 } from "@/lib/server/backup/project-database";
 
@@ -124,24 +126,34 @@ export type PgDumpOptions = Readonly<{
   readerPool(databaseInstanceRef: string): Promise<SqlPool>;
   pgDumpPath?: string;
   timeoutMs?: number;
-  maxDumpBytes?: number;
 }>;
 
 const DEFAULT_TIMEOUT_MS = 1_800_000;
-const DEFAULT_MAX_DUMP_BYTES = 256 * 1024 * 1024;
 
 export class PgDumpProjectDatabaseDumpPort implements ProjectDatabaseDumpPort {
   private readonly pgDumpPath: string;
   private readonly timeoutMs: number;
-  private readonly maxDumpBytes: number;
 
   constructor(private readonly options: PgDumpOptions) {
     this.pgDumpPath = options.pgDumpPath ?? "pg_dump";
     this.timeoutMs = bounded(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1_000, 7_200_000);
-    this.maxDumpBytes = bounded(options.maxDumpBytes ?? DEFAULT_MAX_DUMP_BYTES, 1_024, 1_073_741_824);
   }
 
-  async dump(input: Readonly<{ databaseInstanceRef: string }>, signal?: AbortSignal): Promise<Buffer> {
+  /**
+   * Der Dump als **Strom** (2.129).
+   *
+   * Was hier nicht mehr steht, ist die Obergrenze: der Dienst zaehlt die Bytes,
+   * weil er die Teilegroesse und die Teilezahl kennt, aus denen sich die Grenze
+   * rechnet. Zwei Zaehler mit zwei Grenzen waeren zwei Antworten auf dieselbe
+   * Frage, und sie wuerden auseinanderlaufen, sobald einer der beiden Werte sich
+   * aendert. Was dieser Port dafuer zusagen muss: `cancel()` beendet den
+   * Kindprozess, damit ein `pg_dump` ueber eine fremde Datenbank nicht
+   * weiterlaeuft, nachdem der Dienst aufgegeben hat.
+   */
+  async dumpStream(
+    input: Readonly<{ databaseInstanceRef: string }>,
+    signal?: AbortSignal,
+  ): Promise<ProjectDatabaseDumpStream> {
     let endpoint: ProjectDatabaseBackupEndpoint;
     try {
       endpoint = await this.options.endpoints.endpoint(input.databaseInstanceRef);
@@ -149,7 +161,7 @@ export class PgDumpProjectDatabaseDumpPort implements ProjectDatabaseDumpPort {
       throw new ProjectDatabaseDumpError("CONNECTION_UNAVAILABLE", "endpoint");
     }
     const credential = await this.credential(input.databaseInstanceRef, signal);
-    const dump = await runProcess({
+    return streamProcess({
       command: this.pgDumpPath,
       // `--format=plain`, damit die Wiederherstellung mit `psql` geht und kein
       // zweites Werkzeug braucht. `--quote-all-identifiers`, damit ein
@@ -159,6 +171,11 @@ export class PgDumpProjectDatabaseDumpPort implements ProjectDatabaseDumpPort {
       // Zustandes, den ein Backup zurueckbringen soll. Was fehlt, ist
       // `--create`: die Zieldatenbank legt der Provisioner-Weg an, nicht der
       // Dump, denn nur der Provisioner-Weg darf eine Datenbank anlegen.
+      //
+      // `--format=plain` ist ausserdem die Form, die als Strom ueberhaupt
+      // taugt: ein Custom-Format-Dump schreibt ein Inhaltsverzeichnis, das
+      // `pg_dump` erst am Ende kennt, und laesst sich darum nicht ohne Datei
+      // erzeugen.
       args: [
         "--format=plain",
         "--no-password",
@@ -168,11 +185,8 @@ export class PgDumpProjectDatabaseDumpPort implements ProjectDatabaseDumpPort {
       ],
       password: credential.password,
       timeoutMs: this.timeoutMs,
-      maxBytes: this.maxDumpBytes,
       signal,
     });
-    if (dump.length < 1) throw new ProjectDatabaseDumpError("DUMP_FAILED");
-    return dump;
   }
 
   async withReader<T>(
@@ -304,8 +318,27 @@ export class PsqlProjectDatabaseRestoreTargetPort implements ProjectDatabaseRest
     });
   }
 
+  /**
+   * Der Dump geht als **Strom** in `stdin` von `psql` (2.129).
+   *
+   * Vorher war es ein Puffer, und damit lag das ganze entschluesselte Artefakt
+   * einmal im Speicher -- auf der Leseseite dieselbe Grenze, die auf der
+   * Schreibseite gerade weggefallen ist. Jetzt entschluesselt der Dienst Teil
+   * fuer Teil und schiebt jeden in dieselbe Pipe; `psql` liest sie mit
+   * Gegendruck, also bestimmt nicht der Dienst das Tempo, sondern die Datenbank.
+   *
+   * Was dabei wichtig ist und leicht verloren geht: ein Fehler **im Strom** (ein
+   * Siegel, das nicht passt, eine Kette, die bricht) muss den Lauf kippen und
+   * darf nicht als "`psql` hat frueh zugemacht" durchgehen. Darum wird der
+   * Fehler des Stroms gemerkt und am Ende bevorzugt geworfen, auch wenn `psql`
+   * mit 0 endet -- und das kann es, weil es bis dahin gueltiges SQL bekam.
+   */
   async restore(
-    input: Readonly<{ databaseInstanceRef: string; databaseName: string; dump: Buffer }>,
+    input: Readonly<{
+      databaseInstanceRef: string;
+      databaseName: string;
+      dump: AsyncIterable<Buffer>;
+    }>,
     signal?: AbortSignal,
   ): Promise<void> {
     assertName(input.databaseName);
@@ -324,7 +357,7 @@ export class PsqlProjectDatabaseRestoreTargetPort implements ProjectDatabaseRest
         "--file", "-",
       ],
       password: credential.password,
-      stdin: input.dump,
+      stdinStream: input.dump,
       timeoutMs: this.timeoutMs,
       maxBytes: 16 * 1_048_576,
       signal,
@@ -391,25 +424,109 @@ type ProcessRun = {
   timeoutMs: number;
   maxBytes: number;
   stdin?: Buffer;
+  /** Ein Strom nach `stdin`, fuer die Wiederherstellung (2.129). */
+  stdinStream?: AsyncIterable<Buffer>;
   signal?: AbortSignal;
 };
+
+/**
+ * Die Umgebung eines Kindprozesses. Frisch gebaut und **nicht** von
+ * `process.env` geerbt: dort steht das Vault-Token des Dienstes, es stehen
+ * Datenbank-URLs der Control Plane darin und alles, was ein Betreiber je gesetzt
+ * hat. Davon braucht ein `pg_dump` nichts.
+ *
+ * Die Funktion steht hier, weil `runProcess` und `streamProcess` sie beide
+ * brauchen und zwei Kopien auseinanderlaufen wuerden -- und eine davon waere
+ * dann die, die das Token weitergibt.
+ */
+function childEnvironment(password: string): NodeJS.ProcessEnv {
+  return {
+    PGPASSWORD: password,
+    PGCONNECT_TIMEOUT: "10",
+    // Eine feste Sprache, damit eine Meldung nicht von der Locale des Wirts
+    // abhaengt. Keine Zeitzone und kein `PGOPTIONS`.
+    LC_ALL: "C",
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  } as unknown as NodeJS.ProcessEnv;
+}
+
+/**
+ * Ein Kindprozess, dessen `stdout` als Strom herauskommt (2.129).
+ *
+ * Drei Dinge, die ein naiver Strom falsch macht und die hier geregelt sind:
+ *
+ * 1. **Der Exit-Code zaehlt.** Ein `pg_dump`, das nach der Haelfte mit 1 endet,
+ *    schliesst `stdout` ganz normal. Wer nur den Strom liest, haelt den halben
+ *    Dump fuer den ganzen. Darum wird der Fehler des Kindes im Strom
+ *    nachgeschoben: der Verbraucher bekommt ihn beim Lesen und nicht gar nicht.
+ * 2. **`stderr` wird verbraucht** und nicht aufbewahrt, aus demselben Grund wie
+ *    oben: eine Meldung kann Tabellennamen eines Mandanten tragen.
+ * 3. **`cancel()` toetet.** Gibt der Dienst auf, soll kein `pg_dump` ueber eine
+ *    fremde Datenbank weiterlaufen.
+ */
+function streamProcess(run: Omit<ProcessRun, "maxBytes">): ProjectDatabaseDumpStream {
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(run.command, [...run.args], {
+      env: childEnvironment(run.password),
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  } catch {
+    throw new ProjectDatabaseDumpError("DUMP_FAILED");
+  }
+  let stderrBytes = 0;
+  child.stderr?.on("data", (chunk: Buffer) => { stderrBytes += chunk.length; });
+  const kill = () => { try { child.kill("SIGKILL"); } catch { /* schon weg */ } };
+  const timer = setTimeout(kill, run.timeoutMs);
+  const onAbort = () => kill();
+  run.signal?.addEventListener("abort", onAbort, { once: true });
+
+  const stdout = child.stdout;
+  if (!stdout) { kill(); throw new ProjectDatabaseDumpError("DUMP_FAILED"); }
+
+  const exited = new Promise<void>((resolve, reject) => {
+    child.on("error", () => reject(new ProjectDatabaseDumpError("DUMP_FAILED")));
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new ProjectDatabaseDumpError(
+        stderrBytes > 0 ? "DUMP_FAILED" : "CONNECTION_UNAVAILABLE",
+      ));
+    });
+  });
+  // Ein Handler, damit Node die Ablehnung nicht als unbehandelt meldet, wenn
+  // niemand den Strom zu Ende liest (etwa weil die Obergrenze gerissen wurde).
+  // `await exited` weiter unten lehnt trotzdem ab.
+  exited.catch(() => undefined);
+
+  async function* chunks(): AsyncGenerator<Buffer> {
+    try {
+      for await (const chunk of stdout as AsyncIterable<Buffer>) yield chunk;
+      // Erst jetzt. `stdout` kann zu Ende sein, waehrend das Kind noch mit
+      // einem Fehlercode endet.
+      await exited;
+    } finally {
+      clearTimeout(timer);
+      run.signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
+  return Object.freeze({
+    chunks: chunks(),
+    cancel: () => {
+      clearTimeout(timer);
+      run.signal?.removeEventListener("abort", onAbort);
+      kill();
+    },
+  });
+}
 
 function runProcess(run: ProcessRun): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(run.command, [...run.args], {
-        // Eine frisch gebaute Umgebung. `process.env` traegt das Vault-Token
-        // des Dienstes, Datenbank-URLs der Control Plane und alles, was ein
-        // Betreiber je gesetzt hat; davon braucht ein `pg_dump` nichts.
-        env: {
-          PGPASSWORD: run.password,
-          PGCONNECT_TIMEOUT: "10",
-          // Eine feste Sprache, damit eine Meldung nicht von der Locale des
-          // Wirts abhaengt. Keine Zeitzone und kein `PGOPTIONS`.
-          LC_ALL: "C",
-          PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-        } as unknown as NodeJS.ProcessEnv,
+        env: childEnvironment(run.password),
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
@@ -454,13 +571,42 @@ function runProcess(run: ProcessRun): Promise<Buffer> {
     child.on("error", () => { finish(new ProjectDatabaseDumpError("DUMP_FAILED")); });
     child.on("close", (code) => {
       if (tooLarge) return;
-      if (code === 0) finish(null, Buffer.concat(chunks, total));
-      else finish(new ProjectDatabaseDumpError(stderrBytes > 0 ? "DUMP_FAILED" : "CONNECTION_UNAVAILABLE"));
+      if (code !== 0) {
+        finish(new ProjectDatabaseDumpError(stderrBytes > 0 ? "DUMP_FAILED" : "CONNECTION_UNAVAILABLE"));
+        return;
+      }
+      // Ein Fehler **im Strom** ist der wichtigere, und er kommt unter Umstaenden
+      // nach dem Ende des Kindes: `psql` endet mit 0, weil es bis dahin
+      // gueltiges SQL bekam, und erst danach merkt der Dienst, dass ein Siegel
+      // nicht passt oder die Kette bricht. Wer hier sofort `resolve` ruft,
+      // meldet eine Wiederherstellung als gelungen, die halb ist. Darum wartet
+      // der Erfolg auf das Ende der Quelle.
+      if (!streamSettled) { pendingSuccess = true; return; }
+      finish(streamError, streamError ? undefined : Buffer.concat(chunks, total));
     });
+
+    let streamSettled = run.stdinStream === undefined;
+    let streamError: ProjectDatabaseDumpError | null = null;
+    let pendingSuccess = false;
+    const settleStream = (error: ProjectDatabaseDumpError | null) => {
+      if (streamSettled) return;
+      streamSettled = true;
+      streamError = error;
+      if (error) kill();
+      if (pendingSuccess || error) {
+        finish(error, error ? undefined : Buffer.concat(chunks, total));
+      }
+    };
 
     if (run.stdin) {
       child.stdin?.on("error", () => undefined);
       child.stdin?.end(run.stdin);
+    } else if (run.stdinStream) {
+      child.stdin?.on("error", () => undefined);
+      const source = Readable.from(run.stdinStream);
+      source.on("error", () => settleStream(new ProjectDatabaseDumpError("DUMP_FAILED")));
+      source.on("end", () => settleStream(null));
+      source.pipe(child.stdin!);
     } else {
       child.stdin?.end();
     }

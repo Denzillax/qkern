@@ -447,7 +447,10 @@ davon ab, wie aktuell das Archiv ist, und das weiss nur, wer ins Archiv sieht.
 Eine Schätzung stünde dort als Zahl und wäre im Ernstfall die falsche.
 
 Die Route dahinter ist
-`GET /api/v1/projects/{projectId}/environments/{environment}/database/backups/point-in-time`,
+`GET /api/v1/projects/{projectId}/environments/{environment}/database/backups/point-in-time`
+(nicht zu verwechseln mit `.../database/backups` ohne Zusatz: das ist seit
+`2.129` der Katalog, und er geht durch die Rollenmatrix statt durch einen
+Projekt-Key),
 dieselbe Tür wie `/database/activity`, `private, no-store`, und jeder
 Query-Parameter ist ein `400`. Von der Drill-Evidenz gehen nur Zeitpunkte und
 Dauern hinaus, nicht ihre ID, nicht ihre Key-ID und keiner ihrer Digests. Fehlt
@@ -501,10 +504,12 @@ Wiederherstellung heisst es, dass ein zweiter Server nicht an die Stelle eines
 laufenden treten kann.
 
 **Was QKERN über seine Backups weiss.** Seit `2.126` einen Katalog, und zwar für
-Projektdatenbanken: Migration `0083` legt `project_database_backups` an. **Diese
-Seite liest ihn nicht** — sie liest die Route unter `point-in-time`, und die
-kennt nur die Erklärung des Betreibers und die signierte Drill-Evidenz. Für das
-Basisbackup der Kontrollebene gibt es weiterhin keinen Katalog.
+Projektdatenbanken: Migration `0083` legt `project_database_backups` an, `0084`
+trägt seit `2.129` die Form des Artefakts, eine bestellte Wiederherstellung und
+einen Zeitplan je Umgebung nach. **Diese Seite liest beides nicht** — sie liest
+die Route unter `point-in-time`, und die kennt nur die Erklärung des Betreibers
+und die signierte Drill-Evidenz. Für das Basisbackup der Kontrollebene gibt es
+weiterhin keinen Katalog.
 Grössen führt die Evidenz nicht: Sie trägt einen SHA-256 über das
 Artefakt, aber keine Bytezahl, und der Hash verlässt die Route ohnehin nicht.
 Verschlüsselung ist keine Angabe, sondern eine Bedingung des Verifiers: Er nimmt
@@ -549,11 +554,31 @@ gab es keinen, und darum ist der Knopf weg.
 
 Seit `2.126` gibt es einen Weg, aber nicht den, der hier gesucht wurde: QKERN
 sichert eine Projektdatenbank **logisch** (`pg_dump` genau dieser Datenbank),
-nicht als Basisbackup, und der Auftrag entsteht im Dienst und nicht über HTTP.
-`pg_basebackup`, `pg_dumpall` und `pg_receivewal` ruft im Produkt weiterhin keine
-Stelle auf. Unter den Backup-Routen einer Umgebung steht weiterhin genau ein
-Pfad, `point-in-time`, und er kennt nur `GET`. Der Knopf bleibt darum weg: Er
-hätte auch heute keine Route, an die er sich hängen könnte. Der vollständige
+nicht als Basisbackup. `pg_basebackup`, `pg_dumpall` und `pg_receivewal` ruft im
+Produkt weiterhin keine Stelle auf.
+
+**Und seit `2.129` gibt es die Route.** Unter den Backup-Routen einer Umgebung
+stehen jetzt vier Verben statt einem:
+
+| Verb und Pfad | Was es tut | Recht |
+| --- | --- | --- |
+| `GET .../database/backups` | Katalog dieser Umgebung und ihr Zeitplan | `project_backup_read` |
+| `POST .../database/backups` | bestellt ein Backup | `project_backup_request` |
+| `GET .../database/backups/{backupId}` | Zustand eines Backups | `project_backup_read` |
+| `POST .../database/backups/{backupId}/restore` | stösst eine Wiederherstellung an | `project_backup_restore` |
+
+Sie gehen **nicht** durch einen Projekt-Key, anders als `point-in-time` daneben,
+sondern durch die Rollenmatrix der Kontrollebene. Der Grund: Ein Projekt-Key
+liegt in einer Anwendung, und wer irgendwo einen findet, soll nicht den Dump
+jeder Zeile der Datenbank anstossen können. Lesen dürfen Eigentümer,
+Administrator, Deployer und Support; bestellen Eigentümer und Administrator;
+zurückholen **nur** der Eigentümer, weil eine Wiederherstellung eine neue
+Datenbank anlegt, gelöschte Daten zurückbringt und nicht wiederholbar ist. Eine
+Rolle ohne das Recht bekommt `404` und nicht `403`.
+
+**Der Knopf auf dieser Seite bleibt trotzdem weg**, und der Satz dazu ist jetzt
+ein anderer: Nicht mehr „es gibt keine Route“, sondern „diese Seite ist nicht
+verdrahtet“. Das ist eine offene Arbeit und keine Behauptung. Der vollständige
 Weg steht in `docs/BACKUP_RESTORE_EVIDENCE_RUNBOOK.md`.
 
 **Produktweg und Prüfweg.** Die eine Stelle im ganzen Baum, die wirklich ein
@@ -602,11 +627,12 @@ Läufe noch einen Zeitpunkt eines letzten Backups. Die Seite lässt diese Stelle
 leer, statt sie zu füllen.
 
 **Die Seite liest nichts Neues**, und auch das ist ein Befund. Die einzigen
-echten Angaben sind die Erklärung des Betreibers über sein WAL-Archiv und die
-Evidenz des letzten Drills, und beide holt schon
-`/database/backups/point-in-time`. Eine zweite Route hätte dieselbe Erklärung
-und dieselbe Datei ein zweites Mal gelesen. Es gibt darum keine neue Route,
-keinen Eintrag in `lib/openapi.ts` und keinen Fall gegen die echte Datenbank.
+Angaben, die sie heute holt, sind die Erklärung des Betreibers über sein
+WAL-Archiv und die Evidenz des letzten Drills, und beide bringt
+`/database/backups/point-in-time`. Seit `2.129` gäbe es mehr zu holen — den
+Katalog und den Zeitplan —, und dass sie es nicht tut, ist offen und steht so auf
+der Seite. Die neuen Routen stehen in `lib/openapi.ts`, und gegen die echte
+Datenbank prüft sie Fall `(2.130)`.
 Stattdessen prüft `tests/console-backups-contract.test.ts`, dass die Sätze der
 Seite **stimmen**: Er liest den gesamten Produktquelltext nach Backup-Werkzeugen
 ab, zählt die Verben unter den Backup-Routen, durchsucht alle Migrationen nach

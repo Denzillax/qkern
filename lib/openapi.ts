@@ -285,6 +285,82 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/{projectId}/environments/{environment}/database/backups": {
+      get: {
+        tags: ["Project Data"], operationId: "listProjectDatabaseBackups",
+        summary: "Read the catalogue of project database backups and the schedule of this environment",
+        description: "Since `2.129`. Not the same access as /database/backups/point-in-time next to it: there is no project key behind this route. A project key lives in an application, in a function, in a worker, in a CI run, and with one a caller could order a dump of every row of the database. That it could not read the dump changes nothing: it could create load, and through the restore it could have a second database created in the cluster. This route therefore goes through the control-plane role matrix, like /provisioning and /api-keys, with the capability project_backup_read. Owner, administrator, deployer and support hold it, the same field as project_provisioning_read. A role without it gets 404 and not 403, so it does not learn that the project exists. private, no-store. The only query parameter is limit (1 to 200, default 50); any other parameter is a 400. The answer carries the catalogue rows of this environment and the schedule of this environment. Per row: id, status, artifact format (chunked since 2.129, single for rows from 2.73.0), size in bytes, number of parts, the manifest digest, what the artifact includes, the timestamps, the fixed error code of a failure, and the state of a requested restore. Deliberately absent: the object key, the wrapped data key, the key id, the artifact checksum and the database instance reference. The tenant boundary does not hang on a filter in a statement: every read runs under the organization of the principal and the row level security of migration 0083 decides, so a foreign project id yields 404 because the row does not come and not because a condition left it out.",
+        security: [{ sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        responses: {
+          "200": { description: "The catalogue rows of this environment and its backup schedule" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Project database backup service unavailable" },
+        },
+      },
+      post: {
+        tags: ["Project Data"], operationId: "requestProjectDatabaseBackup",
+        summary: "Order a backup of this project database",
+        description: "Since `2.129`. Orders a backup of this project database. Capability project_backup_request, held by owner and administrator only: a backup costs compute time on the tenant database and space in the object store, so the same height as project_provisioning_request. Origin gate as on every control-plane write. The body is empty and strict: there is nothing to choose, neither a location nor a retention nor a name, and the database instance reference comes from the binding and never from the request. One waiting or running job per environment is enough; a second call returns the same job with 200 and idempotent true, a new job answers 202. The job is run by the provisioner process in its idle round, never by this process: this process has no CREATEDB, no pg_dump and no vault path into a project database. Since 2.129 the dump streams through the encryption into the parts of a multipart upload, so the limit is no longer 256 MiB but computed as plaintext bytes per part times the part ceiling of the S3 protocol, 625 GiB with the defaults.",
+        security: [{ sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+        ],
+        requestBody: { required: false, content: { "application/json": { schema: { type: "object", additionalProperties: false } } } },
+        responses: {
+          "200": { description: "A backup was already waiting or running; the same job is returned" },
+          "202": { description: "A backup job was created" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Project database backup service unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/database/backups/{backupId}": {
+      get: {
+        tags: ["Project Data"], operationId: "getProjectDatabaseBackup",
+        summary: "Read the state of one project database backup",
+        description: "Since `2.129`. The state of one backup. Same door and same capability as the listing above, project_backup_read, private, no-store, any query parameter is a 400. The projection is the same as in the listing, including the state of a requested restore under restore. Two separate boundaries hold here: a backup id of a foreign organization yields 404 through the row level security of 0083, without any statement naming the organization, and a backup of the own organization under a foreign project or environment path also yields 404, because the path is checked against the row. Without that second check two different addresses would return the same thing and a console link could lead into the wrong environment.",
+        security: [{ sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+          { name: "backupId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: {
+          "200": { description: "The state of this backup, including a requested restore" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "503": { description: "Project database backup service unavailable" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/environments/{environment}/database/backups/{backupId}/restore": {
+      post: {
+        tags: ["Project Data"], operationId: "requestProjectDatabaseRestore",
+        summary: "Trigger a restore of this backup into a new database",
+        description: "Since `2.129`. Triggers a restore; it does not perform one. A restore creates a new database, and CREATEDB belongs to exactly one process in QKERN, which is not this one. The route writes a job into the catalogue row (migration 0084), answers 202, and is done; the provisioner takes it in the same round in which it runs backups, and before a backup, because here a human is waiting. The outcome is read from GET on the backup under restore.status and, on failure, restore.errorCode. Capability project_backup_restore, held by the owner only, and that is the deliberate exception: a restore creates something that costs money until somebody removes it, it brings deleted data back into a second database that nobody named in a deletion request, and it is not repeatable, because a failure leaves a half-built database that a human has to look at. An administrator may order a backup and read the catalogue; bringing the database back is the owner's. Origin gate as on every control-plane write. The body is empty and strict: the name of the target database is derived from the backup id, because a name from a request is a name that can point at an existing database. A second request while one is under way is a 409 and not a second restore: both would aim at the same database name. The same two boundaries as on GET apply.",
+        security: [{ sessionCookie: [] }],
+        parameters: [
+          { name: "projectId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "environment", in: "path", required: true, schema: { type: "string", enum: ["development", "staging", "production"] } },
+          { name: "backupId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        requestBody: { required: false, content: { "application/json": { schema: { type: "object", additionalProperties: false } } } },
+        responses: {
+          "202": { description: "The restore was requested; the provisioner runs it" },
+          "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { description: "The backup is not available, or a restore is already under way" },
+          "503": { description: "Project database backup service unavailable" },
+        },
+      },
+    },
     "/v1/projects/{projectId}/environments/{environment}/database/backups/point-in-time": {
       get: {
         tags: ["Project Data"], operationId: "getProjectPointInTimeRecovery",

@@ -257,6 +257,18 @@ import {
   type ProjectAuthOAuthScope,
 } from "@/lib/server/project-auth/oauth";
 import { CONSOLE_DISPLAY_DEFAULTS, type ConsoleDisplaySettings } from "@/lib/console/display-settings";
+// Backup-Katalog, Zeitplan und Rollenmatrix (2.130): derselbe Katalog, den die
+// Route ruft, dieselben Stores, die der Provisioner ruft, und dieselbe
+// Rollenmatrix, die jede Control-Plane-Route ruft.
+import { PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256 } from "@/lib/server/provisioning/contract";
+import { restoreDatabaseName } from "@/lib/server/backup/project-database";
+import {
+  PostgresProjectDatabaseBackupScheduleStore,
+  PostgresProjectDatabaseBackupStore,
+} from "@/lib/server/backup/project-database-postgres";
+import { PostgresProjectDatabaseBackupCatalog } from "@/lib/server/backup/project-database-catalog";
+import { ProjectDatabaseBackupScheduler } from "@/lib/server/backup/project-database-schedule";
+import { requireCapability } from "@/lib/server/request-context";
 
 const ownerUrl = process.env.QKERN_TEST_OWNER_DATABASE_URL;
 const projectApiUrl = process.env.QKERN_TEST_PROJECT_API_DATABASE_URL;
@@ -264,6 +276,9 @@ const runtimeUrl = process.env.QKERN_TEST_RUNTIME_DATABASE_URL;
 const authUrl = process.env.QKERN_TEST_AUTH_DATABASE_URL;
 // Der Rechnungslauf aus (2.119) schreibt mit der Worker-Rolle.
 const workerUrl = process.env.QKERN_TEST_WORKER_DATABASE_URL;
+// Der Backup-Katalog aus (2.130) wird von der Provisioner-Rolle beschrieben und
+// von der Laufzeitrolle gelesen; genau diese Trennung ist der Fall.
+const provisionerUrl = process.env.QKERN_TEST_PROVISIONER_DATABASE_URL;
 const vaultKvUrl = process.env.QKERN_TEST_VAULT_KV_URL;
 const vaultTokenFile = process.env.QKERN_TEST_VAULT_TOKEN_FILE;
 const databaseWebhookSecretRef = process.env.QKERN_TEST_DATABASE_WEBHOOK_SECRET_REF;
@@ -16068,6 +16083,422 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Ohne eigenes Zeitbudget: ein Projekt, vier Queues, ein paar Nachrichten,
     // zwei Zustellungen und Katalogabfragen. Es wird auf keine Uhr gewartet.
   });
+
+  it("(2.130) orders a project database backup and a restore through the catalogue the route uses, holds the tenant boundary without a filter in any statement, refuses the console role every column but the four of a restore request, and advances a due schedule exactly once", async () => {
+    // Route, Rollen und Mandantengrenze des Backup-Katalogs (2.129) gegen die
+    // echten Tabellen aus 0083 und 0084.
+    //
+    // **Was dieser Fall prueft und der Fall im Backup-Stack nicht.** `(2.129)`
+    // fahrt ein echtes Backup mit `pg_dump`, Vault und Objektspeicher; er sagt
+    // nichts ueber Rechte und Policies der Control Plane, weil er mit der Rolle
+    // des Provisioners arbeitet. Hier laeuft derselbe Katalog, den die Route
+    // benutzt, unter der **Laufzeitrolle** -- also mit genau den Rechten, die
+    // der Next-Prozess hat.
+    //
+    // **Kein Handler, und das mit Grund.** Die Tuer der Route (Rollenmatrix,
+    // Ursprungsriegel, Form der Anfrage, Projektion) steht in
+    // `tests/project-database-backups-route.test.ts` und braucht keine
+    // Datenbank. Was eine Datenbank braucht, ist das darunter: die
+    // Zeilensicherheit aus 0083, die Spaltenrechte aus 0084 und der Trigger, der
+    // einen Zeitplan anlegt. Genau das laeuft hier, und zwar ueber
+    // `PostgresProjectDatabaseBackupCatalog`, also ueber dieselbe Klasse, die
+    // die Route in Produktion ruft.
+    expect(provisionerUrl, "QKERN_TEST_PROVISIONER_DATABASE_URL").toBeTruthy();
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 3 }), "provisioner",
+    );
+    const backupProject = randomUUID();
+    const foreignProject = randomUUID();
+    const reference = `managed:backup-route-${randomUUID().slice(0, 8)}`;
+    const foreignReference = `managed:backup-route-b-${randomUUID().slice(0, 8)}`;
+    const contextA = {
+      organizationId: organizationA,
+      actor: { id: userId, ref: `integration-${userId}@qkern.test`, type: "user" as const },
+    };
+    const contextB = {
+      organizationId: organizationB,
+      actor: { id: secondUserId, ref: `integration-${secondUserId}@qkern.test`, type: "user" as const },
+    };
+    try {
+      // --- 1. Zwei Mandanten, je ein Projekt mit Bindung ------------------
+      for (const [organizationId, projectId, createdBy, instanceRef] of [
+        [organizationA, backupProject, userId, reference],
+        [organizationB, foreignProject, secondUserId, foreignReference],
+      ] as const) {
+        await owner.query(
+          `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+           VALUES ($1, $2, 'Backup Route', $3, 'test', 'ready', $4)`,
+          [projectId, organizationId, `backup-route-${projectId}`, createdBy],
+        );
+        for (const environment of ["production", "development"] as const) {
+          await owner.query(
+            `INSERT INTO project_environments
+               (organization_id, project_id, environment, database_instance_ref)
+             VALUES ($1, $2, $3, $4)`,
+            [organizationId, projectId, environment, `${instanceRef}-${environment}`],
+          );
+          const jobId = randomUUID();
+          await owner.query(
+            `INSERT INTO project_database_provisioning_jobs
+               (id, organization_id, project_id, environment, requested_by, status)
+             VALUES ($1, $2, $3, $4, 'backup-route', 'pending')`,
+            [jobId, organizationId, projectId, environment],
+          );
+          await owner.query(
+            `INSERT INTO project_database_bindings
+               (organization_id, project_id, environment, provisioning_job_id, database_instance_ref,
+                vault_static_role, host, port, expected_role, expected_database,
+                expected_ledger_owner, server_certificate_sha256, bootstrap_contract_sha256)
+             VALUES ($1, $2, $3, $4, $5, 'backup-route-role', 'postgres', 5432,
+                     'qkern_project_api_app', 'project_database', 'qkern_ledger_owner', $6, $7)`,
+            // Der Bootstrap-Vertrag ist in 0020 auf **einen** Hash festgenagelt,
+            // und das ist richtig so: eine Bindung auf eine Datenbank, die aus
+            // einem anderen Vertrag entstand, waere eine Bindung auf eine
+            // Datenbank mit anderen Rollen. Der Fall nennt darum die Konstante
+            // des Produkts und keine erfundene Zahl.
+            [organizationId, projectId, environment, jobId, `${instanceRef}-${environment}`,
+              "a".repeat(64), PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256],
+          );
+        }
+      }
+
+      // --- 2. Der Trigger aus 0084 hat den Zeitplan angelegt --------------
+      //
+      // Er ist ein Trigger und kein Aufrufer im Provisioner, weil "jede
+      // bereitgestellte Projektdatenbank hat einen Zeitplan" eine Aussage ueber
+      // den Zustand ist und nicht ueber einen Pfad. Die Bindungen oben sind von
+      // Hand geschrieben und gehen durch keinen Provisioner -- und haben
+      // trotzdem einen Zeitplan.
+      const seeded = await owner.query<{ environment: string; enabled: boolean; retention_days: number }>(
+        `SELECT environment, enabled, retention_days FROM project_database_backup_schedules
+         WHERE organization_id = $1 AND project_id = $2 ORDER BY environment`,
+        [organizationA, backupProject],
+      );
+      expect(seeded.rows).toEqual([
+        { environment: "development", enabled: false, retention_days: 30 },
+        { environment: "production", enabled: true, retention_days: 30 },
+      ]);
+
+      // --- 3. Ein Auftrag und ein fertiges Backup, mit der Provisioner-Rolle
+      //
+      // Hier wird kein `pg_dump` gefahren: das ist `(2.129)`. Was hier zaehlt,
+      // ist, dass die Zeile mit `artifact_format = 'chunked'`, Teilezahl und
+      // Teilegroesse durch die Riegel aus 0084 geht.
+      const storeA = new PostgresProjectDatabaseBackupStore(provisioner, organizationA, "route-case");
+      const scheduleStoreA = new PostgresProjectDatabaseBackupScheduleStore(
+        provisioner, organizationA, "route-case",
+      );
+      const catalog = new PostgresProjectDatabaseBackupCatalog(runtime);
+
+      // Der Verweis auf die Datenbankinstanz kommt aus der Bindung und nie aus
+      // einer Anfrage; die Route liest ihn so.
+      const requested = await catalog.request(contextA, {
+        projectId: backupProject, environment: "production",
+      });
+      expect(requested.created).toBe(true);
+      expect(requested.backup.status).toBe("pending");
+      // Ein zweiter Aufruf ergibt denselben Auftrag und keinen zweiten.
+      const again = await catalog.request(contextA, {
+        projectId: backupProject, environment: "production",
+      });
+      expect(again.created).toBe(false);
+      expect(again.backup.id).toBe(requested.backup.id);
+
+      const claim = (await storeA.claimNext("route-case-worker", 600_000))!;
+      expect(claim.record.id).toBe(requested.backup.id);
+      const completedAt = new Date();
+      const completed = await storeA.complete(claim, {
+        objectKey: `project-database-backups/${organizationA}/${backupProject}/production/${claim.record.id}.qkbak`,
+        artifactSha256: "c".repeat(64),
+        sizeBytes: 3 * (1_024 + 28) + 12,
+        wrappedDataKey: "Z".repeat(80),
+        keyId: "tenant-2026-10",
+        manifestSha256: "d".repeat(64),
+        includes: ["schema", "rows", "policies", "extensions", "sequences", "grants"],
+        artifactFormat: "chunked",
+        partCount: 3,
+        partPlaintextBytes: 1_024,
+        snapshotAt: completedAt,
+        completedAt,
+        expiresAt: new Date(completedAt.getTime() + 30 * 24 * 60 * 60 * 1_000),
+      });
+      expect(completed.status).toBe("available");
+      expect(completed.artifactFormat).toBe("chunked");
+
+      // --- 4. Die Mandantengrenze, ohne Filter in einer Anweisung ---------
+      const listedByA = await catalog.list(
+        contextA, { projectId: backupProject, environment: "production" }, 50,
+      );
+      expect(listedByA.backups.map((row) => row.id)).toContain(completed.id);
+      expect(listedByA.schedule).toMatchObject({ enabled: true, retentionDays: 30, intervalHours: 24 });
+      // Und die Projektion traegt nichts, was sie nicht tragen darf.
+      const serialised = JSON.stringify(listedByA);
+      expect(serialised).not.toContain("project-database-backups/");
+      expect(serialised).not.toContain("tenant-2026-10");
+      expect(serialised).not.toContain("Z".repeat(80));
+      expect(serialised).not.toContain(reference);
+
+      // Organisation B sieht das Backup von A nicht, und zwar auch dann nicht,
+      // wenn sie seine Id kennt. Keine Anweisung in `project-database-postgres.ts`
+      // nennt eine Organisation; was haelt, ist die Policy aus 0083.
+      expect(await catalog.get(contextB, completed.id)).toBeNull();
+      const listedByB = await catalog.list(
+        contextB, { projectId: backupProject, environment: "production" }, 50,
+      );
+      expect(listedByB.backups).toEqual([]);
+      // Der Zeitplan eines fremden Projekts kommt auch nicht heraus, obwohl die
+      // Abfrage nach genau diesem Projekt fragt.
+      expect(listedByB.schedule).toBeNull();
+      // Und eine Wiederherstellung eines fremden Backups ist ein 404 und keine
+      // Bestellung.
+      await expect(catalog.requestRestore(contextB, completed.id))
+        .rejects.toMatchObject({ code: "BACKUP_NOT_FOUND" });
+      // Nachgesehen statt angenommen: die Zeile traegt nach dem Versuch von B
+      // weiter keine Bestellung.
+      expect((await storeA.get(completed.id))!.restoreStatus).toBeNull();
+
+      // --- 5. Die Bestellung einer Wiederherstellung ----------------------
+      const restoreRequested = await catalog.requestRestore(contextA, completed.id);
+      expect(restoreRequested.restore).toMatchObject({ status: "requested", errorCode: null });
+      // Der Name kommt aus der Backup-Id und nicht aus einer Anfrage.
+      expect(restoreRequested.restore!.databaseName).toBe(restoreDatabaseName(completed.id));
+      // Der Besteller steht als Kennung in der Zeile, nicht als Mailadresse.
+      const requestedBy = await owner.query<{ restore_requested_by: string }>(
+        `SELECT restore_requested_by FROM project_database_backups WHERE id = $1`, [completed.id],
+      );
+      expect(requestedBy.rows[0].restore_requested_by).toBe(`user:${userId}`);
+      expect(requestedBy.rows[0].restore_requested_by).not.toContain("@");
+      // Eine zweite Bestellung, waehrend die erste laeuft, ist ein Konflikt und
+      // keine zweite Wiederherstellung: beide zielten auf denselben Namen.
+      await expect(catalog.requestRestore(contextA, completed.id))
+        .rejects.toMatchObject({ code: "RESTORE_ALREADY_REQUESTED" });
+
+      // --- 6. Was die Laufzeitrolle **nicht** darf ------------------------
+      //
+      // 0083 hat `qkern_runtime` kein `UPDATE` gegeben, damit niemand ein Backup
+      // behaupten kann. 0084 gibt ihr `UPDATE` auf **vier** Spalten. Der Riegel
+      // ist ein Spaltenrecht und nicht eine Absicht im Dienst, also wird er hier
+      // direkt an der Rolle geprueft: `42501` ist "insufficient privilege".
+      const digest = "e".repeat(64);
+      for (const statement of [
+        `UPDATE project_database_backups SET status = 'available' WHERE id = $1`,
+        `UPDATE project_database_backups SET object_key = NULL WHERE id = $1`,
+        `UPDATE project_database_backups SET artifact_sha256 = '${digest}' WHERE id = $1`,
+        `UPDATE project_database_backups SET manifest_sha256 = '${digest}' WHERE id = $1`,
+        `UPDATE project_database_backups SET expires_at = now() WHERE id = $1`,
+        `UPDATE project_database_backups SET part_count = 9 WHERE id = $1`,
+        // Die Pacht der Wiederherstellung bleibt beim Provisioner: sonst
+        // koennte die Route sich eine laufende Wiederherstellung nehmen.
+        `UPDATE project_database_backups SET restore_lease_token = gen_random_uuid() WHERE id = $1`,
+        `DELETE FROM project_database_backups WHERE id = $1`,
+      ]) {
+        // Der Treiberfehler kommt als `PersistenceError` heraus, und der
+        // SQLSTATE steht in seiner Ursache. Genau so liest ihn der Dienst auch
+        // (`reasonOf` in `project-database.ts`), und darum liest ihn der Fall
+        // nicht aus einer Meldung: `42501` ist "insufficient privilege", ein
+        // fester Code und kein Text mit einem Tabellennamen darin.
+        let sqlState = "keiner";
+        try {
+          await withTenantTransaction(
+            runtime,
+            { organizationId: organizationA, actorRef: "route-case" },
+            (transaction) => transaction.query(statement, [completed.id]),
+          );
+        } catch (error) {
+          sqlState = String((error as { cause?: { code?: unknown } })?.cause?.code ?? "keiner");
+        }
+        expect(sqlState, statement).toBe("42501");
+      }
+      // Der Zeitplan ist fuer die Laufzeitrolle lesbar und nicht schreibbar: es
+      // gibt in 2.129 keine Route, die ihn aendert, und ein Recht ohne Aufrufer
+      // ist ein offenes Tor ohne Nutzen.
+      // `restore_error_code` darf die Laufzeitrolle schreiben, denn sie muss den
+      // Ausgang der vorigen Wiederherstellung mitraeumen koennen (0084). Was sie
+      // damit **nicht** kann, ist einen Fehlschlag behaupten: dafuer braucht die
+      // Zeile den Zustand `failed`, und ohne ihn weist
+      // `project_database_backups_restore_failure_shape` sie ab. Hier haelt also
+      // die Zusicherung und nicht das Recht, und der Code sagt welches von beiden:
+      // `23514` ist "check_violation", `42501` waere "insufficient privilege".
+      let claimedFailure = "keiner";
+      try {
+        await withTenantTransaction(
+          runtime,
+          { organizationId: organizationA, actorRef: "route-case" },
+          (transaction) => transaction.query(
+            `UPDATE project_database_backups SET restore_error_code = 'RESTORE_FAILED'
+             WHERE id = $1`,
+            [completed.id],
+          ),
+        );
+      } catch (error) {
+        claimedFailure = String((error as { cause?: { code?: unknown } })?.cause?.code ?? "keiner");
+      }
+      expect(claimedFailure).toBe("23514");
+
+      let scheduleState = "keiner";
+      try {
+        await withTenantTransaction(
+          runtime,
+          { organizationId: organizationA, actorRef: "route-case" },
+          (transaction) => transaction.query(
+            `UPDATE project_database_backup_schedules SET enabled = false WHERE project_id = $1`,
+            [backupProject],
+          ),
+        );
+      } catch (error) {
+        scheduleState = String((error as { cause?: { code?: unknown } })?.cause?.code ?? "keiner");
+      }
+      expect(scheduleState).toBe("42501");
+
+      // --- 7. Der Provisioner nimmt die Bestellung ------------------------
+      const restoreClaim = (await storeA.claimNextRestore(600_000))!;
+      expect(restoreClaim.record.id).toBe(completed.id);
+      expect(restoreClaim.databaseName).toBe(restoreDatabaseName(completed.id));
+      // Ein zweiter Wirt bekommt sie nicht: der erste hat sie auf `running`
+      // gesetzt, und `claimNextRestore` sucht nur `requested`.
+      expect(await storeA.claimNextRestore(600_000)).toBeNull();
+      await storeA.failRestore(restoreClaim, "RESTORE_MANIFEST_MISMATCH", new Date());
+      const failed = (await storeA.get(completed.id))!;
+      expect(failed.restoreStatus).toBe("failed");
+      expect(failed.restoreErrorCode).toBe("RESTORE_MANIFEST_MISMATCH");
+      expect(failed.restoreCompletedAt).not.toBeNull();
+      // Und sie wird **nicht** wiederholt: nach einem Fehlschlag steht keine
+      // Bestellung mehr da, die ein Wirt nehmen koennte.
+      expect(await storeA.claimNextRestore(600_000)).toBeNull();
+      // Wer es wieder versuchen will, bestellt neu, und das geht nach einem
+      // Fehlschlag auch. Der Ausgang der vorigen wird dabei mitgeraeumt: eine
+      // wartende Wiederherstellung, die den Fehlercode der vorigen traegt, waere
+      // eine Zeile, die zwei Dinge gleichzeitig behauptet.
+      const retried = await catalog.requestRestore(contextA, completed.id);
+      expect(retried.restore).toMatchObject({
+        status: "requested", errorCode: null, completedAt: null,
+      });
+
+      // Eine Bestellung, deren Wirt mitten darin gestorben ist, wird `failed`
+      // und nicht wieder `requested`: was er hinterlassen hat, ist eine halbe
+      // Datenbank.
+      const dying = (await storeA.claimNextRestore(600_000))!;
+      await owner.query(
+        `UPDATE project_database_backups SET restore_lease_expires_at = now() - interval '1 minute'
+         WHERE id = $1`, [dying.record.id],
+      );
+      const released = await storeA.failExpiredRestoreLeases();
+      expect(released.map((row) => row.id)).toContain(completed.id);
+      expect((await storeA.get(completed.id))!.restoreErrorCode).toBe("RESTORE_FAILED");
+
+      // --- 8. Der Zeitplan: faellig, und genau einmal ---------------------
+      //
+      // Zwei Wirte duerfen nicht beide denselben faelligen Takt nehmen. Der
+      // Riegel ist **eine** Anweisung, die holt und fortschreibt; geprueft wird
+      // er, indem zweimal mit derselben Uhr geholt wird.
+      const now = new Date();
+      await owner.query(
+        `UPDATE project_database_backup_schedules
+         SET next_due_at = $3 WHERE organization_id = $1 AND project_id = $2
+           AND environment = 'production'`,
+        [organizationA, backupProject, new Date(now.getTime() - 60_000)],
+      );
+      const due = await scheduleStoreA.claimDue(now, 10);
+      expect(due.map((row) => row.projectId)).toContain(backupProject);
+      expect(due.find((row) => row.projectId === backupProject)!.databaseInstanceRef)
+        .toBe(`${reference}-production`);
+      // Fortgeschrieben auf `now + interval` und damit nicht mehr faellig.
+      const second = await scheduleStoreA.claimDue(now, 10);
+      expect(second.map((row) => row.projectId)).not.toContain(backupProject);
+      const advanced = await scheduleStoreA.get({
+        projectId: backupProject, environment: "production",
+      });
+      expect(advanced!.nextDueAt.getTime()).toBe(now.getTime() + 24 * 3_600_000);
+
+      // Der abgeschaltete Zeitplan der Entwicklungsumgebung kommt nie, auch
+      // wenn er faellig ist.
+      await owner.query(
+        `UPDATE project_database_backup_schedules
+         SET next_due_at = $3 WHERE organization_id = $1 AND project_id = $2
+           AND environment = 'development'`,
+        [organizationA, backupProject, new Date(now.getTime() - 60_000)],
+      );
+      const stillOff = await scheduleStoreA.claimDue(new Date(now.getTime() + 1_000), 10);
+      expect(stillOff.map((row) => row.environment)).not.toContain("development");
+
+      // Der Takt einer fremden Organisation kommt hier nicht heraus, und auch
+      // dafuer traegt die Anweisung keinen Filter.
+      await owner.query(
+        `UPDATE project_database_backup_schedules
+         SET next_due_at = $3 WHERE organization_id = $1 AND project_id = $2`,
+        [organizationB, foreignProject, new Date(now.getTime() - 60_000)],
+      );
+      const notForeign = await scheduleStoreA.claimDue(new Date(now.getTime() + 2_000), 10);
+      expect(notForeign.map((row) => row.projectId)).not.toContain(foreignProject);
+      expect(notForeign.every((row) => row.organizationId === organizationA)).toBe(true);
+
+      // --- 9. Die Frist steht je Umgebung in der Zeile --------------------
+      //
+      // Bis 2.129 stand sie in einer Umgebungsvariablen des Prozesses, also fuer
+      // alle Projekte und Umgebungen gleich.
+      await owner.query(
+        `UPDATE project_database_backup_schedules SET retention_days = 7
+         WHERE organization_id = $1 AND project_id = $2 AND environment = 'production'`,
+        [organizationA, backupProject],
+      );
+      const scheduler = new ProjectDatabaseBackupScheduler({
+        store: scheduleStoreA,
+        target: {
+          enqueueBackup: async () => { throw new Error("in diesem Schritt nicht gerufen"); },
+          pruneExpired: async () => 0,
+        },
+      });
+      expect(await scheduler.retentionDaysFor({
+        projectId: backupProject, environment: "production",
+      })).toBe(7);
+      // Eine Umgebung ohne Zeile hat keine eigene Frist; dann gilt die Vorgabe
+      // des Prozesses, und das entscheidet der Dienst und nicht diese Zeile.
+      expect(await scheduler.retentionDaysFor({
+        projectId: backupProject, environment: "staging",
+      })).toBeNull();
+
+      // --- 10. Die Rollenmatrix ------------------------------------------
+      //
+      // Sie braucht keine Datenbank und steht trotzdem hier, weil die drei
+      // Rechte zu diesem Fall gehoeren: wer den Katalog lesen darf, wer
+      // bestellen darf, und wer zurueckholen darf.
+      const member = (role: "owner" | "administrator" | "deployer" | "support" | "developer") => ({
+        user: { id: userId, email: "role@qkern.test", status: "active" as const, createdAt: new Date() },
+        membership: {
+          organization: { id: organizationA, name: "Integration A", slug: "integration-a" },
+          userId, role,
+        },
+      });
+      expect(() => requireCapability(member("support"), "project_backup_read")).not.toThrow();
+      expect(() => requireCapability(member("support"), "project_backup_request")).toThrow();
+      expect(() => requireCapability(member("administrator"), "project_backup_request")).not.toThrow();
+      expect(() => requireCapability(member("administrator"), "project_backup_restore")).toThrow();
+      expect(() => requireCapability(member("owner"), "project_backup_restore")).not.toThrow();
+      expect(() => requireCapability(member("developer"), "project_backup_read")).toThrow();
+    } finally {
+      await provisioner.end();
+      await owner.query(
+        `DELETE FROM project_database_backups WHERE project_id IN ($1, $2)`,
+        [backupProject, foreignProject],
+      ).catch(() => {});
+      await owner.query(
+        `DELETE FROM project_database_backup_schedules WHERE project_id IN ($1, $2)`,
+        [backupProject, foreignProject],
+      ).catch(() => {});
+      await owner.query(
+        `DELETE FROM project_database_bindings WHERE project_id IN ($1, $2)`,
+        [backupProject, foreignProject],
+      ).catch(() => {});
+      await owner.query(
+        `DELETE FROM project_database_provisioning_jobs WHERE project_id IN ($1, $2)`,
+        [backupProject, foreignProject],
+      ).catch(() => {});
+      await owner.query(`DELETE FROM project_environments WHERE project_id IN ($1, $2)`,
+        [backupProject, foreignProject]).catch(() => {});
+      await owner.query(`DELETE FROM projects WHERE id IN ($1, $2)`,
+        [backupProject, foreignProject]).catch(() => {});
+    }
+  }, 180_000);
 });
 
 /**
