@@ -16,7 +16,7 @@ import {
   type ProjectStorageScanner,
 } from "@/lib/server/project-storage/provider";
 import {
-  MemoryProjectStorageRepository,
+  getMemoryProjectStorageRepository,
   type ProjectStorageRepository,
 } from "@/lib/server/project-storage/repository";
 import { ProjectStorageError, ProjectStorageService } from "@/lib/server/project-storage/service";
@@ -43,7 +43,7 @@ export function createProjectStorageServiceFromEnv(
   }
   const repository = dependencies.repository ?? (runtimeModeFromEnv(env) === "postgres"
     ? new PostgresProjectStorageRepository(new PostgresControlPlane(getPostgresPool(env)))
-    : new MemoryProjectStorageRepository());
+    : getMemoryProjectStorageRepository());
   const provider = dependencies.provider ?? providerFromEnv(env, production);
   const scanner = dependencies.scanner ?? scannerFromEnv(env, production, provider);
   return new ProjectStorageService({

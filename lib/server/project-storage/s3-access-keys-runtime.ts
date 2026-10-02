@@ -1,7 +1,7 @@
 import { getPostgresPool } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
-import { MemoryProjectStorageRepository } from "@/lib/server/project-storage/repository";
+import { getMemoryProjectStorageRepository } from "@/lib/server/project-storage/repository";
 import {
   MemoryProjectStorageS3AccessKeyStore,
   PostgresProjectStorageS3AccessKeyStore,
@@ -28,7 +28,7 @@ export function createProjectStorageS3AccessKeyService(
   if (runtimeModeFromEnv(env) === "memory") {
     return new ProjectStorageS3AccessKeyService({
       store: new MemoryProjectStorageS3AccessKeyStore(),
-      buckets: new MemoryProjectStorageRepository(),
+      buckets: getMemoryProjectStorageRepository(),
       protector,
     });
   }

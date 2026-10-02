@@ -644,3 +644,32 @@ function cloneUpload(upload: ProjectStorageUpload): ProjectStorageUpload {
 function cloneObject(object: ProjectStorageObject): ProjectStorageObject {
   return { ...object, createdAt: new Date(object.createdAt), deleteAfter: object.deleteAfter ? new Date(object.deleteAfter) : null, deletedAt: object.deletedAt ? new Date(object.deletedAt) : null };
 }
+
+type GlobalMemoryBuckets = typeof globalThis & {
+  __qkernMemoryProjectStorageBuckets?: MemoryProjectStorageRepository;
+};
+
+/**
+ * Die eine Bucket-Ablage des Modus `memory`.
+ *
+ * **Der Befund, der dahinter steht (2.127).** `createProjectStorageServiceFromEnv`
+ * und `createProjectStorageS3AccessKeyService` bauten sich im Modus `memory` je
+ * eine eigene `MemoryProjectStorageRepository`. Die Maps liegen in der Instanz
+ * und nicht im Modul, also sah der Schluesseldienst von einem Bucket, den der
+ * Storage-Dienst angelegt hatte, nichts: `listBuckets` gab eine leere Liste, und
+ * ein Paar fuer diesen Bucket fiel mit `STORAGE_RESOURCE_NOT_FOUND`. Der
+ * S3-Endpunkt war im Modus `memory` damit gar nicht benutzbar, und das ist der
+ * Modus der Entwicklungsumgebung.
+ *
+ * Im Modus `postgres` stellt sich die Frage nicht: Dort teilen beide Dienste die
+ * Datenbank, und zwei Repository-Instanzen lesen dieselben Zeilen.
+ *
+ * Am `globalThis` und nicht als Modulvariable, aus demselben Grund wie bei den
+ * Dienst-Zwischenspeichern daneben: Next laedt ein Modul je Bundle neu, und zwei
+ * Kopien derselben Datei haetten wieder zwei Ablagen.
+ */
+export function getMemoryProjectStorageRepository(): MemoryProjectStorageRepository {
+  const runtime = globalThis as GlobalMemoryBuckets;
+  runtime.__qkernMemoryProjectStorageBuckets ??= new MemoryProjectStorageRepository();
+  return runtime.__qkernMemoryProjectStorageBuckets;
+}

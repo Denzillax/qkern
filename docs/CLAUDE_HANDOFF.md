@@ -286,10 +286,16 @@ Grossbuchstaben.
   **jede von beiden ihre eigene** `MemoryProjectStorageRepository`. Die Maps
   liegen in der Instanz, nicht im Modul. Ein Bucket, den der Dienst anlegt,
   existiert fuer den Schluesseldienst also nicht, und ein Paar fuer diesen
-  Bucket laesst sich gar nicht ausstellen. **Das ist ein echter Fehler in der
-  Verdrahtung, nicht nur eine Testsorge**, und er ist nicht behoben: Der
-  S3-Endpunkt ist im Modus `memory` nicht benutzbar. Wer ihn dort braucht,
-  muss sich die beiden Dienste eine Repository teilen lassen.
+  Bucket liess sich gar nicht ausstellen. **Das ist ein echter Fehler in der
+  Verdrahtung, nicht nur eine Testsorge**, und er ist nach dem Merge behoben:
+  `getMemoryProjectStorageRepository()` in `repository.ts` gibt beiden Fabriken
+  dieselbe Ablage, am `globalThis` und nicht als Modulvariable, weil Next ein
+  Modul je Bundle neu laedt und zwei Kopien wieder zwei Ablagen waeren.
+  `tests/project-storage-memory-mode-contract.test.ts` haelt beide Richtungen;
+  nimmt man einer der Fabriken die gemeinsame Ablage weg, faellt genau ihr Fall.
+  Der Befund selbst bleibt richtig: Der Fall `(2.127)` faehrt die Clients
+  weiterhin ueber `bridgeTo()` und nicht ueber einen Next-Dienst, denn der
+  braechte PostgreSQL, Migrationen und Provisionierung in den Storage-Stack.
 
   **Was die Clients gefunden haben, und was sich bewegt hat.** Beides war in
   2.73.0 benannt und steht jetzt nicht mehr offen:
