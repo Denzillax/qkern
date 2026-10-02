@@ -44,10 +44,17 @@ export const CERTIFICATION_CLAIMS: ReadonlyArray<{ name: string; stacks: readonl
   { name: "Object Storage", label: "versitygw und ClamAV", stacks: ["versitygw und ClamAV", "MinIO und ClamAV", "minio-clamav"] },
   { name: "Project Auth", label: "Mailpit und Dex über TLS", stacks: ["Mailpit und Dex", "project-auth-provider"] },
   { name: "Functions", label: "Docker, Registry und PostgreSQL 17",
-    stacks: ["Docker 29.5, registry:2 und PostgreSQL 17", "docker-function-egress-guard"] },
-  { name: "Webhook-Signatur", label: "HashiCorp Vault 1.18", stacks: ["HashiCorp Vault 1.18", "vault-1.18-webhook-signing"] },
-  { name: "Ausgehender Weg", label: "Echter HTTPS-Empfänger", stacks: ["Node 24 HTTPS-Empfaenger und PostgreSQL 17"] },
-  { name: "Backup und Restore", label: "TLS-PostgreSQL 17 mit WAL-Archiv", stacks: ["Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)"] },
+    stacks: ["Docker 29.5, registry:2 und PostgreSQL 17", "docker-function-egress-guard",
+      "Functions gegen Docker plus PostgreSQL"] },
+  { name: "Webhook-Signatur", label: "HashiCorp Vault 1.18",
+    stacks: ["HashiCorp Vault 1.18", "vault-1.18-webhook-signing", "Webhook-Signatur gegen echten Vault"] },
+  { name: "Ausgehender Weg", label: "Echter HTTPS-Empfänger",
+    stacks: ["Node 24 HTTPS-Empfaenger und PostgreSQL 17", "Ausgehender Weg gegen echten HTTPS-Empfaenger"] },
+  { name: "Realtime unter Production", label: "TLS-PostgreSQL 17 und echter Vault",
+    stacks: ["Realtime unter Production gegen TLS-PostgreSQL"] },
+  { name: "Backup und Restore", label: "TLS-PostgreSQL 17 mit WAL-Archiv",
+    stacks: ["Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)",
+      "Backup und Restore gegen TLS-PostgreSQL mit WAL-Archiv"] },
 ];
 
 export function summarizeCertification(manifests: readonly ArchivedManifest[]): CertificationSummary {
