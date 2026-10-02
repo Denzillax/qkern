@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "slice-s3clients-storage-run2.log",
+  "commit": "f4d612440a1bfae21ae6a7ae26d89c0019d65b66",
+  "commitSubject": "release: 2.73.0 Ein Teil aus einem Objekt, ein Anschluss nach draussen, und ein Backup, das es nie gab",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "14 passed (14)",
+  "passed": 14,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

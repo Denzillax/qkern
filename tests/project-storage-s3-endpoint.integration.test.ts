@@ -1,5 +1,9 @@
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import {
@@ -90,8 +94,30 @@ import { ProjectStorageService } from "@/lib/server/project-storage/service";
  * liest am Server mit, dass die Anfrage ohne `list-type` ankam, und folgt dem
  * `NextMarker`, den das SDK selbst liest.
  *
- * Nicht gesehen hat den Endpunkt die AWS CLI selbst und rclone; beide
- * brauchen einen laufenden Next-Server im Stack, und den gibt es dort nicht.
+ * Der fuenfte (2.127) und der sechste (2.128) lassen zwei **fremde Werkzeuge**
+ * sprechen, als eigene Prozesse ueber TCP: die AWS CLI v2 und rclone. Bis 2.73.0
+ * hatte den Endpunkt nur das AWS SDK fuer JavaScript gesehen, also eine
+ * Bibliothek desselben Hauses, das die Signatur beschreibt. Die CLI bringt eine
+ * dritte Implementierung mit (die AWS-CRT in C), rclone eine vierte (Go, ohne
+ * AWS-Code darin).
+ *
+ * Beide fahren dieselbe Bruecke wie die Faelle davor, und der Fall wartet nicht
+ * auf einen offenen Port, sondern auf eine **echte Runde** darueber
+ * (`warmBridge`): geschrieben, vom echten Scanner freigegeben, zurueckgelesen,
+ * Bytes verglichen. Erst dann startet der fremde Client.
+ *
+ * Was die zwei gebracht haben, das vier SDK-Faelle nicht gebracht haben:
+ * Die CLI waehlt eine andere Form als das SDK (gepufferter Koerper, signierte
+ * Nutzlast, Pruefsumme als **Header**, CRC64NVME als Standard, `Expect:
+ * 100-continue`), und ihre CRT rechnet dieselbe CRC64NVME wie `s3-sigv4.ts`.
+ * Gefunden haben sie zwei echte Abweichungen, die 2.73.0 nur benannt hatte:
+ * `max-keys=0` war ein Fehler statt einer leeren Liste (die CLI brach mit Code
+ * 254 ab), und derselbe `CommonPrefixes`-Eintrag stand auf zwei Seiten (`aws s3
+ * ls --page-size 2` druckte `PRE sync/` zweimal). Beides ist in
+ * `s3-endpoint.ts` behoben, und beide Faelle halten es fest.
+ *
+ * Kein Next-Server im Stack: die Begruendung steht in
+ * `docker-compose.storage-certification.yml`.
  */
 const enabled = process.env.QKERN_TEST_STORAGE_PROVIDER_E2E === "true";
 const endpoint = process.env.QKERN_TEST_STORAGE_S3_ENDPOINT ?? "http://minio:9000";
@@ -578,6 +604,283 @@ describe.runIf(enabled)("real versitygw and ClamAV: the S3 endpoint", () => {
       await bridge.close();
     }
   }, 300_000);
+
+  it("(2.127) is driven by the real AWS CLI over HTTP: list, copy, a file split by the CLI above the multipart threshold, a round trip back, an idempotent sync, ListObjects version 1 and an explicit checksum algorithm", async () => {
+    const { s3, keys, storage } = await certificationRuntime();
+    const bridge = await bridgeTo(s3);
+    const workspace = await mkdtemp(join(tmpdir(), "qkern-aws-cli-"));
+    try {
+      const bucket = await storage.createBucket(admin, scope, {
+        name: "cert-s3-cli", readPolicy: "service", writePolicy: "service",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 32 * 1024 * 1024, quotaBytes: 128 * 1024 * 1024,
+      });
+      const pair = await keys.create(admin, scope, {
+        name: "Zertifizierung AWS CLI", bucketIds: [bucket.id],
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      });
+      const cli = await awsCliClient(workspace, bridge.origin, pair);
+
+      // --- Der Healthcheck: eine echte Runde, nicht ein offener Port --------
+      await warmBridge(bridge.origin, pair, "cert-s3-cli");
+
+      // --- aws s3 ls: ListBuckets, von der CLI geparst ----------------------
+      const listed = await runClient(cli, ["s3", "ls"]);
+      expect(listed.status, listed.output).toBe(0);
+      expect(listed.output).toContain("cert-s3-cli");
+
+      // --- aws s3 cp: ein Objekt, von der CLI signiert ----------------------
+      const small = Buffer.from(`qkern aws cli certification ${Date.now()}\n`, "utf8");
+      await writeFile(join(workspace, "small.txt"), small);
+      const smallMark = bridge.seen.length;
+      const copied = await runClient(cli, [
+        "s3", "cp", join(workspace, "small.txt"), "s3://cert-s3-cli/cli/small.txt",
+      ]);
+      expect(copied.status, copied.output).toBe(0);
+      // Der Beleg, dass es wirklich durch den Dienst ging: der echte Scanner hat
+      // die Bytes gesehen, und der echte Provider haelt sie.
+      const afterSmall = await storage.listObjects(admin, scope, bucket.id, { prefix: "cli/" });
+      expect(afterSmall.objects.map((object) => [object.key, object.status]))
+        .toEqual([["cli/small.txt", "clean"]]);
+      const smallGrant = await storage.createDownloadGrant(admin, scope, bucket.id, { key: "cli/small.txt" });
+      const smallServed = await fetch(smallGrant.url, { redirect: "error" });
+      expect(smallServed.status).toBe(200);
+      expect(sha256Base64(Buffer.from(await smallServed.arrayBuffer()))).toBe(sha256Base64(small));
+      // Welche Form die CLI von sich aus waehlt. Sie rechnet seit v2 eine
+      // Pruefsumme mit, auch ohne `--checksum-algorithm`, und legt sie als
+      // Trailer hinter einen `aws-chunked`-Koerper.
+      const smallSeen = bridge.seen.slice(smallMark)
+        .find((entry) => entry.method === "PUT" && entry.path === "/s3/cert-s3-cli/cli/small.txt");
+      expect(smallSeen, "the CLI did not PUT through the bridge").toBeDefined();
+      // Die CLI v2 waehlt eine **andere** Form als das AWS SDK fuer JavaScript,
+      // und das ist der Gewinn an diesem Fall: Sie puffert die Datei, signiert
+      // den Koerper als Ganzes und legt die Pruefsumme in einen **Header**, nicht
+      // in einen Trailer hinter `aws-chunked`. Ihr Standardalgorithmus ist
+      // CRC64NVME, nicht CRC32. Dieser Weg durch den Endpunkt ist vor 2.127 von
+      // keinem echten Client gefahren worden.
+      expect(smallSeen!.headers["content-encoding"]).toBeUndefined();
+      expect(smallSeen!.headers["x-amz-trailer"]).toBeUndefined();
+      expect(smallSeen!.headers["x-amz-sdk-checksum-algorithm"]).toBe("CRC64NVME");
+      expect(smallSeen!.headers["x-amz-content-sha256"]).toBe(sha256Hex(small));
+      expect(smallSeen!.headers["content-length"]).toBe(String(small.byteLength));
+      // `Expect: 100-continue`: Die CLI wartet auf die Zwischenantwort, bevor
+      // sie den Koerper schickt. Dass das Objekt da ist, belegt, dass der Weg
+      // die Fortsetzung gibt; das SDK fragt sie nicht.
+      expect(smallSeen!.headers["expect"]).toBe("100-continue");
+      // Und die Quervergleich, der etwas ueber QKERN sagt: Die CRC64NVME, die
+      // die AWS-CRT-Bibliothek gerechnet hat, ist Byte fuer Byte die, die
+      // `s3-sigv4.ts` rechnet. Zwei unabhaengige Implementierungen desselben
+      // Polynoms, und der Endpunkt hat sie angenommen.
+      expect(smallSeen!.headers["x-amz-checksum-crc64nvme"])
+        .toBe(checksumBase64("x-amz-checksum-crc64nvme", small));
+
+      // --- aws s3 cp ueber der Multipart-Schwelle: die CLI teilt selbst -----
+      // 12 MiB, also ueber den 8 MiB, ab denen die CLI von sich aus teilt. Der
+      // Inhalt ist nicht zufaellig, damit der Vergleich am Ende etwas aussagt.
+      const big = Buffer.alloc(12 * 1024 * 1024);
+      for (let offset = 0; offset < big.byteLength; offset += 64) {
+        big.write(`qkern aws cli multipart ${offset} `.padEnd(64, "."), offset, 64, "utf8");
+      }
+      await writeFile(join(workspace, "big.txt"), big);
+      const bigMark = bridge.seen.length;
+      const bigCopy = await runClient(cli, [
+        "s3", "cp", join(workspace, "big.txt"), "s3://cert-s3-cli/cli/big.txt",
+      ]);
+      expect(bigCopy.status, bigCopy.output).toBe(0);
+      const bigSeen = bridge.seen.slice(bigMark);
+      expect(bigSeen.filter((entry) => entry.method === "POST" && entry.query.includes("uploads")).length).toBe(1);
+      // Die Teile, wie die CLI sie geschnitten hat: 5 MiB aus der Konfiguration
+      // oben, das letzte kleiner. Die Reihenfolge ist nicht festgelegt, weil die
+      // CLI mehrere Teile gleichzeitig schickt; die Groessen sind es. Das letzte
+      // Teil darf unter 5 MiB liegen, jedes andere nicht, und genau so kommt es
+      // an: Der Endpunkt erzwingt die Untergrenze nicht, aber kein Client
+      // verlangt es von ihm.
+      const partSizes = bigSeen
+        .filter((entry) => entry.method === "PUT" && entry.query.includes("partNumber"))
+        .map((entry) => Number(entry.headers["content-length"]))
+        .sort((a, b) => b - a);
+      expect(partSizes).toEqual([5 * 1024 * 1024, 5 * 1024 * 1024, 2 * 1024 * 1024]);
+      expect(partSizes.reduce((sum, size) => sum + size, 0)).toBe(big.byteLength);
+      expect(bigSeen.filter((entry) => entry.method === "POST" && entry.query.includes("uploadId") &&
+        !entry.query.includes("uploads")).length).toBe(1);
+      // Die Pruefsumme der ganzen Datei rechnet der Endpunkt aus dem
+      // zusammengesetzten Objekt, und erst das Urteil des echten Scanners macht
+      // sie lesbar.
+      const bigStored = (await storage.listObjects(admin, scope, bucket.id, { prefix: "cli/big" })).objects;
+      expect(bigStored.map((object) => [object.key, object.status, object.sizeBytes]))
+        .toEqual([["cli/big.txt", "clean", big.byteLength]]);
+
+      // --- aws s3 cp zurueck: der Rueckweg, von der CLI gelesen -------------
+      const back = await runClient(cli, [
+        "s3", "cp", "s3://cert-s3-cli/cli/big.txt", join(workspace, "back.txt"),
+      ]);
+      expect(back.status, back.output).toBe(0);
+      expect(sha256Base64(await readFile(join(workspace, "back.txt")))).toBe(sha256Base64(big));
+
+      // --- aws s3 sync, zweimal: beim zweiten Mal darf nichts hochgehen -----
+      // Das haengt an unserer Liste: Die CLI vergleicht `Size` und
+      // `LastModified` aus `ListObjectsV2` mit der Datei. Stimmt eins davon
+      // nicht, laedt sie beim zweiten Lauf wieder hoch, und der Fall sagt es.
+      await mkdir(join(workspace, "tree"), { recursive: true });
+      await writeFile(join(workspace, "tree", "a.txt"), "qkern sync a\n");
+      await writeFile(join(workspace, "tree", "b.txt"), "qkern sync b\n");
+      const firstSync = await runClient(cli, [
+        "s3", "sync", join(workspace, "tree"), "s3://cert-s3-cli/cli/sync/",
+      ]);
+      expect(firstSync.status, firstSync.output).toBe(0);
+      const secondMark = bridge.seen.length;
+      const secondSync = await runClient(cli, [
+        "s3", "sync", join(workspace, "tree"), "s3://cert-s3-cli/cli/sync/",
+      ]);
+      expect(secondSync.status, secondSync.output).toBe(0);
+      expect(bridge.seen.slice(secondMark).filter((entry) => entry.method === "PUT").map((entry) => entry.path))
+        .toEqual([]);
+
+      // --- aws s3api list-objects: Version 1, von der CLI gewaehlt ----------
+      const v1Mark = bridge.seen.length;
+      const v1 = await runClient(cli, [
+        "s3api", "list-objects", "--bucket", "cert-s3-cli", "--prefix", "cli/", "--delimiter", "/",
+      ]);
+      expect(v1.status, v1.output).toBe(0);
+      const v1Seen = bridge.seen.slice(v1Mark).filter((entry) => entry.method === "GET");
+      expect(v1Seen.length).toBeGreaterThanOrEqual(1);
+      // `list-objects` ist Version 1: keine `list-type` in der Anfrage.
+      expect(v1Seen.every((entry) => !entry.query.includes("list-type"))).toBe(true);
+      const v1Body = JSON.parse(v1.output) as {
+        Contents?: Array<{ Key: string }>; CommonPrefixes?: Array<{ Prefix: string }>;
+      };
+      expect(v1Body.Contents?.map((entry) => entry.Key)).toEqual(["cli/big.txt", "cli/small.txt"]);
+      expect(v1Body.CommonPrefixes?.map((entry) => entry.Prefix)).toEqual(["cli/sync/"]);
+
+      // --- --checksum-algorithm sha256: eine andere Summe, dieselbe Tuer ----
+      const sha = Buffer.from(`qkern aws cli sha256 ${Date.now()}\n`, "utf8");
+      await writeFile(join(workspace, "sha.txt"), sha);
+      const shaMark = bridge.seen.length;
+      const shaPut = await runClient(cli, [
+        "s3api", "put-object", "--bucket", "cert-s3-cli", "--key", "cli/sha.txt",
+        "--body", join(workspace, "sha.txt"), "--content-type", "text/plain",
+        "--checksum-algorithm", "SHA256",
+      ]);
+      expect(shaPut.status, shaPut.output).toBe(0);
+      const shaSeen = bridge.seen.slice(shaMark)
+        .find((entry) => entry.method === "PUT" && entry.path === "/s3/cert-s3-cli/cli/sha.txt");
+      expect(shaSeen, "the CLI did not PUT with an explicit checksum algorithm").toBeDefined();
+      expect(shaSeen!.headers["x-amz-sdk-checksum-algorithm"]).toBe("SHA256");
+      // Auch hier ein Header, kein Trailer, und auch hier stimmt die Summe der
+      // CRT mit der von `s3-sigv4.ts` ueberein.
+      expect(shaSeen!.headers["x-amz-trailer"]).toBeUndefined();
+      expect(shaSeen!.headers["x-amz-checksum-sha256"])
+        .toBe(checksumBase64("x-amz-checksum-sha256", sha));
+      expect((await storage.listObjects(admin, scope, bucket.id, { prefix: "cli/sha" })).objects
+        .map((object) => object.status)).toEqual(["clean"]);
+      // --- Die zwei Abweichungen, die 2.73.0 benannt hat --------------------
+      // Beide hat die CLI gefunden, und bei beiden hat sich QKERN bewegt.
+      //
+      // Erstens `max-keys=0`. Bis 2.73.0 war die untere Grenze 1, und die CLI
+      // brach mit `InvalidArgument` und Code 254 ab, wo S3 eine leere Liste
+      // gibt. Jetzt ist es eine leere Liste, und `IsTruncated` ist falsch:
+      // waere es wahr, gaebe es keine Fortsetzung dazu und ein Aufrufer, der
+      // ihr folgt, liefe endlos.
+      const zero = await runClient(cli, [
+        "s3api", "list-objects", "--bucket", "cert-s3-cli", "--max-keys", "0",
+      ]);
+      expect(zero.status, zero.output).toBe(0);
+      const zeroBody = JSON.parse(zero.output || "{}") as {
+        Contents?: unknown[]; IsTruncated?: boolean; NextMarker?: string;
+      };
+      expect(zeroBody.Contents ?? []).toEqual([]);
+      expect(zeroBody.IsTruncated ?? false).toBe(false);
+      expect(zeroBody.NextMarker).toBeUndefined();
+
+      // Zweitens die Gruppe auf zwei Seiten. `--page-size 2` zwingt die CLI zu
+      // mehreren Seiten, und `aws s3 ls` setzt dabei einen Delimiter. Vor 2.127
+      // stand `PRE sync/` zweimal in der Ausgabe, weil die Fortsetzung ein
+      // Schluessel **in** der Gruppe war. Jetzt wird eine begonnene Gruppe auf
+      // ihrer Seite fertig gelesen, und jeder Eintrag steht genau einmal da.
+      const paged = await runClient(cli, ["s3", "ls", "s3://cert-s3-cli/cli/", "--page-size", "2"]);
+      expect(paged.status, paged.output).toBe(0);
+      const prefixLines = paged.output.split("\n").filter((line) => line.includes("PRE "));
+      expect(prefixLines.map((line) => line.trim())).toEqual(["PRE sync/"]);
+      // Und nichts ist dabei verloren gegangen: dieselben Dateien wie ohne Paging.
+      const fileNames = paged.output.split("\n")
+        .filter((line) => line.trim() !== "" && !line.includes("PRE "))
+        .map((line) => line.trim().split(/\s+/).at(-1));
+      expect(fileNames.sort()).toEqual(["big.txt", "sha.txt", "small.txt"]);
+    } finally {
+      await bridge.close();
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 900_000);
+
+  it("(2.128) is driven by rclone, a client with no AWS code in it: copy, lsjson, a file split by rclone itself, a round trip checked against the files, and a delete", async () => {
+    const { s3, keys, storage } = await certificationRuntime();
+    const bridge = await bridgeTo(s3);
+    const workspace = await mkdtemp(join(tmpdir(), "qkern-rclone-"));
+    try {
+      const bucket = await storage.createBucket(admin, scope, {
+        name: "cert-s3-rclone", readPolicy: "service", writePolicy: "service",
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 32 * 1024 * 1024, quotaBytes: 128 * 1024 * 1024,
+      });
+      const pair = await keys.create(admin, scope, {
+        name: "Zertifizierung rclone", bucketIds: [bucket.id],
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      });
+      const rclone = await rcloneClient(workspace, bridge.origin, pair);
+      await warmBridge(bridge.origin, pair, "cert-s3-rclone");
+
+      const source = join(workspace, "tree");
+      await mkdir(source, { recursive: true });
+      await writeFile(join(source, "one.txt"), "qkern rclone one\n");
+      const big = Buffer.alloc(9 * 1024 * 1024);
+      for (let offset = 0; offset < big.byteLength; offset += 64) {
+        big.write(`qkern rclone chunked ${offset} `.padEnd(64, "."), offset, 64, "utf8");
+      }
+      await writeFile(join(source, "two.txt"), big);
+
+      // rclone teilt ab `--s3-upload-cutoff` selbst. 5 MiB, damit die 9 MiB
+      // sicher darueber fallen und die Teile gueltige S3-Teile sind.
+      const mark = bridge.seen.length;
+      const copied = await runClient(rclone, [
+        "copy", source, "qkern:cert-s3-rclone/rclone",
+        "--s3-upload-cutoff", "5Mi", "--s3-chunk-size", "5Mi",
+      ]);
+      expect(copied.status, copied.output).toBe(0);
+      const seen = bridge.seen.slice(mark);
+      expect(seen.filter((entry) => entry.method === "POST" && entry.query.includes("uploads")).length).toBe(1);
+      expect(seen.filter((entry) => entry.method === "PUT" && entry.query.includes("partNumber")).length)
+        .toBeGreaterThanOrEqual(2);
+      const stored = await storage.listObjects(admin, scope, bucket.id, { prefix: "rclone/" });
+      expect(stored.objects.map((object) => [object.key, object.status, object.sizeBytes])).toEqual([
+        ["rclone/one.txt", "clean", 17],
+        ["rclone/two.txt", "clean", big.byteLength],
+      ]);
+
+      // `rclone lsjson` liest die Liste mit seinem eigenen XML-Parser.
+      const listedJson = await runClient(rclone, ["lsjson", "qkern:cert-s3-rclone/rclone"]);
+      expect(listedJson.status, listedJson.output).toBe(0);
+      const entries = JSON.parse(listedJson.output) as Array<{ Path: string; Size: number }>;
+      expect(entries.map((entry) => [entry.Path, entry.Size]).sort())
+        .toEqual([["one.txt", 17], ["two.txt", big.byteLength]]);
+
+      // Der Rueckweg, von rclone geprueft: es laedt herunter und vergleicht
+      // gegen die Dateien. Faellt eine Groesse oder ein Byte auseinander, sagt
+      // `check` das und gibt einen Fehlercode.
+      const target = join(workspace, "back");
+      await mkdir(target, { recursive: true });
+      const down = await runClient(rclone, ["copy", "qkern:cert-s3-rclone/rclone", target]);
+      expect(down.status, down.output).toBe(0);
+      expect(sha256Base64(await readFile(join(target, "two.txt")))).toBe(sha256Base64(big));
+      const checked = await runClient(rclone, ["check", source, target]);
+      expect(checked.status, checked.output).toBe(0);
+
+      const deleted = await runClient(rclone, ["delete", "qkern:cert-s3-rclone/rclone/one.txt"]);
+      expect(deleted.status, deleted.output).toBe(0);
+      expect((await storage.listObjects(admin, scope, bucket.id, { prefix: "rclone/" })).objects
+        .map((object) => object.key)).toEqual(["rclone/two.txt"]);
+    } finally {
+      await bridge.close();
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 900_000);
 });
 
 type Seen = { method: string; path: string; query: string; headers: Record<string, string> };
@@ -626,11 +929,175 @@ async function bridgeTo(s3: ProjectStorageS3Endpoint): Promise<{ origin: string;
 
 type Issued = Awaited<ReturnType<ProjectStorageS3AccessKeyService["create"]>>;
 
+/**
+ * Ein fremder Client (2.127, 2.128): die Binaerdatei, die Umgebung, in der sie
+ * laeuft, und die Zeichenketten, die aus ihrer Ausgabe heraus muessen, bevor
+ * irgendetwas davon in ein Protokoll geraet.
+ */
+type ForeignClient = {
+  readonly name: string;
+  readonly binary: string;
+  readonly args: ReadonlyArray<string>;
+  readonly env: Record<string, string>;
+  readonly secrets: ReadonlyArray<string>;
+};
+
+/**
+ * Startet den fremden Client als Kindprozess und gibt zurueck, was er gesagt
+ * hat. Die Ausgabe wird vorher um die Zugangsdaten bereinigt: Ein Fall, der
+ * faellt, haengt seine Ausgabe an die Erwartung, und das Protokoll des Stacks
+ * wird archiviert. Ein Geheimnis darf dort nicht landen, auch nicht in einer
+ * Fehlermeldung des Clients.
+ *
+ * `--debug` gibt es hier darum nicht: Die CLI schreibt im Debugmodus die
+ * kanonische Anfrage samt Zugangsschluessel ins Protokoll.
+ */
+async function runClient(
+  client: ForeignClient,
+  args: ReadonlyArray<string>,
+  timeoutMs = 240_000,
+): Promise<{ status: number; output: string }> {
+  const child = spawn(client.binary, [...client.args, ...args], {
+    env: { ...client.env } as NodeJS.ProcessEnv,
+    stdio: ["ignore", "pipe", "pipe"] as const,
+  });
+  const chunks: Buffer[] = [];
+  child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+  child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+  const status = await new Promise<number>((resolve, reject) => {
+    child.on("error", (error: Error & { code?: string }) => reject(
+      error.code === "ENOENT"
+        ? new Error(`${client.name} is not installed in the certification image; the stack installs it with apk.`)
+        : error,
+    ));
+    child.on("close", (code: number | null) => resolve(code ?? 1));
+  }).finally(() => clearTimeout(timer));
+  const raw = Buffer.concat(chunks).toString("utf8");
+  const output = client.secrets.reduce((text, secret) => text.split(secret).join("<redacted>"), raw);
+  return { status, output };
+}
+
+/**
+ * Die AWS CLI (2.127). Der Endpunkt kommt als Argument, nicht aus einer Datei,
+ * weil die Bruecke jedes Mal einen anderen Port hat. Pfadadressierung steht in
+ * einer eigenen Konfigurationsdatei: Die Bruecke hat keinen DNS-Namen je
+ * Bucket, und `auto` waere eine Wette darauf, wie botocore einen
+ * IP-Endpunkt bewertet.
+ *
+ * Der Zugangsschluessel geht ueber die Umgebung, nicht in die Datei: Die Datei
+ * liegt im Arbeitsverzeichnis des Falls, die Umgebung stirbt mit dem Prozess.
+ * `HOME` zeigt daneben, damit kein `~/.aws` vom Rechner dazwischenkommt.
+ */
+async function awsCliClient(workspace: string, origin: string, pair: Issued): Promise<ForeignClient> {
+  const home = join(workspace, "aws-home");
+  await mkdir(home, { recursive: true });
+  const config = join(home, "config");
+  await writeFile(config, [
+    "[default]",
+    "region = us-east-1",
+    "s3 =",
+    "    addressing_style = path",
+    "    multipart_threshold = 8MB",
+    "    multipart_chunksize = 5MB",
+    "",
+  ].join("\n"));
+  return {
+    name: "the AWS CLI",
+    binary: process.env.QKERN_TEST_STORAGE_AWS_CLI ?? "aws",
+    args: ["--endpoint-url", `${origin}/s3`, "--no-cli-pager", "--output", "json"],
+    env: {
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: home,
+      AWS_CONFIG_FILE: config,
+      AWS_SHARED_CREDENTIALS_FILE: join(home, "credentials-absent"),
+      AWS_ACCESS_KEY_ID: pair.key.accessKeyId,
+      AWS_SECRET_ACCESS_KEY: pair.secret,
+      AWS_DEFAULT_REGION: "us-east-1",
+      // Ohne das sucht die CLI eine Instanzrolle und wartet dabei.
+      AWS_EC2_METADATA_DISABLED: "true",
+      AWS_PAGER: "",
+    },
+    secrets: [pair.secret],
+  };
+}
+
+/**
+ * rclone (2.128). Kein AWS-Code darin: eine eigene Implementierung von SigV4
+ * und von der S3-API, in Go geschrieben. Der staerkere Zeuge von beiden.
+ *
+ * Die Konfiguration kommt aus Umgebungsvariablen der Form
+ * `RCLONE_CONFIG_<REMOTE>_<SCHLUESSEL>`, damit das Geheimnis nicht in eine
+ * Datei muss. `provider = Other` statt `AWS`, weil rclone sonst Dinge annimmt,
+ * die nur bei AWS gelten; `force_path_style` aus demselben Grund wie bei der
+ * CLI.
+ */
+async function rcloneClient(workspace: string, origin: string, pair: Issued): Promise<ForeignClient> {
+  const home = join(workspace, "rclone-home");
+  await mkdir(home, { recursive: true });
+  return {
+    name: "rclone",
+    binary: process.env.QKERN_TEST_STORAGE_RCLONE ?? "rclone",
+    args: ["--config", join(home, "rclone.conf"), "--log-level", "ERROR"],
+    env: {
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: home,
+      RCLONE_CONFIG_QKERN_TYPE: "s3",
+      RCLONE_CONFIG_QKERN_PROVIDER: "Other",
+      RCLONE_CONFIG_QKERN_ENDPOINT: `${origin}/s3`,
+      RCLONE_CONFIG_QKERN_REGION: "us-east-1",
+      RCLONE_CONFIG_QKERN_FORCE_PATH_STYLE: "true",
+      RCLONE_CONFIG_QKERN_ACCESS_KEY_ID: pair.key.accessKeyId,
+      RCLONE_CONFIG_QKERN_SECRET_ACCESS_KEY: pair.secret,
+      RCLONE_CONFIG_QKERN_NO_CHECK_BUCKET: "true",
+    },
+    secrets: [pair.secret],
+  };
+}
+
+/**
+ * Der Healthcheck der Bruecke (2.127): eine echte Runde, nicht ein offener
+ * Port. Geschrieben und zurueckgelesen **ueber die Leitung**, mit derselben
+ * Signatur, die die Faelle daneben selbst rechnen, und mit dem Paar, mit dem
+ * nachher der fremde Client spricht.
+ *
+ * Nur am Port zu haengen waere zu wenig: Der Port ist offen, sobald
+ * `server.listen` zurueckkommt, auch wenn Provider, Scanner oder
+ * Schluesseldienst noch nicht tragen. Der Fall wuerde dann in der CLI
+ * scheitern, und die Diagnose waere "An error occurred (InternalError)" statt
+ * dem Grund. Hier faellt er an der Stelle, an der etwas fehlt.
+ */
+async function warmBridge(origin: string, pair: Issued, bucket: string): Promise<void> {
+  const payload = Buffer.from(`qkern bridge health ${Date.now()}`, "utf8");
+  const key = "health/round.txt";
+  const put = await fetch(sign(pair, "PUT", `/s3/${bucket}/${key}`, {
+    body: payload, headers: { "content-type": "text/plain" }, origin,
+  }));
+  if (put.status !== 200) {
+    throw new Error(`the bridge did not take a real round: PUT answered ${put.status} ${await put.text()}`);
+  }
+  if (put.headers.get("x-qkern-object-status") !== "clean") {
+    throw new Error(`the real scanner did not clear the health object: ${put.headers.get("x-qkern-object-status")}`);
+  }
+  const read = await fetch(sign(pair, "GET", `/s3/${bucket}/${key}`, { origin }));
+  if (read.status !== 200) {
+    throw new Error(`the bridge did not take a real round: GET answered ${read.status} ${await read.text()}`);
+  }
+  const served = Buffer.from(await read.arrayBuffer());
+  if (sha256Base64(served) !== sha256Base64(payload)) {
+    throw new Error("the bridge answered a real round with other bytes than were written");
+  }
+}
+
 /** Rechnet die Signatur wie ein S3-Client: HMAC-Kette aus dem Geheimnis, Header-Signatur. */
 function sign(issued: Issued, method: string, path: string, options: {
-  body?: Buffer; headers?: Record<string, string>; secret?: string;
+  body?: Buffer; headers?: Record<string, string>; secret?: string; origin?: string;
 } = {}): Request {
-  const url = new URL(`${QKERN}${path}`);
+  // `origin` seit 2.127: Die Signatur deckt den Host-Header. Wer die Anfrage
+  // nicht an `handle()` gibt, sondern ueber die Bruecke auf die Leitung legt,
+  // muss fuer deren Herkunft signieren, sonst faellt sie an der Signatur und
+  // nicht an der Sache.
+  const url = new URL(`${options.origin ?? QKERN}${path}`);
   const body = options.body;
   const headers = signSigV4Request({
     method, url,

@@ -468,10 +468,43 @@ describe("Project Storage S3 endpoint", () => {
 
     // Mit Delimiter zeigt NextMarker den letzten gesehenen Schluessel, nicht
     // den Gruppennamen: Die Fortsetzung ueberspringt nichts.
+    //
+    // Seit 2.127 ist dieser Schluessel der **letzte der Gruppe**, nicht der
+    // erste: Eine begonnene Gruppe wird auf ihrer Seite fertig gelesen, damit
+    // sie nicht auf zwei Seiten steht. `max-keys=1` erlaubt einen Eintrag, und
+    // die Gruppe ist dieser eine Eintrag, auch wenn zwei Schluessel darin
+    // liegen. Gefunden hat das die AWS CLI im Storage-Stack (2.127).
     const cut = await endpoint.handle(s3(issued, "GET", "/s3/open?delimiter=%2F&max-keys=1"));
     const cutXml = await cut.text();
     expect(cutXml).toContain("<CommonPrefixes><Prefix>notes/</Prefix></CommonPrefixes>");
-    expect(cutXml).toContain("<NextMarker>notes/2026/hallo.txt</NextMarker>");
+    expect(cutXml).toContain("<IsTruncated>true</IsTruncated>");
+    const cutMarker = /<NextMarker>([^<]+)<\/NextMarker>/.exec(cutXml)![1];
+    expect(cutMarker).toBe("notes/2027/plan.txt");
+    // Und die naechste Seite nennt die Gruppe nicht noch einmal.
+    const afterCut = await endpoint.handle(s3(issued, "GET",
+      `/s3/open?delimiter=%2F&max-keys=1&marker=${encodeURIComponent(cutMarker)}`));
+    const afterCutXml = await afterCut.text();
+    expect(afterCutXml).not.toContain("<Prefix>notes/</Prefix>");
+    expect(afterCutXml).toContain("<Key>readme.txt</Key>");
+    expect(afterCutXml).toContain("<IsTruncated>false</IsTruncated>");
+
+    // `max-keys=0` (2.127): eine leere Liste, kein Fehler, und ausdruecklich
+    // keine Fortsetzung. Vorher war es `InvalidArgument`, und die AWS CLI brach
+    // daran mit Code 254 ab.
+    for (const path of ["/s3/open?max-keys=0", "/s3/open?list-type=2&max-keys=0"]) {
+      const none = await endpoint.handle(s3(issued, "GET", path));
+      expect(none.status, path).toBe(200);
+      const noneXml = await none.text();
+      expect(noneXml, path).not.toContain("<Key>");
+      expect(noneXml, path).not.toContain("<CommonPrefixes>");
+      expect(noneXml, path).toContain("<IsTruncated>false</IsTruncated>");
+      expect(noneXml, path).not.toContain("<NextMarker>");
+      expect(noneXml, path).not.toContain("<NextContinuationToken>");
+    }
+    // Negativ bleibt ein Fehler: `-1` ist keine leere Liste, sondern Unsinn.
+    const negative = await endpoint.handle(s3(issued, "GET", "/s3/open?max-keys=-1"));
+    expect(negative.status).toBe(400);
+    expect(await errorCode(negative)).toBe("InvalidArgument");
 
     // Gemischte Formen werden benannt, nicht ausgelegt.
     for (const query of ["?continuation-token=abc", "?start-after=readme.txt", "?list-type=1", "?list-type=3"]) {

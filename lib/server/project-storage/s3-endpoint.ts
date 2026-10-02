@@ -888,12 +888,20 @@ export class ProjectStorageS3Endpoint {
    *
    * Die Fortsetzung ist in beiden Formen **ein Schluessel**, der zuletzt
    * angesehene, und sie ist ausschliessend. Bei einer Gruppe ist das nicht der
-   * Gruppenname, sondern der letzte Schluessel darin; wer von dort weiterlaeuft,
-   * sieht die Gruppe hoechstens noch einmal und ueberspringt nichts. Das
-   * unterscheidet sich von S3, das als `NextMarker` den Gruppennamen nennt und
-   * damit die ganze Gruppe ueberspringt, und es ist die vorsichtigere Seite:
-   * Ein doppelter `CommonPrefixes`-Eintrag ueber zwei Seiten kostet den
-   * Aufrufer nichts, ein uebersprungener Schluessel kostet ihn Daten.
+   * Gruppenname, sondern der letzte Schluessel darin. S3 nennt dort den
+   * Gruppennamen; ein Schluessel ist die vorsichtigere Seite, weil ein
+   * Gruppenname als ausschliessende Grenze die Schluessel der Gruppe nicht
+   * zuverlaessig hinter sich laesst (sie sortieren alle dahinter).
+   *
+   * Damit derselbe `CommonPrefixes`-Eintrag trotzdem nicht auf zwei Seiten
+   * erscheint (2.127), wird eine begonnene Gruppe auf ihrer Seite zu Ende
+   * gelesen: Ein Schluessel in einer bereits genannten Gruppe zaehlt nicht
+   * gegen `max-keys` und schneidet darum auch nicht ab. Die Fortsetzung liegt
+   * danach hinter dem letzten Schluessel der Gruppe. Gezaehlt und ausgegeben
+   * wird weiter, was S3 zaehlt und ausgibt: ein Eintrag je Gruppe.
+   *
+   * Gefunden hat das die AWS CLI: `aws s3 ls --page-size 2` hat die Gruppe
+   * zweimal gedruckt. Bis 2.73.0 stand die Abweichung begruendet still.
    */
   private async walkObjects(
     principal: ProjectStoragePrincipal,
@@ -910,6 +918,14 @@ export class ProjectStorageS3Endpoint {
     if (delimiter.length > 1) {
       throw new S3ResponseError(501, "NotImplemented", "Only single-character delimiters are implemented.");
     }
+    // `max-keys=0` (2.127): eine leere Liste, nicht ein Fehler. Bis 2.73.0 war
+    // die untere Grenze 1, und die AWS CLI brach darum mit
+    // `InvalidArgument` und Code 254 ab, wo S3 eine leere Antwort gibt. Der
+    // Kurzschluss steht hier und nicht in den beiden Antwortbauern, weil
+    // `IsTruncated` sonst `true` wuerde, ohne dass es eine Fortsetzung gaebe
+    // (beide Bauer schreiben `NextMarker` nur mit einem Schluessel): Ein
+    // Aufrufer, der der Fortsetzung folgt, liefe dann endlos.
+    if (maxKeys === 0) return { contents: [], commonPrefixes: [], truncated: false, nextKey: null };
     let cursor = options.after;
     const contents: PublicProjectStorageObject[] = [];
     const commonPrefixes: string[] = [];
@@ -923,12 +939,22 @@ export class ProjectStorageS3Endpoint {
       for (const object of result.objects) {
         const rest = object.key.slice(prefix.length);
         const cut = delimiter ? rest.indexOf(delimiter) : -1;
-        if (contents.length + commonPrefixes.length >= maxKeys) {
+        const common = cut >= 0 ? prefix + rest.slice(0, cut + delimiter.length) : null;
+        // Ein Schluessel in einer Gruppe, die schon genannt ist, zaehlt nicht
+        // und schneidet darum auch nicht ab (2.127). Vorher stand die Grenze
+        // vor der Einordnung, und eine Gruppe konnte mitten drin abgeschnitten
+        // werden: Die Fortsetzung war dann ein Schluessel **in** der Gruppe, und
+        // die naechste Seite nannte dieselbe Gruppe noch einmal. `aws s3 ls
+        // --page-size 2` hat `PRE sync/` zweimal gedruckt, und das war der
+        // Befund. Jetzt wird eine begonnene Gruppe auf ihrer Seite zu Ende
+        // gelesen, und die Fortsetzung liegt hinter ihrem letzten Schluessel.
+        // Gezaehlt wird dabei weiter, was S3 zaehlt: ein Eintrag je Gruppe.
+        const counts = common === null || !seenPrefixes.has(common);
+        if (counts && contents.length + commonPrefixes.length >= maxKeys) {
           truncated = true;
           break;
         }
-        if (cut >= 0) {
-          const common = prefix + rest.slice(0, cut + delimiter.length);
+        if (common !== null) {
           if (!seenPrefixes.has(common)) { seenPrefixes.add(common); commonPrefixes.push(common); }
         } else {
           contents.push(object);
@@ -970,7 +996,7 @@ export class ProjectStorageS3Endpoint {
     const prefix = query.get("prefix") ?? "";
     const delimiter = query.get("delimiter") ?? "";
     const encode = query.get("encoding-type") === "url";
-    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 1, MAX_KEYS);
+    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 0, MAX_KEYS);
     const marker = query.get("marker") ?? "";
     if (marker.length > 1024) {
       throw new S3ResponseError(400, "InvalidArgument", "Argument marker is longer than an object key may be.");
@@ -997,7 +1023,7 @@ export class ProjectStorageS3Endpoint {
     const prefix = query.get("prefix") ?? "";
     const delimiter = query.get("delimiter") ?? "";
     const encode = query.get("encoding-type") === "url";
-    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 1, MAX_KEYS);
+    const maxKeys = boundedInteger(query.get("max-keys"), MAX_KEYS, 0, MAX_KEYS);
     const token = query.get("continuation-token");
     const after = token ? decodeToken(token) : (query.get("start-after") || undefined);
     const walk = await this.walkObjects(principal, scope, bucket, { prefix, delimiter, maxKeys, after });

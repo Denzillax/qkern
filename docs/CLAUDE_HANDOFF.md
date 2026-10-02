@@ -270,6 +270,57 @@ Grossbuchstaben.
   `(2.125)` in `tests/receiver.integration.test.ts`, letzterer am echten
   HTTPS-Empfaenger, der sagt, was bei ihm angekommen ist.
 
+- 2.127 **Zwei fremde Werkzeuge fahren den S3-Endpunkt, und sie haben zwei
+  Abweichungen gefunden.** Keine Migration. Der Produktteil steckt allein in
+  `lib/server/project-storage/s3-endpoint.ts`, die Faelle in
+  `tests/project-storage-s3-endpoint.integration.test.ts` (`2.127` AWS CLI v2,
+  `2.128` rclone), und die beiden Clients kommen per `apk` in den
+  Zertifizierungscontainer (`docker-compose.storage-certification.yml`).
+
+  **Warum kein Next-Server im Stack.** Die Clients brauchen einen echten
+  HTTP-Endpunkt, und den gibt die Bruecke, die der Fall selbst oeffnet
+  (`bridgeTo()`, seit `2.99` da). Ein Next-Dienst waere der naheliegende Weg
+  gewesen, geht aber nicht ohne eine zweite Verdrahtung: `getProjectStorageS3-
+  Endpoint()` zieht `getProjectStorageService()` und
+  `getProjectStorageS3AccessKeyService()`, und im Betriebsmodus `memory` baut
+  **jede von beiden ihre eigene** `MemoryProjectStorageRepository`. Die Maps
+  liegen in der Instanz, nicht im Modul. Ein Bucket, den der Dienst anlegt,
+  existiert fuer den Schluesseldienst also nicht, und ein Paar fuer diesen
+  Bucket laesst sich gar nicht ausstellen. **Das ist ein echter Fehler in der
+  Verdrahtung, nicht nur eine Testsorge**, und er ist nicht behoben: Der
+  S3-Endpunkt ist im Modus `memory` nicht benutzbar. Wer ihn dort braucht,
+  muss sich die beiden Dienste eine Repository teilen lassen.
+
+  **Was die Clients gefunden haben, und was sich bewegt hat.** Beides war in
+  2.73.0 benannt und steht jetzt nicht mehr offen:
+  - `max-keys=0` antwortete mit `400 InvalidArgument`, wo S3 eine leere Liste
+    gibt. `aws s3api list-objects --max-keys 0` brach damit mit Code 254 ab.
+    Jetzt eine leere Liste mit `IsTruncated=false` und ohne Fortsetzung. Der
+    Kurzschluss sitzt in `walkObjects` und nicht in den Antwortbauern, weil
+    `IsTruncated=true` ohne Fortsetzung einen blaetternden Aufrufer endlos
+    laufen liesse.
+  - Derselbe `CommonPrefixes`-Eintrag konnte auf zwei Seiten stehen, weil die
+    Grenze eine Gruppe mitten drin abschnitt. `aws s3 ls --page-size 2` druckte
+    `PRE sync/` zweimal. Jetzt zaehlt ein Schluessel in einer bereits genannten
+    Gruppe nicht gegen `max-keys` und schneidet darum nicht ab: Die Gruppe wird
+    auf ihrer Seite fertig gelesen, die Fortsetzung liegt hinter ihrem letzten
+    Schluessel, und kein Schluessel wird uebersprungen.
+
+  **Was die CLI anders macht als das SDK**, und warum ein fremdes Werkzeug der
+  bessere Zeuge ist: Sie bringt die AWS-CRT in C mit, puffert die Datei,
+  signiert die Nutzlast als Ganzes und legt die Pruefsumme in einen **Header**
+  statt als Trailer hinter `aws-chunked`. Standard ist CRC64NVME, nicht CRC32,
+  und sie fragt mit `Expect: 100-continue` nach. Dieser Weg durch den Endpunkt
+  war vor `2.127` von keinem echten Client gefahren. Nebenbei stimmt die
+  CRC64NVME der CRT Byte fuer Byte mit der aus `s3-sigv4.ts`.
+
+  **Offen, und hier aufgeschrieben statt woanders behauptet**: Nexts eigene
+  Umwandlung von `node:http` nach `Request` hat niemand gesehen; der Endpunkt
+  erzwingt keine Mindestgroesse von 5 MiB fuer ein Teil, das nicht das letzte
+  ist, wo S3 `EntityTooSmall` gibt (kein Client ist darueber gestolpert, weil
+  beide sich an die Regel halten); virtuell gehostete Adressen gibt es nicht,
+  beide Clients fahren darum pfadadressiert.
+
 - 2.123 **Der S3-Endpunkt kopiert jetzt ein Teil und listet in der alten Form.**
   Keine Migration, kein neuer Dienstaufruf: beides steckt allein in
   `lib/server/project-storage/s3-endpoint.ts`.
