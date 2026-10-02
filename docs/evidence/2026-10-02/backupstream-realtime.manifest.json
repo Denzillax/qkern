@@ -1,0 +1,18 @@
+{
+  "stack": "Realtime unter Production gegen TLS-PostgreSQL",
+  "log": "backupstream-realtime.log",
+  "commit": "832d7b0a3e75fc1ad5fb405e20963692ca90c4e9",
+  "commitSubject": "Ein Backup, das nicht mehr durch den Speicher geht, bestellbar und getaktet",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 78,
+  "testFiles": "1 passed (1)",
+  "tests": "19 passed (19)",
+  "passed": 19,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "node:24-alpine"
+  ]
+}

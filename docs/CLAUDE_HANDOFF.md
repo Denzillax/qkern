@@ -267,6 +267,69 @@ Grossbuchstaben.
   Schreibverb, die ein Backup bestellt, und kein Produktweg zieht ein
   Basisbackup der Steuerungsdatenbank.
 
+- 2.129 / 2.130 (Zweig `slice/backupstream`) **Stueckweise, mit Route und mit
+  Zeitplan.** Migration `0084_project_database_backup_schedules.sql` traegt drei
+  Dinge nach, und zwar genau die drei, die `2.73.0` selbst als offen notiert hat.
+
+  **1. Der Dump geht nicht mehr durch den Speicher.** Die Ausgabe von `pg_dump`
+  geht als **Strom** durch die Verschluesselung in die Teile eines
+  Multipart-Uploads. Strom und nicht Datei, und der Grund ist nicht Platz: eine
+  Datei waere ein **entschluesselter** Dump einer Mandantendatenbank auf einem
+  Wirt des Betreibers, und dieselbe Zusage stand fuer die Wiederherstellung schon
+  da. Je Teil ein Siegel, und seine AAD bindet Nummer, ein `final`-Zeichen und
+  das **Tag des Vorgaengers**; damit haelt der Umschlag gegen Vertauschen,
+  Weglassen in der Mitte, Abschneiden am Ende und Einfuegen. Die **Gesamtzahl**
+  steht bewusst **nicht** in der AAD: beim Siegeln des ersten Teils ist sie
+  unbekannt, und sie zu kennen hiesse, den ganzen Dump vorher zu haben. Sie steht
+  in der Zeile (`part_count`), weil der Leser Bytebereiche rechnen muss; weicht
+  sie von Kette und `final`-Zeichen ab, gewinnt der Umschlag.
+
+  **Die neue Obergrenze ist gerechnet und nicht gesetzt:** Nutzbytes je Teil mal
+  Teilegrenze des S3-Protokolls, also `64 MiB * 10 000 = 625 GiB`
+  (`ProjectDatabaseBackupService.maxDumpBytes`). Vorher waren es 256 MiB, und sie
+  war durch keinen Lauf geprueft. Jetzt prueft `(2.129)` **dieselbe Rechnung** mit
+  `5 MiB * 2 = 10 MiB` gegen einen Dump von 12 MB -- derselbe Code, zwei andere
+  Zahlen, keine Gigabytes. Artefakte im Format von `2.73.0` (`artifact_format =
+  'single'`) bleiben lesbar; ein Weg, der sein eigenes altes Format nicht mehr
+  liest, ist eine Aufbewahrung, die mit dem Release endet.
+
+  **2. Die Route.** `GET`/`POST .../database/backups`, `GET .../backups/{id}`,
+  `POST .../backups/{id}/restore`. **Kein Projekt-Key**, und das ist die
+  Entscheidung: ein Projekt-Key liegt in einer Anwendung, und wer irgendwo einen
+  findet, soll nicht den Dump jeder Zeile anstossen koennen. Also die
+  Rollenmatrix der Control Plane, mit drei Rechten: `project_backup_read`
+  (Eigentuemer, Administrator, Deployer, Support), `project_backup_request`
+  (Eigentuemer, Administrator) und `project_backup_restore` -- **nur**
+  Eigentuemer, weil eine Wiederherstellung eine Datenbank erschafft, die Geld
+  kostet, geloeschte Daten in eine zweite Datenbank zurueckbringt, die niemand in
+  einem Loeschauftrag genannt hat, und nicht wiederholbar ist.
+
+  Die Route **fuehrt die Wiederherstellung nicht aus**: `CREATEDB` hat genau ein
+  Prozess. Sie schreibt einen Auftrag in die Zeile und antwortet 202; der
+  Provisioner nimmt ihn in derselben Runde, in der er Backups fahrt, und **vor**
+  einem Backup, denn dort wartet ein Mensch. Dafuer bekommt `qkern_runtime` ein
+  `UPDATE` auf **vier Spalten** und nicht auf die Tabelle -- die Zusage aus 0083
+  ("kein Weg, ein Backup zu behaupten") bleibt damit wortwoertlich stehen.
+
+  **3. Der Zeitplan**, und zwar **kein zweiter Scheduler**. Geprueft wurde zuerst
+  der vorhandene Cron-Weg, und er traegt es nicht: eine Cron-Definition zeigt auf
+  eine Compute-Funktion des Mandanten, laeuft im Compute-Prozess, ist
+  mandantenbearbeitbar, und ein Backup braucht einen Takt und keinen
+  Cron-Ausdruck mit Zeitzone. Was entstand, ist eine Pflicht in der Runde, die es
+  schon gibt: `runRound` ruft `tick()`. Eine Zeitplanzeile entsteht per **Trigger**
+  mit jeder Bindung (`development` abgeschaltet), **die Frist je Umgebung steht
+  dort** (`retention_days`, vorher eine Prozessvariable fuer alle Projekte
+  gleich), ein Takt ueber einem noch laufenden Auftrag legt keinen zweiten an und
+  zaehlt es in `busy_count`, nachgeholt wird nichts, und `pruneExpired` hat
+  endlich einen Aufrufer.
+
+  Stacks: `test:backup:docker` 3 Faelle (vorher 2), Fall `(2.129)`;
+  `test:postgres:docker` 255 (vorher 254), Fall `(2.130)` fuer Route, Rollen und
+  Mandantengrenze. **Offen**: Die Console liest den Katalog weiterhin nicht -- das
+  ist jetzt eine fehlende Verdrahtung und kein fehlender Weg. Kein Produktweg
+  zieht ein Basisbackup der Steuerungsdatenbank. Und dass 625 GiB wirklich
+  durchgehen, belegt kein Lauf; geprueft ist die Rechnung, nicht die Zahl.
+
 - 2.124 / 2.125 **QKERN gibt den Anschluss jetzt weiter.** Migration
   `0082_trace_spans_and_outbound_anchor.sql` schliesst die Luecke, die `trace.ts`
   seit 2.72.0 selbst unter "Offen" fuehrte: Eine Spur hoerte an der

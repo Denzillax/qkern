@@ -28,11 +28,21 @@ import type { PointInTimeRecoveryOverview } from "@/lib/server/backup/point-in-t
  * logisch, verschluesselt, in den Objektspeicher, und Migration 0083 fuehrt
  * darueber einen Katalog. Zwei der Saetze dieser Seite sind damit umgedreht
  * worden (`product_path` von "gibt es nicht" auf "Grenze", `no_catalogue` von
- * "gibt es nicht" auf "gibt es wirklich"), und zwei weitere umgeschrieben. Was
- * **nicht** dazugekommen ist: ein Knopf, eine Route mit Schreibverb und ein
- * Produktweg zum Basisbackup der Steuerungsdatenbank. Die Seite liest darum
- * weiterhin nur die Route unter `point-in-time` und nicht den neuen Katalog;
- * sie zu verdrahten ist eine eigene Arbeit und keine Nebenwirkung von 2.126.
+ * "gibt es nicht" auf "gibt es wirklich").
+ *
+ * **Und was sich mit 2.129 geaendert hat.** Jetzt gibt es auch die Route und den
+ * Zeitplan, und damit stimmt der Satz `no_order_route` nicht mehr: `GET` und
+ * `POST .../database/backups`, `GET .../backups/{id}` und
+ * `POST .../backups/{id}/restore`, dazu eine Zeitplanzeile je Umgebung in 0084.
+ * Der Satz ist darum umgedreht worden, und mit ihm `BACKUPS_ANSWER` und
+ * `BACKUPS_HONESTY`.
+ *
+ * Was **nicht** dazugekommen ist: ein Knopf auf dieser Seite und ein Produktweg
+ * zum Basisbackup der Steuerungsdatenbank. Die Seite liest weiterhin nur die
+ * Route unter `point-in-time` und nicht den Katalog. Das ist jetzt eine andere
+ * Aussage als vor 2.129: vorher fehlte der Weg, jetzt fehlt die Verdrahtung --
+ * und genau so steht es in `BACKUPS_HONESTY`, damit niemand das eine fuer das
+ * andere haelt.
  *
  * Warum die Seite nichts Eigenes liest: Die einzigen Angaben, die diese Route
  * tragen kann, sind die Erklaerung des Betreibers ueber sein WAL-Archiv und die
@@ -44,10 +54,10 @@ import type { PointInTimeRecoveryOverview } from "@/lib/server/backup/point-in-t
 export const BACKUPS_QUESTION = "Wer sichert diese Projektdatenbank, und wann zuletzt?";
 
 export const BACKUPS_ANSWER =
-  "Seit 2.126 sichert QKERN diese Projektdatenbank selbst: ein logisches Backup genau dieser Datenbank, verschlüsselt, im Objektspeicher, mit einem Katalog in der Kontrollebene. Gefahren wird es vom Provisioner-Prozess in seiner Leerlaufrunde. Was es weiterhin nicht gibt, ist ein Knopf auf dieser Seite und eine Route, die ein Backup bestellt; und das Basisbackup der Steuerungsdatenbank zieht nach wie vor nur der Drill unter tests/.";
+  "Seit 2.126 sichert QKERN diese Projektdatenbank selbst: ein logisches Backup genau dieser Datenbank, verschlüsselt, im Objektspeicher, mit einem Katalog in der Kontrollebene. Seit 2.129 geht der Dump stückweise als Strom in den Objektspeicher, es gibt eine Route, die ein Backup bestellt und eine Wiederherstellung anstösst, und einen Zeitplan je Umgebung. Gefahren wird beides vom Provisioner-Prozess in seiner Leerlaufrunde. Was es weiterhin nicht gibt, ist ein Knopf auf dieser Seite; und das Basisbackup der Steuerungsdatenbank zieht nach wie vor nur der Drill unter tests/.";
 
 export const BACKUPS_HONESTY =
-  "Der Katalog in der Kontrollebene hält die Backups dieser Projektdatenbank, und zwar unter Zeilensicherheit je Organisation. Diese Seite liest ihn noch nicht: sie liest dieselbe Route wie Point-in-time Recovery, und die kennt den Katalog nicht. Ein Zeitpunkt des letzten Backups steht deshalb in der Datenbank und nicht auf dieser Seite.";
+  "Der Katalog in der Kontrollebene hält die Backups dieser Projektdatenbank, und seit 2.129 gibt es eine Route, die ihn herausgibt. Diese Seite ruft sie nicht: sie liest dieselbe Route wie Point-in-time Recovery, und die kennt den Katalog nicht. Was hier fehlt, ist also nicht mehr der Weg, sondern die Verdrahtung dieser Seite, und ein Zeitpunkt des letzten Backups steht deshalb in der Antwort der Route und nicht auf dieser Seite.";
 
 export const BACKUPS_SAME_EVIDENCE =
   "Gelesen wird dieselbe Route wie unter Point-in-time Recovery und unter „In neues Projekt wiederherstellen“, und nur sie. Eine eigene Route hätte dieselbe Erklärung und dieselbe Evidenzdatei ein zweites Mal gelesen und nichts hinzugefügt.";
@@ -96,7 +106,7 @@ export const BACKUPS_FINDING_TEXTS: Record<BackupsFindingItem, { verdict: Backup
     // Steuerungsdatenbank nicht.
     verdict: "limit",
     label: "Ein Produktweg zu einem Basisbackup",
-    explains: "Für die Projektdatenbank gibt es ihn seit 2.126: lib/server/backup/project-database-dump.ts ruft pg_dump als Kindprozess, mit einer eigenen Leserolle und einem Zugangsdatum aus dem Vault. Für ein Basisbackup gibt es ihn nicht: pg_basebackup, pg_dumpall und pg_receivewal ruft im Produkt keine Stelle auf. Ein Basisbackup zieht nur der Drill unter tests/, und zwar vom Wegwerf-Server seines Stacks.",
+    explains: "Für die Projektdatenbank gibt es ihn seit 2.126: lib/server/backup/project-database-dump.ts ruft pg_dump als Kindprozess, mit einer eigenen Leserolle und einem Zugangsdatum aus dem Vault. Seit 2.129 geht seine Ausgabe als Strom durch die Verschlüsselung in die Teile eines Multipart-Uploads, also nie als Ganzes durch den Speicher und nie entschlüsselt auf eine Platte; die Obergrenze ist seither gerechnet statt gesetzt, nämlich Nutzbytes je Teil mal Teilegrenze des S3-Protokolls, mit den Voreinstellungen 625 GiB. Für ein Basisbackup gibt es ihn nicht: pg_basebackup, pg_dumpall und pg_receivewal ruft im Produkt keine Stelle auf. Ein Basisbackup zieht nur der Drill unter tests/, und zwar vom Wegwerf-Server seines Stacks.",
   },
   test_path: {
     verdict: "exists",
@@ -113,12 +123,15 @@ export const BACKUPS_FINDING_TEXTS: Record<BackupsFindingItem, { verdict: Backup
     // Basisbackup der Steuerungsdatenbank, und das steht im Text.
     verdict: "exists",
     label: "Ein Katalog vergangener Läufe",
-    explains: "Migration 0083 legt project_database_backups an: je Backup eine Zeile mit Zustand, Objektschlüssel, Prüfsumme, Grösse, eingewickeltem Datenschlüssel, Manifest und Ablauf, mit Zeilensicherheit je Organisation. Für das Basisbackup der Steuerungsdatenbank gibt es weiterhin keine Zeile; die einzigen Zeitpunkte dort bringt die Evidenz des Drills mit.",
+    explains: "Migration 0083 legt project_database_backups an: je Backup eine Zeile mit Zustand, Objektschlüssel, Prüfsumme, Grösse, eingewickeltem Datenschlüssel, Manifest und Ablauf, mit Zeilensicherheit je Organisation. Migration 0084 trägt dazu die Form des Artefakts, eine bestellte Wiederherstellung und einen Zeitplan je Umgebung, in dem auch die Aufbewahrungsfrist dieser Umgebung steht. Für das Basisbackup der Steuerungsdatenbank gibt es weiterhin keine Zeile; die einzigen Zeitpunkte dort bringt die Evidenz des Drills mit.",
   },
   no_order_route: {
-    verdict: "missing",
+    // Seit 2.129 keine Abwesenheit mehr. Die Kennung bleibt `no_order_route`,
+    // weil sie in der Ansicht und in drei Uebersetzungskatalogen steht und ein
+    // Umbenennen daran nichts verbessert haette.
+    verdict: "exists",
     label: "Eine Route, die ein Backup bestellt",
-    explains: "Unter den Backup-Routen einer Umgebung steht genau ein Pfad, point-in-time, und er kennt nur GET. Es gibt kein Schreibverb, an das ein Knopf sich hätte hängen können, und diese Seite legt auch keines an.",
+    explains: "Seit 2.129 gibt es sie: POST auf die Backup-Routen einer Umgebung stellt einen Auftrag ein, GET gibt den Katalog und den Zeitplan heraus, und POST auf restore stösst eine Wiederherstellung an. Sie geht durch die Rollenmatrix der Kontrollebene und nicht über einen Projekt-Key: wer irgendwo einen Key findet, soll keinen Dump jeder Zeile anstossen können. Lesen dürfen Eigentümer, Administrator, Deployer und Support, bestellen Eigentümer und Administrator, zurückholen nur der Eigentümer. Ein Knopf auf dieser Seite hängt daran weiterhin nicht.",
   },
 };
 

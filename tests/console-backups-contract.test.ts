@@ -138,8 +138,20 @@ describe("console backups contract", () => {
     const view = await code(VIEW);
     expect(view).toContain("/database/backups/point-in-time");
     expect(view.match(/fetch\(/g) ?? []).toHaveLength(1);
+    // Seit 2.129 stehen unter den Backup-Routen drei Eintraege statt einem: der
+    // Katalog selbst (`route.ts`), ein einzelnes Backup (`[backupId]`) und
+    // weiterhin `point-in-time`. **Diese Seite ruft keinen davon**, und genau das
+    // prueft die Zeile darueber: ein `fetch` und kein zweites. Was der Fall
+    // vorher mitbelegte -- dass es den Weg nicht gibt -- belegt er nicht mehr,
+    // weil es ihn gibt; was er weiter belegt, ist, dass die Seite ihn nicht
+    // benutzt und auch keinen eigenen anlegt.
     const entries = (await readdir(path.resolve(process.cwd(), BACKUP_ROUTES))).sort();
-    expect(entries).toEqual(["point-in-time"]);
+    expect(entries).toEqual(["[backupId]", "point-in-time", "route.ts"]);
+    for (const forbidden of [
+      "/database/backups\"", "/database/backups`", "method: \"POST\"", "restore",
+    ]) {
+      expect(view, forbidden).not.toContain(forbidden);
+    }
   });
 
   it("derives the standpoint from the declaration and the drill, independently of each other", () => {
@@ -194,11 +206,28 @@ describe("console backups contract", () => {
       if (EXEMPT.has(file)) continue;
       if (/\bpg_dump\b/.test(await code(file))) dumping.push(file);
     }
-    expect(dumping).toEqual(["lib/server/backup/project-database-dump.ts"]);
+    // Zwei Stellen seit 2.129, und beide sind Erklaerungen und kein zweiter Weg:
+    // `project-database-dump.ts` ruft `pg_dump` wirklich, und `lib/openapi.ts`
+    // nennt den Namen in der Beschreibung der Route, um zu sagen, dass der
+    // Next-Prozess ihn **nicht** hat. Mehr als diese zwei waere ein zweiter Weg
+    // zum Dump, und der Fall faellt dann.
+    expect(dumping).toEqual([
+      "lib/openapi.ts",
+      "lib/server/backup/project-database-dump.ts",
+    ]);
+    expect(await code("lib/openapi.ts")).toContain("no pg_dump");
     // Und zwar als Kindprozess mit dem Passwort in der Umgebung und nicht in
     // `argv`: in `argv` stuende es in `ps`.
     const dump = await source("lib/server/backup/project-database-dump.ts");
-    expect(dump).toContain("PGPASSWORD: run.password");
+    // Seit 2.129 bauen zwei Stellen einen Kindprozess (der Dump als Strom und
+    // `psql`), und die Umgebung dafuer kommt aus **einer** Funktion. Genau das
+    // prueft dieser Fall: eine Stelle, die `PGPASSWORD` setzt, und keine zweite,
+    // die es vergisst oder `process.env` erbt.
+    expect(dump).toContain("PGPASSWORD: password");
+    const dumpCode = await code("lib/server/backup/project-database-dump.ts");
+    expect(dumpCode.match(/PGPASSWORD/g) ?? []).toHaveLength(1);
+    expect(dumpCode).toContain("function childEnvironment(password: string)");
+    expect(dumpCode.match(/env: childEnvironment\(run\.password\)/g) ?? []).toHaveLength(2);
     expect(dump).toContain("sslmode=verify-full");
     expect(await code("lib/server/backup/project-database-dump.ts")).not.toMatch(/password=\$\{/);
 
@@ -207,12 +236,22 @@ describe("console backups contract", () => {
       .toContain("lib/server/backup/project-database-dump.ts ruft pg_dump als Kindprozess");
     expect(BACKUPS_FINDING_TEXTS.product_path.explains)
       .toContain("pg_basebackup, pg_dumpall und pg_receivewal ruft im Produkt keine Stelle auf");
+    // Und die Grenze, die der Satz nennt, ist die gerechnete aus 2.129 und nicht
+    // mehr die 256 MiB aus 2.73.0.
+    expect(BACKUPS_FINDING_TEXTS.product_path.explains).toContain("625 GiB");
+    expect(BACKUPS_FINDING_TEXTS.product_path.explains).not.toContain("256 MiB");
 
     // Die eine Stelle, die ein Basisbackup wirklich zieht, liegt unter tests/.
     expect(await source(DRILL_TEST)).toContain('execFileSync("pg_basebackup"');
   });
 
-  it("finds no write verb under the backup routes, so a button had nothing to hook onto", async () => {
+  it("finds the write verbs that 2.129 added, every one behind the control-plane role matrix and none behind a project key", async () => {
+    // Bis 2.129 war dies der Fall "kein Schreibverb, also hatte ein Knopf
+    // nichts, woran er sich haengen konnte". Jetzt gibt es Schreibverben, und
+    // der Fall dreht sich mit: Er nagelt fest, **welche** es gibt und **durch
+    // welche Tuer** sie gehen. Das ist die scharfere Zusage, denn ein
+    // Schreibverb hinter einem Projekt-Key waere genau der Fehler, den die Route
+    // begruendet nicht macht.
     const files: string[] = [];
     async function walk(directory: string): Promise<void> {
       for (const entry of await readdir(path.resolve(process.cwd(), directory), { withFileTypes: true })) {
@@ -222,12 +261,51 @@ describe("console backups contract", () => {
       }
     }
     await walk(BACKUP_ROUTES);
-    expect(files).toEqual([`${BACKUP_ROUTES}/point-in-time/route.ts`]);
-    const verbs = [...(await code(files[0])).matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)]
-      .map((match) => match[1]);
-    expect(verbs).toEqual(["GET"]);
+    expect(files.sort()).toEqual([
+      `${BACKUP_ROUTES}/[backupId]/restore/route.ts`,
+      `${BACKUP_ROUTES}/[backupId]/route.ts`,
+      `${BACKUP_ROUTES}/point-in-time/route.ts`,
+      `${BACKUP_ROUTES}/route.ts`,
+    ]);
+    const verbsOf = async (file: string) =>
+      [...(await code(file)).matchAll(/export const (GET|POST|PUT|PATCH|DELETE)\b/g)]
+        .map((match) => match[1])
+        .concat([...(await code(file)).matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)]
+          .map((match) => match[1]))
+        .sort();
+    expect(await verbsOf(`${BACKUP_ROUTES}/point-in-time/route.ts`)).toEqual(["GET"]);
+    expect(await verbsOf(`${BACKUP_ROUTES}/route.ts`)).toEqual(["GET", "POST"]);
+    expect(await verbsOf(`${BACKUP_ROUTES}/[backupId]/route.ts`)).toEqual(["GET"]);
+    expect(await verbsOf(`${BACKUP_ROUTES}/[backupId]/restore/route.ts`)).toEqual(["POST"]);
+    // Es gibt kein `PUT`, kein `PATCH` und kein `DELETE`: ein Backup laesst sich
+    // nicht von aussen aendern und nicht von aussen loeschen. Was es loescht, ist
+    // der Aufraeumer an der Frist.
+    for (const file of files) {
+      for (const forbidden of ["PUT", "PATCH", "DELETE"]) {
+        expect(await verbsOf(file), `${file}: ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+    // Und jede der drei neuen Routen geht durch die Rollenmatrix und nicht durch
+    // `generatedDataContext`, also nicht durch einen Projekt-Key.
+    for (const file of [
+      `${BACKUP_ROUTES}/route.ts`,
+      `${BACKUP_ROUTES}/[backupId]/route.ts`,
+      `${BACKUP_ROUTES}/[backupId]/restore/route.ts`,
+    ]) {
+      const route = await code(file);
+      expect(route, file).toContain("requireCapability");
+      expect(route, file).not.toContain("generatedDataContext");
+      expect(route, file).not.toContain("projectApiKeyService");
+    }
+    // Und jedes Schreibverb hat den Ursprungsriegel.
+    for (const file of [`${BACKUP_ROUTES}/route.ts`, `${BACKUP_ROUTES}/[backupId]/restore/route.ts`]) {
+      expect(await code(file), file).toContain("hasTrustedOrigin");
+    }
+    expect(BACKUPS_FINDING_TEXTS.no_order_route.verdict).toBe("exists");
     expect(BACKUPS_FINDING_TEXTS.no_order_route.explains)
-      .toContain("steht genau ein Pfad, point-in-time, und er kennt nur GET");
+      .toContain("Seit 2.129 gibt es sie");
+    expect(BACKUPS_FINDING_TEXTS.no_order_route.explains)
+      .toContain("zurückholen nur der Eigentümer");
   });
 
   it("finds exactly one table in the migrations that holds a backup, and it is the tenant catalogue", async () => {
@@ -242,9 +320,19 @@ describe("console backups contract", () => {
     // Seit 2.126 genau eine, und zwar der Katalog der Projektdatenbank-Backups
     // aus 0083. Eine zweite waere eine zweite Antwort auf dieselbe Frage, und
     // der Fall faellt dann.
+    // Seit 2.129 zwei: der Katalog aus 0083 und der Zeitplan aus 0084. Eine
+    // dritte waere eine zweite Antwort auf dieselbe Frage, und der Fall faellt
+    // dann. Warum der Zeitplan eine eigene Tabelle ist und nicht eine Spalte am
+    // Katalog: ein Zeitplan gilt je Umgebung und ein Backup ist ein Ereignis.
     expect(backupish).toEqual([
       { migration: "0083_project_database_backups.sql", table: "project_database_backups" },
+      { migration: "0084_project_database_backup_schedules.sql", table: "project_database_backup_schedules" },
     ]);
+    const schedules = await source(`${MIGRATIONS}/0084_project_database_backup_schedules.sql`);
+    expect(schedules).toContain("ALTER TABLE project_database_backup_schedules FORCE ROW LEVEL SECURITY;");
+    expect(schedules).toContain("organization_id = qkern_current_organization_id()");
+    // Die Frist je Umgebung steht dort und nirgends sonst.
+    expect(schedules).toContain("retention_days integer NOT NULL DEFAULT 30");
     const catalogue = await source(`${MIGRATIONS}/0083_project_database_backups.sql`);
     // Die Mandantengrenze steht in der Migration und nicht im Dienst.
     expect(catalogue).toContain("ALTER TABLE project_database_backups FORCE ROW LEVEL SECURITY;");
@@ -253,6 +341,9 @@ describe("console backups contract", () => {
     expect(BACKUPS_FINDING_TEXTS.no_catalogue.explains)
       .toContain("Migration 0083 legt project_database_backups an");
     expect(BACKUPS_HONESTY).toContain("Der Katalog in der Kontrollebene hält die Backups dieser Projektdatenbank");
+    // Der Satz sagt seit 2.129 etwas anderes: nicht mehr "es gibt den Weg
+    // nicht", sondern "diese Seite ist nicht verdrahtet".
+    expect(BACKUPS_HONESTY).toContain("nicht mehr der Weg, sondern die Verdrahtung dieser Seite");
     // Und die Seite liest ihn noch nicht. Das ist der Satz, der sie ehrlich
     // haelt; wer die Ansicht verdrahtet, laesst diesen Fall fallen.
     expect(await code(VIEW)).not.toContain("project_database_backups");

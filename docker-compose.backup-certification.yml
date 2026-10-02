@@ -240,6 +240,8 @@ services:
       QKERN_TEST_BACKUP_S3_SECRET_ACCESS_KEY: qkern_cert_secret_change_me_32bytes
       QKERN_TEST_BACKUP_KEY_DIRECTORY: /run/qkern/backup-keys
       QKERN_TEST_BACKUP_KEY_ID: drill-tenant-kek
+      # --- Fall (2.129): der stueckweise Weg, die Grenze und der Zeitplan ---
+      QKERN_TEST_PROJECT_BACKUP_STREAM_DRILL: "true"
       DATABASE_SSL: require
     command:
       - "sh"
@@ -313,12 +315,14 @@ services:
           --exclude=./docs/evidence \
           -cf - . | tar -C /workspace/qkern -xf -
         npm ci --ignore-scripts
-        # `--no-file-parallelism`: die beiden Faelle greifen auf denselben
-        # Cluster zu, und einer von ihnen startet einen zweiten Server. Zwei
-        # Dateien gleichzeitig waeren Last, die mit der Zusage nichts zu tun hat.
+        # `--no-file-parallelism`: die drei Faelle greifen auf denselben Cluster
+        # zu, einer von ihnen startet einen zweiten Server, und (2.129) legt eine
+        # Tabelle von 12 MB in die geteilte Projektdatenbank. Zwei Dateien
+        # gleichzeitig waeren Last, die mit der Zusage nichts zu tun hat.
         npx vitest run --no-file-parallelism \
           tests/backup-restore-drill.integration.test.ts \
-          tests/project-database-backup-drill.integration.test.ts
+          tests/project-database-backup-drill.integration.test.ts \
+          tests/project-database-backup-stream-drill.integration.test.ts
 
 volumes:
   backup-certification-certs:

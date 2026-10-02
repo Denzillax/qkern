@@ -48,6 +48,14 @@ export type RequestCapability =
   | "migration_incident_delivery_retry"
   | "project_provisioning_read"
   | "project_provisioning_request"
+  /**
+   * Die drei Rechte am Backup einer Projektdatenbank (2.129). Drei und nicht
+   * eines, weil die Handlungen nicht dasselbe sind; die Begruendung je Recht
+   * steht in `app/api/v1/.../database/backups/route.ts`.
+   */
+  | "project_backup_read"
+  | "project_backup_request"
+  | "project_backup_restore"
   | "automation_policy"
   | "project_api_keys"
   | "project_auth_admin"
@@ -57,11 +65,15 @@ export type RequestCapability =
   | "project_data_mutate";
 
 const ROLE_CAPABILITIES: Record<OrganizationRole, ReadonlySet<RequestCapability>> = {
-  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate"]),
-  administrator: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate"]),
+  // `project_backup_restore` steht **nur** hier: eine Wiederherstellung legt eine
+  // neue Datenbank an, bringt geloeschte Daten zurueck und ist nicht
+  // wiederholbar. Ein Administrator darf ein Backup bestellen und den Katalog
+  // lesen; die Datenbank zurueckholen darf der, der fuer die Organisation haftet.
+  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "project_backup_read", "project_backup_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate", "project_backup_restore"]),
+  administrator: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "project_backup_read", "project_backup_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate"]),
   developer: new Set(["read", "change_preview", "project_data_mutate"]),
-  deployer: new Set(["read", "change_preview", "apply", "migration_apply_delivery_read", "project_provisioning_read"]),
-  analyst: new Set(["read"]), support: new Set(["read", "migration_apply_delivery_read", "migration_incident_read", "project_provisioning_read"]), read_only: new Set(["read"]),
+  deployer: new Set(["read", "change_preview", "apply", "migration_apply_delivery_read", "project_provisioning_read", "project_backup_read"]),
+  analyst: new Set(["read"]), support: new Set(["read", "migration_apply_delivery_read", "migration_incident_read", "project_provisioning_read", "project_backup_read"]), read_only: new Set(["read"]),
 };
 
 export function requireCapability(context: AuthenticatedRequestContext, capability: RequestCapability) {

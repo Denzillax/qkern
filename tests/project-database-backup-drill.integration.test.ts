@@ -424,7 +424,13 @@ describe.runIf(enabled)("Project database backup and restore drill (2.126)", () 
     expect(asText.includes("CREATE TABLE")).toBe(false);
     expect(asText.includes("marker-only-in-backup")).toBe(false);
     expect(asText.includes(invoices)).toBe(false);
-    expect(artifactA.subarray(0, 7).toString("utf8")).toBe("QKBAK1\n");
+    // Seit 2.129 ist das Artefakt stueckweise, also traegt es den Kopf des
+    // stueckweisen Formats und nicht mehr den von 2.73.0. Der Dump dieses Falls
+    // ist 14 kB gross und passt damit in **einen** Teil; dass mehr als ein Teil
+    // wirklich geht, belegt `(2.129)`.
+    expect(artifactA.subarray(0, 8).toString("utf8")).toBe("QKBAKC1\n");
+    expect(backupA.artifactFormat).toBe("chunked");
+    expect(backupA.partCount).toBe(1);
 
     // --- 4. Die lebende Datenbank aendert sich ---------------------------
     //
@@ -555,19 +561,25 @@ describe.runIf(enabled)("Project database backup and restore drill (2.126)", () 
       keyId: backupB.keyId!,
       identity: identityOf(backupB),
     });
-    const { openBackupArtifact } = await import("@/lib/server/backup/project-database-artifact");
-    expect(() => openBackupArtifact({
-      artifact: artifactB,
+    // Seit 2.129 ist das Artefakt eine Teilefolge, also wird hier ein **Teil**
+    // geoeffnet und nicht ein Umschlag ueber das Ganze. Der Dump dieses Falls
+    // passt in einen Teil, also ist es Teil 1 und gleichzeitig der letzte.
+    const {
+      CHUNKED_HEADER_BYTES, NO_PREVIOUS_TAG, openBackupPart,
+    } = await import("@/lib/server/backup/project-database-artifact");
+    const partOfB = {
+      part: artifactB.subarray(CHUNKED_HEADER_BYTES),
       dataKey: keyOfB,
-      identity: identityOf(backupA),
-    })).toThrowError(expect.objectContaining({ code: "ARTIFACT_IDENTITY_MISMATCH" }));
+      partPlaintextBytes: backupB.partPlaintextBytes!,
+      partNumber: 1,
+      final: true,
+      previousTagHex: NO_PREVIOUS_TAG,
+    };
+    expect(() => openBackupPart({ ...partOfB, identity: identityOf(backupA) }))
+      .toThrowError(expect.objectContaining({ code: "ARTIFACT_IDENTITY_MISMATCH" }));
     // Die Gegenprobe: mit der eigenen Kennung geht er auf. Sonst belegte die
     // Ablehnung oben nur, dass irgendetwas kaputt ist.
-    const dumpOfB = openBackupArtifact({
-      artifact: artifactB,
-      dataKey: keyOfB,
-      identity: identityOf(backupB),
-    });
+    const dumpOfB = openBackupPart({ ...partOfB, identity: identityOf(backupB) }).chunk;
     const plaintextOfB = dumpOfB.toString("utf8");
     expect(plaintextOfB).toContain("CREATE TABLE");
     expect(plaintextOfB).toContain(invoices);

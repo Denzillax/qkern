@@ -21,7 +21,11 @@ import {
   FileBackupDataKeyProtector,
   S3ProjectDatabaseBackupObjectStore,
 } from "@/lib/server/backup/project-database-object-store";
-import { PostgresProjectDatabaseBackupStore } from "@/lib/server/backup/project-database-postgres";
+import {
+  PostgresProjectDatabaseBackupScheduleStore,
+  PostgresProjectDatabaseBackupStore,
+} from "@/lib/server/backup/project-database-postgres";
+import { ProjectDatabaseBackupScheduler } from "@/lib/server/backup/project-database-schedule";
 import {
   ProjectDatabaseBackupService,
   type ProjectDatabaseBackupLogEvent,
@@ -83,6 +87,20 @@ export const PROJECT_DATABASE_BACKUP_ENV = Object.freeze({
   objectAccessKeyId: "QKERN_PROJECT_BACKUP_S3_ACCESS_KEY_ID",
   objectSecretAccessKey: "QKERN_PROJECT_BACKUP_S3_SECRET_ACCESS_KEY",
   retentionDays: "QKERN_PROJECT_BACKUP_RETENTION_DAYS",
+  /**
+   * Nutzbytes je Teil (2.129). Voreinstellung 64 MiB.
+   *
+   * Die Variable ist da, weil die Obergrenze eines Dumps aus ihr und der
+   * Teilezahl **gerechnet** wird und ein Betreiber mit sehr grossen
+   * Mandantendatenbanken die Rechnung verschieben koennen muss, ohne auf ein
+   * Release zu warten. Was sie nicht ist: ein Schalter, der den Weg aendert --
+   * der Code ist derselbe.
+   */
+  partBytes: "QKERN_PROJECT_BACKUP_PART_BYTES",
+  /** Teilezahl (2.129). Voreinstellung ist die Grenze des S3-Protokolls, 10 000. */
+  maxParts: "QKERN_PROJECT_BACKUP_MAX_PARTS",
+  /** Takt des Aufraeumers in Millisekunden (2.129). Voreinstellung eine Stunde. */
+  pruneIntervalMs: "QKERN_PROJECT_BACKUP_PRUNE_INTERVAL_MS",
   vaultTokenFile: "QKERN_VAULT_TOKEN_FILE",
 });
 
@@ -93,6 +111,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export type ProjectDatabaseBackupRuntime = Readonly<{
   service: ProjectDatabaseBackupService;
   store: PostgresProjectDatabaseBackupStore;
+  /** Der Zeitplan (2.129). Dieselbe Pflicht, die `runRound` von sich aus ruft. */
+  scheduler: ProjectDatabaseBackupScheduler;
+  scheduleStore: PostgresProjectDatabaseBackupScheduleStore;
   close(): Promise<void>;
 }>;
 
@@ -310,7 +331,16 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
   const store = new PostgresProjectDatabaseBackupStore(
     dependencies.controlPlanePool, organizationId, workerId,
   );
+  const scheduleStore = new PostgresProjectDatabaseBackupScheduleStore(
+    dependencies.controlPlanePool, organizationId, workerId,
+  );
 
+  // Der Zeitplan haengt am Dienst und der Dienst am Zeitplan: der Takt stellt
+  // Auftraege ueber `enqueue` ein und raeumt ueber `pruneExpired` auf, und
+  // `runRound` ruft den Takt. Darum wird der Dienst zuerst gebaut und der
+  // Zeitplan danach an ihn gehaengt -- und nicht eine der beiden Seiten als
+  // Fabrik an die andere gegeben, denn dann koennte man nicht mehr sehen, wer
+  // wen ruft.
   const service = new ProjectDatabaseBackupService({
     store,
     dump,
@@ -319,13 +349,29 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
     restoreTarget,
     workerId,
     retentionDays: integerFromEnv(env, PROJECT_DATABASE_BACKUP_ENV.retentionDays, 30, 1, 730),
+    partPlaintextBytes: integerFromEnv(
+      env, PROJECT_DATABASE_BACKUP_ENV.partBytes, 64 * 1024 * 1024, 1_024, 256 * 1024 * 1024,
+    ),
+    maxParts: integerFromEnv(env, PROJECT_DATABASE_BACKUP_ENV.maxParts, 10_000, 1, 10_000),
     now: dependencies.now,
     logger: dependencies.logger,
   });
+  const scheduler = new ProjectDatabaseBackupScheduler({
+    store: scheduleStore,
+    target: service,
+    pruneIntervalMs: integerFromEnv(
+      env, PROJECT_DATABASE_BACKUP_ENV.pruneIntervalMs, 3_600_000, 1_000, 86_400_000,
+    ),
+    now: dependencies.now,
+    logger: dependencies.logger,
+  });
+  service.useSchedule(scheduler);
 
   return Object.freeze({
     service,
     store,
+    scheduler,
+    scheduleStore,
     close: async () => {
       await Promise.allSettled([reader.close(), admin.close()]);
     },

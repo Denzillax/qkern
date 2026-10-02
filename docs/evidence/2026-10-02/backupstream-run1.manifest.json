@@ -1,0 +1,21 @@
+{
+  "stack": "Backup und Restore (PostgreSQL 17, TLS, WAL-Archiv)",
+  "log": "backupstream-run1.log",
+  "commit": "832d7b0a3e75fc1ad5fb405e20963692ca90c4e9",
+  "commitSubject": "Ein Backup, das nicht mehr durch den Speicher geht, bestellbar und getaktet",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 78,
+  "testFiles": "3 passed (3)",
+  "tests": "3 passed (3)",
+  "passed": 3,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "versity/versitygw:v1.8.0",
+    "node:24-alpine"
+  ]
+}

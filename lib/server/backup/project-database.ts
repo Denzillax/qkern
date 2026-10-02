@@ -1,14 +1,24 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { recognisedByName } from "@/lib/server/errors/identity";
 import type { Environment } from "@/lib/types";
 import type { SqlQueryable } from "@/lib/server/db/sql";
 import {
-  MAX_ARTIFACT_BYTES,
+  CHUNKED_HEADER_BYTES,
+  DEFAULT_PART_PLAINTEXT_BYTES,
+  MAX_ARTIFACT_PARTS,
+  NO_PREVIOUS_TAG,
+  ProjectDatabaseBackupArtifactError,
   artifactSha256,
+  chunkedArtifactHeader,
+  chunkedPartCount,
+  chunkedPartRange,
+  maxChunkedDumpBytes,
   newBackupDataKey,
   openBackupArtifact,
+  openBackupPart,
+  readChunkedArtifactHeader,
   sameDigest,
-  sealBackupArtifact,
+  sealBackupPart,
   type ProjectDatabaseBackupArtifactIdentity,
 } from "@/lib/server/backup/project-database-artifact";
 import {
@@ -102,7 +112,21 @@ import {
  *   die Zusage des Control-Plane-Weges aus 2.29 und wird fuer Projektdaten
  *   **nicht** behauptet.
  *
- * ## Wohin die Bytes gehen
+ * ## Wohin die Bytes gehen, und in welcher Form
+ *
+ * **Stueckweise, als Strom** (2.129). 2.73.0 trug den Dump in einem Stueck durch
+ * den Speicher und hatte darum eine Grenze von 256 MiB, die fuer eine echte
+ * Mandantendatenbank zu klein ist. Jetzt geht die Ausgabe von `pg_dump` als
+ * Strom durch die Verschluesselung in die Teile eines Multipart-Uploads; die
+ * Entscheidungen dazu -- Strom statt Datei, ein Siegel je Teil, und was die AAD
+ * eines Teils bindet -- stehen in `project-database-artifact.ts` und nicht hier,
+ * weil sie den Umschlag betreffen.
+ *
+ * Die Obergrenze ist seither **gerechnet**: Nutzbytes je Teil mal Teilegrenze
+ * des S3-Protokolls, also mit den Voreinstellungen `64 MiB * 10 000 = 625 GiB`
+ * (`ProjectDatabaseBackupService.maxDumpBytes`). Was darueber kommt, bricht mit
+ * `ARTIFACT_TOO_LARGE`, und zwar beim Teil, der die Grenze reisst, und nicht
+ * nach dem ganzen Dump.
  *
  * In den Objektspeicher, den QKERN schon hat (`lib/server/project-storage`),
  * ueber einen eigenen, engen Port (`ProjectDatabaseBackupObjectStore`). Nicht
@@ -159,6 +183,44 @@ export const PROJECT_DATABASE_BACKUP_INCLUDES = [
   "schema", "rows", "policies", "extensions", "sequences", "grants",
 ] as const;
 
+/**
+ * In welcher Form das Artefakt liegt (0084).
+ *
+ * `single` ist der Weg aus 2.73.0: ein Umschlag ueber das ganze Artefakt, bis
+ * 256 MiB, in einem `PUT`. Es entsteht kein neues Backup mehr in dieser Form,
+ * und doch steht sie hier: Backups aus 2.73.0 liegen noch im Objektspeicher und
+ * muessen sich wiederherstellen lassen. Ein Weg, der sein eigenes altes Format
+ * nicht mehr liest, ist eine Aufbewahrung, die mit dem Release endet.
+ *
+ * `chunked` ist der stueckweise Weg aus 2.129. Siehe
+ * `project-database-artifact.ts` fuer den Aufbau und die Begruendungen.
+ */
+export const PROJECT_DATABASE_BACKUP_ARTIFACT_FORMATS = ["single", "chunked"] as const;
+export type ProjectDatabaseBackupArtifactFormat =
+  (typeof PROJECT_DATABASE_BACKUP_ARTIFACT_FORMATS)[number];
+
+/**
+ * Eine bestellte Wiederherstellung (0084, 2.129).
+ *
+ * Sie ist ein **Auftrag** und keine Antwort auf eine Anfrage: eine
+ * Wiederherstellung legt eine neue Datenbank an, und `CREATEDB` hat genau der
+ * Provisioner. Die Route bestellt, der Provisioner fahrt. Es gibt **kein**
+ * `attempt_count`: eine gescheiterte Wiederherstellung wird nicht wiederholt,
+ * weil davor eine halb gebaute Datenbank liegt und ein zweiter Versuch an
+ * `CREATE DATABASE` mit demselben Namen scheitern wuerde.
+ */
+export const PROJECT_DATABASE_RESTORE_STATUSES = [
+  "requested", "running", "succeeded", "failed",
+] as const;
+export type ProjectDatabaseRestoreStatus = (typeof PROJECT_DATABASE_RESTORE_STATUSES)[number];
+
+export const PROJECT_DATABASE_RESTORE_ERROR_CODES = [
+  "BACKUP_NOT_AVAILABLE", "BACKUP_ARTIFACT_MISMATCH", "RESTORE_MANIFEST_MISMATCH",
+  "OBJECT_STORE_UNAVAILABLE", "KEY_UNAVAILABLE", "CONNECTION_UNAVAILABLE", "RESTORE_FAILED",
+] as const;
+export type ProjectDatabaseRestoreErrorCode =
+  (typeof PROJECT_DATABASE_RESTORE_ERROR_CODES)[number];
+
 /** Die Rolle, mit der ein Backup liest. Siehe den Abschnitt "Mit welcher Rolle". */
 export const PROJECT_DATABASE_BACKUP_ROLE = "qkern_project_backup";
 
@@ -182,6 +244,19 @@ export type ProjectDatabaseBackupRecord = Readonly<{
   keyId: string | null;
   manifestSha256: string | null;
   includes: readonly string[];
+  /** Die Form des Artefakts (0084). Alte Zeilen tragen `single`. */
+  artifactFormat: ProjectDatabaseBackupArtifactFormat;
+  /** Zahl der Teile, nur bei `chunked`. Der Leser rechnet daraus die Bytebereiche. */
+  partCount: number | null;
+  /** Nutzbytes je Teil, nur bei `chunked`. */
+  partPlaintextBytes: number | null;
+  /** Der Zustand einer bestellten Wiederherstellung (0084), oder `null`. */
+  restoreStatus: ProjectDatabaseRestoreStatus | null;
+  restoreRequestedAt: Date | null;
+  restoreRequestedBy: string | null;
+  restoreDatabaseName: string | null;
+  restoreCompletedAt: Date | null;
+  restoreErrorCode: ProjectDatabaseRestoreErrorCode | null;
   snapshotAt: Date | null;
   completedAt: Date | null;
   expiresAt: Date | null;
@@ -196,14 +271,41 @@ export type ProjectDatabaseBackupClaim = Readonly<{
   leaseToken: string;
 }>;
 
+export type ProjectDatabaseBackupEnqueueResult = Readonly<{
+  record: ProjectDatabaseBackupRecord;
+  /** `false` heisst: es wartete oder lief schon einer, und das ist er. */
+  created: boolean;
+}>;
+
+export type ProjectDatabaseRestoreClaim = Readonly<{
+  record: ProjectDatabaseBackupRecord;
+  databaseName: string;
+  leaseToken: string;
+}>;
+
 /**
  * Die Control-Plane-Seite. Jede Methode lauft in **einer** Transaktion mit
  * gesetztem `qkern.organization_id`; die Implementierung dazu steht in
  * `project-database-postgres.ts` und benutzt `withTenantTransaction`.
  */
 export interface ProjectDatabaseBackupStore {
-  /** Legt einen Auftrag an. Mehr als ein wartender Auftrag je Umgebung ist keiner. */
-  enqueue(scope: ProjectDatabaseBackupScope, databaseInstanceRef: string): Promise<ProjectDatabaseBackupRecord>;
+  /**
+   * Legt einen Auftrag an. Mehr als ein wartender Auftrag je Umgebung ist
+   * keiner, also gibt die Methode den vorhandenen zurueck, statt einen zweiten
+   * anzulegen.
+   *
+   * **`created` sagt, ob sie wirklich eingefuegt hat**, und das ist der Befund
+   * des ersten Stacklaufs von (2.129): Vorher riet der Zeitplan es aus
+   * Zeitstempeln und aus dem Zustand, und ein Auftrag, den eine Route zwischen
+   * zwei Takten einstellt, trug keines der Anzeichen -- er ist neuer als der
+   * letzte Takt, er wartet noch, und seine Id kennt der Takt nicht. Der Takt
+   * zaehlte ihn als neu, und `busy_count` blieb 0. Wer eingefuegt hat, weiss es;
+   * also sagt es der, der es weiss.
+   */
+  enqueue(
+    scope: ProjectDatabaseBackupScope,
+    databaseInstanceRef: string,
+  ): Promise<ProjectDatabaseBackupEnqueueResult>;
   /** Nimmt den aeltesten wartenden Auftrag mit einer Lease, oder nichts. */
   claimNext(workerId: string, leaseDurationMs: number): Promise<ProjectDatabaseBackupClaim | null>;
   /** Gibt Auftraege zurueck, deren Lease abgelaufen ist, und zaehlt ihren Versuch. */
@@ -216,6 +318,9 @@ export interface ProjectDatabaseBackupStore {
     keyId: string;
     manifestSha256: string;
     includes: readonly string[];
+    artifactFormat: ProjectDatabaseBackupArtifactFormat;
+    partCount: number;
+    partPlaintextBytes: number;
     snapshotAt: Date;
     completedAt: Date;
     expiresAt: Date;
@@ -228,16 +333,50 @@ export interface ProjectDatabaseBackupStore {
   list(scope: ProjectDatabaseBackupScope, limit: number): Promise<readonly ProjectDatabaseBackupRecord[]>;
   /** Hoechstens `limit` abgelaufene Backups, aelteste zuerst. */
   findExpired(expiredBefore: Date, limit: number): Promise<readonly ProjectDatabaseBackupRecord[]>;
+  /**
+   * Bestellt eine Wiederherstellung (2.129). `null` heisst: das Backup ist nicht
+   * da, nicht verfuegbar, oder es laeuft schon eine -- und die Unterscheidung
+   * trifft der Aufrufer anhand des Datensatzes, den er vorher gelesen hat. Die
+   * Anweisung selbst nennt keinen Grund, weil sie keinen kennt: sie hat eine
+   * Zeile nicht getroffen.
+   */
+  requestRestore(input: Readonly<{
+    backupId: string; databaseName: string; requestedBy: string; at: Date;
+  }>): Promise<ProjectDatabaseBackupRecord | null>;
+  /** Nimmt die aelteste bestellte Wiederherstellung mit einer Lease, oder nichts. */
+  claimNextRestore(leaseDurationMs: number): Promise<ProjectDatabaseRestoreClaim | null>;
+  completeRestore(claim: ProjectDatabaseRestoreClaim, completedAt: Date): Promise<void>;
+  failRestore(
+    claim: ProjectDatabaseRestoreClaim,
+    errorCode: ProjectDatabaseRestoreErrorCode,
+    completedAt: Date,
+  ): Promise<void>;
+  /**
+   * Erklaert Wiederherstellungen mit abgelaufener Lease fuer gescheitert. Nicht
+   * "wieder bestellt": eine Wiederherstellung wird nicht wiederholt, und ein
+   * Wirt, der mitten darin gestorben ist, hat eine halbe Datenbank
+   * hinterlassen.
+   */
+  failExpiredRestoreLeases(): Promise<readonly ProjectDatabaseBackupRecord[]>;
   /** Setzt ein abgelaufenes Backup auf `expired` und nimmt ihm Schluessel und Objektverweis. */
   forget(backupId: string): Promise<void>;
 }
 
-/** Der Dump. Siehe `project-database-dump.ts`: warum ein Kindprozess und wie das Passwort dorthin kommt. */
+/**
+ * Der Dump. Siehe `project-database-dump.ts`: warum ein Kindprozess und wie das
+ * Passwort dorthin kommt.
+ *
+ * `dumpStream` gibt einen **Strom** und keinen Puffer (2.129). Der Puffer war
+ * die Grenze von 256 MiB; der Strom ist der Weg darueber hinaus. Wer den Strom
+ * schliesst, beendet den Kindprozess -- das ist die Zusage dieser
+ * Schnittstelle, denn sonst laeuft ein `pg_dump` ueber eine fremde Datenbank
+ * weiter, nachdem der Dienst aufgegeben hat.
+ */
 export interface ProjectDatabaseDumpPort {
-  dump(
+  dumpStream(
     input: Readonly<{ databaseInstanceRef: string }>,
     signal?: AbortSignal,
-  ): Promise<Buffer>;
+  ): Promise<ProjectDatabaseDumpStream>;
   /** Eine Verbindung zum Lesen des Manifests, mit derselben Rolle wie der Dump. */
   withReader<T>(
     input: Readonly<{ databaseInstanceRef: string }>,
@@ -245,14 +384,30 @@ export interface ProjectDatabaseDumpPort {
   ): Promise<T>;
 }
 
+export type ProjectDatabaseDumpStream = Readonly<{
+  chunks: AsyncIterable<Buffer>;
+  /** Bricht den Kindprozess ab. Darf mehrmals gerufen werden und wirft nicht. */
+  cancel(): void;
+}>;
+
 /** Das Ziel einer Wiederherstellung: eine neue, leere Datenbank, und der Weg, einen Dump hineinzuspielen. */
 export interface ProjectDatabaseRestoreTargetPort {
   createDatabase(
     input: Readonly<{ databaseInstanceRef: string; databaseName: string }>,
     signal?: AbortSignal,
   ): Promise<void>;
+  /**
+   * Der Dump kommt als **Strom** in `stdin` von `psql` (2.129). Ein Puffer
+   * hiesse, das ganze Artefakt vor dem ersten Byte im Speicher zu haben, und
+   * damit waere die Grenze auf der Leseseite wieder da, wo sie auf der
+   * Schreibseite gerade weg ist.
+   */
   restore(
-    input: Readonly<{ databaseInstanceRef: string; databaseName: string; dump: Buffer }>,
+    input: Readonly<{
+      databaseInstanceRef: string;
+      databaseName: string;
+      dump: AsyncIterable<Buffer>;
+    }>,
     signal?: AbortSignal,
   ): Promise<void>;
   withReader<T>(
@@ -261,8 +416,24 @@ export interface ProjectDatabaseRestoreTargetPort {
   ): Promise<T>;
 }
 
+export type ProjectDatabaseBackupUploadedPart = Readonly<{ partNumber: number; etag: string }>;
+
+/**
+ * Der Objektspeicher. **Kein `put`** (2.129): es gab im Produkt keinen Aufrufer
+ * mehr, nachdem der Weg stueckweise wurde, und eine Methode ohne Aufrufer ist
+ * genau das Muster, das 2.73.0 an drei Stellen gefunden hat.
+ */
 export interface ProjectDatabaseBackupObjectStore {
-  put(key: string, bytes: Buffer, signal?: AbortSignal): Promise<void>;
+  beginMultipart(key: string, signal?: AbortSignal): Promise<string>;
+  putPart(input: Readonly<{
+    key: string; uploadId: string; partNumber: number; bytes: Buffer;
+  }>, signal?: AbortSignal): Promise<ProjectDatabaseBackupUploadedPart>;
+  completeMultipart(input: Readonly<{
+    key: string; uploadId: string; parts: readonly ProjectDatabaseBackupUploadedPart[];
+  }>, signal?: AbortSignal): Promise<void>;
+  abortMultipart(key: string, uploadId: string, signal?: AbortSignal): Promise<void>;
+  getRange(key: string, offset: number, length: number, signal?: AbortSignal): Promise<Buffer>;
+  /** Ganz, und nur noch fuer Artefakte im Format `single` aus 2.73.0. */
   get(key: string, signal?: AbortSignal): Promise<Buffer>;
   delete(key: string, signal?: AbortSignal): Promise<void>;
 }
@@ -292,14 +463,21 @@ export type ProjectDatabaseBackupLogEvent = Readonly<{
     | "project_database_backup.failed"
     | "project_database_backup.lease_released"
     | "project_database_backup.restored"
+    | "project_database_backup.restore_claimed"
+    | "project_database_backup.restore_failed"
     | "project_database_backup.pruned"
-    | "project_database_backup.round_failed";
+    | "project_database_backup.round_failed"
+    /** Der Zeitplan hat einen Auftrag eingestellt (2.129). */
+    | "project_database_backup.scheduled"
+    /** Faellig, aber der vorige Lauf war noch nicht fertig (2.129). */
+    | "project_database_backup.schedule_busy"
+    | "project_database_backup.schedule_failed";
   /** Eine Backup-Id, kein Objektschluessel, kein Schluessel-Name, keine Groesse in Bytes eines Mandanten. */
   backupId?: string;
   projectId?: string;
   environment?: Environment;
   attempt?: number;
-  errorCode?: ProjectDatabaseBackupErrorCode;
+  errorCode?: ProjectDatabaseBackupErrorCode | ProjectDatabaseRestoreErrorCode;
   /**
    * Welcher Schritt des Dumps gescheitert ist, wenn es einer war. Ein
    * Fehlschlag, der nur sich selbst meldet, laesst zwischen Vault,
@@ -316,6 +494,10 @@ export type ProjectDatabaseBackupRoundResult =
   | Readonly<{ status: "idle" }>
   | Readonly<{ status: "succeeded"; backupId: string }>
   | Readonly<{ status: "failed"; backupId: string; errorCode: ProjectDatabaseBackupErrorCode }>
+  | Readonly<{ status: "restored"; backupId: string }>
+  | Readonly<{
+    status: "restore_failed"; backupId: string; errorCode: ProjectDatabaseRestoreErrorCode;
+  }>
   | Readonly<{ status: "aborted" }>
   | Readonly<{ status: "round_failed" }>;
 
@@ -334,6 +516,7 @@ export type ProjectDatabaseBackupServiceErrorCode =
   | "BACKUP_NOT_AVAILABLE"
   | "BACKUP_ARTIFACT_MISMATCH"
   | "RESTORE_MANIFEST_MISMATCH"
+  | "RESTORE_ALREADY_REQUESTED"
   | "INVALID_CONFIGURATION";
 
 export class ProjectDatabaseBackupServiceError extends Error {
@@ -362,7 +545,56 @@ export type ProjectDatabaseBackupServiceOptions = Readonly<{
   /** Einspeisbare Uhr. Ohne sie waere eine Frist von 30 Tagen nur in 30 Tagen pruefbar. */
   now?: () => Date;
   logger?: { log(event: ProjectDatabaseBackupLogEvent): void };
+  /**
+   * Nutzbytes je Teil. Voreinstellung ist der Produktwert
+   * (`DEFAULT_PART_PLAINTEXT_BYTES`, 64 MiB).
+   *
+   * **Warum einspeisbar.** Die Obergrenze eines Dumps ist nicht gesetzt, sie ist
+   * gerechnet: Teilegroesse mal Teilezahl. Ein Fall, der die Grenze pruefen
+   * will, muesste bei den Produktwerten 625 GiB schreiben. Mit kleineren Werten
+   * prueft er **dieselbe** Rechnung, dasselbe Siegeln, dieselbe Kette, denselben
+   * Multipart-Upload und dieselben Bytebereiche -- der Produktweg ist derselbe
+   * Code, nur mit anderen zwei Zahlen. Was ein Fall damit **nicht** belegt, ist
+   * dass 625 GiB durchgehen; das steht so in `docs/RELEASE_*` und im
+   * Backup-Dokument.
+   *
+   * Unter `MIN_S3_PART_BYTES` (5 MiB) weist S3 den Abschluss eines Uploads mit
+   * mehr als einem Teil ab. Das prueft der Dienst **nicht** weg: er laesst
+   * kleinere Werte zu und sagt im Log nichts dazu, weil ein Stack mit versitygw
+   * sie nimmt und ein Betreiber, der sie in Produktion setzt, einen Fehlschlag
+   * des Objektspeichers bekommt und keinen stillen Datenverlust. Eine Zusage,
+   * die der Anbieter schon haelt, hier ein zweites Mal zu halten, waere zwei
+   * Antworten auf dieselbe Frage.
+   */
+  partPlaintextBytes?: number;
+  /** Teilegrenze. Voreinstellung ist die des S3-Protokolls (10 000). */
+  maxParts?: number;
+  /** Der Zeitplan (2.129). Ohne ihn stellt niemand von sich aus Auftraege ein. */
+  schedule?: ProjectDatabaseBackupScheduleDuty;
 }>;
+
+/**
+ * Der Zeitplan, aus der Sicht der Runde.
+ *
+ * Er ist eine **Pflicht in derselben Runde** und kein zweiter Scheduler; die
+ * Begruendung steht in `project-database-schedule.ts`.
+ */
+export interface ProjectDatabaseBackupScheduleDuty {
+  tick(signal?: AbortSignal): Promise<unknown>;
+  /**
+   * Die Aufbewahrungsfrist **dieser Umgebung**, oder `null`, wenn es keine
+   * Zeitplanzeile gibt.
+   *
+   * Sie steht hier und nicht in den Optionen des Dienstes, weil sie je Umgebung
+   * gilt: `QKERN_PROJECT_BACKUP_RETENTION_DAYS` galt fuer alle Projekte und alle
+   * Umgebungen eines Prozesses gleich, und ein Betreiber, der Produktion 30 Tage
+   * und Staging 7 Tage halten will, brauchte dafuer zwei Prozesse. Die Variable
+   * bleibt als Vorgabe; was die Zeile sagt, gewinnt.
+   */
+  retentionDaysFor(
+    scope: Readonly<{ projectId: string; environment: Environment }>,
+  ): Promise<number | null>;
+}
 
 /**
  * Die Aufbewahrung.
@@ -399,6 +631,9 @@ export class ProjectDatabaseBackupService {
   private readonly leaseDurationMs: number;
   private readonly now: () => Date;
   private readonly logger: { log(event: ProjectDatabaseBackupLogEvent): void };
+  private readonly partPlaintextBytes: number;
+  private readonly maxParts: number;
+  private schedule?: ProjectDatabaseBackupScheduleDuty;
 
   constructor(options: ProjectDatabaseBackupServiceOptions) {
     if (!options || typeof options.workerId !== "string" || !WORKER_ID.test(options.workerId)) {
@@ -414,9 +649,49 @@ export class ProjectDatabaseBackupService {
     this.leaseDurationMs = bounded(options.leaseDurationMs ?? 600_000, 10_000, 3_600_000);
     this.now = options.now ?? (() => new Date());
     this.logger = options.logger ?? { log: () => undefined };
+    this.partPlaintextBytes = bounded(
+      options.partPlaintextBytes ?? DEFAULT_PART_PLAINTEXT_BYTES, 1_024, 256 * 1024 * 1024,
+    );
+    this.maxParts = bounded(options.maxParts ?? MAX_ARTIFACT_PARTS, 1, MAX_ARTIFACT_PARTS);
+    this.schedule = options.schedule;
   }
 
-  enqueue(scope: ProjectDatabaseBackupScope, databaseInstanceRef: string): Promise<ProjectDatabaseBackupRecord> {
+  /**
+   * Haengt den Zeitplan an. Er kommt nachtraeglich und nicht ueber den
+   * Konstruktor, weil er den Dienst selbst braucht: er stellt Auftraege ueber
+   * `enqueue` ein und raeumt ueber `pruneExpired` auf. Eine Fabrik im
+   * Konstruktor haette dasselbe geleistet und niemandem mehr gezeigt, wer wen
+   * ruft.
+   */
+  useSchedule(schedule: ProjectDatabaseBackupScheduleDuty): void {
+    this.schedule = schedule;
+  }
+
+  /**
+   * Die Obergrenze eines Dumps auf diesem Dienst, in Bytes Klartext. Sie wird
+   * gerechnet und nicht gehalten; wer sie wissen will, fragt hier und liest
+   * keine Konstante ab.
+   */
+  get maxDumpBytes(): number {
+    return maxChunkedDumpBytes(this.partPlaintextBytes, this.maxParts);
+  }
+
+  /**
+   * Bestellt ein Backup. Gibt den Auftrag zurueck -- ob er neu ist, fragt wer es
+   * braucht ueber `enqueueBackup`.
+   */
+  async enqueue(
+    scope: ProjectDatabaseBackupScope,
+    databaseInstanceRef: string,
+  ): Promise<ProjectDatabaseBackupRecord> {
+    return (await this.store.enqueue(scope, databaseInstanceRef)).record;
+  }
+
+  /** Wie `enqueue`, und sagt dazu, ob wirklich einer entstanden ist. */
+  enqueueBackup(
+    scope: ProjectDatabaseBackupScope,
+    databaseInstanceRef: string,
+  ): Promise<ProjectDatabaseBackupEnqueueResult> {
     return this.store.enqueue(scope, databaseInstanceRef);
   }
 
@@ -432,6 +707,15 @@ export class ProjectDatabaseBackupService {
    */
   async runRound(signal?: AbortSignal): Promise<ProjectDatabaseBackupRoundResult> {
     if (signal?.aborted) return { status: "aborted" };
+    // Der Zeitplan laeuft **vor** dem Claim und in derselben Runde (2.129). Was
+    // er einstellt, nimmt dieselbe Runde noch mit, also braucht ein faelliges
+    // Backup nicht zwei Runden. Ein Fehlschlag des Zeitplans kippt die Runde
+    // nicht: er loggt selbst, und ein Auftrag, der schon wartet, soll nicht
+    // daran haengen, dass eine Fristzeile kaputt ist.
+    if (this.schedule) {
+      try { await this.schedule.tick(signal); } catch { /* der Zeitplan loggt selbst */ }
+      if (signal?.aborted) return { status: "aborted" };
+    }
     try {
       for (const released of await this.store.releaseExpiredLeases()) {
         this.log({
@@ -447,6 +731,13 @@ export class ProjectDatabaseBackupService {
       this.log({ event: "project_database_backup.round_failed", reason: reasonOf(error) });
       return { status: "round_failed" };
     }
+
+    // Eine bestellte Wiederherstellung geht **vor** einem Backup, und zwar aus
+    // demselben Grund, aus dem ein Projektauftrag vor dem Backup geht: dort
+    // wartet jemand. Eine Wiederherstellung bestellt ein Mensch, der gerade
+    // Daten verloren hat; ein Backup bestellt eine Uhr.
+    const restored = await this.runRestoreRound(signal);
+    if (restored) return restored;
 
     let claim: ProjectDatabaseBackupClaim | null;
     try {
@@ -510,6 +801,103 @@ export class ProjectDatabaseBackupService {
   }
 
   /**
+   * Die bestellte Wiederherstellung dieser Runde, oder `null`, wenn keine
+   * bestellt ist (2.129).
+   *
+   * Sie steht als eigene Methode da und nicht im Rumpf von `runRound`, weil sie
+   * eine eigene Lease, einen eigenen Fehlersatz und ein eigenes "nicht
+   * wiederholen" hat. Was sie mit dem Backup teilt, ist die Runde und sonst
+   * nichts.
+   */
+  private async runRestoreRound(
+    signal?: AbortSignal,
+  ): Promise<ProjectDatabaseBackupRoundResult | null> {
+    let claim: ProjectDatabaseRestoreClaim | null;
+    try {
+      for (const stuck of await this.store.failExpiredRestoreLeases()) {
+        this.log({
+          event: "project_database_backup.restore_failed",
+          backupId: stuck.id,
+          projectId: stuck.projectId,
+          environment: stuck.environment,
+          errorCode: "RESTORE_FAILED",
+        });
+      }
+      claim = await this.store.claimNextRestore(this.leaseDurationMs);
+    } catch (error) {
+      this.log({ event: "project_database_backup.round_failed", reason: reasonOf(error) });
+      return { status: "round_failed" };
+    }
+    if (!claim) return null;
+    this.log({
+      event: "project_database_backup.restore_claimed",
+      backupId: claim.record.id,
+      projectId: claim.record.projectId,
+      environment: claim.record.environment,
+    });
+    try {
+      await this.restoreToNewDatabase(
+        { backupId: claim.record.id, databaseName: claim.databaseName }, signal,
+      );
+    } catch (error) {
+      const errorCode = restoreErrorCode(error);
+      try {
+        await this.store.failRestore(claim, errorCode, this.now());
+      } catch (storeError) {
+        this.log({ event: "project_database_backup.round_failed", reason: reasonOf(storeError) });
+        return { status: "round_failed" };
+      }
+      this.log({
+        event: "project_database_backup.restore_failed",
+        backupId: claim.record.id,
+        projectId: claim.record.projectId,
+        environment: claim.record.environment,
+        errorCode,
+      });
+      return { status: "restore_failed", backupId: claim.record.id, errorCode };
+    }
+    try {
+      await this.store.completeRestore(claim, this.now());
+    } catch (error) {
+      // Die Datenbank steht, die Zeile nicht. Hier wird **nichts** weggeraeumt:
+      // eine wiederhergestellte Datenbank zu loeschen, weil eine Zeile nicht
+      // zustande kam, waere das Loeschen genau der Daten, die jemand gerade
+      // zurueckhaben wollte. Die Lease laeuft ab, die Zeile wird `failed`, und
+      // der Betreiber findet eine Datenbank, die mehr ist als die Zeile sagt.
+      this.log({ event: "project_database_backup.round_failed", reason: reasonOf(error) });
+      return { status: "round_failed" };
+    }
+    return { status: "restored", backupId: claim.record.id };
+  }
+
+  /**
+   * Bestellt eine Wiederherstellung (2.129). Der Name der Zieldatenbank kommt
+   * aus der Backup-Id und nie aus einer Anfrage.
+   */
+  async requestRestore(input: Readonly<{
+    backupId: string; requestedBy: string;
+  }>): Promise<ProjectDatabaseBackupRecord> {
+    const record = await this.store.get(input.backupId);
+    if (!record) throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_FOUND");
+    if (record.status !== "available") {
+      throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_AVAILABLE");
+    }
+    // Eine zweite Bestellung, waehrend die erste laeuft, ist keine zweite
+    // Wiederherstellung: beide zielten auf denselben Datenbanknamen, und die
+    // zweite wuerde an `CREATE DATABASE` scheitern.
+    if (record.restoreStatus === "requested" || record.restoreStatus === "running") {
+      throw new ProjectDatabaseBackupServiceError("RESTORE_ALREADY_REQUESTED");
+    }
+    const databaseName = restoreDatabaseName(record.id);
+    assertDatabaseName(databaseName);
+    const requested = await this.store.requestRestore({
+      backupId: record.id, databaseName, requestedBy: input.requestedBy, at: this.now(),
+    });
+    if (!requested) throw new ProjectDatabaseBackupServiceError("RESTORE_ALREADY_REQUESTED");
+    return requested;
+  }
+
+  /**
    * Wiederherstellung in eine **neue** Datenbank, und zwar mit Nachweis in
    * derselben Runde: das Manifest der wiederhergestellten Datenbank muss dem
    * Manifest entsprechen, das zum Zeitpunkt des Backups gemessen wurde. Stimmt
@@ -527,20 +915,14 @@ export class ProjectDatabaseBackupService {
       throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_AVAILABLE");
     }
     const identity = identityOf(record);
-    const artifact = await this.objects.get(record.objectKey, signal);
-    // Die Pruefsumme vor dem Schluessel: ein Artefakt, das unterwegs
-    // verstuemmelt wurde, soll das sagen und nicht wie ein Schluesselfehler
-    // aussehen.
-    if (!sameDigest(artifactSha256(artifact), record.artifactSha256)) {
-      throw new ProjectDatabaseBackupServiceError("BACKUP_ARTIFACT_MISMATCH");
-    }
     const dataKey = await this.keys.unwrap({
       wrapped: record.wrappedDataKey,
       keyId: record.keyId,
       identity,
     });
-    const dump = openBackupArtifact({ artifact, dataKey, identity });
-    dataKey.fill(0);
+    const dump = record.artifactFormat === "chunked"
+      ? this.chunkedDump(record, identity, dataKey, signal)
+      : await this.singleDump(record, identity, dataKey, signal);
 
     const databaseName = input.databaseName ?? restoreDatabaseName(record.id);
     assertDatabaseName(databaseName);
@@ -553,6 +935,11 @@ export class ProjectDatabaseBackupService {
       databaseName,
       dump,
     }, signal);
+
+    // Zweimal genullt ist harmlos; nie genullt ist es nicht. Die Generatoren
+    // nullen am Ende ihres Laufs, und dieser Aufruf fasst den Fall, dass einer
+    // vorher abgebrochen wurde.
+    dataKey.fill(0);
 
     const restoredManifest = await this.restoreTarget.withReader(
       { databaseInstanceRef: record.databaseInstanceRef, databaseName },
@@ -571,6 +958,128 @@ export class ProjectDatabaseBackupService {
       restoredManifestSha256: restoredManifest.sha256,
       restoredManifest,
     });
+  }
+
+  /**
+   * Ein Artefakt im Format von 2.73.0: ganz holen, Pruefsumme vor dem
+   * Schluessel, einmal aufmachen. Das ist der alte Weg, und er bleibt genau
+   * dafuer: Backups, die vor 2.129 entstanden sind, liegen so da.
+   *
+   * Hier gilt die Grenze von 2.73.0 weiter, und sie muss es: ein Artefakt in
+   * dieser Form geht in einem Stueck durch den Speicher, und daran aendert ein
+   * stueckweiser Schreibweg nichts.
+   */
+  private async *singleDump(
+    record: ProjectDatabaseBackupRecord,
+    identity: ProjectDatabaseBackupArtifactIdentity,
+    dataKey: Buffer,
+    signal?: AbortSignal,
+  ): AsyncGenerator<Buffer> {
+    try {
+      const artifact = await this.objects.get(record.objectKey!, signal);
+      // Die Pruefsumme vor dem Schluessel: ein Artefakt, das unterwegs
+      // verstuemmelt wurde, soll das sagen und nicht wie ein Schluesselfehler
+      // aussehen.
+      if (!sameDigest(artifactSha256(artifact), record.artifactSha256!)) {
+        throw new ProjectDatabaseBackupServiceError("BACKUP_ARTIFACT_MISMATCH");
+      }
+      yield openBackupArtifact({ artifact, dataKey, identity });
+    } finally {
+      dataKey.fill(0);
+    }
+  }
+
+  /**
+   * Ein stueckweises Artefakt lesen, **ohne** das Ganze in den Speicher zu
+   * nehmen (2.129).
+   *
+   * Je Teil ein Bytebereich, je Teil ein Siegel, und die Kette in der
+   * Reihenfolge erzwungen. Was dabei geprueft wird, und in welcher Reihenfolge:
+   *
+   * 1. **Die Teilezahl wird gerechnet** (aus Groesse und Teilegroesse) und
+   *    gegen die Zeile gehalten. Weichen sie ab, ist das Artefakt nicht das, von
+   *    dem die Zeile spricht, und zwar **vor** dem ersten Byte Klartext.
+   * 2. **Der Kopf wird gelesen** und seine Teilegroesse gegen die der Zeile
+   *    gehalten. Er steht ausserdem in jeder AAD, also bricht eine Aenderung
+   *    daran ohnehin jedes Siegel; diese Pruefung sagt nur, **was** kaputt ist.
+   * 3. **Je Teil das Tag**, mit Nummer, `final`-Zeichen und Tag des Vorgaengers
+   *    in der AAD. Ein Teil, der nicht passt, bricht den Lauf, bevor sein
+   *    Klartext hinausgeht.
+   * 4. **Am Ende der SHA-256 des ganzen Artefakts**, laufend mitgerechnet, gegen
+   *    die Zeile.
+   *
+   * Punkt 4 ist nicht mehr der Riegel **vor** dem Lesen, der er in 2.73.0 war,
+   * und das ist der Preis des stueckweisen Weges: wer streamt, kennt die Summe
+   * des Ganzen erst am Ende. Was an seine Stelle tritt, ist stark genug: das
+   * GCM-Tag je Teil ist eine **geschluesselte** Pruefung und damit scharfer als
+   * ein SHA-256, und es wird vor jedem Teil geprueft. Der SHA-256 bleibt als die
+   * Aussage "dieses Objekt ist das, das die Zeile vermerkt hat", und er faellt
+   * am Ende.
+   *
+   * **Ein Objekt, das kuerzer ist als seine Zeile**, faellt nicht an Punkt 1
+   * auf: die Teilezahl wird aus `size_bytes` der **Zeile** gerechnet, und die
+   * Zeile kennt die Groesse, die das Backup beim Schreiben hatte. Es faellt am
+   * Bytebereich auf, und zwar mit dem Code des Objektspeichers
+   * (`OBJECT_CHECKSUM_MISMATCH`). Das ist bewusst so gelassen: eine zusaetzliche
+   * `HEAD`-Anfrage je Wiederherstellung, nur um denselben Fehlschlag frueher und
+   * mit einem anderen Code zu melden, waere ein Rundgang mehr fuer dieselbe
+   * Aussage. Was nicht passiert, ist ein stilles Durchgehen.
+   *
+   * Was das kostet, steht hier und nicht in einem Dokument: ein Fehlschlag am
+   * Ende trifft eine Wiederherstellung, in die `psql` schon Teile gespielt hat.
+   * Das ist tragbar, **weil** die Wiederherstellung in eine **neue** Datenbank
+   * geht. Was zurueckbleibt, ist eine halbe neue Datenbank und ein Fehler, nicht
+   * eine beschaedigte lebende Datenbank.
+   */
+  private async *chunkedDump(
+    record: ProjectDatabaseBackupRecord,
+    identity: ProjectDatabaseBackupArtifactIdentity,
+    dataKey: Buffer,
+    signal?: AbortSignal,
+  ): AsyncGenerator<Buffer> {
+    try {
+      const objectKey = record.objectKey!;
+      const artifactBytes = record.sizeBytes ?? 0;
+      const partPlaintextBytes = record.partPlaintextBytes ?? 0;
+      const expectedParts = record.partCount ?? 0;
+      if (partPlaintextBytes < 1 || expectedParts < 1) {
+        throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_AVAILABLE");
+      }
+      if (chunkedPartCount(artifactBytes, partPlaintextBytes) !== expectedParts) {
+        throw new ProjectDatabaseBackupServiceError("BACKUP_ARTIFACT_MISMATCH");
+      }
+      const digest = createHash("sha256");
+      let previousTagHex = NO_PREVIOUS_TAG;
+      for (let partNumber = 1; partNumber <= expectedParts; partNumber += 1) {
+        if (signal?.aborted) throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_AVAILABLE");
+        const range = chunkedPartRange({
+          partNumber, partCount: expectedParts, artifactBytes, partPlaintextBytes,
+        });
+        const fetchOffset = partNumber === 1 ? 0 : range.offset;
+        const fetchLength = partNumber === 1 ? CHUNKED_HEADER_BYTES + range.length : range.length;
+        const bytes = await this.objects.getRange(objectKey, fetchOffset, fetchLength, signal);
+        let part = bytes;
+        if (partNumber === 1) {
+          if (readChunkedArtifactHeader(bytes) !== partPlaintextBytes) {
+            throw new ProjectDatabaseBackupServiceError("BACKUP_ARTIFACT_MISMATCH");
+          }
+          digest.update(bytes.subarray(0, CHUNKED_HEADER_BYTES));
+          part = bytes.subarray(CHUNKED_HEADER_BYTES);
+        }
+        digest.update(part);
+        const opened = openBackupPart({
+          part, dataKey, identity, partPlaintextBytes, partNumber,
+          final: partNumber === expectedParts, previousTagHex,
+        });
+        previousTagHex = opened.tagHex;
+        yield opened.chunk;
+      }
+      if (!sameDigest(digest.digest("hex"), record.artifactSha256!)) {
+        throw new ProjectDatabaseBackupServiceError("BACKUP_ARTIFACT_MISMATCH");
+      }
+    } finally {
+      dataKey.fill(0);
+    }
   }
 
   /**
@@ -606,6 +1115,21 @@ export class ProjectDatabaseBackupService {
     return removed;
   }
 
+  /**
+   * Ein Backup, stueckweise (2.129).
+   *
+   * Die Reihenfolge ist nicht beliebig, und zwei Stellen darin sind Befunde aus
+   * dem Weg von 2.73.0:
+   *
+   * 1. **Der Upload wird eroeffnet, bevor das erste Byte kommt.** Ein
+   *    Multipart-Upload, der erst nach dem Dump eroeffnet wird, haette den
+   *    ganzen Dump irgendwo -- also genau das Problem.
+   * 2. **Der Datenschluessel wird eingewickelt, bevor der Upload abgeschlossen
+   *    wird.** Umgekehrt laege ein fertiges Objekt da, dessen Schluessel sich
+   *    nicht einwickeln liess, und dann ist es unlesbarer Muell mit einer
+   *    Zeile, die ihn verspricht. Scheitert das Einwickeln jetzt, wird der
+   *    Upload abgebrochen und es gibt kein Objekt.
+   */
   private async produce(
     claim: ProjectDatabaseBackupClaim,
     signal?: AbortSignal,
@@ -617,6 +1141,9 @@ export class ProjectDatabaseBackupService {
     keyId: string;
     manifestSha256: string;
     includes: readonly string[];
+    artifactFormat: ProjectDatabaseBackupArtifactFormat;
+    partCount: number;
+    partPlaintextBytes: number;
     snapshotAt: Date;
     completedAt: Date;
     expiresAt: Date;
@@ -624,41 +1151,128 @@ export class ProjectDatabaseBackupService {
     const record = claim.record;
     const identity = identityOf(record);
     const snapshotAt = this.now();
-    const dump = await this.dumpPort.dump({ databaseInstanceRef: record.databaseInstanceRef }, signal);
-    // Das Manifest wird **nach** dem Dump gelesen und nicht davor. Zwischen
-    // Dump und Messung kann sich die Datenbank aendern; deshalb vergleicht der
-    // Nachweis nicht Quelle gegen Wiederherstellung, sondern das Manifest der
-    // **wiederhergestellten** Datenbank gegen das hier gespeicherte. Wer
-    // Quelle und Wiederherstellung vergleichen will, muss die Quelle anhalten,
-    // und das tut ein Backup nicht.
-    const manifest = await this.dumpPort.withReader(
-      { databaseInstanceRef: record.databaseInstanceRef },
-      (database) => readProjectDatabaseManifest(database),
-    );
+    const partPlaintextBytes = this.partPlaintextBytes;
+    const maxDumpBytes = this.maxDumpBytes;
+    const objectKey = backupObjectKey(record);
     const dataKey = newBackupDataKey();
+    let uploadId: string | null = null;
+    let stream: ProjectDatabaseDumpStream | null = null;
     try {
-      const artifact = sealBackupArtifact({ dump, dataKey, identity });
-      if (artifact.length > MAX_ARTIFACT_BYTES) {
-        throw new ProjectDatabaseBackupServiceError("INVALID_CONFIGURATION");
+      stream = await this.dumpPort.dumpStream(
+        { databaseInstanceRef: record.databaseInstanceRef }, signal,
+      );
+      uploadId = await this.objects.beginMultipart(objectKey, signal);
+
+      const digest = createHash("sha256");
+      const header = chunkedArtifactHeader(partPlaintextBytes);
+      digest.update(header);
+      let artifactBytes = header.length;
+      let plaintextBytes = 0;
+      let partNumber = 0;
+      let previousTagHex = NO_PREVIOUS_TAG;
+      const uploaded: ProjectDatabaseBackupUploadedPart[] = [];
+      // Der Puffer wird erst geleert, wenn **mehr** als eine Teilegroesse
+      // dasteht. Das ist der Trick, mit dem ein Strom ohne Vorwissen weiss,
+      // welcher Teil der letzte ist: wer mehr als eine Teilegroesse hat, weiss,
+      // dass nach dem naechsten Teil noch etwas kommt, und darf ihn `more`
+      // nennen. Der Rest am Ende ist der `final`-Teil.
+      let pending: Buffer[] = [];
+      let pendingBytes = 0;
+
+      const flush = async (final: boolean): Promise<void> => {
+        const all = Buffer.concat(pending, pendingBytes);
+        const chunk = final ? all : all.subarray(0, partPlaintextBytes);
+        const rest = final ? Buffer.alloc(0) : all.subarray(partPlaintextBytes);
+        pending = rest.length > 0 ? [rest] : [];
+        pendingBytes = rest.length;
+        partNumber += 1;
+        if (partNumber > this.maxParts) {
+          throw new ProjectDatabaseBackupArtifactError("ARTIFACT_TOO_LARGE");
+        }
+        const sealed = sealBackupPart({
+          chunk, dataKey, identity, partPlaintextBytes, partNumber, final, previousTagHex,
+        });
+        previousTagHex = sealed.tagHex;
+        const bytes = partNumber === 1 ? Buffer.concat([header, sealed.bytes]) : sealed.bytes;
+        digest.update(sealed.bytes);
+        artifactBytes += sealed.bytes.length;
+        uploaded.push(await this.objects.putPart({
+          key: objectKey, uploadId: uploadId!, partNumber, bytes,
+        }, signal));
+      };
+
+      for await (const chunk of stream.chunks) {
+        plaintextBytes += chunk.length;
+        if (plaintextBytes > maxDumpBytes) {
+          throw new ProjectDatabaseBackupArtifactError("ARTIFACT_TOO_LARGE");
+        }
+        pending.push(chunk);
+        pendingBytes += chunk.length;
+        while (pendingBytes > partPlaintextBytes) await flush(false);
       }
+      // Ein leerer Dump ist kein Backup. Der Riegel steht hier und in
+      // `project-database-dump.ts`, weil ein `pg_dump` mit Exit 0 und leerem
+      // `stdout` sonst ein `available` ohne Inhalt ergaebe.
+      if (pendingBytes < 1) throw new ProjectDatabaseBackupServiceError("BACKUP_NOT_AVAILABLE");
+      await flush(true);
+
+      // Das Manifest **nach** dem Dump und nicht davor. Zwischen Dump und
+      // Messung kann sich die Datenbank aendern; deshalb vergleicht der Nachweis
+      // nicht Quelle gegen Wiederherstellung, sondern das Manifest der
+      // **wiederhergestellten** Datenbank gegen das hier gespeicherte. Wer
+      // Quelle und Wiederherstellung vergleichen will, muss die Quelle anhalten,
+      // und das tut ein Backup nicht.
+      const manifest = await this.dumpPort.withReader(
+        { databaseInstanceRef: record.databaseInstanceRef },
+        (database) => readProjectDatabaseManifest(database),
+      );
       const wrapped = await this.keys.wrap({ dataKey, identity });
-      const objectKey = backupObjectKey(record);
-      await this.objects.put(objectKey, artifact, signal);
+      await this.objects.completeMultipart({ key: objectKey, uploadId, parts: uploaded }, signal);
+      uploadId = null;
       const completedAt = this.now();
+      // Die Frist der Umgebung, und erst dann die Vorgabe des Prozesses. Ein
+      // Fehlschlag beim Lesen der Zeile darf ein fertiges Backup nicht
+      // wegwerfen: dann gilt die Vorgabe, und die ist nie `null`.
+      const retentionDays = await this.retentionDaysFor(record) ?? this.retentionDays;
       return {
         objectKey,
-        artifactSha256: artifactSha256(artifact),
-        sizeBytes: artifact.length,
+        artifactSha256: digest.digest("hex"),
+        sizeBytes: artifactBytes,
         wrappedDataKey: wrapped.wrapped,
         keyId: wrapped.keyId,
         manifestSha256: manifest.sha256,
         includes: PROJECT_DATABASE_BACKUP_INCLUDES,
+        artifactFormat: "chunked",
+        partCount: partNumber,
+        partPlaintextBytes,
         snapshotAt,
         completedAt,
-        expiresAt: new Date(completedAt.getTime() + this.retentionDays * DAY_MS),
+        expiresAt: new Date(completedAt.getTime() + retentionDays * DAY_MS),
       };
     } finally {
       dataKey.fill(0);
+      stream?.cancel();
+      // Ein nicht abgeschlossener Upload wird abgebrochen. Ohne das liegen Teile
+      // im Objektspeicher, auf die keine Zeile zeigt, und sie kosten Platz,
+      // ohne je ein Objekt zu werden.
+      if (uploadId) await this.objects.abortMultipart(objectKey, uploadId);
+    }
+  }
+
+  /**
+   * Die Frist dieser Umgebung aus dem Zeitplan. `null` heisst: es gibt keine
+   * Zeile oder sie liess sich nicht lesen, und dann gilt die Vorgabe des
+   * Prozesses. Ein fertiges Backup an einer Fristzeile scheitern zu lassen waere
+   * die falsche Reihenfolge der Sorgen.
+   */
+  private async retentionDaysFor(
+    scope: Readonly<{ projectId: string; environment: Environment }>,
+  ): Promise<number | null> {
+    if (!this.schedule) return null;
+    try {
+      return await this.schedule.retentionDaysFor(scope);
+    } catch {
+      return null;
     }
   }
 
@@ -730,6 +1344,26 @@ function backupErrorCode(error: unknown): ProjectDatabaseBackupErrorCode {
   return "DUMP_FAILED";
 }
 
+/**
+ * Der Fehlercode einer gescheiterten Wiederherstellung. Fester Satz, und
+ * `RESTORE_FAILED` als Sammelcode: was nicht zu einem der benannten Faelle
+ * gehoert, soll nicht als einer davon erscheinen.
+ */
+function restoreErrorCode(error: unknown): ProjectDatabaseRestoreErrorCode {
+  const code = (error as { code?: unknown })?.code;
+  if (typeof code === "string" &&
+      (PROJECT_DATABASE_RESTORE_ERROR_CODES as readonly string[]).includes(code)) {
+    return code as ProjectDatabaseRestoreErrorCode;
+  }
+  if (code === "ARTIFACT_IDENTITY_MISMATCH" || code === "ARTIFACT_MALFORMED" ||
+      code === "OBJECT_CHECKSUM_MISMATCH") {
+    return "BACKUP_ARTIFACT_MISMATCH";
+  }
+  if (code === "OBJECT_NOT_FOUND") return "OBJECT_STORE_UNAVAILABLE";
+  if (code === "DATA_KEY_INVALID") return "KEY_UNAVAILABLE";
+  return "RESTORE_FAILED";
+}
+
 /** Der Schritt aus `ProjectDatabaseDumpError`, wenn einer dranhaengt. Fester Satz, kein Text. */
 function dumpStep(error: unknown): string | undefined {
   const step = (error as { step?: unknown })?.step;
@@ -767,6 +1401,7 @@ function serviceMessageFor(code: ProjectDatabaseBackupServiceErrorCode): string 
     case "BACKUP_NOT_AVAILABLE": return "The project database backup is not available for restore.";
     case "BACKUP_ARTIFACT_MISMATCH": return "The project database backup artifact failed its checksum.";
     case "RESTORE_MANIFEST_MISMATCH": return "The restored project database does not match the backup manifest.";
+    case "RESTORE_ALREADY_REQUESTED": return "A restore of this project database backup is already under way.";
     case "INVALID_CONFIGURATION": return "The project database backup configuration is invalid.";
   }
 }

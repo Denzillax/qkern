@@ -129,12 +129,15 @@ describe("console restore to new project contract", () => {
     expect(view).toContain("/database/backups/point-in-time");
     // Genau ein fetch, und keine zweite Adresse.
     expect(view.match(/fetch\(/g) ?? []).toHaveLength(1);
-    // Unter den Backup-Routen steht weiterhin genau eine, die alte.
+    // Seit 2.129 stehen unter den Backup-Routen drei Eintraege: der Katalog
+    // selbst, ein einzelnes Backup und weiterhin `point-in-time`. Diese Seite
+    // ruft keinen der neuen; dass es bei **einem** `fetch` bleibt, steht eine
+    // Zeile darueber.
     const backupRoutes = await readdir(path.resolve(
       process.cwd(),
       "app/api/v1/projects/[projectId]/environments/[environment]/database/backups",
     ));
-    expect([...backupRoutes].sort()).toEqual(["point-in-time"]);
+    expect([...backupRoutes].sort()).toEqual(["[backupId]", "point-in-time", "route.ts"]);
   });
 
   it("derives the chain so that only the restore run depends on the evidence", () => {
@@ -165,10 +168,12 @@ describe("console restore to new project contract", () => {
     // Ohne Tabellen waere der Fall wertlos; er muss wirklich gelesen haben.
     expect(created.length).toBeGreaterThan(50);
     const backupish = created.filter(({ table }) => /backup|restore|snapshot|recovery_point|wal_/.test(table));
-    // Seit 2.126 gibt es den Katalog aus 0083. Was diese Seite angeht, aendert
-    // das nichts: sie liest ihn nicht, und dieser Fall haelt genau das fest.
+    // Seit 2.126 gibt es den Katalog aus 0083, seit 2.129 den Zeitplan aus 0084.
+    // Was diese Seite angeht, aendert das nichts: sie liest keinen von beiden,
+    // und dieser Fall haelt genau das fest.
     expect(backupish).toEqual([
       { migration: "0083_project_database_backups.sql", table: "project_database_backups" },
+      { migration: "0084_project_database_backup_schedules.sql", table: "project_database_backup_schedules" },
     ]);
     expect(RESTORE_KNOWLEDGE_TEXTS.no_catalogue.explains)
       .toContain("Migration 0083 hält die Backups einer Projektdatenbank in der Kontrollebene");

@@ -60,6 +60,9 @@ const down = spawnSync("docker", [...compose, "down", "--volumes", "--remove-orp
 if (down.error) console.error(`Unable to clean up the backup drill stack: ${down.error.message}`);
 
 const projectEvidence = /QKERN_PROJECT_BACKUP_EVIDENCE_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
+// Fall (2.129) legt seine Kennzahlen daneben, mit derselben Begruendung wie
+// (2.126): nicht signiert, weil der Fall im Log belegt, was sie sagen.
+const streamEvidence = /QKERN_PROJECT_BACKUP_STREAM_EVIDENCE_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 const evidence = /QKERN_BACKUP_EVIDENCE_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 const key = /QKERN_BACKUP_VERIFIER_KEY_BASE64 ([A-Za-z0-9+/=]+)/.exec(output);
 if (status === 0 && evidence && key) {
@@ -85,6 +88,16 @@ if (status === 0 && evidence && key) {
     console.log("Evidenz abgelegt: docs/evidence/backup-restore/project-database-drill.evidence.json");
   } else {
     console.error("Projektdatenbank-Drill: keine Evidenzzeile im Log gefunden.");
+    status = 1;
+  }
+  if (streamEvidence) {
+    writeFileSync(
+      "docs/evidence/backup-restore/project-database-stream-drill.evidence.json",
+      Buffer.from(streamEvidence[1], "base64"),
+    );
+    console.log("Evidenz abgelegt: docs/evidence/backup-restore/project-database-stream-drill.evidence.json");
+  } else {
+    console.error("Stueckweiser Backup-Drill: keine Evidenzzeile im Log gefunden.");
     status = 1;
   }
 } else if (status === 0) {
