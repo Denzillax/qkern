@@ -49,8 +49,16 @@ export type DiagramRelation = {
 };
 
 export type DiagramRow = {
+  /** Was gezeichnet wird, notfalls mit Auslassungszeichen gekuerzt. */
   column: string;
+  /** Der volle Spaltenname, auch wenn `column` gekuerzt ist. */
+  columnFull: string;
+  /** Was gezeichnet wird, notfalls mit Auslassungszeichen gekuerzt. */
   dataType: string;
+  /** Der volle Typ, auch wenn `dataType` gekuerzt ist. */
+  dataTypeFull: string;
+  /** Mindestens eines von beiden ist gekuerzt; der Leser braucht dann einen Tooltip. */
+  shortened: boolean;
   notNull: boolean;
   primaryKey: boolean;
   /** Die Spalte gehoert zu einem Fremdschluessel dieser Tabelle. */
@@ -121,6 +129,79 @@ const LOOP_OUT = 26;
 const LOOP_DROP = 22;
 const ARROW = 7;
 
+/**
+ * Spaltenname und Typ passen nebeneinander, oder sie werden gekuerzt (2.133).
+ *
+ * **Der Befund.** Der Name steht links an `x + 12`, der Typ rechts an
+ * `x + width - 12`, und zwischen beiden stand nichts. Bei `angelegt_am` mit
+ * `timestamp with time zone` ueberlappten sie sichtbar: Im Bild stand
+ * `angelegtjamstamp with time zone`. Gesehen hat das kein Vertrag, weil keiner
+ * rechnet, sondern nur rendert, und kein Mensch, weil die Konsole bis `2.74.0`
+ * nie im Browser geoeffnet wurde.
+ *
+ * **Warum gerechnet und nicht gemessen.** Beide Texte stehen in einer
+ * Festbreitenschrift (`--qkern-font-mono`), also ist die Breite die Zahl der
+ * Zeichen mal dem Vorschub. JetBrains Mono und die Rueckfallschriften haben
+ * einen Vorschub von 0,6 der Schriftgroesse; gerechnet wird mit 0,62, damit
+ * eine Schrift mit etwas breiterem Vorschub nicht wieder ueberlappt. Ein
+ * Messen im Browser gaebe es hier nicht: Das Bild entsteht serverseitig.
+ *
+ * **Was gekuerzt wird.** Zuerst der Typ, denn er ist die Beigabe; der Name
+ * benennt die Spalte und bleibt so lange ganz, wie es geht. Erst wenn der Typ
+ * auf seiner Untergrenze steht, verliert auch der Name Zeichen. Gekuerzt wird
+ * mit einem Auslassungszeichen, und `shortened` sagt der Ansicht, dass sie
+ * einen Tooltip mit dem vollen Text braucht.
+ */
+const COLUMN_FONT_PX = 11;
+const TYPE_FONT_PX = 10.5;
+const MONO_ADVANCE = 0.62;
+const ROW_PADDING = 12;
+/** Luft zwischen Name und Typ, damit sie sich auch optisch nicht beruehren. */
+const ROW_MIN_GAP = 10;
+/** Darunter sagt ein Typ nichts mehr; dann verliert der Name Zeichen. */
+const TYPE_MIN_CHARS = 8;
+const ELLIPSIS = "…";
+
+function monoWidth(text: string, fontPx: number): number {
+  return text.length * fontPx * MONO_ADVANCE;
+}
+
+function shorten(text: string, chars: number): string {
+  if (chars <= 1) return ELLIPSIS;
+  return text.slice(0, chars - 1) + ELLIPSIS;
+}
+
+export function fitRowText(
+  column: string,
+  dataType: string,
+  options: { foreignKey: boolean; notNull: boolean; boxWidth?: number },
+): { column: string; dataType: string; shortened: boolean } {
+  const boxWidth = options.boxWidth ?? BOX_WIDTH;
+  const available = boxWidth - 2 * ROW_PADDING - ROW_MIN_GAP;
+  // Der Pfeil vor einem Fremdschluessel und der Stern hinter dem Typ zaehlen
+  // mit: Sie stehen in derselben Zeile und nehmen denselben Platz.
+  const prefix = options.foreignKey ? "→ " : "";
+  const suffix = options.notNull ? " *" : "";
+  const nameWidth = (name: string) => monoWidth(prefix + name, COLUMN_FONT_PX);
+  const typeWidth = (type: string) => monoWidth(type + suffix, TYPE_FONT_PX);
+
+  if (nameWidth(column) + typeWidth(dataType) <= available) {
+    return { column, dataType, shortened: false };
+  }
+  // Erst den Typ, bis zu seiner Untergrenze.
+  const typeRoom = available - nameWidth(column);
+  const typeChars = Math.floor(typeRoom / (TYPE_FONT_PX * MONO_ADVANCE)) - suffix.length;
+  if (typeChars >= TYPE_MIN_CHARS && typeChars < dataType.length) {
+    return { column, dataType: shorten(dataType, typeChars), shortened: true };
+  }
+  // Sonst traegt der Typ seine Untergrenze und der Name gibt nach.
+  const keptType = dataType.length > TYPE_MIN_CHARS ? shorten(dataType, TYPE_MIN_CHARS) : dataType;
+  const nameRoom = available - typeWidth(keptType);
+  const nameChars = Math.floor(nameRoom / (COLUMN_FONT_PX * MONO_ADVANCE)) - prefix.length;
+  const keptName = nameChars < column.length ? shorten(column, Math.max(1, nameChars)) : column;
+  return { column: keptName, dataType: keptType, shortened: keptName !== column || keptType !== dataType };
+}
+
 /** Wie viele Kaesten nebeneinander: 1 bei einer Tabelle, sonst gestaffelt bis 4. */
 export function columnsPerRow(count: number): number {
   if (count <= 1) return 1;
@@ -186,15 +267,23 @@ export function buildSchemaDiagram(input: {
       title: table.name,
       external: false,
       hiddenColumns: table.columns.length - shown.length,
-      rows: shown.map((column, index) => ({
-        column: column.name,
-        dataType: column.dataType,
-        notNull: column.notNull,
-        primaryKey: column.primaryKey === true,
-        foreignKey: keyColumns.has(column.name),
-        // y ist die Grundlinie der Zeile, relativ zum Kasten; verschoben wird spaeter.
-        y: HEADER_HEIGHT + (index + 1) * ROW_HEIGHT - 5,
-      })),
+      rows: shown.map((column, index) => {
+        const fitted = fitRowText(column.name, column.dataType, {
+          foreignKey: keyColumns.has(column.name), notNull: column.notNull,
+        });
+        return {
+          column: fitted.column,
+          columnFull: column.name,
+          dataType: fitted.dataType,
+          dataTypeFull: column.dataType,
+          shortened: fitted.shortened,
+          notNull: column.notNull,
+          primaryKey: column.primaryKey === true,
+          foreignKey: keyColumns.has(column.name),
+          // y ist die Grundlinie der Zeile, relativ zum Kasten; verschoben wird spaeter.
+          y: HEADER_HEIGHT + (index + 1) * ROW_HEIGHT - 5,
+        };
+      }),
     };
   });
   for (const [id, relation] of [...externals.entries()].sort((left, right) => left[0].localeCompare(right[0], "en"))) {
@@ -203,10 +292,15 @@ export function buildSchemaDiagram(input: {
       title: id,
       external: true,
       hiddenColumns: 0,
-      rows: relation.referencedColumns.map((column, index) => ({
-        column, dataType: "", notNull: false, primaryKey: false, foreignKey: false,
-        y: HEADER_HEIGHT + (index + 1) * ROW_HEIGHT - 5,
-      })),
+      rows: relation.referencedColumns.map((column, index) => {
+        const fitted = fitRowText(column, "", { foreignKey: false, notNull: false });
+        return {
+          column: fitted.column, columnFull: column,
+          dataType: "", dataTypeFull: "", shortened: fitted.shortened,
+          notNull: false, primaryKey: false, foreignKey: false,
+          y: HEADER_HEIGHT + (index + 1) * ROW_HEIGHT - 5,
+        };
+      }),
     });
   }
 

@@ -47,6 +47,30 @@ async function readJson(url: string, signal: AbortSignal): Promise<{ status: num
 }
 
 /** Die Aktion beim Loeschen der Elternzeile in Worten; `no action` bleibt unerwaehnt. */
+/**
+ * Das kurze Schild an der Kante (2.133).
+ *
+ * **Der Befund.** An der Kante stand der ganze Satz, also
+ * "loescht die Kindzeilen mit". Zwischen zwei Kaesten liegen 104 Pixel; der
+ * Satz braucht in jeder der vier Sprachen mehr und lag darum quer ueber der
+ * Kante und ueber dem Nachbarkasten. Im Bild war er abgeschnitten.
+ *
+ * **Warum die SQL-Worte und keine kuerzere Uebersetzung.** `CASCADE` steht so
+ * in der Anweisung, die diese Beziehung angelegt hat, und wer ein Schemabild
+ * liest, liest es dort wieder. Eine Uebersetzung muesste in vier Sprachen kurz
+ * genug bleiben, und das waere eine Zusage, die niemand haelt. Der ganze Satz
+ * steht weiter unter "Beziehungen in Worten"; genau dafuer ist der Abschnitt da.
+ */
+function onDeleteBadge(action: string): string | null {
+  switch (action) {
+    case "cascade": return "CASCADE";
+    case "restrict": return "RESTRICT";
+    case "set_null": return "SET NULL";
+    case "set_default": return "SET DEFAULT";
+    default: return null;
+  }
+}
+
 function onDeleteLabel(action: string): string | null {
   switch (action) {
     case "cascade": return t("löscht die Kindzeilen mit");
@@ -150,7 +174,7 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
           {diagram.edges.map((edge) => <g key={edge.id} className="schema-diagram-edge">
             <path d={edge.path} fill="none" stroke="currentColor" strokeWidth={1.2} strokeDasharray={edge.external ? "4 3" : undefined}/>
             <path d={edge.arrow} fill="none" stroke="currentColor" strokeWidth={1.4}/>
-            {onDeleteLabel(edge.onDelete) && <text x={edge.labelX} y={edge.labelY} textAnchor={edge.labelAnchor} className="schema-diagram-edge-label">{onDeleteLabel(edge.onDelete)}</text>}
+            {onDeleteBadge(edge.onDelete) && <text x={edge.labelX} y={edge.labelY} textAnchor={edge.labelAnchor} className="schema-diagram-edge-label">{onDeleteBadge(edge.onDelete)}</text>}
           </g>)}
           {diagram.boxes.map((box) => <g key={box.id} className={`schema-diagram-box${box.external ? " external" : ""}`}>
             <rect x={box.x} y={box.y} width={box.width} height={box.height} rx={10}
@@ -158,7 +182,10 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
                   strokeDasharray={box.external ? "5 4" : undefined}/>
             <line x1={box.x} y1={box.dividerY} x2={box.x + box.width} y2={box.dividerY} stroke="currentColor" strokeWidth={1}/>
             <text x={box.x + 12} y={box.titleY} className="schema-diagram-title">{box.title}</text>
-            {box.rows.map((row) => <text key={row.column} x={box.x + 12} y={row.y} className="schema-diagram-column">
+            {box.rows.map((row) => <text key={row.columnFull} x={box.x + 12} y={row.y} className="schema-diagram-column">
+              {/* Gekuerzt wird in `fitRowText`; der volle Text haengt als Titel
+                  daran, damit das Zeigen darauf ihn wieder hergibt. */}
+              {row.shortened && <title>{row.columnFull}{row.dataTypeFull ? ` ${row.dataTypeFull}` : ""}</title>}
               {row.foreignKey ? "→ " : ""}{row.column}
               <tspan className="schema-diagram-type" x={box.x + box.width - 12} textAnchor="end">{row.dataType}{row.notNull ? " *" : ""}</tspan>
             </text>)}

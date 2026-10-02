@@ -1157,3 +1157,20 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
   gap: 12px;
   margin-top: 10px;
 }
+
+/* 2.133: Ankreuzfelder behalten ihre Groesse.
+   Der Befund: Regeln wie `.settings-form input` setzen Hoehe und Innenabstand
+   fuer Textfelder und treffen dabei auch `input[type=checkbox]`. Im
+   Tabellen-Entwurf stand darum ein 40 Pixel hohes blaues Quadrat neben einer
+   Beschriftung, die darunter rutschte. Betroffen waren neun Ansichten, nicht
+   eine. Diese Regel steht am Ende der Datei, weil sie bei gleicher
+   Spezifitaet gewinnen muss; ein `!important` braucht es dafuer nicht.
+   Bewusst **nur** die Groesse: Eine Regel ueber `label:has(> input)` haette
+   (0,1,2) getragen und damit `.bucket-row` (0,1,0) ueberstimmt, also aus einem
+   Raster eine Zeile gemacht. Neben einem 15 Pixel breiten Kaestchen fliesst
+   eine Beschriftung von selbst; mehr braucht es nicht. */
+input[type="checkbox"], input[type="radio"] {
+  width: 15px; height: 15px; min-width: 15px; min-height: 15px;
+  padding: 0; margin: 0; flex: none; accent-color: var(--qkern-primary);
+  vertical-align: middle;
+}
