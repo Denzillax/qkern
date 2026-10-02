@@ -149,6 +149,61 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.131 (Zweig `slice/tracesearch`) **Eine Spur ist jetzt auffindbar, und eine
+  Anwendung liest die ihrer eigenen Nachricht.** Migration
+  `0085_project_queue_trace_search.sql` legt genau einen Teilindex auf
+  `project_queue_message_traces`:
+  `(organization_id, project_id, environment, trace_id, occurred_at, message_id)
+  WHERE trace_id IS NOT NULL`. Der Scope steht vorn, damit die Mandantengrenze
+  im Index steht und nicht erst in der Policy -- eine Spur-Id entsteht in einem
+  fremden Dienst, und zwei Organisationen hinter demselben Gateway tragen
+  dieselbe. `queue_id` steht **nicht** drin: Eine fremde Spur laeuft durch die
+  Umgebung und nicht durch eine Queue. Teilindex, weil der Anschluss nach 0081
+  nur auf Sequenz eins liegt; damit liefert die Suche je Nachricht hoechstens
+  eine Zeile, ohne `DISTINCT`.
+
+  **Drei Luecken, die das schliesst** (alle drei standen in `trace.ts` unter
+  "Offen"): es gab keine Suche nach einer Spur-Id, die Trace-Route war
+  Admin-only, und MCP hatte kein Trace-Werkzeug.
+
+  **Die Seitenform** ist die vorhandene und keine zweite: Keyset wie am
+  Audit-Log von Project Auth (`audit-postgres.ts`), der Cursor ist die
+  Nachrichten-Id der letzten Zeile, die Position liest die Abfrage selbst nach.
+  Nur die Richtung ist gedreht -- aufsteigend, weil man eine Spur vorwaerts
+  liest. Keine Gesamtzahl: sie waere ein zweiter Scan und im Augenblick der
+  Antwort veraltet.
+
+  **Was eine Suche zurueckgibt:** eine Zeile je Nachricht, nicht je Station
+  (`GET .../environments/{environment}/queue-traces?traceId=`). Der Pfad liegt
+  ausdruecklich **nicht** unter `queues/`, weil `queues/<etwas>` dort ein
+  `[queue]` ist und ein statisches Segment eine gleichnamige Queue verdeckt.
+
+  **Die Grenze zwischen Anwendung und Betreiber.** Neu ist
+  `GET .../messages/{messageId}/own-trace` mit Projekt-Key. Die Nachrichten-Id
+  ist die **halbe** Bedingung: Sie steht in der Quittung und damit in jedem Log,
+  das sie mitgelesen hat. Die andere Haelfte ist `owner_subject` (0026). Ein
+  `authenticated` Key sieht nur seine eigene Nachricht, ein `service_role` Key
+  jede dieser Umgebung (mit demselben Key holt er sie samt Nutzlast ab), ein
+  `anon` Key keine. Was eine Anwendung **nicht** sieht: den Wirt -- und zwar
+  strukturell, der Typ `ProjectQueueApplicationTraceEntry` hat das Feld nicht.
+  **Der Preis:** Ist die Nachricht weggeraeumt, gibt es keinen Besitzer zum
+  Vergleichen, und ein Endnutzer bekommt nichts mehr; der Betreiber behaelt das
+  ganze Fenster.
+
+  **MCP:** `qkern_queue_message_trace` unter `queues:read`, nach dem Muster von
+  2.117 (eine Spur sagt etwas ueber die **Nachrichten** dieser Umgebung, nicht
+  ueber ihre Gestalt -- `project:read` waere so falsch wie dort). Es laeuft ueber
+  OAuth als der **zustimmende Nutzer** und nicht als Betreiber, dieselbe
+  Entscheidung wie 2.116 beim Loeschwerkzeug von Storage: Eine Nachricht hat
+  einen Besitzer je Zeile, eine Queue-Definition nicht. Die beiden alten
+  Queue-Werkzeuge bleiben Betreiber, und das steht weiter als offen.
+
+  **Offen**: keine Suche nach einer Span-Id (der UNIQUE aus 0082 fuehrt
+  `message_id` vor `span_id`, und einen zweiten Index hat niemand verlangt); die
+  Trefferzeile nennt die **erste** Station und nicht den Ausgang; `qkern_queues_list`
+  und `qkern_queue_status` laufen weiter als Betreiber. Fall `(2.131)` in
+  `tests/postgres.integration.test.ts`.
+
 - 2.126 (Zweig `slice/backupdrill`) **Eine Projektdatenbank wird gesichert und
   wiederhergestellt.** Migration `0083_project_database_backups.sql` legt
   `project_database_backups` an: je Backup eine Zeile mit Zustand, Lease,
@@ -498,7 +553,7 @@ Grossbuchstaben.
   **Ein echter Fehler nebenbei**: `examples/codex-mcp.oauth.toml` behauptete noch,
   Storage, Queues, Control Plane und Migrationen seien ueber OAuth nicht
   erreichbar. Das stimmte seit Migration 0073 nicht mehr, und die Datei nennt
-  jetzt alle sechzehn erreichbaren Werkzeuge.
+  jetzt alle damals sechzehn erreichbaren Werkzeuge; seit 2.131 sind es siebzehn.
 
   **Offen**: Die Lesung verlaesst sich darauf, dass `pgsql-ast-parser` denselben
   Text so liest wie PostgreSQL. Faende sie eine Relation nicht, die PostgreSQL

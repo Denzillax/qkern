@@ -288,3 +288,153 @@ describe("project queue trace in the memory port", () => {
       .rejects.toMatchObject({ code: "QUEUE_INVALID_INPUT" });
   });
 });
+
+/**
+ * Die Suche nach einer Spur-Id und die Anwendungstuer im Speicher-Port (2.131).
+ *
+ * Was einen Stack braucht — der Teilindex aus 0085, die Policy aus 0081, die
+ * Keyset-Abfrage gegen echte `timestamptz` und `uuid` — steht in
+ * `postgres.integration.test.ts` als `(2.131)`. Was hier steht, ist die Zusage,
+ * die **beide** Ports tragen muessen: Ein Port, der eine andere Ordnung oder eine
+ * andere Grenze faehrt als der andere, ist ein Port, der etwas anderes zusagt als
+ * das Produkt.
+ */
+describe("project queue trace search in the memory port", () => {
+  function setup(now: () => Date) {
+    const repository = new MemoryProjectQueueRepository();
+    return { repository, service: new ProjectQueueService({ repository, now }) };
+  }
+
+  const appUser: ProjectQueuePrincipal = {
+    organizationId: scope.organizationId, actorRef: "app-user@qkern.test",
+    role: "authenticated", subject: "app-subject",
+  };
+
+  it("finds the messages of one trace across two queues, oldest first, and leaves the other scope alone", async () => {
+    let clock = new Date("2026-10-01T08:00:00.000Z");
+    const { service } = setup(() => clock);
+    for (const target of [scope, other]) {
+      await service.createQueue(admin, target, { name: "search-a" });
+      await service.createQueue(admin, target, { name: "search-b" });
+    }
+    const traceparent = formatProjectQueueTraceparent({ traceId: TRACE_ID, parentSpanId: SPAN_ID });
+    const first = await service.enqueue(admin, scope, "search-a", { payload: { task: "a" }, traceparent });
+    clock = new Date(clock.getTime() + 1_000);
+    const second = await service.enqueue(admin, scope, "search-b", { payload: { task: "b" }, traceparent });
+    // Dieselbe Spur-Id in einem anderen Projekt derselben Organisation. Sie darf
+    // nicht mitkommen, und das haelt im Speicher-Port dieselbe Bedingung wie im
+    // Postgres-Port.
+    clock = new Date(clock.getTime() + 1_000);
+    const foreign = await service.enqueue(admin, other, "search-a", { payload: { task: "c" }, traceparent });
+    // Und eine andere Spur in derselben Queue.
+    const unrelated = await service.enqueue(admin, scope, "search-a", {
+      payload: { task: "d" },
+      traceparent: formatProjectQueueTraceparent({ traceId: `${"0".repeat(31)}1`, parentSpanId: SPAN_ID }),
+    });
+
+    const found = await service.searchTraces(admin, scope, { traceId: TRACE_ID });
+    expect(found.traceId).toBe(TRACE_ID);
+    expect(found.messages.map((entry) => [entry.messageId, entry.queue, entry.station])).toEqual([
+      [first.id, "search-a", "enqueued"],
+      [second.id, "search-b", "enqueued"],
+    ]);
+    expect(found.nextCursor).toBeNull();
+    const ids = found.messages.map((entry) => entry.messageId);
+    expect(ids).not.toContain(foreign.id);
+    expect(ids).not.toContain(unrelated.id);
+    // Keine Nutzlast und kein Wirt, und der Wirt nicht als `null`: Die erste
+    // Station hat keinen, also hat die Trefferzeile das Feld nicht.
+    expect(Object.keys(found.messages[0]!).sort()).toEqual([
+      "messageId", "occurredAt", "parentSpanId", "queue", "sourceMessageId", "spanId", "station",
+    ]);
+  });
+
+  it("pages by keyset and answers a cursor whose row is gone with nothing", async () => {
+    let clock = new Date("2026-10-01T08:00:00.000Z");
+    const { service } = setup(() => clock);
+    await service.createQueue(admin, scope, { name: "page-queue" });
+    const traceparent = formatProjectQueueTraceparent({ traceId: TRACE_ID, parentSpanId: SPAN_ID });
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      ids.push((await service.enqueue(admin, scope, "page-queue", { payload: { index }, traceparent })).id);
+      clock = new Date(clock.getTime() + 1_000);
+    }
+    const page1 = await service.searchTraces(admin, scope, { traceId: TRACE_ID, limit: 2 });
+    expect(page1.messages.map((entry) => entry.messageId)).toEqual([ids[0], ids[1]]);
+    expect(page1.nextCursor).toBe(ids[1]);
+    const page2 = await service.searchTraces(admin, scope, {
+      traceId: TRACE_ID, limit: 2, cursor: page1.nextCursor!,
+    });
+    expect(page2.messages.map((entry) => entry.messageId)).toEqual([ids[2]]);
+    expect(page2.nextCursor).toBeNull();
+    // Ein Cursor, dessen Zeile es nicht gibt, liefert nichts statt der ersten
+    // Seite: Die Seite, die jemand wollte, existiert wirklich nicht.
+    const stale = await service.searchTraces(admin, scope, {
+      traceId: TRACE_ID, limit: 2, cursor: "weg",
+    });
+    expect(stale.messages).toEqual([]);
+    expect(stale.nextCursor).toBeNull();
+  });
+
+  it("refuses anything that is not a trace id instead of answering empty", async () => {
+    const clock = new Date("2026-10-01T08:00:00.000Z");
+    const { service } = setup(() => clock);
+    await service.createQueue(admin, scope, { name: "guard-search" });
+    for (const invalid of [TRACE_ID.toUpperCase(), "0".repeat(32), "abc", `${TRACE_ID}0`, ""]) {
+      await expect(service.searchTraces(admin, scope, { traceId: invalid }))
+        .rejects.toMatchObject({ code: "QUEUE_INVALID_INPUT" });
+    }
+    // Und die Suche bleibt beim Betreiber: Sie nennt Nachrichten verschiedener
+    // Besitzer ueber mehrere Queues.
+    await expect(service.searchTraces(appUser, scope, { traceId: TRACE_ID }))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+    await expect(service.searchTraces(worker, scope, { traceId: TRACE_ID }))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+  });
+
+  it("gives an application the trace of its own message, without the host, and nothing of a foreign one", async () => {
+    let clock = new Date("2026-10-01T08:00:00.000Z");
+    const { service } = setup(() => clock);
+    await service.createQueue(admin, scope, {
+      name: "own-queue", maxAttempts: 2, visibilityTimeoutSeconds: 5,
+    });
+    const mine = await service.enqueue(appUser, scope, "own-queue", { payload: { task: "mine" } });
+    const theirs = await service.enqueue(admin, scope, "own-queue", { payload: { task: "theirs" } });
+    const claimed = await service.claim(worker, scope, "own-queue", { workerId: "own-host", limit: 2 });
+    clock = new Date(clock.getTime() + 1_000);
+    await service.acknowledge(worker, scope, "own-queue", mine.id, {
+      workerId: "own-host", leaseToken: claimed.find((entry) => entry.id === mine.id)!.leaseToken,
+    });
+
+    // Der Betreiber sieht den Wirt.
+    const operator = await service.readTrace(admin, scope, "own-queue", mine.id);
+    expect(operator.stations.map((entry) => entry.workerId)).toEqual([null, "own-host", "own-host"]);
+    // Die Anwendung sieht dieselben Stationen ohne ihn, und das Feld fehlt.
+    const own = await service.readMessageTrace(appUser, scope, "own-queue", mine.id);
+    expect(own.stations.map((entry) => entry.station)).toEqual(["enqueued", "claimed", "completed"]);
+    for (const station of own.stations) {
+      expect(Object.keys(station).sort())
+        .toEqual(["attempt", "failureCode", "occurredAt", "sequence", "spanId", "station"]);
+    }
+    expect(JSON.stringify(own)).not.toContain("own-host");
+
+    // Die richtige Id einer fremden Nachricht reicht nicht: Die Id ist in der
+    // Quittung herausgegeben, der Besitzer entscheidet.
+    await expect(service.readMessageTrace(appUser, scope, "own-queue", theirs.id))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+    // Dieselbe Ablehnung wie fuer eine Id, die es nie gab.
+    await expect(service.readMessageTrace(appUser, scope, "own-queue", "unbekannt"))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+    // Ein anonymer Aufrufer kann nichts besitzen und bekommt nichts.
+    await expect(service.readMessageTrace({ ...appUser, role: "anon" }, scope, "own-queue", mine.id))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+    // Der Service-Key dieser Umgebung sieht jede Nachricht: Mit demselben Key
+    // holt er sie samt Nutzlast ab.
+    expect((await service.readMessageTrace(worker, scope, "own-queue", theirs.id)).messageId)
+      .toBe(theirs.id);
+    // Und ein anderes Projekt sieht nichts, auch mit derselben Id nicht.
+    await service.createQueue(admin, other, { name: "own-queue" });
+    await expect(service.readMessageTrace(worker, other, "own-queue", mine.id))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+  });
+});

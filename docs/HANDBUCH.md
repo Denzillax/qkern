@@ -3250,6 +3250,27 @@ Wichtige Pfade:
 - `GET .../queues/{queue}/status`
 - `GET .../queues/{queue}/dead-letters`
 - `POST .../queues/{queue}/dead-letters/{messageId}/replay` (Admin, Same-Origin)
+- `GET .../queues/{queue}/messages/{messageId}/trace` (Admin, mit Wirt)
+- `GET .../queues/{queue}/messages/{messageId}/own-trace` (Projekt-Key, ohne Wirt)
+- `GET .../environments/{environment}/queue-traces?traceId=` (Admin, Suche)
+
+Zum Verfolgen einer Nachricht gibt es seit `2.131` zwei Türen. Die Admin-Tür
+`/trace` nennt zusätzlich den Wirt, der eine Station ausgelöst hat. Die
+Anwendungstür `/own-trace` nennt ihn nicht — er ist ein Betriebsdetail — und
+verlangt zwei Dinge statt eines: die Nachrichten-Id **und** den Key, mit dem
+eingereiht wurde. Ein authentifizierter Project-Auth-User sieht nur seine
+eigene Nachricht, ein Service Key jede dieser Umgebung, ein anonymer Aufruf
+keine. Ist die Nachricht schon weggeräumt, bekommt ein User nichts mehr: Ohne
+Zeile gibt es keinen Besitzer, mit dem sich vergleichen liesse. Der Betreiber
+sieht die Spur so lange, wie sie steht.
+
+Wer QKERN zwischen anderen Diensten betreibt, schickt beim Einreihen eine
+Kopfzeile `traceparent` mit und sucht später nach dieser Spur-Id:
+`GET .../environments/development/queue-traces?traceId=<32 Hex klein>`. Die
+Antwort nennt eine Zeile je Nachricht über alle Queues **dieser** Umgebung,
+älteste zuerst, und blättert mit `cursor=<messageId der letzten Zeile>`. Über
+Umgebungen oder Organisationen läuft sie nie, auch dann nicht, wenn dieselbe
+Spur-Id dort vorkommt.
 
 Im lokalen Memory-Modus geht der Zustand bei einem Prozessneustart verloren. Für
 Persistenz `QKERN_RUNTIME_MODE=postgres` und `QKERN_RUNTIME_DATABASE_URL` setzen
@@ -5596,8 +5617,14 @@ Keys noch Checksums oder Token-Verifier aus. Upload, Delete, Scan und Lifecycle
 haben in diesem Alpha bewusst kein MCP-Tool und bleiben über die engeren REST-/
 Console-Autorisationspfade steuerbar.
 
-Mit aktivierten Project Queues kommen `qkern_queues_list`, `qkern_queue_status`
-und `qkern_queue_message_enqueue` hinzu. Das Enqueue-Tool ist ein Write und ohne
+Mit aktivierten Project Queues kommen `qkern_queues_list`, `qkern_queue_status`,
+`qkern_queue_message_trace` und `qkern_queue_message_enqueue` hinzu. Das
+Trace-Tool (seit `2.131`) nennt die Stationen **einer** Nachricht; über OAuth
+läuft es als der zustimmende Nutzer und gibt nur Nachrichten her, deren
+Besitzer dieser Nutzer ist — die Nachrichten-Id allein genügt nicht. Es nennt
+weder Nutzlast noch Lease-Token noch den Wirt, der die Nachricht bearbeitet
+hat. Eine Suche über alle Nachrichten einer fremden Spur-Id gibt es über MCP
+nicht; sie bleibt beim Betreiber. Das Enqueue-Tool ist ein Write und ohne
 `dedupeKey` nicht als idempotent annotiert. Queue-Claim, Ack, Fail und Lease sind
 bewusst keine MCP-Tools: Ein KI-Client erhält keine Worker-Lease-Autorität. Ob ein
 MCP-Client vor dem Enqueue fragt, steuert dessen Write-Approval-Konfiguration;
@@ -5638,7 +5665,7 @@ dort:
 | `project:read` | `qkern_project_get`, `qkern_automation_policy_get` |
 | `storage:read` | `qkern_storage_buckets_list`, `qkern_storage_objects_list` |
 | `storage:write` | `qkern_storage_object_delete` |
-| `queues:read` | `qkern_queues_list`, `qkern_queue_status` |
+| `queues:read` | `qkern_queues_list`, `qkern_queue_status`, `qkern_queue_message_trace` |
 | `queues:write` | `qkern_queue_message_enqueue` |
 | `logs:read` | `qkern_logs_search` |
 | `migrations:propose` | `qkern_migration_preview` |

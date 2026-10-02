@@ -119,8 +119,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
  * * `storage:read`: Buckets, ihre festen Zugriffsregeln, Kontingente und
  *   Verbrauch, sowie begrenzte Metadaten der Objekte eines Buckets. **Kein
  *   Inhalt und keine Signatur.**
- * * `queues:read`: Queue-Definitionen und ihre Zaehler je Nachrichtenzustand.
- *   Keine Nachrichteninhalte.
+ * * `queues:read`: Queue-Definitionen und ihre Zaehler je Nachrichtenzustand,
+ *   und seit 2.131 die Spur **einer** Nachricht. Keine Nachrichteninhalte, kein
+ *   Lease-Token, kein Dedupe-Verifikator, kein Wirt. Die Spur laeuft als der
+ *   zustimmende Nutzer und nennt nur dessen eigene Nachrichten; die Suche nach
+ *   einer Spur-Id bleibt beim Betreiber. Begruendung in `mcp/tool-scopes.ts`.
  * * `queues:write`: Genau das Einstellen einer Nachricht. **Keine
  *   Worker-Operation**, also kein Claim, kein Lease, kein Renewal und kein
  *   Abschluss; die gibt es ueber MCP ueberhaupt nicht, und dieser Bereich macht

@@ -11770,8 +11770,12 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // --- Zusage 2: queues:read liest und stellt nichts ein ---------------
       const lesendeQueue = await connect(queueReadToken);
       try {
+        // `qkern_queue_message_trace` seit 2.131 unter demselben Bereich: Eine
+        // Spur sagt etwas ueber die Nachrichten dieser Umgebung und nicht ueber
+        // ihre Gestalt. Es steht hier mit, weil eine Erweiterung eines Bereichs
+        // an der Zusage auffallen soll, die ihn vollstaendig nennt.
         expect(await toolNames(lesendeQueue.client))
-          .toEqual(["qkern_queue_status", "qkern_queues_list"]);
+          .toEqual(["qkern_queue_message_trace", "qkern_queue_status", "qkern_queues_list"]);
         const liste = toolText(await lesendeQueue.client.callTool({
           name: "qkern_queues_list", arguments: {},
         }));
@@ -16067,6 +16071,298 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(anchorless.trace).toBeNull();
     // Ohne eigenes Zeitbudget: ein Projekt, vier Queues, ein paar Nachrichten,
     // zwei Zustellungen und Katalogabfragen. Es wird auf keine Uhr gewartet.
+  });
+
+  it("(2.131) finds every message of one foreign trace across two queues of one environment, never leaves the environment or the organization, pages by keyset, and gives an application the trace of its own message without the host", async () => {
+    // Die Suche nach einer Spur-Id und die Anwendungstuer (2.131) gegen die
+    // echten Tabellen aus 0081, 0082 und den Index aus 0085.
+    //
+    // **Die Frage.** `trace.ts` fuehrte zwei Punkte unter "Offen": Es gab keine
+    // Suche nach einer Spur-Id, gelesen wurde nur je Nachricht, und die
+    // Trace-Route war Admin-only, eine Anwendung konnte die Spur **ihrer
+    // eigenen** Nachricht nicht lesen. Seit 2.124 gibt QKERN einen `traceparent`
+    // wieder heraus und steht damit in fremden Spuren drin; die Frage "welche
+    // Nachrichten gehoeren zu dieser Spur" wird jetzt wirklich gestellt.
+    //
+    // **Warum zwei Queues und zwei Umgebungen.** Eine fremde Spur laeuft durch
+    // die Umgebung und nicht durch eine Queue: Ein Auftrag reiht in die eine ein,
+    // die Folgearbeit in die andere. Darum darf die Suche keine Queue verlangen.
+    // Ueber die Umgebung hinaus darf sie dagegen nie laufen, und das ist nicht
+    // dasselbe wie die Organisationsgrenze:
+    //
+    // * Die **Organisationsgrenze** haelt die Policy aus 0081
+    //   (`organization_id = qkern_current_organization_id()`). Sie wird hier an
+    //   der Datenbank selbst geprueft, mit einem fremden Mandanten.
+    // * Die **Projekt- und Umgebungsgrenze** haelt **nur** die Abfrage. Es gibt
+    //   dafuer keine Policy, und es kann keine geben: Beide Werte stehen nicht in
+    //   der Sitzung. Genau diese Haelfte ist darum die, die eine Mutationsprobe
+    //   umdrehen muss, und genau darum liegt in dieser Umgebung dieselbe Spur-Id
+    //   auch in `staging`.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie 2.121, 2.122 und 2.124: Die
+    // Audit-Zeile von `createQueue` haelt sie fest, sie bleibt als erwarteter
+    // Rest im Wegwerf-Stack.
+    const searchOwner = randomUUID();
+    const searchOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [searchOwner, `trace-search-owner-${searchOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Trace Search', $2, $3)`,
+    [searchOrganization, `trace-search-${searchOrganization}`, searchOwner]);
+    const projectId = randomUUID();
+    const scope = { organizationId: searchOrganization, projectId, environment: "development" as const };
+    const staging = { ...scope, environment: "staging" as const };
+    const admin = {
+      organizationId: searchOrganization, actorRef: "trace-search@qkern.test",
+      role: "admin" as const, subject: searchOwner,
+    };
+    // Die Anwendung: ein angemeldeter Endnutzer, der einreiht. Sein Subjekt
+    // landet als `owner_subject` an der Nachricht (0026) und ist damit die
+    // zweite Haelfte der Bedingung an der Anwendungstuer.
+    const appSubject = randomUUID();
+    const appUser = {
+      organizationId: searchOrganization, actorRef: "app-user@qkern.test",
+      role: "authenticated" as const, subject: appSubject,
+    };
+    const otherAppUser = { ...appUser, actorRef: "other-user@qkern.test", subject: randomUUID() };
+    const anonymous = { ...appUser, role: "anon" as const, subject: randomUUID() };
+    const serviceRole = {
+      organizationId: searchOrganization, actorRef: "service-role:search-host",
+      role: "service_role" as const, subject: "search-host",
+    };
+    // Dieselben Beispielwerte wie in 2.121 und 2.124, damit alle drei Faelle
+    // ueber denselben Wert sprechen.
+    const foreignTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const foreignSpanId = "00f067aa0ba902b7";
+    const traceparent = `00-${foreignTraceId}-${foreignSpanId}-01`;
+    // Eine zweite Spur, damit belegt ist, dass die Suche eine Spur nennt und
+    // nicht alles, was eine hat.
+    const otherTraceId = "0af7651916cd43dd8448eb211c80319c";
+    const payloadMarker = "darf-nicht-in-der-suche-stehen";
+    const queueA = `search-a-${randomUUID().slice(0, 8)}`;
+    const queueB = `search-b-${randomUUID().slice(0, 8)}`;
+    const queueStaging = `search-s-${randomUUID().slice(0, 8)}`;
+
+    await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+      VALUES ($1, $2, 'Trace Search', $3, 'test', 'ready', $4)`,
+    [projectId, searchOrganization, `trace-search-${projectId}`, searchOwner]);
+    for (const environment of ["development", "staging"]) {
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, $3, $4)`,
+      [searchOrganization, projectId, environment, `managed:${projectId}-${environment}`]);
+    }
+
+    const plane = new PostgresControlPlane(runtime);
+    // Eine eingespeiste Uhr, damit die Ordnung der Seitenform pruefbar ist, ohne
+    // auf eine Uhr zu warten. Zwei Nachrichten im selben Augenblick traegt die
+    // Ordnung auch, dafuer ist `message_id` der Tiebreaker; nur liesse sich
+    // "aelteste zuerst" daran nicht zeigen.
+    let clock = new Date();
+    const queues = new ProjectQueueService({
+      repository: new PostgresProjectQueueRepository(plane), now: () => clock,
+    });
+    for (const [name, target] of [[queueA, scope], [queueB, scope], [queueStaging, staging]] as const) {
+      await queues.createQueue(admin, target, {
+        name, maxAttempts: 2, visibilityTimeoutSeconds: 30, retentionSeconds: 60,
+      });
+    }
+
+    // --- Drei Nachrichten an derselben fremden Spur ------------------------
+    // Die erste reiht der Endnutzer ein, die zweite der Betreiber in einer
+    // anderen Queue derselben Umgebung, die dritte liegt in `staging`.
+    const first = await queues.enqueue(appUser, scope, queueA, {
+      payload: { task: "order", customer: payloadMarker }, traceparent,
+    });
+    clock = new Date(clock.getTime() + 1_000);
+    const second = await queues.enqueue(admin, scope, queueB, {
+      payload: { task: "invoice", customer: payloadMarker }, traceparent,
+    });
+    clock = new Date(clock.getTime() + 1_000);
+    const stagingMessage = await queues.enqueue(admin, staging, queueStaging, {
+      payload: { task: "order" }, traceparent,
+    });
+    // Und eine Nachricht an einer anderen Spur, in derselben Queue.
+    const unrelated = await queues.enqueue(admin, scope, queueA, {
+      payload: { task: "other" }, traceparent: `00-${otherTraceId}-${foreignSpanId}-01`,
+    });
+
+    // --- Die Suche --------------------------------------------------------
+    // `traceId` ist das Einzige, was der Aufrufer zur Auswahl beitraegt. Projekt
+    // und Umgebung kommen aus dem Scope, die Organisation aus dem Mandanten.
+    const found = await queues.searchTraces(admin, scope, { traceId: foreignTraceId });
+    expect(found.traceId).toBe(foreignTraceId);
+    // Zwei Nachrichten, zwei Queues, aelteste zuerst. Die Queue steht je Zeile,
+    // weil eine Spur keiner Queue gehoert.
+    expect(found.messages.map((entry) => [entry.messageId, entry.queue, entry.station]))
+      .toEqual([
+        [first.id, queueA, "enqueued"],
+        [second.id, queueB, "enqueued"],
+      ]);
+    expect(found.nextCursor).toBeNull();
+    // Der Anschluss des Aufrufers steht an jeder Zeile, die Span der Station ist
+    // die von QKERN erzeugte, und beide sind verschieden.
+    for (const entry of found.messages) {
+      expect(entry.parentSpanId).toBe(foreignSpanId);
+      expect(entry.spanId).toMatch(/^[0-9a-f]{16}$/);
+      expect(entry.spanId).not.toBe(foreignSpanId);
+      expect(entry.sourceMessageId).toBeNull();
+    }
+    // Die Staging-Nachricht ist nicht dabei, obwohl sie dieselbe Spur-Id traegt
+    // und im selben Projekt derselben Organisation liegt. Und die Nachricht an
+    // der anderen Spur auch nicht.
+    const foundIds = found.messages.map((entry) => entry.messageId);
+    expect(foundIds).not.toContain(stagingMessage.id);
+    expect(foundIds).not.toContain(unrelated.id);
+    // Sie ist da, man muss nur in ihrer Umgebung suchen. Das belegt, dass die
+    // Zeile existiert und die Suche sie nicht bloss nicht geschrieben hat.
+    const inStaging = await queues.searchTraces(admin, staging, { traceId: foreignTraceId });
+    expect(inStaging.messages.map((entry) => entry.messageId)).toEqual([stagingMessage.id]);
+
+    // --- Die Organisationsgrenze, an der Datenbank ------------------------
+    // Hier haelt die Policy aus 0081 und nicht die Abfrage: Ein fremder Mandant
+    // sieht die Zeilen gar nicht.
+    const foreignRows = await withTenantTransaction(runtime,
+      { organizationId: organizationB, readOnly: true },
+      (transaction) => transaction.query<{ count: string }>(
+        "SELECT count(*) AS count FROM project_queue_message_traces WHERE trace_id=$1",
+        [foreignTraceId],
+      ));
+    expect(Number(foreignRows.rows[0]?.count)).toBe(0);
+    const ownRows = await withTenantTransaction(runtime,
+      { organizationId: searchOrganization, readOnly: true },
+      (transaction) => transaction.query<{ count: string }>(
+        "SELECT count(*) AS count FROM project_queue_message_traces WHERE trace_id=$1",
+        [foreignTraceId],
+      ));
+    expect(Number(ownRows.rows[0]?.count)).toBe(3);
+    // Und durch den Dienst: Eine fremde Organisation, die denselben Pfad und
+    // dieselbe Spur-Id nennt, bekommt eine leere Seite und keine Zeile.
+    const fromForeignTenant = await queues.searchTraces(
+      { organizationId: organizationB, actorRef: "fremd@qkern.test", role: "admin", subject: secondUserId },
+      { ...scope, organizationId: organizationB }, { traceId: foreignTraceId },
+    );
+    expect(fromForeignTenant.messages).toEqual([]);
+
+    // --- Der Index aus 0085 -----------------------------------------------
+    // Geprueft wird die Spaltenfolge und nicht ein Plan: Ein Plan haengt an der
+    // Statistik und waere auf einer leeren Tabelle beliebig. Die Reihenfolge ist
+    // die Zusage: Der Scope steht vor der Spur-Id, damit die Mandantengrenze im
+    // Index steht und nicht erst in der Policy, und die Ordnung der Seitenform
+    // steht dahinter.
+    const index = await owner.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+        WHERE schemaname='public' AND tablename='project_queue_message_traces'
+          AND indexname='project_queue_message_traces_trace_idx'`);
+    expect(index.rows).toHaveLength(1);
+    expect(index.rows[0]!.indexdef).toContain(
+      "(organization_id, project_id, environment, trace_id, occurred_at, message_id)");
+    expect(index.rows[0]!.indexdef).toContain("WHERE (trace_id IS NOT NULL)");
+
+    // --- Die Seitenform ---------------------------------------------------
+    // Keyset wie am Audit-Log von Project Auth: Der Cursor ist die Id der
+    // letzten gezeigten Zeile, die Position liest die Abfrage selbst nach.
+    const page1 = await queues.searchTraces(admin, scope, { traceId: foreignTraceId, limit: 1 });
+    expect(page1.messages.map((entry) => entry.messageId)).toEqual([first.id]);
+    expect(page1.nextCursor).toBe(first.id);
+    const page2 = await queues.searchTraces(admin, scope, {
+      traceId: foreignTraceId, limit: 1, cursor: page1.nextCursor!,
+    });
+    expect(page2.messages.map((entry) => entry.messageId)).toEqual([second.id]);
+    // Keine dritte Seite, und das sagt `nextCursor` und nicht eine Gesamtzahl.
+    expect(page2.nextCursor).toBeNull();
+    // Ein Cursor, dessen Zeile es nicht gibt, liefert nichts statt der ersten
+    // Seite. Die Seite, die jemand wollte, existiert wirklich nicht.
+    const stale = await queues.searchTraces(admin, scope, {
+      traceId: foreignTraceId, limit: 10, cursor: randomUUID(),
+    });
+    expect(stale.messages).toEqual([]);
+    expect(stale.nextCursor).toBeNull();
+    // Eine Spur-Id, die keine ist, ist eine ungueltige Anfrage und nicht eine
+    // leere Antwort: Leer liest sich wie "zu dieser Spur gibt es nichts".
+    for (const invalid of [foreignTraceId.toUpperCase(), "0".repeat(32), "abc", `${foreignTraceId}0`]) {
+      await expect(queues.searchTraces(admin, scope, { traceId: invalid }))
+        .rejects.toMatchObject({ code: "QUEUE_INVALID_INPUT" });
+    }
+
+    // --- Keine Nutzlast, und kein Wirt, strukturell -----------------------
+    // Die Suche liest ausschliesslich die erste Station je Nachricht, und die hat
+    // per CHECK aus 0081 keinen Wirt. Es gibt also kein Feld, das jemand
+    // weglassen muesste.
+    expect(Object.keys(found.messages[0]!).sort()).toEqual([
+      "messageId", "occurredAt", "parentSpanId", "queue", "sourceMessageId", "spanId", "station",
+    ]);
+    const searchJson = JSON.stringify(found);
+    expect(searchJson).not.toContain(payloadMarker);
+    expect(searchJson).not.toMatch(/[0-9a-f]{64}/);
+
+    // --- Die Anwendungstuer -----------------------------------------------
+    // Erst Arbeit an der Nachricht, damit es ueberhaupt eine Station mit Wirt
+    // gibt. Ohne sie waere "die Anwendung sieht keinen Wirt" eine Aussage ueber
+    // eine leere Menge.
+    const claimed = await queues.claim(serviceRole, scope, queueA, { workerId: "search-host" });
+    expect(claimed.map((entry) => entry.id)).toContain(first.id);
+    const lease = claimed.find((entry) => entry.id === first.id)!.leaseToken;
+    await queues.acknowledge(serviceRole, scope, queueA, first.id, {
+      workerId: "search-host", leaseToken: lease,
+    });
+
+    // Der Betreiber sieht den Wirt. Das ist die Gegenprobe zur Anwendung.
+    const operatorTrace = await queues.readTrace(admin, scope, queueA, first.id);
+    expect(operatorTrace.stations.map((entry) => entry.station))
+      .toEqual(["enqueued", "claimed", "completed"]);
+    expect(operatorTrace.stations.map((entry) => entry.workerId))
+      .toEqual([null, "search-host", "search-host"]);
+
+    // Der Endnutzer, der eingereiht hat, sieht dieselbe Spur ohne den Wirt. Das
+    // Feld fehlt, es ist nicht `null`: Der Typ der Anwendungsform hat es nicht.
+    const ownTrace = await queues.readMessageTrace(appUser, scope, queueA, first.id);
+    expect(ownTrace.messageId).toBe(first.id);
+    expect(ownTrace.traceId).toBe(foreignTraceId);
+    expect(ownTrace.stations.map((entry) => entry.station))
+      .toEqual(["enqueued", "claimed", "completed"]);
+    for (const station of ownTrace.stations) {
+      expect(Object.keys(station).sort())
+        .toEqual(["attempt", "failureCode", "occurredAt", "sequence", "spanId", "station"]);
+    }
+    const ownJson = JSON.stringify(ownTrace);
+    expect(ownJson).not.toContain("search-host");
+    expect(ownJson).not.toContain("workerId");
+    expect(ownJson).not.toContain(payloadMarker);
+    expect(ownJson).not.toMatch(/[0-9a-f]{64}/);
+
+    // Und jetzt die Grenze selbst: Ein **anderer** angemeldeter Nutzer legt
+    // dieselbe, richtige Nachrichten-Id vor und bekommt nichts. Die Id ist in
+    // der Quittung herausgegeben, also ein Beweis fuer den, der sie hat, und
+    // fuer jeden, der sie mitgelesen hat; der Besitzer entscheidet.
+    await expect(queues.readMessageTrace(otherAppUser, scope, queueA, first.id))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+    // Dieselbe Ablehnung wie fuer eine Id, die es nie gab: Fremd und unbekannt
+    // duerfen sich nicht unterscheiden lassen.
+    await expect(queues.readMessageTrace(otherAppUser, scope, queueA, randomUUID()))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+    // Auch die Nachricht des Betreibers gehoert dem Endnutzer nicht.
+    await expect(queues.readMessageTrace(appUser, scope, queueB, second.id))
+      .rejects.toMatchObject({ code: "QUEUE_RESOURCE_NOT_FOUND" });
+    // Ein anonymer Aufrufer bekommt gar nichts: Er kann nicht einreihen, also
+    // besitzt er keine Nachricht.
+    await expect(queues.readMessageTrace(anonymous, scope, queueA, first.id))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+    // Der Service-Key dieser Umgebung sieht jede Nachricht: Mit demselben Key
+    // holt er sie samt Nutzlast ab. Ihm Stationen zu verweigern waere eine
+    // Grenze, die nichts schuetzt.
+    const asService = await queues.readMessageTrace(serviceRole, scope, queueB, second.id);
+    expect(asService.messageId).toBe(second.id);
+    expect(JSON.stringify(asService)).not.toContain("workerId");
+    // Und die Suche bleibt dem Betreiber: Ein Endnutzer kommt an dieser Tuer
+    // nicht vorbei, auch mit der richtigen Spur-Id nicht.
+    await expect(queues.searchTraces(appUser, scope, { traceId: foreignTraceId }))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+    await expect(queues.searchTraces(serviceRole, scope, { traceId: foreignTraceId }))
+      .rejects.toMatchObject({ code: "QUEUE_ACCESS_DENIED" });
+    // Ohne eigenes Zeitbudget: ein Projekt, drei Queues, vier Nachrichten, eine
+    // Abholung und ein paar Katalogabfragen. Es wird auf keine Uhr gewartet.
   });
 });
 

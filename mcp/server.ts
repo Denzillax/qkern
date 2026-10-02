@@ -302,6 +302,33 @@ export function createQKERNMcpServer(
   const queuePrincipal = storagePrincipal;
 
   /**
+   * Die Decke am Trace-Werkzeug der Queues (2.131).
+   *
+   * Dieselbe Form wie `storageWritePrincipal` darunter und aus demselben Grund,
+   * eine Ebene tiefer. Die beiden lesenden Queue-Werkzeuge laufen als Betreiber,
+   * und `mcp/tool-scopes.ts` fuehrt das seit 2.69 als offene Grenze; bei einer
+   * Definition und einem Zaehler ist sie tragbar, weil es dort keinen Besitzer je
+   * Zeile gibt. Eine Nachricht hat einen (`owner_subject` aus 0026). Als
+   * Betreiber zu lesen hiesse hier: Die Zustimmung eines beliebigen Endnutzers
+   * oeffnet einem fremden Client die Spur jeder Nachricht dieser Umgebung, auch
+   * der eines anderen Nutzers.
+   *
+   * Also die Rolle des zustimmenden Nutzers, und die Anwendungstuer entscheidet
+   * am Besitzer. Beim statischen Bearer bleibt es beim Betreiber: Es gibt dort
+   * keinen Nutzer, in dessen Namen gehandelt wird, der Weg ist auf
+   * `NODE_ENV !== "production"` beschraenkt, und ein erfundenes Subjekt waere
+   * schlimmer als keines.
+   */
+  const queueTracePrincipal = context.access.kind === "project_oauth"
+    ? {
+      organizationId: context.organizationId,
+      actorRef: context.actorRef,
+      role: "authenticated" as const,
+      subject: context.access.userId,
+    }
+    : queuePrincipal;
+
+  /**
    * Die Decke am schreibenden Storage-Werkzeug (2.116).
    *
    * Die lesenden Storage-Werkzeuge laufen mit `role: "admin"` im Namen des
@@ -446,6 +473,36 @@ export function createQKERNMcpServer(
     try {
       const queues = dependencies.projectQueues ?? getProjectQueueService();
       return text({ data: await queues.status(queuePrincipal, queueScope, queue) });
+    } catch (error) { return projectQueueToolError(error); }
+  });
+
+  /**
+   * Die Spur einer Nachricht, und nur der eigenen (2.131).
+   *
+   * Es gibt das Werkzeug, weil ein Agent, der eine Nachricht eingereiht hat, bis
+   * hierher keinen Weg hatte nachzusehen, wie es ihr ergangen ist:
+   * `qkern_queue_status` nennt Zaehler ueber die ganze Queue, und ein Zaehler
+   * sagt nicht, ob **diese** Nachricht durchgelaufen ist. Genau das ist der
+   * Unterschied, den ein Agent braucht, bevor er behauptet, etwas sei erledigt.
+   *
+   * Es laeuft als der zustimmende Nutzer und gibt nur dessen eigene Nachrichten
+   * her; Rolle und Grund stehen an `queueTracePrincipal`. Was es nicht nennt: die
+   * Nutzlast (die Tabelle aus 0081 hat keine Spalte dafuer), kein Lease-Token,
+   * keinen Dedupe-Verifikator und keinen Wirt (die Anwendungsform der Spur hat das
+   * Feld nicht). Und keine Suche nach einer Spur-Id: Die nennt Nachrichten
+   * fremder Besitzer und steht darum an der Betreibertuer.
+   */
+  register("qkern_queue_message_trace", {
+    description: "Read the station trace of one message you enqueued in the current scoped queue, from its enqueue to its outcome. Over OAuth this runs as the consenting user and only returns the trace of a message whose owner is that user; presenting the message id alone is not enough. Payloads, lease credentials, dedupe verifiers and the worker host that processed the message are never returned. Searching all messages of a W3C trace id is an operator surface and is not available here.",
+    inputSchema: {
+      queue: z.string().regex(/^[a-z][a-z0-9_-]{2,62}$/),
+      messageId: z.string().min(1).max(128),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async ({ queue, messageId }) => {
+    try {
+      const queues = dependencies.projectQueues ?? getProjectQueueService();
+      return text({ data: await queues.readMessageTrace(queueTracePrincipal, queueScope, queue, messageId) });
     } catch (error) { return projectQueueToolError(error); }
   });
 

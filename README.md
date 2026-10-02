@@ -317,7 +317,7 @@ Codex-Konfiguration für einen späteren OAuth-geschützten Remote-Endpunkt:
 url = "https://mcp.your-qkern-domain.ch/mcp"
 auth = "oauth"
 required = true
-enabled_tools = ["qkern_project_get", "qkern_automation_policy_get", "qkern_schema_list", "qkern_query_readonly", "qkern_queues_list", "qkern_queue_status", "qkern_queue_message_enqueue", "qkern_logs_search", "qkern_migration_preview", "qkern_migration_apply_queue"]
+enabled_tools = ["qkern_project_get", "qkern_automation_policy_get", "qkern_schema_list", "qkern_query_readonly", "qkern_queues_list", "qkern_queue_status", "qkern_queue_message_trace", "qkern_queue_message_enqueue", "qkern_logs_search", "qkern_migration_preview", "qkern_migration_apply_queue"]
 default_tools_approval_mode = "writes"
 ```
 

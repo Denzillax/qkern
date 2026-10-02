@@ -41,6 +41,16 @@ type Trace = {
   messageExists: boolean; complete: boolean; stations: TraceStation[];
 };
 
+/**
+ * Ein Treffer der Spursuche (2.131). Eine Zeile je Nachricht und nicht je
+ * Station: Die Stationen holt dieselbe Ansicht mit einem Klick nach.
+ */
+type TraceHit = {
+  messageId: string; queue: string; station: string;
+  spanId: string; parentSpanId: string | null; sourceMessageId: string | null; occurredAt: string;
+};
+type TraceSearch = { traceId: string; messages: TraceHit[]; nextCursor: string | null };
+
 type LoadState = "loading" | "ready" | "unavailable" | "error";
 
 export function QueuesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: LoadState }) {
@@ -53,6 +63,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
   const [deadLetters, setDeadLetters] = useState<DeadLetter[]>([]);
   const [busy, setBusy] = useState("");
   const [trace, setTrace] = useState<Trace | null>(null);
+  const [search, setSearch] = useState<TraceSearch | null>(null);
 
   const load = useCallback(async () => {
     setState("loading"); setMessage("");
@@ -101,6 +112,32 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     if (!response.ok) { setTrace(null); setMessage(payload.error ?? t("Spur nicht verfügbar")); return; }
     setMessage("");
     setTrace(payload.data as Trace);
+  }
+
+  /**
+   * Sucht die Nachrichten einer fremden Spur-Id (2.131).
+   *
+   * Die Route liegt ausdruecklich nicht unter `queues/`: Eine Spur laeuft durch
+   * die Queues dieser Umgebung und gehoert keiner. Geblaettert wird mit dem
+   * Cursor der Antwort, und angehaengt statt ersetzt — wer blaettert, will mehr
+   * sehen und nicht etwas anderes.
+   */
+  async function searchTrace(cursor: string | null) {
+    const traceId = cursor === null
+      ? (window.prompt(t("Spur-Id (32 Hex-Zeichen, klein), deren Nachrichten Sie sehen wollen"), "") ?? "").trim()
+      : search!.traceId;
+    if (!traceId) return;
+    const query = new URLSearchParams({ traceId, limit: "20" });
+    if (cursor !== null) query.set("cursor", cursor);
+    const response = await fetch(
+      `/api/v1/projects/${projectId}/environments/${environment}/queue-traces?${query.toString()}`,
+      { cache: "no-store" },
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) { setSearch(null); setMessage(payload.error ?? t("Suche nach der Spur nicht verfügbar")); return; }
+    setMessage("");
+    const page = payload.data as TraceSearch;
+    setSearch(cursor === null ? page : { ...page, messages: [...search!.messages, ...page.messages] });
   }
 
   async function showDeadLetters(queue: QueueItem) {
@@ -154,7 +191,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
       <div><span>{t("DEAD LETTERS")}</span><strong>{totals.deadLettered}</strong><small>{totals.inFlight} {t("in Bearbeitung")}</small></div>
     </article>
     <article className="console-card span-2">
-      <div className="card-head"><div><span>{t("PROJECT QUEUES")} · {environment.toUpperCase()}</span><h3>{t("Queues des Projekts")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neue Queue")}</button></div></div>
+      <div className="card-head"><div><span>{t("PROJECT QUEUES")} · {environment.toUpperCase()}</span><h3>{t("Queues des Projekts")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="secondary-button" onClick={() => void searchTrace(null)}><Route size={14}/> {t("Spur suchen")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neue Queue")}</button></div></div>
       {message && <p className="muted">{message}</p>}
       {queues.length === 0 && <p className="muted">{t("Noch keine Queues. Eine Queue nimmt Nachrichten an, vergibt Leases an Worker und legt fehlgeschlagene Nachrichten nach dem letzten Versuch als Dead Letter ab.")}</p>}
       {queues.map((queue) => { const s = status[queue.name]; return <div key={queue.id}>
@@ -174,6 +211,24 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
         </div>}
       </div>; })}
     </article>
+    {search && <article className="console-card span-2">
+      <div className="card-head">
+        <div><span>{t("SPUR")} · <code>{search.traceId}</code></span><h3>{t("Nachrichten dieser Spur")}</h3></div>
+        <div><button className="secondary-button" onClick={() => setSearch(null)}>{t("Schliessen")}</button></div>
+      </div>
+      <div className="detail-list">
+        {search.messages.length === 0 ? <div><span>{t("Keine Nachricht zu dieser Spur in dieser Umgebung")}</span><strong className="muted">–</strong></div>
+          : search.messages.map((hit) => <div key={hit.messageId}>
+            <span>
+              <strong>{hit.queue}</strong>
+              <small><code>{hit.messageId}</code> · {stationLabel(hit.station)} · {formatMoment(hit.occurredAt)}</small>
+            </span>
+            <button className="plain-button" onClick={() => void showTrace(hit.queue, hit.messageId)}><Route size={13}/> {t("Spur")}</button>
+          </div>)}
+      </div>
+      {search.nextCursor && <button className="secondary-button" onClick={() => void searchTrace(search.nextCursor)}>{t("Weitere laden")}</button>}
+      <p className="muted">{t("Eine Spur läuft durch die Queues einer Umgebung und nie darüber hinaus; dieselbe Spur-Id in einer anderen Umgebung oder Organisation erscheint hier nicht. Je Nachricht steht ihre erste Station, also ob sie neu eingestellt oder wieder eingereiht wurde. Der Ausgang steht in der Spur der Nachricht selbst.")}</p>
+    </article>}
     {trace && <article className="console-card span-2">
       <div className="card-head">
         <div><span>{t("SPUR")} · {trace.queue}</span><h3>{t("Eine Nachricht von ihrem Einstellen bis zu ihrem Ausgang")}</h3></div>

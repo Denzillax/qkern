@@ -35,10 +35,20 @@ import {
  * Fehler, den dieser Vertrag fangen soll.
  */
 const KNOWN = new Set(CERTIFICATION_CLAIMS.flatMap((claim) => claim.stacks));
-const EXEMPT = [
-  { test: (stack: string) => /^Mutation /.test(stack), why: "Mutationsprobe, absichtlich rot" },
-  { test: (stack: string) => stack === "Vitest lokal (Windows)", why: "lokale Suite, kein echter Dienst" },
-];
+
+/**
+ * Eine Mutationsprobe nennt sich so, und sie ist rot.
+ *
+ * Beide Schreibweisen kommen vor, `Mutation <was>` und
+ * `<Stack> (Mutationsprobe <was>)`, und beide sind in Ordnung: Die zweite nennt
+ * zusaetzlich den Stack und faellt trotzdem nicht mit einem Anspruch zusammen,
+ * weil der Vergleich exakt ist. **Gruen darf eine Probe nicht sein.** Eine
+ * Probe, die nicht faellt, ist der Befund und keine Evidenz, und ohne diese
+ * Bedingung koennte man jede unbequeme Beschriftung mit dem Wort
+ * "Mutationsprobe" an diesem Vertrag vorbeischreiben.
+ */
+const isProbe = (stack: string) => /Mutation(sprobe)?/.test(stack);
+const isLocalSuite = (stack: string) => stack === "Vitest lokal (Windows)";
 
 describe("evidence stack label contract", () => {
   it("keeps every label of the newest evidence day attached to a claim", async () => {
@@ -50,10 +60,15 @@ describe("evidence stack label contract", () => {
     expect(ofDay.length).toBeGreaterThan(0);
 
     const unknown = [...new Set(ofDay
-      .filter((entry) => !KNOWN.has(entry.stack) && !EXEMPT.some((rule) => rule.test(entry.stack)))
+      .filter((entry) => !KNOWN.has(entry.stack) && !isProbe(entry.stack) && !isLocalSuite(entry.stack))
       .map((entry) => entry.stack))].sort();
 
     expect(unknown, `Beschriftungen aus ${newest}, die keine Zeile der Startseite fuettern`).toEqual([]);
+
+    const greenProbes = ofDay
+      .filter((entry) => isProbe(entry.stack) && entry.failed === 0 && entry.exitCode === 0)
+      .map((entry) => entry.file);
+    expect(greenProbes, "Mutationsproben, die nicht gefallen sind").toEqual([]);
   }, 20_000);
 
   it("names a stack for every claim and lets no two claims share one", () => {
