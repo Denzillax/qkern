@@ -18,6 +18,7 @@ import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { CheckIcon, ErrorState } from "@/components/console/console-parts";
 import { setConsoleDisplaySettings } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { OptionMenu } from "@/components/console/option-menu";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { QueuesView } from "@/components/console/queues-view";
 import { MigrationsView } from "@/components/console/migrations-view";
@@ -243,7 +244,14 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const project = snapshot?.projects[0];
+  // Welches Projekt die Console zeigt (2.142). Bis hierher stand hier
+  // `projects[0]`, fest: Wer ein zweites Projekt hatte, kam ueber die
+  // Oberflaeche nie hin, und der Pfeil neben dem Namen oben links versprach ein
+  // Menue, das es nicht gab. Die Wahl liegt im Zustand und nicht in der Ablage,
+  // denn sie gilt fuer diesen Besuch; die Startansicht und der Modus sind
+  // Vorlieben, ein geoeffnetes Projekt ist keine.
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const project = snapshot?.projects.find((entry) => entry.id === projectId) ?? snapshot?.projects[0];
   // Offene Gruppen als Menge; die aktive Gruppe öffnet sich beim Wechsel,
   // jede Gruppe lässt sich per Klick auf den Kopf schliessen und öffnen.
   // Seit 2.8 gemerkt (localStorage, im Effekt gelesen wie die Sidebar-Breite).
@@ -282,7 +290,23 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
     <div className="console-root">
       <aside className={`console-sidebar ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
         <div className="console-brand"><Link href="/console" aria-label={t("Zur Console-Übersicht")}>{collapsed ? <QKERNSymbol variant="white" size="sm" /> : <QKERNLogo variant="white" size="sm" />}</Link><button className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? t("Sidebar ausklappen") : t("Sidebar einklappen")} title={collapsed ? t("Sidebar ausklappen") : t("Sidebar einklappen")}>{collapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}</button><button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label={t("Navigation schließen")} title={t("Navigation schließen")}><X size={18}/></button></div>
-        <div className="project-switch"><span className="project-glyph">{(project?.name ?? "QK").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "QK"}</span><div><strong>{project?.name ?? t("Projekt wird geladen")}</strong><small>{displayWorkspaceName(snapshot?.organization.name)}</small></div><ChevronDown size={14}/></div>
+        <div className="project-switch">
+          {/* Dasselbe Bauteil wie die Umgebung oben und wie jedes andere
+              Auswahlfeld der Console (2.133). Der Punkt links ist der Kuerzel
+              des Projekts, die Erklaerzeile nennt die Region, denn die
+              unterscheidet zwei Projekte mit aehnlichem Namen. Ohne Daten steht
+              ein gesperrter Knopf da und kein leeres Menue. */}
+          <span className="project-glyph">{(project?.name ?? "QK").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "QK"}</span>
+          <div>
+            <OptionMenu value={project?.id ?? ""} align="left"
+              ariaLabel={t("Projekt")} listLabel={t("Projekt wählen")}
+              options={(snapshot?.projects ?? []).map((entry) => ({
+                id: entry.id, label: entry.name, hint: entry.region,
+              }))}
+              onChange={(next) => { setProjectId(next); setMobileOpen(false); }}/>
+            <small>{displayWorkspaceName(snapshot?.organization.name)}</small>
+          </div>
+        </div>
         <nav className={`console-nav ${mode}`} aria-label={t("Console-Navigation")}>
           {mode === "easy" && EASY_NAV.map((group) => {
             const Icon = group.icon;

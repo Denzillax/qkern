@@ -28,12 +28,25 @@ Weiter vorhanden und wiederverwendet statt nachgebaut:
 | 2.134 | Oberflaechenmodus: `EASY_NAV`, Umschalter, Vorliebe, Migration 0086 | fertig |
 | 2.135 | Preisseite `/pricing` in vier Sprachen, eine Preisliste | fertig |
 | 2.136 | Uebersicht klarer, Projekt-Zustand, Schnellstart | fertig |
-| 2.137 | Leere Zustaende, Kopierknoepfe, gefaehrliche Aktionen, Kontrast | in Arbeit |
-| 2.138 | Tabellen-Kontext: Daten, Struktur, Beziehungen, Sicherheit, API | in Arbeit |
-| 2.139 | Einstellungen gruppieren, API-Keys maskieren, Danger Zone | offen |
-| 2.140 | Abrechnung im Dashboard: Tarif, Verbrauch, naechste Rechnung | offen |
+| 2.137 | Leere Zustaende, Kopierknoepfe, gefaehrliche Aktionen, Kontrast | fertig |
+| 2.138 | Tabellen-Kontext: Daten, Struktur, Beziehungen, Sicherheit, API | fertig |
+| 2.139 | Einstellungen gruppieren, API-Keys maskieren, Danger Zone | fertig |
+| 2.140 | Abrechnung im Dashboard: Verbrauch und Rechnung, ohne Tarifzeile | fertig |
+| 2.141 | Der Claim auf dem Hero und der Abschnitt, der ihn einloest | fertig |
+| 2.142 | Projektwechsler, der wirklich wechselt | fertig |
+| 2.143 | SQL-Editor: Editor, Ergebnis, Verlauf | offen |
+| 2.144 | Realtime einfach: Tabellen anschalten statt Replikation erklaeren | offen |
+| 2.145 | Functions getrennt: Functions, Deployments, Logs, Secrets | offen |
 
 ## Drei Stellen, an denen der Auftrag und der Code auseinandergehen
+
+Nachtrag zu 2.140: Auch ein **Rechnungstermin** existiert nicht. Die
+Nutzungsroute liefert Periode, Zeilen und Summe, kein Fenster und kein Datum,
+und der Rechnungslauf ist ein Prozess ohne Zeitplan im Repository. Abgeleitet
+werden nur der letzte Tag der Periode und der erste fakturierbare Tag.
+
+Nachtrag zu 2.142: Es gibt **keine Route, die ein Projekt anlegt**, nur eine, die
+liest. Darum steht im Projektwechsler kein "Neues Projekt".
 
 **Der Tarif existiert nicht.** Punkt 19 will "Current Plan: Pro, CHF 29". Im
 Backend gibt es Metriken, Preise je Metrik und Rechnungen, aber keine Tarifzeile

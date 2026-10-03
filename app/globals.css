@@ -1634,3 +1634,15 @@ input[type="checkbox"], input[type="radio"] {
 .usage-reading-row .progress { margin: 8px 0 5px; }
 .usage-reading-row .progress.is-warning i { background: var(--qkern-warning); }
 .usage-reading-row .progress.is-over i { background: var(--qkern-danger); }
+
+/* Der Projektwechsler als Auswahlmenü (2.142). Vorher stand hier ein Pfeil
+   neben dem Namen, hinter dem nichts lag; jetzt ist es dasselbe Bauteil wie das
+   Umgebungsmenü, nur in der Sidebar und über die volle Breite. Das Feld bringt
+   seinen eigenen Rahmen mit, und zwei Rahmen ineinander sähen aus wie ein
+   Fehler, also trägt hier nur der äussere einen. */
+.project-switch .option-menu { min-width: 0; }
+.project-switch .option-field { width: 100%; border: 0; background: transparent; padding: 0; min-height: 20px; color: #e6edf8; font-size: 13px; }
+.project-switch .option-field:hover:not(:disabled) { background: transparent; color: #ffffff; }
+.project-switch .option-field > span { overflow: hidden; text-overflow: ellipsis; }
+.project-switch .option-list { left: 0; right: auto; min-width: 220px; }
+.is-collapsed .project-switch .option-menu { display: none; }
