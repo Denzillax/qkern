@@ -499,7 +499,6 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 .row-actions { display: flex; align-items: center; gap: 5px; min-width: 75px !important; }
 .row-actions button, .api-key-list button, .one-time-secret button { border: 1px solid var(--qkern-border); border-radius: 5px; background: transparent; color: var(--qkern-text-muted); padding: 5px; cursor: pointer; }
 .row-actions button:hover, .api-key-list button:hover { color: var(--qkern-danger); border-color: color-mix(in srgb, var(--qkern-danger) 35%, var(--qkern-border)); }
-.sql-layout { display: grid; grid-template-columns: 1.35fr .65fr; gap: 12px; }
 .sql-editor { padding: 0; overflow: hidden; }
 .editor-tabs { height: 42px; border-bottom: 1px solid var(--qkern-border); background: var(--qkern-surface-2); display: flex; align-items: center; }
 .editor-tabs > span { height: 100%; padding: 0 15px; display: flex; align-items: center; gap: 15px; font: 600 8px var(--qkern-font-sans); border-right: 1px solid var(--qkern-border); }
@@ -507,7 +506,7 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 .editor-tabs > button { border: 0; background: transparent; color: var(--qkern-text-muted); padding: 10px; }
 .editor-tabs .risk { margin-left: auto; margin-right: 12px; text-transform: uppercase; }
 .editor-body { height: 390px; display: grid; grid-template-columns: 44px 1fr; background: color-mix(in srgb, var(--qkern-surface) 97%, #004dd5); }
-.line-numbers { padding: 24px 12px; text-align: right; color: var(--qkern-text-muted); font: 12px/1.75 var(--qkern-font-mono); border-right: 1px solid var(--qkern-border); user-select: none; }
+.line-numbers { display: grid; align-content: start; padding: 24px 12px; text-align: right; color: var(--qkern-text-muted); font: 12px/1.75 var(--qkern-font-mono); border-right: 1px solid var(--qkern-border); user-select: none; }
 .editor-body textarea { width: 100%; height: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--qkern-text); padding: 24px; font: 12px/1.75 var(--qkern-font-mono); }
 .editor-footer { min-height: 55px; padding: 0 13px; border-top: 1px solid var(--qkern-border); display: flex; align-items: center; justify-content: space-between; color: var(--qkern-text-muted); font-size: 8px; }
 .result-panel { min-height: 488px; }
@@ -674,7 +673,7 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 
 @media (max-width: 1050px) {
   .metric-grid, .monitoring-grid { grid-template-columns: 1fr 1fr; }
-  .dashboard-grid, .dashboard-grid.lower, .sql-layout, .api-layout, .ai-console-grid { grid-template-columns: 1fr; }
+  .dashboard-grid, .dashboard-grid.lower, .api-layout, .ai-console-grid { grid-template-columns: 1fr; }
   .span-4 { grid-column: 1/-1; }
   .system-online, .command-button span { display: none; }
   .command-button { min-width: 72px; }
@@ -1697,10 +1696,6 @@ input[type="checkbox"], input[type="radio"] {
 .sql-history-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; align-items: stretch; }
 .sql-history-list > button { margin-top: 12px; align-self: flex-start; }
 
-/* Offen geblieben: `.sql-layout` in Zeile 502 und in der Medienabfrage ist mit
-   2.143 unbenutzt, denn der SQL-Editor steht jetzt in `.sql-areas`. Entfernt
-   wird die Regel hier nicht, weil dieser Schnitt am Stylesheet nur anfuegen
-   darf; sie gehoert in den naechsten Durchgang durch die toten Klassen. */
 /* Realtime: welche Tabellen Aenderungen melden (2.144). Vier Spalten statt der
    fuenf des allgemeinen Protokollrasters, weil diese Liste keine Uhrzeit hat;
    der Erklaersatz einer Zeile laeuft darunter ueber die ganze Breite. */

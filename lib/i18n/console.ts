@@ -9,6 +9,10 @@ import type { Locale } from "@/lib/i18n/locales";
 export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, string>> = {
   en: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "gering": "low",
+    "mittel": "medium",
+    "hoch": "high",
+    "kritisch": "critical",
     "Projekt wählen": "Choose project",
     "Kopieren hat nicht geklappt": "Copying did not work",
     "Im Schema public steht noch keine Tabelle. Sobald eine angelegt ist, steht sie in diesem Menü und ihre Datensätze, Spalten und Beziehungen stehen darunter.": "Schema public holds no table yet. Once one exists it appears in this menu, and its rows, columns and relations appear below it.",
@@ -4264,6 +4268,10 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   fr: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "gering": "faible",
+    "mittel": "moyen",
+    "hoch": "élevé",
+    "kritisch": "critique",
     "Projekt wählen": "Choisir le projet",
     "Kopieren hat nicht geklappt": "La copie n'a pas fonctionné",
     "Im Schema public steht noch keine Tabelle. Sobald eine angelegt ist, steht sie in diesem Menü und ihre Datensätze, Spalten und Beziehungen stehen darunter.": "Le schéma public ne contient encore aucune table. Dès qu'une table existe, elle apparaît dans ce menu, et ses enregistrements, colonnes et relations apparaissent en dessous.",
@@ -8519,6 +8527,10 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   it: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "gering": "basso",
+    "mittel": "medio",
+    "hoch": "alto",
+    "kritisch": "critico",
     "Projekt wählen": "Scegliere il progetto",
     "Kopieren hat nicht geklappt": "La copia non ha funzionato",
     "Im Schema public steht noch keine Tabelle. Sobald eine angelegt ist, steht sie in diesem Menü und ihre Datensätze, Spalten und Beziehungen stehen darunter.": "Lo schema public non contiene ancora nessuna tabella. Appena ne esiste una compare in questo menu, e sotto compaiono i suoi record, le colonne e le relazioni.",

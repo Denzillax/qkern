@@ -53,6 +53,7 @@ import { addonsTexts } from "@/lib/console/addons-texts";
 import { backupsTexts } from "@/lib/console/backups-texts";
 import { vectorBucketTexts } from "@/lib/console/vector-buckets-texts";
 import { analyticsBucketTexts } from "@/lib/console/analytics-buckets-texts";
+import { changeSetLabelTexts } from "@/lib/console/change-set-labels";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -252,6 +253,9 @@ async function consoleKeys(): Promise<string[]> {
   // was der S3-Zugang kann, die Schritte, die es braeuchte, und seine
   // Ehrlichkeitssaetze ueber t(variable).
   for (const text of analyticsBucketTexts()) keys.add(text);
+  // Zustand und Risiko eines Change Sets (2.145) laufen in der Migrationsliste
+  // und im Verlauf des SQL-Editors als t(variable) durch die Ansicht.
+  for (const text of changeSetLabelTexts()) keys.add(text);
   return [...keys];
 }
 

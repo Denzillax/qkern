@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GitCommitHorizontal, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { changeSetStatusLabel } from "@/lib/console/change-set-labels";
 import { formatMoment } from "@/components/console/console-display";
 import type { ChangeSet, Environment } from "@/lib/types";
 
@@ -54,11 +55,9 @@ export function MigrationsView({ projectId, environment, changeSets, initialStat
   const scoped = changeSets.filter((set) => set.projectId === projectId && set.environment === environment)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const applied = scoped.filter((set) => set.status === "applied").length;
-  const statusLabel: Record<string, string> = {
-    draft: t("Entwurf"), validating: t("wird geprüft"), pending_approval: t("wartet auf Freigabe"), approved: t("freigegeben"),
-    rejected: t("abgelehnt"), queued: t("eingereiht"), applying: t("wird angewendet"), applied: t("angewendet"),
-    failed: t("fehlgeschlagen"), rolled_back: t("zurückgerollt"),
-  };
+  // Die Tabelle lag hier und nirgends sonst, und der Verlauf des SQL-Editors
+  // zeigte denselben Zustand darum roh als `pending_approval`. Jetzt holen beide
+  // dasselbe Wort aus demselben Modul (2.145).
 
   return <div className="module-grid">
     <article className="console-card auth-overview">
@@ -72,7 +71,7 @@ export function MigrationsView({ projectId, environment, changeSets, initialStat
       {scoped.map((set) => <div className="bucket-row" key={set.id}><span className="bucket-icon"><GitCommitHorizontal size={16}/></span>
         <div><strong>{set.title}</strong><small>{set.agent} · {when(set.createdAt)} · {set.diff.length} {t("Zeilen Diff")}{set.rollback ? ` · ${t("Rollback vorhanden")}` : ""}</small></div>
         <span className={`risk ${set.risk}`}>{t("Risiko")} {set.risk}</span>
-        <span className={set.status === "applied" ? "secure" : set.status === "failed" || set.status === "rejected" ? "risk high" : "muted"}>{statusLabel[set.status] ?? set.status}</span>
+        <span className={set.status === "applied" ? "secure" : set.status === "failed" || set.status === "rejected" ? "risk high" : "muted"}>{t(changeSetStatusLabel(set.status))}</span>
       </div>)}
     </article>
     <article className="console-card span-2">

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, BookOpen, History, Play, ShieldCheck, Table2, Terminal, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { changeSetRiskLabel, changeSetStatusLabel } from "@/lib/console/change-set-labels";
 import { EmptyState } from "@/components/console/console-parts";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
@@ -276,7 +277,16 @@ export function SqlView({ projectId, environment, reload, navigate, templatesOpe
             <div className={`risk ${reading.level}`}>{t("Risiko")} {reading.level}</div>
           </div>
           <div className="editor-body">
-            <div className="line-numbers">1<br/>2<br/>3<br/>4<br/>5</div>
+            {/* Die Zeilennummern kommen aus dem Text und nicht aus einer
+                festen Liste von fuenf. Vorher standen dort immer die Ziffern
+                eins bis fuenf, also zeigte eine sechszeilige Abfrage daneben
+                nichts und eine zweizeilige drei Nummern zu viel. Mindestens
+                fuenf bleiben stehen, damit das Feld nicht springt, waehrend
+                jemand tippt. */}
+            <div className="line-numbers" aria-hidden="true">
+              {Array.from({ length: Math.max(5, sql.split(/\n/).length) }, (_, index) => index + 1)
+                .map((line) => <span key={line}>{line}</span>)}
+            </div>
             <textarea value={sql} onChange={(event)=>{setSql(event.target.value);setInsertedTemplate("");}} aria-label={t("SQL-Abfrage")} spellCheck={false}/>
           </div>
           {/* Die Kennzeichnung einer gefaehrlichen Abfrage, vor dem Knopf und
@@ -346,9 +356,9 @@ export function SqlView({ projectId, environment, reload, navigate, templatesOpe
             <span className="bucket-icon"><History size={16}/></span>
             <div className="row-text">
               <strong>{entry.title}</strong>
-              <small>{formatMoment(entry.createdAt)} · {entry.status}</small>
+              <small>{formatMoment(entry.createdAt)} · {t(changeSetStatusLabel(entry.status))}</small>
             </div>
-            <span className={`risk ${entry.risk} row-trailing`}>{t("Risiko")} {entry.risk}</span>
+            <span className={`risk ${entry.risk} row-trailing`}>{t("Risiko")} {t(changeSetRiskLabel(entry.risk))}</span>
           </div>)}
           <button className="button small" type="button" onClick={()=>navigate("approvals")}>{t("Freigabezentrale öffnen")}</button>
         </div>}
