@@ -283,7 +283,8 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
  *                          es wird nichts geholt, es wird nur gespeichert.
  *   QueryInsightsView      Der Plan einer Abfrage entsteht erst, wenn jemand
  *                          eine Abfrage eingibt. Vorher gibt es nichts zu laden.
- *   RealtimeInspectorView  Die Verbindung zum Realtime-Server macht ein Klick
+ *   (bis 2.144 stand hier RealtimeInspectorView; seit der Schnitt die Tabellen
+ *   beim Oeffnen liest, zeigt die Seite ihren eigenen Ladesatz)
  *                          auf "Verbinden", nicht das Oeffnen der Seite.
  *   RealtimePoliciesView   Reiner Text: die Kanalrechte stehen als feste Regel
  *                          im Code, es gibt keine Quelle, die man fragen koennte.
@@ -304,7 +305,7 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
  *                          Ladezustand beim Oeffnen waere hier eine Luege.
  */
 const OPENS_IDLE = new Set([
-  "DashboardSettingsView", "QueryInsightsView", "RealtimeInspectorView", "RealtimePoliciesView",
+  "DashboardSettingsView", "QueryInsightsView", "RealtimePoliciesView",
   "OverviewView", "ActivityView", "SettingsView", "DatabaseView", "SqlView",
 ]);
 
