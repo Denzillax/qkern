@@ -171,6 +171,14 @@ export function TableDesignerView({ projectId, environment, table, navigate, rel
       if (mode === "rename") return { statement: renameTableStatement({ table: sourceTable, newName: renamed }), reason: "" };
       return { statement: addColumnStatement({ table: sourceTable, column: addedColumn }), reason: "" };
     } catch (error) {
+      // Ein leeres Namensfeld ist kein Fehler, sondern noch nicht ausgefuellt
+      // (2.161). Vorher stand beim Oeffnen der Seite schon "Der Tabellenname
+      // passt nicht", bevor jemand etwas getippt hatte. Ist ein Name da und
+      // falsch, kommt die Regel wie bisher.
+      const untouched = mode === "create" ? newTable.trim() === ""
+        : mode === "rename" ? renamed.trim() === ""
+        : addedColumn.name.trim() === "";
+      if (untouched) return { statement: "", reason: "" };
       return { statement: "", reason: error instanceof TableChangeSetError ? t(error.reason) : t("Aus dieser Eingabe lässt sich keine Änderung bauen.") };
     }
   }, [mode, newTable, newColumns, sourceTable, renamed, addedColumn]);

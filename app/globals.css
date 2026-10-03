@@ -1807,3 +1807,17 @@ input[type="checkbox"], input[type="radio"] {
   .settings-group-values { display: flex; flex-direction: column; align-items: stretch; }
   .settings-group-values > .settings-value { display: flex; }
 }
+
+/* 2.161: Die Belegung eines Buckets steht in einer Zeile. Die Spalte war 70
+   Pixel breit, und "298.0 MB / 1.00 GB" brach nach dem Schraegstrich um. */
+.bucket-row { grid-template-columns: 38px minmax(0, 1fr) max-content auto; }
+.bucket-row > span:nth-child(3) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* 2.161: Die Nutzerzeile haelt ihren Knopf in der Karte. Feste Spalten von 90,
+   70 und 24 Pixeln liessen "Deaktivieren" rechts aus der Karte laufen;
+   gemessen im Nachbau mit drei Nutzern. Die Spalten nehmen jetzt ihren
+   Inhalt, und die Initialen im Kreis stehen bei 10 statt 7 Pixeln. */
+.auth-user { grid-template-columns: 32px minmax(0, 1fr) max-content max-content max-content; gap: 14px; }
+.auth-user > div { min-width: 0; }
+.auth-user strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar { font-size: 10px; font-weight: 700; }

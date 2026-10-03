@@ -139,7 +139,7 @@ export function SchemaVisualizerView({ projectId, environment, table, initialSta
       return;
     }
     const error = [schema, keys].map((result) => result.payload.error).find((value) => typeof value === "string" && value);
-    setMessage(typeof error === "string" ? error : t("Schema-Visualizer nicht verfügbar"));
+    setMessage(typeof error === "string" ? (serverErrorText(error) ?? error) : t("Schema-Visualizer nicht verfügbar"));
     setState("error");
   }, [base]);
 

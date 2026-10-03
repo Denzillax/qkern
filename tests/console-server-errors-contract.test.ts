@@ -42,13 +42,17 @@ describe("console server errors contract", () => {
   });
 
   it("lets no view show a server message past the translator", async () => {
-    // Die drei Schreibweisen, in denen die Antwort vorher roh durchging. Die
+    // Die Schreibweisen, in denen die Antwort vorher roh durchging. Die vierte,
+    // `(await response.json()).error??`, kam beim Nachbau der Tabellenansicht
+    // dazu. Die
     // erste schloss zuerst ein vorangehendes "(" aus und uebersah damit
     // `setMessage(payload.error??...)` und `new Error(payload.error??...)`:
     // Der Nachbau zeigte danach noch "Resource not found", der Vertrag war gruen.
     const raw = [
       /(?<![\w.])(?:[A-Za-z_]\w*\??\.)*[A-Za-z_]\w*\??\.error\s*\?\?/,
       /typeof ((?:[A-Za-z_]\w*\??\.)*[A-Za-z_]\w*\??)\.error === "string" (?:&& \1\.error )?\? \1\.error :/,
+      /\.json\(\)\)\.error\s*\?\?/,
+      /\.payload\.error\)\.find\([\s\S]{0,200}?typeof error === "string" \? error :/,
     ];
     const offenders: string[] = [];
     for (const name of await readdir(VIEWS)) {

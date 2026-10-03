@@ -142,7 +142,7 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
       return;
     }
     const error = [schema, keys].map((result) => result.payload.error).find((value) => typeof value === "string" && value);
-    setMessage(typeof error === "string" ? error : t("Die Tabelle konnte nicht gelesen werden."));
+    setMessage(typeof error === "string" ? (serverErrorText(error) ?? error) : t("Die Tabelle konnte nicht gelesen werden."));
     setState("error");
   }, [base]);
 
@@ -186,7 +186,10 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
               // Fehler, und das soll vorher zu sehen sein.
               hint: `${entry.columns.length === 1 ? t("1 Spalte") : `${entry.columns.length} ${t("Spalten")}`}${entry.rowSecurityEnabled ? "" : ` · ${t("ohne Row Level Security")}`}`,
             }))}/>
-          <button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> <StableLabel current={t("Neu laden")} variants={tAll("Neu laden")}/></button>
+          {/* Zwei Knoepfe hiessen "Neu laden", einer hier und einer in der Leiste
+              der Zeilen darunter (2.161). Dieser liest Tabellen und Indizes,
+              jener die Zeilen; der Name sagt jetzt, welcher was tut. */}
+          <button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> <StableLabel current={t("Tabellen neu laden")} variants={tAll("Tabellen neu laden")}/></button>
         </div>
       </div>
       {/* Ein leerer Zustand sagt, was hier erscheinen wird, und nicht nur,

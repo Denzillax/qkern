@@ -139,4 +139,23 @@ describe("console readability contract", () => {
     expect(css).toMatch(/\.settings-group-values \{ display: grid;/);
     expect(css).toMatch(/\.settings-group-values > \.settings-value \{ display: contents; \}/);
   });
+
+  it("shows the data views in words and inside their cards", async () => {
+    const view = (name: string) => readFile(path.resolve(process.cwd(), `components/console/${name}.tsx`), "utf8");
+    const css = await readFile(CSS, "utf8");
+    // Buckets (2.161): Regeln in den Worten der Zugriffsseite, Belegung in einer Zeile.
+    const storage = await view("storage-view");
+    expect(storage).not.toContain("Lesen {bucket.readPolicy}");
+    expect(storage).toContain("t(BUCKET_READ_LABEL[bucket.readPolicy] ?? bucket.readPolicy)");
+    expect(css).toMatch(/\.bucket-row > span:nth-child\(3\) \{ white-space: nowrap;/);
+    // Nutzer: der Knopf lief bei festen Spalten aus der Karte, der Zustand stand roh da.
+    expect(css).toMatch(/\.auth-user \{ grid-template-columns: 32px minmax\(0, 1fr\) max-content max-content max-content;/);
+    const auth = await view("auth-view");
+    expect(auth).not.toMatch(/>\{user\.status\}</);
+    // Zwei Knoepfe hiessen "Neu laden"; jetzt sagen sie, was sie laden.
+    expect(await view("table-workspace-view")).toContain('t("Tabellen neu laden")');
+    expect(await view("table-view")).toContain('t("Zeilen neu laden")');
+    // Der Designer ruegt kein leeres Feld, das noch niemand angefasst hat.
+    expect(await view("table-designer-view")).toMatch(/if \(untouched\) return \{ statement: "", reason: "" \};/);
+  });
 });
