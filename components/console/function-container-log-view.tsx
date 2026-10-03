@@ -5,6 +5,7 @@ import { Blocks, Container, FileClock, RefreshCw, Send, Terminal } from "lucide-
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { OptionMenu } from "@/components/console/option-menu";
 import {
   CONTAINER_LOG_TEXTS,
   DEPLOYMENT_COLUMNS,
@@ -191,11 +192,13 @@ export function FunctionContainerLogView({ projectId, environment, initialState 
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("AUFRUFE")}</span><h3>{t(CONTAINER_LOG_TEXTS.invocationsTitle)}</h3></div><div>
-        {functions.length > 0 && <label className="table-select"><Blocks size={15}/>
-          <select value={selected} onChange={(event) => changeFunction(event.target.value)} aria-label={t("Function")}>
-            {functions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          </select>
-        </label>}
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Ohne
+            Erklaerzeile: Diese Liste traegt Name und Id und sonst nichts, und
+            eine Id neben dem Namen erklaert niemandem etwas. */}
+        {functions.length > 0 && <OptionMenu value={selected}
+          ariaLabel={t("Function")} listLabel={t("Function wählen")}
+          icon={<Blocks size={14} aria-hidden="true"/>} onChange={changeFunction}
+          options={functions.map((entry) => ({ id: entry.id, label: entry.name }))}/>}
         <FileClock size={18}/>
       </div></div>
       <p className="muted">{t(CONTAINER_LOG_TEXTS.invocationsMeaning)}</p>

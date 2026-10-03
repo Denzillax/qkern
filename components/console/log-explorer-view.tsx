@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileClock, ListFilter, RefreshCw, Save, Search } from "lucide-react";
 import { formatMoment } from "@/components/console/console-display";
 import { t, tAll } from "@/components/console/console-i18n";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
   LOG_EXPLORER_BUDGET,
@@ -73,6 +74,25 @@ type Draft = {
 
 const EMPTY: Draft = { range: "24h", sources: [...LOG_EXPLORER_SOURCES], filters: {} };
 const PAGE_SIZE = 50;
+
+/**
+ * Die Beschriftung des Eintrags, der einen getypten Filter wieder weglaesst --
+ * je Filter in seinen eigenen Worten, weil zwei Filter gleichzeitig offen
+ * stehen koennen und zweimal "Jeder Ausgang" nebeneinander nichts unterscheidet.
+ *
+ * Als `switch` mit festen Zeichenketten und nicht als Tabelle: Der
+ * Uebersetzungsvertrag sucht im Quelltext nach Aufrufen von `t` mit einem
+ * festen Text darin, und ein Text hinter einer Variablen faellt durch diese
+ * Suche.
+ */
+function anyLabel(id: LogExplorerFilterId): string {
+  switch (id) {
+    case "authStatus": return t("Jeder Ausgang der Handlung");
+    case "authActor": return t("Jede Art von Akteur");
+    case "outcome": return t("Jeder Ausgang des Aufrufs");
+    case "objectStatus": return t("Jedes Urteil");
+  }
+}
 
 function storageKey(projectId: string, environment: Environment): string {
   return `qkern.log-explorer.${projectId}.${environment}`;
@@ -226,12 +246,15 @@ export function LogExplorerView({ projectId, environment, initialState }: { proj
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("SUCHE")}</span><h3>{t("Zeitraum, Quellen, Filter")}</h3></div><div>
-        <label className="table-select"><ListFilter size={15}/>
-          <select value={draft.range} onChange={(event) => change({ range: event.target.value as RangeId })}
-            aria-label={t("Zeitraum")}>
-            {RANGES.map((range) => <option key={range.id} value={range.id}>{t(range.label)}</option>)}
-          </select>
-        </label>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Ohne
+            Erklaerzeile: "Letzte 7 Tage" sagt das Fenster schon, und was
+            darueber hinaus gilt -- dass ein langes Fenster am Lesebudget
+            einer Quelle enden kann -- gilt fuer jeden Eintrag gleich und
+            steht darum als Satz unter der Maske. */}
+        <OptionMenu value={draft.range} ariaLabel={t("Zeitraum")} listLabel={t("Zeitraum wählen")}
+          icon={<ListFilter size={14} aria-hidden="true"/>}
+          onChange={(next) => change({ range: next })}
+          options={RANGES.map((range) => ({ id: range.id, label: t(range.label) }))}/>
         <button className="secondary-button" onClick={() => void load(false, draft, cursor)} disabled={refreshing}>
           <RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")}
             variants={tAll("Lädt…", "Neu laden")}/>
@@ -258,13 +281,20 @@ export function LogExplorerView({ projectId, environment, initialState }: { proj
         {(Object.keys(LOG_EXPLORER_FILTERS) as LogExplorerFilterId[]).map((id) => {
           const definition = LOG_EXPLORER_FILTERS[id];
           if (!draft.sources.includes(definition.source)) return null;
-          return <label className="table-select" key={id}><Search size={15}/>
-            <select value={draft.filters[id] ?? ""} aria-label={t(definition.label)}
-              onChange={(event) => change({ filters: { ...draft.filters, [id]: event.target.value } })}>
-              <option value="">{t(definition.label)}</option>
-              {definition.values.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </label>;
+          return <OptionMenu key={id} value={draft.filters[id] ?? ""}
+            ariaLabel={t(definition.label)} listLabel={t(definition.label)}
+            icon={<Search size={14} aria-hidden="true"/>}
+            onChange={(next) => change({ filters: { ...draft.filters, [id]: next } })}
+            options={[
+              // Der erste Eintrag laesst den Filter weg, und die Erklaerzeile
+              // sagt die Folge: Ohne Wert steht der Name nicht in der Anfrage.
+              { id: "", label: anyLabel(id), hint: t("Dieser Filter wird nicht mitgeschickt") },
+              // Die Werte selbst bleiben, wie die Route sie annimmt. `app_user`
+              // ist ein Parameterwert und keine Prosa; uebersetzt waere er in
+              // jeder Sprache ein anderer Filter, und die Route kennt nur
+              // diesen einen.
+              ...definition.values.map((value) => ({ id: value, label: value })),
+            ]}/>;
         })}
       </div></div>
       <p className="muted">{t(LOG_EXPLORER_ORDER)}</p>

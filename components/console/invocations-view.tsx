@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Blocks, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 
 /**
  * Function-Aufrufe in der Console (2.7). Die Route gibt es seit 1.89:
@@ -63,7 +64,21 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
       <div><span>{t("DAUER")}</span><strong>{average} ms</strong><small>{t("im Mittel")}</small></div>
     </article>
     <article className="console-card span-2">
-      <div className="card-head"><div><span>{t("FUNCTIONS")} · {environment.toUpperCase()}</span><h3>{t("Aufrufprotokoll")}</h3></div><div><label className="table-select"><Blocks size={15}/><select value={selected} onChange={(event) => { setSelected(event.target.value); void loadInvocations(event.target.value); }} aria-label={t("Function")}>{functions.map((fn) => <option key={fn.id} value={fn.id}>{fn.name}</option>)}</select></label><button className="secondary-button" onClick={() => void loadInvocations(selected)} disabled={!selected}><RefreshCw size={14}/> {t("Neu laden")}</button></div></div>
+      <div className="card-head"><div><span>{t("FUNCTIONS")} · {environment.toUpperCase()}</span><h3>{t("Aufrufprotokoll")}</h3></div><div>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Die
+            Erklaerzeile traegt den Einstiegspunkt: Zwei Functions heissen
+            verschieden, aber welche Datei und welche Funktion laufen, steht
+            nur hier -- und `index.handler` bleibt in jeder Sprache
+            `index.handler`. Eine pausierte Function bekommt keinen neuen
+            Aufruf, und das erklaert ein leeres Protokoll darunter. */}
+        <OptionMenu value={selected} ariaLabel={t("Function")} listLabel={t("Function wählen")}
+          icon={<Blocks size={14} aria-hidden="true"/>}
+          onChange={(next) => { setSelected(next); void loadInvocations(next); }}
+          options={functions.map((fn) => ({
+            id: fn.id, label: fn.name,
+            hint: fn.enabled ? fn.entrypoint : `${fn.entrypoint} · ${t("pausiert")}`,
+          }))}/>
+        <button className="secondary-button" onClick={() => void loadInvocations(selected)} disabled={!selected}><RefreshCw size={14}/> {t("Neu laden")}</button></div></div>
       {functions.length === 0 && <p className="muted">{t("Noch keine Functions. Lege eine unter Functions & Jobs an; jeder Aufruf erscheint dann hier.")}</p>}
       {message && <p className="muted">{message}</p>}
       {current && <p className="muted">{current.entrypoint} · {current.memoryMiB} MiB · {current.timeoutMs} ms · {current.enabled ? t("aktiv") : t("pausiert")}</p>}

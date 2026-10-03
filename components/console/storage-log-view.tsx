@@ -5,6 +5,7 @@ import { Cloud, RefreshCw, ShieldAlert } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatDecimal, formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { OptionMenu } from "@/components/console/option-menu";
 import {
   STORAGE_LOG_DELETED_NOTE,
   STORAGE_LOG_HONESTY,
@@ -149,14 +150,28 @@ export function StorageLogView({ projectId, environment, initialState }: { proje
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("LOGS")} · {environment.toUpperCase()}</span><h3>{t("Speicherobjekte und ihr Urteil")}</h3></div><div>
-        <label className="table-select"><Cloud size={15}/><select value={bucket} onChange={(event) => setBucket(event.target.value)} aria-label={t("Bucket")}>
-          <option value={ALL}>{t("Alle Buckets")}</option>
-          {buckets.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-        </select></label>
-        <label className="table-select"><ShieldAlert size={15}/><select value={status} onChange={(event) => setStatus(event.target.value as StorageLogStatusId | "")} aria-label={t("Urteil")}>
-          <option value={ALL}>{t("Jedes Urteil")}</option>
-          {STORAGE_LOG_STATUS_IDS.map((id) => <option key={id} value={id}>{t(STORAGE_LOG_STATUS_TEXTS[id].label)}</option>)}
-        </select></label>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Ohne
+            Erklaerzeile: Ein Bucket-Name ist die Angabe selbst, und was ueber
+            ihn hinaus zu sagen waere, weiss diese Ansicht nicht. */}
+        <OptionMenu value={bucket} ariaLabel={t("Bucket")} listLabel={t("Bucket wählen")}
+          icon={<Cloud size={14} aria-hidden="true"/>} onChange={(next) => setBucket(next)}
+          options={[
+            { id: ALL, label: t("Alle Buckets") },
+            ...buckets.map((entry) => ({ id: entry.id, label: entry.name })),
+          ]}/>
+        {/* Hier traegt die Erklaerzeile die Folge des Urteils fuer das Objekt,
+            kurz. Die langen Saetze aus `STORAGE_LOG_STATUS_TEXTS` stehen in
+            der Legende unten; zweimal derselbe Absatz auf einer Seite hilft
+            niemandem. */}
+        <OptionMenu value={status} ariaLabel={t("Urteil")} listLabel={t("Urteil wählen")}
+          icon={<ShieldAlert size={14} aria-hidden="true"/>}
+          onChange={setStatus}
+          options={[
+            { id: ALL, label: t("Jedes Urteil"), hint: t("Dieser Filter wird nicht mitgeschickt") },
+            { id: "quarantined", label: t(STORAGE_LOG_STATUS_TEXTS.quarantined.label), hint: t("Noch ohne Urteil, der Download ist gesperrt") },
+            { id: "clean", label: t(STORAGE_LOG_STATUS_TEXTS.clean.label), hint: t("Freigegeben, nur dafür gibt es eine signierte Adresse") },
+            { id: "infected", label: t(STORAGE_LOG_STATUS_TEXTS.infected.label), hint: t("Abgelehnt und im selben Schritt entfernt") },
+          ]}/>
         <button className="secondary-button" onClick={() => void load(false, { bucket, status })} disabled={refreshing}><RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/></button>
       </div></div>
 

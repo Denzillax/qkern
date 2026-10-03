@@ -5,6 +5,7 @@ import { Blocks, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { OptionMenu } from "@/components/console/option-menu";
 import {
   FUNCTION_LOG_COLUMNS,
   FUNCTION_LOG_CONTAINER_OUTPUT,
@@ -151,19 +152,27 @@ export function FunctionLogView({ projectId, environment, initialState }: { proj
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("LOGS")} · {environment.toUpperCase()}</span><h3>{t("Function-Aufrufe")}</h3></div><div>
-        <label className="table-select"><Blocks size={15}/>
-          <select value={functionFilter} onChange={(event) => changeFilter({ functionFilter: event.target.value })} aria-label={t("Function")}>
-            <option value="">{t("Alle Functions")}</option>
-            {functions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-          </select>
-        </label>
-        <label className="table-select"><FileClock size={15}/>
-          <select value={outcomeFilter} onChange={(event) => changeFilter({ outcomeFilter: event.target.value })} aria-label={t("Ausgang")}>
-            <option value="">{t("Jeder Ausgang")}</option>
-            <option value="completed">{t(FUNCTION_LOG_OUTCOMES.completed.label)}</option>
-            <option value="failed">{t(FUNCTION_LOG_OUTCOMES.failed.label)}</option>
-          </select>
-        </label>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Ohne
+            Erklaerzeile: Ein Function-Name steht fuer sich. */}
+        <OptionMenu value={functionFilter} ariaLabel={t("Function")} listLabel={t("Function wählen")}
+          icon={<Blocks size={14} aria-hidden="true"/>}
+          onChange={(next) => changeFilter({ functionFilter: next })}
+          options={[
+            { id: "", label: t("Alle Functions") },
+            ...functions.map((entry) => ({ id: entry.id, label: entry.name })),
+          ]}/>
+        {/* Die Erklaerzeile je Ausgang ist der Satz, der auch in der Legende
+            steht: "erfolgreich" heisst nicht fehlerfrei, sondern mit einem
+            HTTP-Status geantwortet, und das ist genau der Unterschied, der
+            beim Filtern zaehlt. */}
+        <OptionMenu value={outcomeFilter} ariaLabel={t("Ausgang")} listLabel={t("Ausgang wählen")}
+          icon={<FileClock size={14} aria-hidden="true"/>}
+          onChange={(next) => changeFilter({ outcomeFilter: next })}
+          options={[
+            { id: "", label: t("Jeder Ausgang"), hint: t("Dieser Filter wird nicht mitgeschickt") },
+            { id: "completed", label: t(FUNCTION_LOG_OUTCOMES.completed.label), hint: t(FUNCTION_LOG_OUTCOMES.completed.meaning) },
+            { id: "failed", label: t(FUNCTION_LOG_OUTCOMES.failed.label), hint: t(FUNCTION_LOG_OUTCOMES.failed.meaning) },
+          ]}/>
         <button className="secondary-button" onClick={() => void load(false, { functionFilter, outcomeFilter, offset })} disabled={refreshing}>
           <RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/>
         </button>
