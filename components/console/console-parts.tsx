@@ -1,8 +1,9 @@
 "use client";
 
-import { Database, X } from "lucide-react";
+import { Clock, Database, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { t } from "@/components/console/console-i18n";
+import { activeTimeZoneName } from "@/components/console/console-display";
 
 /**
  * Die kleinen Bausteine, die mehrere Ansichten gleich benutzen (2.65).
@@ -48,4 +49,24 @@ export function ErrorState({ message, retry }: { message: string; retry: () => v
 /** Das Haekchen vor einem erledigten Punkt. */
 export function CheckIcon() {
   return <span className="check-icon">✓</span>;
+}
+
+/**
+ * Die Zone, in der die Zeiten dieser Liste stehen (2.149).
+ *
+ * **Warum.** Jede Zeitangabe der Console wird in der Zone gerechnet, die in
+ * Einstellungen -> Dashboard steht, und ohne Vorgabe in der Zone der Laufzeit.
+ * Dastehen tat sie bisher nirgends. Ein Protokolleintrag um 14:05 ist damit
+ * eine Angabe ohne Bezug: Wer in Zuerich sitzt und einen Vorfall mit einem
+ * Kollegen in Singapur bespricht, vergleicht zwei verschiedene Uhren und merkt
+ * es nicht. `activeTimeZoneName` gab es seit 2.55 und niemand hat sie benutzt.
+ *
+ * **Warum als Baustein und nicht je Ansicht.** Siebenundvierzig Ansichten
+ * zeigen Zeitpunkte. Ein Satz, der in jeder einzeln steht, ist in der dritten
+ * schon anders formuliert.
+ */
+export function TimeZoneNote({ className }: { className?: string }) {
+  return <span className={className ?? "muted time-zone-note"}>
+    <Clock size={12} aria-hidden="true"/> {t("Zeiten in")} {activeTimeZoneName()}
+  </span>;
 }

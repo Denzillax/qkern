@@ -5,6 +5,7 @@ import { Fingerprint, RefreshCw, ScrollText } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { TimeZoneNote } from "@/components/console/console-parts";
 import {
   AUTH_AUDIT_ACTION_TEXTS,
   AUTH_LOG_ACTOR_TEXTS,
@@ -149,6 +150,7 @@ export function AuthLogView({ projectId, environment, initialState }: { projectI
         <span className={entry.status === "failed" ? "risk medium" : "secure"}>{entry.status === "failed" ? t("fehlgeschlagen") : t("erfolgreich")}</span>
         <code>{entry.resourceRef}</code>
       </div>)}
+      <TimeZoneNote/>
     </article>
   </div>;
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { TimeZoneNote } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 
@@ -125,6 +126,7 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
         <span className={item.outcome === "completed" ? "secure" : "risk high"}>{item.outcome === "completed" ? t("erfolgreich") : t("fehlgeschlagen")}</span>
         <span className={`log-status ${item.outcome}`}>{item.statusCode ?? item.errorCode ?? "–"}</span>
       </div>)}
+      {invocations.length > 0 && <TimeZoneNote/>}
     </article>
   </div>;
 }

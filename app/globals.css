@@ -1705,3 +1705,8 @@ input[type="checkbox"], input[type="radio"] {
 /* Der Beispielcode. Dieselbe Bauart wie `.overview-connect pre`, nur ohne die
    Mindesthoehe: Die Hoehe des Codes steht fest und soll nicht aufgefuellt werden. */
 .realtime-example pre { margin: 14px 0 10px; padding: 14px; border: 1px solid var(--qkern-border); border-radius: 9px; background: var(--qkern-surface-2); overflow-x: auto; font-family: var(--qkern-font-mono); font-size: 12px; line-height: 1.55; }
+
+/* Die Zone neben einer Liste von Zeitpunkten (2.149). Sie steht klein und
+   ruhig: Sie beantwortet eine Frage, die man selten stellt, und soll die Liste
+   daneben nicht überstimmen. */
+.time-zone-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
