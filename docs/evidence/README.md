@@ -2029,6 +2029,19 @@ Testdatei.
 | `2026-10-02/welle26-local-run1.log` | Vitest lokal (Windows) | 2604 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-10-02/welle26-local-run2.log` | Vitest lokal (Windows) | 2604 bestanden, exit 0, mit `--maxWorkers=3` |
 
+| `2026-10-03/easyui-postgres-run1.log` | PostgreSQL 17 | 256 bestanden, exit 0 |
+| `2026-10-03/easyui-postgres-run2.log` | PostgreSQL 17 | 256 bestanden, exit 0, Reproduktion |
+| `2026-10-03/easyui-local-run1.log` | Vitest lokal (Windows) | 2652 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-03/easyui-local-run2.log` | Vitest lokal (Windows) | 2652 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Nur ein Stack zu 2.75: Die fuenf Schnitte fassen Console-Komponenten, Texte, CSS,
+`lib/pricing` und eine Spalte in `user_console_settings` an. Kein anderer Stack
+hat hier etwas zu belegen; Migration `0086` laeuft im PostgreSQL-Stack mit, und
+dort prueft ein Fall auch ihren CHECK. Die siebenunddreissig Mutationsfaelle der
+Welle liegen nicht als Stacklauf vor, sondern als lokale Proben je Schnitt: Jede
+Zusage wurde einzeln gebrochen, der rote Fall benannt und der Stand mit `cp`
+zurueckgespielt.
+
 Dieselben neun Stacks wie zu 2.73: Die drei Scheiben berühren zusammen den
 Storage-, Backup-, Vault- und Empfängerweg, und die Migrationen `0084` und
 `0085` laufen in jedem Stack mit. Die Proben liegen nach dem Merge, weil zwei

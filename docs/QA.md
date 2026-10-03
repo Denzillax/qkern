@@ -6680,3 +6680,50 @@ belegt, die Console liest den Backup-Katalog nicht, und keine Route aendert den
 Takt. Keine Suche nach einer Span-Id. Die lesenden Queue-Werkzeuge laufen ueber
 MCP weiter als Betreiber. Die neuen HTTP-Routen sind nicht ueber echtes HTTP
 aufgerufen worden.
+
+## Welle siebenundzwanzig (2.75): zwei Anordnungen derselben Oberflaeche, fuenf Tarife, und eine Tabelle mit Reitern
+
+Fuenf Schnitte, alle an der Oberflaeche: der Oberflaechenmodus mit Migration
+0086 (Fall 2.134), die Preisseite (2.135), die Uebersicht mit Projekt-Zustand
+und Schnellstart (2.136), leere Zustaende, ein Kopierweg, maskierte Geheimnisse
+und der Kontrast (2.137) sowie die fuenf Reiter an einer Tabelle (2.138).
+
+Zum Verfahren ist diese Welle die erste, in der die Konsole durchgehend **im
+Browser gemessen** wurde statt nur gerendert. Das hat drei Dinge gefunden, die
+durch jeden Vertrag gruen gelaufen waeren.
+
+Erstens stand die Sidebar leer, weil die Einstellungsroute eine Antwort ohne das
+neue Feld lieferte; der Modus war `undefined`, und keiner der beiden Zweige traf.
+Die Antwort laeuft jetzt durch dasselbe reine Modul, mit dem die Route sie
+annimmt. Zweitens war bei 375 Pixeln der Reiter "API" nicht erreichbar: Die Karte
+war 530 breit, der Reiter lag bei 441, und die Seite scrollte nicht. Die Ursache
+stand lange im Stylesheet, `grid-template-columns: 1fr` heisst
+`minmax(auto, 1fr)`, und `auto` als Untergrenze ist die Mindestbreite des
+Inhalts. Drittens lag grauer Nebentext bei 4,33 zu 1 und damit unter den 4,5, die
+WCAG AA fuer kleine Schrift verlangt; nachgerechnet liegt er jetzt bei 4,52,
+waehrend der dunkle Modus zwischen 6,9 und 7,9 unberuehrt blieb.
+
+Zwei Mutationsproben liefen zuerst gruen durch und haben damit Luecken in den
+eigenen Vertraegen aufgedeckt: Eine Platzhalterzeile galt nicht als leerer
+Zustand, und die Pruefung auf den Masken-Umschalter traf auch dessen Icon. Beide
+Vertraege sind nachgeschaerft, danach fielen die Proben. Eine dritte Probe war
+wirkungslos, weil `<TableViewXX` die Teilzeichenkette `<TableView` enthaelt; erst
+die echte Entfernung liess den Fall fallen.
+
+Checkpoint `2.75.0` am 3. Oktober 2026: PostgreSQL 17 mit 256 von 256 zweimal,
+beide exit 0; lokal 2652 bestanden, 0 fehlgeschlagen, zweimal reproduziert.
+Siebenunddreissig Mutationsfaelle ueber die fuenf Schnitte, jeder einzeln
+gebrochen und mit `cp` zurueckgespielt.
+
+Nur der PostgreSQL-Stack: Die Schnitte fassen Console-Komponenten, Texte, CSS,
+`lib/pricing` und eine Spalte in `user_console_settings` an. Kein Adapter, kein
+Dienst, keine Route eines anderen Stacks ist beruehrt; Migration 0086 laeuft im
+PostgreSQL-Stack mit, und dort prueft ein Fall auch ihren CHECK.
+
+Nicht erbracht: Kein Tarifmodell im Backend, darum zeigt die Abrechnung keinen
+Tarif. Keine Rotations-Route fuer API-Keys, kein Projekt-Loeschen, kein
+Zuruecksetzen. Das Bestaetigungsfeld beim Abtippen und ein maskierter Key sind
+von keinem Browser gesehen, weil das Beispielprojekt keine Keys hat und Storage
+dort abgeschaltet ist. Der Vorgabewert einer Spalte ist nicht lesbar, und der
+Primaerschluessel kommt aus der Indexliste statt aus dem Schema. Einstellungen
+sind nicht gruppiert. Die Dev-Datenbank braucht die Spalte aus 0086 von Hand.

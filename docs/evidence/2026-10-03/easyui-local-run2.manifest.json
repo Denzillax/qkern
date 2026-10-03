@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "easyui-local-run2.log",
+  "commit": "d0e101414cfa26d5709454660ddec4f5e0915973",
+  "commitSubject": "docs: die versteckte Klasse im Docs-Stylesheet ist toter Code (2.137)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "363 passed | 42 skipped (405)",
+  "tests": "2652 passed | 378 skipped (3030)",
+  "passed": 2652,
+  "failed": 0,
+  "skipped": 378,
+  "images": []
+}

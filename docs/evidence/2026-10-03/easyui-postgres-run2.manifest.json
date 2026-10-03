@@ -1,6 +1,6 @@
 {
   "stack": "PostgreSQL 17",
-  "log": "easyui-postgres-run1.log",
+  "log": "easyui-postgres-run2.log",
   "commit": "d0e101414cfa26d5709454660ddec4f5e0915973",
   "commitSubject": "docs: die versteckte Klasse im Docs-Stylesheet ist toter Code (2.137)",
   "workingTreeClean": false,

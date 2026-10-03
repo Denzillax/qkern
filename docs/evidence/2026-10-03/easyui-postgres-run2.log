@@ -1965,3 +1965,396 @@ postgres-1       | 2026-10-03 10:38:57.827 UTC [809] STATEMENT:  UPDATE project_
 postgres-1       | 	         WHERE organization_id = $1 AND project_id = $2 AND environment = 'development'
 postgres-1       | 2026-10-03 10:38:59.539 UTC [331] LOG:  checkpoint starting: immediate force wait
 postgres-1       | 2026-10-03 10:38:59.540 UTC [331] LOG:  checkpoint complete: wrote 149 buffers (0.9%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.002 s; sync files=133, longest=0.001 s, average=0.000 s; distance=5012 kB, estimate=23112 kB; lsn=0/47D4630, redo lsn=0/47D45D8
+postgres-1       | 2026-10-03 10:39:04.247 UTC [331] LOG:  checkpoint starting: immediate force wait
+postgres-1       | 2026-10-03 10:39:04.251 UTC [331] LOG:  checkpoint complete: wrote 425 buffers (2.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.001 s, total=0.004 s; sync files=117, longest=0.001 s, average=0.000 s; distance=6141 kB, estimate=21415 kB; lsn=0/4DD3B08, redo lsn=0/4DD3AB0
+postgres-1       | 2026-10-03 10:39:04.363 UTC [800] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_language_check"
+postgres-1       | 2026-10-03 10:39:04.363 UTC [800] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, es, de-CH, browser, overview, system, 2026-10-03 10:39:04.363006+00, 2026-10-03 10:39:04.363006+00, easy).
+postgres-1       | 2026-10-03 10:39:04.363 UTC [800] STATEMENT:  INSERT INTO user_console_settings (user_id, language) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.370 UTC [866] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_format_locale_check"
+postgres-1       | 2026-10-03 10:39:04.370 UTC [866] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, browser, de-AT, browser, overview, system, 2026-10-03 10:39:04.369542+00, 2026-10-03 10:39:04.369542+00, easy).
+postgres-1       | 2026-10-03 10:39:04.370 UTC [866] STATEMENT:  INSERT INTO user_console_settings (user_id, format_locale) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.377 UTC [867] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_theme_check"
+postgres-1       | 2026-10-03 10:39:04.377 UTC [867] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, browser, de-CH, browser, overview, sepia, 2026-10-03 10:39:04.376058+00, 2026-10-03 10:39:04.376058+00, easy).
+postgres-1       | 2026-10-03 10:39:04.377 UTC [867] STATEMENT:  INSERT INTO user_console_settings (user_id, theme) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.384 UTC [868] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_time_zone_check"
+postgres-1       | 2026-10-03 10:39:04.384 UTC [868] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, browser, de-CH, kein zonenname mit leerzeichen, overview, system, 2026-10-03 10:39:04.383326+00, 2026-10-03 10:39:04.383326+00, easy).
+postgres-1       | 2026-10-03 10:39:04.384 UTC [868] STATEMENT:  INSERT INTO user_console_settings (user_id, time_zone) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.391 UTC [869] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_start_view_check"
+postgres-1       | 2026-10-03 10:39:04.391 UTC [869] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, browser, de-CH, browser, Nicht Erlaubt, system, 2026-10-03 10:39:04.390407+00, 2026-10-03 10:39:04.390407+00, easy).
+postgres-1       | 2026-10-03 10:39:04.391 UTC [869] STATEMENT:  INSERT INTO user_console_settings (user_id, start_view) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.398 UTC [870] ERROR:  new row for relation "user_console_settings" violates check constraint "user_console_settings_interface_mode_check"
+postgres-1       | 2026-10-03 10:39:04.398 UTC [870] DETAIL:  Failing row contains (272128d9-a114-48af-9040-cb297484e4e9, browser, de-CH, browser, overview, system, 2026-10-03 10:39:04.397344+00, 2026-10-03 10:39:04.397344+00, beginner).
+postgres-1       | 2026-10-03 10:39:04.398 UTC [870] STATEMENT:  INSERT INTO user_console_settings (user_id, interface_mode) VALUES ($1, $2)
+postgres-1       | 2026-10-03 10:39:04.406 UTC [810] ERROR:  permission denied for table users
+postgres-1       | 2026-10-03 10:39:04.406 UTC [810] STATEMENT:  UPDATE users SET status = 'disabled' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:17.126 UTC [909] ERROR:  relation "plaene_8af77858_4028_48c6_9a8b_f6601d609b69.gibt_es_nicht" does not exist at character 73
+postgres-1       | 2026-10-03 10:39:17.126 UTC [909] STATEMENT:  EXPLAIN (FORMAT JSON, COSTS ON, VERBOSE OFF, SUMMARY ON) SELECT id FROM "plaene_8af77858_4028_48c6_9a8b_f6601d609b69".gibt_es_nicht
+postgres-1       | 2026-10-03 10:39:17.173 UTC [871] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.173 UTC [871] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.184 UTC [938] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.184 UTC [938] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.195 UTC [939] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.195 UTC [939] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.207 UTC [940] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.207 UTC [940] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.218 UTC [941] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.218 UTC [941] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.229 UTC [942] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.229 UTC [942] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.244 UTC [943] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.244 UTC [943] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.256 UTC [944] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.256 UTC [944] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.269 UTC [945] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.269 UTC [945] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:17.280 UTC [946] ERROR:  division by zero
+postgres-1       | 2026-10-03 10:39:17.280 UTC [946] STATEMENT:  SELECT 1 / 0
+postgres-1       | 2026-10-03 10:39:18.431 UTC [949] ERROR:  permission denied for table pg_user_mapping
+postgres-1       | 2026-10-03 10:39:18.431 UTC [949] STATEMENT:  SELECT umoptions FROM pg_catalog.pg_user_mapping
+postgres-1       | 2026-10-03 10:39:18.466 UTC [947] WARNING:  "wal_level" is insufficient to publish logical changes
+postgres-1       | 2026-10-03 10:39:18.466 UTC [947] HINT:  Set "wal_level" to "logical" before creating subscriptions.
+postgres-1       | 2026-10-03 10:39:18.478 UTC [951] ERROR:  permission denied for table pg_subscription
+postgres-1       | 2026-10-03 10:39:18.478 UTC [951] STATEMENT:  SELECT subconninfo FROM pg_catalog.pg_subscription
+postgres-1       | 2026-10-03 10:39:18.822 UTC [686] ERROR:  permission denied for table project_storage_s3_access_keys
+postgres-1       | 2026-10-03 10:39:18.822 UTC [686] STATEMENT:  DELETE FROM project_storage_s3_access_keys WHERE id = $1
+postgres-1       | 2026-10-03 10:39:18.825 UTC [684] ERROR:  permission denied for table project_storage_s3_access_keys
+postgres-1       | 2026-10-03 10:39:18.825 UTC [684] STATEMENT:  UPDATE project_storage_s3_access_keys SET name = 'anders' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:18.829 UTC [947] ERROR:  project storage S3 access keys are immutable except for one-way revocation
+postgres-1       | 2026-10-03 10:39:18.829 UTC [947] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_s3_access_key_mutation() line 14 at RAISE
+postgres-1       | 2026-10-03 10:39:18.829 UTC [947] STATEMENT:  UPDATE project_storage_s3_access_keys SET revoked_at = now() + interval '1 hour' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:18.906 UTC [963] ERROR:  project storage S3 access keys are immutable except for one-way revocation
+postgres-1       | 2026-10-03 10:39:18.906 UTC [963] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_s3_access_key_mutation() line 14 at RAISE
+postgres-1       | 2026-10-03 10:39:18.906 UTC [963] STATEMENT:  UPDATE project_storage_s3_access_keys SET secret_ciphertext = $2 WHERE id = $1
+postgres-1       | 2026-10-03 10:39:19.847 UTC [872] ERROR:  new row for relation "project_auth_settings" violates check constraint "project_auth_settings_hook_claims_check"
+postgres-1       | 2026-10-03 10:39:19.847 UTC [872] DETAIL:  Failing row contains (b05a97d6-f27e-4087-ad49-bd95fabd3cf6, 052abe16-d7be-4770-9d63-23bd745fafe2, development, f, 2026-10-03 10:39:19.723+00, {}, 10, 900, 5, 3600, 60, 3600, f, 12, named, null, 2000, hook-claims-75d0ae49, 2000, {role}).
+postgres-1       | 2026-10-03 10:39:19.847 UTC [872] STATEMENT:  UPDATE project_auth_settings SET access_token_hook_function = $1, access_token_hook_claims = ARRAY['role']::text[] WHERE organization_id = 'b05a97d6-f27e-4087-ad49-bd95fabd3cf6' AND project_id = '052abe16-d7be-4770-9d63-23bd745fafe2'
+postgres-1       | 	      AND environment = 'development'
+postgres-1       | 2026-10-03 10:39:19.861 UTC [966] ERROR:  new row for relation "project_auth_settings" violates check constraint "project_auth_settings_hook_timeout_check"
+postgres-1       | 2026-10-03 10:39:19.861 UTC [966] DETAIL:  Failing row contains (b05a97d6-f27e-4087-ad49-bd95fabd3cf6, 052abe16-d7be-4770-9d63-23bd745fafe2, development, f, 2026-10-03 10:39:19.723+00, {}, 10, 900, 5, 3600, 60, 3600, f, 12, named, null, 0, null, 2000, {}).
+postgres-1       | 2026-10-03 10:39:19.861 UTC [966] STATEMENT:  UPDATE project_auth_settings SET sign_in_hook_timeout_ms = 0 WHERE organization_id = 'b05a97d6-f27e-4087-ad49-bd95fabd3cf6' AND project_id = '052abe16-d7be-4770-9d63-23bd745fafe2'
+postgres-1       | 	      AND environment = 'development'
+postgres-1       | 2026-10-03 10:39:19.876 UTC [967] ERROR:  new row for relation "project_auth_settings" violates check constraint "project_auth_settings_hook_function_check"
+postgres-1       | 2026-10-03 10:39:19.876 UTC [967] DETAIL:  Failing row contains (b05a97d6-f27e-4087-ad49-bd95fabd3cf6, 052abe16-d7be-4770-9d63-23bd745fafe2, development, f, 2026-10-03 10:39:19.723+00, {}, 10, 900, 5, 3600, 60, 3600, f, 12, named, Nope!, 2000, null, 2000, {}).
+postgres-1       | 2026-10-03 10:39:19.876 UTC [967] STATEMENT:  UPDATE project_auth_settings SET sign_in_hook_function = 'Nope!' WHERE organization_id = 'b05a97d6-f27e-4087-ad49-bd95fabd3cf6' AND project_id = '052abe16-d7be-4770-9d63-23bd745fafe2'
+postgres-1       | 	      AND environment = 'development'
+postgres-1       | 2026-10-03 10:39:19.892 UTC [968] ERROR:  new row for relation "project_auth_settings" violates check constraint "project_auth_settings_hook_claims_check"
+postgres-1       | 2026-10-03 10:39:19.892 UTC [968] DETAIL:  Failing row contains (b05a97d6-f27e-4087-ad49-bd95fabd3cf6, 052abe16-d7be-4770-9d63-23bd745fafe2, development, f, 2026-10-03 10:39:19.723+00, {}, 10, 900, 5, 3600, 60, 3600, f, 12, named, null, 2000, null, 2000, {tenant}).
+postgres-1       | 2026-10-03 10:39:19.892 UTC [968] STATEMENT:  UPDATE project_auth_settings SET access_token_hook_function = NULL, access_token_hook_claims = ARRAY['tenant']::text[] WHERE organization_id = 'b05a97d6-f27e-4087-ad49-bd95fabd3cf6' AND project_id = '052abe16-d7be-4770-9d63-23bd745fafe2'
+postgres-1       | 	      AND environment = 'development'
+postgres-1       | 2026-10-03 10:39:20.087 UTC [969] ERROR:  permission denied for table project_auth_passkeys
+postgres-1       | 2026-10-03 10:39:20.087 UTC [969] STATEMENT:  UPDATE project_auth_passkeys SET public_key = $1
+postgres-1       | 	        WHERE organization_id = $2 AND project_id = $3
+postgres-1       | 2026-10-03 10:39:20.511 UTC [970] ERROR:  new row for relation "project_auth_third_party_providers" violates check constraint "project_auth_third_party_providers_role_check"
+postgres-1       | 2026-10-03 10:39:20.511 UTC [970] DETAIL:  Failing row contains (cc5ccc6b-bbf2-452f-851f-95bb72e89c4d, 761db2aa-5686-42cd-838f-660657886d76, 5b0bda74-0d89-451e-959d-01fadc4ef0ff, development, direkt, https://direkt.example.com, https://aussteller-2-80.example.com/.well-known/jwks.json, {qkern-app-2-80}, sub, null, service_role, 2026-10-03 10:39:20.50994+00).
+postgres-1       | 2026-10-03 10:39:20.511 UTC [970] STATEMENT:  INSERT INTO project_auth_third_party_providers
+postgres-1       | 	        (id, organization_id, project_id, environment, name, issuer, jwks_uri, audiences, default_role)
+postgres-1       | 	        VALUES ($1,$2,$3,$4,'direkt','https://direkt.example.com',$5,ARRAY[$6]::text[],'service_role')
+postgres-1       | 2026-10-03 10:39:20.543 UTC [971] ERROR:  permission denied for table project_auth_third_party_providers
+postgres-1       | 2026-10-03 10:39:20.543 UTC [971] STATEMENT:  UPDATE project_auth_third_party_providers SET jwks_uri = $1 WHERE issuer = $2
+postgres-1       | 2026-10-03 10:39:22.572 UTC [992] ERROR:  new row violates row-level security policy for table "notizen"
+postgres-1       | 2026-10-03 10:39:22.572 UTC [992] STATEMENT:  INSERT INTO "graphqlw_aae909b1_dc16_40c3_be2f_5de7f416f647"."notizen" ("besitzer", "inhalt", "menge")
+postgres-1       | 	         VALUES ($1, $2, $3)
+postgres-1       | 	         
+postgres-1       | 	         RETURNING "id", "besitzer", "inhalt", "menge"
+postgres-1       | 2026-10-03 10:39:22.583 UTC [992] ERROR:  new row violates row-level security policy for table "notizen"
+postgres-1       | 2026-10-03 10:39:22.583 UTC [992] STATEMENT:  UPDATE "graphqlw_aae909b1_dc16_40c3_be2f_5de7f416f647"."notizen" SET "besitzer" = $1
+postgres-1       | 	       WHERE "menge" = $2 RETURNING "id", "besitzer", "inhalt", "menge"
+postgres-1       | 2026-10-03 10:39:22.752 UTC [993] ERROR:  new row violates row-level security policy (USING expression) for table "kunden"
+postgres-1       | 2026-10-03 10:39:22.752 UTC [993] STATEMENT:  INSERT INTO "gqlupsert_b7579429_0cbc_4b9d_addc_3d197413d2f5"."kunden" ("besitzer", "email", "name", "punkte")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         ON CONFLICT ("email")
+postgres-1       | 	         DO UPDATE SET "besitzer" = EXCLUDED."besitzer", "name" = EXCLUDED."name", "punkte" = EXCLUDED."punkte"
+postgres-1       | 	         RETURNING "id", "besitzer", "email", "name", "punkte", "slug"
+postgres-1       | 2026-10-03 10:39:22.760 UTC [993] ERROR:  new row violates row-level security policy (USING expression) for table "kunden"
+postgres-1       | 2026-10-03 10:39:22.760 UTC [993] STATEMENT:  INSERT INTO "gqlupsert_b7579429_0cbc_4b9d_addc_3d197413d2f5"."kunden" ("besitzer", "email", "name", "punkte")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         ON CONFLICT ("email")
+postgres-1       | 	         DO UPDATE SET "besitzer" = EXCLUDED."besitzer", "name" = EXCLUDED."name", "punkte" = EXCLUDED."punkte"
+postgres-1       | 	         RETURNING "id", "besitzer", "email", "name", "punkte", "slug"
+postgres-1       | 2026-10-03 10:39:22.783 UTC [993] ERROR:  new row violates row-level security policy (USING expression) for table "kunden"
+postgres-1       | 2026-10-03 10:39:22.783 UTC [993] STATEMENT:  INSERT INTO "gqlupsert_b7579429_0cbc_4b9d_addc_3d197413d2f5"."kunden" ("besitzer", "email", "name", "punkte")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         ON CONFLICT ("email")
+postgres-1       | 	         DO UPDATE SET "besitzer" = EXCLUDED."besitzer", "name" = EXCLUDED."name", "punkte" = EXCLUDED."punkte"
+postgres-1       | 	         RETURNING "id", "besitzer", "email", "name", "punkte", "slug"
+postgres-1       | 2026-10-03 10:39:22.944 UTC [995] ERROR:  new row violates row-level security policy (USING expression) for table "kunden"
+postgres-1       | 2026-10-03 10:39:22.944 UTC [995] STATEMENT:  INSERT INTO "mcpupsert_82fc22a6_f388_40d1_afd9_8bb89c9f41fc"."kunden" ("besitzer", "email", "name", "punkte")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         ON CONFLICT ("email")
+postgres-1       | 	         DO UPDATE SET "besitzer" = EXCLUDED."besitzer", "name" = EXCLUDED."name", "punkte" = EXCLUDED."punkte"
+postgres-1       | 	         RETURNING "id", "besitzer", "email", "name", "punkte"
+postgres-1       | 2026-10-03 10:39:22.988 UTC [995] ERROR:  new row violates row-level security policy (USING expression) for table "kunden"
+postgres-1       | 2026-10-03 10:39:22.988 UTC [995] STATEMENT:  INSERT INTO "mcpupsert_82fc22a6_f388_40d1_afd9_8bb89c9f41fc"."kunden" ("besitzer", "email", "name", "punkte")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         ON CONFLICT ("email")
+postgres-1       | 	         DO UPDATE SET "besitzer" = EXCLUDED."besitzer", "name" = EXCLUDED."name", "punkte" = EXCLUDED."punkte"
+postgres-1       | 	         RETURNING "id", "besitzer", "email", "name", "punkte"
+postgres-1       | 2026-10-03 10:39:23.132 UTC [1004] ERROR:  permission denied for table project_auth_oauth_clients
+postgres-1       | 2026-10-03 10:39:23.132 UTC [1004] STATEMENT:  UPDATE project_auth_oauth_clients SET scopes = ARRAY['data:write']::text[] WHERE id = $1
+postgres-1       | 2026-10-03 10:39:23.133 UTC [972] ERROR:  new row for relation "project_auth_oauth_codes" violates check constraint "project_auth_oauth_codes_pkce_check"
+postgres-1       | 2026-10-03 10:39:23.133 UTC [972] DETAIL:  Failing row contains (ba80ac6e-451b-47f4-b441-baeee1e82026, ce50e8c9-79fc-403e-a697-ced327c3c9c7, 8d3bfaa9-20ec-410f-a288-3d1db92f43ef, development, 23e9bfe0-ae5b-40f3-add9-9b772b28f8c5, 1ff44451-118e-4f30-851d-b52355dd2b1c, https://app.test/oauth/zurueck, {data:read}, direkt-f67b5409-8250-48be-8773-a3cac329d9be, OnZXn-5dnxnDdxAudM3Dds3-k5yjXiJ6N2WikZokd3E, plain, 2026-10-03 10:39:23.132918+00, 2026-10-03 10:40:23.132918+00, null, null).
+postgres-1       | 2026-10-03 10:39:23.133 UTC [972] STATEMENT:  INSERT INTO project_auth_oauth_codes
+postgres-1       | 	        (id, organization_id, project_id, environment, client_id, auth_user_id, redirect_uri,
+postgres-1       | 	         scopes, code_hash, code_challenge, code_challenge_method, expires_at)
+postgres-1       | 	        VALUES ($1,$2,$3,'development',$4,$5,$6,ARRAY['data:read']::text[],$7,$8,'plain',now() + interval '1 minute')
+postgres-1       | 2026-10-03 10:39:23.407 UTC [331] LOG:  checkpoint starting: immediate force wait
+postgres-1       | 2026-10-03 10:39:23.412 UTC [331] LOG:  checkpoint complete: wrote 449 buffers (2.7%); 0 WAL file(s) added, 0 removed, 2 recycled; write=0.005 s, sync=0.001 s, total=0.006 s; sync files=309, longest=0.001 s, average=0.000 s; distance=27013 kB, estimate=27013 kB; lsn=0/68351D8, redo lsn=0/6835180
+postgres-1       | 2026-10-03 10:39:23.448 UTC [962] ERROR:  permission denied for table project_auth_one_time_tokens
+postgres-1       | 2026-10-03 10:39:23.448 UTC [962] STATEMENT:  DELETE FROM project_auth_one_time_tokens WHERE organization_id = $1
+postgres-1       | 2026-10-03 10:39:23.457 UTC [1010] ERROR:  permission denied for table project_auth_oauth_tokens
+postgres-1       | 2026-10-03 10:39:23.457 UTC [1010] STATEMENT:  DELETE FROM project_auth_oauth_tokens WHERE organization_id = $1
+postgres-1       | 2026-10-03 10:39:23.527 UTC [1011] ERROR:  permission denied for table project_auth_saml_assertions
+postgres-1       | 2026-10-03 10:39:23.527 UTC [1011] STATEMENT:  DELETE FROM project_auth_saml_assertions WHERE organization_id = $1
+postgres-1       | 2026-10-03 10:39:25.323 UTC [1005] ERROR:  permission denied for table project_auth_oauth_consents
+postgres-1       | 2026-10-03 10:39:25.323 UTC [1005] STATEMENT:  DELETE FROM project_auth_oauth_consents WHERE id = $1
+postgres-1       | 2026-10-03 10:39:25.326 UTC [1007] ERROR:  project auth oauth consents are immutable except for one-way revocation
+postgres-1       | 2026-10-03 10:39:25.326 UTC [1007] CONTEXT:  PL/pgSQL function qkern_reject_project_auth_oauth_consent_mutation() line 8 at RAISE
+postgres-1       | 2026-10-03 10:39:25.326 UTC [1007] STATEMENT:  UPDATE project_auth_oauth_consents SET revoked_at = NULL WHERE id = $1
+postgres-1       | 2026-10-03 10:39:25.340 UTC [1025] ERROR:  permission denied for table project_auth_oauth_consents
+postgres-1       | 2026-10-03 10:39:25.340 UTC [1025] STATEMENT:  UPDATE project_auth_oauth_consents SET scopes = ARRAY['data:write']::text[] WHERE id = $1
+postgres-1       | 2026-10-03 10:39:25.438 UTC [964] ERROR:  update or delete on table "users" violates foreign key constraint "organizations_created_by_fkey" on table "organizations"
+postgres-1       | 2026-10-03 10:39:25.438 UTC [964] DETAIL:  Key (id)=(31bf7263-b6aa-4a63-bc56-b596d29cf5c9) is still referenced from table "organizations".
+postgres-1       | 2026-10-03 10:39:25.438 UTC [964] STATEMENT:  DELETE FROM users WHERE id = $1
+postgres-1       | 2026-10-03 10:39:25.473 UTC [1029] ERROR:  extension "vector" is not available
+postgres-1       | 2026-10-03 10:39:25.473 UTC [1029] DETAIL:  Could not open extension control file "/usr/local/share/postgresql/extension/vector.control": No such file or directory.
+postgres-1       | 2026-10-03 10:39:25.473 UTC [1029] HINT:  The extension must first be installed on the system where PostgreSQL is running.
+postgres-1       | 2026-10-03 10:39:25.473 UTC [1029] STATEMENT:  CREATE EXTENSION vector
+postgres-1       | 2026-10-03 10:39:25.511 UTC [1030] ERROR:  array is too long
+postgres-1       | 2026-10-03 10:39:25.511 UTC [1030] DETAIL:  A cube cannot have more than 100 dimensions.
+postgres-1       | 2026-10-03 10:39:25.511 UTC [1030] STATEMENT:  SELECT cube(array_fill(0::float8, ARRAY[$1::int]))
+postgres-1       | 2026-10-03 10:39:25.848 UTC [1031] ERROR:  update or delete on table "users" violates foreign key constraint "organizations_created_by_fkey" on table "organizations"
+postgres-1       | 2026-10-03 10:39:25.848 UTC [1031] DETAIL:  Key (id)=(32f5c560-5c8d-43bc-8a8f-c51eff3df44e) is still referenced from table "organizations".
+postgres-1       | 2026-10-03 10:39:25.848 UTC [1031] STATEMENT:  DELETE FROM users WHERE id = $1
+postgres-1       | 2026-10-03 10:39:26.238 UTC [1034] ERROR:  new row violates row-level security policy for table "kommentare"
+postgres-1       | 2026-10-03 10:39:26.238 UTC [1034] STATEMENT:  INSERT INTO "gqlrel_4e9ae50b_bcd6_481a_b692_0a30fd10cac1"."kommentare" ("beitrag_id", "besitzer", "id", "text")
+postgres-1       | 	         VALUES ($1, $2, $3, $4)
+postgres-1       | 	         
+postgres-1       | 	         RETURNING "id", "beitrag_id", "verfasser_id", "text", "besitzer"
+postgres-1       | 2026-10-03 10:39:26.377 UTC [1035] ERROR:  permission denied for table verschlossen
+postgres-1       | 2026-10-03 10:39:26.377 UTC [1035] STATEMENT:  SELECT inhalt FROM "gqlxs_b_5cf6f642_c60d_43da_a1cd_cbd7f9028e0a".verschlossen
+postgres-1       | 2026-10-03 10:39:26.514 UTC [1013] ERROR:  permission denied for table project_function_invocation_output
+postgres-1       | 2026-10-03 10:39:26.514 UTC [1013] STATEMENT:  UPDATE project_function_invocation_output SET truncated = true
+postgres-1       | 2026-10-03 10:39:26.516 UTC [1013] ERROR:  permission denied for table project_function_invocation_output
+postgres-1       | 2026-10-03 10:39:26.516 UTC [1013] STATEMENT:  DELETE FROM project_function_invocation_output
+postgres-1       | 2026-10-03 10:39:26.521 UTC [1032] ERROR:  new row for relation "project_function_invocation_output" violates check constraint "project_function_invocation_output_line_count_check"
+postgres-1       | 2026-10-03 10:39:26.521 UTC [1032] DETAIL:  Failing row contains (1221a3b2-993e-41a5-84e3-ec67331a5941, 1f6f57ca-2b2d-497b-83f9-a442b1034c22, 3ab0e310-db0b-4992-8524-0e96a3a1c236, development, 838e7c28-78c2-485a-8596-54148fb6f7c4, e63f603f-6e4b-4f8c-9bc3-20c43fa3d644, 2026-10-03 10:39:26.518223+00, 501, 501, 0, 0, f, 0, [{"at": "2026-09-29T10:00:00.000Z", "cut": false, "text": "x", "...).
+postgres-1       | 2026-10-03 10:39:26.521 UTC [1032] STATEMENT:  INSERT INTO project_function_invocation_output
+postgres-1       | 	         (organization_id, project_id, environment, function_id, invocation_id,
+postgres-1       | 	          line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+postgres-1       | 	       VALUES ($1, $2, 'development', $3, $4, $5, $6, 0, 0, $7, $8, $9::jsonb)
+postgres-1       | 2026-10-03 10:39:26.532 UTC [1037] ERROR:  new row for relation "project_function_invocation_output" violates check constraint "project_function_invocation_output_lines_shape"
+postgres-1       | 2026-10-03 10:39:26.532 UTC [1037] DETAIL:  Failing row contains (20bd9f13-7ada-4f9f-a4d4-1117a6f1122e, 1f6f57ca-2b2d-497b-83f9-a442b1034c22, 3ab0e310-db0b-4992-8524-0e96a3a1c236, development, 838e7c28-78c2-485a-8596-54148fb6f7c4, e63f603f-6e4b-4f8c-9bc3-20c43fa3d644, 2026-10-03 10:39:26.530377+00, 2, 2, 0, 0, f, 0, [{"at": "2026-09-29T10:00:00.000Z", "cut": false, "text": "x", "...).
+postgres-1       | 2026-10-03 10:39:26.532 UTC [1037] STATEMENT:  INSERT INTO project_function_invocation_output
+postgres-1       | 	         (organization_id, project_id, environment, function_id, invocation_id,
+postgres-1       | 	          line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+postgres-1       | 	       VALUES ($1, $2, 'development', $3, $4, $5, $6, 0, 0, $7, $8, $9::jsonb)
+postgres-1       | 2026-10-03 10:39:26.545 UTC [1038] ERROR:  insert or update on table "project_function_invocation_output" violates foreign key constraint "project_function_invocation_o_organization_id_invocation_i_fkey"
+postgres-1       | 2026-10-03 10:39:26.545 UTC [1038] DETAIL:  Key (organization_id, invocation_id)=(1f6f57ca-2b2d-497b-83f9-a442b1034c22, aba18065-4afc-4b43-8a79-6158d3d0d395) is not present in table "project_function_invocations".
+postgres-1       | 2026-10-03 10:39:26.545 UTC [1038] STATEMENT:  INSERT INTO project_function_invocation_output
+postgres-1       | 	         (organization_id, project_id, environment, function_id, invocation_id,
+postgres-1       | 	          line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+postgres-1       | 	       VALUES ($1, $2, 'development', $3, $4, $5, $6, 0, 0, $7, $8, $9::jsonb)
+postgres-1       | 2026-10-03 10:39:26.556 UTC [1039] ERROR:  duplicate key value violates unique constraint "project_function_invocation_o_organization_id_invocation_id_key"
+postgres-1       | 2026-10-03 10:39:26.556 UTC [1039] DETAIL:  Key (organization_id, invocation_id)=(1f6f57ca-2b2d-497b-83f9-a442b1034c22, a225f434-b7aa-46a5-bd57-3085c8dc2ceb) already exists.
+postgres-1       | 2026-10-03 10:39:26.556 UTC [1039] STATEMENT:  INSERT INTO project_function_invocation_output
+postgres-1       | 	         (organization_id, project_id, environment, function_id, invocation_id,
+postgres-1       | 	          line_count, stdout_lines, stderr_lines, byte_count, truncated, dropped_lines, lines)
+postgres-1       | 	       VALUES ($1, $2, 'development', $3, $4, $5, $6, 0, 0, $7, $8, $9::jsonb)
+postgres-1       | 2026-10-03 10:39:26.684 UTC [1027] ERROR:  duplicate key value violates unique constraint "project_auth_saml_assertion_key"
+postgres-1       | 2026-10-03 10:39:26.684 UTC [1027] DETAIL:  Key (organization_id, project_id, environment, provider, assertion_id)=(ab48416d-7458-4b89-a5d9-777375ba86d4, e3518d73-09e7-4f24-bdc7-7e4eeabe7560, development, federation, _af540e7087966128dbb4bd204a678f122) already exists.
+postgres-1       | 2026-10-03 10:39:26.684 UTC [1027] STATEMENT:  INSERT INTO project_auth_saml_assertions
+postgres-1       | 	      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+postgres-1       | 	      VALUES ($1, $2, 'development', 'federation', $3, now() + interval '5 minutes')
+postgres-1       | 2026-10-03 10:39:26.689 UTC [1026] ERROR:  new row for relation "project_auth_saml_assertions" violates check constraint "project_auth_saml_assertions_assertion_id_check"
+postgres-1       | 2026-10-03 10:39:26.689 UTC [1026] DETAIL:  Failing row contains (2267864f-6b0d-4a3b-91db-d57bb611fd28, ab48416d-7458-4b89-a5d9-777375ba86d4, e3518d73-09e7-4f24-bdc7-7e4eeabe7560, development, federation, 9nope, 2026-10-03 10:39:26.689345+00, 2026-10-03 10:44:26.689345+00).
+postgres-1       | 2026-10-03 10:39:26.689 UTC [1026] STATEMENT:  INSERT INTO project_auth_saml_assertions
+postgres-1       | 	      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+postgres-1       | 	      VALUES ($1, $2, 'development', 'federation', '9nope', now() + interval '5 minutes')
+postgres-1       | 2026-10-03 10:39:26.701 UTC [1041] ERROR:  new row for relation "project_auth_saml_assertions" violates check constraint "project_auth_saml_assertions_provider_check"
+postgres-1       | 2026-10-03 10:39:26.701 UTC [1041] DETAIL:  Failing row contains (fed0779d-7bc3-4a47-9bf4-7165978d05c3, ab48416d-7458-4b89-a5d9-777375ba86d4, e3518d73-09e7-4f24-bdc7-7e4eeabe7560, development, Federation, _abc, 2026-10-03 10:39:26.699339+00, 2026-10-03 10:44:26.699339+00).
+postgres-1       | 2026-10-03 10:39:26.701 UTC [1041] STATEMENT:  INSERT INTO project_auth_saml_assertions
+postgres-1       | 	      (organization_id, project_id, environment, provider, assertion_id, expires_at)
+postgres-1       | 	      VALUES ($1, $2, 'development', 'Federation', '_abc', now() + interval '5 minutes')
+postgres-1       | 2026-10-03 10:39:26.715 UTC [1042] ERROR:  new row for relation "project_auth_saml_assertions" violates check constraint "project_auth_saml_assertions_window"
+postgres-1       | 2026-10-03 10:39:26.715 UTC [1042] DETAIL:  Failing row contains (d1f2baec-288b-46e9-8aed-41475a459b21, ab48416d-7458-4b89-a5d9-777375ba86d4, e3518d73-09e7-4f24-bdc7-7e4eeabe7560, development, federation, _window, 2026-10-03 10:39:26.711821+00, 2026-10-03 10:38:26.711821+00).
+postgres-1       | 2026-10-03 10:39:26.715 UTC [1042] STATEMENT:  INSERT INTO project_auth_saml_assertions
+postgres-1       | 	      (organization_id, project_id, environment, provider, assertion_id, used_at, expires_at)
+postgres-1       | 	      VALUES ($1, $2, 'development', 'federation', '_window', now(), now() - interval '1 minute')
+postgres-1       | 2026-10-03 10:39:26.728 UTC [1043] ERROR:  new row for relation "project_auth_one_time_tokens" violates check constraint "project_auth_one_time_tokens_purpose_check"
+postgres-1       | 2026-10-03 10:39:26.728 UTC [1043] DETAIL:  Failing row contains (3e3ecfb8-e014-4142-81da-0a6a4fadfbfc, ab48416d-7458-4b89-a5d9-777375ba86d4, e3518d73-09e7-4f24-bdc7-7e4eeabe7560, development, null, saml_reply, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, {}, 2026-10-03 10:39:26.725331+00, 2026-10-03 10:44:26.725331+00, null).
+postgres-1       | 2026-10-03 10:39:26.728 UTC [1043] STATEMENT:  INSERT INTO project_auth_one_time_tokens
+postgres-1       | 	      (organization_id, project_id, environment, purpose, token_hash, expires_at)
+postgres-1       | 	      VALUES ($1, $2, 'development', 'saml_reply', $3, now() + interval '5 minutes')
+postgres-1       | 2026-10-03 10:39:26.740 UTC [1044] ERROR:  permission denied for table project_auth_saml_assertions
+postgres-1       | 2026-10-03 10:39:26.740 UTC [1044] STATEMENT:  UPDATE project_auth_saml_assertions SET assertion_id = '_other' WHERE organization_id = $1
+postgres-1       | 2026-10-03 10:39:26.820 UTC [1040] ERROR:  project storage upload verifier and identity are immutable
+postgres-1       | 2026-10-03 10:39:26.820 UTC [1040] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_upload_mutation() line 15 at RAISE
+postgres-1       | 2026-10-03 10:39:26.820 UTC [1040] STATEMENT:  UPDATE project_storage_uploads
+postgres-1       | 	      SET parts_declared = true, kind = 'single', provider_upload_id = NULL
+postgres-1       | 	      WHERE id = $1
+postgres-1       | 2026-10-03 10:39:26.837 UTC [1046] ERROR:  project storage upload verifier and identity are immutable
+postgres-1       | 2026-10-03 10:39:26.837 UTC [1046] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_upload_mutation() line 15 at RAISE
+postgres-1       | 2026-10-03 10:39:26.837 UTC [1046] STATEMENT:  UPDATE project_storage_uploads SET parts_declared = false
+postgres-1       | 	      WHERE id = $1
+postgres-1       | 2026-10-03 10:39:26.911 UTC [1047] ERROR:  project storage upload verifier and identity are immutable
+postgres-1       | 2026-10-03 10:39:26.911 UTC [1047] CONTEXT:  PL/pgSQL function qkern_reject_project_storage_upload_mutation() line 15 at RAISE
+postgres-1       | 2026-10-03 10:39:26.911 UTC [1047] STATEMENT:  UPDATE project_storage_uploads SET checksum_sha256 = NULL WHERE id = $1
+postgres-1       | 2026-10-03 10:39:26.933 UTC [1048] ERROR:  new row for relation "project_storage_uploads" violates check constraint "project_storage_uploads_completed_content"
+postgres-1       | 2026-10-03 10:39:26.933 UTC [1048] DETAIL:  Failing row contains (5191e997-c0e7-40eb-9dec-8139c390d0fd, a38e7ab7-a30f-42d8-a3bb-43e06a008643, a220457f-3694-40fe-a20f-94312953e209, development, fc3f63e4-0f09-4ceb-b660-1f2bc7ca7fc3, halfway.txt, a38e7ab7-a30f-42d8-a3bb-43e06a008643/a220457f-3694-40fe-a20f-943..., 2d0592b1-71ea-4452-a4ea-d273187b280d, text/plain, 1, null, _LSuUkLKfE8A7htvgT-4bthkaXeUt_r3R0ynPHHOy6U, completed, 2026-10-03 10:39:26.803+00, 2026-10-03 11:39:26.803+00, null, null, multipart, provider-upload-halfway, t).
+postgres-1       | 2026-10-03 10:39:26.933 UTC [1048] STATEMENT:  UPDATE project_storage_uploads SET status = 'completed', size_bytes = 1 WHERE id = $1
+postgres-1       | 2026-10-03 10:39:26.985 UTC [1050] ERROR:  permission denied for function pg_read_file
+postgres-1       | 2026-10-03 10:39:26.985 UTC [1050] STATEMENT:  SELECT pg_read_file('postgresql.conf', 0, 16)
+postgres-1       | 2026-10-03 10:39:26.995 UTC [1051] ERROR:  permission denied for function pg_ls_logdir
+postgres-1       | 2026-10-03 10:39:26.995 UTC [1051] STATEMENT:  SELECT * FROM pg_ls_logdir()
+postgres-1       | 2026-10-03 10:39:27.004 UTC [1052] ERROR:  permission denied to examine "log_directory"
+postgres-1       | 2026-10-03 10:39:27.004 UTC [1052] DETAIL:  Only roles with privileges of the "pg_read_all_settings" role may examine this parameter.
+postgres-1       | 2026-10-03 10:39:27.004 UTC [1052] STATEMENT:  SHOW log_directory
+postgres-1       | 2026-10-03 10:39:27.017 UTC [1049] ERROR:  could not open directory "log": No such file or directory
+postgres-1       | 2026-10-03 10:39:27.017 UTC [1049] STATEMENT:  SELECT * FROM pg_ls_logdir()
+postgres-1       | 2026-10-03 10:39:27.087 UTC [1063] ERROR:  permission denied for function pg_read_file
+postgres-1       | 2026-10-03 10:39:27.087 UTC [1063] STATEMENT:  SELECT pg_read_file('postgresql.conf', 0, 8)
+postgres-1       | 2026-10-03 10:39:27.143 UTC [1013] ERROR:  new row for relation "realtime_presence" violates check constraint "realtime_presence_lease_forward"
+postgres-1       | 2026-10-03 10:39:27.143 UTC [1013] STATEMENT:  INSERT INTO realtime_presence (organization_id, project_id, environment, channel,
+postgres-1       | 	             presence_key, instance_id, state, tracked_at, expires_at)
+postgres-1       | 	           VALUES ($1,$2,'development',$3,'qk_presence_2113backwards','instance-a','{}',$4,$5)
+postgres-1       | 2026-10-03 10:39:27.146 UTC [1013] ERROR:  permission denied for table realtime_presence
+postgres-1       | 2026-10-03 10:39:27.146 UTC [1013] STATEMENT:  UPDATE realtime_presence SET channel='public:hijacked'
+postgres-1       | 	          WHERE organization_id=$1 AND channel=$2
+postgres-1       | 2026-10-03 10:39:27.157 UTC [1068] ERROR:  permission denied for table realtime_presence
+postgres-1       | 2026-10-03 10:39:27.157 UTC [1068] STATEMENT:  UPDATE realtime_presence SET presence_key='qk_presence_2113stolen'
+postgres-1       | 	          WHERE organization_id=$1 AND channel=$2
+postgres-1       | 2026-10-03 10:39:27.381 UTC [1070] ERROR:  duplicate key value violates unique constraint "billing_invoice_lines_invoice_id_line_key_key"
+postgres-1       | 2026-10-03 10:39:27.381 UTC [1070] STATEMENT:  INSERT INTO billing_invoice_lines
+postgres-1       | 	               (organization_id, invoice_id, line_key, label, metric, quantity,
+postgres-1       | 	                unit_price_micros, per_units, amount_micros)
+postgres-1       | 	             VALUES ($1,$2,'charge:support-retainer','Betreuung noch einmal',NULL,1,5000000,1,5000000)
+postgres-1       | 2026-10-03 10:39:27.389 UTC [1054] ERROR:  update or delete on table "organizations" violates foreign key constraint "billing_rate_cards_organization_id_fkey" on table "billing_rate_cards"
+postgres-1       | 2026-10-03 10:39:27.389 UTC [1054] DETAIL:  Key (id)=(fe34f1e1-cd8a-4942-b458-254c17431186) is still referenced from table "billing_rate_cards".
+postgres-1       | 2026-10-03 10:39:27.389 UTC [1054] STATEMENT:  DELETE FROM organizations WHERE id IN ($1,$2)
+postgres-1       | 2026-10-03 10:39:27.403 UTC [1071] ERROR:  update or delete on table "users" violates foreign key constraint "organizations_created_by_fkey" on table "organizations"
+postgres-1       | 2026-10-03 10:39:27.403 UTC [1071] DETAIL:  Key (id)=(03b9cca3-9f51-4095-a042-78313ee0004a) is still referenced from table "organizations".
+postgres-1       | 2026-10-03 10:39:27.403 UTC [1071] STATEMENT:  DELETE FROM users WHERE id = $1
+postgres-1       | 2026-10-03 10:39:27.535 UTC [1069] ERROR:  permission denied for table project_queue_message_traces
+postgres-1       | 2026-10-03 10:39:27.535 UTC [1069] STATEMENT:  UPDATE project_queue_message_traces SET station='completed'
+postgres-1       | 	            WHERE organization_id=$1 AND message_id=$2
+postgres-1       | 2026-10-03 10:39:27.537 UTC [1072] ERROR:  a project queue trace station is append-only
+postgres-1       | 2026-10-03 10:39:27.537 UTC [1072] CONTEXT:  PL/pgSQL function qkern_reject_project_queue_trace_update() line 3 at RAISE
+postgres-1       | 2026-10-03 10:39:27.537 UTC [1072] STATEMENT:  UPDATE project_queue_message_traces SET station='completed'
+postgres-1       | 	          WHERE organization_id=$1 AND message_id=$2
+postgres-1       | 2026-10-03 10:39:28.265 UTC [1073] ERROR:  new row for relation "project_queue_message_traces" violates check constraint "project_queue_message_traces_span_shape"
+postgres-1       | 2026-10-03 10:39:28.265 UTC [1073] DETAIL:  Failing row contains (fa8796c8-43cd-42a7-bac9-c8e5f89e7ac0, cddfb81f-9fe8-44cd-a1bb-7b10a710dc91, 3ac84aaf-2871-4a72-b5dd-d12c04ea2d92, development, 3e11215a-5d74-4966-821f-2ffea575fef6, 97dca672-c50f-4e78-b988-0dfe03a1a689, 60, enqueued, 0, null, null, null, null, null, 2026-10-03 10:39:28.234+00, 2026-10-04 10:39:28.234+00, 0000000000000000).
+postgres-1       | 2026-10-03 10:39:28.265 UTC [1073] STATEMENT:  INSERT INTO project_queue_message_traces
+postgres-1       | 	         (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
+postgres-1       | 	          span_id,occurred_at,expires_at)
+postgres-1       | 	       SELECT organization_id,project_id,environment,queue_id,message_id,60,'enqueued',0,
+postgres-1       | 	              repeat('0',16),occurred_at,expires_at
+postgres-1       | 	         FROM project_queue_message_traces
+postgres-1       | 	        WHERE organization_id=$1 AND message_id=$2 AND sequence=1
+postgres-1       | 2026-10-03 10:39:28.277 UTC [1074] ERROR:  duplicate key value violates unique constraint "project_queue_message_traces_span_key"
+postgres-1       | 2026-10-03 10:39:28.277 UTC [1074] DETAIL:  Key (organization_id, project_id, environment, message_id, span_id)=(cddfb81f-9fe8-44cd-a1bb-7b10a710dc91, 3ac84aaf-2871-4a72-b5dd-d12c04ea2d92, development, 97dca672-c50f-4e78-b988-0dfe03a1a689, fe5836b37f60afeb) already exists.
+postgres-1       | 2026-10-03 10:39:28.277 UTC [1074] STATEMENT:  INSERT INTO project_queue_message_traces
+postgres-1       | 	         (organization_id,project_id,environment,queue_id,message_id,sequence,station,attempt,
+postgres-1       | 	          span_id,occurred_at,expires_at)
+postgres-1       | 	       SELECT organization_id,project_id,environment,queue_id,message_id,61,'enqueued',0,
+postgres-1       | 	              span_id,occurred_at,expires_at
+postgres-1       | 	         FROM project_queue_message_traces
+postgres-1       | 	        WHERE organization_id=$1 AND message_id=$2 AND sequence=1
+postgres-1       | 2026-10-03 10:39:28.464 UTC [1075] ERROR:  webhook delivery content is immutable
+postgres-1       | 2026-10-03 10:39:28.464 UTC [1075] CONTEXT:  PL/pgSQL function qkern_validate_project_webhook_delivery_update() line 10 at RAISE
+postgres-1       | 2026-10-03 10:39:28.464 UTC [1075] STATEMENT:  UPDATE project_webhook_deliveries SET trace_id=$3
+postgres-1       | 	        WHERE organization_id=$1 AND id=$2
+postgres-1       | 2026-10-03 10:39:28.477 UTC [1076] ERROR:  webhook delivery content is immutable
+postgres-1       | 2026-10-03 10:39:28.477 UTC [1076] CONTEXT:  PL/pgSQL function qkern_validate_project_webhook_delivery_update() line 10 at RAISE
+postgres-1       | 2026-10-03 10:39:28.477 UTC [1076] STATEMENT:  UPDATE project_webhook_deliveries SET parent_span_id=NULL
+postgres-1       | 	        WHERE organization_id=$1 AND id=$2
+postgres-1       | 2026-10-03 10:39:28.486 UTC [1077] ERROR:  new row for relation "project_webhook_deliveries" violates check constraint "project_webhook_deliveries_trace_anchor"
+postgres-1       | 2026-10-03 10:39:28.486 UTC [1077] DETAIL:  Failing row contains (6574c454-ba63-4676-a3a0-03b91e73ea45, cddfb81f-9fe8-44cd-a1bb-7b10a710dc91, 3ac84aaf-2871-4a72-b5dd-d12c04ea2d92, development, 0ed5cf00-eaa4-45b8-b507-8d7e5b01db90, order.created, {}, 2026-10-03 10:39:28.484572+00, pending, 0, 2026-10-03 10:39:28.484572+00, null, null, null, null, 2026-10-03 10:39:28.484572+00, null, null, null, 00f067aa0ba902b7).
+postgres-1       | 2026-10-03 10:39:28.486 UTC [1077] STATEMENT:  INSERT INTO project_webhook_deliveries
+postgres-1       | 	         (id, organization_id, project_id, environment, webhook_id, event_type, payload,
+postgres-1       | 	          occurred_at, status, attempt_count, available_at, created_at, parent_span_id)
+postgres-1       | 	       VALUES (gen_random_uuid(),$1,$2,'development',$3,'order.created','{}',now(),
+postgres-1       | 	               'pending',0,now(),now(),$4)
+postgres-1       | 2026-10-03 10:39:28.710 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.710 UTC [1080] STATEMENT:  UPDATE project_database_backups SET status = 'available' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.712 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.712 UTC [1080] STATEMENT:  UPDATE project_database_backups SET object_key = NULL WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.714 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.714 UTC [1080] STATEMENT:  UPDATE project_database_backups SET artifact_sha256 = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.715 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.715 UTC [1080] STATEMENT:  UPDATE project_database_backups SET manifest_sha256 = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.717 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.717 UTC [1080] STATEMENT:  UPDATE project_database_backups SET expires_at = now() WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.720 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.720 UTC [1080] STATEMENT:  UPDATE project_database_backups SET part_count = 9 WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.721 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.721 UTC [1080] STATEMENT:  UPDATE project_database_backups SET restore_lease_token = gen_random_uuid() WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.723 UTC [1080] ERROR:  permission denied for table project_database_backups
+postgres-1       | 2026-10-03 10:39:28.723 UTC [1080] STATEMENT:  DELETE FROM project_database_backups WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.726 UTC [1080] ERROR:  new row for relation "project_database_backups" violates check constraint "project_database_backups_restore_failure_shape"
+postgres-1       | 2026-10-03 10:39:28.726 UTC [1080] STATEMENT:  UPDATE project_database_backups SET restore_error_code = 'RESTORE_FAILED'
+postgres-1       | 	             WHERE id = $1
+postgres-1       | 2026-10-03 10:39:28.728 UTC [1080] ERROR:  permission denied for table project_database_backup_schedules
+postgres-1       | 2026-10-03 10:39:28.728 UTC [1080] STATEMENT:  UPDATE project_database_backup_schedules SET enabled = false WHERE project_id = $1
+certification-1  |  [32m✓[39m tests/postgres.integration.test.ts [2m([22m[2m77 tests[22m[2m)[22m[33m 43151[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m finds the suspected missing index, the unused index, the bloat and the missing sample in real statistics (2.40) [33m 10026[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.56) refuses the login attempt that crosses the limit and lets the next window through [33m 693[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.67) shows what a query costs in the console without showing the query [33m 1231[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.53) delivers a table change through the running bridge process [33m 4609[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.64) forwards through the running collector process and continues after a restart [33m 4603[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.69) explains a real query plan without executing the query [33m 7910[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.70) reports the state of the real database from counters that really move [33m 1278[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.77) calls the auth hooks of a real sign-in and refuses one that wants a reserved claim [33m 985[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.79) registers a real passkey, signs in with a real signature and refuses replay, wrong origin and a counter that runs backwards [33m 309[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.85) does not forward the same audit row again after a restart when the database sets the microseconds [33m 1712[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.116) gives storage:write one deleting tool and no upload, runs it as the consenting user under the write policy of the bucket, keeps a foreign object in an owner bucket and gives the operator role only to the local bearer [33m 471[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.117) runs the free query under row level security as the consenting user, gives each user exactly their own rows, keeps a table without row level security unreachable over OAuth and answers the schema list with the readable surface only [33m 530[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.92) records a consent as one row, issues a token on it, revokes exactly that consent so the token stops working while the row stays, and refuses a scope nobody consented to [33m 390[2mms[22m[39m
+certification-1  |      [33m[2m✓[22m[39m (2.122) cuts a trace at its own expiry and never at the outcome of its message, keeps it when the message is already pruned, never shorter than the queue retention, and stops at sixty-four stations [33m 670[2mms[22m[39m
+certification-1  | 
+certification-1  | [2m Test Files [22m [1m[32m31 passed[39m[22m[90m (31)[39m
+certification-1  | [2m      Tests [22m [1m[32m256 passed[39m[22m[90m (256)[39m
+certification-1  | [2m   Start at [22m 10:38:39
+certification-1  | [2m   Duration [22m 49.36s[2m (transform 23.98s, setup 0ms, import 36.22s, tests 101.70s, environment 12ms)[22m
+certification-1  | 
+[Kcertification-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container qkern-slice-easyui-certification-1 Stopping 
+ Container qkern-slice-easyui-certification-1 Stopped 
+ Container qkern-slice-easyui-postgres-1 Stopping 
+ Container qkern-slice-easyui-vault-1 Stopping 
+postgres-1       | 2026-10-03 10:39:30.382 UTC [1] LOG:  received fast shutdown request
+postgres-1       | 2026-10-03 10:39:30.382 UTC [1] LOG:  aborting any active transactions
+vault-1          | ==> Vault shutdown triggered
+postgres-1       | 2026-10-03 10:39:30.388 UTC [1] LOG:  background worker "logical replication launcher" (PID 336) exited with exit code 1
+vault-1          | 2026-10-03T10:39:30.387Z [INFO]  core: marked as sealed
+vault-1          | 2026-10-03T10:39:30.388Z [INFO]  core: pre-seal teardown starting
+vault-1          | 2026-10-03T10:39:30.389Z [INFO]  rollback: stopping rollback manager
+postgres-1       | 2026-10-03 10:39:30.390 UTC [331] LOG:  shutting down
+postgres-1       | 2026-10-03 10:39:30.390 UTC [331] LOG:  checkpoint starting: shutdown immediate
+vault-1          | 2026-10-03T10:39:30.390Z [INFO]  core: pre-seal teardown complete
+vault-1          | 2026-10-03T10:39:30.390Z [INFO]  core: stopping cluster listeners
+vault-1          | 2026-10-03T10:39:30.390Z [INFO]  core.cluster-listener: forwarding rpc listeners stopped
+postgres-1       | 2026-10-03 10:39:30.395 UTC [331] LOG:  checkpoint complete: wrote 478 buffers (2.9%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.001 s, total=0.006 s; sync files=343, longest=0.001 s, average=0.000 s; distance=2273 kB, estimate=24539 kB; lsn=0/6A6D650, redo lsn=0/6A6D650
+postgres-1       | 2026-10-03 10:39:30.411 UTC [1] LOG:  database system is shut down
+vault-1          | 2026-10-03T10:39:30.694Z [INFO]  core.cluster-listener: rpc listeners successfully shut down
+vault-1          | 2026-10-03T10:39:30.694Z [INFO]  core: cluster listeners successfully shut down
+vault-1          | 2026-10-03T10:39:30.694Z [INFO]  core: vault is sealed
+ Container qkern-slice-easyui-postgres-1 Stopped 
+[Kpostgres-1 exited with code 0
+ Container qkern-slice-easyui-vault-1 Stopped 
+[Kvault-1 exited with code 0
+ Container qkern-slice-easyui-certification-1 Stopping 
+ Container qkern-slice-easyui-certification-1 Stopped 
+ Container qkern-slice-easyui-certification-1 Removing 
+ Container qkern-slice-easyui-certification-1 Removed 
+ Container qkern-slice-easyui-vault-1 Stopping 
+ Container qkern-slice-easyui-postgres-1 Stopping 
+ Container qkern-slice-easyui-vault-1 Stopped 
+ Container qkern-slice-easyui-vault-1 Removing 
+ Container qkern-slice-easyui-postgres-1 Stopped 
+ Container qkern-slice-easyui-postgres-1 Removing 
+ Container qkern-slice-easyui-postgres-1 Removed 
+ Container qkern-slice-easyui-vault-1 Removed 
+ Network qkern-slice-easyui_default Removing 
+ Network qkern-slice-easyui_default Removed 
+EXIT=0

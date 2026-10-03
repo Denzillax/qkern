@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.74.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.75.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,24 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.135 bis 2.138 (Zweige `slice/pricing`, `slice/overview`,
+  `slice/emptystates`, `slice/tablecontext`, alle nach `main` gemergt) **Die
+  Oberflaeche in einem Durchgang.** Die Preisseite liegt unter `/pricing`, ihre
+  Tarife an **einer** Stelle in `lib/pricing/plans.ts`, und der Abschnitt der
+  Startseite liest dieselbe Quelle; vorher trug er eigene Betraege und
+  widersprach ihr (Business 99 gegen 199). Die Uebersicht liest je Dienst die
+  Lesung aus `advisors/health` und faerbt nur gruen, wo gefragt und geantwortet
+  wurde. `components/console/copy-value.tsx` ist der **eine** Kopierweg im
+  Projekt, `components/console/dangerous-action.tsx` verlangt bei den sieben
+  schwersten Loeschungen den abgetippten Namen, und
+  `components/console/table-workspace-view.tsx` haengt fuenf Reiter vor
+  bestehende Ansichten, die dafuer eine optionale Requisite `table?: string`
+  bekommen haben. **Offen**: `window.confirm` bleibt bei Sitzungen und
+  Zustimmungen; der Vorgabewert einer Spalte ist nicht lesbar; der
+  Primaerschluessel kommt aus `/schema/indexes`, weil er in
+  `ProjectSchemaResult` fehlt; und Einstellungen sind nicht gruppiert (2.139),
+  die Abrechnung ohne Tarif nicht umgebaut (2.140).
 
 - 2.134 (Zweig `main`) **Die Console hat zwei Anordnungen derselben
   Ansichten.** Migration `0086_user_console_interface_mode.sql` haengt
@@ -1137,7 +1155,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.74.0`
+- Paketversion: `2.75.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 
