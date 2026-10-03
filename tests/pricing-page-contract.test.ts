@@ -107,6 +107,21 @@ describe("pricing page contract", () => {
     }
   });
 
+  it("keeps the landing page from carrying a second price list", async () => {
+    // Der Widerspruch, den dieser Fall verbietet, war echt: Die Startseite trug
+    // drei Tarife mit eigenen Betraegen im Markup, Business stand dort bei 99
+    // und auf `/pricing` bei 199. Wer scrollte, sah beides. Seit 2.135 liest
+    // der Abschnitt dieselbe Quelle, und dieser Fall haelt das fest.
+    const page = await readSource("app/page.tsx");
+    expect(page, "die Startseite nennt einen Betrag selbst").not.toMatch(/CHF\s*\d/);
+    expect(page, "die Startseite rechnet Preise aus einer eigenen Liste").not.toMatch(/\[0,\s*\d+/);
+    expect(page).toContain("PRICING_PLANS.map");
+    expect(page).toContain('href="/pricing"');
+    // Und das Woerterbuch der Startseite fuehrt keine Tarife mehr.
+    const dictionary = await readSource("lib/i18n/landing.ts");
+    expect(dictionary).not.toMatch(/pricing: \{[^}]*plans:/s);
+  });
+
   it("has every pricing text in all four locales, translated and without digits", () => {
     const reference = leaves(PRICING.de).map((leaf) => leaf.path);
     expect(reference.length).toBeGreaterThan(0);

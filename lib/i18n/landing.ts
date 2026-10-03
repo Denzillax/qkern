@@ -20,7 +20,14 @@ export type LandingDictionary = {
   bridge: { eyebrow: string; title: string; lead: string; items: string[]; cta: string; status: string; prompt: string; steps: Array<{ title: string; small: string }> };
   developers: { title: string; lead: string; rows: Array<{ title: string; text: string }> };
   gaps: { eyebrow: string; title: string; lead: string; items: string[] };
-  pricing: { eyebrow: string; title: string; lead: string; perMonth: string; cta: string; note: string; plans: Array<{ name: string; summary: string; features: string[] }> };
+  /**
+   * Der Preisabschnitt der Startseite ist seit 2.135 nur noch ein Anriss. Die
+   * Tarife selbst stehen in `lib/pricing/plans.ts` und ihre Worte in
+   * `lib/i18n/pricing.ts`; hier lagen sie doppelt, mit drei Plaenen und einem
+   * Business-Preis, der dem auf `/pricing` widersprach. Zwei Preislisten sind
+   * eine zu viel, und die falsche findet immer jemand.
+   */
+  pricing: { eyebrow: string; title: string; lead: string; cta: string; note: string };
   close: { title: string; lead: string; cta: string };
   footer: { tagline: string; product: string; developers: string; docs: string; company: string; modules: string; verification: string; bridge: string; pricing: string; console: string; interfaces: string; gaps: string; imprint: string; privacy: string; status: string; copyright: string; madeIn: string };
   docs: { title: string; pages: string; onThisPage: string; copy: string; copied: string; translationPending: string; menu: string };
@@ -86,15 +93,10 @@ const de: LandingDictionary = {
     ],
   },
   pricing: {
-    eyebrow: "Preise", title: "Drei Pläne, in Franken.",
-    lead: "Free zum Ausprobieren, Pro für Teams, Business für Organisationen mit Freigabepflicht. Die geprüften Bausteine sind in allen drei gleich.",
-    perMonth: "/pro Monat", cta: "Loslegen",
+    eyebrow: "Preise", title: "Fünf Tarife, in Franken.",
+    lead: "Vom kostenlosen Projekt bis zum Vertrag mit Support. Welche Grenzen zu welchem Tarif gehören, legen wir vor dem Marktstart fest.",
+    cta: "Alle Tarife ansehen",
     note: "Die Preise sind ein Entwurf; vor dem Marktstart prüfen wir sie. Dasselbe gilt für Aussagen zu Hosting, Datenresidenz und Compliance.",
-    plans: [
-      { name: "Free", summary: "Ein Development-Projekt, um die geprüften Bausteine auszuprobieren.", features: ["Ein Projekt, eine Umgebung", "Data API, Auth und Storage", "Lesender Agentenzugriff", "Basisprotokoll", "Community-Support"] },
-      { name: "Pro", summary: "Für Teams, die Development, Staging und Production sauber trennen.", features: ["Mehrere Projekte und Umgebungen", "Claude Code und Codex über die AI Bridge", "Automatische Backups", "Freigabezentrale mit Rollback-Plan", "E-Mail-Support"] },
-      { name: "Business", summary: "Für Organisationen, die Rollen, Protokolle und Freigaben für Production brauchen.", features: ["Teamrollen und Workspace-Verwaltung", "Erweiterte Protokolle und Audit-Export", "Production-Umgebungen mit Schutz", "Eigene Nutzungsgrenzen", "Priorisierter Support"] },
-    ],
   },
   close: { title: "Fang mit dem Kern an.", lead: "Ein Development-Projekt kostet nichts. Die Belege für diese Seite liegen im Repository unter docs/evidence.", cta: "Projekt erstellen" },
   footer: { tagline: "Dein Backend. Getestet, bevor du es anfasst.", product: "Produkt", developers: "Entwickler", docs: "Dokumentation", company: "Unternehmen", modules: "Module", verification: "Prüfverfahren", bridge: "AI Bridge", console: "Console", pricing: "Preise", interfaces: "Schnittstellen", gaps: "Offene Punkte", imprint: "Impressum, Vorlage", privacy: "Datenschutz, Vorlage", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Entwickelt in der Schweiz. Hosting-Aussage noch nicht verifiziert." },
@@ -161,15 +163,10 @@ const en: LandingDictionary = {
     ],
   },
   pricing: {
-    eyebrow: "Pricing", title: "Three plans, in Swiss francs.",
-    lead: "Free to try things out, Pro for teams, Business for organisations that need approvals. The tested building blocks are the same in all three.",
-    perMonth: "/per month", cta: "Get started",
+    eyebrow: "Pricing", title: "Five plans, in Swiss francs.",
+    lead: "From a free project to a contract with support. Which limits belong to which plan is decided before launch.",
+    cta: "See all plans",
     note: "Prices are a draft; we will review them before launch. The same goes for statements on hosting, data residency and compliance.",
-    plans: [
-      { name: "Free", summary: "One development project to try the tested building blocks.", features: ["One project, one environment", "Data API, auth and storage", "Read-only agent access", "Basic log", "Community support"] },
-      { name: "Pro", summary: "For teams that keep development, staging and production apart.", features: ["Several projects and environments", "Claude Code and Codex via the AI Bridge", "Automatic backups", "Approval center with rollback plan", "Email support"] },
-      { name: "Business", summary: "For organisations that need roles, logs and production approvals.", features: ["Team roles and workspace management", "Extended logs and audit export", "Protected production environments", "Custom usage limits", "Priority support"] },
-    ],
   },
   close: { title: "Start with the core.", lead: "A development project costs nothing. The evidence for this page lives in the repository under docs/evidence.", cta: "Create a project" },
   footer: { tagline: "Your backend. Tested before you touch it.", product: "Product", developers: "Developers", docs: "Documentation", company: "Company", modules: "Modules", verification: "How we test", bridge: "AI Bridge", console: "Console", pricing: "Pricing", interfaces: "Interfaces", gaps: "Open items", imprint: "Imprint, template", privacy: "Privacy, template", status: "Status", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Built in Switzerland. Hosting claim not yet verified." },
@@ -236,15 +233,10 @@ const fr: LandingDictionary = {
     ],
   },
   pricing: {
-    eyebrow: "Tarifs", title: "Trois formules, en francs.",
-    lead: "Free pour essayer, Pro pour les équipes, Business pour les organisations qui exigent des validations. Les briques testées sont les mêmes dans les trois.",
-    perMonth: "/par mois", cta: "Commencer",
+    eyebrow: "Tarifs", title: "Cinq tarifs, en francs.",
+    lead: "Du projet gratuit au contrat avec support. Les limites de chaque tarif seront fixées avant le lancement.",
+    cta: "Voir tous les tarifs",
     note: "Les prix sont un brouillon ; nous les revoyons avant le lancement. Il en va de même des affirmations sur l'hébergement, la résidence des données et la conformité.",
-    plans: [
-      { name: "Free", summary: "Un projet de développement pour essayer les briques testées.", features: ["Un projet, un environnement", "Data API, auth et stockage", "Accès agent en lecture seule", "Journal de base", "Support communautaire"] },
-      { name: "Pro", summary: "Pour les équipes qui séparent proprement développement, staging et production.", features: ["Plusieurs projets et environnements", "Claude Code et Codex via l'AI Bridge", "Sauvegardes automatiques", "Centre de validation avec plan de rollback", "Support par e-mail"] },
-      { name: "Business", summary: "Pour les organisations qui ont besoin de rôles, de journaux et de validations en production.", features: ["Rôles d'équipe et gestion de l'espace de travail", "Journaux étendus et export d'audit", "Environnements de production protégés", "Limites d'usage personnalisées", "Support prioritaire"] },
-    ],
   },
   close: { title: "Commencez par le noyau.", lead: "Un projet de développement ne coûte rien. Les preuves de cette page sont dans le dépôt, sous docs/evidence.", cta: "Créer un projet" },
   footer: { tagline: "Votre backend. Testé avant que vous y touchiez.", product: "Produit", developers: "Développeurs", docs: "Documentation", company: "Entreprise", modules: "Modules", verification: "Nos tests", bridge: "AI Bridge", console: "Console", pricing: "Tarifs", interfaces: "Interfaces", gaps: "Points ouverts", imprint: "Mentions légales, modèle", privacy: "Confidentialité, modèle", status: "Statut", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Développé en Suisse. Affirmation sur l'hébergement pas encore vérifiée." },
@@ -311,15 +303,10 @@ const it: LandingDictionary = {
     ],
   },
   pricing: {
-    eyebrow: "Prezzi", title: "Tre piani, in franchi.",
-    lead: "Free per provare, Pro per i team, Business per le organizzazioni che richiedono approvazioni. I componenti testati sono gli stessi in tutti e tre.",
-    perMonth: "/al mese", cta: "Inizia",
+    eyebrow: "Prezzi", title: "Cinque tariffe, in franchi.",
+    lead: "Dal progetto gratuito al contratto con supporto. I limiti di ogni tariffa li fissiamo prima del lancio.",
+    cta: "Vedi tutte le tariffe",
     note: "I prezzi sono una bozza; li rivedremo prima del lancio. Lo stesso vale per le affermazioni su hosting, residenza dei dati e conformità.",
-    plans: [
-      { name: "Free", summary: "Un progetto di sviluppo per provare i componenti testati.", features: ["Un progetto, un ambiente", "Data API, auth e storage", "Accesso agente in sola lettura", "Registro di base", "Supporto della community"] },
-      { name: "Pro", summary: "Per i team che separano nettamente sviluppo, staging e produzione.", features: ["Più progetti e ambienti", "Claude Code e Codex tramite l'AI Bridge", "Backup automatici", "Centro approvazioni con piano di rollback", "Supporto via e-mail"] },
-      { name: "Business", summary: "Per le organizzazioni che hanno bisogno di ruoli, registri e approvazioni in produzione.", features: ["Ruoli del team e gestione del workspace", "Registri estesi ed esportazione dell'audit", "Ambienti di produzione protetti", "Limiti d'uso personalizzati", "Supporto prioritario"] },
-    ],
   },
   close: { title: "Comincia dal nucleo.", lead: "Un progetto di sviluppo non costa nulla. Le prove di questa pagina sono nel repository, sotto docs/evidence.", cta: "Crea un progetto" },
   footer: { tagline: "Il tuo backend. Testato prima che lo tocchi.", product: "Prodotto", developers: "Sviluppatori", docs: "Documentazione", company: "Azienda", modules: "Moduli", verification: "Come testiamo", bridge: "AI Bridge", console: "Console", pricing: "Prezzi", interfaces: "Interfacce", gaps: "Punti aperti", imprint: "Note legali, modello", privacy: "Privacy, modello", status: "Stato", copyright: "© 2026 QKERN. Product MVP.", madeIn: "Sviluppato in Svizzera. Affermazione sull'hosting non ancora verificata." },

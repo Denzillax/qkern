@@ -10,6 +10,8 @@ import styles from "./page.module.css";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 import { currentLocale } from "@/lib/i18n/server";
 import { formatDate, getLandingDictionary } from "@/lib/i18n/landing";
+import { getPricingDictionary } from "@/lib/i18n/pricing";
+import { PRICING_PLANS, formatPlanPrice } from "@/lib/pricing/plans";
 import { fill } from "@/lib/i18n/locales";
 
 /**
@@ -29,6 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const locale = await currentLocale();
   const t = getLandingDictionary(locale);
+  const pricing = getPricingDictionary(locale);
   const certification = await loadCertificationSummary();
   const runs = certification.rows;
   const name = (value: string) => t.names[value] ?? value;
@@ -223,23 +226,23 @@ export default async function HomePage() {
             <h2>{t.pricing.title}</h2>
             <p>{t.pricing.lead}</p>
           </Reveal>
+          {/* Der Anriss, nicht die Liste (2.135). Hier standen drei Tarife mit
+              eigenen Preisen im Markup, und einer davon widersprach der
+              Preisseite: Business stand hier bei 99 und dort bei 199. Jetzt
+              liest dieser Abschnitt dieselbe Quelle wie `/pricing`, also kann
+              er ihr nicht mehr widersprechen. */}
           <Reveal className={styles.plans} stagger>
-            {t.pricing.plans.map((plan, index) => (
-              <article className={styles.plan} key={plan.name}>
-                <h3>{plan.name}</h3>
+            {PRICING_PLANS.map((plan) => (
+              <article className={styles.plan} key={plan.id}>
+                <h3>{pricing.plans[plan.id].name}</h3>
                 <div className={styles.price}>
-                  <strong>CHF {[0, 29, 99][index]}</strong>
-                  <span>{t.pricing.perMonth}</span>
+                  <strong>{formatPlanPrice(plan, pricing.words)}</strong>
                 </div>
-                <p>{plan.summary}</p>
-                <Link className={`button ${styles.planButton}`} href="/register">{t.pricing.cta}</Link>
-                <hr />
-                <ul>
-                  {plan.features.map((feature) => <li key={feature}><Check size={16} /> {feature}</li>)}
-                </ul>
+                <p>{pricing.plans[plan.id].audience}</p>
               </article>
             ))}
           </Reveal>
+          <Link className={`button ${styles.planButton}`} href="/pricing">{t.pricing.cta} <ArrowRight size={16} /></Link>
           <p className={styles.draftNote}>{t.pricing.note}</p>
         </div>
       </section>
