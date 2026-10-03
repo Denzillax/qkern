@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
@@ -25,19 +25,50 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
   const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
 
+  /**
+   * Die laufende Anfrage, damit die naechste sie abbricht (2.148).
+   *
+   * **Warum.** Wer in der Liste schnell zwischen zwei Functions wechselt, loest
+   * zwei Anfragen aus, und es kommt an, was zuerst zurueck ist. Das ist nicht
+   * zwingend die zuletzt gewaehlte: Die Antwort der alten Wahl ueberschreibt
+   * dann die neue, und in der Liste stehen die Aufrufe einer Function, die
+   * oben nicht gewaehlt ist. Alle Nachbaransichten, die Protokolle zeigen,
+   * machen das seit Langem so; diese war die letzte ohne.
+   */
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+
   const loadInvocations = useCallback(async (id: string) => {
+    request.current?.abort();
     if (!id) { setInvocations([]); return; }
-    const response = await fetch(`${base}/functions/${id}/invocations?limit=100`, { cache: "no-store" });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setMessage(payload.error ?? t("Aufrufe nicht verfügbar")); setInvocations([]); return; }
-    setMessage(""); setInvocations(payload.data as Invocation[]);
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const response = await fetch(`${base}/functions/${id}/invocations?limit=100`, { cache: "no-store", signal: controller.signal });
+      const payload = await response.json().catch(() => ({}));
+      if (controller.signal.aborted) return;
+      if (!response.ok) { setMessage(payload.error ?? t("Aufrufe nicht verfügbar")); setInvocations([]); return; }
+      setMessage(""); setInvocations(payload.data as Invocation[]);
+    } catch (cause) {
+      // Ein Abbruch ist kein Fehler: Er heisst, dass jemand weitergeklickt hat.
+      if (controller.signal.aborted) return;
+      setMessage(cause instanceof Error ? cause.message : t("Aufrufe nicht verfügbar"));
+      setInvocations([]);
+    }
   }, [base]);
 
   const load = useCallback(async () => {
     setState("loading"); setMessage("");
+    // Auch das erste Laden traegt ein Signal. Ohne das haengt die Liste der
+    // Functions am Leben der Seite: Wer sie verlaesst, waehrend die Antwort
+    // unterwegs ist, bekommt den Zustand einer Ansicht gesetzt, die niemand
+    // mehr sieht. Gefunden hat das der Vertrag dieses Schnitts, nicht ich.
+    const listing = new AbortController();
+    request.current = listing;
     try {
-      const response = await fetch(`${base}/functions`, { cache: "no-store" });
+      const response = await fetch(`${base}/functions`, { cache: "no-store", signal: listing.signal });
       const payload = await response.json().catch(() => ({}));
+      if (listing.signal.aborted) return;
       if (response.status === 503) { setState("unavailable"); setMessage(payload.error ?? t("Compute ist für diese Umgebung deaktiviert.")); return; }
       if (!response.ok) throw new Error(payload.error ?? t("Function-Definitionen nicht verfügbar"));
       const list = payload.data as FunctionItem[];
@@ -46,7 +77,10 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
       setSelected(first);
       await loadInvocations(first);
       setState("ready");
-    } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Function-Definitionen nicht verfügbar")); }
+    } catch (cause) {
+      if (listing.signal.aborted) return;
+      setState("error"); setMessage(cause instanceof Error ? cause.message : t("Function-Definitionen nicht verfügbar"));
+    }
   }, [base, loadInvocations]);
   useEffect(() => { void load(); }, [load]);
 

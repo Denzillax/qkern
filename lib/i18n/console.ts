@@ -9,6 +9,9 @@ import type { Locale } from "@/lib/i18n/locales";
 export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, string>> = {
   en: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Zeilen geladen": "rows loaded",
+    "Diesen Bucket gibt es nicht mehr.": "This bucket no longer exists.",
+    "Jemand anderes hat diesen Bucket inzwischen geändert. Es wurde nichts geschrieben; die Liste ist neu geladen, und deine Wahl kannst du noch einmal setzen.": "Someone else has changed this bucket in the meantime. Nothing was written; the list has been reloaded, and you can set your choice again.",
     "Einsätze und Logs": "Deployments and logs",
     "gering": "low",
     "mittel": "medium",
@@ -4269,6 +4272,9 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   fr: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Zeilen geladen": "lignes chargées",
+    "Diesen Bucket gibt es nicht mehr.": "Ce bucket n'existe plus.",
+    "Jemand anderes hat diesen Bucket inzwischen geändert. Es wurde nichts geschrieben; die Liste ist neu geladen, und deine Wahl kannst du noch einmal setzen.": "Quelqu'un d'autre a modifié ce bucket entre-temps. Rien n'a été écrit; la liste est rechargée et vous pouvez refaire votre choix.",
     "Einsätze und Logs": "Déploiements et journaux",
     "gering": "faible",
     "mittel": "moyen",
@@ -8529,6 +8535,9 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   it: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Zeilen geladen": "righe caricate",
+    "Diesen Bucket gibt es nicht mehr.": "Questo bucket non esiste più.",
+    "Jemand anderes hat diesen Bucket inzwischen geändert. Es wurde nichts geschrieben; die Liste ist neu geladen, und deine Wahl kannst du noch einmal setzen.": "Qualcun altro ha modificato questo bucket nel frattempo. Non è stato scritto nulla; l'elenco è stato ricaricato e puoi impostare di nuovo la tua scelta.",
     "Einsätze und Logs": "Deployment e log",
     "gering": "basso",
     "mittel": "medio",

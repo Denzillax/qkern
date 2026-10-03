@@ -17,6 +17,18 @@ type ReadPolicy = "private" | "authenticated" | "owner" | "public" | "service";
 type WritePolicy = "private" | "authenticated" | "owner" | "service";
 type Bucket = { id: string; name: string; readPolicy: ReadPolicy; writePolicy: WritePolicy; allowedMimeTypes: string[]; maxObjectBytes: number; quotaBytes: number; retentionDays: number | null };
 
+/**
+ * Die vier Felder, die diese Seite nicht bearbeitet, aber mitschicken muss.
+ * Rein und exportiert, damit der Vertrag sie pruefen kann, ohne zu rendern.
+ */
+export function sameUntouchedFields(before: Bucket, after: Bucket): boolean {
+  return before.maxObjectBytes === after.maxObjectBytes
+    && before.quotaBytes === after.quotaBytes
+    && before.retentionDays === after.retentionDays
+    && before.allowedMimeTypes.length === after.allowedMimeTypes.length
+    && before.allowedMimeTypes.every((entry, index) => entry === after.allowedMimeTypes[index]);
+}
+
 export function StoragePoliciesView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: "loading" | "ready" | "unavailable" | "error" }) {
   const endpoint = `/api/v1/projects/${projectId}/environments/${environment}/storage/buckets`;
   const [buckets, setBuckets] = useState<Bucket[]>([]);
@@ -38,12 +50,51 @@ export function StoragePoliciesView({ projectId, environment, initialState }: { 
   }, [endpoint]);
   useEffect(() => { void load(); }, [load]);
 
+  /**
+   * Vor dem Schreiben noch einmal lesen (2.148).
+   *
+   * **Warum.** `PATCH` auf einen Bucket ist ein Vollersatz: Das Schema der
+   * Route verlangt jedes Feld, auch die vier, die diese Seite gar nicht
+   * bearbeitet. Geschickt wurden sie bisher so, wie sie beim Laden der Seite
+   * aussahen. Wer also die Grössengrenze in den Storage-Einstellungen aendert,
+   * waehrend hier eine Seite offen steht, verliert seine Aenderung in dem
+   * Moment, in dem hier jemand auf Speichern drueckt. Niemand merkt es, denn
+   * beide Schritte sind erfolgreich.
+   *
+   * **Was jetzt passiert.** Der Bucket wird unmittelbar vor dem Schreiben
+   * erneut gelesen. Sind die vier unberuehrten Felder noch dieselben, geht das
+   * Schreiben mit den frischen Werten durch. Sind sie es nicht, wird nichts
+   * geschrieben; die Seite laedt neu und sagt, dass jemand anderes den Bucket
+   * geaendert hat. Aus einem stillen Verlust wird damit ein sichtbarer
+   * Konflikt.
+   *
+   * **Was das nicht ist.** Keine echte Nebenlaeufigkeitskontrolle. Zwischen dem
+   * zweiten Lesen und dem Schreiben bleibt ein Fenster von Millisekunden. Dafuer
+   * braeuchte die Route eine Version oder `If-Match`, und das ist eine
+   * Aenderung an der Schnittstelle und nicht an dieser Seite.
+   */
   async function save(bucket: Bucket) {
     const draft = drafts[bucket.id]; if (!draft) return;
     setSaving(bucket.id); setMessage("");
+
+    const fresh = await fetch(endpoint, { cache: "no-store" })
+      .then(async (response) => response.ok ? (await response.json()).data as Bucket[] : null)
+      .catch(() => null);
+    const current = fresh?.find((entry) => entry.id === bucket.id);
+    if (fresh && !current) {
+      setSaving(null); setMessage(t("Diesen Bucket gibt es nicht mehr.")); await load(); return;
+    }
+    if (current && !sameUntouchedFields(bucket, current)) {
+      setSaving(null);
+      setMessage(t("Jemand anderes hat diesen Bucket inzwischen geändert. Es wurde nichts geschrieben; die Liste ist neu geladen, und deine Wahl kannst du noch einmal setzen."));
+      await load();
+      return;
+    }
+
+    const base = current ?? bucket;
     const response = await fetch(`${endpoint}/${bucket.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-      readPolicy: draft.readPolicy, writePolicy: draft.writePolicy, allowedMimeTypes: bucket.allowedMimeTypes,
-      maxObjectBytes: bucket.maxObjectBytes, quotaBytes: bucket.quotaBytes, retentionDays: bucket.retentionDays,
+      readPolicy: draft.readPolicy, writePolicy: draft.writePolicy, allowedMimeTypes: base.allowedMimeTypes,
+      maxObjectBytes: base.maxObjectBytes, quotaBytes: base.quotaBytes, retentionDays: base.retentionDays,
     }) });
     setSaving(null);
     if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(payload.error ?? t("Die Änderung wurde abgelehnt.")); return; }
