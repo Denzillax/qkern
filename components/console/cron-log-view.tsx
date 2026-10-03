@@ -5,6 +5,7 @@ import { Clock3, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
+import { OptionMenu } from "@/components/console/option-menu";
 import {
   CRON_MESSAGE_STATE_TEXTS,
   CRON_OCCURRENCE_STATUS_TEXTS,
@@ -129,7 +130,19 @@ export function CronLogView({ projectId, environment, initialState }: { projectI
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("LOGS")} · {environment.toUpperCase()}</span><h3>{t("Cron-Log")}</h3></div><div>
-        <label className="table-select"><Clock3 size={15}/><select value={selected} onChange={(event) => pick(event.target.value)} aria-label={t("Cron-Definition")} disabled={definitions.length === 0}>{definitions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue in der Kopfzeile. Die
+            Erklaerzeile traegt den Ausdruck, denn zwei Definitionen
+            unterscheiden sich nicht im Namen, sondern im Takt; `0 3 * * *`
+            bleibt in jeder Sprache `0 3 * * *`. Dazu das Wort, das den Takt
+            aufhebt: Eine pausierte Definition reiht nichts ein, und das
+            erklaert eine leere Liste darunter. Ohne Eintraege steht der Knopf
+            abgeschaltet da. */}
+        <OptionMenu value={selected} ariaLabel={t("Cron-Definition")} listLabel={t("Cron-Definition wählen")}
+          icon={<Clock3 size={14} aria-hidden="true"/>} onChange={pick}
+          options={definitions.map((entry) => ({
+            id: entry.id, label: entry.name,
+            hint: entry.enabled ? entry.expression : `${entry.expression} · ${t("pausiert")}`,
+          }))}/>
         <button className="secondary-button" onClick={() => void load(false, selected)} disabled={refreshing}><RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/></button>
       </div></div>
 
