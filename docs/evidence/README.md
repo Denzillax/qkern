@@ -2034,6 +2034,16 @@ Testdatei.
 | `2026-10-03/easyui-local-run1.log` | Vitest lokal (Windows) | 2652 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-10-03/easyui-local-run2.log` | Vitest lokal (Windows) | 2652 bestanden, exit 0, mit `--maxWorkers=3` |
 
+| `2026-10-03/uiwelle-postgres-run1.log` | PostgreSQL 17 | 256 bestanden, exit 0 |
+| `2026-10-03/uiwelle-postgres-run2.log` | PostgreSQL 17 | 256 bestanden, exit 0, Reproduktion |
+| `2026-10-03/uiwelle-local-run1.log` | Vitest lokal (Windows) | 2684 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-03/uiwelle-local-run2.log` | Vitest lokal (Windows) | 2684 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Zu 2.76 faehrt derselbe eine Stack, und diesmal ausdruecklich als
+Rueckfallgitter: Geaendert sind Console-Komponenten, Texte, CSS und die
+Startseite, also keine Datei, die ein Stack ueberhaupt beruehrt. Die
+achtundvierzig Mutationsfaelle der Welle liegen als lokale Proben je Schnitt.
+
 Nur ein Stack zu 2.75: Die fuenf Schnitte fassen Console-Komponenten, Texte, CSS,
 `lib/pricing` und eine Spalte in `user_console_settings` an. Kein anderer Stack
 hat hier etwas zu belegen; Migration `0086` laeuft im PostgreSQL-Stack mit, und

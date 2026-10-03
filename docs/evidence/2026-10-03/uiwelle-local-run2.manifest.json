@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "uiwelle-local-run2.log",
+  "commit": "a3235e21fb20752478064980cacc238c85466fe8",
+  "commitSubject": "merge: Realtime verstaendlich, ohne Schalter ohne Route (2.144)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "369 passed | 42 skipped (411)",
+  "tests": "2684 passed | 378 skipped (3062)",
+  "passed": 2684,
+  "failed": 0,
+  "skipped": 378,
+  "images": []
+}

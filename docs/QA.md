@@ -6727,3 +6727,50 @@ von keinem Browser gesehen, weil das Beispielprojekt keine Keys hat und Storage
 dort abgeschaltet ist. Der Vorgabewert einer Spalte ist nicht lesbar, und der
 Primaerschluessel kommt aus der Indexliste statt aus dem Schema. Einstellungen
 sind nicht gruppiert. Die Dev-Datenbank braucht die Spalte aus 0086 von Hand.
+
+## Welle achtundzwanzig (2.76): sieben Gruppen, ein Claim, und sechsmal nichts erfunden
+
+Sechs Schnitte an der Oberflaeche: Einstellungen in sieben Gruppen (2.139),
+Abrechnung und Verbrauch (2.140), der Claim auf dem Hero mit dem Abschnitt, der
+ihn einloest (2.141), der Projektwechsler (2.142), der SQL-Editor in drei
+Bereichen (2.143) und Realtime je Tabelle (2.144).
+
+Das Muster dieser Welle ist, was nicht gebaut wurde. Fuenfmal verlangte die
+Vorlage eine Faehigkeit, die es im Backend nicht gibt, und fuenfmal steht jetzt
+der Befund da statt eines Knopfs: kein Tarif an einem Projekt, kein
+Rechnungstermin, kein Projekt-Loeschen, kein Abfrageverlauf, kein
+Realtime-Schalter. Jedes davon ist im Quelltext belegt und nicht vermutet, und
+jedes haengt an einem Vertragsfall, der faellt, sobald die fehlende Route kommt.
+
+Drei Befunde kamen aus dem Lesen statt aus einem Lauf. Die Console zeigte immer
+`snapshot.projects[0]`, ein zweites Projekt war ueber die Oberflaeche nicht
+erreichbar. Die PostgreSQL-Fehlermeldung erreicht die Console nie, weil die
+Datenplane ihre Fehler ohne Ursache baut, also sehen Syntaxfehler und fehlende
+Tabelle gleich aus. Und das SDK hat keinen Realtime-Client, nur CRUD.
+
+Im Browser gemessen wurde die Startseite, weil sie ohne Anmeldung erreichbar
+ist: Das Markenblau als Schriftfarbe ergab auf dem dunklen Hero 2,76 zu 1, wo
+selbst grosse Schrift 3 zu 1 verlangt; die Ueberschrift brach bei 88 Pixeln in
+vier Zeilen; und der Hero schrieb eine Gruppenzahl aus, die sich mit jedem neuen
+Menuepunkt aendert.
+
+Zwei Mutationsproben liefen zuerst gruen durch und haben Luecken in den eigenen
+Vertraegen aufgedeckt: Der Betragsvertrag prueft jetzt Fundstellen statt Namen,
+und die Regel gegen ausgeschriebene Zahlen trug eine Wortgrenze, die beim
+Schreiben zum Steuerzeichen wurde. Beide nachgeschaerft, danach fielen die
+Proben.
+
+Checkpoint `2.76.0` am 3. Oktober 2026: PostgreSQL 17 mit 256 von 256 zweimal,
+beide exit 0; lokal 2684 bestanden, 0 fehlgeschlagen, zweimal reproduziert.
+Achtundvierzig Mutationsfaelle ueber die sechs Schnitte.
+
+Der PostgreSQL-Lauf ist hier ein Rueckfallgitter und kein Beleg der Schnitte:
+Geaendert sind Console-Komponenten, Texte, CSS und die Startseite, also keine
+Datei, die ein Stack faehrt.
+
+Nicht erbracht: Die Console ist in dieser Welle ungesehen, denn sie liegt hinter
+der Anmeldung. Das Raster der Realtime-Liste, das Bestaetigungsfeld beim
+Abtippen und ein maskierter Key sind nur als Markup belegt. Die Trennung im
+Functions-Bereich ist zurueckgestellt. Der Verlauf im SQL-Editor zeigt alle
+Change Sets der Umgebung und nicht nur die dieses Editors. Realtime zeigt nur
+das Schema `public`. Die Zeilennummern im Editorfeld sind weiter fest verdrahtet.

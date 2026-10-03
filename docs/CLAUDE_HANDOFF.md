@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.75.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.76.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,24 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.139 bis 2.144 (Zweige `slice/settingsgroups`, `slice/billingview`,
+  `slice/sqleditor`, `slice/realtimeeasy`, dazu zwei Schnitte auf `main`, alle
+  gemergt) **Sechsmal nichts erfunden.** Die Belege, damit der naechste sie nicht
+  neu suchen muss: Es gibt keine Route, die ein Projekt loescht, pausiert oder
+  zuruecksetzt (sechzehn `DELETE`-Routen, keine trifft ein Projekt); keine
+  Tarifzeile an einem Projekt; kein Fenster und kein Datum in
+  `GET .../usage/billing`, und der Rechnungslauf ist ein Prozess ohne Zeitplan
+  im Repository; keine Spur einer gestellten Abfrage, denn `queryReadOnly`
+  schreibt nirgends hin, `listAuditEvents` filtert auf `project_auth.*` und
+  `changeSetFromRecord` setzt `statement: "[REDACTED]"`; kein `POST` unter
+  `app/api/.../schema/`, also haengt Realtime je Tabelle allein an dem Trigger
+  aus `db/project/0003_qkern_change_feed.sql`; und `app/api/v1/projects/route.ts`
+  kennt nur `GET`. Dazu zwei Eigenschaften des Codes: `ProjectDataPlaneError`
+  ist ohne Ursache gebaut, jeder Datenbankfehler kommt als
+  `DATA_PLANE_UNAVAILABLE` an; und `@qkern/sdk` hat keinen Realtime-Client.
+  **Offen**: Die Console ist in dieser Welle ungesehen geblieben, weil sie hinter
+  der Anmeldung liegt.
 
 - 2.135 bis 2.138 (Zweige `slice/pricing`, `slice/overview`,
   `slice/emptystates`, `slice/tablecontext`, alle nach `main` gemergt) **Die
@@ -1155,7 +1173,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.75.0`
+- Paketversion: `2.76.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

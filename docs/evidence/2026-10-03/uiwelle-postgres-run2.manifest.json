@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "uiwelle-postgres-run2.log",
+  "commit": "a3235e21fb20752478064980cacc238c85466fe8",
+  "commitSubject": "merge: Realtime verstaendlich, ohne Schalter ohne Route (2.144)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "256 passed (256)",
+  "passed": 256,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
