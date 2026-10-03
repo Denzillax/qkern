@@ -1397,3 +1397,53 @@ input[type="checkbox"], input[type="radio"] {
 .bucket-row .policy-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 5px; }
 .bucket-row .policy-fields > label { display: inline-flex; align-items: center; gap: 7px; color: var(--qkern-text-muted); font-size: 12px; }
 .bucket-row .policy-fields .option-field { height: 36px; }
+
+/* 2.136: Die Projekt-Uebersicht.
+   Die drei neuen Bloecke stehen als eigene Karten untereinander und nicht in
+   einem Raster: Der Zustand ist eine Liste von fuenf Zeilen, und der
+   Schnellstart ist eine Folge von Schritten. Beides in zwei Spalten zu
+   zwingen haette die Zeilen verkuerzt, ohne etwas zu gewinnen. */
+.overview-alert, .overview-health, .overview-quickstart { margin-top: 12px; }
+/* Der Kasten kommt nur fuer einen gestoerten Dienst, und dann soll er auch
+   aussehen wie eine Sache, die jetzt zu tun ist. */
+.overview-alert { display: flex; gap: 14px; align-items: flex-start; border-color: color-mix(in srgb, var(--qkern-danger) 45%, var(--qkern-border)); background: color-mix(in srgb, var(--qkern-danger) 7%, var(--qkern-surface)); }
+.overview-alert > svg { color: var(--qkern-danger); flex: none; }
+.overview-alert strong { display: block; font-size: 13px; }
+.overview-alert p { margin: 4px 0 10px; color: var(--qkern-text-muted); font-size: 12px; }
+
+.overview-health-rows { margin: 14px 0 10px; }
+/* Name links, Urteil rechts, eine Zeile je Dienst. Die Hoehe ist fest, damit
+   fuenf Zeilen beim Wechsel von Laden auf Fertig nicht springen. */
+.overview-health-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; border-top: 1px solid var(--qkern-border); }
+.overview-health-row:first-child { border-top: 0; }
+.overview-health-row strong { font-size: 13px; font-weight: 600; }
+/* Alle vier Toene tragen dieselbe Form. Waere Grau eine blasse Schrift und Rot
+   eine Pille, laese sich die Spalte nicht vergleichen. */
+.overview-health-row > span { padding: 4px 9px; border-radius: 5px; font-size: 12px; font-weight: 600; background: var(--qkern-surface-2); }
+.overview-health p { margin: 0 0 6px; font-size: 12px; }
+.overview-health .plain-button { margin-top: 4px; }
+
+.overview-quickstart > p { margin: 12px 0 0; font-size: 12px; }
+.overview-steps { list-style: none; margin: 14px 0 0; padding: 0; }
+.overview-steps li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--qkern-border); }
+.overview-steps li > div { flex: 1; }
+.overview-steps strong { display: block; font-size: 13px; }
+.overview-steps small { display: block; margin-top: 3px; color: var(--qkern-text-muted); font-size: 12px; }
+.step-number { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--qkern-primary-muted); color: var(--qkern-primary); font-size: 12px; font-weight: 700; }
+
+.overview-connect { margin-top: 18px; border-top: 1px solid var(--qkern-border); padding-top: 16px; }
+.overview-connect h4 { margin: 0 0 12px; font-size: 13px; }
+/* Beschriftung, Wert und Kopierknopf in einer Zeile. Der Wert darf umbrechen;
+   eine Projekt-URL ist auf einem engen Fenster laenger als die Zelle. */
+.overview-value { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-height: 40px; border-top: 1px solid var(--qkern-border); }
+.overview-value:first-of-type { border-top: 0; }
+.overview-value > span { min-width: 110px; color: var(--qkern-text-muted); font-size: 12px; }
+.overview-value > code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--qkern-font-mono); font-size: 12px; }
+.overview-connect pre { margin: 14px 0 10px; padding: 14px; border: 1px solid var(--qkern-border); border-radius: 9px; background: var(--qkern-surface-2); overflow-x: auto; font-family: var(--qkern-font-mono); font-size: 12px; line-height: 1.55; }
+.overview-connect p { margin: 12px 0 8px; font-size: 12px; }
+
+/* Ein leerer Bereich sagt, was hier erscheinen wird, und bietet den Weg dahin
+   an. "Keine Daten" sagt beides nicht. */
+.overview-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 0 4px; }
+.overview-empty > svg { color: var(--qkern-text-muted); }
+.overview-empty p { margin: 0; color: var(--qkern-text-muted); font-size: 12px; }
