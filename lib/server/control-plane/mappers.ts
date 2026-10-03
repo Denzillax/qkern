@@ -29,7 +29,7 @@ export function changeSetFromRecord(record: ChangeSetRecord, cipher: StatementCi
     id: record.id,
     organizationId: record.organizationId,
     projectId: record.projectId,
-    environment: record.environment,
+    environment: record.environment ?? null,
     title: record.title,
     statement: "[REDACTED]",
     agent: record.createdBy ?? "system",
@@ -49,7 +49,7 @@ export function approvalFromRecord(record: ApprovalRequestRecord, changeSet: Cha
     changeSetId: record.changeSetId,
     organizationId: record.organizationId,
     projectId: record.projectId,
-    environment: record.environment,
+    environment: record.environment ?? null,
     status: record.status,
     risk: changeSet.risk,
     requestedBy: changeSet.agent,
@@ -61,7 +61,11 @@ export function approvalFromRecord(record: ApprovalRequestRecord, changeSet: Cha
 }
 
 export function auditEventFromRecord(record: AuditLogRecord): AuditEvent | undefined {
-  if (!record.projectId || !record.environment) return undefined;
+  // Ein Eintrag ohne Projekt gehoert der Organisation und nicht dieser Liste.
+  // Ein Eintrag ohne Umgebung dagegen gehoert dem Projekt, und genau den hat
+  // diese Zeile bis 2.151 verschluckt (2.147 legt ein Projekt an, bevor eine
+  // Umgebung gebunden ist).
+  if (!record.projectId) return undefined;
   const status: AuditEvent["status"] = record.status === "success"
     ? "success"
     : record.status === "pending" ? "pending" : "blocked";
@@ -69,7 +73,7 @@ export function auditEventFromRecord(record: AuditLogRecord): AuditEvent | undef
     id: record.id,
     organizationId: record.organizationId,
     projectId: record.projectId,
-    environment: record.environment,
+    environment: record.environment ?? null,
     actor: record.actorRef,
     action: record.action,
     resource: record.resourceRef,

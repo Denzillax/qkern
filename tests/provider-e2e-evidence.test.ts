@@ -292,6 +292,36 @@ describe("provider E2E evidence file boundary", () => {
 });
 
 describe("provider E2E evidence runtime and CLI", () => {
+  it("names a reason when it refuses, and leaks no path", () => {
+    // Laeuft auf jeder Plattform, anders als der Fall darunter: Auf Windows
+    // lehnt das Skript die Datei schon wegen des Pfades ab, auf POSIX wegen der
+    // fehlenden Datei. Beide Male muss ein Grund dastehen, denn genau der
+    // fehlte, als dieser Fall auf dem Ubuntu-Runner zu 2.77.0 ausfiel.
+    const secret = path.join(os.tmpdir(), "qkern-kein-beleg-2152.json");
+    const rejected = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/verify-provider-e2e-evidence.ts"],
+      { cwd: process.cwd(), env: {
+        ...process.env, ...runtimeEnv(),
+        QKERN_PROVIDER_E2E_EVIDENCE_FILE: secret,
+        QKERN_PROVIDER_E2E_VERIFIER_KEY_FILE: secret,
+        QKERN_PROVIDER_E2E_VERIFIER_KEY_SHA256: "0".repeat(64),
+      }, encoding: "utf8" },
+    );
+    expect(rejected.status).toBe(1);
+    const reported = JSON.parse(rejected.stderr) as Record<string, unknown>;
+    expect(reported.code).toBe("PROVIDER_E2E_EVIDENCE_NOT_READY");
+    expect(typeof reported.reason, `stderr: ${rejected.stderr}`).toBe("string");
+    // Der Name der Fehlerklasse und nicht ihre Meldung. Die Probe mit
+    // `cause.message` ueberlebte zuerst, weil ausgerechnet diese eine Meldung
+    // keinen Pfad enthaelt; eine andere koennte es, und dann stuende er im
+    // Protokoll. Klassennamen enden auf "Error", Meldungen nicht.
+    expect(reported.reason as string).toMatch(/Error$/);
+    // Der Pfad bleibt draussen, auch im Grund.
+    expect(rejected.stderr).not.toContain(secret);
+    expect(rejected.stderr).not.toContain("qkern-kein-beleg");
+  });
+
   it("forbids inline values, authority reuse and ambiguous policy pins", () => {
     const keys = keyPair();
     const dependencies = {
@@ -349,14 +379,35 @@ describe("provider E2E evidence runtime and CLI", () => {
       ["--import", "tsx", "scripts/verify-provider-e2e-evidence.ts"],
       { cwd: process.cwd(), env, encoding: "utf8" },
     );
-    // Auf dem Ubuntu-Runner einmal exit 1 ohne sichtbare Ursache (2.23, Wiederholung gruen);
-    // die Meldung traegt seither stderr und stdout, damit der naechste Fall lesbar ist.
+    // Auf dem Ubuntu-Runner faellt dieser Fall gelegentlich aus: einmal zu 2.23
+    // und einmal zu 2.77.0, beide Male war der Wiederholungslauf gruen. Bis
+    // 2.152 stand im Protokoll nur "nicht bereit", denn sowohl der Leser als
+    // auch dieses Skript fingen jeden Fehler und warfen die Ursache weg. Seit
+    // 2.152 nennt die Meldung die Fehlerklasse und, wo der Leser ihn kennt, den
+    // gescheiterten Schritt. Faellt der Fall wieder, steht im Protokoll, wo zu
+    // suchen ist.
     expect(success.status, `stderr: ${success.stderr}
 stdout: ${success.stdout}`).toBe(0);
     expect(JSON.parse(success.stdout).data.providerE2EEvidenceReadiness)
       .toMatchObject({ status: "ready", scenarioCount: 15 });
     expect(success.stdout).not.toContain(evidencePath);
     expect(success.stdout).not.toContain(PINS.providerIdentitySha256);
+
+    // Und die Ablehnung nennt einen Grund. Ohne diese Zusage faellt die
+    // Diagnose beim naechsten Aufraeumen still wieder heraus, und der naechste
+    // Ausfall auf dem Runner ist wieder unlesbar.
+    const rejected = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/verify-provider-e2e-evidence.ts"],
+      { cwd: process.cwd(), env: { ...env, QKERN_PROVIDER_E2E_EVIDENCE_FILE: `${evidencePath}.fehlt` }, encoding: "utf8" },
+    );
+    expect(rejected.status).toBe(1);
+    const reported = JSON.parse(rejected.stderr) as Record<string, unknown>;
+    expect(reported.code).toBe("PROVIDER_E2E_EVIDENCE_NOT_READY");
+    expect(reported.reason).toBe("ProviderE2EEvidenceUnavailableError");
+    expect(reported.step).toBe("open");
+    // Und nichts davon verraet, wo die Datei liegt.
+    expect(rejected.stderr).not.toContain(evidencePath);
 
     const failure = spawnSync(
       process.execPath,

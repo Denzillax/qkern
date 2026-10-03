@@ -73,7 +73,18 @@ export type AuditEvent = {
   id: string;
   organizationId: string;
   projectId: string;
-  environment: Environment;
+  /**
+   * Die Umgebung, in der das Ereignis passiert ist, oder `null` fuer ein
+   * Ereignis am Projekt selbst (2.151).
+   *
+   * Bis hierher war das Feld verlangt, und `auditEventFromRecord` liess jeden
+   * Eintrag ohne Umgebung weg. Das war lange richtig, weil jedes protokollierte
+   * Ereignis in einer der drei Umgebungen passierte. Mit dem Anlegen eines
+   * Projekts (2.147) gibt es das erste, das es nicht tut: Es passiert am
+   * Projekt, bevor eine Umgebung ueberhaupt gebunden ist. Der Eintrag stand
+   * damit in der Kette, in der Datenbank und in der API, aber auf keiner Seite.
+   */
+  environment: Environment | null;
   actor: string;
   action: string;
   resource: string;

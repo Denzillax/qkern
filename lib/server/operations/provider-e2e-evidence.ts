@@ -105,7 +105,21 @@ export type ProviderE2EEvidenceReadiness = Readonly<{
 export class ProviderE2EEvidenceUnavailableError extends Error {
   readonly code = "PROVIDER_E2E_EVIDENCE_UNAVAILABLE";
 
-  constructor() {
+  /**
+   * Woran es lag, in einem Wort (2.152).
+   *
+   * **Warum ueberhaupt.** Der Leser fing bisher jeden Fehler und warf diesen
+   * hier, ohne zu sagen, welcher Schritt gescheitert ist. Auf dem
+   * Ubuntu-Runner faellt dieser Fall seit 2.23 gelegentlich aus, und beide Male
+   * stand im Protokoll nur, dass die Evidenz nicht bereit sei. Damit laesst
+   * sich nichts untersuchen: Oeffnen, Groesse, Lesen und Abbruch sehen von
+   * aussen gleich aus.
+   *
+   * **Warum nur ein Wort.** Der Pfad, der Inhalt und der Schluesselabdruck
+   * duerfen nicht in eine Meldung, die irgendwo landet. Ein Schritt ist genug,
+   * um beim naechsten Mal zu wissen, wo zu suchen ist.
+   */
+  constructor(readonly step: "open" | "size" | "read" | "aborted" | "unknown" = "unknown") {
     super("Provider E2E evidence is unavailable.");
     this.name = "ProviderE2EEvidenceUnavailableError";
   }
@@ -134,24 +148,31 @@ implements ProviderE2EEvidenceFileProvider {
 
   async read(options: { signal?: AbortSignal } = {}): Promise<Uint8Array> {
     let handle: Awaited<ReturnType<typeof open>> | undefined;
+    // Der Schritt wandert mit: Jeder Wurf unten traegt ihn, und der Fang
+    // draussen gibt ihn weiter, statt vier verschiedene Ursachen auf dieselbe
+    // Meldung abzubilden.
+    let step: "open" | "size" | "read" | "aborted" = "open";
     try {
-      if (options.signal?.aborted) throw new Error("Aborted");
+      if (options.signal?.aborted) { step = "aborted"; throw new Error("Aborted"); }
       handle = await open(this.path, constants.O_RDONLY | constants.O_NOFOLLOW);
       const metadata = await handle.stat();
+      step = "size";
       if (!metadata.isFile() ||
           metadata.size < MIN_FILE_BYTES ||
           metadata.size > this.maxBytes ||
           (this.production && (metadata.mode & 0o022) !== 0)) {
         throw new Error("Invalid evidence file");
       }
+      step = "read";
       const bytes = Buffer.alloc(metadata.size);
       const result = await handle.read(bytes, 0, metadata.size, 0);
-      if (result.bytesRead !== metadata.size || options.signal?.aborted) {
+      if (options.signal?.aborted) { step = "aborted"; throw new Error("Aborted"); }
+      if (result.bytesRead !== metadata.size) {
         throw new Error("Incomplete evidence file");
       }
       return bytes;
     } catch {
-      throw new ProviderE2EEvidenceUnavailableError();
+      throw new ProviderE2EEvidenceUnavailableError(step);
     } finally {
       await handle?.close().catch(() => undefined);
     }
