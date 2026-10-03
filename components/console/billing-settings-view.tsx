@@ -1,14 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Receipt, RefreshCw, ShieldCheck } from "lucide-react";
-import { t, tAll } from "@/components/console/console-i18n";
-import { formatNumber } from "@/components/console/console-display";
+import { CalendarClock, Receipt, RefreshCw, ShieldCheck, Tags } from "lucide-react";
+import { consoleLocale, t, tAll } from "@/components/console/console-i18n";
+import { formatDay, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { InvoicesCard } from "@/components/console/invoices-card";
 import type { ViewId } from "@/components/console/navigation";
-import { billingProjectionState, periodRange, type BillingProjectionState } from "@/lib/console/billing";
+import {
+  billingProjectionState,
+  nextInvoiceOutlook,
+  periodRange,
+  type BillingProjectionState,
+} from "@/lib/console/billing";
 import { formatMoneyMicros, formatUnitPriceMicros, parseMicros } from "@/lib/console/money";
+import { getPricingDictionary } from "@/lib/i18n/pricing";
+import { PRICING_PLANS, formatPlanPrice } from "@/lib/pricing/plans";
 
 /**
  * Einstellungen → Abrechnung, wie bei Supabase unter Project Settings →
@@ -28,6 +35,24 @@ import { formatMoneyMicros, formatUnitPriceMicros, parseMicros } from "@/lib/con
  * Umgebung. Sie stehen in derselben Karte wie der laufende Monat, weil sie in
  * derselben Summe stehen -- eine Pauschale in einer eigenen Karte waere ein
  * Betrag, den die Summe nennt und die Seite nicht zeigt.
+ *
+ * ## Der Tarif (2.140)
+ *
+ * Die Seite beantwortet vier Fragen in dieser Reihenfolge: Was ist mein
+ * Tarif, was kostet er, was verbrauche ich, wann kommt die naechste Rechnung.
+ *
+ * Die erste Antwort ist ein Nein, und sie steht als Erstes. An einem Projekt
+ * haengt kein Tarif: Es gibt im Backend keine Tarifzeile dazu. Gemessen wird
+ * je Metrik, Preise setzt ein Operator, eine Rechnung entsteht im
+ * Rechnungslauf. Darum zeigt die Karte den Katalog aus `lib/pricing/plans.ts`
+ * und sagt dabei, dass er ein Katalog ist und keine Wahl. Es gibt keinen Knopf
+ * "Tarif wechseln": Ohne Bestellweg und ohne Zahlungsanbindung waere er ein
+ * Versprechen ohne Deckung.
+ *
+ * Die Namen und die Zielgruppen der Tarife kommen aus `lib/i18n/pricing.ts`,
+ * die Betraege aus `lib/pricing/plans.ts` und durch `formatPlanPrice`. Zwei
+ * Listen mit Preisen waeren zwei Wahrheiten, und die Console haette die
+ * veraltete.
  */
 type Environment = "development" | "staging" | "production";
 type Payload = Record<string, unknown>;
@@ -65,6 +90,18 @@ function unitLabel(unit: string, count: bigint): string {
     case "bytes": return one ? t("Byte") : t("Bytes");
     default: return unit;
   }
+}
+
+/**
+ * Die Einheit als Wort zu einer Menge, die als Dezimalstring hereinkommt.
+ *
+ * Die Nutzung braucht dasselbe Wort wie die Abrechnung, und `usage-view.tsx`
+ * holt es sich darum hier, so wie Einstellungen -> Add-ons sich `perUnits`
+ * hier holt. Dieselbe Einheit an zwei Stellen zu uebersetzen hiesse, sie
+ * irgendwann verschieden zu uebersetzen.
+ */
+export function usageUnitLabel(unit: string, amount: string): string {
+  return unitLabel(unit, parseMicros(amount) ?? 0n);
 }
 
 function quantity(value: string | null, unit: string): string {
@@ -116,6 +153,12 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
   const projection = result.state === "ready" ? result.projection : null;
   const priced = projection ? projection.lines.filter((line) => line.priced) : [];
   const range = projection ? periodRange(projection.period) : null;
+  const outlook = projection ? nextInvoiceOutlook(projection.period) : null;
+
+  // Der Katalog haengt an keiner Ladung: Er steht auch da, wenn die
+  // Projektion nicht erreichbar ist, denn er sagt nichts ueber dieses Projekt
+  // aus. Die Worte kommen in der Sprache der Console herein.
+  const pricing = getPricingDictionary(consoleLocale());
 
   // Solange keine Projektion da ist, steht der Zustand einmal auf der Seite,
   // in einer Karte fuer Preisblatt und laufenden Monat.
@@ -129,6 +172,20 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
 
   return <div className="module-grid">
     <div className="product-preview-notice span-2"><ShieldCheck size={16}/><div><strong>{t("Abrechnung, nur lesend")}</strong><span>{t("Es gibt keine Zahlungsanbindung. Rechnungen entstehen im Rechnungslauf aus dem Nutzungsledger abgeschlossener Monate und werden nicht versandt.")}</span></div></div>
+
+    <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("TARIF")}</span><h3>{t("Mein Tarif")}</h3></div><Tags size={18}/></div>
+      <p><strong>{t("An diesem Projekt hängt kein Tarif.")}</strong> {t("Im Backend gibt es keine Tarifzeile zu einem Projekt. Gemessen wird je Metrik, die Preise setzt ein Operator, und eine Rechnung entsteht im Rechnungslauf. Die Console kann darum nicht sagen, auf welchem Tarif du bist, und sie behauptet es auch nicht.")}</p>
+      <p className="muted">{t("Was es gibt, ist der Katalog. Die Beträge unten sind dieselben wie auf der Preisseite und kommen aus derselben Quelle. Welche technischen Grenzen zu welchem Tarif gehören, ist noch nicht festgelegt, also steht hier keine.")}</p>
+      <div className="detail-list">
+        {PRICING_PLANS.map((plan) => <div key={plan.id}>
+          <span>{pricing.plans[plan.id].name}{plan.mostPopular ? ` · ${pricing.words.badge}` : ""}<small>{pricing.plans[plan.id].audience}</small></span>
+          <strong>{formatPlanPrice(plan, pricing.words)}</strong>
+        </div>)}
+      </div>
+      <p><a className="plain-button" href="/pricing">{t("Preisseite öffnen")}</a></p>
+      <p className="muted">{t("Einen Tarif wählen kann die Console nicht: Es gibt keinen Bestellweg und keine Zahlungsanbindung. Der Weg führt über die Preisseite und über ein Gespräch mit dem Betreiber.")}</p>
+    </article>
 
     {notReady}
 
@@ -169,6 +226,17 @@ export function BillingSettingsView({ projectId, environment, navigate }: {
         {projection.unpricedMetrics.length > 0 && <p className="muted">{t("Ohne Preis und nicht in der Summe:")} {projection.unpricedMetrics.map(billingMetricLabel).join(", ")}</p>}
         <p className="muted">{t("Eine Projektion aus den laufenden Zählern, keine Rechnung. Jede Zeile wird einzeln auf zwei Nachkommastellen abgerundet angezeigt, die Summe als Ganzes; die Zeilen können deshalb zusammen weniger ergeben als die Summe.")}</p>
       </>
+    </article>}
+
+    {projection && outlook && <article className="console-card span-2">
+      <div className="card-head"><div><span>{t("NÄCHSTE RECHNUNG")}</span><h3>{t("Was als Nächstes fakturiert wird")}</h3></div><CalendarClock size={18}/></div>
+      <p><strong>{projection.currency ? formatMoneyMicros(projection.totalMicros, projection.currency) : t("Kein Betrag, weil noch kein Preis gesetzt ist.")}</strong> · {t("Stand jetzt, aus den laufenden Zählern dieser Periode.")}</p>
+      <div className="detail-list">
+        <div><span>{t("Periode")}<small>{t("aus der Antwort von usage/billing")}</small></span><strong>{outlook.period}</strong></div>
+        <div><span>{t("Letzter Tag der Periode")}<small>{t("aus der Periode gerechnet, in UTC")}</small></span><strong>{formatDay(outlook.periodLastDay)}</strong></div>
+        <div><span>{t("Fakturierbar ab")}<small>{t("der Rechnungslauf nimmt nur eine abgeschlossene Periode an")}</small></span><strong>{formatDay(outlook.closedFrom)}</strong></div>
+      </div>
+      <p className="muted">{t("Einen Termin gibt es nicht. Der Rechnungslauf läuft als eigener Prozess, den ein Betreiber startet, und im Backend steht kein Datum, das sagen würde wann. Eine Fälligkeit trägt erst die ausgestellte Rechnung, und zwar die Frist, die in ihrem eigenen Dokument steht.")}</p>
     </article>}
 
     <div className="span-2"><InvoicesCard projectId={projectId} environment={environment} onOpenUsage={() => navigate("monitoring")}/></div>

@@ -1574,3 +1574,23 @@ input[type="checkbox"], input[type="radio"] {
   .table-workspace-head .card-head { flex-wrap: wrap; gap: 10px; }
   .table-workspace-head .card-head > div:last-child { width: 100%; }
 }
+
+/* Die Lesung der Nutzung (2.140).
+   Je Metrik eine Zeile: oben Beschriftung und Menge, darunter entweder ein
+   Balken samt Anteil oder der Satz, dass keine Grenze gesetzt ist. Der Balken
+   ist das bestehende `.progress`; nur sein Abstand wird hier enger, weil
+   `.progress` fuer eine einzelne Karte gebaut war und seine 25 Pixel Luft in
+   einer Liste von sechs Zeilen die Karte doppelt so hoch machen. Die beiden
+   Farben haengen am Zustand aus der Route und nicht an einer Schwelle, die
+   das Stylesheet selbst setzt. */
+.usage-reading { display: grid; gap: 14px; }
+.usage-reading-row { padding: 10px 0 0; border-top: 1px solid var(--qkern-border); }
+.usage-reading-row:first-child { border-top: 0; padding-top: 0; }
+.usage-reading-row > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.usage-reading-row > div > span { color: var(--qkern-text); font-size: 9px; }
+.usage-reading-row > div > strong { font-size: 10px; white-space: nowrap; }
+.usage-reading-row > p { margin: 6px 0 0; color: var(--qkern-text-muted); font-size: 9px; max-width: 72ch; }
+.usage-reading-row > small { color: var(--qkern-text-muted); font-size: 8px; }
+.usage-reading-row .progress { margin: 8px 0 5px; }
+.usage-reading-row .progress.is-warning i { background: var(--qkern-warning); }
+.usage-reading-row .progress.is-over i { background: var(--qkern-danger); }
