@@ -1646,3 +1646,58 @@ input[type="checkbox"], input[type="radio"] {
 .project-switch .option-field > span { overflow: hidden; text-overflow: ellipsis; }
 .project-switch .option-list { left: 0; right: auto; min-width: 220px; }
 .is-collapsed .project-switch .option-menu { display: none; }
+
+/* Die drei Bereiche des SQL-Editors (2.143).
+   Vorher lagen Editorfeld, Ergebnis und Vorlagen als drei Karten in einem
+   Raster nebeneinander; jetzt stehen Kopf mit Reiterleiste und darunter der
+   gewaehlte Bereich. Die Reiterleiste selbst bringt nichts Neues mit: sie ist
+   `.table-workspace-tabs` aus 2.138, und genau darum steht hier keine zweite
+   Regel fuer Reiter. */
+.sql-areas { display: flex; flex-direction: column; gap: 18px; }
+.sql-areas > .table-workspace-panel > .sql-template-card { grid-column: auto; }
+
+/* Die Kennzeichnung einer zerstoerenden Abfrage, zwischen Feld und Knopf.
+   Sie steht bewusst ueber dem Knopf und nicht neben ihm: wer liest, liest von
+   oben, und diese Zeile soll vor dem Druecken gelesen sein. */
+.sql-danger { display: flex; gap: 9px; align-items: flex-start; margin: 0; padding: 11px 13px;
+  border-top: 1px solid var(--qkern-border); background: color-mix(in srgb, var(--qkern-danger) 9%, transparent);
+  color: var(--qkern-danger); font-size: 12px; line-height: 1.6; }
+.sql-danger > svg { flex: none; margin-top: 2px; }
+
+/* Zeilen, Spalten und gemessene Antwortzeit in einer Reihe. Drei Zahlen, und
+   der Satz darunter sagt, was die dritte ist und was sie nicht ist. */
+.sql-result-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 14px 0 10px; }
+.sql-result-meta > div { display: grid; gap: 2px; }
+.sql-result-meta span { color: var(--qkern-text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.sql-result-meta strong { font: 600 14px var(--qkern-font-mono); color: var(--qkern-text); }
+
+/* Das Ergebnis als Tabelle mit Spaltennamen. Der Rahmen scrollt waagrecht,
+   denn eine Abfrage mit zwanzig Spalten darf die Seite nicht breiter machen
+   als das Fenster. */
+.sql-result-scroll { margin-top: 12px; overflow-x: auto; border: 1px solid var(--qkern-border); border-radius: var(--radius-control, 8px); }
+.sql-result-table { width: 100%; border-collapse: collapse; font: 12px var(--qkern-font-mono); }
+.sql-result-table th { position: sticky; top: 0; background: var(--qkern-surface-2); color: var(--qkern-text);
+  text-align: left; padding: 8px 11px; font: 600 11px var(--qkern-font-sans); white-space: nowrap;
+  border-bottom: 1px solid var(--qkern-border); }
+.sql-result-table td { padding: 7px 11px; border-bottom: 1px solid var(--qkern-border); color: var(--qkern-text);
+  max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sql-result-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Der gescheiterte Lauf: oben der Code, so wie die Route ihn nennt, darunter
+   der Satz, was er bedeutet. Der Code steht als Code da, damit niemand ihn
+   fuer einen Satz haelt. */
+.sql-failure { margin-top: 16px; padding: 13px; border: 1px solid color-mix(in srgb, var(--qkern-danger) 35%, transparent);
+  border-radius: var(--radius-control, 8px); background: color-mix(in srgb, var(--qkern-danger) 7%, transparent); }
+.sql-failure h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 7px; color: var(--qkern-danger); font-size: 13px; }
+.sql-failure code { font: 600 12px var(--qkern-font-mono); }
+.sql-failure p { margin: 0; color: var(--qkern-text); font-size: 12px; line-height: 1.65; max-width: 78ch; }
+
+/* Der Verlauf: die Change Sets als Zeilen, und darunter der Weg in die
+   Freigabezentrale, weil der Text eines Change Sets nur dort zu sehen ist. */
+.sql-history-list { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; align-items: stretch; }
+.sql-history-list > button { margin-top: 12px; align-self: flex-start; }
+
+/* Offen geblieben: `.sql-layout` in Zeile 502 und in der Medienabfrage ist mit
+   2.143 unbenutzt, denn der SQL-Editor steht jetzt in `.sql-areas`. Entfernt
+   wird die Regel hier nicht, weil dieser Schnitt am Stylesheet nur anfuegen
+   darf; sie gehoert in den naechsten Durchgang durch die toten Klassen. */
