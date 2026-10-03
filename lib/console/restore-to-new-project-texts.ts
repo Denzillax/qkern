@@ -107,7 +107,7 @@ export const RESTORE_CHAIN_TEXTS: Record<RestoreChainStep, RestoreChainTexts> = 
   new_environment: {
     title: "Eine Umgebung, die sie tragen könnte",
     component: "Die Kontrollebene, die heute keine zweite Umgebung anlegt.",
-    finding: "Es gibt genau eine Stelle im Quelltext, die eine Umgebung einfügt, und sie läuft einmal bei der Registrierung eines Projekts. Über HTTP führt kein Weg dorthin: Die Route über Projekte und die Route über Umgebungen kennen beide nur GET. Eine zweite Umgebung, die eine wiederhergestellte Datenbank aufnehmen könnte, entsteht darum nirgends.",
+    finding: "Es gibt zwei Stellen im Quelltext, die eine Umgebung einfügt: die Registrierung einer Organisation und, seit 2.147, das Anlegen eines Projekts über POST auf die Route über Projekte. Beide schreiben eine wartende Marke, und beide gelten nur für ein neues Projekt. Ein bestehendes Projekt bekommt auf keinem Weg eine zusätzliche Umgebung, und die Route über Umgebungen kennt weiterhin nur GET. Eine zweite Umgebung, die eine wiederhergestellte Datenbank aufnehmen könnte, entsteht darum nirgends.",
   },
   binding: {
     title: "Die Umgebung auf sie zeigen lassen",

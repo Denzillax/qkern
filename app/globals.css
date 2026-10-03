@@ -361,6 +361,21 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 .project-switch small { font-size: 8px; }
 .is-collapsed .project-switch { padding: 7px; grid-template-columns: 30px; }
 .is-collapsed .project-switch div, .is-collapsed .project-switch svg { display: none; }
+/* Ein Projekt anlegen (2.147). Der Knopf teilt die dritte Spalte des
+   Wechslers; eingeklappt verschwindet er mit allem anderen daneben. */
+.project-create-open { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid #202e42; border-radius: 6px; background: #152238; color: #9bbdff; cursor: pointer; }
+.project-create-open:hover { background: #1b2c48; }
+.is-collapsed .project-create-open { display: none; }
+.project-create { margin: 0 12px 14px; padding: 10px; background: #101b2b; border: 1px solid #202e42; border-radius: 9px; display: grid; gap: 6px; }
+.project-create label { color: #7e8da2; font-size: 9px; }
+.project-create input { background: #0b1421; border: 1px solid #202e42; border-radius: 6px; padding: 6px 8px; color: #e6edf8; font-size: 10px; }
+.project-create small { color: #7e8da2; font-size: 8px; line-height: 1.5; white-space: normal; }
+.project-create-error { color: #ff9c9c; font-size: 9px; margin: 0; white-space: normal; }
+.project-create-actions { display: flex; gap: 6px; }
+.project-create-actions button { flex: 0 0 auto; border: 1px solid #202e42; border-radius: 6px; padding: 6px 9px; background: #152238; color: #e6edf8; cursor: pointer; font-size: 9px; }
+.project-create-actions button[type="submit"] { background: #153873; color: #cfe0ff; }
+.project-create-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
+.is-collapsed .project-create { display: none; }
 .console-nav { display: grid; gap: 2px; padding: 5px 10px; overflow-y: auto; }
 .console-nav button { min-height: 36px; display: flex; align-items: center; gap: 11px; border: 0; border-radius: 7px; padding: 0 10px; color: #7e8da2; background: transparent; cursor: pointer; white-space: nowrap; text-align: left; font-size: 10px; }
 .console-nav button:hover { color: #dce6f6; background: #0e1a2a; }

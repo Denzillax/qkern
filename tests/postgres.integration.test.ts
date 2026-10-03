@@ -61,6 +61,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto";
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
+import { ProjectSlugTakenError } from "@/lib/server/control-plane/model";
+import { validateProjectDraft } from "@/lib/console/project-draft";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
 // Dauerhafte Presence (2.113): der echte Store ueber die echte Laufzeitrolle,
 // weil der Fall Rechte, Policies und die Pacht der Tabelle aus 0077 prueft.
@@ -8161,6 +8163,175 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
               (SELECT count(*)::text FROM migration_jobs WHERE project_id = $1) AS jobs`,
       [flowProject]);
     expect(visible.rows[0]).toEqual({ change_sets: "4", approvals: "4", jobs: "2" });
+  }, 120_000);
+  it("(2.147) creates a project as a real user, finds it in its own organization and keeps it out of another", async () => {
+    // Ein Projekt anlegen (2.147), gegen echtes PostgreSQL, weil der Schnitt die
+    // Mandantengrenze beruehrt: Es entsteht eine Zeile in `projects`, drei in
+    // `project_environments` und eine in der verketteten `audit_logs`, und alle
+    // drei Tabellen stehen unter Row Level Security.
+    //
+    // Echt ist hier alles: die Laufzeitrolle `qkern_runtime` mit ihren Policies,
+    // das echte Repository, der echte Dienst, den die Route ruft, und die echten
+    // Rechte aus Migration 0002 (INSERT auf `projects` und auf
+    // `project_environments`). Ein Fake koennte an dieser Stelle nichts
+    // beweisen: Dass eine fremde Organisation das Projekt nicht sieht,
+    // entscheidet die Datenbank und nicht der TypeScript-Code.
+    //
+    // Eigene Organisation mit eigenem Besitzer, wie die Faelle daneben: Das
+    // Anlegen schreibt Audit-Zeilen, und eine Organisation mit Audit-Zeilen
+    // laesst sich wegen audit_logs_organization_id_fkey nicht mehr loeschen. Das
+    // gemeinsame afterAll muss organizationA und organizationB loswerden; diese
+    // Organisation bleibt als erwarteter Rest im Wegwerf-Stack.
+    const createOwner = randomUUID();
+    const createOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [createOwner, `create-2-147-owner-${createOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Create 2.147', $2, $3)`,
+    [createOrganization, `create-2-147-${createOrganization}`, createOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [createOrganization, createOwner]);
+
+    const control = new PostgresControlPlane(runtime);
+    const service = new PostgresControlPlaneService(control, new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex")));
+    const context = {
+      organizationId: createOrganization,
+      actor: { id: createOwner, ref: `create-2-147-owner-${createOwner}@qkern.test`, type: "user" as const },
+    };
+    const name = `Nova Markt ${createOrganization.slice(0, 8)}`;
+    const slug = validateProjectDraft({ name, region: "ch-zrh-1" }).slug;
+
+    // --- Anlegen durch die Laufzeitrolle ---
+    const created = await service.createProject(context, { name, slug, region: "ch-zrh-1" });
+    expect(created.name).toBe(name);
+    expect(created.slug).toBe(slug);
+    expect(created.region).toBe("ch-zrh-1");
+    // Nicht `ready`: Durch dieses Anlegen entsteht keine Projektdatenbank.
+    expect(created.status).toBe("provisioning");
+
+    // --- Die Zeile steht wirklich da, mit dem Anleger darin ---
+    const storedProject = await owner.query<{ organization_id: string; status: string; created_by: string; deleted_at: string | null }>(
+      "SELECT organization_id, status, created_by, deleted_at FROM projects WHERE id = $1", [created.id]);
+    expect(storedProject.rows).toHaveLength(1);
+    expect(storedProject.rows[0]).toEqual({
+      organization_id: createOrganization, status: "provisioning", created_by: createOwner, deleted_at: null,
+    });
+
+    // --- Die drei festen Umgebungen, alle wartend ---
+    const createdEnvironments = await owner.query<{ environment: string; database_instance_ref: string }>(
+      `SELECT environment::text AS environment, database_instance_ref
+       FROM project_environments WHERE project_id = $1 ORDER BY environment::text`, [created.id]);
+    expect(createdEnvironments.rows.map((row) => row.environment))
+      .toEqual(["development", "production", "staging"]);
+    for (const row of createdEnvironments.rows) {
+      // Die wartende Marke und nichts, was nach einer echten Datenbank aussieht.
+      expect(row.database_instance_ref, row.environment).toBe(`pending:${created.id}`);
+      expect(row.database_instance_ref, row.environment).not.toMatch(/^managed:/);
+    }
+    // Und der Dienst sagt dasselbe: drei Umgebungen, keine gebunden.
+    const createdBindings = await service.listProjectEnvironments(context, created.id);
+    expect(createdBindings.map((entry) => entry.environment).sort())
+      .toEqual(["development", "production", "staging"]);
+    expect(createdBindings.every((entry) => entry.bound === false)).toBe(true);
+    // Darum laesst sich hier auch keine Aenderung vorbereiten: Die Umgebung
+    // wartet, und der Dienst sagt das statt es zu versuchen.
+    await expect(service.createChangeSet(context, {
+      projectId: created.id, environment: "development",
+      title: "Nicht bereit", statement: `ALTER TABLE "public"."nova" ADD COLUMN "y" text`,
+    })).rejects.toMatchObject({ code: "MIGRATION_NOT_READY" });
+
+    // --- Der Audit-Eintrag haengt in der Kette ---
+    const createdAudit = await owner.query<{ action: string; environment: string | null; previous_hash: string | null; entry_hash: string; metadata: Record<string, unknown> }>(
+      `SELECT action, environment::text AS environment, previous_hash, entry_hash, redacted_metadata AS metadata
+       FROM audit_logs WHERE organization_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [createOrganization]);
+    expect(createdAudit.rows).toHaveLength(1);
+    expect(createdAudit.rows[0].action).toBe("project.created");
+    // Keine Umgebung: Ein Projekt anzulegen ist keine Handlung in einer der
+    // drei, und die Spalte laesst NULL zu.
+    expect(createdAudit.rows[0].environment).toBeNull();
+    // Der Hash kommt vom Trigger und ist nicht der Platzhalter, den das
+    // Repository einsetzt.
+    expect(createdAudit.rows[0].entry_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(createdAudit.rows[0].entry_hash).not.toBe("0".repeat(64));
+    // Erster Eintrag dieser Organisation, also noch kein Vorgaenger.
+    expect(createdAudit.rows[0].previous_hash).toBeNull();
+    expect(createdAudit.rows[0].metadata).toMatchObject({
+      slug, region: "ch-zrh-1", status: "provisioning", databaseProvisioned: false,
+    });
+    // Und die Kette haelt: Ein zweiter Eintrag zeigt auf den ersten.
+    await service.setAutomationPolicy(context, {
+      projectId: created.id, environment: "development",
+      mode: "manual", maxAutoRisk: "low", autoQueue: false, emergencyStop: false,
+    });
+    const createdChain = await owner.query<{ previous_hash: string | null; entry_hash: string }>(
+      `SELECT previous_hash, entry_hash FROM audit_logs WHERE organization_id = $1
+       ORDER BY created_at ASC, id ASC`, [createOrganization]);
+    expect(createdChain.rows).toHaveLength(2);
+    expect(createdChain.rows[1].previous_hash).toBe(createdChain.rows[0].entry_hash);
+
+    // --- Wiederfinden in der eigenen Organisation ---
+    expect((await service.listProjects(context)).map((entry) => entry.id)).toContain(created.id);
+    expect((await service.getProject(context, created.id)).slug).toBe(slug);
+
+    // --- Derselbe Slug noch einmal: Ablehnung, kein Treiberfehler ---
+    await expect(service.createProject(context, { name, slug, region: "ch-zrh-1" }))
+      .rejects.toThrowError(ProjectSlugTakenError);
+    // Und auch nach einem Loeschen bleibt er belegt, denn die Bedingung
+    // UNIQUE (organization_id, slug) traegt `deleted_at` nicht. Das ist der
+    // Grund, den die Ablehnung in Worten nennt.
+    await owner.query("UPDATE projects SET deleted_at = now() WHERE id = $1", [created.id]);
+    await expect(service.createProject(context, { name, slug, region: "ch-zrh-1" }))
+      .rejects.toThrowError(ProjectSlugTakenError);
+    await owner.query("UPDATE projects SET deleted_at = NULL WHERE id = $1", [created.id]);
+
+    // --- Eine andere Organisation sieht es nicht ---
+    // Eine eigene zweite Organisation und nicht organizationB: Der Nachbar legt
+    // hier selbst ein Projekt an, das schreibt eine Audit-Zeile, und eine
+    // Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen. organizationB muss
+    // das gemeinsame afterAll aber loswerden.
+    const otherOwner = randomUUID();
+    const otherOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [otherOwner, `create-2-147-other-${otherOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Create 2.147 other', $2, $3)`,
+    [otherOrganization, `create-2-147-other-${otherOrganization}`, otherOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [otherOrganization, otherOwner]);
+    const createNeighbour = {
+      organizationId: otherOrganization,
+      actor: { id: otherOwner, ref: `create-2-147-other-${otherOwner}@qkern.test`, type: "user" as const },
+    };
+    expect((await service.listProjects(createNeighbour)).map((entry) => entry.id)).not.toContain(created.id);
+    // Kein "leere Liste" als Auskunft, sondern "nicht gefunden".
+    await expect(service.getProject(createNeighbour, created.id)).rejects.toThrowError(/not found/i);
+    await expect(service.listProjectEnvironments(createNeighbour, created.id)).rejects.toThrowError(/not found/i);
+    // Und unter der Laufzeitrolle mit dem Mandanten des Nachbarn steht keine
+    // einzige Zeile dieses Projekts zur Verfuegung: Das entscheidet die Policy.
+    const createHidden = await withTenantTransaction(runtime, { organizationId: otherOrganization, readOnly: true },
+      async (transaction) => transaction.query<{ projects: string; environments: string; audit: string }>(
+        `SELECT (SELECT count(*)::text FROM projects WHERE id = $1) AS projects,
+                (SELECT count(*)::text FROM project_environments WHERE project_id = $1) AS environments,
+                (SELECT count(*)::text FROM audit_logs WHERE project_id = $1) AS audit`,
+        [created.id]));
+    expect(createHidden.rows[0]).toEqual({ projects: "0", environments: "0", audit: "0" });
+    // Gegenprobe, damit die drei Nullen nicht von leeren Tabellen kommen.
+    const createVisible = await owner.query<{ projects: string; environments: string; audit: string }>(
+      `SELECT (SELECT count(*)::text FROM projects WHERE id = $1) AS projects,
+              (SELECT count(*)::text FROM project_environments WHERE project_id = $1) AS environments,
+              (SELECT count(*)::text FROM audit_logs WHERE project_id = $1) AS audit`,
+      [created.id]);
+    expect(createVisible.rows[0]).toEqual({ projects: "1", environments: "3", audit: "2" });
+    // Und der Nachbar darf denselben Slug nehmen: Die Eindeutigkeit gilt je
+    // Organisation und nicht global.
+    const neighbourProject = await service.createProject(createNeighbour, { name, slug, region: "ch-zrh-1" });
+    expect(neighbourProject.slug).toBe(slug);
+    expect(neighbourProject.id).not.toBe(created.id);
+    expect((await service.listProjects(context)).map((entry) => entry.id)).not.toContain(neighbourProject.id);
   }, 120_000);
   it("(2.80) accepts a real foreign token through the Data API under row security and refuses the four forgeries", async () => {
     // Fremde Anbieter (2.80) an einem Stueck, gegen die echte Datenbank: echtes

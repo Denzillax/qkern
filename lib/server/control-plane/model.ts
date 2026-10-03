@@ -29,6 +29,22 @@ export type CreateChangeSetInput = {
   statement: string;
 };
 
+/**
+ * Was zum Anlegen eines Projekts noetig ist (2.147).
+ *
+ * Drei Felder und nicht mehr. Der Status steht nicht darin: Er ist beim
+ * Anlegen immer `provisioning`, weil durch das Anlegen keine Projektdatenbank
+ * entsteht, und `ready` waere eine Behauptung ueber eine Datenbank, die es
+ * nicht gibt. Der Slug steht darin, weil er aus dem Namen abgeleitet wird und
+ * die Ableitung ein reines Modul ist (`lib/console/project-draft`), das die
+ * Oberflaeche und die Route gemeinsam benutzen.
+ */
+export type CreateProjectInput = {
+  name: string;
+  slug: string;
+  region: string;
+};
+
 export type DecideApprovalInput = {
   approvalId: string;
   decision: "approved" | "rejected";
@@ -164,9 +180,54 @@ export interface ControlPlaneService {
     context: ControlPlaneContext,
     input: SetAutomationPolicyInput,
   ): Promise<ProjectAutomationPolicy>;
+  /**
+   * Legt ein Projekt in der eigenen Organisation an (2.147).
+   *
+   * Das Ergebnis traegt `status: "provisioning"` und die drei festen
+   * Umgebungen mit einer wartenden Datenbankreferenz. Ein Slug, der in dieser
+   * Organisation schon vergeben ist, ergibt `ProjectSlugTakenError` und keinen
+   * Fehler aus dem Treiber.
+   */
+  createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project>;
   createChangeSet(context: ControlPlaneContext, input: CreateChangeSetInput): Promise<ChangeSet>;
   decideApproval(context: ControlPlaneContext, input: DecideApprovalInput): Promise<Approval>;
 }
+
+/**
+ * Der Slug ist in dieser Organisation schon vergeben (2.147).
+ *
+ * Eigener Fehler und nicht der nackte `ConflictError` aus dem Treiber, weil
+ * die Route daraus eine Ablehnung mit Grund machen soll und nicht einen 500er.
+ * Der Text nennt auch den Fall, der sonst raetselhaft bleibt: Die Bedingung
+ * `UNIQUE (organization_id, slug)` traegt `deleted_at` nicht, ein geloeschtes
+ * Projekt haelt seinen Slug also weiter.
+ */
+export class ProjectSlugTakenError extends Error {
+  readonly code = "PROJECT_SLUG_TAKEN";
+
+  constructor(readonly slug: string) {
+    super(`A project with the identifier "${slug}" already exists in this organization.`);
+    this.name = "ProjectSlugTakenError";
+  }
+}
+recognisedByName(ProjectSlugTakenError, "ProjectSlugTakenError");
+
+/**
+ * Zum Anlegen eines Projekts fehlt ein bestaendiger Nutzer (2.147).
+ *
+ * `projects.created_by` ist `NOT NULL` und zeigt auf `users`. Ein Agent oder
+ * ein Systemaufruf hat keine Zeile dort, und ein erfundener Eintrag waere eine
+ * Luege in der Spalte, die sagt, wer das Projekt angelegt hat.
+ */
+export class MissingProjectActorError extends Error {
+  readonly code = "INVALID_PROJECT_ACTOR";
+
+  constructor() {
+    super("A persistent user id is required to create a project.");
+    this.name = "MissingProjectActorError";
+  }
+}
+recognisedByName(MissingProjectActorError, "MissingProjectActorError");
 
 export class InvalidApprovalArtifactError extends Error {
   readonly code = "APPROVAL_INVALIDATED";

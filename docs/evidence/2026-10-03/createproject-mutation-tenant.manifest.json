@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "createproject-mutation-tenant.log",
+  "commit": "990879465b955a0ba3402297c6c691b7c7281864",
+  "commitSubject": "console: die Einsaetze stehen im Namen der Seite (2.146)",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 80,
+  "testFiles": "2 failed | 29 passed (31)",
+  "tests": "3 failed | 254 passed (257)",
+  "passed": 254,
+  "failed": 3,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
