@@ -2046,6 +2046,16 @@ Testdatei.
 | `2026-10-03/createproject-local-run1.log` | Vitest lokal (Windows) | 2700 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-10-03/createproject-local-run2.log` | Vitest lokal (Windows) | 2700 bestanden, exit 0, mit `--maxWorkers=3` |
 
+| `2026-10-03/welle30-postgres-run1.log` | PostgreSQL 17 | 257 bestanden, exit 0 |
+| `2026-10-03/welle30-postgres-run2.log` | PostgreSQL 17 | 257 bestanden, exit 0, Reproduktion |
+| `2026-10-03/welle30-local-run1.log` | Vitest lokal (Windows) | 2706 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-03/welle30-local-run2.log` | Vitest lokal (Windows) | 2706 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Zu 2.78 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
+Console-Seiten, ein Textmodul, ein Pruefskript und die Fehlerklasse dahinter.
+Die Route, die der neue Bestellknopf benutzt, gibt es seit `1.60` und sie wurde
+zu `2.77.0` zuletzt gefahren.
+
 Zu 2.77 wieder nur der PostgreSQL-Stack, diesmal mit Grund: Der Schnitt faellt
 auf die Mandantengrenze, also auf Policies und Rechte, und das belegt kein
 anderer Stack. Die Mutation traf bewusst nicht die expliziten

@@ -6822,3 +6822,39 @@ Pruefmoduls sind nur deutsch. Der Speicheradapter legt nur eine Umgebung an. Die
 Form ist nicht im Browser gesehen, sie liegt hinter der Anmeldung. Ein
 Lastflattern im Realtime-Soak trat im Mutationslauf auf und war im sauberen Lauf
 gruen.
+
+## Welle dreissig (2.78): drei Neins sind jetzt Wege
+
+Drei Schnitte: die Diagnose der Provider-Evidenz (2.152), der Weg aus
+`provisioning` samt dem Durchreichen des Schritts (2.153), und Realtime als
+vorbereitete Schemaaenderung (2.154).
+
+Das Muster: Dreimal stand in der Oberflaeche ein ehrliches Nein, und dreimal ist
+daraus ein Weg geworden, ohne eine neue Route zu erfinden. Bestellen benutzt die
+Route von 1.60, Realtime den Change-Set-Weg, den die Seite selbst schon nannte,
+und der Audit-Eintrag brauchte nur eine Bedingung, die zu eng war.
+
+Zwei aeltere Zusagen standen im Weg, und beide sind genauer geworden statt zu
+verschwinden. "Nur lesend" gilt weiter fuer zwei der drei Einstellungsseiten,
+und fuer die dritte steht daneben, wohin die Zusage umgezogen ist.
+"Ursachenfrei" hiess "genau zwei Felder" und heisst jetzt "nichts, was aus einem
+fremden Text stammen koennte": hoechstens vier Felder, beide Zusatzfelder aus
+geschlossenen Mengen, ein unbekannter Klassenname wird ersetzt.
+
+Zum Verfahren: Der Lauf auf dem Ubuntu-Runner fiel zu 2.77.0 aus, und im
+Protokoll stand nur "nicht bereit". Der Leser fing jeden Fehler und warf eine
+Sammelmeldung, das Skript darueber tat dasselbe. Die Diagnose dafuer brauchte
+drei Anlaeufe, und jeden Fehler darin fand eine Probe: Der erste Entwurf schrieb
+die Fehlermeldung statt des Klassennamens und ueberlebte, weil ausgerechnet
+diese eine Meldung keinen Pfad enthaelt; der zweite ging verloren, weil der
+Pruefer die Meldung des Lesers neu verpackte.
+
+Checkpoint `2.78.0` am 3. Oktober 2026: PostgreSQL 17 mit 257 von 257 zweimal,
+beide exit 0; lokal 2706 bestanden, zweimal reproduziert.
+
+Nicht erbracht: Drei Neins bleiben Neins, und bei allen dreien zu Recht, naemlich
+Tarif binden, Projekt loeschen und Abfrageverlauf. Der bestellte Auftrag wird von
+nichts ausgefuehrt, solange kein Provisionierer laeuft, und die Seite kann nicht
+sagen, ob gerade einer laeuft. Der vorbereitete Change Set ist nicht angewendet.
+Keine der drei Seiten ist im Browser gesehen. Das Flattern auf dem Ubuntu-Runner
+ist nicht erklaert, nur untersuchbar gemacht.

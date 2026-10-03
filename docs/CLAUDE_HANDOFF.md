@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.77.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.78.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,21 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.152 bis 2.154 (`main`) **Drei Neins sind Wege geworden, ohne eine neue Route.**
+  Bestellen benutzt `POST .../provisioning` (seit 1.60, Recht
+  `project_provisioning_request`); die Antwort traegt `executed: false`, und
+  ohne laufenden Provisionierer passiert nichts. Realtime legt einen Change Set
+  mit `realtimeCaptureStatement` an, woertlich die Form aus dem
+  Zertifizierungsfall des Change Feeds. Der Audit-Eintrag eines angelegten
+  Projekts erscheint, seit `auditEventFromRecord` nur noch auf das Projekt und
+  nicht mehr auf die Umgebung prueft.
+
+  Fuer den naechsten: Die Ablehnung der Provider-Evidenz nennt jetzt
+  Fehlerklasse und Schritt, beide aus geschlossenen Mengen. Wer dort ein Feld
+  ergaenzt, muss es in beide Mengen eintragen, sonst faellt der Fall, der die
+  Ursachenfreiheit haelt. **Offen**: Das Flattern auf dem Ubuntu-Runner ist
+  nicht erklaert, beim naechsten Ausfall steht der Schritt im Protokoll.
 
 - 2.145 bis 2.150 (`main` und Zweig `slice/createproject`) **Die erste neue
   Faehigkeit seit Langem, und vier Fehler, die eine Pruefung fand.**
@@ -1191,7 +1206,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.77.0`
+- Paketversion: `2.78.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

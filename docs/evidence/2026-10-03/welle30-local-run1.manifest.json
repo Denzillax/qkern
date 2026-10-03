@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle30-local-run1.log",
+  "commit": "4005eb0ddb286b5b683143cb8b3369e97902d476",
+  "commitSubject": "console: Realtime einschalten heisst, eine Schemaaenderung vorbereiten (2.154)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "373 passed | 42 skipped (415)",
+  "tests": "2706 passed | 379 skipped (3085)",
+  "passed": 2706,
+  "failed": 0,
+  "skipped": 379,
+  "images": []
+}
