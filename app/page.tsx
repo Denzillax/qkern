@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ArrowRight, Check, CircleDashed, Code2, Network, ShieldCheck, Sparkles } from "lucide-react";
 import { QKERNSymbol, QKERNLogo } from "@/components/brand";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { CountUp, Reveal } from "@/components/reveal";
 import { HeroOrbit } from "@/components/hero-orbit";
 import styles from "./page.module.css";
@@ -252,37 +253,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <footer className="footer">
-        <div className="container footer-top">
-          <div>
-            <QKERNLogo variant="white" />
-            <p>{t.footer.tagline}</p>
-          </div>
-          <div>
-            <strong>{t.footer.product}</strong>
-            <Link href="#product">{t.footer.modules}</Link>
-            <Link href="#verification">{t.footer.verification}</Link>
-            <Link href="#ai">{t.footer.bridge}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.developers}</strong>
-            <Link href="/docs">{t.footer.docs}</Link>
-            <Link href="/console">{t.footer.console}</Link>
-            <Link href="#developers">{t.footer.interfaces}</Link>
-            <Link href="#security">{t.footer.gaps}</Link>
-          </div>
-          <div>
-            <strong>{t.footer.company}</strong>
-            <span>{t.footer.imprint}</span>
-            <span>{t.footer.privacy}</span>
-            <span>{t.footer.status}</span>
-          </div>
-        </div>
-        <div className="container footer-bottom">
-          <span>{t.footer.copyright}</span>
-          <span>{t.footer.madeIn}</span>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
