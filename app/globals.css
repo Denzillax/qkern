@@ -1271,7 +1271,7 @@ input[type="checkbox"], input[type="radio"] {
      Auswahlfelder derselben Seite nicht zwei Bauarten sind: Pille, 40 Pixel
      hoch, ein Rand, 13 Pixel in 600. Der Pfeil kommt aus `::after`, weil das
      Feld `appearance: none` traegt und sonst gar keinen zeigt. */
-  position: relative; height: 40px; padding: 0 34px 0 14px; gap: 8px;
+  position: relative; height: 40px; padding: 0 12px 0 14px; gap: 8px;
   border: 1px solid var(--qkern-border); border-radius: var(--radius-pill);
   background: var(--qkern-surface); color: var(--qkern-text);
   font-size: 13px; font-weight: 600;
@@ -1279,9 +1279,11 @@ input[type="checkbox"], input[type="radio"] {
 .card-head .table-select:focus-within { box-shadow: 0 0 0 3px var(--qkern-primary-muted); }
 .card-head .table-select > svg { color: var(--qkern-text-muted); flex: 0 0 auto; }
 .card-head .table-select select { font: inherit; color: inherit; cursor: pointer; }
-.card-head .table-select::after {
-  content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
-  margin-top: -5px; border-right: 1.5px solid var(--qkern-text-muted);
-  border-bottom: 1.5px solid var(--qkern-text-muted); transform: rotate(45deg);
-  pointer-events: none;
+/* Der Punkt links und das Chevron rechts, mit denselben Werten wie beim
+   Umgebungsmenue. Ein aus CSS gebauter Pfeil sah daneben aus: andere
+   Strichstaerke, andere Rundung, andere Hoehe als ein Lucide-Symbol. */
+.card-head .table-select > i {
+  background: var(--qkern-text-muted); border-radius: 50%; flex: 0 0 auto;
+  width: 8px; height: 8px;
 }
+.card-head .table-select > svg { color: var(--qkern-text-muted); pointer-events: none; flex: 0 0 auto; }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
+import { ChevronDown, Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -228,11 +228,16 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("ENTWURF")}</span><h3>{t("Eine Änderung vorbereiten")}</h3></div>
-        <label className="table-select"><Columns3 size={15}/><select value={mode} onChange={(event) => { setMode(event.target.value as Mode); setCreated(false); setSubmitMessage(""); }} aria-label={t("Art der Änderung")}>
+        {/* Dieselbe Bauart wie `environment-field` oben in der Kopfzeile:
+            Pille, Rand, 40 Pixel hoch, und rechts ein echtes ChevronDown statt
+            eines aus CSS gebauten Pfeils. Links bleibt das Spalten-Symbol und
+            wird kein Punkt: Beim Umgebungsmenue zeigt der Punkt den Zustand der
+            Umgebung an, hier gaebe es keinen Zustand, den er zeigen koennte. */}
+        <label className="table-select"><Columns3 size={14} aria-hidden="true"/><select value={mode} onChange={(event) => { setMode(event.target.value as Mode); setCreated(false); setSubmitMessage(""); }} aria-label={t("Art der Änderung")}>
           <option value="create">{t("Tabelle anlegen")}</option>
           <option value="rename">{t("Tabelle umbenennen")}</option>
           <option value="addColumn">{t("Spalte ergänzen")}</option>
-        </select></label>
+        </select><ChevronDown size={14} aria-hidden="true"/></label>
       </div>
 
       <div className="settings-form">
