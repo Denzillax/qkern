@@ -117,3 +117,87 @@ export function periodRange(period: string): { first: string; last: string } | n
   const last = new Date(Date.UTC(year, month, 0));
   return { first: `${period}-01`, last: last.toISOString().slice(0, 10) };
 }
+
+/**
+ * Der Ausblick auf die naechste Rechnung, abgeleitet aus der Periode.
+ *
+ * Warum hier kein Faelligkeitsdatum steht: Der Rechnungslauf nimmt nur eine
+ * abgeschlossene Periode an (`closedPeriodWindow` in
+ * `lib/server/usage/invoice-run.ts` wirft, solange das Fenster in der Zukunft
+ * endet), und er laeuft als eigener Prozess, den ein Betreiber startet. Im
+ * Backend gibt es keine Zeile, die einen Termin traegt, also kann die Console
+ * keinen nennen. Ableitbar ist genau zweierlei, und beides steht in der
+ * Ansicht mit seiner Herkunft: der letzte Tag der laufenden Periode und der
+ * erste Tag, an dem sie als abgeschlossen gilt.
+ */
+export type NextInvoiceOutlook = {
+  period: string;
+  /** Letzter Kalendertag der Periode, in UTC. */
+  periodLastDay: string;
+  /** Erster Tag, an dem der Rechnungslauf die Periode annimmt, in UTC. */
+  closedFrom: string;
+};
+
+export function nextInvoiceOutlook(period: string): NextInvoiceOutlook | null {
+  const range = periodRange(period);
+  if (!range) return null;
+  const [year, month] = period.split("-").map(Number);
+  // `month` ist eins-basiert, der Monatsindex null-basiert: `month` zeigt
+  // damit schon auf den Folgemonat, und dessen erster Tag ist der Tag, an dem
+  // die Periode vorbei ist.
+  const closed = new Date(Date.UTC(year, month, 1));
+  return { period, periodLastDay: range.last, closedFrom: closed.toISOString().slice(0, 10) };
+}
+
+/**
+ * Die Zahlungsfrist einer ausgestellten Rechnung in Tagen, aus dem Dokument
+ * selbst gerechnet.
+ *
+ * Die Frist steht nirgends als Zahl in der Console. Sie ist die Differenz
+ * zwischen `issuedAt` und `dueAt`, und beide kommen aus der Rechnung. Eine
+ * Konstante hier waere eine zweite Wahrheit neben dem DEFAULT aus Migration
+ * 0044, und sie waere falsch, sobald der Betreiber ihn aendert.
+ */
+export function paymentTermDays(issuedAt: string, dueAt: string): number | null {
+  const from = Date.parse(issuedAt);
+  const to = Date.parse(dueAt);
+  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
+  return Math.round((to - from) / 86_400_000);
+}
+
+/**
+ * Menge zu Grenze als Anteil, oder null, wenn es keine Grenze gibt.
+ *
+ * `null` ist kein Fehler, sondern die Auskunft der Route: Ohne Quota-Policy
+ * traegt `limit` in `PublicUsageProjection` null, und ohne Grenze gibt es
+ * nichts zu zeichnen. Die Ansicht haengt genau daran, ob ein Balken erscheint
+ * -- ein Balken ohne Grenze waere ein Bild, das eine Zahl behauptet, die
+ * niemand gesetzt hat.
+ *
+ * Gerechnet wird in BigInt und erst zuletzt geteilt. Eine Menge jenseits von
+ * `Number.MAX_SAFE_INTEGER` (Egress in Bytes erreicht das) verliert sonst
+ * Stellen, bevor der Anteil ueberhaupt entsteht.
+ */
+export function usageMeterRatio(used: string, limit: string | null): number | null {
+  if (limit === null) return null;
+  const ceiling = micros(limit);
+  const amount = micros(used);
+  if (ceiling === null || amount === null) return null;
+  const top = BigInt(ceiling);
+  if (top <= 0n) return null;
+  const quantity = BigInt(amount);
+  return Number(((quantity < 0n ? 0n : quantity) * 10_000n) / top) / 10_000;
+}
+
+/**
+ * Die Breite des Balkens in Prozent, gekappt bei hundert.
+ *
+ * Gekappt, weil ein Balken breiter als seine Spur nichts zeigt; dass die
+ * Grenze ueberschritten ist, sagt daneben der Anteil und der Zustand aus der
+ * Route. Das Ergebnis ist eine CSS-Laenge und kein angezeigter Zahlenwert,
+ * darum steht hier `Math.round` und nicht der Formatierer der Console.
+ */
+export function usageMeterWidth(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 0;
+  return Math.min(100, Math.round(ratio * 1000) / 10);
+}
