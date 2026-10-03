@@ -9,6 +9,7 @@ import type { Locale } from "@/lib/i18n/locales";
 export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, string>> = {
   en: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Einsätze und Logs": "Deployments and logs",
     "gering": "low",
     "mittel": "medium",
     "hoch": "high",
@@ -4268,6 +4269,7 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   fr: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Einsätze und Logs": "Déploiements et journaux",
     "gering": "faible",
     "mittel": "moyen",
     "hoch": "élevé",
@@ -8527,6 +8529,7 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   it: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Einsätze und Logs": "Deployment e log",
     "gering": "basso",
     "mittel": "medio",
     "hoch": "alto",

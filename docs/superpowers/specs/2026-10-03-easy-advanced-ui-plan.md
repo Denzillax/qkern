@@ -36,14 +36,18 @@ Weiter vorhanden und wiederverwendet statt nachgebaut:
 | 2.142 | Projektwechsler, der wirklich wechselt | fertig |
 | 2.143 | SQL-Editor: Editor, Ergebnis, Verlauf | fertig |
 | 2.144 | Realtime einfach: Tabellen anschalten statt Replikation erklaeren | offen |
-| 2.145 | Functions getrennt: Functions, Deployments, Logs, Secrets | zurueckgestellt |
+| 2.145 | Zeilennummern, gemeinsame Worte, eine tote Regel | fertig |
+| 2.146 | Functions: die Einsaetze stehen im Namen der Seite | fertig |
 
-Zu 2.145: Die Trennung, die Punkt 16 verlangt, gibt es in der Navigation
+Zu 2.146: Die Trennung, die Punkt 16 verlangt, gibt es in der Navigation
 groesstenteils schon, naemlich Functions mit Cron und Webhooks, Aufrufe, Secrets
-und Function-Logs. Was fehlt, ist allein, dass die Einsaetze (`deployments`) in
-der Logseite stecken statt einen eigenen Namen zu haben. Dafuer die Navigation
-umzubauen waere Bewegung ohne Gewinn; ein klarerer Name der Seite reicht und
-kommt mit dem naechsten Durchgang.
+und die Logseite. Was fehlte, war allein, dass die Einsaetze (`deployments`)
+dort steckten, ohne im Namen vorzukommen; die Seite heisst jetzt "Einsaetze und
+Logs". Die Navigation dafuer umzubauen waere Bewegung ohne Gewinn gewesen.
+
+Die Nummer 2.145 stand in einer frueheren Fassung dieser Tabelle fuer die
+Functions-Trennung und wurde dann fuer den Aufraeumschnitt verwendet. Beide
+Zeilen stehen jetzt richtig da, statt dass die Nummer zweierlei heisst.
 
 ## Drei Stellen, an denen der Auftrag und der Code auseinandergehen
 

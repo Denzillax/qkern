@@ -102,7 +102,7 @@ export const NAV: NavGroup[] = [
     { id: "storage-analytics", label: "Analytics-Buckets" }, { id: "storage-vectors", label: "Vektor-Buckets" },
   ] },
   { id: "compute", label: "Functions & Jobs", icon: Webhook, children: [
-    { id: "compute", label: "Functions, Cron, Webhooks" }, { id: "compute-secrets", label: "Secrets" }, { id: "compute-invocations", label: "Aufrufe" }, { id: "compute-logs", label: "Function-Logs" },
+    { id: "compute", label: "Functions, Cron, Webhooks" }, { id: "compute-secrets", label: "Secrets" }, { id: "compute-invocations", label: "Aufrufe" }, { id: "compute-logs", label: "Einsätze und Logs" },
   ] },
   { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [{ id: "realtime-inspector", label: "Inspector" }, { id: "realtime-policies", label: "Rechte" }, { id: "realtime-settings", label: "Einstellungen" }] },
   { id: "api", label: "API", icon: Braces },
@@ -270,7 +270,7 @@ export const EASY_NAV: EasyGroup[] = [
     { id: "compute", label: "Functions" },
     { id: "compute-invocations", label: "Aufrufe" },
     { id: "compute-secrets", label: "Secrets" },
-    { id: "compute-logs", label: "Logs" },
+    { id: "compute-logs", label: "Einsätze und Logs" },
     { id: "int-cron", label: "Cron", section: ADVANCED },
     { id: "int-queues", label: "Queues", section: ADVANCED },
     { id: "int-database-webhooks", label: "Datenbank-Webhooks", section: ADVANCED },
