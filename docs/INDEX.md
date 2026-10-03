@@ -36,7 +36,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
 | [SLICE_BERATERREGELN.md](SLICE_BERATERREGELN.md) | Regeln, die nie liefen (Schnitt aus 2.52.0, früher fälschlich RELEASE_2.57.md) |
-| [RELEASE_2.76.md](RELEASE_2.76.md) | Aktueller Release: Sieben Gruppen, ein Claim, und sechs Stellen, an denen nichts erfunden wurde |
+| [RELEASE_2.77.md](RELEASE_2.77.md) | Aktueller Release: Ein Projekt anlegen, und vier Befunde, die ein Vertrag fand |
+| [RELEASE_2.76.md](RELEASE_2.76.md) | Vorheriger Release: Sieben Gruppen, ein Claim, und sechs Stellen, an denen nichts erfunden wurde |
 | [RELEASE_2.75.md](RELEASE_2.75.md) | Vorheriger Release: Zwei Anordnungen derselben Oberflaeche, fuenf Tarife, und eine Tabelle mit Reitern |
 | [RELEASE_2.74.md](RELEASE_2.74.md) | Vorheriger Release: Fremde Clients, eine Spur mit Suche, und ein Backup ohne Deckel |
 | [RELEASE_2.73.md](RELEASE_2.73.md) | Ein Teil aus einem Objekt, ein Anschluss nach draussen, und ein Backup, das es nie gab |

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.76.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.77.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,24 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.145 bis 2.150 (`main` und Zweig `slice/createproject`) **Die erste neue
+  Faehigkeit seit Langem, und vier Fehler, die eine Pruefung fand.**
+  `POST /api/v1/projects` legt ein Projekt an: Dienstmethode in `postgres.ts`
+  und `memory.ts`, Recht `project_create`, Pruefung im reinen Modul
+  `lib/console/project-draft.ts`, drei Umgebungen mit `pending:<id>` als
+  Datenbankreferenz. Diese Marke ist **nicht erfunden**: `tenancy-postgres.ts`
+  schreibt sie, der Provisionierer verlangt sie, der Trigger
+  `project_environments_database_ref_immutable` erlaubt genau den Tausch gegen
+  eine echte Referenz. Der Slug ist je Organisation eindeutig und ein
+  geloeschtes Projekt haelt ihn weiter.
+
+  Fuer den naechsten: Die expliziten `organization_id`-Filter in den Diensten
+  sind unter `FORCE ROW LEVEL SECURITY` redundant, eine Mutation dort beweist
+  nichts; brich den Waechter, der aus der leeren Liste ein "nicht gefunden"
+  macht. **Offen**: `project.created` traegt keine Umgebung und faellt darum aus
+  `auditEventFromRecord`, der Eintrag steht in der Kette, aber nicht auf der
+  Aktivitaetsseite; kein Weg zurueck aus `provisioning`.
 
 - 2.139 bis 2.144 (Zweige `slice/settingsgroups`, `slice/billingview`,
   `slice/sqleditor`, `slice/realtimeeasy`, dazu zwei Schnitte auf `main`, alle
@@ -1173,7 +1191,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.76.0`
+- Paketversion: `2.77.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

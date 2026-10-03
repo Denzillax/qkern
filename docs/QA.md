@@ -6774,3 +6774,51 @@ Abtippen und ein maskierter Key sind nur als Markup belegt. Die Trennung im
 Functions-Bereich ist zurueckgestellt. Der Verlauf im SQL-Editor zeigt alle
 Change Sets der Umgebung und nicht nur die dieses Editors. Realtime zeigt nur
 das Schema `public`. Die Zeilennummern im Editorfeld sind weiter fest verdrahtet.
+
+## Welle neunundzwanzig (2.77): ein Projekt anlegen, und vier Befunde, die ein Vertrag fand
+
+Ein Schnitt, der eine Faehigkeit hinzufuegt (2.147), und vier, die Fehler
+beheben: der verlorene Schreibvorgang samt abgebrochener Anfragen (2.148), die
+Zone neben den Zeiten (2.149), der Doku-Durchgang (2.150), dazu die
+Aufraeumarbeiten aus 2.145 und 2.146.
+
+**Das Anlegen.** `ProjectRepository.create` lag seit Langem im Datenbanklayer und
+wurde von keinem Dienst benutzt; die Rechte standen seit Migration 0002. Es
+fehlte die Dienstmethode, die Route und der Weg in der Oberflaeche. Die Frage,
+an der es haengen konnte, war `database_instance_ref`: Die Spalte ist NOT NULL,
+und ein frisches Projekt hat keine Datenbank. Erfunden wurde nichts, die Marke
+`pending:` fuehrt QKERN an dieser Stelle schon, mit Trigger und
+Katalogpruefung dahinter.
+
+**Die umgedrehte Zusage.** Der Vertrag des Projektwechslers verlangte bis 2.76.0,
+dass kein Anlege-Knopf dasteht, weil die Route nur lesen konnte. Mit der Route
+faellt die Begruendung weg; die Zusage wurde gedreht und nicht geloescht und
+verlangt jetzt Route **und** Knopf.
+
+**Vier Befunde, keiner vom Hinsehen.** Der Vollersatz beim Bucket-PATCH
+ueberschrieb fremde Aenderungen still. Dreimal war die eigene Regel fuer
+abgebrochene Anfragen zu schwach, und jedes Mal ueberlebte die Mutationsprobe;
+die geschaerfte Regel fand danach eine Luecke, die niemand gesucht hatte. In zwei
+Einsteigertexten stand eine dreiteilige Nummer, die wie ein Release aussah, aber
+eine Fallnummer war; gefangen hat das der Versionsvertrag, und zwar ein zweites
+Mal, als diese Zeile hier die falsche Nummer noch einmal zitierte. Ein Vertrag
+unterscheidet kein Zitat von einer Behauptung, und das ist richtig so. Und das Glossar erzaehlte von fuenf Platzhaltern, die seit
+Laengerem echte Seiten sind.
+
+**Die Mutationsprobe traf bewusst nicht die erste Stelle, die sich anbot.** Die
+expliziten `organization_id`-Filter im Dienst sind unter `FORCE ROW LEVEL
+SECURITY` redundant; ihr Entfernen haette nichts bewiesen. Gebrochen wurde der
+Waechter, der aus einer leeren Liste ein "nicht gefunden" macht, und es fielen
+(2.147) und (2.68).
+
+Checkpoint `2.77.0` am 3. Oktober 2026: PostgreSQL 17 mit 257 von 257, auf dem
+gemergten Stand zweimal reproduziert, alle exit 0; lokal 2700 bestanden, zweimal
+reproduziert. Eine Mutationsprobe auf dem Stack mit genau ihren Faellen.
+
+Nicht erbracht: Der Audit-Eintrag `project.created` erscheint nicht in der
+Aktivitaetsliste, weil er keine Umgebung traegt und die Liste solche Eintraege
+weglaesst. Kein Weg zurueck aus `provisioning`. Die Ablehnungsgruende des
+Pruefmoduls sind nur deutsch. Der Speicheradapter legt nur eine Umgebung an. Die
+Form ist nicht im Browser gesehen, sie liegt hinter der Anmeldung. Ein
+Lastflattern im Realtime-Soak trat im Mutationslauf auf und war im sauberen Lauf
+gruen.

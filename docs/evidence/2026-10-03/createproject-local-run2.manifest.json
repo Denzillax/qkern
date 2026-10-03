@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "createproject-local-run2.log",
+  "commit": "634e71cfe0fa9e68552f6ba1663094b503302e45",
+  "commitSubject": "merge: ein Projekt anlegen (2.147)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "372 passed | 42 skipped (414)",
+  "tests": "2700 passed | 379 skipped (3079)",
+  "passed": 2700,
+  "failed": 0,
+  "skipped": 379,
+  "images": []
+}

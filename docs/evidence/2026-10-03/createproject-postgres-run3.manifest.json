@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "createproject-postgres-run3.log",
+  "commit": "634e71cfe0fa9e68552f6ba1663094b503302e45",
+  "commitSubject": "merge: ein Projekt anlegen (2.147)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "257 passed (257)",
+  "passed": 257,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
