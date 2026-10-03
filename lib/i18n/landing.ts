@@ -9,6 +9,23 @@ import type { Locale } from "@/lib/i18n/locales";
  * Zeichenketten in den Manifesten liegen. Fehlt ein Eintrag, bleibt das
  * Original.
  */
+/**
+ * Der Claim auf dem Hero (2.141), in allen vier Sprachen derselbe.
+ *
+ * Er steht als Konstante und nicht im Woerterbuch, aus zwei Gruenden. Erstens
+ * ist er eine Wortmarke wie "Easy" und "Advanced" in der Console: Er sagt
+ * nichts, was in einer Sprache anders waere, und eine Uebersetzung je Sprache
+ * waere vier Gelegenheiten, ihn unterschiedlich zu schreiben. Zweitens haelt
+ * ein Vertrag ihn so an genau einer Stelle fest.
+ *
+ * Die Erklaerzeile darunter ist uebersetzt, denn sie sagt, was QKERN ist, und
+ * das gehoert in die Sprache des Lesers.
+ */
+export const LANDING_CLAIM = {
+  simple: "Simple when you want it.",
+  powerful: "Powerful when you need it.",
+} as const;
+
 export type LandingDictionary = {
   meta: { title: string; description: string };
   header: { nav: Array<[label: string, href: string]>; login: string; createProject: string; home: string; menuOpen: string; menuClose: string; language: string; mainNav: string; themeDark: string; themeLight: string };
@@ -19,6 +36,17 @@ export type LandingDictionary = {
   verification: { eyebrow: string; title: string; steps: Array<{ title: string; text: string }> };
   bridge: { eyebrow: string; title: string; lead: string; items: string[]; cta: string; status: string; prompt: string; steps: Array<{ title: string; small: string }> };
   developers: { title: string; lead: string; rows: Array<{ title: string; text: string }> };
+  /**
+   * Der Abschnitt, der den Claim einloest (2.141). Die Zahl der Gruppen steht
+   * hier **nicht**: Sie kommt aus `EASY_NAV` und `NAV`, sonst waere sie beim
+   * naechsten neuen Menuepunkt falsch.
+   */
+  modes: {
+    eyebrow: string; title: string; lead: string; groups: string;
+    easy: { name: string; note: string; points: string[] };
+    advanced: { name: string; note: string; points: string[] };
+    both: string; preference: string;
+  };
   gaps: { eyebrow: string; title: string; lead: string; items: string[] };
   /**
    * Der Preisabschnitt der Startseite ist seit 2.135 nur noch ein Anriss. Die
@@ -38,7 +66,16 @@ export type LandingDictionary = {
 const de: LandingDictionary = {
   meta: { title: "QKERN, dein Backend, getestet bevor du es anfasst", description: "Datenbank, Login, Dateien, Realtime und Functions. Alles läuft gegen echte Dienste, und die Logs liegen im Repository." },
   header: { nav: [["Produkt", "/#product"], ["Dokumentation", "/docs"], ["Prüfverfahren", "/#verification"], ["KI", "/#ai"], ["Offene Punkte", "/#security"], ["Preise", "/pricing"]], login: "Anmelden", createProject: "Projekt erstellen", home: "QKERN Startseite", menuOpen: "Menü öffnen", menuClose: "Menü schliessen", language: "Sprache wählen", mainNav: "Hauptnavigation", themeDark: "Dark Mode aktivieren", themeLight: "Light Mode aktivieren" },
-  hero: { badge: "{n} archivierte Prüfläufe", title: "Dein Backend. Getestet, bevor du es anfasst.", lead: "Datenbank, Login, Dateien, Realtime und Functions. Alles läuft gegen echte Dienste, und die Logs dazu kannst du im Repository nachlesen.", primary: "Projekt erstellen", secondary: "Console ansehen" },
+  hero: { badge: "{n} archivierte Prüfläufe", title: "Dein Backend. Getestet, bevor du es anfasst.", lead: "Datenbank, Login, Dateien, Realtime und Functions. Eine Oberfläche für den Anfang, eine für die volle Kontrolle, beide am selben Projekt. Getestet gegen echte Dienste, die Logs liegen im Repository.", primary: "Projekt erstellen", secondary: "Console ansehen" },
+  modes: {
+    eyebrow: "Zwei Anordnungen", title: "Einfach, wenn du willst. Vollständig, wenn du musst.",
+    lead: "Dieselben Projekte, dieselben Daten, dasselbe Backend. Der Unterschied ist, wie viel gleichzeitig auf dem Schirm steht.",
+    groups: "{n} Gruppen",
+    easy: { name: "Easy", note: "Das Häufige vorne, der Rest in Abschnitten, die zugeklappt beginnen und ihre Anzahl im Kopf tragen.", points: ["Daten, Tabellen, SQL und Schema in einem Bereich", "Eine Tabelle trägt ihre Reiter für Daten, Struktur, Beziehungen, Sicherheit und API", "Jede Gruppe endet mit einem Weg in die vollständige Ansicht"] },
+    advanced: { name: "Advanced", note: "Jede Gruppe offen, nichts eingeklappt. Für Leute, die wissen, dass eine Publikation etwas mit Replikation zu tun hat.", points: ["Trigger, Indizes, Publikationen, Replikation, Rollen und Spaltenrechte einzeln", "Migrationen, Backups und Point-in-time Recovery als eigene Seiten", "Berichte und Logs je Dienst"] },
+    both: "Easy schaltet nichts ab. Jede Ansicht ist in beiden Anordnungen genau einmal erreichbar, und ein Test hält das fest.",
+    preference: "Die Wahl gehört zur Person und nicht zum Projekt, und sie gilt bei der nächsten Anmeldung wieder.",
+  },
   record: { kicker: "Prüflauf", none: "kein Lauf archiviert", count: "{n} von {n}", counterTitle: "Gegenprobe", counterSmall: "Garantien abgeschaltet, absichtlich fehlgeschlagen", runs: "{n} Läufe", stat: "{name} gegen {stack}" },
   names: {},
   product: {
@@ -108,7 +145,16 @@ const de: LandingDictionary = {
 const en: LandingDictionary = {
   meta: { title: "QKERN, your backend, tested before you touch it", description: "Database, login, files, realtime and functions. Everything runs against real services, and the logs are in the repository." },
   header: { nav: [["Product", "/#product"], ["Documentation", "/docs"], ["How we test", "/#verification"], ["AI", "/#ai"], ["Open items", "/#security"], ["Pricing", "/pricing"]], login: "Sign in", createProject: "Create a project", home: "QKERN home", menuOpen: "Open menu", menuClose: "Close menu", language: "Choose language", mainNav: "Main navigation", themeDark: "Switch to dark mode", themeLight: "Switch to light mode" },
-  hero: { badge: "{n} archived test runs", title: "Your backend. Tested before you touch it.", lead: "Database, login, files, realtime and functions. Everything runs against real services, and you can read the logs in the repository.", primary: "Create a project", secondary: "See the console" },
+  hero: { badge: "{n} archived test runs", title: "Your backend. Tested before you touch it.", lead: "Database, login, files, realtime and functions. One interface to start with, one for full control, both on the same project. Tested against real services, with the logs in the repository.", primary: "Create a project", secondary: "See the console" },
+  modes: {
+    eyebrow: "Two arrangements", title: "Simple to start with. Complete when you dig in.",
+    lead: "Same projects, same data, same backend. The difference is how much sits on the screen at once.",
+    groups: "{n} groups",
+    easy: { name: "Easy", note: "What you use daily up front, the rest in sections that start collapsed and carry their count in the header.", points: ["Data, tables, SQL and schema in one area", "A table carries its own tabs for data, structure, relations, security and API", "Every group ends with a way into the full arrangement"] },
+    advanced: { name: "Advanced", note: "Every group open, nothing collapsed. For people who know that a publication has something to do with replication.", points: ["Triggers, indexes, publications, replication, roles and column privileges on their own", "Migrations, backups and point-in-time recovery as their own pages", "Reports and logs per service"] },
+    both: "Easy disables nothing. Every view is reachable exactly once in both arrangements, and a test holds that.",
+    preference: "The choice belongs to the person, not the project, and it still applies at the next sign-in.",
+  },
   record: { kicker: "Test run", none: "no run archived", count: "{n} of {n}", counterTitle: "Counter-check", counterSmall: "Guarantees switched off, failed on purpose", runs: "{n} runs", stat: "{name} against {stack}" },
   names: { "Control Plane und Data API": "Control plane and Data API", "Object Storage": "Object storage", "Project Auth": "Project auth", "Functions": "Functions", "Webhook-Signatur": "Webhook signature", "Ausgehender Weg": "Outbound path", "MinIO und ClamAV": "MinIO and ClamAV", "versitygw und ClamAV": "versitygw and ClamAV", "Mailpit und Dex über TLS": "Mailpit and Dex over TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry and PostgreSQL 17", "Echter HTTPS-Empfänger": "Real HTTPS receiver", "Backup und Restore": "Backup and restore", "TLS-PostgreSQL 17 mit WAL-Archiv": "TLS PostgreSQL 17 with WAL archive" },
   product: {
@@ -178,7 +224,16 @@ const en: LandingDictionary = {
 const fr: LandingDictionary = {
   meta: { title: "QKERN, votre backend, testé avant que vous y touchiez", description: "Base de données, connexion, fichiers, temps réel et fonctions. Tout tourne contre de vrais services, et les journaux sont dans le dépôt." },
   header: { nav: [["Produit", "/#product"], ["Documentation", "/docs"], ["Nos tests", "/#verification"], ["IA", "/#ai"], ["Points ouverts", "/#security"], ["Tarifs", "/pricing"]], login: "Se connecter", createProject: "Créer un projet", home: "Accueil QKERN", menuOpen: "Ouvrir le menu", menuClose: "Fermer le menu", language: "Choisir la langue", mainNav: "Navigation principale", themeDark: "Activer le mode sombre", themeLight: "Activer le mode clair" },
-  hero: { badge: "{n} tests archivés", title: "Votre backend. Testé avant que vous y touchiez.", lead: "Base de données, connexion, fichiers, temps réel et fonctions. Tout tourne contre de vrais services, et vous pouvez lire les journaux dans le dépôt.", primary: "Créer un projet", secondary: "Voir la console" },
+  hero: { badge: "{n} tests archivés", title: "Votre backend. Testé avant que vous y touchiez.", lead: "Base de données, connexion, fichiers, temps réel et functions. Une interface pour commencer, une pour le contrôle complet, les deux sur le même projet. Testé contre de vrais services, les journaux sont dans le dépôt.", primary: "Créer un projet", secondary: "Voir la console" },
+  modes: {
+    eyebrow: "Deux agencements", title: "Simple quand vous le voulez. Complet quand il le faut.",
+    lead: "Mêmes projets, mêmes données, même backend. La différence est la quantité affichée en même temps.",
+    groups: "{n} groupes",
+    easy: { name: "Easy", note: "L'essentiel devant, le reste dans des sections repliées qui affichent leur nombre dans l'en-tête.", points: ["Données, tables, SQL et schéma dans un seul espace", "Une table porte ses onglets pour données, structure, relations, sécurité et API", "Chaque groupe se termine par un accès à l'agencement complet"] },
+    advanced: { name: "Advanced", note: "Chaque groupe ouvert, rien de replié. Pour celles et ceux qui savent qu'une publication a un lien avec la réplication.", points: ["Triggers, index, publications, réplication, rôles et droits de colonnes séparément", "Migrations, sauvegardes et restauration à un instant comme pages dédiées", "Rapports et journaux par service"] },
+    both: "Easy ne désactive rien. Chaque vue est accessible exactement une fois dans les deux agencements, et un test le garantit.",
+    preference: "Le choix appartient à la personne et non au projet, et il s'applique encore à la prochaine connexion.",
+  },
   record: { kicker: "Test", none: "aucun test archivé", count: "{n} sur {n}", counterTitle: "Contre-épreuve", counterSmall: "Garanties désactivées, échec volontaire", runs: "{n} passages", stat: "{name} contre {stack}" },
   names: { "Control Plane und Data API": "Plan de contrôle et Data API", "Object Storage": "Stockage d'objets", "Project Auth": "Auth de projet", "Functions": "Fonctions", "Webhook-Signatur": "Signature des webhooks", "Ausgehender Weg": "Chemin sortant", "MinIO und ClamAV": "MinIO et ClamAV", "versitygw und ClamAV": "versitygw et ClamAV", "Mailpit und Dex über TLS": "Mailpit et Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registre et PostgreSQL 17", "Echter HTTPS-Empfänger": "Vrai récepteur HTTPS", "Backup und Restore": "Sauvegarde et restauration", "TLS-PostgreSQL 17 mit WAL-Archiv": "PostgreSQL 17 TLS avec archive WAL" },
   product: {
@@ -248,7 +303,16 @@ const fr: LandingDictionary = {
 const it: LandingDictionary = {
   meta: { title: "QKERN, il tuo backend, testato prima che lo tocchi", description: "Database, login, file, realtime e funzioni. Tutto gira contro servizi reali, e i log sono nel repository." },
   header: { nav: [["Prodotto", "/#product"], ["Documentazione", "/docs"], ["Come testiamo", "/#verification"], ["IA", "/#ai"], ["Punti aperti", "/#security"], ["Prezzi", "/pricing"]], login: "Accedi", createProject: "Crea un progetto", home: "Pagina iniziale QKERN", menuOpen: "Apri il menu", menuClose: "Chiudi il menu", language: "Scegli la lingua", mainNav: "Navigazione principale", themeDark: "Attiva la modalità scura", themeLight: "Attiva la modalità chiara" },
-  hero: { badge: "{n} test archiviati", title: "Il tuo backend. Testato prima che lo tocchi.", lead: "Database, login, file, realtime e funzioni. Tutto gira contro servizi reali, e i log li puoi leggere nel repository.", primary: "Crea un progetto", secondary: "Guarda la console" },
+  hero: { badge: "{n} test archiviati", title: "Il tuo backend. Testato prima che lo tocchi.", lead: "Database, login, file, realtime e functions. Un'interfaccia per iniziare, una per il controllo completo, entrambe sullo stesso progetto. Testato contro servizi reali, i log sono nel repository.", primary: "Crea un progetto", secondary: "Guarda la console" },
+  modes: {
+    eyebrow: "Due disposizioni", title: "Semplice quando vuoi. Completa quando serve.",
+    lead: "Stessi progetti, stessi dati, stesso backend. La differenza è quanto sta sullo schermo nello stesso momento.",
+    groups: "{n} gruppi",
+    easy: { name: "Easy", note: "Le cose frequenti davanti, il resto in sezioni che partono compresse e portano il numero nell'intestazione.", points: ["Dati, tabelle, SQL e schema in un'unica area", "Una tabella porta le sue schede per dati, struttura, relazioni, sicurezza e API", "Ogni gruppo termina con un accesso alla disposizione completa"] },
+    advanced: { name: "Advanced", note: "Ogni gruppo aperto, nulla compresso. Per chi sa che una pubblicazione ha a che fare con la replica.", points: ["Trigger, indici, pubblicazioni, replica, ruoli e permessi di colonna singolarmente", "Migrazioni, backup e ripristino a un istante come pagine proprie", "Rapporti e log per servizio"] },
+    both: "Easy non disattiva nulla. Ogni vista è raggiungibile esattamente una volta in entrambe le disposizioni, e un test lo garantisce.",
+    preference: "La scelta appartiene alla persona e non al progetto, e vale ancora al prossimo accesso.",
+  },
   record: { kicker: "Test", none: "nessun test archiviato", count: "{n} su {n}", counterTitle: "Controprova", counterSmall: "Garanzie disattivate, fallimento voluto", runs: "{n} esecuzioni", stat: "{name} contro {stack}" },
   names: { "Control Plane und Data API": "Piano di controllo e Data API", "Object Storage": "Storage a oggetti", "Project Auth": "Auth di progetto", "Functions": "Funzioni", "Webhook-Signatur": "Firma dei webhook", "Ausgehender Weg": "Percorso in uscita", "MinIO und ClamAV": "MinIO e ClamAV", "versitygw und ClamAV": "versitygw e ClamAV", "Mailpit und Dex über TLS": "Mailpit e Dex via TLS", "Docker, Registry und PostgreSQL 17": "Docker, registry e PostgreSQL 17", "Echter HTTPS-Empfänger": "Vero ricevitore HTTPS", "Backup und Restore": "Backup e ripristino", "TLS-PostgreSQL 17 mit WAL-Archiv": "PostgreSQL 17 TLS con archivio WAL" },
   product: {

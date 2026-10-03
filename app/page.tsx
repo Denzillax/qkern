@@ -9,7 +9,11 @@ import { HeroOrbit } from "@/components/hero-orbit";
 import styles from "./page.module.css";
 import { loadCertificationSummary } from "@/lib/server/evidence/certification-summary";
 import { currentLocale } from "@/lib/i18n/server";
-import { formatDate, getLandingDictionary } from "@/lib/i18n/landing";
+import { LANDING_CLAIM, formatDate, getLandingDictionary } from "@/lib/i18n/landing";
+// Die Zahlen kommen aus der Navigation selbst und nicht aus dem Umschalter der
+// Console: `interface-menu.tsx` ist ein Client-Bauteil und zoege Icons, das
+// Auswahlmenue und die Console-Texte in das Bundle dieser Seite.
+import { EASY_NAV, NAV } from "@/components/console/navigation";
 import { getPricingDictionary } from "@/lib/i18n/pricing";
 import { PRICING_PLANS, formatPlanPrice } from "@/lib/pricing/plans";
 import { fill } from "@/lib/i18n/locales";
@@ -48,7 +52,16 @@ export default async function HomePage() {
                 <i aria-hidden />
                 {fill(t.hero.badge, { n: certification.archivedRuns })}
               </span>
-              <h1>{t.hero.title}</h1>
+              {/* Der Claim ist seit 2.141 die Ueberschrift (2.141). Er steht in
+                  allen vier Sprachen gleich, weil er eine Wortmarke ist und
+                  keine Aussage, die sich uebersetzen laesst. Der Satz, der
+                  vorher hier stand, ist nicht verschwunden: Er traegt jetzt den
+                  Fuss der Seite, und was QKERN ist, sagt die Zeile darunter in
+                  der Sprache des Lesers. */}
+              <h1 className={styles.claim}>
+                <span>{LANDING_CLAIM.simple}</span>
+                <span className={styles.claimStrong}>{LANDING_CLAIM.powerful}</span>
+              </h1>
               <p>{t.hero.lead}</p>
               <div className={styles.heroActions}>
                 <Link className="button" href="/register">{t.hero.primary} <ArrowRight size={17} /></Link>
@@ -90,6 +103,38 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Der Claim waere ohne diesen Abschnitt eine Behauptung. Hier steht, was
+          er heisst: zwei Anordnungen derselben Ansichten, und die Zahl der
+          Gruppen kommt aus der Navigation selbst, damit sie beim naechsten
+          neuen Menuepunkt nicht falsch ist. */}
+      <section className={styles.section} id="modes">
+        <div className={styles.shell}>
+          <Reveal className={styles.sectionHead}>
+            <span className={styles.eyebrow}>{t.modes.eyebrow}</span>
+            <h2>{t.modes.title}</h2>
+            <p>{t.modes.lead}</p>
+          </Reveal>
+          <Reveal className={styles.modes} stagger>
+            {([
+              { mode: "easy" as const, copy: t.modes.easy },
+              { mode: "advanced" as const, copy: t.modes.advanced },
+            ]).map((entry) => (
+              <article className={styles.mode} key={entry.mode}>
+                <div className={styles.modeHead}>
+                  <h3>{entry.copy.name}</h3>
+                  <span>{fill(t.modes.groups, { n: entry.mode === "easy" ? EASY_NAV.length : NAV.length })}</span>
+                </div>
+                <p>{entry.copy.note}</p>
+                <ul>
+                  {entry.copy.points.map((point) => <li key={point}><Check size={16} /> {point}</li>)}
+                </ul>
+              </article>
+            ))}
+          </Reveal>
+          <p className={styles.draftNote}>{t.modes.both} {t.modes.preference}</p>
         </div>
       </section>
 

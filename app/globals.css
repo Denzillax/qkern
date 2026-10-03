@@ -4,6 +4,13 @@
   --qkern-primary: #004dd5;
   --qkern-primary-hover: #003fae;
   --qkern-primary-muted: #e9f0ff;
+  /* Akzentfarbe fuer Text (2.141). `--qkern-primary` ist eine Flaechenfarbe
+     unter weisser Schrift; als Schriftfarbe auf dunklem Grund fiel sie durch.
+     Gemessen auf dem Hero: #004dd5 auf #080f1d ergibt 2,76 zu 1, und selbst
+     fuer grosse Schrift verlangt AA 3 zu 1. Auf hellem Grund ist dieselbe Farbe
+     richtig: #004dd5 auf #f8f9fc ergibt 6,60 zu 1. Darum ein eigener Token je
+     Modus statt einer Farbe, die in einem von beiden falsch ist. */
+  --qkern-accent-text: #004dd5;
   --qkern-background: #f8f9fc;
   --qkern-surface: #ffffff;
   --qkern-surface-2: #f1f4f9;
@@ -60,6 +67,8 @@
    */
   --qkern-text-muted: #9aa8bc;
   --qkern-primary-muted: #102c5f;
+  /* #5b9bff auf #080f1d: L 0.3293 gegen 0.00500, also 6,90 zu 1. */
+  --qkern-accent-text: #5b9bff;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }

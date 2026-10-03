@@ -675,3 +675,84 @@
   .orbit { position: relative; left: auto; top: auto; transform: none; width: min(100%, 720px); height: auto; aspect-ratio: 1; justify-self: end; margin: -40px -40px -40px 0; }
   .record { grid-column: 1 / -1; justify-self: center; }
 }
+
+/* Der Claim auf dem Hero (2.141). Zwei Zeilen, nicht zwei Sätze hintereinander:
+   Der Satzbau ist die Aussage, "einfach" und "mächtig" stehen gegenüber, und das
+   sieht man nur, wenn sie übereinander stehen. Die zweite Zeile trägt die
+   Akzentfarbe, damit die Steigerung ohne ein zweites Schriftgewicht auskommt. */
+.heroCopy h1.claim {
+  display: grid;
+  gap: 2px;
+  /* Eigene Groesse, kleiner als die alte Ueberschrift, und das hat einen
+     gemessenen Grund. Der Hero ist ab mittlerer Breite zweispaltig, die Spalte
+     der Textseite ist 578 Pixel breit. Mit den 88 Pixeln der alten Ueberschrift
+     brach jeder der beiden Saetze in zwei Zeilen, die Ueberschrift war 347 Pixel
+     hoch, und der Gegensatz der beiden Saetze ging im Umbruch unter. Bei dieser
+     Groesse steht jeder Satz auf einer Zeile, solange die Spalte reicht; auf
+     einem Telefon bricht er, wie jeder Satz dort bricht. */
+  font-size: clamp(28px, 3.3vw, 44px);
+  line-height: 1.08;
+}
+
+.heroCopy h1.claim > span {
+  /* Jede Zeile nimmt die ganze Breite, sonst sitzt sie als Rasterzelle in der
+     Mitte und bricht frueher als noetig. */
+  display: block;
+}
+
+.claimStrong {
+  color: var(--qkern-accent-text);
+}
+
+/* Zwei Karten, die den Claim einlösen. Gleiche Höhe, gleicher Radius, kein
+   Rahmen in der Akzentfarbe: Keiner der beiden Modi ist der empfohlene, und
+   eine hervorgehobene Karte würde genau das behaupten. */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+}
+
+.mode {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--qkern-border);
+  border-radius: var(--radius-card);
+  background: var(--qkern-surface);
+}
+
+.modeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modeHead h3 { margin: 0; font-size: 20px; }
+
+.modeHead span {
+  font-family: var(--qkern-font-mono);
+  font-size: 12px;
+  color: var(--qkern-text-muted);
+}
+
+.mode p { margin: 0; color: var(--qkern-text-muted); }
+
+.mode ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mode li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.mode li svg { flex: none; margin-top: 2px; color: var(--qkern-success); }
