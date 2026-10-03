@@ -48,7 +48,7 @@ Was es nicht heisst: keine Zertifizierung durch eine Behörde oder eine Prüfste
 
 ## Was heute fehlt
 
-QKERN nennt sich Product MVP: das Fundament steht, viele Ansichten in der Konsole sind noch Platzhalter, die ehrlich sagen, was sie noch nicht können. Es gibt kein Hosting-Angebot, keine Abrechnung, keine Teamverwaltung in der Konsole. Wer heute mit QKERN baut, baut mit einem Werkzeug, das sich noch bewegt.
+QKERN nennt sich Product MVP: das Fundament steht, und keine Ansicht der Konsole ist mehr ein leerer Platzhalter. Was es nicht gibt, sagen die Seiten selbst, und davon gibt es einiges: kein Hosting-Angebot, keine Zahlungsanbindung in der Abrechnung, keine Teamverwaltung, kein Tarif an einem Projekt, kein Löschen eines Projekts. Wer heute mit QKERN baut, baut mit einem Werkzeug, das sich noch bewegt.
 
 ## Fragen an deinen Entwickler
 
@@ -60,7 +60,7 @@ Sieben Fragen, mit denen du ein Gespräch über das Backend führen kannst, ohne
 4. Wo laufen [Backups](GLOSSAR.md#backup), wie weit zurück kann man wiederherstellen, und wann wurde das zuletzt ausprobiert?
 5. Welche Dienste braucht QKERN im Betrieb, und was passiert, wenn einer davon ausfällt?
 6. Wie kommen die Daten wieder heraus, falls wir das Werkzeug wechseln?
-7. Was von dem, was wir brauchen, ist bei QKERN heute ein Platzhalter?
+7. Was von dem, was wir brauchen, sagt die Konsole heute selbst, dass es das noch nicht gibt?
 
 
 ## Ehrlich offen

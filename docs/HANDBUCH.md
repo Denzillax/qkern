@@ -29,6 +29,35 @@ Remove-Item -Recurse -Force node_modules
 npm ci
 ```
 
+## 1b. Die Console in zwei Anordnungen
+
+Seit `2.75.0` zeigt die Console dieselben Ansichten in zwei Anordnungen, und
+umgestellt wird oben in der Kopfzeile neben der Umgebung.
+
+**Easy** ordnet alles in neun Gruppen. Vorne steht, was täglich gebraucht wird,
+der Rest liegt in Abschnitten, die zugeklappt beginnen und ihre Anzahl im Kopf
+tragen. Jede Gruppe endet mit "Alles anzeigen", und das wechselt in die andere
+Anordnung, ohne die geöffnete Ansicht zu verlassen.
+
+**Advanced** zeigt jede Gruppe offen, so wie die Console vor `2.75.0` aussah.
+
+Es wird nichts abgeschaltet. Jede Ansicht ist in beiden Anordnungen genau einmal
+erreichbar, und ein Test hält das fest; käme ein neuer Menüpunkt nur in einer
+der beiden an, fiele er auf.
+
+Die Wahl gehört zur Person und nicht zum Projekt. Sie liegt neben Sprache,
+Format, Zeitzone und Aussehen in `user_console_settings` und gilt bei der
+nächsten Anmeldung wieder. Die Vorgabe ist **Easy**, auch für ein Konto, das es
+vorher schon gab; wer die vollständige Anordnung will, stellt einmal um.
+
+Eine Dev-Datenbank, die vor `2.75.0` angelegt wurde, kennt die Spalte dafür
+nicht, denn Migrationen laufen nur beim Anlegen des Containers. Bis die Spalte
+da ist, gilt der Modus nur für die laufende Sitzung:
+
+```powershell
+docker compose exec postgres psql -U qkern -d qkern_control -c "ALTER TABLE user_console_settings ADD COLUMN IF NOT EXISTS interface_mode text NOT NULL DEFAULT 'easy' CHECK (interface_mode IN ('easy','advanced'));"
+```
+
 ## 2. Vollständige lokale Control Plane mit PostgreSQL
 
 Docker Desktop starten und im Projektordner ausführen:

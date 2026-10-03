@@ -77,6 +77,8 @@ Klicke auf "Projekt erstellen" oder öffne `http://localhost:3000/register`. Tra
 
 Was passiert ist: QKERN hat dein Konto angelegt, dazu eine [Organisation](GLOSSAR.md#organisation) (dein Arbeitsbereich) und ein [Projekt](GLOSSAR.md#projekt) namens "First Project". Ein Projekt ist eine App: es hat eigene Daten, eigene Nutzer, eigene Schlüssel. Jedes Projekt hat drei [Umgebungen](GLOSSAR.md#umgebung), development, staging und production, damit du ausprobieren kannst, ohne echte Daten anzufassen.
 
+Die Konsole öffnet in der einfachen Anordnung: neun Gruppen links, und was seltener gebraucht wird, liegt in zugeklappten Abschnitten darunter. Oben in der Kopfzeile steht ein Menü namens "Easy"; darüber kommst du zur vollständigen Anordnung mit jeder Gruppe offen. Abgeschaltet wird dabei nichts, es ist dieselbe Konsole anders sortiert, und die Wahl merkt sich QKERN für dich.
+
 Öffne links unten "Einstellungen", dann "Allgemein": dort stehen die Projekt-ID und die Organisations-ID. Beide brauchst du gleich; kopiere sie irgendwohin.
 
 ## 5. Umgebung an die Datenbank binden

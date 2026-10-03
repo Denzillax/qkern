@@ -53,7 +53,7 @@ Rund neunzig Begriffe, alphabetisch, je in drei Zeilen: was es ist, wo es in QKE
 ## Backup
 
 - **Was es ist:** Eine Kopie der Daten, aus der man nach einem Fehler oder Ausfall wiederherstellen kann.
-- **In QKERN:** Ein Drill beweist Backup und Wiederherstellung bis zu einem Zeitpunkt gegen echtes PostgreSQL; die Konsole zeigt unter Backups noch einen Platzhalter.
+- **In QKERN:** Ein Drill beweist Backup und Wiederherstellung bis zu einem Zeitpunkt gegen echtes PostgreSQL. Die Konsole liest unter Backups den Stand der Sicherungen; bestellen und zurückspielen kann sie nichts.
 - **Bei Supabase:** Backups unter Database, mit Point-in-time Recovery im bezahlten Plan.
 
 ## Bucket
@@ -155,7 +155,7 @@ Rund neunzig Begriffe, alphabetisch, je in drei Zeilen: was es ist, wo es in QKE
 ## Fremdschlüssel
 
 - **Was es ist:** Eine Spalte, die auf die Zeile einer anderen Tabelle zeigt, etwa die Kundennummer in einer Bestellung.
-- **In QKERN:** Normale PostgreSQL-Fremdschlüssel; der Schema-Visualizer, der sie zeichnet, ist noch ein Platzhalter.
+- **In QKERN:** Normale PostgreSQL-Fremdschlüssel. Der Schema-Visualizer zeichnet sie aus dem Katalog, und die Reiter einer Tabelle zeigen unter Beziehungen dasselbe in Worten.
 - **Bei Supabase:** Foreign Key.
 
 ## Frontend
@@ -215,7 +215,7 @@ Rund neunzig Begriffe, alphabetisch, je in drei Zeilen: was es ist, wo es in QKE
 ## Konsole
 
 - **Was es ist:** Die Web-Oberfläche von QKERN, in der du Projekte, Daten, Nutzer und Regeln siehst und bedienst.
-- **In QKERN:** Unter /console nach der Anmeldung. Viele Ansichten sind echt, einige sagen ehrlich, dass sie Platzhalter sind.
+- **In QKERN:** Unter /console nach der Anmeldung, in zwei Anordnungen derselben Ansichten: Easy mit neun Gruppen, Advanced mit allen. Leere Platzhalterseiten gibt es keine mehr; wo QKERN eine Sache nicht hat, sagt die Seite das und zeigt, was sie stattdessen lesen kann.
 - **Bei Supabase:** Studio.
 
 ## Ledger-Owner
@@ -305,7 +305,7 @@ Rund neunzig Begriffe, alphabetisch, je in drei Zeilen: was es ist, wo es in QKE
 ## Point-in-time Recovery
 
 - **Was es ist:** Wiederherstellung auf einen bestimmten Zeitpunkt, nicht nur auf das letzte Backup.
-- **In QKERN:** Gegen echtes PostgreSQL mit WAL-Archiv bewiesen; in der Konsole noch ein Platzhalter.
+- **In QKERN:** Gegen echtes PostgreSQL mit WAL-Archiv bewiesen. Die Konsole zeigt unter Point-in-time Recovery den Stand und die Belege des Drills; auslösen kann sie keine Wiederherstellung.
 - **Bei Supabase:** PITR im bezahlten Plan.
 
 ## Policy
@@ -395,7 +395,7 @@ Rund neunzig Begriffe, alphabetisch, je in drei Zeilen: was es ist, wo es in QKE
 ## Rate Limit
 
 - **Was es ist:** Eine Obergrenze, wie oft etwas pro Zeit passieren darf, etwa Anmeldeversuche pro Minute.
-- **In QKERN:** Fest eingebaut bei Registrierung und Anmeldung; einstellbar je Projekt ist noch ein Platzhalter.
+- **In QKERN:** Fest eingebaut bei Registrierung und Anmeldung der Konsole. Für die Nutzer deiner App stellst du sie unter Auth, Rate Limits je Umgebung ein, und die Seite schreibt sie wirklich.
 - **Bei Supabase:** Rate Limits unter Authentication.
 
 ## Realtime
