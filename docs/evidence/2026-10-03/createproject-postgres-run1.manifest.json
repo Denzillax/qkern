@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "createproject-postgres-run1.log",
+  "commit": "990879465b955a0ba3402297c6c691b7c7281864",
+  "commitSubject": "console: die Einsaetze stehen im Namen der Seite (2.146)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "257 passed (257)",
+  "passed": 257,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

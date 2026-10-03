@@ -123,6 +123,10 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { BillingSettingsView } from "@/components/console/billing-settings-view";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Environment, Project } from "@/lib/types";
+import {
+  PROJECT_NAME_MAX, PROJECT_NAME_MIN, PROJECT_REGIONS, ProjectDraftError, projectSlug,
+  validateProjectDraft, type ProjectRegion,
+} from "@/lib/console/project-draft";
 import type { Snapshot } from "@/lib/console/console-snapshot";
 
 export function ConsoleApp({ locale }: { locale: Locale }) {
@@ -252,6 +256,47 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   // Vorlieben, ein geoeffnetes Projekt ist keine.
   const [projectId, setProjectId] = useState<string | null>(null);
   const project = snapshot?.projects.find((entry) => entry.id === projectId) ?? snapshot?.projects[0];
+  // Ein Projekt anlegen (2.147). Die Form liegt im Projektwechsler, weil die
+  // Frage dort aufkommt: Wer die Liste seiner Projekte aufklappt, sucht
+  // manchmal eines, das es noch nicht gibt.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createRegion, setCreateRegion] = useState<ProjectRegion>(PROJECT_REGIONS[0]);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const createProject = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault();
+    // Dieselbe Pruefung wie auf dem Server, aus demselben reinen Modul. Was
+    // hier durchfaellt, braucht keine Anfrage.
+    let draft;
+    try { draft = validateProjectDraft({ name: createName, region: createRegion }); }
+    catch (cause) { setCreateError(cause instanceof ProjectDraftError ? cause.reason : t("Projekt konnte nicht angelegt werden.")); return; }
+    setCreateBusy(true);
+    setCreateError("");
+    try {
+      const response = await fetch("/api/v1/projects", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        setCreateError(typeof payload?.error === "string" ? payload.error : t("Projekt konnte nicht angelegt werden."));
+        return;
+      }
+      const created = payload?.data as Project | undefined;
+      if (!created?.id) { setCreateError(t("Projekt konnte nicht angelegt werden.")); return; }
+      // Erst waehlen, dann neu laden: Die Wahl haengt an der Kennung und nicht
+      // an der Liste, und so steht das neue Projekt sofort oben links, auch
+      // bevor der Schnappschuss wieder da ist.
+      setProjectId(created.id);
+      setCreateOpen(false);
+      setCreateName("");
+      await load();
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : t("Projekt konnte nicht angelegt werden."));
+    } finally {
+      setCreateBusy(false);
+    }
+  }, [createName, createRegion, load]);
   // Offene Gruppen als Menge; die aktive Gruppe öffnet sich beim Wechsel,
   // jede Gruppe lässt sich per Klick auf den Kopf schliessen und öffnen.
   // Seit 2.8 gemerkt (localStorage, im Effekt gelesen wie die Sidebar-Breite).
@@ -306,7 +351,46 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
               onChange={(next) => { setProjectId(next); setMobileOpen(false); }}/>
             <small>{displayWorkspaceName(snapshot?.organization.name)}</small>
           </div>
+          {/* Der Weg zum Anlegen (2.147). Er steht erst hier, seit es die Route
+              dazu gibt; vorher waere es ein Knopf gewesen, der nichts tut. Er
+              ist ein Symbolknopf in der dritten Spalte, damit der Projektname
+              daneben nicht schmaler wird. */}
+          <button className="project-create-open" onClick={() => { setCreateOpen(!createOpen); setCreateError(""); }}
+                  aria-expanded={createOpen} aria-controls="project-create-form"
+                  aria-label={t("Neues Projekt anlegen")} title={t("Neues Projekt anlegen")}><Plus size={14}/></button>
         </div>
+        {createOpen && <form id="project-create-form" className="project-create" onSubmit={createProject}>
+          {/* Klein halten: Name und Region, sonst nichts. Alles andere am
+              Projekt entsteht spaeter oder ist keine Wahl. */}
+          <label htmlFor="project-create-name">{t("Name")}</label>
+          <input id="project-create-name" value={createName} autoFocus
+                 minLength={PROJECT_NAME_MIN} maxLength={PROJECT_NAME_MAX}
+                 onChange={(event) => { setCreateName(event.target.value); setCreateError(""); }}/>
+          {/* Die Kennung wird abgeleitet und nicht getippt. Sie steht trotzdem
+              da, weil sie in der Organisation eindeutig sein muss und weil eine
+              Ablehnung sonst aus dem Nichts kaeme. */}
+          <small>{t("Kennung")}: {projectSlug(createName) || t("noch keine")}</small>
+          <label htmlFor="project-create-region">{t("Region")}</label>
+          <div id="project-create-region">
+            <OptionMenu value={createRegion} align="left"
+              ariaLabel={t("Region")} listLabel={t("Region wählen")}
+              options={PROJECT_REGIONS.map((entry) => ({ id: entry, label: entry }))}
+              onChange={(next) => setCreateRegion(next)}/>
+          </div>
+          {/* QKERN fuehrt keinen Katalog von Regionen; die Liste hat genau einen
+              Eintrag, und die Zeile sagt das, statt eine Wahl vorzutaeuschen. */}
+          <small>{t("QKERN führt genau eine Region. Sie ist Text in der Projektzeile und wählt keine Hardware.")}</small>
+          {/* Und die ehrliche Auskunft zum Zustand: Hier entsteht eine Zeile in
+              der Kontrollebene, keine Datenbank. */}
+          <small>{t("Das Projekt startet in der Einrichtung. Die drei Umgebungen entstehen mit der Bereitstellung, eine Projektdatenbank entsteht hier nicht.")}</small>
+          {createError && <p className="project-create-error" role="alert">{createError}</p>}
+          <div className="project-create-actions">
+            <button type="submit" disabled={createBusy || !projectSlug(createName)}>
+              <StableLabel current={createBusy ? t("Wird angelegt …") : t("Projekt anlegen")} variants={tAll("Projekt anlegen", "Wird angelegt …")}/>
+            </button>
+            <button type="button" onClick={() => { setCreateOpen(false); setCreateError(""); }}>{t("Abbrechen")}</button>
+          </div>
+        </form>}
         <nav className={`console-nav ${mode}`} aria-label={t("Console-Navigation")}>
           {mode === "easy" && EASY_NAV.map((group) => {
             const Icon = group.icon;

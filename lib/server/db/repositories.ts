@@ -809,6 +809,25 @@ export class ProjectRepository {
     return projectFromRow(result.rows[0]);
   }
 
+  /**
+   * Ist dieser Slug in dieser Organisation vergeben? (2.147)
+   *
+   * `list` taugt dafuer nicht: Es laesst geloeschte Projekte weg und hoert bei
+   * 250 Zeilen auf. Beides wuerde hier einen freien Slug behaupten, den das
+   * folgende INSERT dann doch nicht bekommt. Darum eine eigene Abfrage ohne
+   * `deleted_at IS NULL`, genau so weit wie die Bedingung
+   * `UNIQUE (organization_id, slug)` reicht.
+   */
+  async slugTaken(slug: string): Promise<boolean> {
+    const result = await this.tx.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM projects WHERE organization_id = $1 AND slug = $2
+       ) AS taken`,
+      [this.tx.organizationId, slug],
+    );
+    return result.rows[0]?.taken === true;
+  }
+
   async create(input: {
     name: string;
     slug: string;
@@ -859,6 +878,33 @@ export class ProjectEnvironmentRepository {
       [this.tx.organizationId, projectId, environment],
     );
     if (!result.rows[0]) throw new ResourceNotFoundError("Project environment");
+    return projectEnvironmentFromRow(result.rows[0]);
+  }
+
+  /**
+   * Legt die Zeile einer Umgebung an (2.147).
+   *
+   * `databaseInstanceRef` ist `NOT NULL`, und beim Anlegen eines Projekts gibt
+   * es keine Datenbank. Erlaubt ist hier darum nur eine wartende Marke
+   * (`pending:…`), also genau die Form, die `bindProvisioned` spaeter gegen
+   * eine echte Referenz tauscht und die `isCatalogReference` als "nicht
+   * gebunden" liest. Eine Referenz ohne dieses Vorzeichen waere die Behauptung,
+   * hinter der Umgebung stehe schon eine Datenbank.
+   */
+  async createPending(
+    projectId: string,
+    environment: Environment,
+    databaseInstanceRef: string,
+  ): Promise<ProjectEnvironmentRecord> {
+    if (!/^pending:/i.test(databaseInstanceRef)) {
+      throw new InvalidRecordError("A new project environment starts with a pending database reference.");
+    }
+    const result = await this.tx.query(
+      `INSERT INTO project_environments (organization_id, project_id, environment, database_instance_ref)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, organization_id, project_id, environment, database_instance_ref, created_at`,
+      [this.tx.organizationId, projectId, environment, databaseInstanceRef],
+    );
     return projectEnvironmentFromRow(result.rows[0]);
   }
 

@@ -14,14 +14,24 @@ import { describe, expect, it } from "vitest";
  *
  * **Was der Vertrag haelt.** Dass die Liste gelesen wird und nicht ihr erstes
  * Element, dass die Wahl in den Zustand geht, dass das Menue dasselbe Bauteil
- * ist wie jedes andere Auswahlfeld der Console, und dass kein Knopf zum Anlegen
- * eines Projekts dasteht, solange es dafuer keine Route gibt. Das Letzte ist
- * der Punkt: Die Vorlage nennt "+ New Project", und ein Knopf, der nichts tut,
- * waere schlimmer als keiner.
+ * ist wie jedes andere Auswahlfeld der Console, und dass der Weg zum Anlegen
+ * eines Projekts dasteht, weil es die Route dazu gibt.
+ *
+ * **Die umgedrehte Zusage (2.147).** Bis 2.146 hiess der dritte Fall hier
+ * "offers no way to create a project, because there is no route for it", und er
+ * hatte recht: Die Projektroute kannte nur `GET`, und ein Knopf waere ein
+ * Versprechen ohne Deckung gewesen. Mit 2.147 gibt es `POST /api/v1/projects`,
+ * also faellt die Begruendung weg und mit ihr die Zusage. Geloescht wird sie
+ * nicht, sie wird gedreht: Der Fall verlangt jetzt beides, die Route **und**
+ * den Weg in der Oberflaeche. Eine Route ohne Knopf waere eine Faehigkeit, die
+ * niemand findet; ein Knopf ohne Route waere der alte Fehler.
  *
  * **Was er nicht kann.** Ob das Umschalten im Browser wirklich die Daten des
  * anderen Projekts holt, sagt er nicht. Das haengt daran, dass jede Ansicht
  * ihre `projectId` als Requisite bekommt, und das prueft der Render-Vertrag.
+ * Ob das Anlegen in der Datenbank ankommt und die Mandantengrenze haelt, sagt
+ * er auch nicht: Das belegt der Fall in `tests/postgres.integration.test.ts`
+ * gegen echtes PostgreSQL.
  */
 const APP = path.resolve(process.cwd(), "components/console/console-app.tsx");
 const ROUTES = path.resolve(process.cwd(), "app/api/v1/projects/route.ts");
@@ -54,15 +64,37 @@ describe("console project switch contract", () => {
     expect(block).not.toMatch(/<ChevronDown size=\{14\}\/>/);
   });
 
-  it("offers no way to create a project, because there is no route for it", async () => {
+  it("creates a project through the route and offers it in the interface", async () => {
     const routes = await readFile(ROUTES, "utf8");
-    // Erst der Beleg: Die Projektroute liest nur.
+    // Erst der Beleg: Die Projektroute kann anlegen, mit Herkunftspruefung und
+    // dem eigenen Recht, so wie jede andere schreibende Route.
     expect(routes).toContain("export async function GET");
-    expect(routes).not.toContain("export async function POST");
-    // Dann die Folge: kein Knopf, der es verspricht.
+    expect(routes).toContain("export async function POST");
+    expect(routes).toContain("if (!hasTrustedOrigin(request)) return csrfRejected();");
+    expect(routes).toContain('requireCapability(context, "project_create");');
+    // Geprueft wird im reinen Modul und nicht in der Route.
+    expect(routes).toContain('from "@/lib/console/project-draft"');
+    expect(routes).toContain("validateProjectDraft(await safeJson(request))");
+    // Und die Ablehnungen haben einen Grund und einen eigenen Code.
+    expect(routes).toContain('code === "PROJECT_SLUG_TAKEN"');
+    expect(routes).toContain("{ status: 409 }");
+    expect(routes).toContain("{ status: 400 }");
+
+    // Dann die Folge: der Weg in der Oberflaeche, im Projektwechsler.
     const source = await readFile(APP, "utf8");
     const block = source.slice(source.indexOf('<div className="project-switch">'),
       source.indexOf('<nav className={`console-nav'));
-    expect(block).not.toMatch(/Neues Projekt|New Project|Projekt anlegen/);
+    expect(block).toMatch(/Neues Projekt anlegen/);
+    expect(block).toContain('<form id="project-create-form"');
+    // Klein halten heisst: Name und Region, sonst nichts.
+    expect(block).toContain('id="project-create-name"');
+    expect(block).toContain("PROJECT_REGIONS.map");
+    // Die Region kommt aus der echten Liste und nicht aus einer erfundenen.
+    expect(source).toContain('from "@/lib/console/project-draft"');
+    expect(block).not.toMatch(/eu-central-1|us-east-1/);
+    // Nach dem Anlegen ist das neue Projekt gewaehlt.
+    expect(source).toContain("setProjectId(created.id);");
+    // Und die Oberflaeche sagt, dass hier keine Datenbank entsteht.
+    expect(block).toMatch(/Umgebungen entstehen mit der Bereitstellung/);
   });
 });

@@ -1,12 +1,13 @@
 import {
   ApprovalAlreadyDecidedError,
   ApprovalExpiredError,
+  ConflictError,
   InvalidRecordError,
   MigrationNotReadyError,
   ResourceNotFoundError,
 } from "@/lib/server/db/errors";
 import type { ApprovalRequestRecord, ChangeSetRecord } from "@/lib/server/db/models";
-import type { ChangeStatus } from "@/lib/types";
+import type { ChangeStatus, Project } from "@/lib/types";
 import { PostgresControlPlane, type ControlPlaneRepositories } from "@/lib/server/db/repositories";
 import { classifySqlRisk, requiresApproval, validateSingleSqlStatement } from "@/lib/security";
 import {
@@ -26,11 +27,14 @@ import {
   InvalidApprovalArtifactError,
   MissingDecisionActorError,
   MissingPolicyActorError,
+  MissingProjectActorError,
+  ProjectSlugTakenError,
   type ApprovalTallyStatus,
   type ChangeFlowTally,
   type ControlPlaneContext,
   type ControlPlaneService,
   type CreateChangeSetInput,
+  type CreateProjectInput,
   type DecideApprovalInput,
   type MigrationTallyStatus,
   type ProjectChangeFlow,
@@ -384,6 +388,91 @@ export class PostgresControlPlaneService implements ControlPlaneService {
         },
       });
       return policy;
+    });
+  }
+
+  /**
+   * Legt ein Projekt an (2.147).
+   *
+   * **Eine Transaktion.** Die Projektzeile, die drei Umgebungen und der
+   * Audit-Eintrag entstehen zusammen oder gar nicht. Ein Projekt ohne seine
+   * Umgebungen waere eine halbe Einrichtung, die niemandem auffaellt, und ein
+   * Anlegen ohne Audit-Eintrag waere eine Luecke in der Kette.
+   *
+   * **Der Status ist `provisioning`.** Durch dieses Anlegen entsteht keine
+   * Projektdatenbank; es entsteht eine Zeile in der Kontrollebene. `ready`
+   * waere die Behauptung, man koenne jetzt eine Migration anwenden, und genau
+   * das lehnen `createChangeSet` und die Warteschlange ab, solange die
+   * Referenz wartet.
+   *
+   * **`database_instance_ref` ist `pending:<Projekt-Id>`.** Das ist kein
+   * erfundener Platzhalter, sondern die Marke, die QKERN an dieser Stelle schon
+   * fuehrt: `lib/server/tenancy-postgres.ts` schreibt sie beim Einrichten
+   * einer Organisation, der Provisionierer verlangt sie als Ausgangszustand
+   * (`ProjectProvisioningNotReadyError`, wenn sie fehlt), `isCatalogReference`
+   * liest sie als "nicht gebunden", und `bindProvisioned` tauscht nur eine
+   * solche Marke gegen eine echte Referenz. Die Spalte ist `NOT NULL`, und die
+   * drei Umgebungen weglassen hiesse, die Einrichtung auf eine spaetere
+   * Bestellung zu verschieben, die ohne diese Zeilen keinen Angriffspunkt hat.
+   *
+   * **Der Slug wird zuerst gelesen, dann geschrieben.** Das Lesen ist die
+   * Hoeflichkeit, die aus einem Treiberfehler eine Ablehnung mit Grund macht;
+   * der Fang um das INSERT ist die Wahrheit, denn zwischen Lesen und Schreiben
+   * kann ein zweiter Aufruf denselben Slug nehmen. Beide Wege enden in
+   * `ProjectSlugTakenError`, damit die Route einen Fall behandelt und nicht
+   * zwei.
+   *
+   * **Der Audit-Eintrag traegt keine Umgebung.** Ein Projekt anzulegen ist
+   * keine Handlung in `development`, `staging` oder `production`, und die
+   * Spalte laesst NULL zu. Die Folge steht im Bericht: Die Aktivitaetsliste der
+   * Console laesst Eintraege ohne Umgebung weg (`auditEventFromRecord`), der
+   * Eintrag steht also in der Kette und in der Datenbank, aber nicht auf jener
+   * Seite. Eine erfundene Umgebung waere der schlechtere Tausch.
+   */
+  async createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project> {
+    const createdBy = context.actor.id;
+    if (!createdBy || (context.actor.type ?? "user") !== "user") throw new MissingProjectActorError();
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+    }, async (repositories) => {
+      if (await repositories.projects.slugTaken(input.slug)) throw new ProjectSlugTakenError(input.slug);
+      let project;
+      try {
+        project = await repositories.projects.create({
+          name: input.name,
+          slug: input.slug,
+          region: input.region,
+          createdBy,
+          status: "provisioning",
+        });
+      } catch (error) {
+        if (error instanceof ConflictError) throw new ProjectSlugTakenError(input.slug);
+        throw error;
+      }
+      for (const environment of FIXED_ENVIRONMENTS) {
+        await repositories.environments.createPending(project.id, environment, `pending:${project.id}`);
+      }
+      await repositories.audit.append({
+        projectId: project.id,
+        environment: null,
+        actorType: "user",
+        actorRef: context.actor.ref,
+        action: "project.created",
+        resourceRef: project.id,
+        status: "success",
+        metadata: {
+          slug: project.slug,
+          region: project.region,
+          status: project.status,
+          environments: [...FIXED_ENVIRONMENTS],
+          databaseProvisioned: false,
+        },
+      });
+      // Die Umgebung in der Antwort ist die erste der festen Reihe, also die,
+      // in der eine Aenderung beginnt. Sie sagt nicht, dass dort schon etwas
+      // laeuft: `status` sagt `provisioning`, und jede Umgebung wartet.
+      return projectFromRecord(project, FIXED_ENVIRONMENTS[0]);
     });
   }
 

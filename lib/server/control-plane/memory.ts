@@ -1,12 +1,17 @@
 import {
   consoleSnapshot,
   createChangeSet,
+  createProjectForOrganization,
   decideApproval,
   getProject,
   listProjects,
   store,
 } from "@/lib/server/store";
-import { FIXED_ENVIRONMENTS } from "@/lib/server/control-plane/model";
+import {
+  FIXED_ENVIRONMENTS,
+  MissingProjectActorError,
+  ProjectSlugTakenError,
+} from "@/lib/server/control-plane/model";
 import type {
   ApprovalTallyStatus,
   ChangeFlowTally,
@@ -14,6 +19,7 @@ import type {
   ControlPlaneService,
   ControlPlaneSnapshot,
   CreateChangeSetInput,
+  CreateProjectInput,
   DecideApprovalInput,
   ProjectChangeFlow,
   SetAutomationPolicyInput,
@@ -177,6 +183,34 @@ export class MemoryControlPlaneService implements ControlPlaneService {
     };
     this.automationPolicies.set(key, policy);
     return policy;
+  }
+
+  /**
+   * Legt ein Projekt im Speicher an (2.147).
+   *
+   * Derselbe Vertrag wie in der PostgreSQL-Kontrollebene: Der Status ist
+   * `provisioning`, der Slug ist je Organisation eindeutig, und ein belegter
+   * Slug ergibt `ProjectSlugTakenError`. Umgebungen legt der Speicher nicht an,
+   * weil er je Projekt genau eine fuehrt und sie am Projekt haengt; das sagt
+   * `listProjectEnvironments` daneben schon, und es wird hier nicht erfunden.
+   *
+   * Eine Audit-Kette mit Hash fuehrt der Speicher nicht. Der Eintrag geht
+   * darum durch denselben Weg wie jedes andere Ereignis hier, naemlich die
+   * Liste in `store.audit`; die verkettete Kette ist die der Datenbank.
+   */
+  async createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project> {
+    if (!context.actor.id || (context.actor.type ?? "user") !== "user") throw new MissingProjectActorError();
+    const taken = listProjects(context.organizationId).some((entry) => entry.slug === input.slug);
+    if (taken) throw new ProjectSlugTakenError(input.slug);
+    return createProjectForOrganization({
+      id: `prj_${input.slug}`,
+      organizationId: context.organizationId,
+      name: input.name,
+      slug: input.slug,
+      region: input.region,
+      environment: FIXED_ENVIRONMENTS[0],
+      status: "provisioning",
+    });
   }
 
   async createChangeSet(context: ControlPlaneContext, input: CreateChangeSetInput) {

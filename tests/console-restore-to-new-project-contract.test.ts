@@ -393,25 +393,43 @@ describe("console restore to new project contract", () => {
   // Glied 3: die zweite Umgebung                                        //
   // ------------------------------------------------------------------ //
 
-  it("finds exactly one place that inserts an environment, and no verb but GET over HTTP", async () => {
+  it("finds the two places that insert an environment, neither of them for an existing project", async () => {
+    // Bis 2.146 war es eine Stelle, und der Fall hiess so. Seit 2.147 legt das
+    // Anlegen eines Projekts die drei festen Umgebungen mit an, also sind es
+    // zwei. Die Aussage dieser Seite haelt trotzdem, und zwar aus einem
+    // schaerferen Grund: Beide Stellen gelten fuer ein **neues** Projekt. Ein
+    // bestehendes Projekt bekommt auf keinem Weg eine zusaetzliche Umgebung,
+    // und genau die braeuchte eine Wiederherstellung.
     const inserting: string[] = [];
     for (const file of await productFiles()) {
       if (/INSERT\s+INTO\s+project_environments/i.test(await code(file))) inserting.push(file);
     }
-    expect(inserting).toEqual(["lib/server/tenancy-postgres.ts"]);
+    expect(inserting.sort()).toEqual(["lib/server/db/repositories.ts", "lib/server/tenancy-postgres.ts"]);
     expect(await source("lib/server/tenancy-postgres.ts"))
       .toContain('[organization.id, project.id, project.environment ?? "development", `pending:${project.id}`]');
+    // Die zweite Stelle nimmt nur eine wartende Marke an, und sie weigert sich
+    // gegen alles andere. Eine Umgebung entsteht damit nie gebunden.
+    const repositories = await source("lib/server/db/repositories.ts");
+    expect(repositories).toContain("async createPending(");
+    expect(repositories).toContain('if (!/^pending:/i.test(databaseInstanceRef))');
+    // Und sie laeuft nur beim Anlegen eines Projekts, nicht fuer ein
+    // bestehendes: Der einzige Aufrufer ist `createProject`.
+    const controlPlane = await source("lib/server/control-plane/postgres.ts");
+    expect([...controlPlane.matchAll(/environments\.createPending\(/g)]).toHaveLength(1);
+    expect(controlPlane).toContain("`pending:${project.id}`");
 
-    for (const route of [
-      "app/api/v1/projects/route.ts",
-      "app/api/v1/projects/[projectId]/environments/route.ts",
-    ]) {
-      const verbs = [...(await code(route)).matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)]
-        .map((match) => match[1]);
-      expect(verbs, route).toEqual(["GET"]);
-    }
+    // Die Route ueber Projekte kann seit 2.147 anlegen; die Route ueber
+    // Umgebungen kennt weiterhin nur GET, und genau das ist hier der Punkt.
+    const projectVerbs = [...(await code("app/api/v1/projects/route.ts"))
+      .matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map((match) => match[1]);
+    expect(projectVerbs.sort()).toEqual(["GET", "POST"]);
+    const environmentVerbs = [...(await code("app/api/v1/projects/[projectId]/environments/route.ts"))
+      .matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map((match) => match[1]);
+    expect(environmentVerbs).toEqual(["GET"]);
     expect(RESTORE_CHAIN_TEXTS.new_environment.finding)
-      .toContain("Die Route über Projekte und die Route über Umgebungen kennen beide nur GET");
+      .toContain("die Route über Umgebungen kennt weiterhin nur GET");
+    expect(RESTORE_CHAIN_TEXTS.new_environment.finding)
+      .toContain("Ein bestehendes Projekt bekommt auf keinem Weg eine zusätzliche Umgebung");
   });
 
   // ------------------------------------------------------------------ //
