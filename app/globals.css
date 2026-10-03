@@ -1287,3 +1287,27 @@ input[type="checkbox"], input[type="radio"] {
   width: 8px; height: 8px;
 }
 .card-head .table-select > svg { color: var(--qkern-text-muted); pointer-events: none; flex: 0 0 auto; }
+
+/* 2.133: Auswahlfelder der Konsole zeichnen ihren eigenen Pfeil.
+   Der Befund: `.settings-form select` bekam Hoehe, Radius und Schrift des
+   Umbaus, aber nie `appearance: none`. Das Feld behielt darum die Bedienelemente
+   des Betriebssystems, also den eckigen grauen Pfeil von Windows neben einer
+   abgerundeten Flaeche. Daneben steht in derselben Karte eine Pille mit einem
+   Lucide-Chevron; das passt nicht zusammen, und genau das meint "sieht aus wie
+   Windows 98".
+   Der Pfeil kommt als Hintergrundbild und nicht aus `::after`, weil ein
+   `select` keine Pseudoelemente traegt. Er ist in derselben Form gezeichnet wie
+   das Lucide-Chevron daneben: Strichstaerke 2, runde Enden, 45 Grad.
+   Die Farbe steht fest statt als Variable, weil ein Hintergrundbild keine
+   CSS-Variable lesen kann; das gewaehlte Grau traegt auf heller und auf dunkler
+   Flaeche. */
+.settings-form select, .automation-fields select, .column-draft .draft-fields select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+}
+/* Das Textfeld daneben traegt dieselbe Flaeche wie das Auswahlfeld, sonst
+   stehen in einer Zeile zwei verschiedene Hintergruende. */
+.settings-form input, .settings-form select { background-color: var(--qkern-surface); }
