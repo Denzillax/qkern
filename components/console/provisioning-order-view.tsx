@@ -42,8 +42,15 @@ import {
  * Funktion, die sie zum Auftrag befragen darf, gibt kein Feld der Bindung
  * heraus. Die Seite laesst die Werte also nicht weg, sie bekommt sie nie.
  *
- * Nur lesend: ein GET, kein Schreibverb, kein Eingabefeld, kein Knopf ausser
- * dem zum Neuladen.
+ * Bis 2.152 nur lesend. Seit 2.153 steht hier ein zweiter Knopf, und zwar aus
+ * einem Grund, den es vorher nicht gab: Seit 2.147 legt die Console Projekte
+ * an, und deren Umgebungen warten danach auf eine Datenbank. Ohne diesen Knopf
+ * gaebe es in der ganzen Oberflaeche keinen Weg aus dem Zustand heraus. Die
+ * Route dafuer ist aelter als die Seite und traegt ein eigenes Recht.
+ *
+ * Was der Knopf **nicht** tut, sagt die Seite daneben: Er reiht einen Auftrag
+ * ein. Die Route antwortet ausdruecklich mit `executed: false`, und ohne einen
+ * laufenden Provisionierer bleibt der Auftrag stehen.
  */
 type Environment = "development" | "staging" | "production";
 
@@ -121,6 +128,30 @@ export function ProvisioningOrderView({ projectId, environment, initialState }: 
     return () => { request.current?.abort(); };
   }, [load]);
 
+  // Die Bestellung (2.153). Sie reiht ein; ausgefuehrt wird spaeter und
+  // woanders, darum nennt die Rueckmeldung den Unterschied.
+  const [ordering, setOrdering] = useState(false);
+  const [order, setOrder] = useState<"done" | "already" | "refused" | null>(null);
+  async function requestProvisioning() {
+    setOrdering(true);
+    setOrder(null);
+    try {
+      const answer = await fetch(
+        `/api/v1/projects/${projectId}/environments/${environment}/provisioning`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      const payload = await answer.json().catch(() => ({})) as { data?: { idempotent?: boolean }; error?: string };
+      if (answer.status === 202) setOrder("done");
+      else if (answer.status === 200 && payload.data?.idempotent) setOrder("already");
+      else { setOrder("refused"); setMessage(typeof payload.error === "string" ? payload.error : ""); }
+    } catch {
+      setOrder("refused");
+    } finally {
+      setOrdering(false);
+      await load();
+    }
+  }
+
   const loading = state === "loading";
   const reload = <button className="secondary-button" onClick={() => void load()} disabled={loading}>
     <RefreshCw size={14}/> <StableLabel current={loading ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/>
@@ -157,7 +188,17 @@ export function ProvisioningOrderView({ projectId, environment, initialState }: 
       <p className="muted">{t(PROVISIONING_ORDER_TEXTS.jobMeaning)}</p>
 
       {loading && <p className="muted">{t("Der Auftrag wird gelesen…")}</p>}
-      {state === "noJob" && <p className="muted">{t(PROVISIONING_ORDER_STATES.noJob)}</p>}
+      {state === "noJob" && <>
+        <p className="muted">{t(PROVISIONING_ORDER_STATES.noJob)}</p>
+        <p className="muted">{t(PROVISIONING_ORDER_STATES.orderInvite)}</p>
+        <div><button className="button small" onClick={() => void requestProvisioning()} disabled={ordering}>
+          <Send size={14}/> <StableLabel current={ordering ? t("Wird bestellt…") : t("Bereitstellung bestellen")}
+            variants={tAll("Wird bestellt…", "Bereitstellung bestellen")}/>
+        </button></div>
+      </>}
+      {order === "done" && <p className="secure">{t(PROVISIONING_ORDER_STATES.orderDone)}</p>}
+      {order === "already" && <p className="muted">{t(PROVISIONING_ORDER_STATES.orderAlready)}</p>}
+      {order === "refused" && <p className="risk medium">{t(PROVISIONING_ORDER_STATES.orderRefused)}{message ? ` ${message}` : ""}</p>}
       {state === "unavailable" && <p className="muted">{t(PROVISIONING_ORDER_STATES.unavailable)}</p>}
       {state === "notReady" && <p className="risk medium">{t(PROVISIONING_ORDER_STATES.notReady)}</p>}
       {state === "error" && <p className="muted">{t(PROVISIONING_ORDER_STATES.failed)}{message ? ` ${message}` : ""}</p>}

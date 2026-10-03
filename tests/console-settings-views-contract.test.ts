@@ -104,16 +104,37 @@ describe("console settings views contract", () => {
   });
 
   it("only reads and never writes", async () => {
-    for (const view of VIEWS) {
+    // Seit 2.153 ist eine der drei Seiten nicht mehr nur lesend, und das ist
+    // keine Aufweichung, sondern eine Folge: Mit 2.147 legt die Console
+    // Projekte an, deren Umgebungen danach auf eine Datenbank warten, und ohne
+    // den Knopf auf Compute und Disk gaebe es in der ganzen Oberflaeche keinen
+    // Weg aus dem Zustand. Die Route dafuer ist aelter als die Seite und traegt
+    // ein eigenes Recht. Was dieser Knopf verspricht und was nicht, haelt
+    // `console-provisioning-order-contract` fest; die Zusage ist also nicht
+    // verschwunden, sie ist umgezogen. Die beiden anderen Seiten lesen weiter
+    // nur, und genau das prueft diese Liste.
+    const readOnly = VIEWS.filter((view) => view !== COMPUTE_VIEW);
+    expect(readOnly.length, "die Ausnahme deckt mehr als eine Seite").toBe(VIEWS.length - 1);
+    for (const view of readOnly) {
       const src = await source(view);
       expect(src, view).not.toMatch(/method:\s*["'](?:POST|PUT|PATCH|DELETE)["']/i);
       expect(src, view).not.toContain("<input");
       expect(src, view).not.toContain("<form");
+    }
+    for (const view of VIEWS) {
+      const src = await source(view);
       // Jede Ansicht bricht eine alte Ladung ab und hat genau einen Knopf.
       expect(src, view).toContain("AbortController");
       expect(src, view).toContain("StableLabel");
       expect(src, view).toContain('tAll("Lädt…", "Neu laden")');
     }
+    // Und die eine Ausnahme schreibt nur dorthin, wo es eine Route gibt.
+    const compute = await source(COMPUTE_VIEW);
+    expect(compute).toMatch(/method: "POST"/);
+    expect(compute, "schreibt an eine andere Stelle als die Provisionierung")
+      .toMatch(/environments\/\$\{environment\}\/provisioning/);
+    expect((compute.match(/method: "(?:POST|PUT|PATCH|DELETE)"/g) ?? []).length,
+      "mehr als ein Schreibweg auf dieser Seite").toBe(1);
     // Die Darstellung laeuft ueber console-display, nicht ueber Intl.
     for (const view of VIEWS) {
       const src = await source(view);
@@ -257,8 +278,12 @@ describe("console settings views contract", () => {
 
   it("reads the provisioning route and nothing else", async () => {
     const src = await code(COMPUTE_VIEW);
-    const urls = [...src.matchAll(/`\/api\/v1\/[^`]*`/g)].map((match) => match[0]);
-    expect(urls).toEqual(["`/api/v1/projects/${projectId}/environments/${environment}/provisioning`"]);
+    // Die Menge der Ziele, nicht die Zahl der Fundstellen: Seit 2.153 steht
+    // dieselbe Adresse zweimal da, einmal zum Lesen und einmal zum Bestellen.
+    // Die Zusage ist, dass diese Seite mit genau einer Route spricht, und die
+    // haelt weiter.
+    const urls = new Set([...src.matchAll(/`\/api\/v1\/[^`]*`/g)].map((match) => match[0]));
+    expect([...urls]).toEqual(["`/api/v1/projects/${projectId}/environments/${environment}/provisioning`"]);
     expect(await exists("app/api/v1/projects/[projectId]/environments/[environment]/provisioning/route.ts"))
       .toBe(true);
   });

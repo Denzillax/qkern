@@ -204,6 +204,33 @@ describe("provider E2E evidence verification", () => {
       .rejects.toBeInstanceOf(ProviderE2EEvidenceUnavailableError);
   });
 
+  it("keeps the step of the reader instead of replacing it", async () => {
+    // Der Pruefer fing bis 2.153 jeden Fehler und warf eine neue Meldung ohne
+    // Schritt. Damit ging auch der Schritt des Lesers verloren, und eine
+    // fehlende Datei sah aus wie eine falsche Signatur. Gefunden hat das der
+    // Fall auf dem Ubuntu-Runner, der den Schritt verlangte und `unknown` bekam.
+    const failing = {
+      read: async () => { throw new ProviderE2EEvidenceUnavailableError("open"); },
+    };
+    const valid = verifierFor();
+    await expect(new ProviderE2EEvidenceVerifier(
+      failing,
+      provider(valid.keys.keyFile),
+      valid.keys.publicKeySha256,
+      PINS,
+      () => NOW,
+    ).verify()).rejects.toMatchObject({ step: "open" });
+
+    // Und wo der Leser nichts sagt, nennt der Pruefer seinen eigenen Schritt.
+    await expect(new ProviderE2EEvidenceVerifier(
+      provider(Buffer.from(JSON.stringify(valid.signed))),
+      provider(valid.keys.keyFile),
+      "8".repeat(64),
+      PINS,
+      () => NOW,
+    ).verify()).rejects.toMatchObject({ step: "key" });
+  });
+
   it("rejects incomplete scenarios, extra fields and duplicate JSON keys", async () => {
     await expect(verifierFor(evidence({
       scenarios: {

@@ -193,6 +193,15 @@ export const PROVISIONING_ORDER_STATES = {
   unavailable: "Der Dienst für die Provisionierung antwortet gerade nicht. Das ist ein Befund über diese Abfrage, nicht über Ihre Umgebung, und geschätzt wird hier nichts.",
   notReady: "Der Auftrag steht in einer Form, die QKERN nicht als gültig annimmt, und wird darum nicht angezeigt. Lieber keine Auskunft als eine, die auf einer ungeprüften Zeile beruht.",
   failed: "Der Auftrag konnte nicht gelesen werden.",
+  /**
+   * Die Bestellung (2.153). Sie reiht ein und fuehrt nichts aus, und genau das
+   * steht hier: Die Route antwortet ausdruecklich mit `executed: false`, und
+   * ohne einen laufenden Provisionierer bleibt der Auftrag stehen.
+   */
+  orderInvite: "Diese Umgebung wartet auf eine Datenbank. Bestellen heisst hier: QKERN reiht einen Auftrag ein. Ausgeführt wird er von einem Provisionierer, und ohne einen laufenden Prozess bleibt der Auftrag einfach stehen.",
+  orderDone: "Der Auftrag ist eingereiht. Ausgeführt ist er damit nicht; sobald ein Provisionierer ihn nimmt, bewegt sich der Zustand oben.",
+  orderAlready: "Für diese Umgebung stand schon ein Auftrag. Es wurde kein zweiter angelegt.",
+  orderRefused: "Die Bestellung wurde abgelehnt.",
 } as const;
 
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */

@@ -102,6 +102,14 @@ export type ProviderE2EEvidenceReadiness = Readonly<{
   policy: typeof PROVIDER_E2E_EVIDENCE_POLICY;
 }>;
 
+/**
+ * Die Schritte, an denen es scheitern kann. Die ersten vier gehoeren dem Leser
+ * der Datei, die anderen dem Pruefer dahinter.
+ */
+export type ProviderE2EEvidenceStep =
+  | "open" | "size" | "read" | "aborted"
+  | "envelope" | "key" | "signature" | "readiness" | "unknown";
+
 export class ProviderE2EEvidenceUnavailableError extends Error {
   readonly code = "PROVIDER_E2E_EVIDENCE_UNAVAILABLE";
 
@@ -119,7 +127,7 @@ export class ProviderE2EEvidenceUnavailableError extends Error {
    * duerfen nicht in eine Meldung, die irgendwo landet. Ein Schritt ist genug,
    * um beim naechsten Mal zu wissen, wo zu suchen ist.
    */
-  constructor(readonly step: "open" | "size" | "read" | "aborted" | "unknown" = "unknown") {
+  constructor(readonly step: ProviderE2EEvidenceStep = "unknown") {
     super("Provider E2E evidence is unavailable.");
     this.name = "ProviderE2EEvidenceUnavailableError";
   }
@@ -232,14 +240,21 @@ export class ProviderE2EEvidenceVerifier {
   }
 
   async verify(signal?: AbortSignal): Promise<ProviderE2EEvidenceReadiness> {
+    // Der Schritt wandert mit (2.153). Vorher fing dieser Block jeden Fehler und
+    // warf eine neue Meldung ohne Schritt, und damit ging auch der Schritt des
+    // Lesers verloren: Eine fehlende Datei und eine falsche Signatur sahen von
+    // aussen gleich aus. Gefunden hat das der Fall, der den Schritt verlangt,
+    // und nicht das Lesen des Codes.
+    let step: ProviderE2EEvidenceStep = "envelope";
     try {
       const [evidenceBytes, keyBytes] = await Promise.all([
         this.evidenceProvider.read({ signal }),
         this.keyProvider.read({ signal }),
       ]);
-      if (signal?.aborted) throw new Error("Aborted");
+      if (signal?.aborted) { step = "aborted"; throw new Error("Aborted"); }
       const envelope = parseEvidenceEnvelope(evidenceBytes);
       const verifierKey = parseVerifierKey(keyBytes);
+      step = "key";
       if (envelope.keyId !== verifierKey.keyId) throw new Error("Key mismatch");
 
       const rawPublicKey = decodeBase64Url(verifierKey.publicKey, 32);
@@ -254,6 +269,7 @@ export class ProviderE2EEvidenceVerifier {
       if (publicKey.asymmetricKeyType !== "ed25519") {
         throw new Error("Invalid public key");
       }
+      step = "signature";
       const signature = decodeBase64Url(envelope.signature, 64);
       if (!verifySignature(
         null,
@@ -263,9 +279,14 @@ export class ProviderE2EEvidenceVerifier {
       )) {
         throw new Error("Invalid signature");
       }
+      step = "readiness";
       return readiness(envelope.evidence, this.expected, this.now());
-    } catch {
-      throw new ProviderE2EEvidenceUnavailableError();
+    } catch (cause) {
+      // Der Leser weiss es genauer als dieser Block: Wenn er schon einen
+      // Schritt genannt hat, bleibt seiner stehen.
+      throw cause instanceof ProviderE2EEvidenceUnavailableError
+        ? cause
+        : new ProviderE2EEvidenceUnavailableError(step);
     }
   }
 }
