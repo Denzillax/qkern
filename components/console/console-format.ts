@@ -56,3 +56,25 @@ export function formatBytes(value: number): string {
 export function formatBucketMoment(value: string, bucket: "hour" | "day"): string {
   return formatMoment(value, bucket === "hour" ? "dateTime" : "dateShort");
 }
+
+/**
+ * Ein Geheimnis in der Form `qk_service_••••••••7Jk9` (2.137).
+ *
+ * **Warum ueberhaupt maskiert.** Ein Service Key steht nur einmal auf dem
+ * Schirm, und genau dann oft in einem geteilten Bildschirm oder vor einer
+ * Kamera. Die Maske zeigt, was zum Wiedererkennen reicht: welcher Art der
+ * Key ist und welche vier Zeichen am Ende stehen. Kopieren braucht das Auge
+ * nicht, der Knopf nimmt den ganzen Wert.
+ *
+ * **Warum acht Punkte und nicht so viele wie Zeichen.** Die Laenge eines
+ * Geheimnisses ist selbst eine Auskunft. Acht Punkte sagen "hier fehlt
+ * etwas" und nicht "hier fehlen 39 Zeichen".
+ */
+export function maskSecret(value: string): string {
+  // `qk_<art>_<43 Zeichen>`: Die Art bleibt lesbar, sie ist kein Geheimnis.
+  const kind = /^(qk_(?:public|service)_)(.+)$/.exec(value);
+  const [visible, body] = kind === null ? ["", value] : [kind[1], kind[2]];
+  // Zu kurz zum Teilen: dann gar nichts zeigen, nicht die Haelfte.
+  if (body.length < 8) return `${visible}${"•".repeat(8)}`;
+  return `${visible}${"•".repeat(8)}${body.slice(-4)}`;
+}

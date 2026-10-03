@@ -372,7 +372,7 @@ export function LogExplorerView({ projectId, environment, initialState }: { proj
           <Save size={14}/> {t("Suche merken")}
         </button>
       </div></div>
-      {saved.length === 0 && <p className="muted">{t("Hier ist noch keine Suche gemerkt.")}</p>}
+      {saved.length === 0 && <p className="muted">{t("Hier ist noch keine Suche gemerkt. Eine gemerkte Suche hält Quelle, Fenster und Filter fest, damit dieselbe Frage nicht jedes Mal neu zusammengeklickt werden muss.")}</p>}
       {saved.map((entry) => <div className="log-row" key={entry.name}>
         <span>{entry.name}</span>
         <span className="muted">{entry.draft.sources.map((source) =>

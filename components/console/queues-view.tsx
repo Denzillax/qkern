@@ -6,6 +6,7 @@ import { t } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { tAll } from "@/components/console/console-i18n";
+import { InlineEmptyState } from "@/components/console/console-parts";
 
 /**
  * Queues in der Console (2.6). Das Backend ist seit 1.88 zertifiziert
@@ -193,7 +194,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("PROJECT QUEUES")} · {environment.toUpperCase()}</span><h3>{t("Queues des Projekts")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="secondary-button" onClick={() => void searchTrace(null)}><Route size={14}/> {t("Spur suchen")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neue Queue")}</button></div></div>
       {message && <p className="muted">{message}</p>}
-      {queues.length === 0 && <p className="muted">{t("Noch keine Queues. Eine Queue nimmt Nachrichten an, vergibt Leases an Worker und legt fehlgeschlagene Nachrichten nach dem letzten Versuch als Dead Letter ab.")}</p>}
+      {queues.length === 0 && <InlineEmptyState text={t("Noch keine Queue in dieser Umgebung. Eine Queue nimmt Nachrichten an, vergibt Leases an Worker und legt fehlgeschlagene Nachrichten nach dem letzten Versuch als Dead Letter ab.")} action={<button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Erste Queue anlegen")}</button>}/>}
       {queues.map((queue) => { const s = status[queue.name]; return <div key={queue.id}>
         <div className="bucket-row"><span className="bucket-icon"><Inbox size={16}/></span>
           <div><strong>{queue.name}</strong><small>{queue.enqueuePolicy === "service" ? t("nur Service Key") : t("angemeldete Nutzer")} · {queue.maxAttempts} {t("Versuche")} · {t("Lease")} {queue.visibilityTimeoutSeconds} s · {t("Retry")} {queue.retryBaseSeconds}–{queue.retryMaxSeconds} s{queue.dedupeWindowSeconds ? ` · ${t("Dedupe")} ${queue.dedupeWindowSeconds} s` : ""}</small></div>
@@ -203,7 +204,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
           <button className="plain-button" onClick={() => void showTrace(queue.name, null)}><Route size={13}/> {t("Spur")}</button>
         </div>
         {open === queue.name && <div className="detail-list">
-          {deadLetters.length === 0 ? <div><span>{t("Keine Dead Letters")}</span><strong className="muted">–</strong></div> : deadLetters.map((letter) => <div key={letter.id}>
+          {deadLetters.length === 0 ? <div><span>{t("Keine Dead Letters in dieser Queue. Eine Nachricht landet hier erst, wenn sie auch den letzten Versuch nicht überlebt hat; eine leere Liste heisst, dass bisher jede durchkam.")}</span><strong className="muted">–</strong></div> : deadLetters.map((letter) => <div key={letter.id}>
             <span><code>{letter.id.slice(0, 8)}</code><small>{t("Versuch")} {formatNumber(letter.attempt)} · {letter.failureCode} · {formatMoment(letter.deadLetteredAt)}</small></span>
             <button className="plain-button" disabled={busy === letter.id} onClick={() => void showTrace(letter.queue, letter.id)}><Route size={13}/> {t("Spur")}</button>
             {letter.replayed ? <strong className="muted">{t("wieder eingereiht")}</strong> : <button className="plain-button" disabled={busy === letter.id} onClick={() => void replay(letter)}><RotateCcw size={13}/> {t("Wieder einreihen")}</button>}
@@ -217,7 +218,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
         <div><button className="secondary-button" onClick={() => setSearch(null)}>{t("Schliessen")}</button></div>
       </div>
       <div className="detail-list">
-        {search.messages.length === 0 ? <div><span>{t("Keine Nachricht zu dieser Spur in dieser Umgebung")}</span><strong className="muted">–</strong></div>
+        {search.messages.length === 0 ? <div><span>{t("Keine Nachricht zu dieser Spur in dieser Umgebung")}{" "}{t("Eine Spur läuft nie über eine Umgebung hinaus, also kann dieselbe Id anderswo Treffer haben.")}</span><strong className="muted">–</strong></div>
           : search.messages.map((hit) => <div key={hit.messageId}>
             <span>
               <strong>{hit.queue}</strong>

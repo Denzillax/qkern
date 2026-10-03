@@ -151,7 +151,7 @@ export function AuthSeriesView({ projectId, environment, initialState }: { proje
       <p className="muted">{t(AUTH_SERIES_CANNOT_SHOW)}</p>
       <p className="muted">{windowText} {series && <>{formatBucketMoment(series.windowStart, bucket)} – {formatBucketMoment(series.windowEnd, bucket)}</>}</p>
       {series?.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Reihe zeigt nicht jeden Abschnitt des Fensters.")}</p>}
-      {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
+      {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}{" "}{t("Das ist eine Aussage über das gewählte Fenster, nicht über die Anmeldung überhaupt; ein längeres Fenster kann Zeilen zeigen.")}</p>}
 
       {!chart.empty && <div className="usage-series-chart">
         <svg role="img" aria-label={label} viewBox={`0 0 ${chart.width} ${chart.height}`} width={chart.width} height={chart.height}>
@@ -188,7 +188,7 @@ export function AuthSeriesView({ projectId, environment, initialState }: { proje
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("NACH HANDLUNG")}</span><h3>{t("Was im Fenster protokolliert wurde")}</h3></div><Fingerprint size={18}/></div>
-      {used.length === 0 && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
+      {used.length === 0 && <p className="muted">{t("Keine Ereignisse im Zeitraum")}{" "}{t("Das ist eine Aussage über das gewählte Fenster, nicht über die Anmeldung überhaupt; ein längeres Fenster kann Zeilen zeigen.")}</p>}
       {used.length > 0 && <div className="usage-series-table">
         <div className="log-row log-header"><span>{t("Handlung")}</span><span>{t("Anzahl")}</span></div>
         {used.map((id) => <div className="log-row" key={id}>

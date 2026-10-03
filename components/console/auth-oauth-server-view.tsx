@@ -330,7 +330,7 @@ export function AuthOAuthServerView({ projectId, environment, initialState }: { 
         <small>{t("Ohne hinterlegten Client wird kein Code ausgegeben und kein Token eingelöst.")}</small>
       </div>
 
-      {data.clients.length === 0 && <p className="muted">{t("Kein OAuth-Client hinterlegt.")}</p>}
+      {data.clients.length === 0 && <p className="muted">{t("Kein OAuth-Client hinterlegt.")}{" "}{t("Ein Client ist die fremde Anwendung, der ein Nutzer Zugriff auf seine Daten in deiner Anwendung geben kann. Das Formular darüber legt den ersten an.")}</p>}
       {data.clients.map((client) => <div className="console-card preview-card" key={client.id}>
         <div className="card-head">
           <div><span>{t("CLIENT")}</span><h3>{client.name}</h3></div>

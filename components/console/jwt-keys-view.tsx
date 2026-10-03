@@ -1,14 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, KeySquare, RefreshCw } from "lucide-react";
+import { KeySquare, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { CopyValue } from "@/components/console/copy-value";
+import { InlineEmptyState } from "@/components/console/console-parts";
 
 /**
  * JWT-Schlüssel in der Console (2.22): die öffentlichen Schlüssel, mit denen
  * Project Auth seine Tokens signiert, gelesen aus dem JWKS-Endpunkt, den
  * auch jede App zum Prüfen liest. Nur lesend; eine Rotation über die
  * Console gibt es nicht, sie geschieht in der Konfiguration des Auth-Dienstes.
+ *
+ * **Oeffentlich, nicht geheim (2.137).** Alles auf dieser Seite ist ein
+ * oeffentlicher Schluessel aus dem JWKS; jede App im Netz liest denselben
+ * Endpunkt. Darum wird hier nichts maskiert, und darum steht hier auch kein
+ * Knopf zum Rotieren: Die Route liest nur, ein `POST` oder `DELETE` gibt es
+ * nicht. Die geheimen Keys des Projekts stehen unter API-Keys.
  */
 type Environment = "development" | "staging" | "production";
 type Jwk = { kid: string; kty: string; crv?: string; alg?: string; use?: string; x?: string };
@@ -40,18 +48,20 @@ export function JwtKeysView({ projectId, environment, initialState }: { projectI
     <article className="console-card auth-overview">
       <div><span>{t("SCHLÜSSEL")}</span><strong>{keys.length}</strong><small>{t("im JWKS veröffentlicht")}</small></div>
       <div><span>{t("VERFAHREN")}</span><strong>{keys.length > 0 ? (keys[0].alg ?? "EdDSA") : "–"}</strong><small>{keys.length > 0 ? `${keys[0].kty}${keys[0].crv ? ` · ${keys[0].crv}` : ""}` : t("keine Schlüssel")}</small></div>
+      {/* Kein Knopf, weil keine Route. Der Satz sagt, wo es stattdessen geschieht. */}
       <div><span>{t("ROTATION")}</span><strong>–</strong><small>{t("nicht über die Console")}</small></div>
     </article>
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("PROJECT AUTH")} · {environment.toUpperCase()}</span><h3>{t("JWT-Schlüssel")}</h3></div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button></div>
-      {keys.length === 0 && <p className="muted">{t("Das JWKS ist leer. Ohne Schlüssel kann Project Auth keine Tokens ausstellen.")}</p>}
+      {keys.length === 0 && <InlineEmptyState text={t("Das JWKS ist leer. Ohne Schlüssel kann Project Auth keine Tokens ausstellen, und jede Prüfung in deiner App scheitert. Schlüssel kommen aus der Konfiguration des Auth-Dienstes, nicht aus dieser Ansicht.")}/>}
       {keys.map((key) => <div className="bucket-row" key={key.kid}><span className="bucket-icon"><KeySquare size={16}/></span>
         <div><strong>{key.kid}</strong><small>{key.kty}{key.crv ? ` · ${key.crv}` : ""}{key.alg ? ` · ${key.alg}` : ""}{key.use ? ` · ${key.use}` : ""}{key.x ? ` · ${key.x.slice(0, 12)}…` : ""}</small></div>
         <span className="secure">{t("öffentlich")}</span>
       </div>)}
-      <div className="card-head" style={{ marginTop: 16 }}><div><span>JWKS</span><h3>{t("Adresse für deine App")}</h3></div><button className="secondary-button" onClick={() => void navigator.clipboard.writeText(absolute)}><Copy size={14}/> {t("Kopieren")}</button></div>
+      <div className="card-head" style={{ marginTop: 16 }}><div><span>JWKS</span><h3>{t("Adresse für deine App")}</h3></div><CopyValue value={absolute} labels={{ copy: t("Kopieren"), copied: t("Kopiert"), failed: t("Zwischenablage nicht erreichbar") }}/></div>
       <p className="muted"><code>{absolute}</code></p>
       <p className="muted">{t("Welcher Schlüssel gerade signiert, steht im Token-Header (kid); das JWKS führt alle, die noch gültig sind.")}</p>
+      <p className="muted">{t("Diese Schlüssel sind öffentlich: Mit ihnen prüft man eine Signatur, man stellt damit kein Token aus. Die geheimen Keys des Projekts stehen unter API-Keys.")}</p>
     </article>
   </div>;
 }

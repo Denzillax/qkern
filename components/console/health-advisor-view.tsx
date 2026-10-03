@@ -120,7 +120,7 @@ export function HealthAdvisorView({ projectId, environment, initialState }: { pr
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("NUR LESEND")}</span><h3>{t("Dienste dieser Umgebung")}</h3></div><Activity size={18}/></div>
       <div className="log-row log-header"><span>{t("Dienst")}</span><span>{t("Zustand")}</span></div>
-      {subsystems.length === 0 && <p className="muted">{t("Keine Probe hat ein Ergebnis geliefert")}</p>}
+      {subsystems.length === 0 && <p className="muted">{t("Keine Probe hat ein Ergebnis geliefert")}{" "}{t("Das heisst nicht, dass das Projekt gesund ist, sondern dass keine der Proben antworten konnte; was jede Probe braucht, steht in ihrer Zeile.")}</p>}
       {subsystems.map((item) => <div className="log-row" key={item.id}>
         <div>
           <strong>{subsystemTitle(item.id)}</strong> <code>{item.id}</code>
@@ -134,7 +134,7 @@ export function HealthAdvisorView({ projectId, environment, initialState }: { pr
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("OFFEN")}</span><h3>{t("Was nicht geprüft werden konnte")}</h3></div><Stethoscope size={18}/></div>
-      {unchecked.length === 0 && <p className="muted">{t("Jede Probe dieser Seite konnte laufen.")}</p>}
+      {unchecked.length === 0 && <p className="muted">{t("Jede Probe dieser Seite konnte laufen.")}{" "}{t("Hier erscheint eine Zeile, sobald eine Probe nicht an ihre Quelle kommt.")}</p>}
       {unchecked.map((item) => <div className="log-row" key={item.id}>
         <div><strong>{subsystemTitle(item.id)}</strong><p className="muted">{t(item.detail)}</p></div>
         <span className="risk medium">{t("nicht geprüft")}</span>

@@ -206,7 +206,7 @@ export function AuthPoliciesView({ projectId, environment, initialState }: { pro
               {policy.usingExpression !== null && <> · USING <code>{policy.usingExpression}</code></>}
               {policy.checkExpression !== null && <> · WITH CHECK <code>{policy.checkExpression}</code></>}
             </p>)}
-            {table.policies.length === 0 && <p className="muted">{t("Für diese Tabelle gibt es keine Policy.")}</p>}
+            {table.policies.length === 0 && <p className="muted">{t("Für diese Tabelle gibt es keine Policy.")}{" "}{t("Ohne Policy zeigt RLS dieser Rolle keine Zeile; eine Regel entsteht über ein Change Set im SQL Editor und nicht aus dieser Ansicht.")}</p>}
             {table.foreignRolePolicies > 0 && <p className="muted">{table.foreignRolePolicies} {t("Policies nennen nur andere Rollen.")}</p>}
           </div>
           <span className={verdict.tone}>{t(verdict.label)}</span>

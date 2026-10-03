@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Blocks, Plus, RefreshCw, ShieldCheck, Trash2, Webhook, Zap } from "lucide-react";
+import { Blocks, Plus, RefreshCw, ShieldCheck, Webhook, Zap } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { DangerousAction } from "@/components/console/dangerous-action";
+import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
@@ -93,35 +95,35 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
 
   return <div className="module-grid">
     <article className="console-card span-2"><div className="card-head"><div><span>FUNCTIONS · {environment.toUpperCase()}</span><h3>{t("Ausführung in der Sandbox")}</h3></div><button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> {t("Neue Function")}</button></div>
-      {functions.length===0&&<p className="muted">{t("Noch keine Functions. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.")}</p>}
+      {functions.length===0&&<InlineEmptyState text={t("Noch keine Function in dieser Umgebung. Eine Function stellt serverseitige Logik bereit, ohne dass du einen eigenen Server betreiben musst. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.")} action={<button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> {t("Erste Function anlegen")}</button>}/>}
       {functions.map(fn=><div className="bucket-row" key={fn.id}><span className="bucket-icon"><Blocks size={16}/></span>
         <div><strong>{fn.name}</strong><small>{fn.entrypoint} · {fn.memoryMiB} MiB · {fn.timeoutMs} ms · {fn.egressOrigins.length?`${fn.egressOrigins.length} Ausgangsziele (noch nicht ausführbar)`:t("kein Ausgang")}{fn.secretRefs.length?` · ${fn.secretRefs.length} Secret-Referenzen`:""}</small></div>
         <span className={fn.enabled?"secure":"muted"}>{fn.enabled?t("aktiv"):t("pausiert")}</span>
         <button className="plain-button" onClick={()=>void testInvoke(fn)} disabled={!fn.enabled}>{t("Testlauf")}</button>
         <button className="plain-button" onClick={()=>void mutate(`/functions/${fn.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!fn.enabled})})}><StableLabel current={fn.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
-        <button className="icon-button" onClick={()=>{if(window.confirm(`Function ${fn.name} löschen? Image und Grenzen lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.`))void mutate(`/functions/${fn.id}`,{method:"DELETE"});}} aria-label={`${fn.name} löschen`}><Trash2 size={14}/></button></div>)}
+        <DangerousAction label={t("Löschen")} title={`${t("Function löschen")}: ${fn.name}`} consequence={t("Die Function verschwindet samt Image, Grenzen und Secret-Referenzen. Jeder Cron-Job und jeder Aufruf, der auf diesen Namen zeigt, bricht danach.")} confirmName={fn.name} onConfirm={()=>void mutate(`/functions/${fn.id}`,{method:"DELETE"})}/></div>)}
     </article>
     <article className="console-card span-2"><div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><button className="button small" onClick={()=>void createCron()}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div>
       {message&&<p className="muted">{message}</p>}
-      {cron.length===0&&<p className="muted">{t("Noch keine Cron-Jobs. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")}</p>}
+      {cron.length===0&&<InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={()=>void createCron()}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
       {cron.map(job=><div className="bucket-row" key={job.id}><span className="bucket-icon"><Zap size={16}/></span>
         <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone??"UTC"} → {job.queue} · {job.lastDispatchedAt?`zuletzt ${formatMoment(job.lastDispatchedAt)}`:t("noch nie eingereiht")}</small></div>
         <span className={job.enabled?"secure":"muted"}>{job.enabled?t("aktiv"):t("pausiert")}</span>
         <button className="plain-button" onClick={()=>void mutate(`/cron/${job.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!job.enabled})})}><StableLabel current={job.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
-        <button className="icon-button" onClick={()=>{if(window.confirm(`Cron-Job ${job.name} löschen? Ausdruck und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.`))void mutate(`/cron/${job.id}`,{method:"DELETE"});}} aria-label={`${job.name} löschen`}><Trash2 size={14}/></button></div>)}
+        <DangerousAction label={t("Löschen")} title={`${t("Cron-Job löschen")}: ${job.name}`} consequence={t("Der Job verschwindet samt Ausdruck und Queue. Ab dann wird zu diesen Terminen nichts mehr eingereiht, und das fällt erst auf, wenn der Termin verstreicht.")} confirmName={job.name} onConfirm={()=>void mutate(`/cron/${job.id}`,{method:"DELETE"})}/></div>)}
     </article>
     <article className="console-card"><div className="card-head"><div><span>{t("ZUSTELLVERTRAG")}</span><h3>{t("Signiert und bestätigt")}</h3></div><ShieldCheck className="secure" size={21}/></div>
       <p className="muted">{t("Jede Zustellung ist mit HMAC-SHA256 über Zeitstempel und Body signiert. Der Empfänger muss 2xx antworten")} <em>{t("und")}</em> {t("den Header")} <code>{"x-qkern-delivery-id"}</code> {t("zurückgeben, sonst zählt der Versuch als fehlgeschlagen und der Server entscheidet über die Wiederholung. Payloads erscheinen hier nie.")}</p></article>
     <article className="console-card span-2"><div className="card-head"><div><span>WEBHOOKS · {environment.toUpperCase()}</span><h3>{t("Ziele für ausgehende Zustellungen")}</h3></div><button className="button small" onClick={()=>void createWebhook()}><Plus size={14}/> {t("Neuer Webhook")}</button></div>
-      {webhooks.length===0&&<p className="muted">{t("Noch keine Webhooks. Ziele müssen exakte öffentliche HTTPS-URLs auf Port 443 sein, ohne Query und Fragment. Dieselbe Regel prüft der Zusteller, also wird ein hier angenommenes Ziel später nicht abgelehnt.")}</p>}
+      {webhooks.length===0&&<InlineEmptyState text={t("Noch kein Webhook in dieser Umgebung. Ein Webhook meldet Ereignisse dieses Projekts an ein Ziel ausserhalb. Ziele müssen exakte öffentliche HTTPS-URLs auf Port 443 sein, ohne Query und Fragment. Dieselbe Regel prüft der Zusteller, also wird ein hier angenommenes Ziel später nicht abgelehnt.")} action={<button className="button small" onClick={()=>void createWebhook()}><Plus size={14}/> {t("Ersten Webhook anlegen")}</button>}/>}
       {webhooks.map(hook=><div key={hook.id}>
         <div className="bucket-row"><span className="bucket-icon"><Webhook size={16}/></span>
           <div><strong>{hook.name}</strong><small>{hook.url} · {hook.eventTypes.join(", ")} · {hook.maxAttempts} Versuche · Schlüssel {hook.signingSecretRef}</small></div>
           <span className={hook.enabled?"secure":"muted"}>{hook.enabled?t("aktiv"):t("pausiert")}</span>
           <button className="plain-button" onClick={()=>void showDeliveries(hook)}><StableLabel current={selected===hook.id?t("Status ausblenden"):t("Zustellstatus")} variants={tAll("Status ausblenden", "Zustellstatus")}/></button>
           <button className="plain-button" onClick={()=>void mutate(`/webhooks/${hook.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!hook.enabled})})}><StableLabel current={hook.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
-          <button className="icon-button" onClick={()=>{if(!hook.enabled&&window.confirm(`Webhook ${hook.name} löschen? Offene Zustellungen verschwinden mit ihm.`))void mutate(`/webhooks/${hook.id}`,{method:"DELETE"});else if(hook.enabled)setMessage(t("Pausiere den Webhook vor dem Löschen; mit ihm verschwinden auch die offenen Zustellungen."));}} aria-label={`${hook.name} löschen`}><Trash2 size={14}/></button></div>
-        {selected===hook.id&&<div className="detail-list">{deliveries.length===0?<div><span>{t("Keine Zustellungen")}</span><strong className="muted">–</strong></div>:deliveries.map(delivery=><div key={delivery.id}><span>{delivery.eventType}<small>Versuch {delivery.attemptCount}{delivery.lastFailureCode?` · ${delivery.lastFailureCode}`:""}</small></span><strong className={delivery.status==="delivered"?"secure":delivery.status==="dead_lettered"?"risk high":""}>{delivery.status}</strong></div>)}</div>}
+          <DangerousAction label={t("Löschen")} title={`${t("Webhook löschen")}: ${hook.name}`} consequence={t("Das Ziel verschwindet, und mit ihm die offenen Zustellungen; sie werden nicht nachgeholt. Ein pausierter Webhook ist die Vorbedingung, damit nicht mitten in einem Versuch gelöscht wird.")} confirmName={hook.name} onConfirm={()=>{if(hook.enabled){setMessage(t("Pausiere den Webhook vor dem Löschen; mit ihm verschwinden auch die offenen Zustellungen."));return;}void mutate(`/webhooks/${hook.id}`,{method:"DELETE"});}}/></div>
+        {selected===hook.id&&<div className="detail-list">{deliveries.length===0?<div><span>{t("Noch keine Zustellung zu diesem Webhook. Sobald ein Ereignis dieses Projekts auf sein Ziel passt, erscheint hier je Versuch eine Zeile mit Ausgang und Fehlercode.")}</span><strong className="muted">–</strong></div>:deliveries.map(delivery=><div key={delivery.id}><span>{delivery.eventType}<small>Versuch {delivery.attemptCount}{delivery.lastFailureCode?` · ${delivery.lastFailureCode}`:""}</small></span><strong className={delivery.status==="delivered"?"secure":delivery.status==="dead_lettered"?"risk high":""}>{delivery.status}</strong></div>)}</div>}
       </div>)}
     </article>
   </div>;

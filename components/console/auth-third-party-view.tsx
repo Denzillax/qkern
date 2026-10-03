@@ -289,7 +289,7 @@ export function AuthThirdPartyView({ projectId, environment, initialState }: { p
         <small>{t("Ohne hinterlegten Anbieter wird nichts geholt und nichts geprüft.")}</small>
       </div>
 
-      {data.providers.length === 0 && <p className="muted">{t("Kein fremder Anbieter hinterlegt.")}</p>}
+      {data.providers.length === 0 && <p className="muted">{t("Kein fremder Anbieter hinterlegt.")}{" "}{t("Ein fremder Anbieter stellt Tokens aus, die dieses Projekt annimmt, ohne dass sich der Nutzer hier anmeldet. Das Formular darüber legt den ersten an.")}</p>}
       {data.providers.map((provider) => <div className="console-card preview-card" key={provider.id}>
         <div className="card-head">
           <div><span>{t("ANBIETER")}</span><h3>{provider.name}</h3></div>

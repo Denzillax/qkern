@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, KeyRound, Plug, Plus, RefreshCw, ShieldAlert, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Plug, Plus, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
+import { maskSecret } from "@/components/console/console-format";
+import { CopyValue } from "@/components/console/copy-value";
+import { DangerousAction } from "@/components/console/dangerous-action";
+import { InlineEmptyState } from "@/components/console/console-parts";
 import { StableLabel } from "@/components/stable-label";
 import {
   S3_ACCESS_ENDPOINT,
@@ -63,6 +67,9 @@ export function S3AccessView({ projectId, environment, initialState }: { project
   // Genau einmal gezeigt: Der Wert lebt in diesem Zustand und wird nie neu
   // geladen. Wer die Seite verlässt, sieht ihn nicht wieder.
   const [issued, setIssued] = useState<Issued | null>(null);
+  // Das Secret steht maskiert da; Anzeigen ist eine bewusste Handlung (2.137).
+  const [revealed, setRevealed] = useState(false);
+  const copyLabels = { copy: t("Kopieren"), copied: t("Kopiert"), failed: t("Zwischenablage nicht erreichbar") };
   // Die Adresse des Endpunkts ist die Adresse dieser Console plus /s3; sie
   // steht erst im Browser fest, darum nach dem ersten Rendern.
   const [endpointUrl, setEndpointUrl] = useState("");
@@ -135,8 +142,9 @@ export function S3AccessView({ projectId, environment, initialState }: { project
     } finally { setSubmitting(false); }
   }
 
+  // 2.137: Der Widerruf laeuft jetzt ueber `DangerousAction`, die den Namen
+  // abtippen laesst. `window.confirm` sah aus wie jeder andere Dialog.
   async function revoke(keyId: string) {
-    if (!window.confirm(t("Dieses Schlüsselpaar widerrufen? Der Widerruf wirkt sofort."))) return;
     const response = await fetch(`${base}/s3-keys/${keyId}`, { method: "DELETE" });
     if (response.ok) await load();
     else setMessage(t("Das Schlüsselpaar konnte nicht widerrufen werden."));
@@ -227,12 +235,17 @@ export function S3AccessView({ projectId, environment, initialState }: { project
       {issued && <div className="one-time-secret">
         <div>
           <strong>{t(S3_ACCESS_ONE_TIME)}</strong>
+          {/* Die Access Key Id ist kein Geheimnis und steht offen; das Secret nicht. */}
           <code>{issued.accessKeyId}</code>
-          <code>{issued.secret}</code>
+          <code>{revealed ? issued.secret : maskSecret(issued.secret)}</code>
           {!issued.verifiable && <p className="risk high"><ShieldAlert size={14}/> {t(S3_ACCESS_NO_SERVER_KEY)}</p>}
         </div>
-        <button onClick={() => void navigator.clipboard.writeText(issued.secret)}><Copy size={14}/> {t("Kopieren")}</button>
-        <button onClick={() => setIssued(null)} aria-label={t("Schliessen")}><X size={14}/></button>
+        <button className="secondary-button" onClick={() => setRevealed(!revealed)}>
+          {revealed ? <EyeOff size={14}/> : <Eye size={14}/>}
+          <StableLabel current={revealed ? t("Verbergen") : t("Anzeigen")} variants={tAll("Verbergen", "Anzeigen")}/>
+        </button>
+        <CopyValue value={issued.secret} labels={copyLabels}/>
+        <button onClick={() => { setIssued(null); setRevealed(false); }} aria-label={t("Schliessen")}><X size={14}/></button>
       </div>}
     </article>
 
@@ -249,10 +262,15 @@ export function S3AccessView({ projectId, environment, initialState }: { project
           <span>{key.revokedAt
             ? `${t("widerrufen")} ${formatMoment(key.revokedAt, "date")}`
             : `${t("läuft ab")} ${formatMoment(key.expiresAt, "date")}`}</span>
-          {!key.revokedAt && <button onClick={() => void revoke(key.id)} aria-label={t("Schlüsselpaar widerrufen")}>
-            <Trash2 size={14}/></button>}
+          {!key.revokedAt && <DangerousAction
+            label={t("Widerrufen")}
+            title={`${t("Schlüsselpaar widerrufen")}: ${key.name}`}
+            consequence={t("Der Widerruf wirkt sofort und lässt sich nicht zurücknehmen. Jeder Client, der mit diesem Paar signiert, wird abgewiesen, und dasselbe Secret ist nicht wiederherstellbar.")}
+            confirmName={key.name}
+            onConfirm={() => void revoke(key.id)}
+          />}
         </div>)}
-        {keys.length === 0 && <p className="muted">{t("Noch kein Paar ausgegeben.")}</p>}
+        {keys.length === 0 && <InlineEmptyState text={t("Noch kein Schlüsselpaar ausgegeben. Ein Paar erlaubt einem S3-Client, die Buckets dieser Umgebung zu lesen und zu schreiben, ohne den Service Key des Projekts zu kennen. Das Formular darüber legt das erste an.")}/>}
       </div>
     </article>
   </div>;

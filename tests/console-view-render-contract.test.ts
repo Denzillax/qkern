@@ -25,7 +25,9 @@ import { PitrView } from "@/components/console/pitr-view";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { TableDesignerView } from "@/components/console/table-designer-view";
 import { UsageSeriesView } from "@/components/console/usage-series-view";
-import { CheckIcon, EmptyState, ErrorState } from "@/components/console/console-parts";
+import { CheckIcon, EmptyState, ErrorState, InlineEmptyState } from "@/components/console/console-parts";
+import { CopyValue } from "@/components/console/copy-value";
+import { DangerousAction } from "@/components/console/dangerous-action";
 import { Database } from "lucide-react";
 
 /**
@@ -212,6 +214,24 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
   CheckIcon: [element(CheckIcon, {})],
   EmptyState: [element(EmptyState, { icon: Database, title: "Nothing", text: "Nothing has arrived yet." })],
   ErrorState: [element(ErrorState, { message: "boom", retry: () => {} })],
+  // 2.137: Der leere Zustand einer Karte, einmal mit und einmal ohne Knopf.
+  // Ohne Knopf ist der Fall jeder Ansicht, die nur liest.
+  InlineEmptyState: [
+    element(InlineEmptyState, { text: "Nothing has arrived here yet." }),
+    element(InlineEmptyState, { text: "Nothing has arrived here yet.", action: "Create the first one" }),
+  ],
+  // 2.137: Der eine Kopier-Weg. Ohne `failed` faellt er auf die Aufforderung
+  // zurueck, und genau das rendert der zweite Fall.
+  CopyValue: [
+    element(CopyValue, { value: "qk_public_abc", labels: { copy: "Copy", copied: "Copied", failed: "Clipboard not reachable" } }),
+    element(CopyValue, { value: "qk_public_abc", labels: { copy: "Copy", copied: "Copied" } }),
+  ],
+  // 2.137: Geschlossen steht nur der Knopf da; das Feld fuer den Namen
+  // erscheint erst nach dem Druck, und ein Vertrag auf Markup sieht es nicht.
+  DangerousAction: [element(DangerousAction, {
+    label: "Delete", title: "Delete the bucket", consequence: "The bucket and its name disappear.",
+    confirmName: "assets", onConfirm: () => {},
+  })],
   ApprovalView: [element(ApprovalView, { ...DEFAULT_PROPS, approvals: SNAPSHOT.approvals, changes: SNAPSHOT.changeSets, reload: async () => {} })],
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],
   DatabaseView: [element(DatabaseView, { project: PROJECT, navigate: () => {} })],

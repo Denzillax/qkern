@@ -9,7 +9,32 @@
   --qkern-surface-2: #f1f4f9;
   --qkern-border: #dce2eb;
   --qkern-text: #111827;
-  --qkern-text-muted: #697386;
+  /*
+   * Nebentext im Light Mode: WCAG AA nachgerechnet (2.137).
+   *
+   * Vorher #697386 = rgb(105,115,134). Relative Leuchtdichte nach WCAG 2.1
+   * (Kanal c/255, linear = c<=0.04045 ? c/12.92 : ((c+0.055)/1.055)^2.4,
+   * L = 0.2126*R + 0.7152*G + 0.0722*B):
+   *   L(#697386) = 0.16986
+   *   L(#f1f4f9) = 0.90244   (--qkern-surface-2, der dunkelste helle Grund)
+   *   Kontrast   = (0.90244+0.05) / (0.16986+0.05) = 4.33 : 1
+   * AA verlangt fuer kleinen Text 4.5:1, also lag der Nebentext auf jeder
+   * Karte mit `surface-2` darunter. Auf Weiss waren es 4.78:1 und auf
+   * `--qkern-background` #f8f9fc 4.54:1, darum fiel es lange nicht auf.
+   *
+   * Jetzt #667083 = rgb(102,112,131), also je Kanal drei Stufen dunkler:
+   *   L(#667083) = 0.16185
+   *   Kontrast gegen #f1f4f9 = 0.95244 / 0.21185 = 4.52 : 1  (AA erfuellt)
+   *   gegen #f8f9fc = 4.74 : 1, gegen #ffffff = 4.99 : 1
+   * Zwei Stufen dunkler ergaeben 4.46:1 und reichten nicht; drei sind das
+   * Minimum. Weiter abzusenken wuerde die Rangfolge zum Haupttext
+   * (#111827, 15.3:1 auf Weiss) ohne Gewinn einziehen.
+   *
+   * `--qkern-primary-muted` #e9f0ff kommt als Grund nur unter
+   * `--qkern-primary` vor, nie unter Nebentext; `--qkern-border` #dce2eb ist
+   * Rahmen und kein Grund. Beide bleiben darum aussen vor.
+   */
+  --qkern-text-muted: #667083;
   --qkern-success: #0c9b69;
   --qkern-warning: #df7b16;
   --qkern-danger: #d63b4a;
@@ -24,6 +49,15 @@
   --qkern-surface-2: #121e30;
   --qkern-border: #263348;
   --qkern-text: #f2f6fd;
+  /*
+   * Dark Mode bleibt wie er war, und zwar nachgerechnet (2.137):
+   * L(#9aa8bc) = 0.39680. Gegen die drei dunklen Gruende
+   *   #080f1d (L 0.00500) = 7.94 : 1
+   *   #0e1828 (L 0.00557) = 7.37 : 1
+   *   #121e30 (L 0.00997) = 6.94 : 1
+   * Alles ueber 4.5:1. Eine Anhebung hier haette nichts verbessert und den
+   * Abstand zum Haupttext verkleinert.
+   */
   --qkern-text-muted: #9aa8bc;
   --qkern-primary-muted: #102c5f;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
@@ -1447,3 +1481,41 @@ input[type="checkbox"], input[type="radio"] {
 .overview-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 0 4px; }
 .overview-empty > svg { color: var(--qkern-text-muted); }
 .overview-empty p { margin: 0; color: var(--qkern-text-muted); font-size: 12px; }
+
+/*
+ * Versteckt fuer das Auge, hoerbar fuer einen Screenreader (2.137).
+ *
+ * Steht hier und nicht in `docs.module.css`, weil `CopyValue` von Docs und
+ * Console benutzt wird. Ein Modul-Stylesheet haette jede Console-Seite das
+ * Docs-Stylesheet mitziehen lassen.
+ */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/*
+ * Zerstoerende Aktionen sehen zerstoerend aus (2.137).
+ *
+ * Vorher trug "Bucket loeschen" dieselbe graue Umrandung wie "Neu laden".
+ * Jetzt traegt der Knopf die Gefahrenfarbe, und die schwersten Aktionen
+ * oeffnen darunter ein Feld, in das der Name abgetippt wird.
+ */
+.danger-button { min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--qkern-danger) 55%, transparent); background: transparent; color: var(--qkern-danger); font-weight: 650; font-size: 12px; cursor: pointer; }
+.danger-button:hover { background: color-mix(in srgb, var(--qkern-danger) 10%, transparent); border-color: var(--qkern-danger); }
+.danger-confirm { display: grid; gap: 8px; padding: 12px; margin-top: 8px; border: 1px solid color-mix(in srgb, var(--qkern-danger) 45%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--qkern-danger) 6%, transparent); }
+.danger-confirm p { margin: 0; font-size: 12px; color: var(--qkern-text); }
+.danger-confirm label { display: grid; gap: 4px; font-size: 12px; color: var(--qkern-text-muted); }
+/* Hoehe ueber Innenabstand: Eine `height`-Regel auf `input` nach der
+ * Kaestchen-Regel wuerde `console-control-size-contract` brechen. */
+.danger-confirm input { padding: 9px 10px; border: 1px solid var(--qkern-border); border-radius: 8px; background: var(--qkern-surface); color: var(--qkern-text); font-family: var(--qkern-font-mono); font-size: 12px; }
+.danger-confirm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.danger-button[disabled] { opacity: .5; cursor: not-allowed; }
+
+/*
+ * Ein leerer Zustand hat Platz fuer seinen Satz und seinen Knopf (2.137).
+ *
+ * Eigene Klasse und nicht `.empty-state`: Die steht seit 2.64 fuer die grosse
+ * zentrierte Flaeche mit Symbol. Hier geht es um die Zeile in einer Karte, wo
+ * bisher ein `<p className="muted">` allein stand.
+ */
+.empty-state-inline { display: grid; gap: 10px; justify-items: start; padding: 4px 0; }
+.empty-state-inline p { margin: 0; color: var(--qkern-text-muted); font-size: 13px; max-width: 62ch; }
+.empty-state .empty-state-action { margin-top: 12px; }

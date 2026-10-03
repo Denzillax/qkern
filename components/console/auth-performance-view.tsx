@@ -178,7 +178,7 @@ export function AuthPerformanceView({ projectId, environment, initialState }: { 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("JE ABSCHNITT")}</span><h3>{t("Handlungen und Fehlschläge über die Zeit")}</h3></div><TriangleAlert size={18}/></div>
       <p className="muted">{t("Abschnitte ohne jede Handlung stehen nicht in der Tabelle; sie wären lauter Nullen.")} {t("Ohne Eintrag geblieben")}: {formatNumber(quiet)} / {formatNumber(series?.bucketCount ?? 0)}</p>
-      {active.length === 0 && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
+      {active.length === 0 && <p className="muted">{t("Keine Ereignisse im Zeitraum")}{" "}{t("Das ist eine Aussage über das gewählte Fenster, nicht über die Anmeldung überhaupt; ein längeres Fenster kann Zeilen zeigen.")}</p>}
       {active.length > 0 && <div className="usage-series-table">
         <div className="log-row log-header">
           <span>{t("Abschnitt")}</span><span>{t("Handlungen")}</span><span>{t("Fehlschläge")}</span><span>{t("Anteil")}</span>
