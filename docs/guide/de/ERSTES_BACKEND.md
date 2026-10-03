@@ -91,6 +91,8 @@ npm run dev:bind-project-database -- <projekt-id> development <organisations-id>
 
 Was passiert ist: `Gebunden: development von <projekt-id> an managed:database-1`. `managed:database-1` ist der Name, unter dem deine `.env.local` die Projektdatenbank kennt. Das Skript meldet sich mit dem Login des Provisionierers an und ändert nur eine Zeile, und nur, solange die Umgebung noch wartet. Ein zweiter Aufruf endet mit "Keine wartende Umgebung gefunden", das ist richtig so: eine gebundene Umgebung lässt sich nicht umbiegen.
 
+In der Konsole kannst du seit Kurzem selbst ein Projekt anlegen und unter Einstellungen, Compute und Disk eine Bereitstellung bestellen. Lokal bringt dich das nicht weiter, und das sollst du vorher wissen: Bestellen reiht nur einen Auftrag ein, ausgeführt wird er von einem [Provisionierer](GLOSSAR.md#provisionierer), und der ruft einen Vermittler über HTTPS, den es auf deiner Maschine nicht gibt. Der Auftrag bliebe also stehen. Lokal ist das Skript oben der Weg.
+
 Die Organisations-ID braucht es, weil [Row Level Security](GLOSSAR.md#row-level-security) dem Provisionierer sonst keine Zeile zeigt. Das ist derselbe Schutz, der später deine Nutzer voneinander trennt, und er gilt auch für QKERN selbst.
 
 ## 6. Eine Tabelle anlegen
