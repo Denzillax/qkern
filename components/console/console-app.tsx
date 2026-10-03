@@ -365,7 +365,13 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
 
 function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; display: ConsoleDisplaySettings; onDisplayChange: (settings: ConsoleDisplaySettings) => void }) {
   switch (props.view) {
-    case "overview": return <ProductPreview service="Der Metrik-Dienst"><OverviewView snapshot={props.snapshot} project={props.project} navigate={props.navigate}/></ProductPreview>;
+    // Ohne die Vorschau-Notiz (2.136). Sie stand ueber allem und sagte, der
+    // Metrik-Dienst fehle; seit die Uebersicht selbst je Karte sagt, woher die
+    // Zahl kommt und was es nicht gibt, war sie eine zweite Stimme fuer
+    // dieselbe Aussage -- und ein Kasten ueber der ganzen Seite fuer etwas, bei
+    // dem niemand handeln kann. Bei "ai" bleibt sie, dort fehlt wirklich ein
+    // Dienst, an den sich ein Agent binden koennte.
+    case "overview": return <OverviewView snapshot={props.snapshot} project={props.project} navigate={props.navigate}/>;
     case "database": return <DatabaseView project={props.project} navigate={props.navigate}/>;
     case "table": return <TableView projectId={props.project.id} environment={props.environment}/>;
     // Die Vorlagen (2.61) leben in der Editoransicht selbst: Einfuegen heisst,
