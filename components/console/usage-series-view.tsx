@@ -5,6 +5,7 @@ import { BarChart3, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatCount } from "@/components/console/console-display";
 import { formatBucketMoment } from "@/components/console/console-format";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import { buildUsageSeriesChart } from "@/lib/console/usage-series-chart";
 import {
@@ -148,9 +149,13 @@ export function UsageSeriesView({ view, projectId, environment, initialState }: 
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t(definition.kicker)} · {environment.toUpperCase()}</span><h3>{t(definition.title)}</h3></div><div>
-        {definition.metrics.length > 1 && <label className="table-select"><BarChart3 size={15}/><select value={metric} onChange={(event) => setMetric(event.target.value as UsageSeriesMetricId)} aria-label={t("Metrik")}>
-          {definition.metrics.map((entry) => <option key={entry} value={entry}>{t(USAGE_SERIES_METRIC_TEXTS[entry].label)}</option>)}
-        </select></label>}
+        {/* 2.133: Ohne Erklaerzeile, und das ist hier die Entscheidung. Das
+            einzige, was neben dem Namen der Metrik steht, ist ihre Einheit,
+            und "Gelesene Datenbankzeilen / Zeilen" sagt zweimal dasselbe. Die
+            Einheit steht ohnehin unter jeder Kennzahl der Karte darueber. */}
+        {definition.metrics.length > 1 && <OptionMenu value={metric} ariaLabel={t("Metrik")} listLabel={t("Metrik wählen")}
+          icon={<BarChart3 size={14} aria-hidden="true"/>} onChange={(next) => setMetric(next)}
+          options={definition.metrics.map((entry) => ({ id: entry, label: t(USAGE_SERIES_METRIC_TEXTS[entry].label) }))}/>}
         <button className="secondary-button" onClick={() => setBucket(bucket === "hour" ? "day" : "hour")} disabled={refreshing}>
           <StableLabel current={bucket === "hour" ? t("Stunden") : t("Tage")} variants={tAll("Stunden", "Tage")}/>
         </button>

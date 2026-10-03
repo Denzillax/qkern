@@ -40,7 +40,7 @@ export type OptionMenuEntry<Id extends string> = {
 };
 
 export function OptionMenu<Id extends string>({
-  value, options = [], onChange, ariaLabel, listLabel, icon, align = "right",
+  value, options = [], onChange, ariaLabel, listLabel, icon, align = "right", disabled = false,
 }: {
   value: Id;
   options: readonly OptionMenuEntry<Id>[];
@@ -50,6 +50,13 @@ export function OptionMenu<Id extends string>({
   /** Steht links statt des Zustandspunkts. */
   icon?: React.ReactNode;
   align?: "left" | "right";
+  /**
+   * Gesperrt, weil eine andere Wahl diese Wahl ohne Wirkung macht: Im
+   * Freigabemodus "Manuell" wird nichts automatisch freigegeben, also hat die
+   * Risikogrenze daneben keine Folge mehr. Das `select` davor konnte das, und
+   * ein Menue, das es nicht kann, waere ein Rueckschritt.
+   */
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -72,10 +79,11 @@ export function OptionMenu<Id extends string>({
   // aus einer leeren Liste einen Absturz.
   const current = options.find((entry) => entry.id === value) ?? options[0];
   const tone = current?.tone ?? "";
+  const locked = disabled || options.length === 0;
   return <div className={`option-menu ${tone}`} ref={root}>
     <button type="button" className={`option-field ${tone}`} aria-haspopup="listbox"
             aria-expanded={open} aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
-            disabled={options.length === 0}
+            disabled={locked}
             onClick={() => setOpen(!open)}>
       {/* Der Punkt nur mit Zustand. Ohne Symbol und ohne Zustand stand hier
           ein grauer Punkt, der nichts bedeutet; genau das wollte ich beim
@@ -84,7 +92,7 @@ export function OptionMenu<Id extends string>({
       <StableLabel current={current?.label ?? ""} variants={options.map((entry) => entry.label)}/>
       <ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
     </button>
-    {open && options.length > 0 && <ul className={`option-list ${align}`} role="listbox" aria-label={listLabel}>
+    {open && !locked && <ul className={`option-list ${align}`} role="listbox" aria-label={listLabel}>
       {options.map((entry) => <li key={entry.id} role="option" aria-selected={entry.id === value}
                                   className={entry.tone ?? ""}>
         <button type="button" onClick={() => { onChange(entry.id); setOpen(false); }}>
