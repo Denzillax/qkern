@@ -1574,3 +1574,35 @@ input[type="checkbox"], input[type="radio"] {
   .table-workspace-head .card-head { flex-wrap: wrap; gap: 10px; }
   .table-workspace-head .card-head > div:last-child { width: 100%; }
 }
+
+/*
+ * Einstellungen → Allgemein als Übersicht über sieben Gruppen (2.139).
+ *
+ * Eigene Klassen und nicht `.settings-layout`: Das war ein zweispaltiges
+ * Raster mit einer eigenen Reiterspalte, und die sagte dasselbe wie die
+ * Seitenleiste, nur mit fünf abgeschalteten Knöpfen. Diese Seite ist eine
+ * Liste von Karten und braucht keine zweite Navigation.
+ *
+ * Keine Regel fasst `input` an: Die Seite hat kein Eingabefeld mehr, und eine
+ * Höhenregel auf `input` nach der Kästchen-Regel würde ausserdem
+ * `console-control-size-contract` brechen.
+ */
+.settings-groups { display: grid; gap: 12px; }
+.settings-groups-head { display: grid; gap: 8px; }
+.settings-groups-head h2 { margin: 0; font-size: 22px; }
+.settings-group { display: grid; gap: 12px; }
+.settings-group-head { display: flex; align-items: center; gap: 9px; color: var(--qkern-text); }
+.settings-group-head h3 { margin: 0; font-size: 15px; }
+.settings-groups-head p, .settings-group > p { margin: 0; color: var(--qkern-text-muted); font-size: 13px; max-width: 78ch; }
+.settings-group-values { display: grid; gap: 8px; }
+/* Umbruch statt Abschneiden: Eine Projekt-ID und ihr Kopier-Knopf passen auf
+   einem 375 Pixel breiten Fenster nicht in eine Zeile. */
+.settings-value { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.settings-value > span { color: var(--qkern-text-muted); font-size: 12px; min-width: 16ch; }
+.settings-value > code { font-family: var(--qkern-font-mono); font-size: 12px; color: var(--qkern-text); overflow-wrap: anywhere; }
+.settings-value-copy { min-height: 32px; padding: 0 10px; font-size: 12px; }
+.settings-group-links { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Die Gefahrenzone trägt die Farbe, auch wenn sie nichts zerstören kann:
+   Wer hier liest, soll den Abschnitt erkennen, in dem er nachgesehen hat. */
+.settings-group.is-danger { border-color: color-mix(in srgb, var(--qkern-danger) 28%, var(--qkern-border)); }
+.settings-group.is-danger .settings-group-head { color: var(--qkern-danger); }
