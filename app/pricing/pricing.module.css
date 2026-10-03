@@ -1,0 +1,215 @@
+/*
+ * Preisseite (2.135), in der Formensprache der Startseite: schwebende Flaechen,
+ * Radius 24px, weiche Schatten statt Linien, ein einziges Markenblau.
+ *
+ * Eigene Datei statt `app/page.module.css`, weil dort `.plans` auf drei feste
+ * Spalten steht und es weder ein Abzeichen noch eine hervorgehobene Karte gibt.
+ * Die Startseite anzupassen haette ihr Raster veraendert, und das gehoert nicht
+ * zu dieser Aufgabe.
+ *
+ * Alle Farben haengen an den Variablen aus `globals.css`. Dark Mode braucht
+ * darum keine zweite Pflegestelle, und eine hartkodierte Farbe stuende sofort
+ * im falschen Thema.
+ */
+
+.page {
+  --rule: color-mix(in srgb, var(--qkern-border) 80%, transparent);
+  --halo: color-mix(in srgb, var(--qkern-primary) 14%, transparent);
+  overflow-x: clip;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+/* Kopf: zentriert, mit demselben Halo wie der Hero der Startseite */
+
+.head {
+  position: relative;
+  padding: 88px 0 8px;
+  text-align: center;
+}
+
+.head::before {
+  content: "";
+  position: absolute;
+  inset: -80px 0 auto;
+  height: 420px;
+  background: radial-gradient(60% 60% at 50% 0%, var(--halo), transparent 70%);
+  pointer-events: none;
+}
+
+.head > .shell { position: relative; z-index: 1; }
+
+.eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--qkern-primary);
+}
+
+.head h1 {
+  margin: 14px auto 0;
+  max-width: 24ch;
+  font-size: clamp(32px, 4.5vw, 54px);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 700;
+}
+
+.head p {
+  margin: 18px auto 0;
+  max-width: 62ch;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: var(--qkern-text-muted);
+}
+
+/* Karten */
+
+.section { padding: 48px 0 88px; }
+
+/*
+ * `auto-fit` statt fuenf festen Spalten: Fuenf Tarife passen auf dem Desktop
+ * nebeneinander, auf einem Tablet werden es drei, auf dem Handy einer. Dadurch
+ * gibt es keine Breite, bei der eine Karte schmaler wird als ihr Inhalt, und
+ * damit auch kein waagerechtes Scrollen bei 375px.
+ */
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 30px 24px 26px;
+  border-radius: var(--radius-card, 24px);
+  background: var(--qkern-surface);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Hervorhebung, bewusst klein: ein Rand in Markenfarbe und ein Abzeichen.
+   Eine groessere Karte haette das Raster gebrochen und den Vergleich erschwert. */
+.planFeatured {
+  border-color: color-mix(in srgb, var(--qkern-primary) 55%, var(--qkern-border));
+  background: color-mix(in srgb, var(--qkern-primary) 4%, var(--qkern-surface));
+}
+
+.badge {
+  position: absolute;
+  top: -11px;
+  left: 24px;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--qkern-primary);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.plan h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.price {
+  margin: 16px 0 14px;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Einheit und "ab" tragen die Information mit, stehen aber ruhiger als der
+   Betrag; ohne eigenes Element wuerde die ganze Zeile gleich laut rufen. */
+.priceUnit { font-size: 15px; font-weight: 500; color: var(--qkern-text-muted); }
+
+.audience {
+  margin: 0 0 22px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--qkern-text-muted);
+}
+
+.planFoot { margin-top: auto; }
+
+.planButton { width: 100%; justify-content: center; }
+
+/*
+ * Business ist nicht waehlbar, solange es keinen Vertriebsweg gibt. Darum
+ * steht hier kein Link, sondern eine Beschriftung in Knopfform: Ein Knopf, der
+ * nichts tut, ist schlimmer als ein Hinweis, der erklaert warum.
+ */
+.contactLabel {
+  width: 100%;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 19px;
+  border-radius: 9px;
+  border: 1px dashed color-mix(in srgb, var(--qkern-text-muted) 55%, transparent);
+  background: var(--qkern-surface-2);
+  color: var(--qkern-text);
+  font-weight: 650;
+  font-size: 13px;
+  text-align: center;
+}
+
+.contactNote {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--qkern-text-muted);
+}
+
+/* Hinweise unter den Karten */
+
+.notes {
+  max-width: 72ch;
+  margin: 34px auto 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 9px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--qkern-text-muted);
+}
+
+.notes strong { color: var(--qkern-text); font-weight: 650; }
+
+.draft {
+  max-width: 70ch;
+  margin: 22px auto 0;
+  text-align: center;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--qkern-text-muted);
+}
+
+@media (max-width: 640px) {
+  .head { padding: 60px 0 4px; }
+  .section { padding: 36px 0 64px; }
+  .plans { gap: 14px; }
+  .plan { padding: 26px 20px 22px; }
+}
