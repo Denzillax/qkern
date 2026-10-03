@@ -1221,3 +1221,17 @@ input[type="checkbox"], input[type="radio"] {
    laden" kleiner aus als jeder andere Knopf der Seite. Die Beschriftung erbt
    jetzt wieder vom Knopf. */
 .card-head button span { font-size: inherit; letter-spacing: normal; color: inherit; }
+
+/* 2.133: Die Seitenleiste quetscht nichts mehr zusammen.
+   Der Befund, gemessen an der laufenden Konsole: `.console-sidebar` ist eine
+   Flex-Spalte ueber die ganze Hoehe. Ihre Kinder tragen `flex: 0 1 auto`,
+   duerfen also schrumpfen. Passt der Inhalt nicht, schrumpft der Browser
+   zuerst, was nachgibt, und das war der Projektwechsler: 38 Pixel hoch bei
+   einem Inhalt von 58. Mit `overflow: hidden` schnitt er das Zeichen und die
+   zweite Zeile ab. Das sah nicht nur zusammengequetscht aus, es war es.
+   Richtig ist, dass der scrollbare Teil nachgibt und nicht die festen Zeilen:
+   Kopf, Wechsler und Fussbereich schrumpfen nicht mehr, und die Navigation
+   bekommt `min-height: 0`, ohne das ein Flex-Kind nicht unter seine
+   Inhaltsgroesse geht und darum gar nicht erst scrollt. */
+.console-brand, .project-switch, .sidebar-bottom { flex: none; }
+.console-nav { min-height: 0; }
