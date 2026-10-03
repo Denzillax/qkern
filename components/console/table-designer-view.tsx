@@ -67,6 +67,31 @@ function defaultsFor(type: TableColumnTypeId): readonly TableColumnDefaultId[] {
   return TABLE_COLUMN_TYPES[type]?.defaults ?? ["none"];
 }
 
+/**
+ * Die Eintraege der beiden Spaltenmenues (2.133).
+ *
+ * Die Erklaerzeile traegt den SQL-Text und nicht eine Wiederholung des Titels:
+ * "Zeitpunkt mit Zeitzone" sagt, was gemeint ist, `timestamptz` sagt, was in
+ * der Anweisung steht. Beides zusammen beantwortet die Frage, die man vor so
+ * einem Feld wirklich hat.
+ */
+function typeOptions() {
+  return TYPE_IDS.map((type) => ({
+    id: type, label: t(TABLE_COLUMN_TYPES[type].label), hint: TABLE_COLUMN_TYPES[type].sql,
+  }));
+}
+
+function defaultOptions(type: TableColumnTypeId) {
+  return defaultsFor(type).map((fallback) => ({
+    id: fallback,
+    label: t(TABLE_COLUMN_DEFAULTS[fallback].label),
+    // Prosa wird uebersetzt, SQL nicht: `now()` heisst in jeder Sprache `now()`.
+    hint: TABLE_COLUMN_DEFAULTS[fallback].hint
+      ? t(TABLE_COLUMN_DEFAULTS[fallback].hint)
+      : TABLE_COLUMN_DEFAULTS[fallback].sql ?? undefined,
+  }));
+}
+
 export function TableDesignerView({ projectId, environment, navigate, reload, initialState }: {
   projectId: string;
   environment: Environment;
@@ -253,12 +278,13 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
             <span className="bucket-icon"><Columns3 size={16}/></span>
             <div className="draft-fields">
               <input value={column.name} onChange={(event) => patchColumn(index, { name: event.target.value })} aria-label={t("Name der Spalte")} spellCheck={false} placeholder="name"/>
-              <select value={column.type} onChange={(event) => patchColumn(index, { type: event.target.value as TableColumnTypeId })} aria-label={t("Typ der Spalte")}>
-                {TYPE_IDS.map((type) => <option key={type} value={type}>{t(TABLE_COLUMN_TYPES[type].label)}</option>)}
-              </select>
-              <select value={column.default} onChange={(event) => patchColumn(index, { default: event.target.value as TableColumnDefaultId })} aria-label={t("Vorgabewert der Spalte")}>
-                {defaultsFor(column.type).map((fallback) => <option key={fallback} value={fallback}>{t(TABLE_COLUMN_DEFAULTS[fallback].label)}</option>)}
-              </select>
+              {/* Dasselbe Menue wie oben, mit dem SQL-Text als Erklaerzeile:
+                  "Zeitpunkt mit Zeitzone" sagt, was man meint, `timestamptz`
+                  sagt, was in der Anweisung landet. */}
+              <OptionMenu value={column.type} ariaLabel={t("Typ der Spalte")} listLabel={t("Typ der Spalte wählen")}
+                align="left" onChange={(next) => patchColumn(index, { type: next })} options={typeOptions()}/>
+              <OptionMenu value={column.default} ariaLabel={t("Vorgabewert der Spalte")} listLabel={t("Vorgabewert der Spalte wählen")}
+                align="left" onChange={(next) => patchColumn(index, { default: next })} options={defaultOptions(column.type)}/>
               <label><input type="checkbox" checked={column.notNull} onChange={(event) => patchColumn(index, { notNull: event.target.checked })}/> {t("darf nicht leer sein (NOT NULL)")}</label>
             </div>
             <button className="plain-button row-trailing" onClick={() => { setCreated(false); setNewColumns((columns) => columns.filter((_item, position) => position !== index)); }} aria-label={t("Spalte aus dem Entwurf nehmen")} disabled={newColumns.length <= 1}><X size={14}/></button>
@@ -281,14 +307,12 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
             <input value={addedColumn.name} onChange={(event) => patchAdded({ name: event.target.value })} spellCheck={false} placeholder="notiz"/>
           </label>
           <label>{t("Typ der Spalte")}
-            <select value={addedColumn.type} onChange={(event) => patchAdded({ type: event.target.value as TableColumnTypeId })}>
-              {TYPE_IDS.map((type) => <option key={type} value={type}>{t(TABLE_COLUMN_TYPES[type].label)}</option>)}
-            </select>
+            <OptionMenu value={addedColumn.type} ariaLabel={t("Typ der Spalte")} listLabel={t("Typ der Spalte wählen")}
+              align="left" onChange={(next) => patchAdded({ type: next })} options={typeOptions()}/>
           </label>
           <label>{t("Vorgabewert der Spalte")}
-            <select value={addedColumn.default} onChange={(event) => patchAdded({ default: event.target.value as TableColumnDefaultId })}>
-              {defaultsFor(addedColumn.type).map((fallback) => <option key={fallback} value={fallback}>{t(TABLE_COLUMN_DEFAULTS[fallback].label)}</option>)}
-            </select>
+            <OptionMenu value={addedColumn.default} ariaLabel={t("Vorgabewert der Spalte")} listLabel={t("Vorgabewert der Spalte wählen")}
+              align="left" onChange={(next) => patchAdded({ default: next })} options={defaultOptions(addedColumn.type)}/>
           </label>
           <label><input type="checkbox" checked={addedColumn.notNull} onChange={(event) => patchAdded({ notNull: event.target.checked })}/> {t("darf nicht leer sein (NOT NULL)")}</label>
           {current && <p className="muted">{t("Diese Tabelle hat schon")} {current.columns.length} {t("Spalten.")}</p>}

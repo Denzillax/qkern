@@ -70,12 +70,24 @@ type ColumnDefaultEntry = {
   /** `null` heisst: kein DEFAULT im erzeugten SQL. */
   sql: string | null;
   label: string;
+  /**
+   * Eine **uebersetzbare** Zeile unter der Beschriftung im Auswahlmenue
+   * (2.133). Wo der Vorgabewert einen SQL-Ausdruck hat, zeigt das Menue
+   * stattdessen `sql`; der wird nicht uebersetzt, denn `now()` heisst in jeder
+   * Sprache `now()`. Diese Zeile gibt es also nur dort, wo es etwas zu sagen
+   * gibt, das kein SQL ist.
+   *
+   * Bis 2.133 stand der Ausdruck in der Beschriftung selbst, also
+   * "zufaellige UUID (gen_random_uuid())". In einem Feld von 150 Pixeln brach
+   * das mitten im Wort ab.
+   */
+  hint?: string;
 };
 
 export const TABLE_COLUMN_DEFAULTS: Record<TableColumnDefaultId, ColumnDefaultEntry> = {
-  none: { sql: null, label: "keine Vorgabe" },
-  now: { sql: "now()", label: "jetzt (now())" },
-  uuid: { sql: "gen_random_uuid()", label: "zufällige UUID (gen_random_uuid())" },
+  none: { sql: null, label: "keine Vorgabe", hint: "Die Spalte bekommt kein DEFAULT" },
+  now: { sql: "now()", label: "jetzt" },
+  uuid: { sql: "gen_random_uuid()", label: "zufällige UUID" },
 };
 
 /**
@@ -234,6 +246,10 @@ export function tableChangeSetTexts(): string[] {
   return [
     ...Object.values(TABLE_COLUMN_TYPES).map((entry) => entry.label),
     ...Object.values(TABLE_COLUMN_DEFAULTS).map((entry) => entry.label),
+    // Die Erklaerzeilen gehoeren dazu, seit das Auswahlmenue sie zeigt (2.133).
+    // Ohne sie haelt der Uebersetzungsvertrag ihre Eintraege fuer verwaist und
+    // wirft sie beim naechsten Aufraeumen weg.
+    ...Object.values(TABLE_COLUMN_DEFAULTS).flatMap((entry) => entry.hint ? [entry.hint] : []),
     ...Object.values(TABLE_CHANGE_SET_REASONS),
   ];
 }

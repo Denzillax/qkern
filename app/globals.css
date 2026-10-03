@@ -1338,3 +1338,15 @@ input[type="checkbox"], input[type="radio"] {
 /* Das Textfeld daneben traegt dieselbe Flaeche wie das Auswahlfeld, sonst
    stehen in einer Zeile zwei verschiedene Hintergruende. */
 .settings-form input, .settings-form select { background-color: var(--qkern-surface); }
+
+/* 2.133: Im Raster fuellt das Auswahlmenue seine Zelle.
+   Die Pille ist von Haus aus `inline-flex` und damit so breit wie ihr Inhalt.
+   In der Spaltenzeile des Entwurfs stehen drei Felder nebeneinander; eines
+   davon in Inhaltsbreite laesst die Zeile wackeln, sobald ein Typ einen
+   laengeren Namen traegt. Die Beschriftung schneidet mit Auslassungszeichen,
+   statt die Zelle aufzureissen. */
+.draft-fields .option-menu, .settings-form .option-menu { width: 100%; }
+.draft-fields .option-field, .settings-form .option-field { width: 100%; height: 44px; }
+.option-field .stable-label { min-width: 0; overflow: hidden; }
+.option-field .stable-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.option-list.left { right: auto; left: 0; }
