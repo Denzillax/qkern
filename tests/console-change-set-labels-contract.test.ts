@@ -30,6 +30,10 @@ describe("console change set labels contract", () => {
     const texts = changeSetLabelTexts();
     expect(texts).toContain("wartet auf Freigabe");
     expect(texts).toContain("kritisch");
+    // Jeder Zustand aus `ChangeStatus` hat ein Wort (2.164); `ready` fehlte.
+    for (const status of ["draft", "validating", "ready", "approved", "applied", "rejected", "failed", "rolled_back"]) {
+      expect(changeSetStatusLabel(status), status).not.toBe(status);
+    }
     expect(new Set(texts).size, "ein Wort steht zweimal in der Liste").toBe(texts.length);
   });
 

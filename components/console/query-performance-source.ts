@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Die Quelle der Seite Berichte -> Abfrage-Leistung (2.67).
@@ -74,7 +75,7 @@ export function useQueryPerformance(projectId: string, environment: Environment)
     }
     if (controller.signal.aborted) return;
     setRefreshing(false);
-    const error = typeof payload.error === "string" ? payload.error : "";
+    const error = typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "";
     const code = typeof payload.code === "string" ? payload.code : "";
     const data = payload.data as Statements | undefined;
     if (status === 200 && data && typeof data.installed === "boolean" && Array.isArray(data.statements)) {

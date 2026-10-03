@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Die eine Quelle der beiden Seiten Datenbank und Verbindungen (2.46).
@@ -84,7 +85,7 @@ export function useDatabaseActivity(projectId: string, environment: Environment)
     }
     if (controller.signal.aborted) return;
     setRefreshing(false);
-    const error = typeof payload.error === "string" ? payload.error : "";
+    const error = typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "";
     const code = typeof payload.code === "string" ? payload.code : "";
     const data = payload.data as Activity | undefined;
     if (status === 200 && data && data.database && Array.isArray(data.connections)) {

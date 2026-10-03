@@ -25,6 +25,9 @@
 const STATUS: Record<string, string> = {
   draft: "Entwurf",
   validating: "wird geprüft",
+  // `ready` fehlte (2.164): Die Migrationsliste zeigte es roh. Es ist der
+  // Zustand nach der Pruefung und vor der Freigabe.
+  ready: "geprüft",
   pending_approval: "wartet auf Freigabe",
   approved: "freigegeben",
   rejected: "abgelehnt",

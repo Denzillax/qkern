@@ -56,7 +56,10 @@ describe("console server errors contract", () => {
     ];
     const offenders: string[] = [];
     for (const name of await readdir(VIEWS)) {
-      if (!name.endsWith(".tsx")) continue;
+      // Auch `.ts` (2.164): Die gemeinsame Quelle der Datenbankberichte ist
+      // eine `.ts`-Datei, und vier Seiten zeigten darum weiter
+      // "Resource not found". Das Modul selbst ist ausgenommen.
+      if (!/\.tsx?$/.test(name) || name === "server-errors.ts") continue;
       const text = (await readFile(path.join(VIEWS, name), "utf8")).replace(/serverErrorText\([^)]*\)/g, "");
       for (const pattern of raw) if (pattern.test(text)) offenders.push(`${name}: ${pattern.source.slice(0, 30)}`);
     }
