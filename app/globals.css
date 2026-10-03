@@ -889,40 +889,67 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--qkern-te
 .console-brand button { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; }
 .console-brand button:hover { background: rgba(255,255,255,.08); color: #ffffff; }
 
-.environment-field { position: relative; display: inline-flex; align-items: center; height: 40px; border-radius: var(--radius-pill); border: 1px solid var(--qkern-border); background: var(--qkern-surface); color: var(--qkern-text); padding: 0 12px 0 14px; gap: 8px; transition: border-color .15s, box-shadow .15s; }
-.environment-field:focus-within { box-shadow: 0 0 0 3px var(--qkern-primary-muted); }
-.environment-field > i { width: 8px; height: 8px; border-radius: 50%; background: var(--qkern-text-muted); flex: none; }
-.environment-field > svg { flex: none; color: var(--qkern-text-muted); pointer-events: none; }
-.environment-field.development { border-color: color-mix(in srgb, var(--qkern-success) 35%, var(--qkern-border)); }
-.environment-field.development > i { background: var(--qkern-success); }
-.environment-field.staging { border-color: color-mix(in srgb, var(--qkern-warning) 40%, var(--qkern-border)); }
-.environment-field.staging > i { background: var(--qkern-warning); }
-.environment-field.production { border-color: color-mix(in srgb, var(--qkern-danger) 40%, var(--qkern-border)); background: color-mix(in srgb, var(--qkern-danger) 6%, var(--qkern-surface)); }
-.environment-field.production > i { background: var(--qkern-danger); }
-.console-root .environment-field .environment-select { appearance: none; -webkit-appearance: none; height: 38px; min-height: 0; border: 0; background: transparent; padding: 0; border-radius: 0; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); text-transform: none; cursor: pointer; outline: none; }
+.environment-field,
+.option-field { position: relative; display: inline-flex; align-items: center; height: 40px; border-radius: var(--radius-pill); border: 1px solid var(--qkern-border); background: var(--qkern-surface); color: var(--qkern-text); padding: 0 12px 0 14px; gap: 8px; transition: border-color .15s, box-shadow .15s; }
+.environment-field:focus-within,
+.option-field:focus-within { box-shadow: 0 0 0 3px var(--qkern-primary-muted); }
+.environment-field > i,
+.option-field > i { width: 8px; height: 8px; border-radius: 50%; background: var(--qkern-text-muted); flex: none; }
+.environment-field > svg,
+.option-field > svg { flex: none; color: var(--qkern-text-muted); pointer-events: none; }
+.environment-field.development,
+.option-field.development { border-color: color-mix(in srgb, var(--qkern-success) 35%, var(--qkern-border)); }
+.environment-field.development > i,
+.option-field.development > i { background: var(--qkern-success); }
+.environment-field.staging,
+.option-field.staging { border-color: color-mix(in srgb, var(--qkern-warning) 40%, var(--qkern-border)); }
+.environment-field.staging > i,
+.option-field.staging > i { background: var(--qkern-warning); }
+.environment-field.production,
+.option-field.production { border-color: color-mix(in srgb, var(--qkern-danger) 40%, var(--qkern-border)); background: color-mix(in srgb, var(--qkern-danger) 6%, var(--qkern-surface)); }
+.environment-field.production > i,
+.option-field.production > i { background: var(--qkern-danger); }
+.console-root .environment-field .environment-select,
+.console-root .option-field .environment-select { appearance: none; -webkit-appearance: none; height: 38px; min-height: 0; border: 0; background: transparent; padding: 0; border-radius: 0; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); text-transform: none; cursor: pointer; outline: none; }
 
 /* 1.95: Umgebungsmenue statt nativem select; Pfeil neben dem Symbol in der
    eingeklappten Leiste; Sidebar-Zustand bleibt gemerkt (localStorage). */
 .is-collapsed .console-brand { flex-direction: row; justify-content: space-between; align-items: center; gap: 0; height: 64px; padding: 0 8px 0 10px; }
 .is-collapsed .console-brand button { width: 26px; height: 26px; border-radius: 8px; }
 
-.environment-menu { position: relative; }
-.console-root .environment-field { cursor: pointer; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); }
-.console-root .environment-field > svg { transition: transform .15s; }
-.console-root .environment-field > svg.is-open { transform: rotate(180deg); }
-.environment-list { position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; min-width: 240px; margin: 0; padding: 6px; list-style: none; background: var(--qkern-surface); border: 1px solid var(--qkern-border); border-radius: 16px; box-shadow: var(--shadow-float); animation: environment-in .12s ease-out; }
+.environment-menu,
+.option-menu { position: relative; }
+.console-root .environment-field,
+.console-root .option-field { cursor: pointer; font: 600 13px/1 var(--qkern-font-sans); color: var(--qkern-text); }
+.console-root .environment-field > svg,
+.console-root .option-field > svg { transition: transform .15s; }
+.console-root .environment-field > svg.is-open,
+.console-root .option-field > svg.is-open { transform: rotate(180deg); }
+.environment-list,
+.option-list { position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; min-width: 240px; margin: 0; padding: 6px; list-style: none; background: var(--qkern-surface); border: 1px solid var(--qkern-border); border-radius: 16px; box-shadow: var(--shadow-float); animation: environment-in .12s ease-out; }
 @keyframes environment-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.environment-list li button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--qkern-text); text-align: left; cursor: pointer; font: 500 13px/1.2 var(--qkern-font-sans); }
-.environment-list li button:hover, .environment-list li button:focus-visible { background: var(--qkern-surface-2); outline: none; }
-.environment-list li[aria-selected="true"] button { background: var(--qkern-primary-muted); }
-.environment-list li button > i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--qkern-text-muted); }
-.environment-list li.development button > i { background: var(--qkern-success); }
-.environment-list li.staging button > i { background: var(--qkern-warning); }
-.environment-list li.production button > i { background: var(--qkern-danger); }
-.environment-list li button > span { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-.environment-list li button strong { font-weight: 600; }
-.environment-list li button small { font-size: 11px; color: var(--qkern-text-muted); }
-.environment-list li button > svg { color: var(--qkern-primary); flex: none; }
+.environment-list li button,
+.option-list li button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--qkern-text); text-align: left; cursor: pointer; font: 500 13px/1.2 var(--qkern-font-sans); }
+.environment-list li button:hover, .environment-list li button:focus-visible,
+.option-list li button:hover, .option-list li button:focus-visible { background: var(--qkern-surface-2); outline: none; }
+.environment-list li[aria-selected="true"] button,
+.option-list li[aria-selected="true"] button { background: var(--qkern-primary-muted); }
+.environment-list li button > i,
+.option-list li button > i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--qkern-text-muted); }
+.environment-list li.development button > i,
+.option-list li.development button > i { background: var(--qkern-success); }
+.environment-list li.staging button > i,
+.option-list li.staging button > i { background: var(--qkern-warning); }
+.environment-list li.production button > i,
+.option-list li.production button > i { background: var(--qkern-danger); }
+.environment-list li button > span,
+.option-list li button > span { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.environment-list li button strong,
+.option-list li button strong { font-weight: 600; }
+.environment-list li button small,
+.option-list li button small { font-size: 11px; color: var(--qkern-text-muted); }
+.environment-list li button > svg,
+.option-list li button > svg { color: var(--qkern-primary); flex: none; }
 @media (prefers-reduced-motion: reduce) { .environment-list { animation: none; } .console-root .environment-field > svg { transition: none; } }
 
 /* 1.95: Kontomenue in der Sidebar, Workspace-Krume lesbar */

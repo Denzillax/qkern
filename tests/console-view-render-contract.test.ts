@@ -543,6 +543,11 @@ describe("console view render contract", () => {
       // `CheckIcon` ist ein einzelnes Haekchen und sonst nichts; von einem
       // Glyphen eine Seite Text zu verlangen waere sinnlos.
       if (made.component === "CheckIcon") continue;
+      // `OptionMenu` zeigt die Beschriftung des gewaehlten Eintrags. Ohne
+      // Eintraege, und ohne Eintraege rendert dieser Vertrag es, gibt es keine
+      // Beschriftung, die es zeigen koennte; der Knopf steht dann abgeschaltet
+      // da. Ein erfundenes Wort an dieser Stelle waere schlechter als keines.
+      if (made.component === "OptionMenu") continue;
       if (!texts.some((text) => /\p{L}/u.test(text))) {
         thin.push(`${made.component}#${made.index} zeigt kein lesbares Wort: ${JSON.stringify(texts)}`);
       }

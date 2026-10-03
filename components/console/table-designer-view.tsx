@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
+import { Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
   addColumnStatement,
@@ -228,16 +229,19 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("ENTWURF")}</span><h3>{t("Eine Änderung vorbereiten")}</h3></div>
-        {/* Dieselbe Bauart wie `environment-field` oben in der Kopfzeile:
-            Pille, Rand, 40 Pixel hoch, und rechts ein echtes ChevronDown statt
-            eines aus CSS gebauten Pfeils. Links bleibt das Spalten-Symbol und
-            wird kein Punkt: Beim Umgebungsmenue zeigt der Punkt den Zustand der
-            Umgebung an, hier gaebe es keinen Zustand, den er zeigen koennte. */}
-        <label className="table-select"><Columns3 size={14} aria-hidden="true"/><select value={mode} onChange={(event) => { setMode(event.target.value as Mode); setCreated(false); setSubmitMessage(""); }} aria-label={t("Art der Änderung")}>
-          <option value="create">{t("Tabelle anlegen")}</option>
-          <option value="rename">{t("Tabelle umbenennen")}</option>
-          <option value="addColumn">{t("Spalte ergänzen")}</option>
-        </select><ChevronDown size={14} aria-hidden="true"/></label>
+        {/* Dasselbe Bauteil wie das Umgebungsmenue oben in der Kopfzeile, nur
+            ohne Zustandspunkt: ein `select` zeichnet das Betriebssystem, und
+            auf Windows sieht das neben dieser Oberflaeche aus wie aus einem
+            anderen Jahrzehnt. Die Erklaerzeile je Eintrag sagt, was die Wahl
+            bedeutet, statt den Titel zu wiederholen. */}
+        <OptionMenu value={mode} ariaLabel={t("Art der Änderung")} listLabel={t("Art der Änderung wählen")}
+          icon={<Columns3 size={14} aria-hidden="true"/>}
+          onChange={(next) => { setMode(next); setCreated(false); setSubmitMessage(""); }}
+          options={[
+            { id: "create" as Mode, label: t("Tabelle anlegen"), hint: t("Eine neue Tabelle mit ihren Spalten") },
+            { id: "rename" as Mode, label: t("Tabelle umbenennen"), hint: t("Nur der Name, die Daten bleiben") },
+            { id: "addColumn" as Mode, label: t("Spalte ergänzen"), hint: t("Eine Spalte an eine bestehende Tabelle") },
+          ]}/>
       </div>
 
       <div className="settings-form">
