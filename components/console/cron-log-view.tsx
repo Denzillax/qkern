@@ -152,7 +152,7 @@ export function CronLogView({ projectId, environment, initialState }: { projectI
       {log && !log.window.queueFound && <p className="risk high">{t("Die Zielqueue dieser Definition gibt es nicht. Ohne sie scheitert jedes Einreihen.")}</p>}
       {message && <p className="muted">{message}</p>}
       {log && <p className="muted">{t("Gezeigt werden die letzten 24 Stunden und die nächste Stunde, höchstens 50 Vorkommen, neueste zuerst.")} {moment(log.window.from)} – {moment(log.window.to)}</p>}
-      {log && log.occurrences.length === 0 && <p className="muted">{t("Kein Vorkommen im Fenster")}</p>}
+      {log && log.occurrences.length === 0 && <p className="muted">{t("Kein Vorkommen im Fenster. Hier erscheint je geplanter Termin eine Zeile mit ihrem Ausgang, sobald einer in das gewählte Fenster fällt.")}</p>}
 
       {log && log.occurrences.length > 0 && <div className="log-row log-header">
         <span>{t("Zeit")}</span><span>{t("Zustand")}</span><span>{t("Nachricht")}</span><span>{t("Versuche")}</span><span>{t("Eingereiht")}</span>

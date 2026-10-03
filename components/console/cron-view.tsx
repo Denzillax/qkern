@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clock3, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Clock3, Plus, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { DangerousAction } from "@/components/console/dangerous-action";
+import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
@@ -62,12 +64,12 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
     <article className="console-card span-2">
       <div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div></div>
       {message && <p className="muted">{message}</p>}
-      {jobs.length === 0 && <p className="muted">{t("Noch keine Cron-Jobs. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")}</p>}
+      {jobs.length === 0 && <InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
       {jobs.map((job) => <div className="bucket-row" key={job.id}><span className="bucket-icon"><Clock3 size={16}/></span>
         <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone ?? "UTC"} → {job.queue} · {job.lastDispatchedAt ? `${t("zuletzt")} ${formatMoment(job.lastDispatchedAt)}` : t("noch nie eingereiht")}</small></div>
         <span className={job.enabled ? "secure" : "muted"}>{job.enabled ? t("aktiv") : t("pausiert")}</span>
         <button className="plain-button" onClick={() => void mutate(`/cron/${job.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !job.enabled }) })}><StableLabel current={job.enabled ? t("Pausieren") : t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
-        <button className="icon-button" onClick={() => { if (window.confirm(`${t("Cron-Job löschen?")} ${job.name}`)) void mutate(`/cron/${job.id}`, { method: "DELETE" }); }} aria-label={`${job.name} ${t("löschen")}`}><Trash2 size={14}/></button>
+        <DangerousAction label={t("Löschen")} title={`${t("Cron-Job löschen")}: ${job.name}`} consequence={t("Der Job verschwindet samt Ausdruck und Queue. Ab dann wird zu diesen Terminen nichts mehr eingereiht, und das fällt erst auf, wenn der Termin verstreicht.")} confirmName={job.name} onConfirm={() => void mutate(`/cron/${job.id}`, { method: "DELETE" })}/>
       </div>)}
       <p className="muted">{t("Ausdruck, Zeitzone und Queue lassen sich nicht ändern; eine Änderung ist Löschen und neu Anlegen.")}</p>
     </article>

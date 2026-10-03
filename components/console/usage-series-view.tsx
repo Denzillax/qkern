@@ -166,7 +166,7 @@ export function UsageSeriesView({ view, projectId, environment, initialState }: 
       <p className="muted">{t(definition.cannotShow)}</p>
       <p className="muted">{windowText} {series && <>{formatBucketMoment(series.windowStart, bucket)} – {formatBucketMoment(series.windowEnd, bucket)}</>}</p>
       {series?.truncated && <p className="risk medium">{t("Die Antwort wurde an der Zeilengrenze abgeschnitten; die Reihe zeigt nicht jeden Abschnitt des Fensters.")}</p>}
-      {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}</p>}
+      {chart.empty && <p className="muted">{t("Keine Ereignisse im Zeitraum")}{" "}{t("Das ist eine Aussage über das gewählte Fenster, nicht über die Anmeldung überhaupt; ein längeres Fenster kann Zeilen zeigen.")}</p>}
 
       {!chart.empty && <div className="usage-series-chart">
         <svg role="img" aria-label={label} viewBox={`0 0 ${chart.width} ${chart.height}`} width={chart.width} height={chart.height}>

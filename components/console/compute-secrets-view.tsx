@@ -134,7 +134,7 @@ export function ComputeSecretsView({ projectId, environment, initialState }: { p
         <button className="secondary-button" onClick={() => void loadSecrets(current)} disabled={!current || checking || current.secretRefs.length === 0}><RefreshCw size={14}/> <StableLabel current={checking ? t("Prüft…") : t("Neu prüfen")} variants={tAll("Prüft…", "Neu prüfen")}/></button>
       </div></div>
       {functions.length === 0 && <p className="muted">{t("Noch keine Functions. Lege eine unter Functions & Jobs an; ihre Secret-Referenzen erscheinen dann hier.")}</p>}
-      {current && current.secretRefs.length === 0 && <p className="muted">{t("Diese Function hat keine Secrets")}</p>}
+      {current && current.secretRefs.length === 0 && <p className="muted">{t("Diese Function hat keine Secrets. Hier erscheint je Referenz, welcher Vault-Eintrag gemeint ist und ob er existiert; gesetzt werden Referenzen beim Anlegen der Function.")}</p>}
       {current && current.secretRefs.length > 0 && <>
         {secrets.state === "loading" && secrets.secrets.length === 0 && <p className="muted">{t("Vault wird gefragt…")}</p>}
         {secrets.state === "unavailable" && <p><strong>{t("Vault nicht verbunden")}</strong> · {secrets.message}</p>}

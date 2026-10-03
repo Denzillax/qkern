@@ -1,34 +1,15 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { StableLabel } from "@/components/stable-label";
-import styles from "@/app/docs/docs.module.css";
+import { CopyValue } from "@/components/console/copy-value";
 
-/** Kopiert einen Codeblock. Der Knopf wechselt die Beschriftung, nie die Breite. */
+/**
+ * Kopiert einen Codeblock der Dokumentation.
+ *
+ * Seit 2.137 nur noch eine Huelle: Der Mechanismus (Rueckmeldung, stabile
+ * Breite, versteckte Bestaetigung) steht in `CopyValue` und gilt damit fuer
+ * Docs und Console gleich. Diese Huelle bleibt, weil die Docs ihre eigene
+ * Knopfklasse tragen und weil jeder Aufruf sonst angefasst werden muesste.
+ */
 export function CopyButton({ code, labels }: { code: string; labels: { copy: string; copied: string } }) {
-  const [done, setDone] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // Nach dem Abbau darf kein Zeitgeber mehr den Zustand setzen.
-  useEffect(() => () => clearTimeout(timer.current), []);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(code);
-      setDone(true);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setDone(false), 1500);
-    } catch {
-      // Ohne Zwischenablage bleibt der Text markierbar.
-    }
-  }
-  return (
-    <>
-      <button type="button" className="ghost-button docs-copy" onClick={copy}>
-        {done ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
-        <StableLabel current={done ? labels.copied : labels.copy} variants={[labels.copy, labels.copied]} />
-      </button>
-      {/* Screenreader hoeren nur die Bestaetigung. Ausserhalb des Knopfs, damit sein Name nicht doppelt klingt. */}
-      <span role="status" className={styles.visuallyHidden}>{done ? labels.copied : ""}</span>
-    </>
-  );
+  return <CopyValue value={code} labels={labels} className="ghost-button docs-copy" />;
 }

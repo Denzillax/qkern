@@ -123,7 +123,7 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
       </div>
       {users.length === 0 && <p className="muted">{t("Noch keine Nutzer. Sie kommen über Signup, Magic Link oder OIDC herein.")}</p>}
       {message && <p className="muted">{message}</p>}
-      {current && sessions.length === 0 && !message && <div className="live-module-state compact"><LogOut size={24}/><p>{t("Keine aktiven Sitzungen")}</p></div>}
+      {current && sessions.length === 0 && !message && <div className="live-module-state compact"><LogOut size={24}/><p>{t("Dieser Nutzer hat gerade keine aktive Sitzung. Eine Sitzung entsteht, wenn er sich in deiner Anwendung anmeldet, und verschwindet beim Abmelden oder mit dem Ablauf ihres Refresh-Tokens.")}</p></div>}
       {sessions.length > 0 && <div className="log-row log-header" style={columns}><span>{t("Erstellt")}</span><span>{t("Läuft ab")}</span><span>{t("Anmeldung")}</span><span>{t("Familie")}</span><span/></div>}
       {sessions.map((session) => <div className="log-row" key={session.id} style={columns}>
         <time>{format(session.createdAt)}</time>

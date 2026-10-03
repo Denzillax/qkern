@@ -108,7 +108,7 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
       {tables.state === "unavailable" && <p className="muted">{t("Die Datenbank des Projekts ist gerade nicht erreichbar.")} {tables.message}</p>}
       {tables.state === "error" && <p className="muted">{tables.message}</p>}
       {tables.state === "ready" && <>
-        {regular.length === 0 && <p className="muted">{t("Im Schema public gibt es keine Tabellen.")}</p>}
+        {regular.length === 0 && <p className="muted">{t("Im Schema public gibt es keine Tabellen.")}{" "}{t("Hier erscheint je Tabelle, ob die Data API sie ausliefert; angelegt werden Tabellen im Table Editor, diese Seite liest nur.")}</p>}
         {regular.map((table) => <div className="bucket-row" key={table.name}><span className="bucket-icon"><Table2 size={16}/></span>
           <div><strong>{table.name}</strong><small>{table.kind === "partitioned_table" ? t("Partitionierte Tabelle") : t("Tabelle")}</small></div>
           <span className={table.rowSecurityEnabled ? "secure" : "muted"}>RLS {table.rowSecurityEnabled ? t("an") : t("aus")}</span>

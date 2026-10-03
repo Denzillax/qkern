@@ -116,7 +116,7 @@ export function SecurityAdvisorView({ projectId, environment, initialState }: { 
         <button className="secondary-button" onClick={() => void load(false)} disabled={refreshing}><RefreshCw size={14}/> <StableLabel current={refreshing ? t("Prüft…") : t("Neu prüfen")} variants={tAll("Prüft…", "Neu prüfen")}/></button>
       </div></div>
       <p className="muted">{t("Der Berater prüft nur die aufgeführten Regeln. Was er nicht sieht, steht darunter.")}</p>
-      {findings.length === 0 && <p className="muted">{t("Keine Befunde in den geprüften Regeln")}</p>}
+      {findings.length === 0 && <p className="muted">{t("Keine Befunde in den geprüften Regeln")}{" "}{t("Hier erscheint ein Befund, sobald eine der Regeln zutrifft; welche geprüft werden, steht in der Liste darunter.")}</p>}
       {SEVERITIES.map((severity) => {
         const group = findings.filter((item) => item.severity === severity);
         if (group.length === 0) return null;

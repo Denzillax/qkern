@@ -72,7 +72,7 @@ export function StorageSettingsView({ projectId, environment, initialState }: { 
     <article className="console-card span-2">
       <div className="card-head"><div><span>STORAGE · {environment.toUpperCase()}</span><h3>{t("Grenzen je Bucket")}</h3></div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button></div>
       {message && <p className="muted">{message}</p>}
-      {buckets.length === 0 && <p className="muted">{t("Noch keine Buckets. Lege einen unter Storage → Buckets an.")}</p>}
+      {buckets.length === 0 && <p className="muted">{t("Noch keine Buckets. Lege einen unter Storage → Buckets an.")}{" "}{t("Hier erscheint je Bucket, welche Grenzen für Grösse und MIME-Typ gelten; diese Seite liest nur und legt keinen Bucket an.")}</p>}
       {buckets.map((bucket) => { const draft = drafts[bucket.id] ?? draftOf(bucket); return <div className="bucket-row" key={bucket.id}><span className="bucket-icon"><SlidersHorizontal size={16}/></span>
         <div><strong>{bucket.name}</strong>
           <small>

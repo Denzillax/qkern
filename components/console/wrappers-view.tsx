@@ -154,7 +154,7 @@ export function WrappersView({ projectId, environment, initialState }: { project
 
     {data && <article className="console-card span-2">
       <div className="card-head"><div><span>{t("FREMDSERVER")}</span><h3>{t("Wohin verbunden wird")}</h3></div><Database size={18}/></div>
-      {servers.length === 0 && <p className="muted">{t("Es ist kein Fremdserver angelegt.")}</p>}
+      {servers.length === 0 && <p className="muted">{t("Es ist kein Fremdserver angelegt. Ein Fremdserver sagt einem Wrapper, wohin er greifen soll; angelegt wird er mit Superuser-Rechten und nicht aus dieser Ansicht.")}</p>}
       {servers.map((server) => <div className="bucket-row" key={server.name}>
         <span className="bucket-icon"><Database size={16}/></span>
         <div>

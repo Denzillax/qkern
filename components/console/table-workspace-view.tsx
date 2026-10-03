@@ -188,7 +188,10 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
           <button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> <StableLabel current={t("Neu laden")} variants={tAll("Neu laden")}/></button>
         </div>
       </div>
-      {tables.length === 0 && <p className="muted">{t("Dieses Schema hat noch keine Tabellen")}</p>}
+      {/* Ein leerer Zustand sagt, was hier erscheinen wird, und nicht nur,
+          dass nichts da ist. Der Weg dahin steht daneben: Angelegt werden
+          Tabellen im Reiter Struktur, und der braucht keine Wahl. */}
+      {tables.length === 0 && <p className="muted">{t("Im Schema public steht noch keine Tabelle. Sobald eine angelegt ist, steht sie in diesem Menü und ihre Datensätze, Spalten und Beziehungen stehen darunter.")}</p>}
       {/* Ehrlich vor dem ersten Klick: Der Reiter "Daten" liest ueber die
           generierte Daten-API, und die zeigt nur Tabellen mit Row Level
           Security. Die anderen vier Reiter lesen den Katalog und arbeiten
@@ -215,7 +218,7 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
         <article className="console-card span-2">
           <div className="card-head"><div><span>{t("SPALTEN")}</span><h3>{t("Wie diese Tabelle gebaut ist")}</h3></div><Columns3 size={18}/></div>
           {current === undefined && <p className="muted">{t("Diese Tabelle steht nicht im gelesenen Schema public.")}</p>}
-          {current?.columns.length === 0 && <p className="muted">{t("keine Spalten")}</p>}
+          {current?.columns.length === 0 && <p className="muted">{t("Diese Tabelle hat noch keine Spalte. Lege unten im Entwurf eine an; sie wird als Change Set vorbereitet und erst nach der Freigabe angewendet.")}</p>}
           {current?.columns.map((column) => <div className="bucket-row" key={column.name}>
             <span className="bucket-icon">{primaryKey.has(column.name) ? <KeyRound size={16}/> : <Columns3 size={16}/>}</span>
             <div className="row-text">
