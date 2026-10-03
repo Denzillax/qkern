@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mail, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_SMTP_CERTIFIED,
@@ -65,12 +66,12 @@ export function AuthSmtpView({ projectId, environment, initialState }: { project
       setRefreshing(false);
       if (response.status === 503) {
         setSettings(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setSettings(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       setSettings(payload.data as Settings); setMessage(""); setState("ready");

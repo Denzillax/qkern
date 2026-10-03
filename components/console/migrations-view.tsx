@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GitCommitHorizontal, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { changeSetRiskLabel, changeSetStatusLabel } from "@/lib/console/change-set-labels";
 import { formatMoment } from "@/components/console/console-display";
 import type { ChangeSet, Environment } from "@/lib/types";
@@ -43,8 +44,8 @@ export function MigrationsView({ projectId, environment, changeSets, initialStat
       ]);
       const reviewPayload = await reviewResponse.json().catch(() => ({}));
       const incidentPayload = await incidentResponse.json().catch(() => ({}));
-      if (!reviewResponse.ok) throw new Error(reviewPayload.error ?? t("Reviews nicht verfügbar"));
-      if (!incidentResponse.ok) throw new Error(incidentPayload.error ?? t("Vorfälle nicht verfügbar"));
+      if (!reviewResponse.ok) throw new Error(serverErrorText(reviewPayload.error) ?? t("Reviews nicht verfügbar"));
+      if (!incidentResponse.ok) throw new Error(serverErrorText(incidentPayload.error) ?? t("Vorfälle nicht verfügbar"));
       setReviews((reviewPayload.data.reviews as ReviewItem[]).filter((item) => item.environment === environment));
       setIncidents((incidentPayload.data.incidents as IncidentItem[]).filter((item) => item.environment === environment));
       setState("ready");

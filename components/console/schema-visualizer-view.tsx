@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Network, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { StableLabel } from "@/components/stable-label";
 import { buildSchemaDiagram, type DiagramRelation, type DiagramTable } from "@/lib/console/schema-diagram";
 
@@ -121,7 +122,7 @@ export function SchemaVisualizerView({ projectId, environment, table, initialSta
     setRefreshing(false);
     for (const result of [schema, keys]) {
       if (result.status === 503 || result.status === 409) {
-        setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Die Projektdatenbank ist noch nicht bereit."));
+        setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Die Projektdatenbank ist noch nicht bereit."));
         setState("unavailable");
         return;
       }

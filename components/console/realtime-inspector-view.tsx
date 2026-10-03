@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Radio, RefreshCw, Send, Table2, Unplug } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { CopyValue } from "@/components/console/copy-value";
 import { StableLabel } from "@/components/stable-label";
@@ -148,11 +149,11 @@ export function RealtimeInspectorView({ projectId, environment, initialState }: 
       // etwas anderes als ein Fehler und bekommt darum einen eigenen Zustand.
       if ([schema.status, triggers.status].some((code) => code === 503 || code === 409)) {
         setTableState("unavailable");
-        setTableMessage(schemaBody.error ?? triggerBody.error ?? t("Die Projektdatenbank ist noch nicht bereit."));
+        setTableMessage(serverErrorText(schemaBody.error) ?? serverErrorText(triggerBody.error) ?? t("Die Projektdatenbank ist noch nicht bereit."));
         return;
       }
       if (!schema.ok || !triggers.ok) {
-        throw new Error(schemaBody.error ?? triggerBody.error ?? t("Tabellen nicht verfügbar"));
+        throw new Error(serverErrorText(schemaBody.error) ?? serverErrorText(triggerBody.error) ?? t("Tabellen nicht verfügbar"));
       }
       const found = (schemaBody.data?.tables ?? [])
         // Sichten tragen keinen Trigger je Zeile. Sie hier zu zeigen hiesse,

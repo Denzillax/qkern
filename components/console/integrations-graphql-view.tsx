@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Braces, Play, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { DATA_API_GRAPHQL_LIMITS } from "@/lib/data-api-graphql-limits";
@@ -139,12 +140,12 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
       setRefreshing(false);
       if (response.status === 503 || response.status === 409) {
         setSchema(null); setState("unavailable");
-        setMessage(payload.error ?? t("Die Data API ist für diese Umgebung nicht bereit."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Data API ist für diese Umgebung nicht bereit."));
         return;
       }
       if (!response.ok || !payload.data) {
         setSchema(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       const loaded = payload.data as GraphqlSchema;
@@ -168,7 +169,7 @@ export function IntegrationsGraphqlView({ projectId, environment, initialState }
     const reason = payload.reason;
     const text = reason && reason in GRAPHQL_REJECTIONS
       ? t(GRAPHQL_REJECTIONS[reason]!)
-      : payload.error ?? t("Die Abfrage wurde abgewiesen.");
+      : serverErrorText(payload.error) ?? t("Die Abfrage wurde abgewiesen.");
     return payload.at ? `${text} (${payload.at})` : text;
   }
 

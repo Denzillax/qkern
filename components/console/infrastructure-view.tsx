@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Boxes, Clock, HardDrive, MapPin, Puzzle, RefreshCw, Server } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
@@ -124,7 +125,7 @@ export function InfrastructureView(props: {
       return;
     }
     setRuntime(null);
-    setMessage(typeof runtimeAnswer.payload.error === "string" ? runtimeAnswer.payload.error : "");
+    setMessage(typeof runtimeAnswer.payload.error === "string" ? (serverErrorText(runtimeAnswer.payload.error) ?? "") : "");
     const code = typeof runtimeAnswer.payload.code === "string" ? runtimeAnswer.payload.code : "";
     // Abgeschaltet, nicht bereit und nicht erreichbar sind drei verschiedene
     // Auskuenfte. Ein 500 waere eine vierte und heisst hier schlicht Fehler.

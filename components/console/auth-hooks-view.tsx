@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Webhook } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -128,12 +129,12 @@ export function AuthHooksView({ projectId, environment, initialState }: { projec
       setRefreshing(false);
       if (response.status === 503) {
         setData(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setData(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       adopt(payload.data as HookSettings);
@@ -172,7 +173,7 @@ export function AuthHooksView({ projectId, environment, initialState }: { projec
         const reason = payload.reason as AuthHookRejectionId | undefined;
         const explained = reason && reason in AUTH_HOOKS_REJECTIONS
           ? t(AUTH_HOOKS_REJECTIONS[reason])
-          : payload.error ?? t("Die Auth-Hooks konnten nicht gespeichert werden.");
+          : serverErrorText(payload.error) ?? t("Die Auth-Hooks konnten nicht gespeichert werden.");
         setMessage(explained);
         return;
       }

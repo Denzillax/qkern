@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Braces, ExternalLink, Eye, RefreshCw, Table2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { StableLabel } from "@/components/stable-label";
 import { DATA_API_LIMITS, SENSITIVE_COLUMN_WORDS } from "@/lib/data-api-limits";
 import { dataApiReadiness, exposedTablesFromOpenApi, type DataApiReadiness } from "@/lib/console/data-api-exposure";
@@ -73,7 +74,7 @@ export function DataApiSettingsView({ projectId, environment }: { projectId: str
       setTables({ state: "ready", tables: data.tables as SchemaTable[], truncated: data.truncated === true, message: "" });
     } else {
       const state = schemaResult.status === 409 ? "not-ready" : schemaResult.status === 503 ? "unavailable" : "error";
-      setTables({ state, tables: [], truncated: false, message: typeof schemaResult.payload.error === "string" && schemaResult.payload.error ? schemaResult.payload.error : t("Tabellen nicht verfügbar") });
+      setTables({ state, tables: [], truncated: false, message: typeof schemaResult.payload.error === "string" && schemaResult.payload.error ? (serverErrorText(schemaResult.payload.error) ?? "") : t("Tabellen nicht verfügbar") });
     }
     setLoading(false);
   }, [base, openApiUrl]);

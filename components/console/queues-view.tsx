@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Plus, RefreshCw, RotateCcw, Route } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { tAll } from "@/components/console/console-i18n";
@@ -72,7 +73,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
       const response = await fetch(base, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 503) { setQueues([]); setState("unavailable"); setMessage(t("Project Queues sind für diese Umgebung nicht verbunden.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Queues nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Queues nicht verfügbar"));
       const list = payload.data as QueueItem[];
       setQueues(list);
       const entries = await Promise.all(list.map(async (queue) => {
@@ -90,7 +91,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     const name = window.prompt(t("Name der Queue (Kleinbuchstaben, Ziffern, Bindestrich oder Unterstrich, 3 bis 63 Zeichen)"), "email_jobs");
     if (!name) return;
     const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
-    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(payload.error ?? t("Queue konnte nicht angelegt werden")); return; }
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(serverErrorText(payload.error) ?? t("Queue konnte nicht angelegt werden")); return; }
     await load();
   }
 
@@ -110,7 +111,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     const response = await fetch(`${base}/${queueName}/messages/${encodeURIComponent(id)}/trace`, { cache: "no-store" });
     setBusy("");
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setTrace(null); setMessage(payload.error ?? t("Spur nicht verfügbar")); return; }
+    if (!response.ok) { setTrace(null); setMessage(serverErrorText(payload.error) ?? t("Spur nicht verfügbar")); return; }
     setMessage("");
     setTrace(payload.data as Trace);
   }
@@ -135,7 +136,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
       { cache: "no-store" },
     );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setSearch(null); setMessage(payload.error ?? t("Suche nach der Spur nicht verfügbar")); return; }
+    if (!response.ok) { setSearch(null); setMessage(serverErrorText(payload.error) ?? t("Suche nach der Spur nicht verfügbar")); return; }
     setMessage("");
     const page = payload.data as TraceSearch;
     setSearch(cursor === null ? page : { ...page, messages: [...search!.messages, ...page.messages] });
@@ -145,7 +146,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     if (open === queue.name) { setOpen(null); setDeadLetters([]); return; }
     const response = await fetch(`${base}/${queue.name}/dead-letters?limit=50`, { cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setMessage(payload.error ?? t("Dead Letters nicht verfügbar")); return; }
+    if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Dead Letters nicht verfügbar")); return; }
     setOpen(queue.name); setDeadLetters(payload.data as DeadLetter[]);
   }
 
@@ -153,7 +154,7 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
     setBusy(letter.id);
     const response = await fetch(`${base}/${letter.queue}/dead-letters/${letter.id}/replay`, { method: "POST" });
     setBusy("");
-    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(payload.error ?? t("Wiedereinreihen fehlgeschlagen")); return; }
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(serverErrorText(payload.error) ?? t("Wiedereinreihen fehlgeschlagen")); return; }
     const refreshed = await fetch(`${base}/${letter.queue}/dead-letters?limit=50`, { cache: "no-store" });
     if (refreshed.ok) setDeadLetters(((await refreshed.json()).data) as DeadLetter[]);
     await load();

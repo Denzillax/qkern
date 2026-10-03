@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 
@@ -42,8 +43,8 @@ export function StoragePoliciesView({ projectId, environment, initialState }: { 
     try {
       const response = await fetch(endpoint, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503) { setBuckets([]); setState("unavailable"); setMessage(payload.error ?? t("Project Storage ist für diese Umgebung deaktiviert.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Storage nicht verfügbar"));
+      if (response.status === 503) { setBuckets([]); setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Project Storage ist für diese Umgebung deaktiviert.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Storage nicht verfügbar"));
       const list = payload.data as Bucket[];
       setBuckets(list); setDrafts(Object.fromEntries(list.map((bucket) => [bucket.id, { readPolicy: bucket.readPolicy, writePolicy: bucket.writePolicy }]))); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Storage nicht verfügbar")); }
@@ -97,7 +98,7 @@ export function StoragePoliciesView({ projectId, environment, initialState }: { 
       maxObjectBytes: base.maxObjectBytes, quotaBytes: base.quotaBytes, retentionDays: base.retentionDays,
     }) });
     setSaving(null);
-    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(payload.error ?? t("Die Änderung wurde abgelehnt.")); return; }
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt.")); return; }
     await load();
   }
 

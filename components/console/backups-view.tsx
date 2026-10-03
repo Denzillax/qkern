@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, ArchiveRestore, ClipboardList, RefreshCw, Wrench } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -66,7 +67,7 @@ export function BackupsView({ projectId, environment, initialState }: { projectI
       );
       const payload = await response.json().catch(() => ({}));
       if (controller.signal.aborted) return;
-      if (!response.ok) throw new Error(payload.error ?? t("Der Stand der Sicherung ist nicht verfügbar."));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Der Stand der Sicherung ist nicht verfügbar."));
       setOverview(payload.data as PointInTimeRecoveryOverview);
       setState("ready");
     } catch (cause) {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { TimeZoneNote } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -48,7 +49,7 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
       const response = await fetch(`${base}/functions/${id}/invocations?limit=100`, { cache: "no-store", signal: controller.signal });
       const payload = await response.json().catch(() => ({}));
       if (controller.signal.aborted) return;
-      if (!response.ok) { setMessage(payload.error ?? t("Aufrufe nicht verfügbar")); setInvocations([]); return; }
+      if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Aufrufe nicht verfügbar")); setInvocations([]); return; }
       setMessage(""); setInvocations(payload.data as Invocation[]);
     } catch (cause) {
       // Ein Abbruch ist kein Fehler: Er heisst, dass jemand weitergeklickt hat.
@@ -70,8 +71,8 @@ export function InvocationsView({ projectId, environment, initialState }: { proj
       const response = await fetch(`${base}/functions`, { cache: "no-store", signal: listing.signal });
       const payload = await response.json().catch(() => ({}));
       if (listing.signal.aborted) return;
-      if (response.status === 503) { setState("unavailable"); setMessage(payload.error ?? t("Compute ist für diese Umgebung deaktiviert.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Function-Definitionen nicht verfügbar"));
+      if (response.status === 503) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Compute ist für diese Umgebung deaktiviert.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Function-Definitionen nicht verfügbar"));
       const list = payload.data as FunctionItem[];
       setFunctions(list);
       const first = list[0]?.id ?? "";

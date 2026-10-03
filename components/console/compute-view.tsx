@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Blocks, Plus, RefreshCw, ShieldCheck, Webhook, Zap } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { DangerousAction } from "@/components/console/dangerous-action";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
@@ -43,10 +44,10 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
     const cronPayload=await cronResponse.json();const webhookPayload=await webhookResponse.json();
     const functionPayload=await functionResponse.json();
     if(cronResponse.status===503||webhookResponse.status===503){setCron([]);setWebhooks([]);setFunctions([]);setState("unavailable");
-      setMessage(cronPayload.error??webhookPayload.error??t("Compute ist für diese Umgebung deaktiviert."));return;}
-    if(!cronResponse.ok)throw new Error(cronPayload.error??t("Cron-Definitionen nicht verfügbar"));
-    if(!webhookResponse.ok)throw new Error(webhookPayload.error??t("Webhook-Definitionen nicht verfügbar"));
-    if(!functionResponse.ok)throw new Error(functionPayload.error??t("Function-Definitionen nicht verfügbar"));
+      setMessage(serverErrorText(cronPayload.error)??serverErrorText(webhookPayload.error)??t("Compute ist für diese Umgebung deaktiviert."));return;}
+    if(!cronResponse.ok)throw new Error(serverErrorText(cronPayload.error)??t("Cron-Definitionen nicht verfügbar"));
+    if(!webhookResponse.ok)throw new Error(serverErrorText(webhookPayload.error)??t("Webhook-Definitionen nicht verfügbar"));
+    if(!functionResponse.ok)throw new Error(serverErrorText(functionPayload.error)??t("Function-Definitionen nicht verfügbar"));
     setCron(cronPayload.data as CronDefinitionItem[]);setWebhooks(webhookPayload.data as WebhookDefinitionItem[]);
     setFunctions(functionPayload.data as FunctionDefinitionItem[]);setState("ready");
   }catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:t("Compute nicht verfügbar"));}},[base]);
@@ -54,7 +55,7 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
 
   async function mutate(path:string,init:RequestInit){const response=await fetch(`${base}${path}`,init);
     if(response.ok){await load();return true;}
-    const payload=await response.json().catch(()=>({}));setMessage(payload.error??t("Die Änderung wurde abgelehnt."));return false;}
+    const payload=await response.json().catch(()=>({}));setMessage(serverErrorText(payload.error)??t("Die Änderung wurde abgelehnt."));return false;}
 
   async function createCron(){const name=window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"),"nightly-report");if(!name)return;
     const expression=window.prompt(t("Ausdruck: fünf Felder, Namen wie MON-FRI oder JAN, oder ein Kürzel wie @daily"),"*/15 * * * *");if(!expression)return;
@@ -80,14 +81,14 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
     setMessage(`${fn.name} läuft…`);
     const response=await fetch(`${base}/invoke/${fn.name}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:"console"})});
     const payload=await response.json().catch(()=>({}));
-    if(!response.ok){setMessage(payload.error??t("Die Function konnte nicht ausgeführt werden"));return;}
+    if(!response.ok){setMessage(serverErrorText(payload.error)??t("Die Function konnte nicht ausgeführt werden"));return;}
     setMessage(`${fn.name} antwortete mit Status ${payload.data?.statusCode ?? "?"}.`);}
 
   async function showDeliveries(webhook:WebhookDefinitionItem){
     if(selected===webhook.id){setSelected(null);setDeliveries([]);return;}
     const response=await fetch(`${base}/webhooks/${webhook.id}/deliveries?limit=20`,{cache:"no-store"});
     const payload=await response.json().catch(()=>({}));
-    if(!response.ok){setMessage(payload.error??t("Zustellstatus nicht verfügbar"));return;}
+    if(!response.ok){setMessage(serverErrorText(payload.error)??t("Zustellstatus nicht verfügbar"));return;}
     setSelected(webhook.id);setDeliveries(payload.data as WebhookDeliveryItem[]);}
 
   if(state==="loading")return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Functions, Cron und Webhooks werden geladen…")}</h3></div>;

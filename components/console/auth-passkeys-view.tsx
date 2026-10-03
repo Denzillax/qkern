@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, KeyRound, RefreshCw, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -65,12 +66,12 @@ export function AuthPasskeysView({ projectId, environment, initialState }: { pro
       setRefreshing(false);
       if (response.status === 503) {
         setPolicy(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setPolicy(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       setPolicy(payload.data as Policy); setMessage(""); setState("ready");

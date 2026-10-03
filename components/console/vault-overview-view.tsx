@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Lock, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -78,7 +79,7 @@ export function VaultOverviewView({ projectId, environment, initialState }: { pr
       return;
     }
     setRows([]); setCounts(EMPTY); setCheckedAt("");
-    setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Stand der Secret-Referenzen nicht verfügbar"));
+    setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Stand der Secret-Referenzen nicht verfügbar"));
     setState(result.status === 503 ? "unavailable" : "error");
   }, [url]);
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Cloud, RefreshCw, ShieldAlert } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatDecimal, formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -101,7 +102,7 @@ export function StorageLogView({ projectId, environment, initialState }: { proje
     const result = await readJson(suffix ? `${base}?${suffix}` : base, controller.signal);
     if (controller.signal.aborted) return;
     setRefreshing(false);
-    const error = typeof result.payload.error === "string" ? result.payload.error : "";
+    const error = typeof result.payload.error === "string" ? (serverErrorText(result.payload.error) ?? "") : "";
     if (result.status === 503) {
       setData(null);
       setState(error === STORAGE_DISABLED_ERROR ? "disabled" : "unavailable");

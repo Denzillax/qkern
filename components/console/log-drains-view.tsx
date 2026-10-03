@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileClock, KeyRound, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMomentOrRaw, positionMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -96,10 +97,10 @@ export function LogDrainsView({ projectId, environment, initialState }: {
       const payload = await response.json().catch(() => ({}));
       if (response.status === 503) {
         setDrains([]); setState("unavailable");
-        setMessage(payload.error ?? t("Compute ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Compute ist für diese Umgebung deaktiviert."));
         return;
       }
-      if (!response.ok) throw new Error(payload.error ?? t("Log-Drains nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Log-Drains nicht verfügbar"));
       const list = (payload.data ?? []) as LogDrainRecord[];
       setDrains(list);
       setForwards((payload.forwards ?? []) as Forward[]);
@@ -155,7 +156,7 @@ export function LogDrainsView({ projectId, environment, initialState }: {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        setSubmitMessage(body.error ?? t("Der Log-Drain wurde abgelehnt."));
+        setSubmitMessage(serverErrorText(body.error) ?? t("Der Log-Drain wurde abgelehnt."));
         return;
       }
       setName(""); setUrl(""); setSecretRef(""); setSources(["auth_audit"]);
@@ -173,7 +174,7 @@ export function LogDrainsView({ projectId, environment, initialState }: {
     });
     if (response.ok) { await load(); return; }
     const payload = await response.json().catch(() => ({}));
-    setMessage(payload.error ?? t("Die Änderung wurde abgelehnt."));
+    setMessage(serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt."));
   }
 
   /**

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, Lock, RefreshCw, Radio, ShieldCheck, Table2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_ACCESS_ALLOWANCE_TEXTS,
@@ -119,7 +120,7 @@ export function AuthPoliciesView({ projectId, environment, initialState }: { pro
       return;
     }
     setAccess(null);
-    setMessage(typeof payload.error === "string" ? payload.error : "");
+    setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
     const code = typeof payload.code === "string" ? payload.code : "";
     // Abgeschaltet, nicht bereit und nicht erreichbar sind drei verschiedene
     // Auskuenfte. Ein 500 waere eine vierte und heisst hier schlicht Fehler.

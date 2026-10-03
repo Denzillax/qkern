@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -139,7 +140,7 @@ export function TableDesignerView({ projectId, environment, table, navigate, rel
     if (controller.signal.aborted) return;
     setRefreshing(false);
     if (schema.status === 503 || schema.status === 409) {
-      setMessage(typeof schema.payload.error === "string" && schema.payload.error ? schema.payload.error : t("Die Projektdatenbank ist noch nicht bereit."));
+      setMessage(typeof schema.payload.error === "string" && schema.payload.error ? (serverErrorText(schema.payload.error) ?? "") : t("Die Projektdatenbank ist noch nicht bereit."));
       setState("unavailable");
       return;
     }
@@ -153,7 +154,7 @@ export function TableDesignerView({ projectId, environment, table, navigate, rel
       setState("ready");
       return;
     }
-    setMessage(typeof schema.payload.error === "string" ? schema.payload.error : t("Tabellen nicht verfügbar"));
+    setMessage(typeof schema.payload.error === "string" ? (serverErrorText(schema.payload.error) ?? "") : t("Tabellen nicht verfügbar"));
     setState("error");
   }, [base, table]);
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Fingerprint, RefreshCw, TriangleAlert } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber, formatPercent } from "@/components/console/console-display";
 import { formatBucketMoment } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
@@ -88,7 +89,7 @@ export function AuthPerformanceView({ projectId, environment, initialState }: { 
     const result = await readJson(`${base}?bucket=${next}`, controller.signal);
     if (controller.signal.aborted) return;
     setRefreshing(false);
-    const error = typeof result.payload.error === "string" ? result.payload.error : "";
+    const error = typeof result.payload.error === "string" ? (serverErrorText(result.payload.error) ?? "") : "";
     if (result.status === 503) {
       setSeries(null);
       setState(error === PROJECT_AUTH_DISABLED_ERROR || error === AUDIT_UNAVAILABLE_ERROR ? "disabled" : "unavailable");

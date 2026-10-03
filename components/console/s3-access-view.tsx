@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, KeyRound, Plug, Plus, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 import { maskSecret } from "@/components/console/console-format";
@@ -86,10 +87,10 @@ export function S3AccessView({ projectId, environment, initialState }: { project
       const bucketPayload = await bucketResponse.json().catch(() => ({}));
       if (keyResponse.status === 503) {
         setKeys([]); setBuckets([]); setState("unavailable");
-        setMessage(keyPayload.error ?? t("Storage ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(keyPayload.error) ?? t("Storage ist für diese Umgebung deaktiviert."));
         return;
       }
-      if (!keyResponse.ok) throw new Error(keyPayload.error ?? t("S3-Zugang nicht verfügbar"));
+      if (!keyResponse.ok) throw new Error(serverErrorText(keyPayload.error) ?? t("S3-Zugang nicht verfügbar"));
       setKeys((keyPayload.data ?? []) as AccessKey[]);
       setBuckets(bucketResponse.ok ? ((bucketPayload.data ?? []) as Bucket[]) : []);
       setState("ready");
@@ -133,7 +134,7 @@ export function S3AccessView({ projectId, environment, initialState }: { project
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setSubmitMessage(payload.error ?? t("Das Schlüsselpaar wurde abgelehnt."));
+        setSubmitMessage(serverErrorText(payload.error) ?? t("Das Schlüsselpaar wurde abgelehnt."));
         return;
       }
       setIssued({ accessKeyId: String(payload.data?.accessKeyId ?? ""), secret: String(payload.secret ?? ""), verifiable: payload.data?.verifiable === true });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, KeyRound, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
@@ -83,7 +84,7 @@ export function ComputeSecretsView({ projectId, environment, initialState }: { p
       setSecrets({ state: "ready", secrets: data.secrets as SecretItem[], checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : "", message: "" });
       return;
     }
-    const message = typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Status der Secrets nicht verfügbar");
+    const message = typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Status der Secrets nicht verfügbar");
     setSecrets({ state: result.status === 503 ? "unavailable" : "error", secrets: [], checkedAt: "", message });
   }, [base]);
 
@@ -96,7 +97,7 @@ export function ComputeSecretsView({ projectId, environment, initialState }: { p
     if (controller.signal.aborted) return;
     if (result.status !== 200 || !Array.isArray(result.payload.data)) {
       setListState(result.status === 503 ? "unavailable" : "error");
-      setListMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Function-Definitionen nicht verfügbar"));
+      setListMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Function-Definitionen nicht verfügbar"));
       return;
     }
     const list = (result.payload.data as FunctionItem[]).map((item) => ({ id: item.id, name: item.name, secretRefs: Array.isArray(item.secretRefs) ? item.secretRefs : [] }));

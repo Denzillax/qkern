@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Policies in der Console (2.19): die Row-Level-Security-Regeln des Schemas
@@ -30,8 +31,8 @@ export function PoliciesView({ projectId, environment, table, initialState }: { 
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/policies?schema=public`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Policies nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Policies nicht verfügbar"));
       setPolicies(payload.data.policies as Policy[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Policies nicht verfügbar")); }
   }, [projectId, environment]);

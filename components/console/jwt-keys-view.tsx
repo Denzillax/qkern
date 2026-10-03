@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { KeySquare, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { CopyValue } from "@/components/console/copy-value";
 import { InlineEmptyState } from "@/components/console/console-parts";
 
@@ -32,8 +33,8 @@ export function JwtKeysView({ projectId, environment, initialState }: { projectI
     try {
       const response = await fetch(url, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503) { setState("unavailable"); setMessage(payload.error ?? t("Project Auth ist für diese Umgebung nicht aktiv.")); return; }
-      if (!response.ok || !Array.isArray(payload.keys)) throw new Error(payload.error ?? t("JWKS nicht erreichbar"));
+      if (response.status === 503) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung nicht aktiv.")); return; }
+      if (!response.ok || !Array.isArray(payload.keys)) throw new Error(serverErrorText(payload.error) ?? t("JWKS nicht erreichbar"));
       setKeys(payload.keys as Jwk[]); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("JWKS nicht erreichbar")); }
   }, [url]);

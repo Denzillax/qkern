@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FunctionSquare, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Funktionen in der Console (2.18): Funktionen und Prozeduren des Schemas
@@ -27,8 +28,8 @@ export function FunctionsView({ projectId, environment, initialState }: { projec
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/functions?schema=public`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Funktionen nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Funktionen nicht verfügbar"));
       setFunctions(payload.data.functions as Fn[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Funktionen nicht verfügbar")); }
   }, [projectId, environment]);

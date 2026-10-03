@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link2, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -64,12 +65,12 @@ export function AuthReturnTargetsView({ projectId, environment, initialState }: 
       setRefreshing(false);
       if (response.status === 503) {
         setData(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setData(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       const loaded = payload.data as Targets;
@@ -104,7 +105,7 @@ export function AuthReturnTargetsView({ projectId, environment, initialState }: 
         const reason = payload.reason as AuthReturnTargetRejectionId | undefined;
         const explained = reason && reason in AUTH_RETURN_TARGET_REJECTIONS
           ? `${payload.value ? `${payload.value}: ` : ""}${t(AUTH_RETURN_TARGET_REJECTIONS[reason])}`
-          : payload.error ?? t("Die Liste konnte nicht gespeichert werden.");
+          : serverErrorText(payload.error) ?? t("Die Liste konnte nicht gespeichert werden.");
         setMessage(explained);
         return;
       }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Boxes, GitBranch, GitCommitHorizontal, RefreshCw, ShieldCheck, Workflow } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -115,7 +116,7 @@ export function BranchFlowView(props: { projectId: string; environment: Environm
       return;
     }
     setFlows(null);
-    setMessage(typeof answer.payload.error === "string" ? answer.payload.error : "");
+    setMessage(typeof answer.payload.error === "string" ? (serverErrorText(answer.payload.error) ?? "") : "");
     // Nicht gefunden und Fehler sind zwei verschiedene Auskuenfte; eine leere
     // Seite waere die dritte und hier keine.
     setState(answer.status === 404 ? "unavailable" : "error");

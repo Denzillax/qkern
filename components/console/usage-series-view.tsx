@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatCount } from "@/components/console/console-display";
 import { formatBucketMoment } from "@/components/console/console-format";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -97,7 +98,7 @@ export function UsageSeriesView({ view, projectId, environment, initialState }: 
     const result = await readJson(`${base}?metric=${next.metric}&bucket=${next.bucket}`, controller.signal);
     if (controller.signal.aborted) return;
     setRefreshing(false);
-    const error = typeof result.payload.error === "string" ? result.payload.error : "";
+    const error = typeof result.payload.error === "string" ? (serverErrorText(result.payload.error) ?? "") : "";
     if (result.status === 503) {
       setSeries(null);
       setState(error === USAGE_METERING_DISABLED_ERROR ? "disabled" : "unavailable");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, LogOut, RefreshCw, Users } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
@@ -41,7 +42,7 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
       const response = await fetch(`${base}/${userId}/sessions`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!current()) return;
-      if (!response.ok) { setMessage(payload.error ?? t("Sitzungen nicht verfügbar")); return; }
+      if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Sitzungen nicht verfügbar")); return; }
       setMessage(""); setSessions(payload.data.sessions as Session[]);
     } catch { if (current()) setMessage(t("Sitzungen nicht verfügbar")); }
   }, [base]);
@@ -52,7 +53,7 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
       const response = await fetch(`${base}?limit=100`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 503) { setState("unavailable"); setMessage(t("Project Auth ist für diese Umgebung deaktiviert.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Nutzer nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Nutzer nicht verfügbar"));
       const list = payload.data.users as AppUser[];
       setUsers(list);
       const first = list[0]?.id ?? "";

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, RefreshCw, ScrollText } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 
@@ -74,7 +75,7 @@ export function AuthAuditView({ projectId, environment, initialState }: { projec
       const payload = await response.json().catch(() => ({}));
       if (ticket !== request.current) return;
       if (response.status === 503) { setState("unavailable"); setMessage(t("Project Auth ist für diese Umgebung deaktiviert.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Audit-Log nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Audit-Log nicht verfügbar"));
       setEvents(payload.data.events as AuditEvent[]);
       setCursor(payload.data.nextCursor as string | null);
       setState("ready");
@@ -93,7 +94,7 @@ export function AuthAuditView({ projectId, environment, initialState }: { projec
       const response = await fetch(`${base}?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (ticket !== request.current) return;
-      if (!response.ok) { setMessage(payload.error ?? t("Audit-Log nicht verfügbar")); return; }
+      if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Audit-Log nicht verfügbar")); return; }
       setMessage("");
       setEvents((current) => [...current, ...(payload.data.events as AuditEvent[])]);
       setCursor(payload.data.nextCursor as string | null);

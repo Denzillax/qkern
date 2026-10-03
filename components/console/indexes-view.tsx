@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ListOrdered, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Indizes in der Console (2.19): alle Indizes des Schemas public, gelesen
@@ -24,8 +25,8 @@ export function IndexesView({ projectId, environment, initialState }: { projectI
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/indexes?schema=public`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Indizes nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Indizes nicht verfügbar"));
       setIndexes(payload.data.indexes as Index[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Indizes nicht verfügbar")); }
   }, [projectId, environment]);

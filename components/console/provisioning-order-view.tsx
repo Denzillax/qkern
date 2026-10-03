@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Ban, ClipboardList, Link2, RefreshCw, Send, Server } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -114,7 +115,7 @@ export function ProvisioningOrderView({ projectId, environment, initialState }: 
       return;
     }
     setJob(null);
-    setMessage(typeof answer.payload.error === "string" ? answer.payload.error : "");
+    setMessage(typeof answer.payload.error === "string" ? (serverErrorText(answer.payload.error) ?? "") : "");
     // Vier Antworten, vier verschiedene Auskuenfte. Ein 404 heisst hier
     // absichtlich zweierlei, und der Text sagt beides.
     if (answer.status === 404) setState("noJob");
@@ -143,7 +144,7 @@ export function ProvisioningOrderView({ projectId, environment, initialState }: 
       const payload = await answer.json().catch(() => ({})) as { data?: { idempotent?: boolean }; error?: string };
       if (answer.status === 202) setOrder("done");
       else if (answer.status === 200 && payload.data?.idempotent) setOrder("already");
-      else { setOrder("refused"); setMessage(typeof payload.error === "string" ? payload.error : ""); }
+      else { setOrder("refused"); setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : ""); }
     } catch {
       setOrder("refused");
     } finally {

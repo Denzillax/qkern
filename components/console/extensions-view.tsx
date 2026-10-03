@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Puzzle, RefreshCw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Erweiterungen in der Console (2.20): alle verfügbaren PostgreSQL-
@@ -25,8 +26,8 @@ export function ExtensionsView({ projectId, environment, initialState }: { proje
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/extensions`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Erweiterungen nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Erweiterungen nicht verfügbar"));
       setExtensions(payload.data.extensions as Extension[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Erweiterungen nicht verfügbar")); }
   }, [projectId, environment]);

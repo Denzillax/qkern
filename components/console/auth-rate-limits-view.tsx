@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Gauge, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -85,12 +86,12 @@ export function AuthRateLimitsView({ projectId, environment, initialState }: { p
       setRefreshing(false);
       if (response.status === 503) {
         setData(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setData(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       const loaded = payload.data as RateLimits;
@@ -122,7 +123,7 @@ export function AuthRateLimitsView({ projectId, environment, initialState }: { p
         const reason = payload.reason as AuthRateLimitRejectionId | undefined;
         const explained = reason && reason in AUTH_RATE_LIMIT_REJECTIONS
           ? `${payload.field ? `${t(AUTH_RATE_LIMIT_KIND_TEXTS[payload.field as AuthRateLimitKindId] ?? payload.field)}: ` : ""}${t(AUTH_RATE_LIMIT_REJECTIONS[reason])}`
-          : payload.error ?? t("Die Grenzen konnten nicht gespeichert werden.");
+          : serverErrorText(payload.error) ?? t("Die Grenzen konnten nicht gespeichert werden.");
         setMessage(explained);
         return;
       }

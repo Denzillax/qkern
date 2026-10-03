@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileClock, ListFilter, RefreshCw, Save, Search } from "lucide-react";
 import { formatMoment } from "@/components/console/console-display";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -185,7 +186,7 @@ export function LogExplorerView({ projectId, environment, initialState }: { proj
     const data = answer.payload.data as Result | undefined;
     if (answer.status !== 200 || !data || !Array.isArray(data.entries)) {
       const reason = typeof answer.payload.reason === "string" ? answer.payload.reason : "";
-      const error = typeof answer.payload.error === "string" ? answer.payload.error : "";
+      const error = typeof answer.payload.error === "string" ? (serverErrorText(answer.payload.error) ?? "") : "";
       setResult(null);
       setMessage(reason || error || t("Die Suche hat nicht geantwortet."));
       setState("error");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, HardDrive, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { DangerousAction } from "@/components/console/dangerous-action";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatDecimal } from "@/components/console/console-display";
@@ -39,10 +40,10 @@ export function StorageView({ projectId, environment, initialState }: { projectI
   const [state, setState] = useState<"loading"|"ready"|"unavailable"|"error">(initialState ?? "loading");
   const [message,setMessage]=useState("");
   const endpoint=`/api/v1/projects/${projectId}/environments/${environment}/storage/buckets`;
-  const load=useCallback(async()=>{setState("loading");setMessage("");try{const response=await fetch(endpoint,{cache:"no-store"});const payload=await response.json();if(response.status===503){setBuckets([]);setState("unavailable");setMessage(payload.error??t("Project Storage ist für diese Umgebung deaktiviert."));return;}if(!response.ok)throw new Error(payload.error??t("Storage nicht verfügbar"));setBuckets(payload.data as ProjectStorageBucketItem[]);setState("ready");}catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:t("Storage nicht verfügbar"));}},[endpoint]);
+  const load=useCallback(async()=>{setState("loading");setMessage("");try{const response=await fetch(endpoint,{cache:"no-store"});const payload=await response.json();if(response.status===503){setBuckets([]);setState("unavailable");setMessage(serverErrorText(payload.error)??t("Project Storage ist für diese Umgebung deaktiviert."));return;}if(!response.ok)throw new Error(serverErrorText(payload.error)??t("Storage nicht verfügbar"));setBuckets(payload.data as ProjectStorageBucketItem[]);setState("ready");}catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:t("Storage nicht verfügbar"));}},[endpoint]);
   useEffect(()=>{void load();},[load]);
-  async function create(){const raw=window.prompt(t("Bucket-Name (Kleinbuchstaben, Ziffern, Bindestriche)"),"project-assets");if(!raw)return;const response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:raw.trim()})});const payload=await response.json();if(!response.ok){setMessage(payload.error??t("Bucket konnte nicht angelegt werden"));setState("error");return;}await load();}
-  async function remove(bucket:ProjectStorageBucketItem){const response=await fetch(`${endpoint}/${bucket.id}`,{method:"DELETE"});if(response.ok)await load();else{const payload=await response.json();setMessage(payload.error??t("Nur leere Buckets lassen sich löschen"));setState("error");}}
+  async function create(){const raw=window.prompt(t("Bucket-Name (Kleinbuchstaben, Ziffern, Bindestriche)"),"project-assets");if(!raw)return;const response=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:raw.trim()})});const payload=await response.json();if(!response.ok){setMessage(serverErrorText(payload.error)??t("Bucket konnte nicht angelegt werden"));setState("error");return;}await load();}
+  async function remove(bucket:ProjectStorageBucketItem){const response=await fetch(`${endpoint}/${bucket.id}`,{method:"DELETE"});if(response.ok)await load();else{const payload=await response.json();setMessage(serverErrorText(payload.error)??t("Nur leere Buckets lassen sich löschen"));setState("error");}}
   const used=buckets.reduce((sum,bucket)=>sum+bucket.usedBytes,0);
   const quota=buckets.reduce((sum,bucket)=>sum+bucket.quotaBytes,0);
   const percent=quota>0?Math.min(100,(used/quota)*100):0;

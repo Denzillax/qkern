@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, UserCog } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatDay } from "@/components/console/console-display";
 
 /**
@@ -25,8 +26,8 @@ export function RolesView({ projectId, environment, initialState }: { projectId:
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/roles`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Rollen nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Rollen nicht verfügbar"));
       setRoles(payload.data.roles as Role[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Rollen nicht verfügbar")); }
   }, [projectId, environment]);

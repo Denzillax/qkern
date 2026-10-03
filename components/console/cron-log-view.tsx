@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock3, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -72,7 +73,7 @@ export function CronLogView({ projectId, environment, initialState }: { projectI
     const data = result.payload.data as CronLog | undefined;
     if (result.status === 200 && data && Array.isArray(data.occurrences)) { setLog(data); setMessage(""); return; }
     setLog(null);
-    setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Cron-Log nicht verfügbar"));
+    setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Cron-Log nicht verfügbar"));
   }, [base]);
 
   // Jede Ladung hat einen eigenen AbortController; eine abgebrochene setzt keinen Zustand mehr.
@@ -85,12 +86,12 @@ export function CronLogView({ projectId, environment, initialState }: { projectI
     if (controller.signal.aborted) return;
     if (result.status === 503) {
       setRefreshing(false); setDefinitions([]); setLog(null); setState("unavailable");
-      setMessage(typeof result.payload.error === "string" ? result.payload.error : t("Compute ist für diese Umgebung deaktiviert."));
+      setMessage(typeof result.payload.error === "string" ? (serverErrorText(result.payload.error) ?? "") : t("Compute ist für diese Umgebung deaktiviert."));
       return;
     }
     if (result.status !== 200 || !Array.isArray(result.payload.data)) {
       setRefreshing(false); setState("error");
-      setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Cron-Definitionen nicht verfügbar"));
+      setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Cron-Definitionen nicht verfügbar"));
       return;
     }
     const list = result.payload.data as CronDefinition[];

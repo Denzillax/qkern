@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, Container, FileClock, RefreshCw, Send, Terminal } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -96,7 +97,7 @@ export function FunctionContainerLogView({ projectId, environment, initialState 
     const list = await readJson(`${base}/functions`, controller.signal);
     if (controller.signal.aborted) return;
 
-    const error = typeof list.payload.error === "string" ? list.payload.error : "";
+    const error = typeof list.payload.error === "string" ? (serverErrorText(list.payload.error) ?? "") : "";
     if (list.status === 503) {
       setRefreshing(false);
       setFunctions([]);

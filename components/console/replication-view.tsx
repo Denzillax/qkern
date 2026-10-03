@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, GitBranch, Radio, RefreshCw, Satellite, Waypoints } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
@@ -95,7 +96,7 @@ export function ReplicationView({ projectId, environment, initialState }: { proj
         return;
       }
       setData(null);
-      setMessage(typeof payload.error === "string" ? payload.error : "");
+      setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
       // Abgeschaltet, nicht bereit und nicht erreichbar sind drei
       // verschiedene Auskuenfte, und keine davon ist ein Fehler dieser Seite.
       const code = typeof payload.code === "string" ? payload.code : "";

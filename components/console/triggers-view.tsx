@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Zap } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Trigger in der Console (2.9): die erste Datenbank-Seite nach dem Vorbild
@@ -27,8 +28,8 @@ export function TriggersView({ projectId, environment, initialState }: { project
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/triggers?schema=public`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Trigger nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Trigger nicht verfügbar"));
       setTriggers(payload.data.triggers as Trigger[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Trigger nicht verfügbar")); }
   }, [projectId, environment]);

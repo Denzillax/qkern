@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Tags } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 
 /**
  * Enum-Typen in der Console (2.19): die Aufzählungstypen des Schemas public
@@ -24,8 +25,8 @@ export function EnumTypesView({ projectId, environment, initialState }: { projec
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema/enum-types?schema=public`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Enum-Typen nicht verfügbar"));
+      if (response.status === 503 || response.status === 409) { setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Enum-Typen nicht verfügbar"));
       setTypes(payload.data.types as EnumType[]); setTruncated(Boolean(payload.data.truncated)); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Enum-Typen nicht verfügbar")); }
   }, [projectId, environment]);

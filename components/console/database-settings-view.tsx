@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, Lock, RefreshCw, ShieldCheck, UserCog } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatDay } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -87,7 +88,7 @@ export function DatabaseSettingsView({ projectId, environment, initialState }: {
       return;
     }
     setSettings(null);
-    setMessage(typeof payload.error === "string" ? payload.error : "");
+    setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
     const code = typeof payload.code === "string" ? payload.code : "";
     // Abgeschaltet, nicht bereit und nicht erreichbar sind drei verschiedene
     // Auskuenfte. Ein 500 waere eine vierte und heisst hier schlicht Fehler.

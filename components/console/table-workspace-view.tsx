@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Braces, Columns3, KeyRound, RefreshCw, ShieldCheck, Table2, UserCog } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import { CopyButton } from "@/components/docs/copy-button";
@@ -123,7 +124,7 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
     if (controller.signal.aborted) return;
     for (const result of [schema, keys]) {
       if (result.status === 503 || result.status === 409) {
-        setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Die Projektdatenbank ist noch nicht bereit."));
+        setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Die Projektdatenbank ist noch nicht bereit."));
         setState("unavailable");
         return;
       }

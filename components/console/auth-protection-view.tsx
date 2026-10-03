@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileWarning, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
@@ -100,12 +101,12 @@ export function AuthProtectionView({ projectId, environment, initialState }: { p
       setRefreshing(false);
       if (response.status === 503) {
         setData(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setData(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       const loaded = payload.data as PasswordProtection;
@@ -137,7 +138,7 @@ export function AuthProtectionView({ projectId, environment, initialState }: { p
         const reason = payload.reason as AuthProtectionRejectionId | undefined;
         const explained = reason && reason in AUTH_PROTECTION_REJECTIONS
           ? t(AUTH_PROTECTION_REJECTIONS[reason])
-          : payload.error ?? t("Der Passwortschutz konnte nicht gespeichert werden.");
+          : serverErrorText(payload.error) ?? t("Der Passwortschutz konnte nicht gespeichert werden.");
         setMessage(explained);
         return;
       }

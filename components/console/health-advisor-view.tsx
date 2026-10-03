@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, RefreshCw, ShieldAlert, Stethoscope } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -85,7 +86,7 @@ export function HealthAdvisorView({ projectId, environment, initialState }: { pr
       setState("ready");
       return;
     }
-    setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Projekt-Gesundheit nicht verfügbar"));
+    setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Projekt-Gesundheit nicht verfügbar"));
     setState("error");
   }, [url]);
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Database, FileWarning, HardDrive, KeyRound, RefreshCw, ScrollText, ShieldCheck, Timer, Wrench } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
 import { formatBytes } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
@@ -150,7 +151,7 @@ export function DatabaseHealthView({ projectId, environment, initialState }: { p
       return;
     }
     setHealth(null);
-    setMessage(typeof payload.error === "string" ? payload.error : "");
+    setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
     const code = typeof payload.code === "string" ? payload.code : "";
     // Abgeschaltet, nicht bereit und nicht erreichbar sind drei verschiedene
     // Auskünfte. Ein 500 wäre eine vierte und heisst hier schlicht Fehler.

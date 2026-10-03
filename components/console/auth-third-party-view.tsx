@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
@@ -141,12 +142,12 @@ export function AuthThirdPartyView({ projectId, environment, initialState }: { p
       setRefreshing(false);
       if (response.status === 503) {
         setData(null); setState("unavailable");
-        setMessage(payload.error ?? t("Project Auth ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Project Auth ist für diese Umgebung deaktiviert."));
         return;
       }
       if (!response.ok || !payload.data) {
         setData(null); setState("error");
-        setMessage(payload.error ?? t("Die Route hat nicht geantwortet."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Route hat nicht geantwortet."));
         return;
       }
       setData(payload.data as ThirdParty);
@@ -166,7 +167,7 @@ export function AuthThirdPartyView({ projectId, environment, initialState }: { p
   function explain(payload: { reason?: string; error?: string }, fallback: string): string {
     const reason = payload.reason as AuthThirdPartyRejectionId | undefined;
     if (reason && reason in AUTH_THIRD_PARTY_REJECTIONS) return t(AUTH_THIRD_PARTY_REJECTIONS[reason]);
-    return payload.error ?? fallback;
+    return serverErrorText(payload.error) ?? fallback;
   }
 
   async function create() {

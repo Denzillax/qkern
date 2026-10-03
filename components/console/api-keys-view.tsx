@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Plus, RefreshCw, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { maskSecret } from "@/components/console/console-format";
 import { CopyValue } from "@/components/console/copy-value";
@@ -41,7 +42,7 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
     try {
       const response = await fetch(base, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? t("API-Keys nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("API-Keys nicht verfügbar"));
       setKeys(payload.data as ApiKey[]); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("API-Keys nicht verfügbar")); }
   }, [base]);
@@ -52,7 +53,7 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
     const expiresAt = new Date(Date.now() + (kind === "public" ? 90 : 30) * 24 * 60 * 60 * 1000).toISOString();
     const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, kind, expiresAt }) });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setMessage(payload.error ?? t("Key konnte nicht erstellt werden")); return; }
+    if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Key konnte nicht erstellt werden")); return; }
     setSecret(payload.data.secret); setRevealed(false); await load();
   }
   async function revoke(keyId: string) {

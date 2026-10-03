@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, FileClock, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { OptionMenu } from "@/components/console/option-menu";
@@ -90,7 +91,7 @@ export function FunctionLogView({ projectId, environment, initialState }: { proj
     if (controller.signal.aborted) return;
     setRefreshing(false);
 
-    const error = typeof log.payload.error === "string" ? log.payload.error : "";
+    const error = typeof log.payload.error === "string" ? (serverErrorText(log.payload.error) ?? "") : "";
     if (log.status === 503) {
       setPage(null);
       setState(error === COMPUTE_DISABLED_ERROR ? "disabled" : "unavailable");

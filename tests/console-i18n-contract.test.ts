@@ -55,6 +55,7 @@ import { vectorBucketTexts } from "@/lib/console/vector-buckets-texts";
 import { analyticsBucketTexts } from "@/lib/console/analytics-buckets-texts";
 import { changeSetLabelTexts } from "@/lib/console/change-set-labels";
 import { auditStatusTexts } from "@/components/console/activity-view";
+import { serverErrorTexts } from "@/components/console/server-errors";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -260,6 +261,9 @@ async function consoleKeys(): Promise<string[]> {
   // Der Zustand eines Audit-Ereignisses (2.158) stand roh als `success` in der
   // Aktivitaetsliste und laeuft jetzt als t(variable) durch.
   for (const text of auditStatusTexts()) keys.add(text);
+  // Die Meldungen des Servers (2.160) laufen als t(variable) durch das Modul,
+  // das sie uebersetzt.
+  for (const text of serverErrorTexts()) keys.add(text);
   return [...keys];
 }
 

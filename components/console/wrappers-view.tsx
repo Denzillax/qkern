@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, KeyRound, Plug, RefreshCw, Table2, Users } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -85,7 +86,7 @@ export function WrappersView({ projectId, environment, initialState }: { project
         return;
       }
       setData(null);
-      setMessage(typeof payload.error === "string" ? payload.error : "");
+      setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
       // Abgeschaltet, nicht bereit und nicht erreichbar sind drei
       // verschiedene Auskuenfte, und keine davon ist ein Fehler dieser Seite.
       const code = typeof payload.code === "string" ? payload.code : "";

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, FileClock, RefreshCw, Send } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatCount, formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { API_GATEWAY_LOG_TEXTS, MISSING_LOG_STATES } from "@/lib/console/missing-log-texts";
@@ -78,7 +79,7 @@ export function ApiGatewayLogView({ projectId, environment, initialState }: { pr
     if (controller.signal.aborted) return;
     setRefreshing(false);
 
-    const error = typeof usage.payload.error === "string" ? usage.payload.error : "";
+    const error = typeof usage.payload.error === "string" ? (serverErrorText(usage.payload.error) ?? "") : "";
     if (usage.status === 503) {
       setSeries(null);
       setState(error === USAGE_METERING_DISABLED_ERROR ? "disabled" : "unavailable");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Database, Pencil, Plus, RefreshCw, Search, ShieldCheck, Table2, Trash2 } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { OptionMenu } from "@/components/console/option-menu";
 
 /**
@@ -43,8 +44,8 @@ export function TableView({ projectId, environment, table, initialState }: { pro
     try{
       const response=await fetch(`/api/v1/projects/${projectId}/environments/${environment}/tables/${table}/rows?schema=public&limit=50`,{cache:"no-store"});
       const payload=await response.json();
-      if(response.status===503||response.status===409){setData(null);setState("unavailable");setMessage(payload.error??t("Die Generated Data API ist für diese Umgebung nicht aktiviert."));return;}
-      if(!response.ok)throw new Error(payload.error??t("Zeilen nicht verfügbar"));
+      if(response.status===503||response.status===409){setData(null);setState("unavailable");setMessage(serverErrorText(payload.error)??t("Die Generated Data API ist für diese Umgebung nicht aktiviert."));return;}
+      if(!response.ok)throw new Error(serverErrorText(payload.error)??t("Zeilen nicht verfügbar"));
       setData(payload.data as LiveRows);setState("ready");
     }catch(cause){setState("error");setMessage(cause instanceof Error?cause.message:t("Zeilen nicht verfügbar"));}
   },[projectId,environment]);
@@ -53,7 +54,7 @@ export function TableView({ projectId, environment, table, initialState }: { pro
   // liefert Spalten, Primaerschluessel und RLS-Stand genau dieser Tabelle mit;
   // die Liste aller Tabellen waere hier eine Lesung ohne Leser, weil das
   // Tabellenmenue dann der Arbeitsplatz fuehrt und nicht diese Ansicht.
-  useEffect(()=>{let active=true;setState("loading");setData(null);if(table){setTables([]);setSelected(table);void loadRows(table);return;}void fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema?schema=public`,{cache:"no-store"}).then(async response=>({response,payload:await response.json()})).then(({response,payload})=>{if(!active)return;if(!response.ok){setTables([]);setSelected("");setState(response.status===503||response.status===409?"unavailable":"error");setMessage(payload.error??t("Schema nicht verfügbar"));return;}const names=(payload.data.tables as Array<{name:string;kind:string;rowSecurityEnabled:boolean}>).filter(table=>(table.kind==="table"||table.kind==="partitioned_table")&&table.rowSecurityEnabled).map(table=>table.name);setTables(names);const first=names[0]??"";setSelected(first);if(first)void loadRows(first);else{setState("unavailable");setMessage(t("Im Schema public gibt es keine Tabelle mit RLS."));}}).catch(()=>{if(active){setState("error");setMessage(t("Schema nicht verfügbar"));}});return()=>{active=false;};},[projectId,environment,loadRows,table]);
+  useEffect(()=>{let active=true;setState("loading");setData(null);if(table){setTables([]);setSelected(table);void loadRows(table);return;}void fetch(`/api/v1/projects/${projectId}/environments/${environment}/schema?schema=public`,{cache:"no-store"}).then(async response=>({response,payload:await response.json()})).then(({response,payload})=>{if(!active)return;if(!response.ok){setTables([]);setSelected("");setState(response.status===503||response.status===409?"unavailable":"error");setMessage(serverErrorText(payload.error)??t("Schema nicht verfügbar"));return;}const names=(payload.data.tables as Array<{name:string;kind:string;rowSecurityEnabled:boolean}>).filter(table=>(table.kind==="table"||table.kind==="partitioned_table")&&table.rowSecurityEnabled).map(table=>table.name);setTables(names);const first=names[0]??"";setSelected(first);if(first)void loadRows(first);else{setState("unavailable");setMessage(t("Im Schema public gibt es keine Tabelle mit RLS."));}}).catch(()=>{if(active){setState("error");setMessage(t("Schema nicht verfügbar"));}});return()=>{active=false;};},[projectId,environment,loadRows,table]);
 
   async function insert(){try{const row=JSON.parse(insertDraft) as unknown;if(!row||typeof row!=="object"||Array.isArray(row))throw new Error();const response=await fetch(`/api/v1/projects/${projectId}/environments/${environment}/tables/${selected}/rows`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({schema:"public",rows:[row]})});if(!response.ok)throw new Error((await response.json()).error??t("Einfügen fehlgeschlagen"));setInsertOpen(false);await loadRows(selected);}catch{setMessage(t("Einfügen erwartet ein JSON-Objekt mit erlaubten Spalten."));setState("error");}}
   async function remove(row:Record<string,unknown>){if(!data?.table.primaryKey.length||!window.confirm(t("Diese Zeile löschen?")))return;const match=Object.fromEntries(data.table.primaryKey.map(key=>[key,row[key]]));const response=await fetch(`/api/v1/projects/${projectId}/environments/${environment}/tables/${selected}/rows`,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({schema:"public",match})});if(response.ok)await loadRows(selected);else{setState("error");setMessage((await response.json()).error??t("Löschen fehlgeschlagen"));}}

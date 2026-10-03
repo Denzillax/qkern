@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock3, Plus, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { DangerousAction } from "@/components/console/dangerous-action";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
@@ -30,8 +31,8 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
     try {
       const response = await fetch(`${base}/cron`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (response.status === 503) { setJobs([]); setState("unavailable"); setMessage(payload.error ?? t("Compute ist für diese Umgebung deaktiviert.")); return; }
-      if (!response.ok) throw new Error(payload.error ?? t("Cron-Definitionen nicht verfügbar"));
+      if (response.status === 503) { setJobs([]); setState("unavailable"); setMessage(serverErrorText(payload.error) ?? t("Compute ist für diese Umgebung deaktiviert.")); return; }
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Cron-Definitionen nicht verfügbar"));
       setJobs(payload.data as CronJob[]); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Cron-Definitionen nicht verfügbar")); }
   }, [base]);
@@ -41,7 +42,7 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
     const response = await fetch(`${base}${path}`, init);
     if (response.ok) { await load(); return; }
     const payload = await response.json().catch(() => ({}));
-    setMessage(payload.error ?? t("Die Änderung wurde abgelehnt."));
+    setMessage(serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt."));
   }
   async function create() {
     const name = window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"), "nightly-report"); if (!name) return;

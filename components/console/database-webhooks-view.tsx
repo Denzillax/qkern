@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { KeyRound, Plus, RefreshCw, ShieldCheck, Table2, Webhook } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMomentOrRaw } from "@/components/console/console-format";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -92,10 +93,10 @@ export function DatabaseWebhooksView({ projectId, environment, initialState }: {
       const payload = await response.json().catch(() => ({}));
       if (response.status === 503) {
         setHooks([]); setState("unavailable");
-        setMessage(payload.error ?? t("Compute ist für diese Umgebung deaktiviert."));
+        setMessage(serverErrorText(payload.error) ?? t("Compute ist für diese Umgebung deaktiviert."));
         return;
       }
-      if (!response.ok) throw new Error(payload.error ?? t("Datenbank-Webhooks nicht verfügbar"));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Datenbank-Webhooks nicht verfügbar"));
       const list = (payload.data ?? []) as DatabaseWebhookRecord[];
       setHooks(list);
       setBridge((payload.bridge ?? null) as BridgeState);
@@ -151,7 +152,7 @@ export function DatabaseWebhooksView({ projectId, environment, initialState }: {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        setSubmitMessage(body.error ?? t("Der Datenbank-Webhook wurde abgelehnt."));
+        setSubmitMessage(serverErrorText(body.error) ?? t("Der Datenbank-Webhook wurde abgelehnt."));
         return;
       }
       setName(""); setTable(""); setUrl(""); setSecretRef(""); setEvents(["insert"]);
@@ -169,7 +170,7 @@ export function DatabaseWebhooksView({ projectId, environment, initialState }: {
     });
     if (response.ok) { await load(); return; }
     const payload = await response.json().catch(() => ({}));
-    setMessage(payload.error ?? t("Die Änderung wurde abgelehnt."));
+    setMessage(serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt."));
   }
 
   function toggleEvent(event: DatabaseWebhookEvent, checked: boolean) {

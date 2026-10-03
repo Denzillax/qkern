@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { History, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { StableLabel } from "@/components/stable-label";
 import { formatDecimal, formatMoment, formatNumber } from "@/components/console/console-display";
 import {
@@ -44,7 +45,7 @@ export function PitrView({ projectId, environment, initialState }: { projectId: 
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/environments/${environment}/database/backups/point-in-time`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? t("Der Stand der Wiederherstellung ist nicht verfügbar."));
+      if (!response.ok) throw new Error(serverErrorText(payload.error) ?? t("Der Stand der Wiederherstellung ist nicht verfügbar."));
       setOverview(payload.data as PointInTimeRecoveryOverview); setState("ready");
     } catch (cause) { setState("error"); setMessage(cause instanceof Error ? cause.message : t("Der Stand der Wiederherstellung ist nicht verfügbar.")); }
   }, [projectId, environment]);

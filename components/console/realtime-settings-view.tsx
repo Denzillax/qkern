@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import {
@@ -87,7 +88,7 @@ export function RealtimeSettingsView({ projectId, environment, initialState }: {
       return;
     }
     setSettings(null);
-    setMessage(typeof payload.error === "string" ? payload.error : "");
+    setMessage(typeof payload.error === "string" ? (serverErrorText(payload.error) ?? "") : "");
     setState("error");
   }, [projectId, environment]);
 

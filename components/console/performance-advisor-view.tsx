@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleGauge, RefreshCw, TrendingUp } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { PERFORMANCE_RULES, type PerformanceRuleId, type PerformanceSeverity } from "@/lib/console/performance-advisor-texts";
@@ -91,7 +92,7 @@ export function PerformanceAdvisorView({ projectId, environment, initialState }:
       setState("ready");
       return;
     }
-    setMessage(typeof result.payload.error === "string" && result.payload.error ? result.payload.error : t("Leistungsberater nicht verfügbar"));
+    setMessage(typeof result.payload.error === "string" && result.payload.error ? (serverErrorText(result.payload.error) ?? "") : t("Leistungsberater nicht verfügbar"));
     setState("error");
   }, [url]);
 

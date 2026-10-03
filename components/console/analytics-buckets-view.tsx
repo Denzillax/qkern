@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Boxes, HardDrive, KeyRound, Layers, Puzzle, RefreshCw, Send } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
+import { serverErrorText } from "@/components/console/server-errors";
 import { formatNumber } from "@/components/console/console-display";
 import {
   ANALYTICS_BUCKET_TEXTS,
@@ -64,9 +65,9 @@ export function AnalyticsBucketsView({ projectId, environment, initialState }: {
       if (response.status === 503 || response.status === 409) {
         setExtensions([]);
         setState("unavailable");
-        setMessage(payload.error ?? t("Die Projektdatenbank ist noch nicht bereit."));
+        setMessage(serverErrorText(payload.error) ?? t("Die Projektdatenbank ist noch nicht bereit."));
       } else if (!response.ok) {
-        throw new Error(payload.error ?? t("Der Katalog ist nicht verfügbar."));
+        throw new Error(serverErrorText(payload.error) ?? t("Der Katalog ist nicht verfügbar."));
       } else {
         setExtensions(payload.data?.extensions ?? []);
         setState("ready");
