@@ -514,6 +514,42 @@ export const REALTIME_TABLES_SDK_NOTE =
 
 /* ------------------------------------------------------------- Begriffe */
 
+/**
+ * Die Anweisung, die eine Tabelle an den Change Feed haengt (2.154).
+ *
+ * **Warum als Change Set und nicht als Knopf mit Wirkung.** Es gibt keine
+ * Route, die einen Trigger setzt, und das ist kein Versehen: Ein Trigger ist
+ * eine Schemaaenderung, und Schemaaenderungen laufen bei QKERN durch den Weg,
+ * den es dafuer gibt, mit Risiko, Freigabe und Protokoll. Diese Funktion baut
+ * genau die Anweisung, die der Weg braucht; angewendet wird sie erst nach einer
+ * Freigabe, wie jede andere auch.
+ *
+ * **Warum die Form woertlich aus dem Zertifizierungslauf stammt.** Derselbe
+ * Trigger steht im Fall, der den Change Feed gegen echtes PostgreSQL belegt:
+ * `AFTER INSERT OR UPDATE OR DELETE`, `FOR EACH ROW`, und als Funktion
+ * `qkern_internal.capture_change()`. Eine selbst erfundene Variante koennte
+ * davon abweichen, und dann liefe sie durch, ohne zu erfassen.
+ *
+ * Der Name ist `<tabelle>_capture`, ebenfalls wie dort.
+ */
+export function realtimeCaptureStatement(table: string): string {
+  return `CREATE TRIGGER ${table}_capture
+  AFTER INSERT OR UPDATE OR DELETE ON public.${table}
+  FOR EACH ROW EXECUTE FUNCTION ${REALTIME_CAPTURE_SCHEMA}.${REALTIME_CAPTURE_FUNCTION}()`;
+}
+
+/** Der Titel des Change Sets, damit er in der Freigabe sagt, worum es geht. */
+export function realtimeCaptureTitle(table: string): string {
+  return `Realtime für public.${table} einschalten`;
+}
+
+export const REALTIME_CAPTURE_PREPARED =
+  "Der Change Set ist vorbereitet. Angewendet wird er erst nach einer Freigabe, und erst danach melden Änderungen dieser Tabelle etwas.";
+export const REALTIME_CAPTURE_REFUSED =
+  "Der Change Set konnte nicht vorbereitet werden.";
+export const REALTIME_CAPTURE_INVITE =
+  "Einschalten heisst hier: QKERN bereitet eine Schemaänderung vor, die den Trigger setzt. Sie läuft durch dieselbe Freigabe wie jede andere Änderung an der Datenbank, und bis dahin ändert sich nichts.";
+
 export const REALTIME_TERMS = ["changeFeed", "publication", "presence", "cursor"] as const;
 export type RealtimeTermId = (typeof REALTIME_TERMS)[number];
 
@@ -545,6 +581,9 @@ export const REALTIME_TERM_TEXTS: Record<RealtimeTermId, RealtimeTermText> = {
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */
 export function realtimeTexts(): string[] {
   return [
+    REALTIME_CAPTURE_PREPARED,
+    REALTIME_CAPTURE_REFUSED,
+    REALTIME_CAPTURE_INVITE,
     ...Object.values(REALTIME_GROUP_LABELS),
     ...Object.values(REALTIME_UNIT_LABELS),
     ...Object.values(REALTIME_ORIGIN_TEXTS).flatMap((origin) => [origin.label, origin.explains]),

@@ -19,6 +19,11 @@ import {
   REALTIME_TERM_TEXTS,
   REALTIME_TERMS,
   realtimeCaptureState,
+  realtimeCaptureStatement,
+  realtimeCaptureTitle,
+  REALTIME_CAPTURE_INVITE,
+  REALTIME_CAPTURE_PREPARED,
+  REALTIME_CAPTURE_REFUSED,
   realtimeChangesChannel,
   realtimeChangesExample,
   realtimeSocketTarget,
@@ -81,6 +86,34 @@ export function RealtimeInspectorView({ projectId, environment, initialState }: 
   const [log, setLog] = useState<LogLine[]>([]);
   const socket = useRef<WebSocket | null>(null);
   const counter = useRef(0);
+
+  // Einschalten heisst: eine Schemaaenderung vorbereiten (2.154). Es gibt keine
+  // Route, die einen Trigger setzt, und das soll auch so bleiben; Aenderungen am
+  // Schema laufen bei QKERN durch den Weg mit Risiko, Freigabe und Protokoll.
+  // Diese Ansicht legt darum einen Change Set an und sagt daneben, dass bis zur
+  // Freigabe nichts passiert.
+  const [preparing, setPreparing] = useState("");
+  const [prepared, setPrepared] = useState<"done" | "refused" | null>(null);
+  async function prepareCapture(table: string) {
+    setPreparing(table);
+    setPrepared(null);
+    try {
+      const answer = await fetch("/api/v1/changesets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId, environment,
+          title: realtimeCaptureTitle(table),
+          statement: realtimeCaptureStatement(table),
+        }),
+      });
+      setPrepared(answer.ok ? "done" : "refused");
+    } catch {
+      setPrepared("refused");
+    } finally {
+      setPreparing("");
+    }
+  }
 
   const [tableState, setTableState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [tables, setTables] = useState<CapturedTable[]>([]);
@@ -209,10 +242,19 @@ export function RealtimeInspectorView({ projectId, environment, initialState }: 
             <span className={state.tone}>{t(state.label)}</span>
             <CopyValue value={name} labels={copyLabels} className="plain-button"><code>{name}</code></CopyValue>
             <CopyValue value={realtimeChangesExample({ url, projectId, environment, schema: SCHEMA, table: table.name, protocol: REALTIME_PROTOCOL })} labels={copyLabels} className="plain-button"/>
-            <small style={{ gridColumn: "span 4" }}>{t(state.explains)}</small>
+            <small style={{ gridColumn: "span 4" }}>{t(state.explains)}
+              {table.state === "off" && <> <button className="plain-button" disabled={preparing === table.name}
+                onClick={() => void prepareCapture(table.name)}>
+                <StableLabel current={preparing === table.name ? t("Wird vorbereitet…") : t("Einschalten vorbereiten")}
+                  variants={tAll("Wird vorbereitet…", "Einschalten vorbereiten")}/>
+              </button></>}
+            </small>
           </div>;
         })}
         <p className="muted">{t("Tabellen im Schema public, die ihre Änderungen melden")}: {formatNumber(arriving)} / {formatNumber(tables.length)}</p>
+        <p className="muted">{t(REALTIME_CAPTURE_INVITE)}</p>
+        {prepared === "done" && <p className="secure">{t(REALTIME_CAPTURE_PREPARED)}</p>}
+        {prepared === "refused" && <p className="risk medium">{t(REALTIME_CAPTURE_REFUSED)}</p>}
       </>}
 
       <p className="muted">{t(REALTIME_TABLES_GLOBAL_NOTE)}</p>

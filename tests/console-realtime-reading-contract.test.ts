@@ -7,13 +7,15 @@ import { setConsoleLocale } from "@/components/console/console-i18n";
 import { RealtimeInspectorView, REALTIME_PROTOCOL } from "@/components/console/realtime-inspector-view";
 import {
   REALTIME_CAPTURE_FUNCTION,
+  REALTIME_CAPTURE_INVITE,
+  REALTIME_CAPTURE_PREPARED,
   REALTIME_CAPTURE_SCHEMA,
-  REALTIME_CAPTURE_STATE_TEXTS,
   REALTIME_CAPTURE_STATES,
+  REALTIME_CAPTURE_STATE_TEXTS,
   REALTIME_TABLES_HONESTY,
   REALTIME_TABLES_SDK_NOTE,
-  REALTIME_TERM_TEXTS,
   REALTIME_TERMS,
+  REALTIME_TERM_TEXTS,
   realtimeCaptureState,
   realtimeChangesChannel,
   realtimeChangesExample,
@@ -99,12 +101,24 @@ describe("console realtime reading contract", () => {
     }
 
     const view = await source(VIEW);
-    // Und dann, dass die Ansicht nichts schreibt und nichts zum Umlegen zeigt.
-    expect(view).not.toMatch(/method:\s*["'](?:POST|PUT|PATCH|DELETE)["']/i);
+    // Und dann, dass die Ansicht keinen Schalter zeigt. Seit 2.154 schreibt sie
+    // an genau eine Stelle, und die ist kein Trigger: Sie legt einen Change Set
+    // an, also eine Schemaaenderung, die durch Risiko, Freigabe und Protokoll
+    // laeuft. Die Zusage ist damit nicht ueberholt, sondern genauer: kein
+    // Umlegen ohne Route, und kein Wort, das eines verspricht.
     expect(view).not.toContain('type="checkbox"');
+    const writes = [...view.matchAll(/method: "(?:POST|PUT|PATCH|DELETE)"/g)];
+    expect(writes.length, "mehr als ein Schreibweg in dieser Ansicht").toBe(1);
+    expect(view, "schreibt an eine andere Stelle als die Change Sets")
+      .toContain('fetch("/api/v1/changesets"');
     for (const word of ["Einschalten", "Ausschalten", "Aktivieren", "Deaktivieren", "Realtime für diese Tabelle"]) {
       expect(view, `${word} verspricht einen Schalter`).not.toContain(`t("${word}")`);
     }
+    // Das Wort, das wirklich dasteht, verspricht die Vorbereitung und nicht die
+    // Wirkung.
+    expect(view).toContain('t("Einschalten vorbereiten")');
+    expect(REALTIME_CAPTURE_INVITE).toContain("Freigabe");
+    expect(REALTIME_CAPTURE_PREPARED).toContain("Freigabe");
     // Der Satz, der an die Stelle des Schalters tritt, nennt beides: woran es
     // haengt und wie man es heute aendert.
     expect(REALTIME_TABLES_HONESTY).toContain("qkern_internal.capture_change");

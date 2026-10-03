@@ -449,11 +449,23 @@ stdout: ${success.stdout}`).toBe(0);
       },
     );
     expect(failure.status).toBe(1);
-    expect(JSON.parse(failure.stderr)).toEqual({
-      error: "Provider E2E evidence is not ready",
-      code: "PROVIDER_E2E_EVIDENCE_NOT_READY",
-    });
+    // Ursachenfrei heisst seit 2.154 genauer: Es steht nichts darin, was aus
+    // einem fremden Text stammen koennte. Bis 2.153 hiess es "genau zwei
+    // Felder", und das war dieselbe Absicht mit einer schaerferen Grenze als
+    // noetig; sie kostete die Diagnose, mit der ein Ausfall auf dem Runner
+    // ueberhaupt untersuchbar wird. Geprueft wird jetzt die Form: hoechstens
+    // vier Felder, beide Zusatzfelder aus geschlossenen Mengen, und keine
+    // Meldung, kein Pfad, kein Abdruck.
+    const refused = JSON.parse(failure.stderr) as Record<string, unknown>;
+    expect(Object.keys(refused).sort()).toEqual(["code", "error", "reason", "step"]);
+    expect(refused.error).toBe("Provider E2E evidence is not ready");
+    expect(refused.code).toBe("PROVIDER_E2E_EVIDENCE_NOT_READY");
+    expect(["ProviderE2EEvidenceUnavailableError", "ConfigurationError", "UnknownError"])
+      .toContain(refused.reason);
+    expect(["open", "size", "read", "aborted", "envelope", "key", "signature", "readiness", "unknown"])
+      .toContain(refused.step);
     expect(failure.stderr).not.toContain(evidencePath);
     expect(failure.stderr).not.toContain(keys.publicKeySha256);
+    expect(failure.stderr).not.toContain(directory);
   });
 });

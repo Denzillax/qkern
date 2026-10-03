@@ -11,20 +11,37 @@ import { createProviderE2EEvidenceVerifierFromEnv } from
  * zu kleine Datei, ein nicht passender Schluessel und eine abgelaufene Frist
  * sahen von aussen gleich aus.
  *
- * **Was hier stehen darf.** Der Name der Fehlerklasse, ihr Code und, wo der
- * Leser ihn kennt, der gescheiterte Schritt in einem Wort. **Was nicht:** der
- * Pfad der Evidenzdatei, ihr Inhalt, der Schluesselabdruck und jede Meldung,
- * die davon etwas enthalten koennte. Darum wird die Meldung der Ursache nicht
- * durchgereicht, sondern nur ihr Name.
+ * **Was hier stehen darf.** Zwei Woerter aus zwei geschlossenen Mengen: der
+ * Name einer bekannten Fehlerklasse und der gescheiterte Schritt. **Was
+ * nicht:** der Pfad der Evidenzdatei, ihr Inhalt, der Schluesselabdruck und
+ * jede Meldung, die davon etwas enthalten koennte. Die Meldung der Ursache wird
+ * nie durchgereicht, und ein unbekannter Klassenname wird zu `UnknownError`.
+ * Damit bleibt die Ablehnung ursachenfrei im Sinne der Zusage aus 2.23: Es
+ * steht nichts darin, was aus einem fremden Text stammen koennte.
  */
+/**
+ * Die Namen, die hier stehen duerfen, und sonst keiner.
+ *
+ * Eine geschlossene Menge und nicht `cause.name`: Der Name einer unbekannten
+ * Klasse kaeme aus fremdem Code, und was dort steht, weiss dieses Skript nicht.
+ * Mit der Menge ist die Ausgabe nachweislich frei von allem, was aus einer
+ * Meldung, einem Pfad oder einem Abdruck stammen koennte.
+ */
+const KNOWN_REASONS = new Set([
+  "ProviderE2EEvidenceUnavailableError",
+  "ConfigurationError",
+]);
+
+const KNOWN_STEPS = new Set([
+  "open", "size", "read", "aborted", "envelope", "key", "signature", "readiness", "unknown",
+]);
+
 function reasonOf(cause: unknown): Record<string, string> {
-  if (!(cause instanceof Error)) return { reason: "unknown" };
+  if (!(cause instanceof Error)) return { reason: "UnknownError" };
   const step = (cause as { step?: unknown }).step;
-  const code = (cause as { code?: unknown }).code;
   return {
-    reason: cause.name,
-    ...(typeof code === "string" ? { causeCode: code } : {}),
-    ...(typeof step === "string" ? { step } : {}),
+    reason: KNOWN_REASONS.has(cause.name) ? cause.name : "UnknownError",
+    ...(typeof step === "string" && KNOWN_STEPS.has(step) ? { step } : {}),
   };
 }
 
