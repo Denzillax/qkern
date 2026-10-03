@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { approvalStatusLabel, changeSetRiskLabel } from "@/lib/console/change-set-labels";
 import { auditStatusLabel, matchesAuditQuery } from "@/components/console/activity-view";
 import type { AuditEvent } from "@/lib/types";
+import { navPath, SETTINGS_GROUPS } from "@/lib/console/settings-groups";
+import { EASY_NAV, type ViewId } from "@/components/console/navigation";
 
 /**
  * Was ein Nachbau der Console gezeigt hat (2.157, 2.158).
@@ -112,5 +114,29 @@ describe("console readability contract", () => {
     expect(matchesAuditQuery(event, "offen")).toBe(true);
     expect(matchesAuditQuery(event, "pending")).toBe(true);
     expect(matchesAuditQuery(event, "schema_list")).toBe(false);
+  });
+
+  it("names a settings link the way the sidebar of the current mode does", () => {
+    // Vorher trug jeder Verweis den Namen der Advanced-Navigation, auch wenn
+    // links "Anmeldung" stand (2.159).
+    expect(navPath("auth-protection", "easy")).toEqual({ group: "Anmeldung", label: "Passwortschutz" });
+    expect(navPath("auth-protection")).toEqual({ group: "Auth", label: "Passwortschutz" });
+    for (const group of SETTINGS_GROUPS) {
+      for (const view of group.views) {
+        const easy = navPath(view as ViewId, "easy");
+        const home = EASY_NAV.find((entry) => entry.children.some((child) => child.id === view));
+        expect(home, `${view} fehlt in der einfachen Navigation`).toBeDefined();
+        expect(easy.group, view).toBe(home!.label);
+      }
+    }
+  });
+
+  it("sets equal things equally", async () => {
+    const css = await readFile(CSS, "utf8");
+    // 15 Absaetze bei 15,5 Pixeln gegen 22 bei 12 oder 13.
+    expect(css).toMatch(/\.console-card p\.muted \{ font-size: 13px;/);
+    // Bezeichnung, Wert und Kopierknopf in drei Spalten untereinander.
+    expect(css).toMatch(/\.settings-group-values \{ display: grid;/);
+    expect(css).toMatch(/\.settings-group-values > \.settings-value \{ display: contents; \}/);
   });
 });

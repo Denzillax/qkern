@@ -3,7 +3,7 @@
 import { AlertTriangle, ArrowRight, Boxes, CreditCard, KeyRound, ShieldCheck, Sliders, Users } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { CopyValue } from "@/components/console/copy-value";
-import type { ViewId } from "@/components/console/navigation";
+import type { InterfaceMode, ViewId } from "@/components/console/navigation";
 import { SETTINGS_GROUPS, navPath, type SettingsGroupId } from "@/lib/console/settings-groups";
 
 /**
@@ -31,10 +31,11 @@ import { SETTINGS_GROUPS, navPath, type SettingsGroupId } from "@/lib/console/se
  * verdrahtet ist, bleiben die Verweise stumm, statt dass die Seite nicht
  * baut.
  */
-export function SettingsView({ project, organizationId, navigate }: {
+export function SettingsView({ project, organizationId, navigate, mode = "advanced" }: {
   project: { name: string; id: string; region?: string };
   organizationId: string;
   navigate?: (view: ViewId) => void;
+  mode?: InterfaceMode;
 }) {
   /** Titel, Symbol und der Satz, der sagt, was die Gruppe enthält. */
   const texts: Record<SettingsGroupId, { title: string; lead: string; icon: typeof Sliders }> = {
@@ -98,7 +99,7 @@ export function SettingsView({ project, organizationId, navigate }: {
         </div>}
         {group.views.length > 0 && <div className="settings-group-links">
           {group.views.map((view) => {
-            const path = navPath(view);
+            const path = navPath(view, mode);
             // Eine Menuegruppe ohne Kinder traegt denselben Namen zweimal;
             // "Table Editor · Table Editor" waere kein Weg, sondern ein Echo.
             const name = path.group === path.label ? t(path.group) : `${t(path.group)} · ${t(path.label)}`;

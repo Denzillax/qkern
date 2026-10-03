@@ -1790,3 +1790,20 @@ input[type="checkbox"], input[type="radio"] {
   .console-topbar { padding: 0 10px; }
   .console-tools > .language-switcher, .console-tools > .icon-button:not(.is-placeholder) { display: none; }
 }
+
+/* 2.159: Gleiche Dinge stehen gleich da.
+   Absaetze mit `muted` direkt in einer Karte erbten die Grundgroesse von 15,5
+   Pixeln, waehrend jeder andere Kartentext bei 12 bis 13 steht. Gezaehlt im
+   Nachbau ueber neun Ansichten: 15 Absaetze bei 15,5, 22 bei 12 oder 13. Auf
+   der Functions-Seite stand die eine Karte darum sichtbar groesser als die
+   drei daneben.
+   Die Kopierzeilen in den Einstellungen standen je nach Laenge des Werts
+   versetzt, weil jede Zeile ihr eigenes Flex war. Als Raster stehen
+   Bezeichnung, Wert und Knopf in drei Spalten untereinander. */
+.console-card p.muted { font-size: 13px; line-height: 1.55; }
+.settings-group-values { display: grid; grid-template-columns: max-content minmax(0, max-content) max-content; align-items: center; gap: 8px 14px; }
+.settings-group-values > .settings-value { display: contents; }
+@media (max-width: 760px) {
+  .settings-group-values { display: flex; flex-direction: column; align-items: stretch; }
+  .settings-group-values > .settings-value { display: flex; }
+}

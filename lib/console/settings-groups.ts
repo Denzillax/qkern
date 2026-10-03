@@ -1,4 +1,4 @@
-import { NAV, REAL_VIEWS, type ViewId } from "@/components/console/navigation";
+import { EASY_NAV, NAV, REAL_VIEWS, type InterfaceMode, type ViewId } from "@/components/console/navigation";
 
 /**
  * Die Gruppen der Einstellungen (2.139).
@@ -72,7 +72,17 @@ export type NavPath = { group: string; label: string };
  * jedes Label aus `NAV` ohnehin einsammelt; die Seite muss also keinen
  * eigenen Namen fuer eine Ansicht erfinden, die schon einen hat.
  */
-export function navPath(view: ViewId): NavPath {
+export function navPath(view: ViewId, mode: InterfaceMode = "advanced"): NavPath {
+  // Im einfachen Modus heisst die Gruppe so, wie die Seitenleiste sie dann
+  // nennt (2.159). Vorher stand hier "Auth · Passwortschutz", waehrend links
+  // "Anmeldung" stand, und ein Verweis sollte dasselbe Wort tragen wie das
+  // Ziel. `EASY_NAV` fuehrt jede Ansicht, also faellt keine durch.
+  if (mode === "easy") {
+    for (const group of EASY_NAV) {
+      const child = group.children.find((entry) => entry.id === view);
+      if (child) return { group: group.label, label: child.label };
+    }
+  }
   for (const group of NAV) {
     if (group.children === undefined) {
       if (group.id === view) return { group: group.label, label: group.label };
