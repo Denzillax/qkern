@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Blocks, KeyRound, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -44,6 +45,17 @@ function statusLabel(status: SecretStatus): string {
   }
 }
 const STATUS_CLASS: Record<SecretStatus, string> = { present: "secure", missing: "risk high", forbidden: "risk medium" };
+/**
+ * Die Erklaerzeile je Function (2.133). Sie nennt, wie viele Referenzen die
+ * Function deklariert, weil davon abhaengt, was nach der Wahl zu sehen ist:
+ * eine Liste mit Status je Referenz oder der Satz, dass es keine gibt.
+ */
+function refHint(count: number): string {
+  if (count === 0) return t("keine Secret-Referenz");
+  if (count === 1) return t("1 Secret-Referenz");
+  return `${count} ${t("Secret-Referenzen")}`;
+}
+
 
 export function ComputeSecretsView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: ListState }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}/compute`;
@@ -109,7 +121,16 @@ export function ComputeSecretsView({ projectId, environment, initialState }: { p
   return <div className="module-grid">
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("FUNCTIONS")} · {environment.toUpperCase()}</span><h3>{t("Secrets der Function")}</h3></div><div>
-        <label className="table-select"><Blocks size={15}/><select value={selected} onChange={(event) => { setSelected(event.target.value); void loadSecrets(functions.find((item) => item.id === event.target.value)); }} aria-label={t("Function")}>{functions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        {/* 2.133: Statt eines `select` des Betriebssystems dasselbe Menue wie
+            oben in der Kopfzeile, mit dem Symbol an der Stelle des
+            Zustandspunkts. Der Name der Function ist ein Bezeichner und wird
+            nicht uebersetzt; die Erklaerzeile nennt die Zahl ihrer
+            Secret-Referenzen, denn genau die bestimmt, ob nach der Wahl eine
+            Liste kommt oder der Satz, dass es keine gibt. */}
+        <OptionMenu value={selected} ariaLabel={t("Function")} listLabel={t("Function wählen")}
+          icon={<Blocks size={14} aria-hidden="true"/>}
+          onChange={(next) => { setSelected(next); void loadSecrets(functions.find((item) => item.id === next)); }}
+          options={functions.map((item) => ({ id: item.id, label: item.name, hint: refHint(item.secretRefs.length) }))}/>
         <button className="secondary-button" onClick={() => void loadSecrets(current)} disabled={!current || checking || current.secretRefs.length === 0}><RefreshCw size={14}/> <StableLabel current={checking ? t("Prüft…") : t("Neu prüfen")} variants={tAll("Prüft…", "Neu prüfen")}/></button>
       </div></div>
       {functions.length === 0 && <p className="muted">{t("Noch keine Functions. Lege eine unter Functions & Jobs an; ihre Secret-Referenzen erscheinen dann hier.")}</p>}

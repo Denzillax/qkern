@@ -117,6 +117,17 @@ export const AUTH_PROTECTION_NOTICE_NOTES = {
   generic: "Die Ablehnung sagt nur, dass das Passwort den Regeln dieses Projekts nicht genügt. Der Nutzer weiss dann nicht, woran er ist.",
 } as const;
 
+/**
+ * Die Erklaerzeile im Auswahlmenue (2.133), je Wortlaut eine Zeile. Sie nennt
+ * die Folge der Wahl, naemlich was der abgelehnte Nutzer danach weiss, und
+ * nicht den Titel noch einmal. Der vollstaendige Satz dazu steht weiterhin
+ * unter dem Feld, in `AUTH_PROTECTION_NOTICE_NOTES`.
+ */
+export const AUTH_PROTECTION_NOTICE_HINTS = {
+  named: "Der Nutzer erfährt, dass dieses Passwort aus bekannten Lecks stammt.",
+  generic: "Der Nutzer erfährt nur, dass die Regeln nicht erfüllt sind.",
+} as const;
+
 export type AuthProtectionNoticeId = keyof typeof AUTH_PROTECTION_NOTICE_TEXTS;
 
 /** Woher die geltende Liste stammt. */
@@ -162,6 +173,7 @@ export function authProtectionTexts(): string[] {
     AUTH_PROTECTION_NOT_DISTRIBUTED,
     ...Object.values(AUTH_PROTECTION_NOTICE_TEXTS),
     ...Object.values(AUTH_PROTECTION_NOTICE_NOTES),
+    ...Object.values(AUTH_PROTECTION_NOTICE_HINTS),
     ...Object.values(AUTH_PROTECTION_LIST_SOURCE_TEXTS),
     ...Object.values(AUTH_PROTECTION_REJECTIONS),
   ];

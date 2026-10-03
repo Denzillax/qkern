@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -67,12 +68,27 @@ export function StoragePoliciesView({ projectId, environment, initialState }: { 
       {message && <p className="muted">{message}</p>}
       {buckets.length === 0 && <p className="muted">{t("Noch keine Buckets. Lege einen unter Storage → Buckets an; jeder neue Bucket ist geschlossen, bis du hier eine Regel setzt.")}</p>}
       {buckets.map((bucket) => <div className="bucket-row" key={bucket.id}><span className="bucket-icon"><ShieldCheck size={16}/></span>
+        {/* 2.133: Zwei Auswahlmenues statt zweier `select` des Betriebssystems.
+            Der Name der Regel ist ein Bezeichner und bleibt, wie der Dienst ihn
+            schreibt; was die Regel erlaubt, stand bisher hinter einem Mittelpunkt
+            im selben Eintrag und steht jetzt als Erklaerzeile darunter. Das `small`
+            ist einem `div` gewichen: Ein Menue ist ein `div` mit einem Knopf darin,
+            und das darf in einem `small` nicht stehen. */}
         <div><strong>{bucket.name}</strong>
-          <small>
-            <label>{t("Lesen")} <select value={drafts[bucket.id]?.readPolicy ?? bucket.readPolicy} onChange={(event) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], readPolicy: event.target.value as ReadPolicy } })}>{(Object.keys(readLabel) as ReadPolicy[]).map((policy) => <option key={policy} value={policy}>{policy} · {readLabel[policy]}</option>)}</select></label>
-            {" "}
-            <label>{t("Schreiben")} <select value={drafts[bucket.id]?.writePolicy ?? bucket.writePolicy} onChange={(event) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], writePolicy: event.target.value as WritePolicy } })}>{(Object.keys(writeLabel) as WritePolicy[]).map((policy) => <option key={policy} value={policy}>{policy} · {writeLabel[policy]}</option>)}</select></label>
-          </small>
+          <div className="policy-fields">
+            <label>{t("Lesen")}
+              <OptionMenu value={drafts[bucket.id]?.readPolicy ?? bucket.readPolicy} align="left"
+                ariaLabel={`${t("Leseregel")} ${bucket.name}`} listLabel={t("Leseregel wählen")}
+                onChange={(next) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], readPolicy: next } })}
+                options={(Object.keys(readLabel) as ReadPolicy[]).map((policy) => ({ id: policy, label: policy, hint: readLabel[policy] }))}/>
+            </label>
+            <label>{t("Schreiben")}
+              <OptionMenu value={drafts[bucket.id]?.writePolicy ?? bucket.writePolicy} align="left"
+                ariaLabel={`${t("Schreibregel")} ${bucket.name}`} listLabel={t("Schreibregel wählen")}
+                onChange={(next) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], writePolicy: next } })}
+                options={(Object.keys(writeLabel) as WritePolicy[]).map((policy) => ({ id: policy, label: policy, hint: writeLabel[policy] }))}/>
+            </label>
+          </div>
         </div>
         <span className={bucket.readPolicy === "public" ? "risk medium" : "secure"}>{bucket.readPolicy} / {bucket.writePolicy}</span>
         <button className="plain-button" disabled={!changed(bucket) || saving === bucket.id} onClick={() => void save(bucket)}><StableLabel current={saving === bucket.id ? t("Speichert…") : t("Speichern")} variants={tAll("Speichert…", "Speichern")}/></button>
