@@ -34,9 +34,16 @@ Weiter vorhanden und wiederverwendet statt nachgebaut:
 | 2.140 | Abrechnung im Dashboard: Verbrauch und Rechnung, ohne Tarifzeile | fertig |
 | 2.141 | Der Claim auf dem Hero und der Abschnitt, der ihn einloest | fertig |
 | 2.142 | Projektwechsler, der wirklich wechselt | fertig |
-| 2.143 | SQL-Editor: Editor, Ergebnis, Verlauf | offen |
+| 2.143 | SQL-Editor: Editor, Ergebnis, Verlauf | fertig |
 | 2.144 | Realtime einfach: Tabellen anschalten statt Replikation erklaeren | offen |
-| 2.145 | Functions getrennt: Functions, Deployments, Logs, Secrets | offen |
+| 2.145 | Functions getrennt: Functions, Deployments, Logs, Secrets | zurueckgestellt |
+
+Zu 2.145: Die Trennung, die Punkt 16 verlangt, gibt es in der Navigation
+groesstenteils schon, naemlich Functions mit Cron und Webhooks, Aufrufe, Secrets
+und Function-Logs. Was fehlt, ist allein, dass die Einsaetze (`deployments`) in
+der Logseite stecken statt einen eigenen Namen zu haben. Dafuer die Navigation
+umzubauen waere Bewegung ohne Gewinn; ein klarerer Name der Seite reicht und
+kommt mit dem naechsten Durchgang.
 
 ## Drei Stellen, an denen der Auftrag und der Code auseinandergehen
 
