@@ -341,6 +341,207 @@ export const REALTIME_PERMISSION_NOTES: Partial<Record<RealtimeChannelKindId, Pa
 export const REALTIME_PERMISSION_YES = "ja";
 export const REALTIME_PERMISSION_NO = "nein";
 
+
+/* ------------------------------------------- Tabellen und ihre Änderungen */
+
+/**
+ * Woran es wirklich hängt, ob Änderungen einer Tabelle als Realtime-Nachricht
+ * ankommen (2.144).
+ *
+ * Nicht an einer Publikation und nicht an einem Replikationsslot:
+ * `db/project/0003` erfasst über einen Trigger, der
+ * `qkern_internal.capture_change()` ausführt und den Primärschlüssel der Zeile
+ * in `qkern_internal.change_feed` legt. Sitzt auf einer Tabelle kein solcher
+ * Trigger, bleibt ihr Kanal leer, und das ist keine Störung.
+ *
+ * Darum stehen diese beiden Namen hier als Konstante: Die Ansicht entscheidet
+ * den Zustand einer Tabelle an ihnen, und der Vertrag hält sie gegen die
+ * Migration. Ein Tippfehler wäre sonst eine Liste, in der nichts erfasst
+ * aussieht.
+ */
+export const REALTIME_CAPTURE_SCHEMA = "qkern_internal";
+export const REALTIME_CAPTURE_FUNCTION = "capture_change";
+
+export const REALTIME_CAPTURE_STATES = ["arrives", "paused", "off"] as const;
+export type RealtimeCaptureStateId = (typeof REALTIME_CAPTURE_STATES)[number];
+
+export type RealtimeCaptureStateText = { label: string; explains: string; tone: "secure" | "risk medium" | "muted" };
+
+export const REALTIME_CAPTURE_STATE_TEXTS: Record<RealtimeCaptureStateId, RealtimeCaptureStateText> = {
+  arrives: {
+    label: "kommt an",
+    explains: "Ein Trigger auf dieser Tabelle legt jede Änderung in den Change Feed. Ein Abonnement auf ihren Kanal bekommt sie.",
+    tone: "secure",
+  },
+  paused: {
+    label: "Trigger feuert nicht",
+    explains: "Der Trigger sitzt auf der Tabelle, ist aber abgeschaltet oder nur für eine Replik gesetzt. Solange das so bleibt, kommt von hier nichts an.",
+    tone: "risk medium",
+  },
+  off: {
+    label: "kommt nicht an",
+    explains: "Auf dieser Tabelle sitzt kein Trigger für den Change Feed. Änderungen daran erreichen keinen Kanal.",
+    tone: "muted",
+  },
+};
+
+/** Die Teilmenge eines Triggers aus `/schema/triggers`, an der der Zustand hängt. */
+export type RealtimeCaptureTrigger = {
+  table: string;
+  orientation: "row" | "statement";
+  enabled: "origin" | "always" | "replica" | "disabled";
+  functionSchema: string;
+  functionName: string;
+};
+
+/**
+ * Der Zustand einer Tabelle, aus den gelesenen Triggern und sonst nichts.
+ *
+ * `replica` zählt als "feuert nicht": So ein Trigger läuft nur, wenn die
+ * Sitzung `session_replication_role = replica` fährt, und das tut die Data API
+ * nicht. Ihn als ankommend zu zeigen wäre im Alltag falsch.
+ *
+ * `statement` zählt gar nicht: `capture_change` liest `NEW` und `OLD` und
+ * braucht deshalb einen Trigger je Zeile.
+ */
+export function realtimeCaptureState(
+  triggers: readonly RealtimeCaptureTrigger[],
+  table: string,
+): RealtimeCaptureStateId {
+  const capturing = triggers.filter((trigger) => trigger.table === table
+    && trigger.functionSchema === REALTIME_CAPTURE_SCHEMA
+    && trigger.functionName === REALTIME_CAPTURE_FUNCTION
+    && trigger.orientation === "row");
+  if (capturing.length === 0) return "off";
+  return capturing.some((trigger) => trigger.enabled === "origin" || trigger.enabled === "always")
+    ? "arrives"
+    : "paused";
+}
+
+/**
+ * Der Kanalname einer Tabelle. Dieselbe Form wie `changeChannel` im
+ * Realtime-Dienst; der Vertrag hält die beiden gegeneinander, damit die Console
+ * keinen Namen zeigt, den der Server nicht beliefert.
+ */
+export function realtimeChangesChannel(schema: string, table: string): string {
+  return `changes:${schema}.${table}`;
+}
+
+/**
+ * Die Adresse, unter der der Realtime-Server ein Projekt annimmt. Dieselbe
+ * Zeichenkette benutzt der Inspector zum Verbinden und das Beispiel zum Zeigen.
+ * Zwei Stellen, die sie getrennt bauen, laufen irgendwann auseinander, und das
+ * Beispiel wäre dann eine Adresse, die niemand geprüft hat.
+ */
+export function realtimeSocketTarget(url: string, projectId: string, environment: string): string {
+  return `${url.replace(/\/+$/, "")}/realtime/v1/projects/${projectId}/environments/${environment}`;
+}
+
+/**
+ * Wie eine Anwendung die Änderungen einer Tabelle abonniert.
+ *
+ * Bewusst rohe `WebSocket`: `@qkern/sdk` hat keinen Realtime-Client. Dort
+ * stehen `createQkernClient` und `select`, `insert`, `update`, `delete`, und
+ * sonst nichts. Ein Beispiel mit einer erfundenen Kanalmethode auf dem Client
+ * wäre Code, der nicht läuft.
+ *
+ * Der `accessToken` steht nicht zur Zierde darin: Ein Public Key allein ergibt
+ * die Rolle `anon`, und `anon` darf einen `changes:`-Kanal nicht abonnieren.
+ */
+export function realtimeChangesExample(input: {
+  url: string;
+  projectId: string;
+  environment: string;
+  schema: string;
+  table: string;
+  protocol: string;
+}): string {
+  const target = realtimeSocketTarget(input.url, input.projectId, input.environment);
+  const channel = realtimeChangesChannel(input.schema, input.table);
+  return [
+    "const socket = new WebSocket(",
+    `  "${target}",`,
+    `  "${input.protocol}",`,
+    ");",
+    "",
+    'socket.addEventListener("open", () => {',
+    "  socket.send(JSON.stringify({",
+    '    type: "auth", requestId: "auth-1",',
+    '    projectKey: "qk_public_...",',
+    "    accessToken,",
+    "  }));",
+    "});",
+    "",
+    'socket.addEventListener("message", (message) => {',
+    "  const event = JSON.parse(message.data);",
+    '  if (event.type === "ready") {',
+    "    socket.send(JSON.stringify({",
+    '      type: "subscribe", requestId: "sub-1",',
+    `      channel: "${channel}",`,
+    "    }));",
+    "  }",
+    '  if (event.type === "change") {',
+    "    console.log(event.operation, event.record, event.cursor);",
+    "  }",
+    "});",
+  ].join("\n");
+}
+
+/** Der Satz über der Liste. Er sagt, woran der Zustand hängt und wie man ihn heute ändert. */
+export const REALTIME_TABLES_HONESTY =
+  "Ob Änderungen einer Tabelle ankommen, hängt an einem Trigger auf qkern_internal.capture_change. Diese Seite liest, wo einer sitzt, und setzt keinen: Dafür gibt es keine Route, sondern eine Migration über ein Change Set.";
+
+export const REALTIME_TABLES_SOURCE_NOTE =
+  "Gelesen wird über /schema und /schema/triggers, beide nur lesend. Der Zustand je Tabelle steht so in der Projektdatenbank und ist nicht geraten.";
+
+export const REALTIME_TABLES_GLOBAL_NOTE =
+  "Ein Trigger allein genügt nicht. Steht unter Einstellungen Postgres Changes auf nein, bleibt jeder Änderungskanal leer, auch der einer erfassten Tabelle.";
+
+export const REALTIME_TABLES_KEY_NOTE =
+  "Die Erfassung braucht einen Primärschlüssel. Fehlt er, lässt der Trigger das Schreiben in die Tabelle mit einem Fehler scheitern, statt die Änderung stumm zu verlieren.";
+
+export const REALTIME_TABLES_VIEW_NOTE =
+  "Sichten stehen nicht in der Liste. Ein Trigger je Zeile sitzt nur auf einer Tabelle, also kann auch nur eine Tabelle erfassen.";
+
+export const REALTIME_TABLES_ROLE_NOTE =
+  "Zum Abonnieren braucht die Verbindung ein Access Token. Mit einem Public Key allein bleibt sie anon, und anon darf keinen Änderungskanal lesen. Von einer Löschung erfährt nur service_role, und auch nur den Schlüssel.";
+
+export const REALTIME_TABLES_EMPTY =
+  "Im Schema public steht keine Tabelle. Eine Tabelle entsteht über ein Change Set, und erst danach kann sie Änderungen melden.";
+
+export const REALTIME_TABLES_SDK_NOTE =
+  "Das Paket @qkern/sdk hat keinen Realtime-Client, nur createQkernClient für die Daten-API. Das Beispiel spricht darum das Protokoll qkern.realtime.v1 direkt über die WebSocket-API, so wie der Inspector oben.";
+
+/* ------------------------------------------------------------- Begriffe */
+
+export const REALTIME_TERMS = ["changeFeed", "publication", "presence", "cursor"] as const;
+export type RealtimeTermId = (typeof REALTIME_TERMS)[number];
+
+export type RealtimeTermText = { term: string; explains: string };
+
+/**
+ * Vier Wörter, über die jeder stolpert, der von PostgreSQL nichts weiss. Zwei
+ * davon erklären, was QKERN tut, eines erklärt, was QKERN ausdrücklich nicht
+ * tut, und das vierte ist die Marke, an der ein Abonnement wieder aufsetzt.
+ */
+export const REALTIME_TERM_TEXTS: Record<RealtimeTermId, RealtimeTermText> = {
+  changeFeed: {
+    term: "Change Feed",
+    explains: "Eine Tabelle in der Projektdatenbank. Ein Trigger legt dort je Änderung den Schlüssel der Zeile ab, und der Realtime-Server holt sie von dort. Die Zeilenwerte liest er danach einzeln mit den Rechten des Abonnenten.",
+  },
+  publication: {
+    term: "Publikation",
+    explains: "Der Weg von PostgreSQL, Änderungen über logische Replikation abzugeben. Realtime nimmt ihn nicht, weil er eine Rolle mit Replikationsrecht und einen Slot verlangt. Publikationen gehören zur Replikation und stehen in der vollständigen Ansicht unter Datenbank.",
+  },
+  presence: {
+    term: "Presence",
+    explains: "Eine kurze Notiz darüber, wer gerade auf einem Kanal ist. Sie gilt nur, solange die Verbindung sie erneuert, und sie ist kein Speicher.",
+  },
+  cursor: {
+    term: "Cursor",
+    explains: "Eine Marke für die Stelle, bis zu der eine Anwendung schon gelesen hat. Beim Abonnieren mitgegeben, holt sie das Versäumte nach. Liegt zu viel dazwischen, gilt sie als veraltet, und die Anwendung lädt ihren Zustand über die Daten-API neu.",
+  },
+};
 /** Jeder Text dieses Moduls, fuer den Uebersetzungsvertrag. */
 export function realtimeTexts(): string[] {
   return [
@@ -363,5 +564,15 @@ export function realtimeTexts(): string[] {
     REALTIME_POLICIES_RLS_NOTE,
     REALTIME_POLICIES_DELETE_NOTE,
     REALTIME_POLICIES_SCOPE_NOTE,
+    ...Object.values(REALTIME_CAPTURE_STATE_TEXTS).flatMap((state) => [state.label, state.explains]),
+    ...Object.values(REALTIME_TERM_TEXTS).flatMap((term) => [term.term, term.explains]),
+    REALTIME_TABLES_HONESTY,
+    REALTIME_TABLES_SOURCE_NOTE,
+    REALTIME_TABLES_GLOBAL_NOTE,
+    REALTIME_TABLES_KEY_NOTE,
+    REALTIME_TABLES_VIEW_NOTE,
+    REALTIME_TABLES_ROLE_NOTE,
+    REALTIME_TABLES_EMPTY,
+    REALTIME_TABLES_SDK_NOTE,
   ];
 }

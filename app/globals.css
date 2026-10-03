@@ -1646,3 +1646,13 @@ input[type="checkbox"], input[type="radio"] {
 .project-switch .option-field > span { overflow: hidden; text-overflow: ellipsis; }
 .project-switch .option-list { left: 0; right: auto; min-width: 220px; }
 .is-collapsed .project-switch .option-menu { display: none; }
+
+/* Realtime: welche Tabellen Aenderungen melden (2.144). Vier Spalten statt der
+   fuenf des allgemeinen Protokollrasters, weil diese Liste keine Uhrzeit hat;
+   der Erklaersatz einer Zeile laeuft darunter ueber die ganze Breite. */
+.realtime-tables .log-row { min-width: 520px; grid-template-columns: 1.3fr 1fr 1.6fr 120px; }
+.realtime-tables .log-row > button { justify-self: start; text-align: left; }
+.realtime-tables .log-row small { color: var(--qkern-text-muted); padding-bottom: 6px; }
+/* Der Beispielcode. Dieselbe Bauart wie `.overview-connect pre`, nur ohne die
+   Mindesthoehe: Die Hoehe des Codes steht fest und soll nicht aufgefuellt werden. */
+.realtime-example pre { margin: 14px 0 10px; padding: 14px; border: 1px solid var(--qkern-border); border-radius: 9px; background: var(--qkern-surface-2); overflow-x: auto; font-family: var(--qkern-font-mono); font-size: 12px; line-height: 1.55; }
