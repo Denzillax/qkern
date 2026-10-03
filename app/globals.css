@@ -1265,4 +1265,23 @@ input[type="checkbox"], input[type="radio"] {
    links klebt. Im Kartenkopf schob genau das sie an die Ueberschrift heran:
    gemessen 897 Pixel Luft bis zum rechten Rand, waehrend "Neu laden" auf der
    Karte darueber buendig rechts steht. */
-.card-head .table-select { margin-right: 0; margin-left: auto; }
+.card-head .table-select {
+  margin-right: 0; margin-left: auto;
+  /* Dieselben Werte wie `.environment-field` oben in der Kopfzeile, damit zwei
+     Auswahlfelder derselben Seite nicht zwei Bauarten sind: Pille, 40 Pixel
+     hoch, ein Rand, 13 Pixel in 600. Der Pfeil kommt aus `::after`, weil das
+     Feld `appearance: none` traegt und sonst gar keinen zeigt. */
+  position: relative; height: 40px; padding: 0 34px 0 14px; gap: 8px;
+  border: 1px solid var(--qkern-border); border-radius: var(--radius-pill);
+  background: var(--qkern-surface); color: var(--qkern-text);
+  font-size: 13px; font-weight: 600;
+}
+.card-head .table-select:focus-within { box-shadow: 0 0 0 3px var(--qkern-primary-muted); }
+.card-head .table-select > svg { color: var(--qkern-text-muted); flex: 0 0 auto; }
+.card-head .table-select select { font: inherit; color: inherit; cursor: pointer; }
+.card-head .table-select::after {
+  content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px;
+  margin-top: -5px; border-right: 1.5px solid var(--qkern-text-muted);
+  border-bottom: 1.5px solid var(--qkern-text-muted); transform: rotate(45deg);
+  pointer-events: none;
+}
