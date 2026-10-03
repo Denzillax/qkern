@@ -39,17 +39,29 @@ function isWalkthrough(manifest: Manifest): boolean {
     typeof manifest.stepsPassed === "number" && typeof manifest.exitCode === "number";
 }
 
-async function archivedManifests(): Promise<{ file: string; manifest: Manifest }[]> {
-  const found: { file: string; manifest: Manifest }[] = [];
+/**
+ * Einmal je Lauf und parallel gelesen (2.158). Drei Pruefungen lasen die ueber
+ * 700 Manifeste jede fuer sich und nacheinander; unter der vollen Suite lief
+ * das ueber die fuenf Sekunden. Reihenfolge und Inhalt sind dieselben.
+ */
+let manifestList: Promise<{ file: string; manifest: Manifest }[]> | undefined;
+function archivedManifests(): Promise<{ file: string; manifest: Manifest }[]> {
+  manifestList ??= readArchivedManifests();
+  return manifestList;
+}
+
+async function readArchivedManifests(): Promise<{ file: string; manifest: Manifest }[]> {
+  const files: string[] = [];
   for (const day of await readdir(ROOT, { withFileTypes: true })) {
     if (!day.isDirectory() || !DAY.test(day.name)) continue;
     for (const entry of await readdir(path.join(ROOT, day.name))) {
-      if (!entry.endsWith(".manifest.json")) continue;
-      const raw = await readFile(path.join(ROOT, day.name, entry), "utf8");
-      found.push({ file: `${day.name}/${entry}`, manifest: JSON.parse(raw) as Manifest });
+      if (entry.endsWith(".manifest.json")) files.push(`${day.name}/${entry}`);
     }
   }
-  return found;
+  return Promise.all(files.map(async (file) => ({
+    file,
+    manifest: JSON.parse(await readFile(path.join(ROOT, file), "utf8")) as Manifest,
+  })));
 }
 
 describe("evidence manifest shape contract", () => {

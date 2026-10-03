@@ -62,8 +62,32 @@ async function code(file: string): Promise<string> {
   return (await source(file)).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
-/** Alle Quelldateien des Produkts, ohne Tests, Migrationen und Dokumentation. */
-async function productFiles(): Promise<string[]> {
+/**
+ * Alle Quelldateien des Produkts, ohne Tests, Migrationen und Dokumentation.
+ *
+ * Einmal je Lauf gelesen (2.158). Drei Pruefungen gehen ueber dieselben rund
+ * 690 Dateien, und jede las sie bisher neu und nacheinander. Allein dauert das
+ * eine halbe Sekunde, unter der vollen Suite lief es zweimal ueber die fuenf
+ * Sekunden. Die Zusicherungen bleiben dieselben, gelesen wird nur seltener.
+ */
+let productFileList: Promise<string[]> | undefined;
+function productFiles(): Promise<string[]> {
+  productFileList ??= listProductFiles();
+  return productFileList;
+}
+
+const codeCache = new Map<string, Promise<string>>();
+/** `code()` fuer jede Produktdatei, einmal und parallel gelesen. */
+async function productCode(): Promise<{ file: string; text: string }[]> {
+  const files = await productFiles();
+  return Promise.all(files.map(async (file) => {
+    let cached = codeCache.get(file);
+    if (!cached) { cached = code(file); codeCache.set(file, cached); }
+    return { file, text: await cached };
+  }));
+}
+
+async function listProductFiles(): Promise<string[]> {
   const roots = ["lib", "app", "workers", "components", "scripts", "cli", "sdk", "mcp"];
   const files: string[] = [];
   async function walk(directory: string): Promise<void> {
@@ -356,9 +380,8 @@ describe("console restore to new project contract", () => {
     // an seiner eigenen Behauptung fehl.
     const EXEMPT = new Set([TEXTS, "lib/i18n/console.ts"]);
     const creating: string[] = [];
-    for (const file of await productFiles()) {
+    for (const { file, text } of await productCode()) {
       if (EXEMPT.has(file)) continue;
-      const text = await code(file);
       if (/CREATE\s+DATABASE/i.test(text) || /\bcreatedb\b/.test(text)) creating.push(file);
     }
     // Seit 2.126 gibt es **eine** Stelle, und zwar das Ziel einer
@@ -374,8 +397,8 @@ describe("console restore to new project contract", () => {
     const wiring = await source("lib/server/backup/project-database-runtime.ts");
     expect(wiring).toContain("qkern_project_restore_admin");
     // Und kein `DROP DATABASE`: nie ueber die lebende Datenbank.
-    for (const file of await productFiles()) {
-      expect(await code(file), file).not.toMatch(/DROP\s+DATABASE/i);
+    for (const { file, text } of await productCode()) {
+      expect(text, file).not.toMatch(/DROP\s+DATABASE/i);
     }
 
     // Der Broker ist ein Client und kein Dienst: Er spricht nach draussen und
@@ -401,8 +424,8 @@ describe("console restore to new project contract", () => {
     // bestehendes Projekt bekommt auf keinem Weg eine zusaetzliche Umgebung,
     // und genau die braeuchte eine Wiederherstellung.
     const inserting: string[] = [];
-    for (const file of await productFiles()) {
-      if (/INSERT\s+INTO\s+project_environments/i.test(await code(file))) inserting.push(file);
+    for (const { file, text } of await productCode()) {
+      if (/INSERT\s+INTO\s+project_environments/i.test(text)) inserting.push(file);
     }
     expect(inserting.sort()).toEqual(["lib/server/db/repositories.ts", "lib/server/tenancy-postgres.ts"]);
     expect(await source("lib/server/tenancy-postgres.ts"))

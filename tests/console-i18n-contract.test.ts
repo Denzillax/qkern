@@ -54,6 +54,7 @@ import { backupsTexts } from "@/lib/console/backups-texts";
 import { vectorBucketTexts } from "@/lib/console/vector-buckets-texts";
 import { analyticsBucketTexts } from "@/lib/console/analytics-buckets-texts";
 import { changeSetLabelTexts } from "@/lib/console/change-set-labels";
+import { auditStatusTexts } from "@/components/console/activity-view";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -256,6 +257,9 @@ async function consoleKeys(): Promise<string[]> {
   // Zustand und Risiko eines Change Sets (2.145) laufen in der Migrationsliste
   // und im Verlauf des SQL-Editors als t(variable) durch die Ansicht.
   for (const text of changeSetLabelTexts()) keys.add(text);
+  // Der Zustand eines Audit-Ereignisses (2.158) stand roh als `success` in der
+  // Aktivitaetsliste und laeuft jetzt als t(variable) durch.
+  for (const text of auditStatusTexts()) keys.add(text);
   return [...keys];
 }
 

@@ -19,6 +19,7 @@ import {
 } from "@/lib/console/project-health";
 import { QUICK_START_INSTALL, QUICK_START_STEPS, connectSnippet, type QuickStartStepId } from "@/lib/console/quick-start";
 import type { Project } from "@/lib/types";
+import { changeSetRiskLabel } from "@/lib/console/change-set-labels";
 
 /**
  * Die Uebersicht, aus `console-app.tsx` ausgezogen.
@@ -216,7 +217,7 @@ export function OverviewView({ snapshot, project, navigate, initialState, initia
         {events.length === 0 && <div className="overview-empty"><Activity size={22}/><p>{t("Sobald ein Agent eine Änderung vorschlägt oder ausführt, stehen die letzten drei Aktionen hier.")}</p><button className="plain-button" onClick={() => navigate("ai")}>{t("AI Bridge öffnen")}</button></div>}
       </article>
       <article className="console-card"><div className="card-head"><div><span>{t("FREIGABEN")}</span><h3>{formatNumber(pending.length)} {t("offen")}</h3></div><button className="plain-button" onClick={() => navigate("approvals")}>{t("Prüfen")}</button></div>
-        {snapshot.approvals.slice(0, 2).map((approval) => <div className="approval-mini" key={approval.id}><span className={`risk ${approval.risk}`}>{approval.risk}</span><div><strong>{approval.action}</strong><small>{approval.requestedBy} · {approval.environment}</small></div><ChevronRight size={15}/></div>)}
+        {snapshot.approvals.slice(0, 2).map((approval) => <div className="approval-mini" key={approval.id}><span className={`risk ${approval.risk}`}>{t(changeSetRiskLabel(approval.risk))}</span><div><strong>{approval.action}</strong><small>{approval.requestedBy} · {approval.environment}</small></div><ChevronRight size={15}/></div>)}
         {snapshot.approvals.length === 0 && <div className="overview-empty"><Plug size={22}/><p>{t("Hier stehen Änderungen, die auf eine Freigabe warten. Im Moment wartet keine.")}</p><button className="plain-button" onClick={() => navigate("approvals")}>{t("Freigabezentrale öffnen")}</button></div>}
       </article>
     </div>

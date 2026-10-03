@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GitCommitHorizontal, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
-import { changeSetStatusLabel } from "@/lib/console/change-set-labels";
+import { changeSetRiskLabel, changeSetStatusLabel } from "@/lib/console/change-set-labels";
 import { formatMoment } from "@/components/console/console-display";
 import type { ChangeSet, Environment } from "@/lib/types";
 
@@ -70,7 +70,7 @@ export function MigrationsView({ projectId, environment, changeSets, initialStat
       {scoped.length === 0 && <p className="muted">{t("Noch keine Change Sets. Eine schreibende SQL aus dem SQL Editor oder ein Agent über die AI Bridge legt das erste an; angewendet wird es erst nach Freigabe, transaktional und mit Ledger-Eintrag.")}</p>}
       {scoped.map((set) => <div className="bucket-row" key={set.id}><span className="bucket-icon"><GitCommitHorizontal size={16}/></span>
         <div><strong>{set.title}</strong><small>{set.agent} · {when(set.createdAt)} · {set.diff.length} {t("Zeilen Diff")}{set.rollback ? ` · ${t("Rollback vorhanden")}` : ""}</small></div>
-        <span className={`risk ${set.risk}`}>{t("Risiko")} {set.risk}</span>
+        <span className={`risk ${set.risk}`}>{t("Risiko")} {t(changeSetRiskLabel(set.risk))}</span>
         <span className={set.status === "applied" ? "secure" : set.status === "failed" || set.status === "rejected" ? "risk high" : "muted"}>{t(changeSetStatusLabel(set.status))}</span>
       </div>)}
     </article>

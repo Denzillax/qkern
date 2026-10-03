@@ -42,6 +42,22 @@ const RISK: Record<string, string> = {
   critical: "kritisch",
 };
 
+/**
+ * Der Zustand einer Freigabe (2.157). Er ist nicht der Zustand des Change Sets
+ * dahinter, sondern der der Entscheidung, und hat darum eigene vier Werte. Die
+ * Freigabeseite zeigte ihn roh als `pending`, gleich neben "Risiko medium".
+ */
+const APPROVAL_STATUS: Record<string, string> = {
+  pending: "offen",
+  approved: "freigegeben",
+  rejected: "abgelehnt",
+  expired: "abgelaufen",
+};
+
+export function approvalStatusLabel(status: string): string {
+  return APPROVAL_STATUS[status] ?? status;
+}
+
 export function changeSetStatusLabel(status: string): string {
   return STATUS[status] ?? status;
 }
@@ -51,5 +67,7 @@ export function changeSetRiskLabel(risk: string): string {
 }
 
 export function changeSetLabelTexts(): string[] {
-  return [...Object.values(STATUS), ...Object.values(RISK)];
+  // "freigegeben" und "abgelehnt" sind Zustand eines Change Sets und einer
+  // Freigabe zugleich; uebersetzt wird jedes Wort einmal.
+  return [...new Set([...Object.values(STATUS), ...Object.values(RISK), ...Object.values(APPROVAL_STATUS)])];
 }

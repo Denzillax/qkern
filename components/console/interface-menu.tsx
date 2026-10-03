@@ -44,7 +44,9 @@ export function InterfaceMenu({ value, onChange }: {
   value: InterfaceMode;
   onChange: (next: InterfaceMode) => void;
 }) {
-  return <OptionMenu
+  // Der Rahmen gibt der Kopfzeile einen Griff: In schmalen Breiten bleibt nur
+  // das Symbol stehen (2.158). Den Namen nennt dann `aria-label`.
+  return <div className="interface-menu"><OptionMenu
     value={value}
     ariaLabel={t("Oberfläche")}
     listLabel={t("Oberfläche wählen")}
@@ -55,5 +57,5 @@ export function InterfaceMenu({ value, onChange }: {
       label: entry === "easy" ? "Easy" : "Advanced",
       hint: `${interfaceModeGroupCount(entry)} ${t("Gruppen")} · ${modeHint(entry)}`,
     }))}
-  />;
+  /></div>;
 }

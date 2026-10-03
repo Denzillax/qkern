@@ -319,10 +319,23 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   }), []);
   const activeEasyGroup = easyGroupOf(view);
   const activeEasySection = easySectionOf(view);
+  // Im einfachen Modus ist genau die Gruppe offen, in der man steht (2.157).
+  // Vorher blieb jede einmal geoeffnete Gruppe offen, auch nach dem Wechsel.
+  // Gesehen im Nachbau: Nach Uebersicht, Datenbank und API standen drei Gruppen
+  // offen, und die Seitenleiste schob die unteren Eintraege aus dem Bild. Der
+  // Kopf der aktiven Gruppe klappt weiter auf und zu; der fortgeschrittene
+  // Modus merkt sich wie seit 2.8 jede Gruppe einzeln.
+  const focusEasyGroup = useCallback((id: string) => setOpenGroups((current) => {
+    const key = `easy:${id}`;
+    const next = new Set([...current].filter((entry) => !entry.startsWith("easy:") || entry === key));
+    next.add(key);
+    try { window.localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify([...next])); } catch {}
+    return next;
+  }), []);
   useEffect(() => {
-    toggleGroup(`easy:${activeEasyGroup.id}`, true);
+    focusEasyGroup(activeEasyGroup.id);
     if (activeEasySection) toggleSection(`${activeEasyGroup.id}:${activeEasySection}`, true);
-  }, [activeEasyGroup, activeEasySection, toggleGroup, toggleSection]);
+  }, [activeEasyGroup, activeEasySection, focusEasyGroup, toggleSection]);
 
   function changeView(next: ViewId) { setView(next); setMobileOpen(false); }
   async function logout() {

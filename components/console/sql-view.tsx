@@ -274,7 +274,7 @@ export function SqlView({ projectId, environment, reload, navigate, templatesOpe
         <article className="console-card sql-editor">
           <div className="editor-tabs">
             <span className="active">{t("Abfrage")}</span>
-            <div className={`risk ${reading.level}`}>{t("Risiko")} {reading.level}</div>
+            <div className={`risk ${reading.level}`}>{t("Risiko")} {t(changeSetRiskLabel(reading.level))}</div>
           </div>
           <div className="editor-body">
             {/* Die Zeilennummern kommen aus dem Text und nicht aus einer
