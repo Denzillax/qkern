@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, KeyRound, Plug, Plus, RefreshCw, ShieldAlert, Trash2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
   S3_ACCESS_ENDPOINT,
@@ -201,10 +202,20 @@ export function S3AccessView({ projectId, environment, initialState }: { project
                 <span>{bucket.name}</span>
               </label>)}
             </fieldset>
+            {/* 2.133: Dasselbe Menue wie oben in der Kopfzeile statt eines
+                `select` des Betriebssystems. Die Erklaerzeile nennt den Tag, an
+                dem das Paar abliefe: Genau dieses Datum geht aus der Spanne
+                hervor und steht spaeter im Antrag, und danach nimmt der
+                Endpunkt das Paar nicht mehr an. */}
             <label>{t("Ablauf")}
-              <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
-                {EXPIRY_DAYS.map((entry) => <option key={entry} value={entry}>{entry} {t("Tage")}</option>)}
-              </select>
+              <OptionMenu value={String(days)} align="left"
+                ariaLabel={t("Ablauf")} listLabel={t("Ablauf wählen")}
+                onChange={(next) => setDays(Number(next))}
+                options={EXPIRY_DAYS.map((entry) => ({
+                  id: String(entry),
+                  label: `${entry} ${t("Tage")}`,
+                  hint: `${t("läuft ab am")} ${formatMoment(new Date(Date.now() + entry * 24 * 60 * 60 * 1_000).toISOString(), "date")}`,
+                }))}/>
             </label>
             {preview.reason && <p className="muted">{preview.reason}</p>}
             {submitMessage && <p className="muted">{submitMessage}</p>}

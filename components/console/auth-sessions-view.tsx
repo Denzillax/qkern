@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, LogOut, RefreshCw, Users } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 
 /**
@@ -102,7 +103,20 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
       <div className="card-head">
         <div><span>{t("PROJECT AUTH")} · {environment.toUpperCase()}</span><h3>{t("Sitzungen")}</h3></div>
         <div>
-          <label className="table-select"><Users size={15}/><select value={selected} onChange={(event) => { setSelected(event.target.value); void loadSessions(event.target.value); }} aria-label={t("App-Nutzer")} disabled={users.length === 0}>{users.map((user) => <option key={user.id} value={user.id}>{user.email}{user.status === "disabled" ? ` · ${t("deaktiviert")}` : ""}</option>)}</select></label>
+          {/* 2.133: Statt eines `select` des Betriebssystems dasselbe Menue wie
+              oben in der Kopfzeile. Das Symbol steht an der Stelle des
+              Zustandspunkts, wie es bisher im Feld stand. Die Adresse ist ein
+              Bezeichner und wird nicht uebersetzt; die Erklaerzeile tragen nur
+              deaktivierte Nutzer, weil das Deaktivieren ihre Sitzungen beendet
+              hat und die Liste darum leer bleiben wird. */}
+          <OptionMenu value={selected} ariaLabel={t("App-Nutzer")} listLabel={t("App-Nutzer wählen")}
+            icon={<Users size={14} aria-hidden="true"/>}
+            onChange={(next) => { setSelected(next); void loadSessions(next); }}
+            options={users.map((user) => ({
+              id: user.id,
+              label: user.email,
+              hint: user.status === "disabled" ? t("Deaktiviert; das Sperren hat seine Sitzungen beendet.") : undefined,
+            }))}/>
           <button className="secondary-button" onClick={() => void loadSessions(selected)} disabled={!selected}><RefreshCw size={14}/> {t("Neu laden")}</button>
           <button className="secondary-button" onClick={() => void revokeAll()} disabled={!selected || sessions.length === 0 || busy !== ""}><LogOut size={14}/> <StableLabel current={busy === "all" ? t("Wird beendet…") : t("Alle Sitzungen beenden")} variants={tAll("Wird beendet…", "Alle Sitzungen beenden")}/></button>
         </div>

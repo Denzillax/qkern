@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileWarning, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_PROTECTION_AUDIT,
@@ -16,6 +17,7 @@ import {
   AUTH_PROTECTION_LIST_SOURCE_TEXTS,
   AUTH_PROTECTION_MIN_LENGTH,
   AUTH_PROTECTION_NEVER_LOGGED,
+  AUTH_PROTECTION_NOTICE_HINTS,
   AUTH_PROTECTION_NOTICE_NOTES,
   AUTH_PROTECTION_NOTICE_TEXTS,
   AUTH_PROTECTION_NOT_DISTRIBUTED,
@@ -242,12 +244,21 @@ export function AuthProtectionView({ projectId, environment, initialState }: { p
         </div>
         <p className="muted">{t(AUTH_PROTECTION_MIN_LENGTH)}</p>
         <div className="log-row">
-          <label>{t("Was eine Ablehnung sagt")}<select
-            value={draft.notice}
-            disabled={saving}
-            aria-label={t("Was eine Ablehnung sagt")}
-            onChange={(event) => edit({ notice: event.target.value as AuthProtectionNoticeId })}
-          >{data.notices.map((notice) => <option key={notice} value={notice}>{t(AUTH_PROTECTION_NOTICE_TEXTS[notice])}</option>)}</select></label>
+          {/* 2.133: Dasselbe Menue wie oben in der Kopfzeile statt eines
+              `select` des Betriebssystems. Die Erklaerzeile je Eintrag sagt in
+              einer Zeile, was der Nutzer nach einer Ablehnung weiss; der
+              vollstaendige Satz dazu steht weiterhin unter dem Feld, damit er
+              auch bei geschlossenem Menue zu lesen ist. */}
+          <label>{t("Was eine Ablehnung sagt")}
+            <OptionMenu value={draft.notice} align="left" disabled={saving}
+              ariaLabel={t("Was eine Ablehnung sagt")} listLabel={t("Wortlaut der Ablehnung wählen")}
+              onChange={(next) => edit({ notice: next })}
+              options={data.notices.map((notice) => ({
+                id: notice,
+                label: t(AUTH_PROTECTION_NOTICE_TEXTS[notice]),
+                hint: t(AUTH_PROTECTION_NOTICE_HINTS[notice]),
+              }))}/>
+          </label>
           <small>{t(AUTH_PROTECTION_NOTICE_NOTES[draft.notice])}</small>
         </div>
       </div>

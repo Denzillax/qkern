@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, KeyRound, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import {
   AUTH_THIRD_PARTY_ALGORITHM_FROM_LIST,
@@ -372,13 +373,22 @@ export function AuthThirdPartyView({ projectId, environment, initialState }: { p
           <small>{t("Erlaubte Werte im Token:")} {data.roles.join(", ")}</small>
         </div>
         <div className="log-row">
-          <label>{t("Rolle ohne Anspruch")}<select
-            value={defaultRole} disabled={saving || full}
-            aria-label={t("Rolle ohne Anspruch")}
-            onChange={(event) => edit(() => setDefaultRole(event.target.value))}
-          >
-            {data.roles.map((role) => <option key={role} value={role}>{role}</option>)}
-          </select></label>
+          {/* 2.133: Dasselbe Menue wie oben in der Kopfzeile statt eines
+              `select` des Betriebssystems. Der Rollenname ist ein Bezeichner
+              und wird nicht uebersetzt; die Erklaerzeile ist derselbe Satz, den
+              die Seite unter dem Feld und in der Rollenliste zeigt, und sie
+              sagt, was die Rolle darf. */}
+          <label>{t("Rolle ohne Anspruch")}
+            <OptionMenu value={defaultRole} align="left" disabled={saving || full}
+              ariaLabel={t("Rolle ohne Anspruch")} listLabel={t("Rolle ohne Anspruch wählen")}
+              onChange={(next) => edit(() => setDefaultRole(next))}
+              options={data.roles.map((role) => {
+                // `roleNote` gibt den Rollennamen zurueck, wenn es zu ihm keinen
+                // Satz gibt. Als Erklaerzeile waere das der Titel noch einmal.
+                const note = roleNote(role);
+                return { id: role, label: role, hint: note === role ? undefined : note };
+              })}/>
+          </label>
           <small>{roleNote(defaultRole)}</small>
         </div>
         <p className="muted">{t(AUTH_THIRD_PARTY_ROLE_MAPPING)}</p>

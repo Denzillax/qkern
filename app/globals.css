@@ -1356,3 +1356,14 @@ input[type="checkbox"], input[type="radio"] {
 .option-field .stable-label { min-width: 0; overflow: hidden; }
 .option-field .stable-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .option-list.left { right: auto; left: 0; }
+
+/* 2.133: Die zwei Regeln eines Buckets stehen nebeneinander unter dem Namen.
+   Bis hierher trug diese Zelle ein `small` mit zwei `select` darin. Ein
+   Auswahlmenue ist ein `div` mit einem Knopf, und das darf in einem `small`
+   nicht stehen; die Zelle ist darum ein `div`, das die Schrift und die Farbe
+   mitbringt, die `.bucket-row small` ihr gegeben hat. Die Pille ist hier 36
+   Pixel hoch und nicht 40: In einer Zeile von 61 Pixeln stehen ueber ihr noch
+   der Name des Buckets. */
+.bucket-row .policy-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 5px; }
+.bucket-row .policy-fields > label { display: inline-flex; align-items: center; gap: 7px; color: var(--qkern-text-muted); font-size: 12px; }
+.bucket-row .policy-fields .option-field { height: 36px; }
