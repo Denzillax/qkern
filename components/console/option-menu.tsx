@@ -51,9 +51,15 @@ export function OptionMenu<Id extends string>({
   icon?: React.ReactNode;
   align?: "left" | "right";
   /**
-   * Gesperrt, solange eine Ansicht speichert. Die `select`, die dieses Bauteil
-   * ersetzt, trugen das als `disabled`; ohne diesen Weg stuende waehrend eines
-   * laufenden PUT ein Feld offen, dessen Wert die Antwort danach ueberschreibt.
+   * Gesperrt, aus zwei Gruenden, die beide aus der Umstellung kamen.
+   *
+   * Erstens, solange eine Ansicht speichert: Ohne diesen Weg stuende waehrend
+   * eines laufenden PUT ein Feld offen, dessen Wert die Antwort danach
+   * ueberschreibt. Zweitens, wenn eine andere Wahl diese ohne Wirkung macht:
+   * Im Freigabemodus "Manuell" wird nichts automatisch freigegeben, also hat
+   * die Risikogrenze daneben keine Folge mehr. Die `select`, die dieses Bauteil
+   * ersetzt, konnten beides, und ein Menue, das es nicht kann, waere ein
+   * Rueckschritt.
    */
   disabled?: boolean;
 }) {
@@ -78,10 +84,11 @@ export function OptionMenu<Id extends string>({
   // aus einer leeren Liste einen Absturz.
   const current = options.find((entry) => entry.id === value) ?? options[0];
   const tone = current?.tone ?? "";
+  const locked = disabled || options.length === 0;
   return <div className={`option-menu ${tone}`} ref={root}>
     <button type="button" className={`option-field ${tone}`} aria-haspopup="listbox"
             aria-expanded={open} aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
-            disabled={disabled || options.length === 0}
+            disabled={locked}
             onClick={() => setOpen(!open)}>
       {/* Der Punkt nur mit Zustand. Ohne Symbol und ohne Zustand stand hier
           ein grauer Punkt, der nichts bedeutet; genau das wollte ich beim
@@ -90,7 +97,7 @@ export function OptionMenu<Id extends string>({
       <StableLabel current={current?.label ?? ""} variants={options.map((entry) => entry.label)}/>
       <ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
     </button>
-    {open && !disabled && options.length > 0 && <ul className={`option-list ${align}`} role="listbox" aria-label={listLabel}>
+    {open && !locked && <ul className={`option-list ${align}`} role="listbox" aria-label={listLabel}>
       {options.map((entry) => <li key={entry.id} role="option" aria-selected={entry.id === value}
                                   className={entry.tone ?? ""}>
         <button type="button" onClick={() => { onChange(entry.id); setOpen(false); }}>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Clock, Eye, Globe, Palette, RefreshCw, ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import { formatMoment, formatNumber, formatPercent } from "@/components/console/console-display";
 import { formatMoneyMicros } from "@/lib/console/money";
@@ -125,32 +126,48 @@ export function DashboardSettingsView({ settings, onSaved }: Props) {
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("EINSTELLUNGEN")}</span><h3>{t("Sprache, Format, Zeitzone, Startseite, Aussehen")}</h3></div><Palette size={18}/></div>
       <div className="settings-form">
+        {/* 2.133: Fuenf Menues statt fuenf `select`. Die Erklaerzeile traegt
+            dort, wo es einen gibt, den Bezeichner, der hinter dem Wort steht:
+            "Deutsch" ist der Name, `de` ist der Wert im Cookie, und `de-CH`
+            ist das Gebietsschema, mit dem gerechnet wird. Wo die Beschriftung
+            schon alles sagt -- "Wie der Browser", "Hell", "Europe/Zurich" --
+            bleibt die Zeile weg. */}
         <label>{t("Sprache der Console")}
-          <select value={draft.language} onChange={(event) => set("language", event.target.value as ConsoleDisplaySettings["language"])}>
-            <option value={CONSOLE_DISPLAY_INHERIT}>{t(CONSOLE_DISPLAY_INHERIT_LANGUAGE)}</option>
-            {LOCALES.map((entry) => <option key={entry} value={entry}>{LOCALE_NAMES[entry]}</option>)}
-          </select>
+          <OptionMenu value={draft.language} ariaLabel={t("Sprache der Console")} listLabel={t("Sprache der Console wählen")}
+            align="left" onChange={(next) => set("language", next)}
+            options={[
+              { id: CONSOLE_DISPLAY_INHERIT as ConsoleDisplaySettings["language"], label: t(CONSOLE_DISPLAY_INHERIT_LANGUAGE) },
+              ...LOCALES.map((entry) => ({ id: entry as ConsoleDisplaySettings["language"], label: LOCALE_NAMES[entry], hint: entry })),
+            ]}/>
         </label>
         <label>{t("Zahlen- und Datumsformat")}
-          <select value={draft.formatLocale} onChange={(event) => set("formatLocale", event.target.value as ConsoleFormatLocale)}>
-            {CONSOLE_FORMAT_LOCALES.map((entry) => <option key={entry} value={entry}>{t(CONSOLE_FORMAT_LOCALE_LABELS[entry])} · {entry}</option>)}
-          </select>
+          <OptionMenu value={draft.formatLocale} ariaLabel={t("Zahlen- und Datumsformat")} listLabel={t("Zahlen- und Datumsformat wählen")}
+            align="left" onChange={(next) => set("formatLocale", next)}
+            options={CONSOLE_FORMAT_LOCALES.map((entry) => ({
+              id: entry, label: t(CONSOLE_FORMAT_LOCALE_LABELS[entry]), hint: entry,
+            }))}/>
         </label>
         <label>{t("Zeitzone")}
-          <select value={draft.timeZone} onChange={(event) => set("timeZone", event.target.value)}>
-            <option value={CONSOLE_DISPLAY_INHERIT}>{t(CONSOLE_DISPLAY_INHERIT_TIME_ZONE)}</option>
-            {CONSOLE_SUGGESTED_TIME_ZONES.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-          </select>
+          <OptionMenu value={draft.timeZone} ariaLabel={t("Zeitzone")} listLabel={t("Zeitzone wählen")}
+            align="left" onChange={(next) => set("timeZone", next)}
+            options={[
+              { id: CONSOLE_DISPLAY_INHERIT as string, label: t(CONSOLE_DISPLAY_INHERIT_TIME_ZONE) },
+              ...CONSOLE_SUGGESTED_TIME_ZONES.map((entry) => ({ id: entry as string, label: entry })),
+            ]}/>
         </label>
+        {/* Die Gruppe der Navigation als Erklaerzeile: Sie sagt, wo die Seite
+            im Menue steht, und das ist genau die Frage vor dieser Wahl. */}
         <label>{t("Startseite der Console")}
-          <select value={draft.startView} onChange={(event) => set("startView", event.target.value as ConsoleDisplaySettings["startView"])}>
-            {startEntries.map((entry) => <option key={entry.id} value={entry.id}>{t(entry.group)} · {t(entry.label)}</option>)}
-          </select>
+          <OptionMenu value={draft.startView} ariaLabel={t("Startseite der Console")} listLabel={t("Startseite der Console wählen")}
+            align="left" onChange={(next) => set("startView", next)}
+            options={startEntries.map((entry) => ({
+              id: entry.id as ConsoleDisplaySettings["startView"], label: t(entry.label), hint: t(entry.group),
+            }))}/>
         </label>
         <label>{t("Aussehen")}
-          <select value={draft.theme} onChange={(event) => set("theme", event.target.value as ConsoleTheme)}>
-            {CONSOLE_THEMES.map((entry) => <option key={entry} value={entry}>{t(CONSOLE_THEME_LABELS[entry])}</option>)}
-          </select>
+          <OptionMenu value={draft.theme} ariaLabel={t("Aussehen")} listLabel={t("Aussehen wählen")}
+            align="left" onChange={(next) => set("theme", next)}
+            options={CONSOLE_THEMES.map((entry) => ({ id: entry, label: t(CONSOLE_THEME_LABELS[entry]) }))}/>
         </label>
       </div>
       {message && <p className="risk high">{message}</p>}

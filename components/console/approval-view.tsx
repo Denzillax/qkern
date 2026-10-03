@@ -5,6 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { CheckIcon, EmptyState } from "@/components/console/console-parts";
 import { formatHourMinute } from "@/components/console/console-format";
+import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
 import type {
   Approval, AutomationMode, ChangeSet, Environment, ProjectAutomationPolicy, Risk,
@@ -49,8 +50,35 @@ function AutomationPolicyPanel({ projectId, environment }: { projectId: string; 
     <div className="card-head"><div><span>AUTOMATIK · {environment.toUpperCase()}</span><h3>{t("Freigabemodus")}</h3></div><span className={`automation-status ${emergencyStop?"stopped":mode}`}>{emergencyStop?"NOT-AUS":({manual:t("Manuell"),guarded:t("Abgesichert"),autonomous:t("Autonom")})[mode]}</span></div>
     <p>{description} Jede automatische Entscheidung bleibt im Audit-Log nachvollziehbar.</p>
     <div className="automation-fields">
-      <label>{t("Modus")}<select value={mode} onChange={event=>setMode(event.target.value as AutomationMode)}><option value="manual">{t("Manuell")}</option><option value="guarded">{t("Abgesichert")}</option><option value="autonomous">{t("Autonom")}</option></select></label>
-      <label>{t("Maximales Auto-Risiko")}<select value={maxAutoRisk} onChange={event=>setMaxAutoRisk(event.target.value as Risk)} disabled={mode==="manual"}><option value="low">{t("Niedrig")}</option><option value="medium">{t("Mittel")}</option><option value="high">{t("Hoch")}</option><option value="critical">{t("Kritisch")}</option></select></label>
+      {/* Dasselbe Bauteil wie das Umgebungsmenue oben in der Kopfzeile. Die
+          Erklaerzeilen stehen nicht fuer das Gefuehl da: Sie sind aus
+          `policyAllowsAutomaticApproval` und `classifySqlRisk` abgelesen. Was
+          "Abgesichert" automatisch freigibt, ist genau Index, View und
+          Comment, und nur ausserhalb von Production; eine Zeile, die hier
+          mehr versprechen wuerde, waere schlimmer als keine. */}
+      <label>{t("Modus")}
+        <OptionMenu value={mode} ariaLabel={t("Modus")} listLabel={t("Freigabemodus wählen")} align="left"
+          onChange={next=>setMode(next)}
+          options={[
+            { id:"manual" as AutomationMode, label:t("Manuell"), hint:t("Keine automatische Freigabe, die Risikogrenze wirkt nicht"), tone:"manual" },
+            { id:"guarded" as AutomationMode, label:t("Abgesichert"), hint:t("Nur Index, View und Comment, nie in Production"), tone:"guarded" },
+            { id:"autonomous" as AutomationMode, label:t("Autonom"), hint:t("Alles bis zur Risikogrenze, auch in Production"), tone:"autonomous" },
+          ]}/>
+      </label>
+      {/* Die Grenze ist ein Hoechstwert, darum sagen die Zeilen, was bis
+          hierher ohne Freigabe durchgeht, und nicht, was die Stufe heisst.
+          Einen Zustandspunkt hat dieses Feld nicht: Eine Grenze ist eine
+          Einstellung und keine Stufe, die laeuft. */}
+      <label>{t("Maximales Auto-Risiko")}
+        <OptionMenu value={maxAutoRisk} ariaLabel={t("Maximales Auto-Risiko")} listLabel={t("Maximales Auto-Risiko wählen")}
+          align="left" disabled={mode==="manual"} onChange={next=>setMaxAutoRisk(next)}
+          options={[
+            { id:"low" as Risk, label:t("Niedrig"), hint:t("Höchstens lesende Anweisungen") },
+            { id:"medium" as Risk, label:t("Mittel"), hint:t("Höchstens Schreiben ausserhalb von Production") },
+            { id:"high" as Risk, label:t("Hoch"), hint:t("Auch ALTER TABLE und Schreiben in Production") },
+            { id:"critical" as Risk, label:t("Kritisch"), hint:t("Auch DROP, TRUNCATE und Spalten entfernen") },
+          ]}/>
+      </label>
       <label className="automation-check"><input type="checkbox" checked={autoQueue&&environment!=="production"} disabled={mode==="manual"||environment==="production"} onChange={event=>setAutoQueue(event.target.checked)}/><span>{t("Nach Auto-Freigabe direkt einreihen")}<small>{environment==="production"?t("Production braucht zusätzlich eine maschinell signierte Release-Autorisierung."):t("Der Worker führt weiterhin alle Datenbank- und Ledger-Prüfungen aus.")}</small></span></label>
       <label className="automation-check danger"><input type="checkbox" checked={emergencyStop} onChange={event=>setEmergencyStop(event.target.checked)}/><span>{t("Not-Aus aktivieren")}<small>{t("Stoppt sofort jede automatische Freigabe und Queue-Einreihung.")}</small></span></label>
     </div>

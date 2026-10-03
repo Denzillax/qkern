@@ -292,10 +292,18 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
           <button className="secondary-button" onClick={() => { setCreated(false); setNewColumns((columns) => [...columns, { ...EMPTY_COLUMN }]); }} disabled={newColumns.length >= MAX_NEW_TABLE_COLUMNS}><Plus size={14}/> {t("Spalte im Entwurf ergänzen")}</button>
         </>}
 
+        {/* Das letzte `select` dieser Ansicht. Die Erklaerzeile ist die Zahl der
+            Spalten: Sie steht in `tables` schon da, sie unterscheidet zwei
+            gleich aussehende Namen, und vor "Spalte ergaenzen" ist sie genau
+            die Frage. Dieselben Worte wie in der Liste darueber. */}
         {mode !== "create" && <label>{t("Bestehende Tabelle")}
-          <select value={sourceTable} onChange={(event) => { setSourceTable(event.target.value); setCreated(false); }} aria-label={t("Bestehende Tabelle")}>
-            {tables.map((table) => <option key={table.name} value={table.name}>{table.name}</option>)}
-          </select>
+          <OptionMenu value={sourceTable} ariaLabel={t("Bestehende Tabelle")} listLabel={t("Bestehende Tabelle wählen")}
+            align="left" onChange={(next) => { setSourceTable(next); setCreated(false); }}
+            options={tables.map((table) => ({
+              id: table.name,
+              label: table.name,
+              hint: table.columns.length === 1 ? t("1 Spalte") : `${table.columns.length} ${t("Spalten")}`,
+            }))}/>
         </label>}
 
         {mode === "rename" && <label>{t("Neuer Name")}
