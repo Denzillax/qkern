@@ -1198,3 +1198,26 @@ input[type="checkbox"], input[type="radio"] {
 .bucket-row .row-trailing { grid-column: -2 / -1; justify-self: end; white-space: nowrap; }
 .bucket-row .row-text { min-width: 0; }
 .bucket-row .row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 2.133: Der Boden fuer Fliesstext in der Konsole.
+   Gemessen im Browser ueber neun Ansichten: Von den 106 Regeln, die im
+   Stylesheet noch eine Groesse unter 10 Pixel erklaeren, schlagen genau vier
+   bis zum Leser durch; der spaetere Umbau hat die anderen schon ueberschrieben.
+   Diese vier sind kein Kicker und keine Beschriftung im SVG, sondern
+   Fliesstext, und 8 oder 9 Pixel sind dafuer zu klein. Kickern (Grossbuchstaben
+   mit Sperrung) und den Texten im Schemabild bleibt ihre Groesse: Dort traegt
+   sie eine Aufgabe. */
+.auth-overview small, .storage-total small { font-size: 12px; }
+.auth-overview span, .storage-total span { font-size: 10px; }
+.table-select { font-size: 12px; }
+.live-records td code { font-size: 12px; }
+.bucket-row small { font-size: 12px; }
+
+/* 2.133: Die Kicker-Regel trifft nicht mehr die Knopfbeschriftung.
+   `.card-head span` ist fuer den Kicker ueber der Ueberschrift gedacht
+   ("SCHEMA · DEVELOPMENT"). Als Nachfahrenregel trifft sie aber jedes `span`
+   im Kopf einer Karte, also auch die, die `StableLabel` in einen Knopf legt.
+   Gemessen: Der Knopf traegt 13 Pixel, seine Beschriftung 10. Darum sah "Neu
+   laden" kleiner aus als jeder andere Knopf der Seite. Die Beschriftung erbt
+   jetzt wieder vom Knopf. */
+.card-head button span { font-size: inherit; letter-spacing: normal; color: inherit; }
