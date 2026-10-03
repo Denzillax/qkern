@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "easyui-postgres-run1.log",
+  "commit": "0393cbda200d8820260d8e7ecf49f811c8a24285",
+  "commitSubject": "merge: leere Zustaende, ein Kopierweg, maskierte Geheimnisse, Kontrast (2.137)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "256 passed (256)",
+  "passed": 256,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
