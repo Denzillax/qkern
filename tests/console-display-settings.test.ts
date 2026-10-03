@@ -41,13 +41,20 @@ describe("console display settings", () => {
     });
     expect(validateConsoleDisplaySettings({
       language: "fr", formatLocale: "fr-CH", timeZone: "UTC", startView: "logs", theme: "dark",
-    })).toEqual({ language: "fr", formatLocale: "fr-CH", timeZone: "UTC", startView: "logs", theme: "dark" });
+    })).toEqual({
+      language: "fr", formatLocale: "fr-CH", timeZone: "UTC", startView: "logs", theme: "dark",
+      // Ein Koerper ohne Modus bekommt die Vorgabe, und die ist seit 2.134
+      // `easy`. Das ist die eine Vorgabe dieses Moduls, die das Verhalten
+      // gegenueber vorher aendert, und sie steht darum hier ausgeschrieben.
+      interfaceMode: "easy",
+    });
   });
 
   it("refuses a value it cannot display instead of replacing it silently", () => {
     for (const body of [
       null, "de", [], { language: "es" }, { formatLocale: "de-AT" }, { timeZone: "Mars/Olympus" },
       { timeZone: "" }, { startView: "does-not-exist" }, { startView: "" }, { theme: "sepia" },
+      { interfaceMode: "beginner" }, { interfaceMode: "" },
     ]) {
       expect(() => validateConsoleDisplaySettings(body), JSON.stringify(body)).toThrow(ConsoleDisplayError);
     }

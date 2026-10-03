@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
-import { NAV, PLACEHOLDERS, type Placeholder } from "@/components/console/navigation";
+import { EASY_NAV, NAV, PLACEHOLDERS, easySections, type Placeholder } from "@/components/console/navigation";
 import { securityAdvisorTexts } from "@/lib/console/security-advisor-texts";
 import { performanceAdvisorTexts } from "@/lib/console/performance-advisor-texts";
 import { cronLogTexts } from "@/lib/console/cron-log-texts";
@@ -73,6 +73,15 @@ async function consoleKeys(): Promise<string[]> {
     for (const match of source.matchAll(/(?<![A-Za-z0-9_])t\(("(?:[^"\\]|\\.)*")\)/g)) keys.add(JSON.parse(match[1]) as string);
   }
   for (const group of NAV) { keys.add(group.label); for (const child of group.children ?? []) keys.add(child.label); }
+  // Der einfache Modus (2.134) fuehrt eigene Beschriftungen fuer dieselben
+  // Ansichten und eigene Abschnittsnamen. Ohne diese Schleife waere die
+  // Sidebar im einfachen Modus auf Englisch, Franzoesisch und Italienisch
+  // teilweise deutsch, und zwar stumm.
+  for (const group of EASY_NAV) {
+    keys.add(group.label);
+    for (const child of group.children) keys.add(child.label);
+    for (const section of easySections(group)) keys.add(section);
+  }
   // Seit 2.99 leer; die Schleife bleibt fuer den naechsten Menuepunkt ohne Seite.
   for (const entry of Object.values(PLACEHOLDERS as Record<string, Placeholder>)) { keys.add(entry.label); keys.add(entry.note); }
   // Die Texte des Sicherheitsberaters (2.39) kommen vom Server und laufen als t(variable) durch die Ansicht.

@@ -52,7 +52,7 @@ function request(method: "GET" | "PUT", options: { token?: string; body?: unknow
 
 const CHOSEN = {
   language: "fr", formatLocale: "fr-CH", timeZone: "Asia/Singapore",
-  startView: "logs", theme: "dark",
+  startView: "logs", theme: "dark", interfaceMode: "advanced",
 } as const;
 
 describe("console display settings route", () => {

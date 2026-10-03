@@ -1073,6 +1073,19 @@ html[data-reveal="on"] .reveal-stagger[data-in="true"] > * { opacity: 1; transfo
 .console-nav .nav-children button .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: #3a4a63; flex: none; }
 .console-nav .nav-children button.is-placeholder-entry .nav-dot { background: #3a4a63; }
 .console-nav .nav-children button.is-real-entry .nav-dot { background: var(--qkern-success); }
+
+/* Abschnitte im einfachen Modus (2.134). Sie liegen eine Ebene unter den
+   Einträgen der Gruppe und sehen bewusst ruhiger aus als diese: Der Kopf ist
+   keine Zeile, zu der man navigiert, sondern eine Klappe. Darum keine Punkte,
+   kleinere Schrift, und die Anzahl rechts, damit vor dem Aufklappen klar ist,
+   wie viel dahinter liegt. */
+.console-nav .nav-section { display: grid; gap: 1px; }
+.console-nav .nav-section-head { min-height: 28px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #5c6b82; gap: 6px; }
+.console-nav .nav-section-head:hover { color: #9fb0c8; background: transparent; }
+.console-nav .nav-section-head > .nav-caret { transition: transform .15s; color: #4a5a72; }
+.console-nav .nav-section.is-open > .nav-section-head > .nav-caret { transform: rotate(180deg); }
+.console-nav .nav-section-head em { margin-left: auto; font-style: normal; font-size: 10px; color: #4a5a72; }
+.console-nav .nav-section button:not(.nav-section-head) { margin-left: 10px; }
 .is-collapsed .console-nav .nav-children, .is-collapsed .console-nav .nav-caret { display: none; }
 @media (max-width: 760px) { .is-collapsed .console-nav .nav-group.is-open .nav-children { display: grid; } .is-collapsed .console-nav .nav-caret { display: block; } }
 

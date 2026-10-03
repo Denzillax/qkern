@@ -9,7 +9,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QKERNLogo, QKERNSymbol } from "@/components/brand";
 import { displayWorkspaceName } from "@/lib/console/workspace-name";
-import { NAV, NAV_ENTRIES, groupOf, isPlaceholder, type ViewId } from "@/components/console/navigation";
+import {
+  EASY_NAV, NAV, NAV_ENTRIES, easyGroupOf, easyLabelOf, easySectionOf, easySections,
+  groupOf, isPlaceholder, type InterfaceMode, type ViewId,
+} from "@/components/console/navigation";
+import { InterfaceMenu } from "@/components/console/interface-menu";
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { CheckIcon, ErrorState } from "@/components/console/console-parts";
 import { setConsoleDisplaySettings } from "@/components/console/console-display";
@@ -111,7 +115,7 @@ import type { Locale } from "@/lib/i18n/locales";
 import { LOCALE_COOKIE } from "@/lib/i18n/locales";
 import {
   CONSOLE_DISPLAY_DEFAULTS, CONSOLE_DISPLAY_INHERIT, resolvedConsoleLanguage,
-  type ConsoleDisplaySettings,
+  validateConsoleDisplaySettings, type ConsoleDisplaySettings,
 } from "@/lib/console/display-settings";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { BillingSettingsView } from "@/components/console/billing-settings-view";
@@ -128,6 +132,21 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   setConsoleDisplaySettings(display);
   setConsoleLocale(resolvedConsoleLanguage(display, locale));
   const router = useRouter();
+  const mode: InterfaceMode = display.interfaceMode;
+  // Der Moduswechsel gilt sofort und wird dann abgelegt (2.134). Umgekehrt --
+  // erst speichern, dann umstellen -- haette die Umstellung an eine Antwort
+  // gehaengt, die eine Zehntelsekunde braucht, und der Knopf haette nach dem
+  // Klick noch den alten Modus gezeigt. Die Ansicht bleibt dabei dieselbe:
+  // Beide Modi fuehren dieselben Kennungen, es gibt also nichts abzubilden.
+  const setMode = useCallback((next: InterfaceMode) => {
+    setDisplay((current) => {
+      const updated = { ...current, interfaceMode: next };
+      void fetch("/api/v1/auth/console-settings", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated),
+      }).catch(() => { /* Ohne Ablage gilt der Modus fuer diese Sitzung. */ });
+      return updated;
+    });
+  }, []);
   const [view, setView] = useState<ViewId>("overview");
   // Die Startseite gilt genau einmal: beim ersten Laden. Wer danach
   // navigiert, soll nicht beim naechsten Neuladen der Einstellungen
@@ -173,7 +192,16 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
         const response = await fetch("/api/v1/auth/console-settings", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json();
-        if (!cancelled && payload?.data) setDisplay(payload.data as ConsoleDisplaySettings);
+        // Die Antwort geht durch dasselbe reine Modul, mit dem die Route sie
+        // annimmt. Das ist nicht Hoeflichkeit, sondern notwendig: Ein Feld, das
+        // es in 2.134 neu gibt, fehlt in einer Antwort, die ein aelterer Server
+        // liefert, und ohne Vorgabe dafuer stand die Sidebar leer da -- `mode`
+        // war `undefined`, also traf keiner der beiden Zweige. Gesehen im
+        // Browser, nicht gedacht. Was sich nicht lesen laesst, bleibt bei den
+        // Vorgaben, statt die Console halb zu zeichnen.
+        if (cancelled || !payload?.data) return;
+        try { setDisplay(validateConsoleDisplaySettings(payload.data)); }
+        catch { /* Die Vorgaben gelten weiter. */ }
       } catch { /* Ohne Antwort bleiben die Vorgaben, und die sind das alte Verhalten. */ }
     })();
     return () => { cancelled = true; };
@@ -224,6 +252,24 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   const activeGroup = groupOf(view);
   useEffect(() => { if (activeGroup.children) toggleGroup(activeGroup.id, true); }, [activeGroup, toggleGroup]);
 
+  // Die Abschnitte des einfachen Modus beginnen zugeklappt und werden gemerkt,
+  // wie die Gruppen daneben. Der Abschnitt der geoeffneten Ansicht klappt auf:
+  // Sonst waere die aktive Zeile da, wo niemand sie sieht.
+  const [openSections, setOpenSections] = useState<Set<string>>(() => new Set());
+  useEffect(() => { try { const raw = window.localStorage.getItem(SECTIONS_STORAGE_KEY); if (raw) setOpenSections(new Set(JSON.parse(raw) as string[])); } catch {} }, []);
+  const toggleSection = useCallback((key: string, force?: boolean) => setOpenSections((current) => {
+    const next = new Set(current);
+    if (force ?? !next.has(key)) next.add(key); else next.delete(key);
+    try { window.localStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify([...next])); } catch {}
+    return next;
+  }), []);
+  const activeEasyGroup = easyGroupOf(view);
+  const activeEasySection = easySectionOf(view);
+  useEffect(() => {
+    toggleGroup(`easy:${activeEasyGroup.id}`, true);
+    if (activeEasySection) toggleSection(`${activeEasyGroup.id}:${activeEasySection}`, true);
+  }, [activeEasyGroup, activeEasySection, toggleGroup, toggleSection]);
+
   function changeView(next: ViewId) { setView(next); setMobileOpen(false); }
   async function logout() {
     await fetch("/api/v1/auth/logout", { method: "POST" });
@@ -236,8 +282,40 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
       <aside className={`console-sidebar ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
         <div className="console-brand"><Link href="/console" aria-label={t("Zur Console-Übersicht")}>{collapsed ? <QKERNSymbol variant="white" size="sm" /> : <QKERNLogo variant="white" size="sm" />}</Link><button className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? t("Sidebar ausklappen") : t("Sidebar einklappen")} title={collapsed ? t("Sidebar ausklappen") : t("Sidebar einklappen")}>{collapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}</button><button className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label={t("Navigation schließen")} title={t("Navigation schließen")}><X size={18}/></button></div>
         <div className="project-switch"><span className="project-glyph">{(project?.name ?? "QK").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "QK"}</span><div><strong>{project?.name ?? t("Projekt wird geladen")}</strong><small>{displayWorkspaceName(snapshot?.organization.name)}</small></div><ChevronDown size={14}/></div>
-        <nav className="console-nav" aria-label={t("Console-Navigation")}>
-          {NAV.map((group) => {
+        <nav className={`console-nav ${mode}`} aria-label={t("Console-Navigation")}>
+          {mode === "easy" && EASY_NAV.map((group) => {
+            const Icon = group.icon;
+            const isActive = activeEasyGroup.id === group.id;
+            const isOpen = openGroups.has(`easy:${group.id}`);
+            const badge = group.id === "overview" ? pendingApprovals : 0;
+            const front = group.children.filter((child) => !child.section);
+            if (collapsed && !isPhone) return <div className="nav-group" key={group.id}><SidebarFlyout group={{ id: group.id, label: group.label, icon: group.icon, children: group.children.map((child) => ({ id: child.id, label: child.label })) }} view={view} badge={badge} onNavigate={changeView}/></div>;
+            return <div className={`nav-group${isOpen ? " is-open" : ""}`} key={group.id}>
+              <button className={`${isActive ? "active" : ""} has-children`} aria-expanded={isOpen} title={t(group.label)}
+                      onClick={() => { if (isActive) toggleGroup(`easy:${group.id}`); else { toggleGroup(`easy:${group.id}`, true); changeView(front[0].id); } }}>
+                <Icon size={17}/><span>{t(group.label)}</span>{badge > 0 && <small>{badge}</small>}<ChevronDown size={14} className="nav-caret" aria-hidden="true"/>
+              </button>
+              <div className="nav-children" role="group" aria-label={t(group.label)}>
+                {front.map((child) => <button key={child.id} className={`${view === child.id ? "active" : ""} is-real-entry`} onClick={() => changeView(child.id)} title={t(child.label)}><i className="nav-dot" aria-hidden="true"/><span>{t(child.label)}</span></button>)}
+                {/* Die Abschnitte. Sie sind der ganze Unterschied zwischen den
+                    Modi: dieselben Ansichten, eine Ebene tiefer, zugeklappt
+                    bis jemand sie braucht. Dass sie da sind, sagt der Kopf mit
+                    der Anzahl -- versteckt waere es, sie ganz weglassen. */}
+                {easySections(group).map((section) => {
+                  const key = `${group.id}:${section}`;
+                  const entries = group.children.filter((child) => child.section === section);
+                  const sectionOpen = openSections.has(key);
+                  return <div className={`nav-section${sectionOpen ? " is-open" : ""}`} key={section}>
+                    <button className="nav-section-head" aria-expanded={sectionOpen} onClick={() => toggleSection(key)}>
+                      <ChevronDown size={13} aria-hidden="true" className="nav-caret"/><span>{t(section)}</span><em>{entries.length}</em>
+                    </button>
+                    {sectionOpen && entries.map((child) => <button key={child.id} className={`${view === child.id ? "active" : ""} is-real-entry`} onClick={() => changeView(child.id)} title={t(child.label)}><i className="nav-dot" aria-hidden="true"/><span>{t(child.label)}</span></button>)}
+                  </div>;
+                })}
+              </div>
+            </div>;
+          })}
+          {mode === "advanced" && NAV.map((group) => {
             const Icon = group.icon;
             const isActive = activeGroup.id === group.id;
             const isOpen = group.children ? openGroups.has(group.id) : false;
@@ -263,6 +341,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
           <div className="console-crumb"><span className="crumb-workspace" title={snapshot?.organization.name ?? undefined}><Blocks size={14} aria-hidden="true"/>{displayWorkspaceName(snapshot?.organization.name)}<small>{t("Workspace")}</small></span><b>/</b><strong>{project?.name ?? "Projekt"}</strong></div>
           <div className="console-tools">
             <EnvironmentMenu value={environment} onChange={setEnvironment}/>
+            <InterfaceMenu value={mode} onChange={setMode}/>
             <LanguageSwitcher locale={locale} label={t("Sprache wählen")}/>
             <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>{t("Suchen")}</span><kbd>⌘ K</kbd></button>
             {snapshot && !error && <span className="system-online"><i/> {t("Verbunden")}</span>}
@@ -271,7 +350,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
         </header>
 
         <main className="console-page">
-          <div className="console-titlebar"><div><span className="console-kicker">{project?.name ?? "Projekt"} · {environment.charAt(0).toUpperCase() + environment.slice(1)}</span><h1>{viewTitle(view)}</h1></div>{environment === "production" && <span className="production-guard"><ShieldCheck size={15}/> {t("Production-Schutz aktiv")}</span>}</div>
+          <div className="console-titlebar"><div><span className="console-kicker">{project?.name ?? "Projekt"} · {environment.charAt(0).toUpperCase() + environment.slice(1)}</span><h1>{viewTitle(view, mode)}</h1></div>{environment === "production" && <span className="production-guard"><ShieldCheck size={15}/> {t("Production-Schutz aktiv")}</span>}</div>
           {loading && <LoadingState/>}
           {error && <ErrorState message={error} retry={load}/>} 
           {!loading && !error && snapshot && project && (
@@ -423,7 +502,16 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
   }
 }
 
-function viewTitle(view: ViewId): string {
+function viewTitle(view: ViewId, mode: InterfaceMode): string {
+  // Der Titel folgt dem Modus, weil die Herkunft im Menue folgt: Dieselbe
+  // Ansicht steht einfach unter "Datenbank · Daten" und vollstaendig unter
+  // "Table Editor". Ein fester Titel haette in einem der beiden Modi auf eine
+  // Gruppe gezeigt, die daneben gar nicht steht.
+  if (mode === "easy") {
+    const group = easyGroupOf(view);
+    const child = group.children.find((entry) => entry.id === view);
+    return child && child.label !== group.label ? `${t(group.label)} · ${t(child.label)}` : t(group.label);
+  }
   const group = groupOf(view);
   const child = group.children?.find((entry) => entry.id === view);
   return child && child.label !== group.label ? `${t(group.label)} · ${t(child.label)}` : t(group.label);
@@ -435,6 +523,7 @@ function ProductPreview({ service, children }: { service: string; children: Reac
 
 const SIDEBAR_STORAGE_KEY = "qkern.console.sidebar";
 const GROUPS_STORAGE_KEY = "qkern.console.groups";
+const SECTIONS_STORAGE_KEY = "qkern.console.easy-sections";
 const ENVIRONMENTS: Array<{ id: Environment; label: string; hint: string }> = [
   { id: "development", label: "Development", hint: t("Frei bearbeiten") },
   { id: "staging", label: "Staging", hint: t("Vor dem Release prüfen") },

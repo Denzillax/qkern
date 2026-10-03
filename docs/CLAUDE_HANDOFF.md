@@ -149,6 +149,21 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.134 (Zweig `main`) **Die Console hat zwei Anordnungen derselben
+  Ansichten.** Migration `0086_user_console_interface_mode.sql` haengt
+  `interface_mode` an `user_console_settings`, mit CHECK auf `easy` oder
+  `advanced` und Vorgabe `easy`. `EASY_NAV` in
+  `components/console/navigation.ts` fuehrt dieselben 99 Ansichten in neun
+  Gruppen; was nicht taeglich gebraucht wird, liegt in Abschnitten, die
+  zugeklappt beginnen. `tests/console-interface-mode-contract.test.ts` haelt
+  fest, dass jede echte Ansicht in **beiden** Modi genau einmal erreichbar ist;
+  ohne diesen Vertrag waere der naechste neue Menuepunkt im Vorgabemodus
+  unsichtbar. Der Umschalter haengt in der Kopfzeile neben der Umgebung und
+  benutzt dasselbe Bauteil wie sie (`OptionMenu` aus 2.133). **Offen**: Die
+  Vorgabe `easy` ist die erste Vorgabe aus 2.55, die das Verhalten gegenueber
+  vorher aendert, also sieht auch ein bestehendes Konto nach dem Update zuerst
+  den einfachen Modus und muss einmal umstellen.
+
 - 2.131 (Zweig `slice/tracesearch`) **Eine Spur ist jetzt auffindbar, und eine
   Anwendung liest die ihrer eigenen Nachricht.** Migration
   `0085_project_queue_trace_search.sql` legt genau einen Teilindex auf

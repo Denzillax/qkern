@@ -1,5 +1,5 @@
 import { LOCALES, type Locale } from "@/lib/i18n/locales";
-import { REAL_VIEWS, type RealViewId } from "@/components/console/navigation";
+import { INTERFACE_MODES, REAL_VIEWS, type InterfaceMode, type RealViewId } from "@/components/console/navigation";
 
 /**
  * Die eigene Darstellung der Console (2.55), an einer Stelle.
@@ -73,6 +73,16 @@ export type ConsoleDisplaySettings = {
   /** Die Ansicht, auf der die Console oeffnet. */
   startView: RealViewId;
   theme: ConsoleTheme;
+  /**
+   * Der Oberflaechenmodus (2.134), `easy` oder `advanced`.
+   *
+   * Das ist die einzige Einstellung dieses Moduls, deren Vorgabe das Verhalten
+   * aendert: Vor 2.134 gab es nur die vollstaendige Navigation, und die Vorgabe
+   * ist jetzt die einfache. Das ist gewollt, denn wer die Console zum ersten
+   * Mal oeffnet, soll nicht mit zwanzig Gruppen beginnen. Erreichbar bleibt in
+   * beiden Modi dasselbe; umgestellt wird oben in der Kopfzeile oder hier.
+   */
+  interfaceMode: InterfaceMode;
 };
 
 export const CONSOLE_DISPLAY_DEFAULTS: ConsoleDisplaySettings = {
@@ -81,6 +91,7 @@ export const CONSOLE_DISPLAY_DEFAULTS: ConsoleDisplaySettings = {
   timeZone: CONSOLE_DISPLAY_INHERIT,
   startView: "overview",
   theme: "system",
+  interfaceMode: "easy",
 };
 
 /**
@@ -107,6 +118,7 @@ export const CONSOLE_DISPLAY_REASONS = {
   timeZone: "Diese Zeitzone kennt die Laufzeit nicht.",
   startView: "Diese Startseite gibt es nicht oder sie ist noch nicht verbunden.",
   theme: "Dieses Aussehen gibt es nicht.",
+  interfaceMode: "Diesen Oberflächenmodus gibt es nicht.",
   shape: "Aus dieser Eingabe lässt sich keine Darstellung bauen.",
 } as const;
 
@@ -164,12 +176,18 @@ export function validateConsoleDisplaySettings(input: unknown): ConsoleDisplaySe
     throw new ConsoleDisplayError(CONSOLE_DISPLAY_REASONS.theme);
   }
 
+  const interfaceMode = input.interfaceMode ?? CONSOLE_DISPLAY_DEFAULTS.interfaceMode;
+  if (!(INTERFACE_MODES as readonly unknown[]).includes(interfaceMode)) {
+    throw new ConsoleDisplayError(CONSOLE_DISPLAY_REASONS.interfaceMode);
+  }
+
   return {
     language: language as ConsoleDisplaySettings["language"],
     formatLocale: formatLocale as ConsoleFormatLocale,
     timeZone: timeZone as string,
     startView: startView as RealViewId,
     theme: theme as ConsoleTheme,
+    interfaceMode: interfaceMode as InterfaceMode,
   };
 }
 

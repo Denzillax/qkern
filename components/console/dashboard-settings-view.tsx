@@ -164,6 +164,18 @@ export function DashboardSettingsView({ settings, onSaved }: Props) {
               id: entry.id as ConsoleDisplaySettings["startView"], label: t(entry.label), hint: t(entry.group),
             }))}/>
         </label>
+        {/* Der Oberflaechenmodus steht auch oben in der Kopfzeile (2.134).
+            Hier steht er trotzdem, weil diese Seite die Liste der eigenen
+            Vorlieben ist: Wer sie durchgeht, soll nicht raten muessen, ob der
+            Modus dazugehoert. Beide Wege schreiben dieselbe Spalte. */}
+        <label>{t("Oberfläche")}
+          <OptionMenu value={draft.interfaceMode} ariaLabel={t("Oberfläche")} listLabel={t("Oberfläche wählen")}
+            align="left" onChange={(next) => set("interfaceMode", next)}
+            options={[
+              { id: "easy" as const, label: "Easy", hint: t("Das Häufige vorne, der Rest in Abschnitten") },
+              { id: "advanced" as const, label: "Advanced", hint: t("Jede Gruppe offen, nichts eingeklappt") },
+            ]}/>
+        </label>
         <label>{t("Aussehen")}
           <OptionMenu value={draft.theme} ariaLabel={t("Aussehen")} listLabel={t("Aussehen wählen")}
             align="left" onChange={(next) => set("theme", next)}

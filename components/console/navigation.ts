@@ -149,3 +149,194 @@ export function labelOf(view: ViewId): string {
 export function isPlaceholder(view: ViewId): view is PlaceholderId {
   return view in PLACEHOLDERS;
 }
+
+/**
+ * Der Oberflaechenmodus (2.134).
+ *
+ * **Das Problem.** Die Navigation oben traegt 99 Ansichten in 20 Gruppen. Das
+ * ist richtig fuer jemanden, der PostgreSQL kennt und weiss, dass eine
+ * Publikation etwas mit Replikation zu tun hat. Wer zum ersten Mal ein Backend
+ * aufsetzt, sieht zwanzig Gruppen und weiss bei acht davon nicht, was sie
+ * bedeuten.
+ *
+ * **Was dieser Modus ist und was nicht.** `EASY_NAV` ordnet dieselben 99
+ * Ansichten anders an: neun Gruppen, und in jeder Gruppe steht vorne, was man
+ * taeglich braucht, waehrend der Rest in Abschnitten darunter liegt, die
+ * zugeklappt beginnen. Es wird nichts abgeschaltet, nichts versteckt und
+ * nichts entfernt. Ein Vertrag prueft, dass jede Ansicht in beiden Modi genau
+ * einmal erreichbar ist; waere das nicht so, waere der Modus ein Verlust statt
+ * einer Vereinfachung.
+ *
+ * **Warum derselbe `ViewId`.** Weil der Wechsel dann nichts kostet: Die
+ * geoeffnete Ansicht bleibt dieselbe, die Umgebung bleibt, die Daten bleiben,
+ * und es gibt keine Abbildung zwischen zwei Routensaetzen, die auseinander
+ * laufen koennte.
+ */
+export const INTERFACE_MODES = ["easy", "advanced"] as const;
+export type InterfaceMode = (typeof INTERFACE_MODES)[number];
+
+/**
+ * Ein Abschnitt innerhalb einer Gruppe, im einfachen Modus. Ohne `section`
+ * steht der Eintrag vorne und ist immer sichtbar; mit `section` liegt er in
+ * einem Abschnitt, der zugeklappt beginnt.
+ */
+export type EasyChild = NavChild & { section?: string };
+export type EasyGroup = { id: ViewId; label: string; icon: typeof Database; children: EasyChild[] };
+
+const ADVANCED = "Erweitert";
+const SECURITY = "Sicherheit";
+const OPERATIONS = "Betrieb";
+
+export const EASY_NAV: EasyGroup[] = [
+  { id: "overview", label: "Übersicht", icon: LayoutDashboard, children: [
+    { id: "overview", label: "Projekt" },
+    { id: "monitoring", label: "Nutzung" },
+    { id: "approvals", label: "Freigaben" },
+    { id: "ai", label: "AI Bridge", section: ADVANCED },
+    { id: "activity", label: "KI-Aktivität", section: ADVANCED },
+    { id: "branches", label: "Umgebungen", section: ADVANCED },
+    { id: "advisors-security", label: "Sicherheitsberater", section: ADVANCED },
+    { id: "advisors-performance", label: "Leistungsberater", section: ADVANCED },
+    { id: "advisors-health", label: "Gesundheit", section: ADVANCED },
+  ] },
+  { id: "table", label: "Datenbank", icon: Database, children: [
+    { id: "table", label: "Daten" },
+    { id: "db-tables", label: "Tabellen" },
+    { id: "sql", label: "SQL Editor" },
+    { id: "db-schemas", label: "Schema" },
+    { id: "database", label: "Datenbank-Übersicht", section: ADVANCED },
+    { id: "db-functions", label: "Funktionen", section: ADVANCED },
+    { id: "db-triggers", label: "Trigger", section: ADVANCED },
+    { id: "db-types", label: "Enum-Typen", section: ADVANCED },
+    { id: "db-extensions", label: "Erweiterungen", section: ADVANCED },
+    { id: "db-indexes", label: "Indizes", section: ADVANCED },
+    { id: "db-publications", label: "Publikationen", section: ADVANCED },
+    { id: "db-pipelines", label: "Replikation", section: ADVANCED },
+    { id: "sql-templates", label: "SQL-Vorlagen", section: ADVANCED },
+    { id: "obs-query-performance", label: "Abfrage-Leistung", section: ADVANCED },
+    { id: "obs-query-insights", label: "Abfrage-Einblicke", section: ADVANCED },
+    { id: "obs-database", label: "Bericht Datenbank", section: ADVANCED },
+    { id: "obs-connections", label: "Bericht Verbindungen", section: ADVANCED },
+    { id: "db-policies", label: "Policies", section: SECURITY },
+    { id: "db-roles", label: "Rollen", section: SECURITY },
+    { id: "db-column-privileges", label: "Spaltenrechte", section: SECURITY },
+    { id: "db-migrations", label: "Migrationen", section: OPERATIONS },
+    { id: "backups", label: "Backups", section: OPERATIONS },
+    { id: "db-backups-pitr", label: "Point-in-time Recovery", section: OPERATIONS },
+    { id: "db-backups-restore", label: "In neues Projekt wiederherstellen", section: OPERATIONS },
+    { id: "db-settings", label: "Datenbank-Einstellungen", section: OPERATIONS },
+    { id: "logs-postgres", label: "Postgres-Zustand", section: OPERATIONS },
+  ] },
+  { id: "auth", label: "Anmeldung", icon: Fingerprint, children: [
+    { id: "auth", label: "Nutzer" },
+    { id: "auth-providers", label: "Anmeldeverfahren" },
+    { id: "auth-templates", label: "E-Mails" },
+    { id: "auth-protection", label: "Passwortschutz" },
+    { id: "auth-sessions", label: "Sitzungen", section: ADVANCED },
+    { id: "set-jwt", label: "JWT-Schlüssel", section: ADVANCED },
+    { id: "auth-hooks", label: "Auth-Hooks", section: ADVANCED },
+    { id: "auth-policies", label: "Policies", section: ADVANCED },
+    { id: "auth-rate-limits", label: "Rate Limits", section: ADVANCED },
+    { id: "auth-mfa", label: "Mehrfaktor", section: ADVANCED },
+    { id: "auth-passkeys", label: "Passkeys", section: ADVANCED },
+    { id: "auth-url", label: "URL-Konfiguration", section: ADVANCED },
+    { id: "auth-smtp", label: "SMTP", section: ADVANCED },
+    { id: "auth-third-party", label: "Fremde Anbieter", section: ADVANCED },
+    { id: "auth-oauth-server", label: "OAuth-Server", section: ADVANCED },
+    { id: "auth-oauth-consents", label: "Zustimmungen", section: ADVANCED },
+    { id: "auth-audit", label: "Audit-Log", section: ADVANCED },
+    { id: "auth-performance", label: "Auth-Leistung", section: ADVANCED },
+    { id: "obs-auth", label: "Bericht Auth", section: ADVANCED },
+    { id: "logs-auth", label: "Auth-Logs", section: ADVANCED },
+  ] },
+  { id: "storage", label: "Dateien", icon: Cloud, children: [
+    { id: "storage", label: "Buckets" },
+    { id: "storage-policies", label: "Zugriff" },
+    { id: "storage-settings", label: "Einstellungen" },
+    { id: "obs-storage", label: "Nutzung" },
+    { id: "storage-s3", label: "S3-Zugang", section: ADVANCED },
+    { id: "storage-analytics", label: "Analytics-Buckets", section: ADVANCED },
+    { id: "storage-vectors", label: "Vektor-Buckets", section: ADVANCED },
+    { id: "logs-storage", label: "Storage-Logs", section: ADVANCED },
+  ] },
+  { id: "realtime-inspector", label: "Realtime", icon: Radio, children: [
+    { id: "realtime-inspector", label: "Inspector" },
+    { id: "realtime-settings", label: "Einstellungen" },
+    { id: "realtime-policies", label: "Rechte", section: ADVANCED },
+    { id: "obs-realtime", label: "Bericht Realtime", section: ADVANCED },
+    { id: "logs-realtime", label: "Realtime-Logs", section: ADVANCED },
+  ] },
+  { id: "compute", label: "Functions", icon: Webhook, children: [
+    { id: "compute", label: "Functions" },
+    { id: "compute-invocations", label: "Aufrufe" },
+    { id: "compute-secrets", label: "Secrets" },
+    { id: "compute-logs", label: "Logs" },
+    { id: "int-cron", label: "Cron", section: ADVANCED },
+    { id: "int-queues", label: "Queues", section: ADVANCED },
+    { id: "int-database-webhooks", label: "Datenbank-Webhooks", section: ADVANCED },
+    { id: "obs-functions", label: "Bericht Functions", section: ADVANCED },
+    { id: "logs-functions", label: "Function-Logs", section: ADVANCED },
+  ] },
+  { id: "api", label: "API", icon: Braces, children: [
+    { id: "api", label: "REST & SDK" },
+    { id: "set-api-keys", label: "API-Keys" },
+    { id: "set-api", label: "Data API" },
+    { id: "int-graphql", label: "GraphQL", section: ADVANCED },
+    { id: "int-wrappers", label: "Wrappers", section: ADVANCED },
+    { id: "int-vault", label: "Vault", section: ADVANCED },
+    { id: "obs-api", label: "Bericht API", section: ADVANCED },
+    { id: "logs-api", label: "API-Gateway-Logs", section: ADVANCED },
+    { id: "logs-postgrest", label: "Data-API-Logs", section: ADVANCED },
+  ] },
+  { id: "logs", label: "Logs", icon: FileClock, children: [
+    { id: "logs", label: "Audit" },
+    { id: "logs-explorer", label: "Explorer" },
+    { id: "logs-cron", label: "Cron-Logs", section: ADVANCED },
+    { id: "logs-pooler", label: "Pooler-Logs", section: ADVANCED },
+    { id: "set-log-drains", label: "Log-Drains", section: ADVANCED },
+  ] },
+  { id: "settings", label: "Einstellungen", icon: Settings, children: [
+    { id: "settings", label: "Allgemein" },
+    { id: "set-infrastructure", label: "Infrastruktur" },
+    { id: "set-billing", label: "Abrechnung" },
+    { id: "set-dashboard", label: "Dashboard" },
+    { id: "set-compute", label: "Compute und Disk", section: ADVANCED },
+    { id: "set-integrations", label: "Integrationen", section: ADVANCED },
+    { id: "set-addons", label: "Add-ons", section: ADVANCED },
+    { id: "set-webhooks", label: "Dashboard-Webhooks", section: ADVANCED },
+  ] },
+];
+
+/** Alle Abschnitte einer Gruppe in der Reihenfolge ihres ersten Eintrags. */
+export function easySections(group: EasyGroup): string[] {
+  const seen: string[] = [];
+  for (const child of group.children) {
+    if (child.section && !seen.includes(child.section)) seen.push(child.section);
+  }
+  return seen;
+}
+
+/** Die Gruppe des einfachen Modus, in der eine Ansicht liegt. */
+export function easyGroupOf(view: ViewId): EasyGroup {
+  return EASY_NAV.find((group) => group.children.some((child) => child.id === view)) ?? EASY_NAV[0];
+}
+
+/**
+ * Der Abschnitt, in dem eine Ansicht im einfachen Modus liegt, oder `null`,
+ * wenn sie vorne steht. Die Sidebar braucht das, um den Abschnitt der
+ * geoeffneten Ansicht aufzuklappen; sonst waere die aktive Zeile unsichtbar.
+ */
+export function easySectionOf(view: ViewId): string | null {
+  for (const group of EASY_NAV) {
+    const child = group.children.find((entry) => entry.id === view);
+    if (child) return child.section ?? null;
+  }
+  return null;
+}
+
+/** Titel einer Ansicht im einfachen Modus, nach demselben Muster wie `labelOf`. */
+export function easyLabelOf(view: ViewId): string {
+  const group = easyGroupOf(view);
+  const child = group.children.find((entry) => entry.id === view);
+  return child && child.label !== group.label ? `${group.label} · ${child.label}` : group.label;
+}

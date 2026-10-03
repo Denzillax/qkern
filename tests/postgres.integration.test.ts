@@ -4926,7 +4926,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // --- Zusage 1: geschrieben, unveraendert zurueck ---
     const chosen: ConsoleDisplaySettings = {
       language: "fr", formatLocale: "fr-CH", timeZone: "Asia/Singapore",
-      startView: "logs", theme: "dark",
+      startView: "logs", theme: "dark", interfaceMode: "advanced",
     };
     expect(await repository.save(displayOwner, chosen)).toEqual(chosen);
     expect(await repository.find(displayOwner)).toEqual(chosen);
@@ -4934,8 +4934,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     // Und die Zeile steht wirklich so in der Tabelle, als Eigentuemer gelesen.
     const stored = await owner.query<{
       language: string; format_locale: string; time_zone: string;
-      start_view: string; theme: string; created_at: Date; updated_at: Date;
-    }>(`SELECT language, format_locale, time_zone, start_view, theme, created_at, updated_at
+      start_view: string; theme: string; interface_mode: string; created_at: Date; updated_at: Date;
+    }>(`SELECT language, format_locale, time_zone, start_view, theme, interface_mode,
+               created_at, updated_at
           FROM user_console_settings WHERE user_id = $1`, [displayOwner]);
     expect(stored.rows).toHaveLength(1);
     expect(stored.rows[0].language).toBe("fr");
@@ -4943,6 +4944,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(stored.rows[0].time_zone).toBe("Asia/Singapore");
     expect(stored.rows[0].start_view).toBe("logs");
     expect(stored.rows[0].theme).toBe("dark");
+    // 0086: Der Modus steht in derselben Zeile, und die Vorgabe der Spalte ist
+    // `easy`. Gespeichert wurde `advanced`, also sagt diese Zeile zugleich,
+    // dass der Wert wirklich geschrieben wird und nicht die Vorgabe stehen blieb.
+    expect(stored.rows[0].interface_mode).toBe("advanced");
 
     // Ein zweites Speichern aendert dieselbe Zeile und ruehrt `created_at`
     // nicht an; der Trigger aus 0055 setzt `updated_at`.
@@ -4964,6 +4969,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     for (const [column, value] of [
       ["language", "es"], ["format_locale", "de-AT"], ["theme", "sepia"],
       ["time_zone", "kein zonenname mit leerzeichen"], ["start_view", "Nicht Erlaubt"],
+      ["interface_mode", "beginner"],
     ] as const) {
       await expect(owner.query(
         `INSERT INTO user_console_settings (user_id, ${column}) VALUES ($1, $2)`,

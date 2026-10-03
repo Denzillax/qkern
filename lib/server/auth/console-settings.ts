@@ -34,6 +34,7 @@ function fromRow(row: DbRow): ConsoleDisplaySettings {
       timeZone: row.time_zone,
       startView: row.start_view,
       theme: row.theme,
+      interfaceMode: row.interface_mode,
     });
   } catch {
     // Eine Zeile, die das Modul nicht mehr versteht, ist ein Fehler der
@@ -49,7 +50,7 @@ export class PostgresConsoleDisplaySettingsRepository implements ConsoleDisplayS
   async find(userId: string): Promise<ConsoleDisplaySettings> {
     try {
       const result = await this.pool.query<DbRow>(
-        `SELECT language, format_locale, time_zone, start_view, theme
+        `SELECT language, format_locale, time_zone, start_view, theme, interface_mode
            FROM user_console_settings WHERE user_id = $1`,
         [userId],
       );
@@ -63,20 +64,21 @@ export class PostgresConsoleDisplaySettingsRepository implements ConsoleDisplayS
   async save(userId: string, settings: ConsoleDisplaySettings): Promise<ConsoleDisplaySettings> {
     const values: SqlValue[] = [
       userId, settings.language, settings.formatLocale,
-      settings.timeZone, settings.startView, settings.theme,
+      settings.timeZone, settings.startView, settings.theme, settings.interfaceMode,
     ];
     try {
       const result = await this.pool.query<DbRow>(
         `INSERT INTO user_console_settings
-           (user_id, language, format_locale, time_zone, start_view, theme)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (user_id, language, format_locale, time_zone, start_view, theme, interface_mode)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id) DO UPDATE SET
            language = EXCLUDED.language,
            format_locale = EXCLUDED.format_locale,
            time_zone = EXCLUDED.time_zone,
            start_view = EXCLUDED.start_view,
-           theme = EXCLUDED.theme
-         RETURNING language, format_locale, time_zone, start_view, theme`,
+           theme = EXCLUDED.theme,
+           interface_mode = EXCLUDED.interface_mode
+         RETURNING language, format_locale, time_zone, start_view, theme, interface_mode`,
         values,
       );
       const row = result.rows[0];
