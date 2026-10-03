@@ -1447,3 +1447,9 @@ input[type="checkbox"], input[type="radio"] {
 .overview-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 18px 0 4px; }
 .overview-empty > svg { color: var(--qkern-text-muted); }
 .overview-empty p { margin: 0; color: var(--qkern-text-muted); font-size: 12px; }
+
+/* Der Weg von Easy nach Advanced (2.138). Er sieht absichtlich nicht wie ein
+   Menüeintrag aus, denn er navigiert nicht, er wechselt die Anordnung. Darum
+   kein Punkt, kleinere Schrift und erst beim Zeigen Farbe. */
+.console-nav .nav-children > .nav-reveal { min-height: 28px; font-size: 12px; color: #7e8da2; gap: 7px; }
+.console-nav .nav-children > .nav-reveal:hover { color: #82adff; background: transparent; }

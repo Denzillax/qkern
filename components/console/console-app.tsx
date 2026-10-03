@@ -301,6 +301,10 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
                     Modi: dieselben Ansichten, eine Ebene tiefer, zugeklappt
                     bis jemand sie braucht. Dass sie da sind, sagt der Kopf mit
                     der Anzahl -- versteckt waere es, sie ganz weglassen. */}
+                {/* Der Weg nach drueben (2.138). Er steht am Ende jeder Gruppe,
+                    weil genau dort die Frage aufkommt: Ich sehe vier Eintraege,
+                    wo ist der Rest? Er wechselt den Modus und laesst die
+                    Ansicht stehen, ist also kein Sprung, sondern eine Lupe. */}
                 {easySections(group).map((section) => {
                   const key = `${group.id}:${section}`;
                   const entries = group.children.filter((child) => child.section === section);
@@ -312,6 +316,10 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
                     {sectionOpen && entries.map((child) => <button key={child.id} className={`${view === child.id ? "active" : ""} is-real-entry`} onClick={() => changeView(child.id)} title={t(child.label)}><i className="nav-dot" aria-hidden="true"/><span>{t(child.label)}</span></button>)}
                   </div>;
                 })}
+                <button className="nav-reveal" onClick={() => setMode("advanced")}
+                        title={t("Alle Gruppen und jeden Eintrag zeigen")}>
+                  <Blocks size={13} aria-hidden="true"/><span>{t("Alles anzeigen")}</span>
+                </button>
               </div>
             </div>;
           })}

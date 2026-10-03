@@ -26,10 +26,10 @@ Weiter vorhanden und wiederverwendet statt nachgebaut:
 | Nr | Schnitt | Stand |
 | --- | --- | --- |
 | 2.134 | Oberflaechenmodus: `EASY_NAV`, Umschalter, Vorliebe, Migration 0086 | fertig |
-| 2.135 | Preisseite `/pricing` in vier Sprachen | in Arbeit |
-| 2.136 | Uebersicht klarer, Projekt-Zustand, Schnellstart | in Arbeit |
-| 2.137 | Leere Zustaende, Kopierknoepfe, gefaehrliche Aktionen | offen |
-| 2.138 | Tabellen-Kontext: Daten, Struktur, Beziehungen, Sicherheit, API | offen |
+| 2.135 | Preisseite `/pricing` in vier Sprachen, eine Preisliste | fertig |
+| 2.136 | Uebersicht klarer, Projekt-Zustand, Schnellstart | fertig |
+| 2.137 | Leere Zustaende, Kopierknoepfe, gefaehrliche Aktionen, Kontrast | in Arbeit |
+| 2.138 | Tabellen-Kontext: Daten, Struktur, Beziehungen, Sicherheit, API | in Arbeit |
 | 2.139 | Einstellungen gruppieren, API-Keys maskieren, Danger Zone | offen |
 | 2.140 | Abrechnung im Dashboard: Tarif, Verbrauch, naechste Rechnung | offen |
 
@@ -58,11 +58,14 @@ die Vorliebe liegt je Person, neue Konten beginnen einfach, die geoeffnete
 Ansicht und die Umgebung bleiben beim Wechsel, Hell und Dunkel gelten in beiden
 Modi, die eine Route bleibt.
 
-Nicht eingeloest: Der Wechsel bringt noch keinen Weg von einer einfachen Stelle
-in die erweiterte Entsprechung ("Open in Advanced UI", Punkt 8). Heute fuehrt
-der Abschnitt in der Sidebar dorthin, und das reicht fuer die Entdeckbarkeit
-nicht ganz. Das kommt mit 2.138, wo die Tabellenansicht ihre eigenen Reiter
-bekommt.
+Nachgetragen: Jede Gruppe im einfachen Modus endet mit "Alles anzeigen". Der
+Knopf wechselt den Modus und laesst die Ansicht stehen, ist also kein Sprung,
+sondern eine Lupe. Gemessen: 12 Pixel, Kontrast 5,6 zu 1 gegen die Sidebar.
+
+Offen geblieben: Graue Nebentexte kommen im hellen Modus auf etwa 4,27 zu 1 und
+liegen damit unter den 4,5 zu 1, die WCAG AA fuer kleinen Text verlangt.
+Gemessen an der Zustandszeile der Uebersicht, betrifft aber jeden grauen
+Nebentext. Gehoert zu 2.137, weil es dort an einer Stelle fuer alle faellt.
 
 Und eine Einschraenkung, die der Betreiber kennen muss: Migration 0086 liegt in
 `db/migrations`, aber die Dev-Datenbank bekommt Migrationen nur beim Anlegen des

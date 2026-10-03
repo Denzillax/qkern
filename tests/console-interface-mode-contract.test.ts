@@ -85,6 +85,16 @@ describe("console interface mode contract", () => {
     expect(interfaceModeGroupCount("advanced")).toBeGreaterThan(EASY_NAV.length);
   });
 
+  it("offers a way from easy into advanced inside every group", async () => {
+    // Punkt 8 und 59 des Auftrags: Easy darf fortgeschrittene Dinge nicht
+    // unsichtbar machen. Der Weg steht in jeder Gruppe am Ende und wechselt den
+    // Modus, ohne die Ansicht zu verlassen. Ohne diesen Fall waere er beim
+    // naechsten Umbau der Sidebar still verschwunden.
+    const source = await readFile(APP, "utf8");
+    expect(source).toMatch(/className="nav-reveal" onClick=\{\(\) => setMode\("advanced"\)\}/);
+    expect(source).toContain('t("Alles anzeigen")');
+  });
+
   it("hangs the switch in the topbar and keeps the view across the change", async () => {
     const source = await readFile(APP, "utf8");
     expect(source).toMatch(/<InterfaceMenu value=\{mode\} onChange=\{setMode\}\/>/);

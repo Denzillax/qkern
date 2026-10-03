@@ -9,6 +9,8 @@ import type { Locale } from "@/lib/i18n/locales";
 export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, string>> = {
   en: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Alles anzeigen": "Show everything",
+    "Alle Gruppen und jeden Eintrag zeigen": "Show every group and every entry",
     "API-Gateway-Logs": "API gateway logs",
     "Auth-Logs": "Auth logs",
     "Bericht API": "API report",
@@ -4061,6 +4063,8 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   fr: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Alles anzeigen": "Tout afficher",
+    "Alle Gruppen und jeden Eintrag zeigen": "Afficher chaque groupe et chaque entrée",
     "API-Gateway-Logs": "Journaux de la passerelle API",
     "Auth-Logs": "Journaux d'authentification",
     "Bericht API": "Rapport API",
@@ -8113,6 +8117,8 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
   },
   it: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
+    "Alles anzeigen": "Mostra tutto",
+    "Alle Gruppen und jeden Eintrag zeigen": "Mostra ogni gruppo e ogni voce",
     "API-Gateway-Logs": "Log del gateway API",
     "Auth-Logs": "Log di autenticazione",
     "Bericht API": "Rapporto API",
