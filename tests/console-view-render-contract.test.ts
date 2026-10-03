@@ -24,6 +24,7 @@ import { MigrationsView } from "@/components/console/migrations-view";
 import { PitrView } from "@/components/console/pitr-view";
 import { SidebarFlyout } from "@/components/console/sidebar-flyout";
 import { TableDesignerView } from "@/components/console/table-designer-view";
+import { TableWorkspaceView } from "@/components/console/table-workspace-view";
 import { UsageSeriesView } from "@/components/console/usage-series-view";
 import { CheckIcon, EmptyState, ErrorState } from "@/components/console/console-parts";
 import { Database } from "lucide-react";
@@ -243,7 +244,13 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
   SidebarFlyout: NAV
     .filter((group): group is typeof group & { children: NonNullable<typeof group.children> } => group.children !== undefined)
     .map((group) => element(SidebarFlyout, { group, view: group.children[0].id, badge: 0, onNavigate: () => {} })),
-  TableDesignerView: [element(TableDesignerView, { ...DEFAULT_PROPS, navigate: () => {}, reload: async () => {} })],
+  // Zweimal: einmal als Menuepunkt Datenbank -> Tabellen ohne vorgegebene
+  // Tabelle, einmal als Reiter "Struktur" einer Tabelle (2.138). Die zwei
+  // Faelle zeigen verschiedene Karten, also prueft jeder etwas eigenes.
+  TableDesignerView: [undefined, "kunden"].map((table) => element(TableDesignerView, {
+    ...DEFAULT_PROPS, table, navigate: () => {}, reload: async () => {},
+  })),
+  TableWorkspaceView: [element(TableWorkspaceView, { ...DEFAULT_PROPS, navigate: () => {}, reload: async () => {} })],
   UsageSeriesView: (["api", "storage", "functions", "realtime"] as const)
     .map((view) => element(UsageSeriesView, { ...DEFAULT_PROPS, view })),
 };
@@ -299,6 +306,27 @@ const LOADING_LABEL = "Lädt…";
  * nicht zu verlangen.
  */
 const isView = (file: string) => file.endsWith("-view.tsx");
+
+/**
+ * Die eine Ansicht, die es schon gibt und die die Schale noch nicht aufruft
+ * (2.138).
+ *
+ * `table-workspace-view.tsx` ist der Arbeitsplatz einer Tabelle: fuenf Reiter
+ * ueber bestehende Ansichten. Sie kommt in einem eigenen Schnitt, und der
+ * Eintrag in `console-app.tsx` und in `navigation.ts` folgt danach, weil beide
+ * Dateien in diesem Schnitt von anderer Hand bearbeitet werden. Gerendert und
+ * in allen vier Sprachen geprueft wird sie trotzdem wie jede andere; die
+ * Ausnahme gilt allein fuer die Frage, ob die Schale sie schon nennt.
+ *
+ * Diese Menge soll wieder leer werden. Sie darf hoechstens einen Eintrag
+ * tragen, und der Fall unten haelt das fest: Eine zweite nicht verdrahtete
+ * Ansicht faellt hier auf, statt sich hinter der ersten zu verstecken.
+ */
+// Leer, und das ist der Zustand, in dem diese Menge sein soll: Sie war genau
+// einen Schnitt lang nicht leer, weil der Arbeitsplatz der Tabelle gebaut war,
+// bevor er in `console-app.tsx` haengt. Ein zweiter Eintrag hier waere eine
+// Ansicht, die niemand erreicht.
+const AWAITS_WIRING = new Set<string>([]);
 
 /**
  * Sichtbarer Text aus der erzeugten Markup.
@@ -491,8 +519,17 @@ describe("console view render contract", () => {
     for (const file of files) sources.set(file, await readFile(path.join(CONSOLE_DIR, file), "utf8"));
     for (const entry of found) {
       if (isView(entry.file)) {
-        expect(app, `${entry.file}: ${entry.name} wird in console-app.tsx nicht verwendet`)
-          .toContain(`<${entry.name}`);
+        if (AWAITS_WIRING.has(entry.file)) continue;
+        // Eine Seite haengt an der Schale, oder sie haengt an einer Seite, die
+        // selbst an der Schale haengt. Der zweite Fall kam mit dem
+        // Arbeitsplatz der Tabelle (2.138): `TableView` ist dort ein Reiter und
+        // nicht mehr ein eigener Menuepunkt. Erreichbar muss jede Ansicht
+        // bleiben, aber nicht jede auf dem kuerzesten Weg.
+        const hosts = [["console-app.tsx", app] as const, ...sources.entries()]
+          .filter(([file, source]) => file !== entry.file && source.includes(`<${entry.name}`))
+          .map(([file]) => file);
+        expect(hosts, `${entry.file}: ${entry.name} wird nirgends in components/console verwendet`)
+          .not.toEqual([]);
         continue;
       }
       const users = [...sources.entries()]
@@ -506,6 +543,10 @@ describe("console view render contract", () => {
     const names = new Set(found.map((entry) => entry.name));
     for (const name of Object.keys(SPECIAL_PROPS)) expect(names, `${name} steht in SPECIAL_PROPS, aber nicht im Verzeichnis`).toContain(name);
     for (const name of OPENS_IDLE) expect(names, `${name} steht in OPENS_IDLE, aber nicht im Verzeichnis`).toContain(name);
+
+    // Die Ausnahmeliste bleibt klein und nennt nur Dateien, die es gibt.
+    expect(AWAITS_WIRING.size, "nicht verdrahtete Ansichten").toBeLessThanOrEqual(1);
+    for (const file of AWAITS_WIRING) expect(files, `${file} steht in AWAITS_WIRING, aber nicht im Verzeichnis`).toContain(file);
   }, BUDGET);
 
   it("rendert jede Ansicht in jeder Sprache ohne Ausnahme und ohne Beschwerde von React", async () => {

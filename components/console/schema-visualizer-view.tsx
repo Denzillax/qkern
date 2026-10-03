@@ -81,7 +81,22 @@ function onDeleteLabel(action: string): string | null {
   }
 }
 
-export function SchemaVisualizerView({ projectId, environment, initialState }: { projectId: string; environment: Environment; initialState?: State }) {
+export function SchemaVisualizerView({ projectId, environment, table, initialState }: {
+  projectId: string;
+  environment: Environment;
+  /**
+   * Die Tabelle, um die es geht (2.138).
+   *
+   * Ohne diese Requisite bleibt die Ansicht das ganze Schemabild, wie der
+   * Menuepunkt Datenbank -> Schema es zeigt. Mit ihr zeigt sie die
+   * Nachbarschaft dieser einen Tabelle: ihre Fremdschluessel und die
+   * Fremdschluessel, die auf sie zeigen. Gefiltert wird **dieselbe Lesung**;
+   * es kommt keine zweite Anfrage und keine Angabe dazu, die der Katalog
+   * nicht geliefert hat.
+   */
+  table?: string;
+  initialState?: State;
+}) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
   const [state, setState] = useState<State>(initialState ?? "loading");
   const [tables, setTables] = useState<SchemaTable[]>([]);
@@ -132,18 +147,37 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
     return () => request.current?.abort();
   }, [load]);
 
+  /**
+   * Die Nachbarschaft der vorgegebenen Tabelle, aus derselben Lesung.
+   *
+   * Beide Richtungen zaehlen: ein Fremdschluessel dieser Tabelle auf eine
+   * andere, und ein Fremdschluessel einer anderen Tabelle auf diese. Wer
+   * fragt, womit eine Tabelle zusammenhaengt, meint beide.
+   */
+  const related = useMemo(() => {
+    if (!table) return { keys: foreignKeys, tables };
+    const keys = foreignKeys.filter((key) => key.table === table ||
+      (key.referencedSchema === SCHEMA && key.referencedTable === table));
+    const names = new Set<string>([table]);
+    for (const key of keys) {
+      names.add(key.table);
+      if (key.referencedSchema === SCHEMA) names.add(key.referencedTable);
+    }
+    return { keys, tables: tables.filter((entry) => names.has(entry.name)) };
+  }, [table, tables, foreignKeys]);
+
   const diagram = useMemo(() => buildSchemaDiagram({
     schema: SCHEMA,
-    tables: tables.map((table): DiagramTable => ({
-      name: table.name,
-      columns: table.columns.map((column) => ({ name: column.name, dataType: column.dataType, notNull: !column.nullable })),
+    tables: related.tables.map((entry): DiagramTable => ({
+      name: entry.name,
+      columns: entry.columns.map((column) => ({ name: column.name, dataType: column.dataType, notNull: !column.nullable })),
     })),
-    relations: foreignKeys.map((key): DiagramRelation => ({
+    relations: related.keys.map((key): DiagramRelation => ({
       name: key.name, table: key.table, columns: key.columns,
       referencedSchema: key.referencedSchema, referencedTable: key.referencedTable,
       referencedColumns: key.referencedColumns, onDelete: key.onDelete,
     })),
-  }), [tables, foreignKeys]);
+  }), [related]);
 
   if (state === "loading") return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Diagramm wird gezeichnet…")}</h3></div>;
   if (state === "unavailable" || state === "error") return <div className="console-card live-module-state"><Network size={26}/>
@@ -152,24 +186,41 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
     <button className="secondary-button" onClick={() => void load(true)}><RefreshCw size={14}/> {t("Noch einmal")}</button>
   </div>;
 
-  const label = `${t("Diagramm des Schemas")} ${SCHEMA}: ${tables.length} ${t("Tabellen")}, ${foreignKeys.length} ${t("Fremdschlüssel")}`;
+  const outgoing = related.keys.filter((key) => key.table === table).length;
+  const incoming = related.keys.length - outgoing;
+  const label = table
+    ? `${t("Diagramm der Beziehungen von")} ${table}: ${related.tables.length} ${t("Tabellen")}, ${related.keys.length} ${t("Fremdschlüssel")}`
+    : `${t("Diagramm des Schemas")} ${SCHEMA}: ${related.tables.length} ${t("Tabellen")}, ${related.keys.length} ${t("Fremdschlüssel")}`;
 
   return <div className="module-grid">
     <article className="console-card auth-overview">
-      <div><span>{t("TABELLEN")}</span><strong>{tables.length}</strong><small>{t("im Schema public")}</small></div>
-      <div><span>{t("FREMDSCHLÜSSEL")}</span><strong>{foreignKeys.length}</strong><small>{t("zwischen den Tabellen")}</small></div>
-      <div><span>{t("MIT BEZIEHUNG")}</span><strong>{new Set(foreignKeys.map((key) => key.table)).size}</strong><small>{t("Tabellen verweisen")}</small></div>
+      {/* Mit vorgegebener Tabelle zaehlen die drei Felder ihre Nachbarschaft
+          und nicht das Schema. Dieselbe Zahl mit anderer Bedeutung unter
+          derselben Beschriftung waere der schlechteste von beiden Wegen. */}
+      {table
+        ? <>
+          <div><span>{t("VERWEIST AUF")}</span><strong>{outgoing}</strong><small>{t("Fremdschlüssel dieser Tabelle")}</small></div>
+          <div><span>{t("WIRD VERWIESEN VON")}</span><strong>{incoming}</strong><small>{t("Fremdschlüssel auf diese Tabelle")}</small></div>
+          <div><span>{t("NACHBARN")}</span><strong>{Math.max(related.tables.length - 1, 0)}</strong><small>{t("Tabellen im Bild daneben")}</small></div>
+        </>
+        : <>
+          <div><span>{t("TABELLEN")}</span><strong>{related.tables.length}</strong><small>{t("im Schema public")}</small></div>
+          <div><span>{t("FREMDSCHLÜSSEL")}</span><strong>{related.keys.length}</strong><small>{t("zwischen den Tabellen")}</small></div>
+          <div><span>{t("MIT BEZIEHUNG")}</span><strong>{new Set(related.keys.map((key) => key.table)).size}</strong><small>{t("Tabellen verweisen")}</small></div>
+        </>}
     </article>
 
     <article className="console-card span-2">
-      <div className="card-head"><div><span>{t("DATENBANK")} · {environment.toUpperCase()}</span><h3>{t("Schema public als Bild")}</h3></div><div>
+      <div className="card-head"><div><span>{t("DATENBANK")} · {environment.toUpperCase()}</span><h3>{table ? t("Beziehungen dieser Tabelle als Bild") : t("Schema public als Bild")}</h3></div><div>
         <button className="secondary-button" onClick={() => void load(false)} disabled={refreshing}><RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/></button>
       </div></div>
       <p className="muted">{t("Gezeichnet wird, was der Katalog hergibt: Tabellen, Spalten und Fremdschlüssel. Vererbung, Partitionen, Sichten und Regeln fehlen im Bild.")}</p>
-      {tables.length === 0 && <p className="muted">{t("Dieses Schema hat noch keine Tabellen")}</p>}
+      {related.tables.length === 0 && <p className="muted">{table
+        ? t("Diese Tabelle steht nicht im gelesenen Schema public.")
+        : t("Dieses Schema hat noch keine Tabellen")}</p>}
       {tablesTruncated && <p className="muted">{t("Die Tabellenliste ist an der Grenze abgeschnitten; das Bild zeigt nicht alle Tabellen und Spalten.")}</p>}
       {keysTruncated && <p className="muted">{t("Die Liste der Fremdschlüssel ist bei 400 abgeschnitten; das Bild zeigt nicht alle Linien.")}</p>}
-      {tables.length > 0 && <div className="schema-diagram">
+      {related.tables.length > 0 && <div className="schema-diagram">
         <svg role="img" aria-label={label} viewBox={`0 0 ${diagram.width} ${diagram.height}`} width={diagram.width} height={diagram.height}>
           {diagram.edges.map((edge) => <g key={edge.id} className="schema-diagram-edge">
             <path d={edge.path} fill="none" stroke="currentColor" strokeWidth={1.2} strokeDasharray={edge.external ? "4 3" : undefined}/>
@@ -199,8 +250,10 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("NUR LESEND")}</span><h3>{t("Beziehungen in Worten")}</h3></div><Network size={18}/></div>
       <p className="muted">{t("Dieselbe Auskunft wie das Bild, für Vorleseausgaben und zum Nachlesen.")}</p>
-      {foreignKeys.length === 0 && <p className="muted">{t("Keine Fremdschlüssel in diesem Schema. Eine Beziehung entsteht wie jede Schemaänderung über ein Change Set.")}</p>}
-      {foreignKeys.map((key) => <div className="bucket-row" key={`${key.table}.${key.name}`}>
+      {related.keys.length === 0 && <p className="muted">{table
+        ? t("Diese Tabelle hat keinen Fremdschlüssel, und keiner zeigt auf sie. Eine Beziehung entsteht wie jede Schemaänderung über ein Change Set.")
+        : t("Keine Fremdschlüssel in diesem Schema. Eine Beziehung entsteht wie jede Schemaänderung über ein Change Set.")}</p>}
+      {related.keys.map((key) => <div className="bucket-row" key={`${key.table}.${key.name}`}>
         <span className="bucket-icon"><Network size={16}/></span>
         <div>
           <strong>{key.name}</strong>
@@ -209,9 +262,14 @@ export function SchemaVisualizerView({ projectId, environment, initialState }: {
             {onDeleteLabel(key.onDelete) ? ` · ${t("beim Löschen")}: ${onDeleteLabel(key.onDelete)}` : ""}
           </small>
         </div>
-        {key.referencedSchema === SCHEMA
+        {/* Mit vorgegebener Tabelle sagt das Schild die Richtung: Beide
+            Richtungen stehen in derselben Liste, und ohne das Wort muesste
+            man jede Zeile lesen, um sie zu unterscheiden. */}
+        {table && key.table === table && <span className="secure">{t("verweist")}</span>}
+        {table && key.table !== table && <span className="secure">{t("verweist hierher")}</span>}
+        {!table && (key.referencedSchema === SCHEMA
           ? <span className="secure">{t("gleiches Schema")}</span>
-          : <span className="risk medium">{key.referencedSchema}</span>}
+          : <span className="risk medium">{key.referencedSchema}</span>)}
       </div>)}
     </article>
   </div>;

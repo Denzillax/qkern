@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns3, Plus, RefreshCw, ShieldCheck, Table2, X } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { OptionMenu } from "@/components/console/option-menu";
 import { StableLabel } from "@/components/stable-label";
@@ -92,9 +92,20 @@ function defaultOptions(type: TableColumnTypeId) {
   }));
 }
 
-export function TableDesignerView({ projectId, environment, navigate, reload, initialState }: {
+export function TableDesignerView({ projectId, environment, table, navigate, reload, initialState }: {
   projectId: string;
   environment: Environment;
+  /**
+   * Die Tabelle, um die es geht (2.138).
+   *
+   * Ohne diese Requisite bleibt die Ansicht, was sie war: der Menuepunkt
+   * Datenbank → Tabellen mit allen drei Aenderungen und der Liste des ganzen
+   * Schemas. Mit ihr ist sie der Reiter "Struktur" einer einzelnen Tabelle:
+   * Die Tabelle steht fest, die Art der Aenderung ist "Spalte ergaenzen", und
+   * was darueber hinausgeht, liegt hinter "Erweitert". Verloren geht dabei
+   * nichts; es ist einen Klick weiter.
+   */
+  table?: string;
   navigate: (view: "approvals") => void;
   reload: () => Promise<void>; initialState?: State }) {
   const base = `/api/v1/projects/${projectId}/environments/${environment}`;
@@ -104,7 +115,10 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
   const [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);
 
-  const [mode, setMode] = useState<Mode>("create");
+  // Mit vorgegebener Tabelle ist "anlegen" die falsche Vorgabe: Die Tabelle
+  // gibt es ja schon, sonst waere man nicht in ihrem Reiter.
+  const [mode, setMode] = useState<Mode>(table ? "addColumn" : "create");
+  const [advanced, setAdvanced] = useState(false);
   const [newTable, setNewTable] = useState("");
   const [newColumns, setNewColumns] = useState<NewColumn[]>([{ ...EMPTY_COLUMN, name: "id", type: "uuid", notNull: true, default: "uuid" }]);
   const [sourceTable, setSourceTable] = useState("");
@@ -133,13 +147,15 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
     if (schema.status === 200 && data && Array.isArray(data.tables)) {
       const list = data.tables as SchemaTable[];
       setTables(list);
-      setSourceTable((current) => (current && list.some((item) => item.name === current) ? current : list[0]?.name ?? ""));
+      // Eine vorgegebene Tabelle gewinnt gegen jede Wahl aus der Liste; sonst
+      // wuerde der Reiter einer Tabelle den Entwurf einer anderen zeigen.
+      setSourceTable((current) => (table ? table : current && list.some((item) => item.name === current) ? current : list[0]?.name ?? ""));
       setState("ready");
       return;
     }
     setMessage(typeof schema.payload.error === "string" ? schema.payload.error : t("Tabellen nicht verfügbar"));
     setState("error");
-  }, [base]);
+  }, [base, table]);
 
   useEffect(() => {
     void load(true);
@@ -215,24 +231,39 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
     <button className="secondary-button" onClick={() => void load(true)}><RefreshCw size={14}/> {t("Noch einmal")}</button>
   </div>;
 
-  const current = tables.find((table) => table.name === sourceTable);
+  const current = tables.find((entry) => entry.name === sourceTable);
+  // 2.138: Hinter "Erweitert" liegt alles, was ueber diese eine Tabelle
+  // hinausgeht: die Zahlen des ganzen Schemas, die Liste aller Tabellen, der
+  // Satz ueber den Weg einer Aenderung und die zwei anderen Aenderungsarten.
+  // Ohne vorgegebene Tabelle steht weiter alles offen da; der Aufklapper ist
+  // dann nicht nur zu, er gibt es nicht.
+  const pinned = table !== undefined && table !== "";
+  const wide = !pinned || advanced;
 
   return <div className="module-grid">
-    <article className="console-card auth-overview">
+    {pinned && <article className="console-card span-2 table-structure-advanced">
+      <button className="ghost-button" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}>
+        {advanced ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+        <StableLabel current={advanced ? t("Erweitert schliessen") : t("Erweitert")} variants={tAll("Erweitert schliessen", "Erweitert")}/>
+      </button>
+      <p className="muted">{t("Dahinter liegen die Zahlen des ganzen Schemas, die Liste aller Tabellen und die beiden Änderungen, die nicht diese eine Tabelle betreffen: eine Tabelle anlegen und eine Tabelle umbenennen.")}</p>
+    </article>}
+
+    {wide && <article className="console-card auth-overview">
       <div><span>{t("TABELLEN")}</span><strong>{tables.length}</strong><small>{t("im Schema public")}</small></div>
       <div><span>{t("SPALTEN")}</span><strong>{tables.reduce((sum, table) => sum + table.columns.length, 0)}</strong><small>{t("über alle Tabellen")}</small></div>
       <div><span>{t("ANGEWENDET VON HIER")}</span><strong>0</strong><small>{t("diese Ansicht wendet nie an")}</small></div>
-    </article>
+    </article>}
 
-    <article className="console-card span-2">
+    {wide && <article className="console-card span-2">
       <div className="card-head"><div><span>{t("SCHREIBEND ÜBER FREIGABE")}</span><h3>{t("Was hier passiert und was nicht")}</h3></div><ShieldCheck size={18}/></div>
       <p className="muted">{t("Aus einem Entwurf wird eine einzelne SQL-Anweisung. Sie steht unten vollständig, bevor irgendetwas abgeschickt wird. Abgeschickt wird sie an die Freigabe, als Change Set.")}</p>
       <p className="muted">{t("Angewendet wird nichts, solange das Change Set nicht freigegeben ist. Die Freigabe geschieht in der Freigabezentrale, und erst danach wendet der Migrationsprozess die Anweisung in der Projektdatenbank an.")}</p>
       <p className="muted">{t("Drei Änderungen kann der Designer: eine Tabelle anlegen, eine Tabelle umbenennen, einer Tabelle eine Spalte geben. Tabellen oder Spalten entfernen kann er nicht, und den Typ einer bestehenden Spalte ändern auch nicht. Für diese Schritte gibt es in dieser Ansicht keinen Weg; sie verlieren Daten und gehören in einen eigenen, geprüften Ablauf.")}</p>
       <button className="secondary-button" onClick={() => navigate("approvals")}><ShieldCheck size={14}/> {t("Freigabezentrale öffnen")}</button>
-    </article>
+    </article>}
 
-    <article className="console-card span-2">
+    {wide && <article className="console-card span-2">
       <div className="card-head"><div><span>{t("SCHEMA")} · {environment.toUpperCase()}</span><h3>{t("Tabellen im Schema public")}</h3></div><div>
         <button className="secondary-button" onClick={() => void load(false)} disabled={refreshing}><RefreshCw size={14}/> <StableLabel current={refreshing ? t("Lädt…") : t("Neu laden")} variants={tAll("Lädt…", "Neu laden")}/></button>
       </div></div>
@@ -250,7 +281,7 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
           ? t("1 Spalte")
           : `${table.columns.length} ${t("Spalten")}`}</span>
       </div>)}
-    </article>
+    </article>}
 
     <article className="console-card span-2">
       <div className="card-head"><div><span>{t("ENTWURF")}</span><h3>{t("Eine Änderung vorbereiten")}</h3></div>
@@ -259,14 +290,14 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
             auf Windows sieht das neben dieser Oberflaeche aus wie aus einem
             anderen Jahrzehnt. Die Erklaerzeile je Eintrag sagt, was die Wahl
             bedeutet, statt den Titel zu wiederholen. */}
-        <OptionMenu value={mode} ariaLabel={t("Art der Änderung")} listLabel={t("Art der Änderung wählen")}
+        {wide && <OptionMenu value={mode} ariaLabel={t("Art der Änderung")} listLabel={t("Art der Änderung wählen")}
           icon={<Columns3 size={14} aria-hidden="true"/>}
           onChange={(next) => { setMode(next); setCreated(false); setSubmitMessage(""); }}
           options={[
             { id: "create" as Mode, label: t("Tabelle anlegen"), hint: t("Eine neue Tabelle mit ihren Spalten") },
             { id: "rename" as Mode, label: t("Tabelle umbenennen"), hint: t("Nur der Name, die Daten bleiben") },
             { id: "addColumn" as Mode, label: t("Spalte ergänzen"), hint: t("Eine Spalte an eine bestehende Tabelle") },
-          ]}/>
+          ]}/>}
       </div>
 
       <div className="settings-form">
@@ -296,7 +327,8 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
             Spalten: Sie steht in `tables` schon da, sie unterscheidet zwei
             gleich aussehende Namen, und vor "Spalte ergaenzen" ist sie genau
             die Frage. Dieselben Worte wie in der Liste darueber. */}
-        {mode !== "create" && <label>{t("Bestehende Tabelle")}
+        {mode !== "create" && pinned && <p className="muted">{t("Bestehende Tabelle")}: <code>{sourceTable}</code></p>}
+        {mode !== "create" && !pinned && <label>{t("Bestehende Tabelle")}
           <OptionMenu value={sourceTable} ariaLabel={t("Bestehende Tabelle")} listLabel={t("Bestehende Tabelle wählen")}
             align="left" onChange={(next) => { setSourceTable(next); setCreated(false); }}
             options={tables.map((table) => ({

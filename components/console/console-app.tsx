@@ -102,6 +102,7 @@ import { DatabaseHealthView } from "@/components/console/database-health-view";
 import { OverviewView } from "@/components/console/overview-view";
 import { DatabaseView } from "@/components/console/database-view";
 import { TableView } from "@/components/console/table-view";
+import { TableWorkspaceView } from "@/components/console/table-workspace-view";
 import { SqlView } from "@/components/console/sql-view";
 import { AuthView } from "@/components/console/auth-view";
 import { StorageView } from "@/components/console/storage-view";
@@ -381,7 +382,12 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     // Dienst, an den sich ein Agent binden koennte.
     case "overview": return <OverviewView snapshot={props.snapshot} project={props.project} navigate={props.navigate}/>;
     case "database": return <DatabaseView project={props.project} navigate={props.navigate}/>;
-    case "table": return <TableView projectId={props.project.id} environment={props.environment}/>;
+    // Die Tabelle mit ihren fuenf Reitern (2.138). Sie ersetzt die reine
+    // Datenansicht in beiden Modi, weil sie sie enthaelt: Der Reiter "Daten"
+    // ist genau das, was hier vorher stand. Zwei Einstiege fuer dieselbe
+    // Tabelle, einer mit und einer ohne Kontext, waeren die Wahl zwischen
+    // weniger und mehr, und die trifft hier niemand gerne richtig.
+    case "table": return <TableWorkspaceView projectId={props.project.id} environment={props.environment} navigate={props.navigate} reload={props.reload}/>;
     // Die Vorlagen (2.61) leben in der Editoransicht selbst: Einfuegen heisst,
     // das Editorfeld zu fuellen, und das geht nur dort, wo dieses Feld steht.
     // Der Menuepunkt oeffnet dieselbe Ansicht mit aufgeklappter Liste.

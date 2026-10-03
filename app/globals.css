@@ -1453,3 +1453,33 @@ input[type="checkbox"], input[type="radio"] {
    kein Punkt, kleinere Schrift und erst beim Zeigen Farbe. */
 .console-nav .nav-children > .nav-reveal { min-height: 28px; font-size: 12px; color: #7e8da2; gap: 7px; }
 .console-nav .nav-children > .nav-reveal:hover { color: #82adff; background: transparent; }
+/* Der Arbeitsplatz einer Tabelle (2.138).
+   Die Reiter liegen auf einer Linie, die unter der ganzen Karte durchlaeuft;
+   der aktive traegt den Strich in der Primaerfarbe und hebt sich damit auch
+   ohne Farbe ab, denn seine Schrift ist zusaetzlich dunkler. Umbrechen darf die
+   Reihe: fuenf Woerter in vier Sprachen sind auf einem engen Fenster laenger
+   als die Karte. Keine Regel hier fasst ein Formularfeld an, damit die
+   Kaestchenregel weiter die letzte bleibt, die an einer Hoehe dreht. */
+.table-workspace-head .card-head > div:last-child { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.table-workspace-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 14px; border-bottom: 1px solid var(--qkern-border); }
+.table-workspace-tabs > button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--qkern-text-muted); padding: 9px 14px; font: 600 13px var(--qkern-font-sans); cursor: pointer; }
+.table-workspace-tabs > button:hover { color: var(--qkern-text); }
+.table-workspace-tabs > button.active { color: var(--qkern-text); border-bottom-color: var(--qkern-primary); }
+.table-workspace-panel { display: flex; flex-direction: column; gap: 18px; }
+
+/* Begriff und Satz in zwei Spalten; auf einem engen Fenster untereinander,
+   weil ein PostgreSQL-Begriff und ein ganzer Satz nicht in eine Zeile passen. */
+.table-workspace-glossary { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; margin: 14px 0 0; }
+.table-workspace-glossary dt { font-family: var(--qkern-font-mono); font-size: 12px; color: var(--qkern-text); }
+.table-workspace-glossary dd { margin: 0; color: var(--qkern-text-muted); font-size: 12px; }
+@media (max-width: 720px) { .table-workspace-glossary { grid-template-columns: 1fr; gap: 2px; } .table-workspace-glossary dd { margin-bottom: 8px; } }
+
+/* Die festgesetzte Tabelle im Table Editor: dieselbe Zeile wie das Menue, das
+   dort sonst steht, nur ohne Pfeil, weil hier nichts zu waehlen ist. */
+.toolbar-fixed-table { display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--qkern-text-muted); font-size: 12px; }
+.toolbar-fixed-table > code { font-family: var(--qkern-font-mono); color: var(--qkern-text); }
+
+/* Der Aufklapper vor dem Entwurf: ein Knopf und ein Satz, der sagt, was
+   dahinter liegt, damit niemand raten muss, ob es sich lohnt. */
+.table-structure-advanced { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.table-structure-advanced p { margin: 0; font-size: 12px; }
