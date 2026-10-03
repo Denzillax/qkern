@@ -1284,7 +1284,13 @@ input[type="checkbox"], input[type="radio"] {
 .column-draft .draft-fields input:not([type="checkbox"]),
 .column-draft .draft-fields select { width: 100%; min-width: 0; }
 @media (min-width: 1100px) {
-  .column-draft .draft-fields { grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(150px, 1.4fr); }
+  /* Breit genug: Name, Typ, Vorgabe und das Ankreuzfeld stehen in einer Zeile.
+     Die drei Felder teilen sich den Platz, das Ankreuzfeld nimmt, was es
+     braucht, und bricht nicht um. */
+  .column-draft .draft-fields {
+    grid-template-columns: minmax(120px, 1fr) minmax(150px, 1fr) minmax(165px, 1.1fr) auto;
+  }
+  .column-draft .draft-fields > label { grid-column: auto; white-space: nowrap; padding-left: 4px; }
 }
 
 /* 2.133: Im Kopf einer Karte sitzt die Auswahl rechts, wie jeder Knopf dort.

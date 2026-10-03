@@ -77,7 +77,10 @@ export function OptionMenu<Id extends string>({
             aria-expanded={open} aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
             disabled={options.length === 0}
             onClick={() => setOpen(!open)}>
-      {icon ?? <i aria-hidden="true"/>}
+      {/* Der Punkt nur mit Zustand. Ohne Symbol und ohne Zustand stand hier
+          ein grauer Punkt, der nichts bedeutet; genau das wollte ich beim
+          Herausloesen vermeiden und habe es doch gebaut. */}
+      {icon ?? (tone ? <i aria-hidden="true"/> : null)}
       <StableLabel current={current?.label ?? ""} variants={options.map((entry) => entry.label)}/>
       <ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
     </button>
