@@ -354,7 +354,15 @@ h1 em, h2 em { font-style: normal; color: var(--qkern-primary); }
 .is-collapsed .console-brand { padding: 0 20px; }
 .is-collapsed .console-brand > a { min-width: 30px; }
 .is-collapsed .console-brand button { display: none; }
-.project-switch { margin: 14px 12px; padding: 10px; background: #101b2b; border: 1px solid #202e42; border-radius: 9px; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; white-space: nowrap; overflow: hidden; }
+/* Kein `overflow: hidden` mehr (2.156). Es stand hier, um einen langen
+   Projektnamen abzuschneiden, und das tat es auch. Seit der Name in einem
+   Auswahlmenue steht (2.142), schnitt es zusaetzlich das aufgeklappte Menue
+   weg: Die Liste ist ein absolut positioniertes Kind, sie oeffnete an der
+   richtigen Stelle und war unsichtbar. Gemessen im Nachbau mit echtem
+   Stylesheet: `elementFromPoint` traf in der Mitte der Liste ein anderes
+   Element. Den Namen kuerzt jetzt die Zeile selbst, dort wo er steht. */
+.project-switch { margin: 14px 12px; padding: 10px; background: #101b2b; border: 1px solid #202e42; border-radius: 9px; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; white-space: nowrap; }
+.project-switch > div { min-width: 0; }
 .project-glyph { width: 30px; height: 30px; background: #153873; color: #9bbdff; display: grid; place-items: center; border-radius: 7px; font: 600 8px var(--qkern-font-sans); }
 .project-switch strong, .project-switch small { display: block; }
 .project-switch strong { color: #e6edf8; font-size: 10px; }
