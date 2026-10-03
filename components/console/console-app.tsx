@@ -404,7 +404,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "backups": return <BackupsView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-pitr": return <PitrView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-restore": return <RestoreToNewProjectView projectId={props.project.id} environment={props.environment}/>;
-    case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id }} organizationId={props.snapshot.organization.id}/>;
+    case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id, region: props.project.region }} organizationId={props.snapshot.organization.id} navigate={props.navigate}/>;
     case "int-queues": return <QueuesView projectId={props.project.id} environment={props.environment}/>;
     case "db-migrations": return <MigrationsView projectId={props.project.id} environment={props.environment} changeSets={props.snapshot.changeSets}/>;
     case "compute-invocations": return <InvocationsView projectId={props.project.id} environment={props.environment}/>;
