@@ -1235,3 +1235,34 @@ input[type="checkbox"], input[type="radio"] {
    Inhaltsgroesse geht und darum gar nicht erst scrollt. */
 .console-brand, .project-switch, .sidebar-bottom { flex: none; }
 .console-nav { min-height: 0; }
+
+/* 2.133: Die Spaltenzeile des Entwurfs ist eine Zeile.
+   Gemessen: Der innere Block stand auf `display: block`, seine vier Felder auf
+   `inline-block` mit 173, 180 und 263 Pixeln Breite bei 263 verfuegbaren. Jedes
+   Feld landete darum auf einer eigenen Zeile, und das Ankreuzfeld bekam seine
+   Beschriftung untergeschoben, weil `.settings-form label` auf `display: grid`
+   steht. Vier Angaben zu einer Spalte gehoeren nebeneinander; so liest man eine
+   Tabellendefinition, und so steht sie auch in der Vorschau darunter. */
+.column-draft .draft-fields {
+  display: grid; grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr); gap: 8px 10px;
+  align-items: center;
+}
+.column-draft .draft-fields > label {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+  margin: 0; font-size: 12px;
+}
+/* Das Ankreuzfeld bleibt aussen vor: Diese Regel steht spaeter und ist
+   spezifischer als die Groessenregel am Dateiende, hat es also auf 528 Pixel
+   gezogen. Gemessen, nicht vermutet. */
+.column-draft .draft-fields input:not([type="checkbox"]),
+.column-draft .draft-fields select { width: 100%; min-width: 0; }
+@media (min-width: 1100px) {
+  .column-draft .draft-fields { grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(150px, 1.4fr); }
+}
+
+/* 2.133: Im Kopf einer Karte sitzt die Auswahl rechts, wie jeder Knopf dort.
+   `.table-select` traegt `margin-right: auto`, damit sie in einer Werkzeugleiste
+   links klebt. Im Kartenkopf schob genau das sie an die Ueberschrift heran:
+   gemessen 897 Pixel Luft bis zum rechten Rand, waehrend "Neu laden" auf der
+   Karte darueber buendig rechts steht. */
+.card-head .table-select { margin-right: 0; margin-left: auto; }

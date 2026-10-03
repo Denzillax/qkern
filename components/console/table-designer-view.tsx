@@ -240,9 +240,9 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
           <label>{t("Name der Tabelle")}
             <input value={newTable} onChange={(event) => { setNewTable(event.target.value); setCreated(false); }} spellCheck={false} placeholder="kunden"/>
           </label>
-          {newColumns.map((column, index) => <div className="bucket-row" key={index}>
+          {newColumns.map((column, index) => <div className="bucket-row column-draft" key={index}>
             <span className="bucket-icon"><Columns3 size={16}/></span>
-            <div>
+            <div className="draft-fields">
               <input value={column.name} onChange={(event) => patchColumn(index, { name: event.target.value })} aria-label={t("Name der Spalte")} spellCheck={false} placeholder="name"/>
               <select value={column.type} onChange={(event) => patchColumn(index, { type: event.target.value as TableColumnTypeId })} aria-label={t("Typ der Spalte")}>
                 {TYPE_IDS.map((type) => <option key={type} value={type}>{t(TABLE_COLUMN_TYPES[type].label)}</option>)}
@@ -252,7 +252,7 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
               </select>
               <label><input type="checkbox" checked={column.notNull} onChange={(event) => patchColumn(index, { notNull: event.target.checked })}/> {t("darf nicht leer sein (NOT NULL)")}</label>
             </div>
-            <button className="plain-button" onClick={() => { setCreated(false); setNewColumns((columns) => columns.filter((_item, position) => position !== index)); }} aria-label={t("Spalte aus dem Entwurf nehmen")} disabled={newColumns.length <= 1}><X size={14}/></button>
+            <button className="plain-button row-trailing" onClick={() => { setCreated(false); setNewColumns((columns) => columns.filter((_item, position) => position !== index)); }} aria-label={t("Spalte aus dem Entwurf nehmen")} disabled={newColumns.length <= 1}><X size={14}/></button>
           </div>)}
           <button className="secondary-button" onClick={() => { setCreated(false); setNewColumns((columns) => [...columns, { ...EMPTY_COLUMN }]); }} disabled={newColumns.length >= MAX_NEW_TABLE_COLUMNS}><Plus size={14}/> {t("Spalte im Entwurf ergänzen")}</button>
         </>}
