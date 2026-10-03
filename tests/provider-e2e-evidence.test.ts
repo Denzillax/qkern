@@ -290,6 +290,32 @@ describe("provider E2E evidence verification", () => {
         .rejects.toBeInstanceOf(ProviderE2EEvidenceUnavailableError);
     }
   });
+
+  it("refuses a run one millisecond off whole seconds, and says it was readiness", async () => {
+    // Der Mechanismus hinter dem Flattern auf dem Ubuntu-Runner (2.162): Die
+    // Laufdauer muss in ganzen Sekunden aufgehen. Der Fall mit der echten CLI
+    // laeuft nur auf POSIX; dieser hier zeigt dieselbe Ablehnung ueberall und
+    // mit dem Schritt, den der Runner gemeldet hat.
+    await expect(verifierFor(evidence({ testRunCompletedAt: "2026-07-26T11:30:00.001Z" })).verifier.verify())
+      .rejects.toMatchObject({ step: "readiness" });
+    // Und ohne die Millisekunde geht dieselbe Evidenz durch.
+    await expect(verifierFor(evidence({ testRunCompletedAt: "2026-07-26T11:30:00.000Z" })).verifier.verify())
+      .resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("keeps the certification lag limit when the lag has a millisecond rest", async () => {
+    // Die Obergrenze fuer den Abstand zwischen Lauf und Zertifizierung lief
+    // ueber `exactSeconds`. Mit einem Millisekundenrest kam `NaN` heraus, und
+    // `NaN > 1800` ist falsch: Ein Abstand von 30 Minuten und einer halben
+    // Sekunde ging durch (2.162). Ohne Rest fiel er schon vorher.
+    await expect(verifierFor(evidence({ certifiedAt: "2026-07-26T12:00:00.500Z" })).verifier.verify())
+      .rejects.toMatchObject({ step: "readiness" });
+    await expect(verifierFor(evidence({ certifiedAt: "2026-07-26T12:00:01.000Z" })).verifier.verify())
+      .rejects.toMatchObject({ step: "readiness" });
+    // Innerhalb der Grenze bleibt ein Rest erlaubt, wie bisher.
+    await expect(verifierFor(evidence({ certifiedAt: "2026-07-26T11:35:00.500Z" })).verifier.verify())
+      .resolves.toMatchObject({ status: "ready" });
+  });
 });
 
 describe("provider E2E evidence file boundary", () => {
@@ -385,10 +411,19 @@ describe("provider E2E evidence runtime and CLI", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "qkern-provider-cli-"));
     tempDirectories.push(directory);
     const keys = keyPair();
+    // Ein Anker, auf ganze Sekunden abgerundet (2.162). Vorher rief jede Zeile
+    // `Date.now()` selbst auf. Der Pruefer verlangt eine Laufdauer in ganzen
+    // Sekunden (`exactSeconds`); lag zwischen den beiden ersten Aufrufen eine
+    // Millisekunde, war die Dauer 3'600'001 ms, und die Evidenz fiel bei
+    // `readiness`. Das ist das Flattern auf dem Ubuntu-Runner seit 2.23: Es
+    // trifft nur einen ausgelasteten Rechner, und dieser Fall laeuft nur auf
+    // POSIX. Gefunden hat es die Diagnose aus 2.152, die zum ersten Mal den
+    // Schritt nannte.
+    const anchor = Math.floor(Date.now() / 1_000) * 1_000;
     const signed = envelope(evidence({
-      testRunStartedAt: new Date(Date.now() - 70 * 60_000).toISOString(),
-      testRunCompletedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-      certifiedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      testRunStartedAt: new Date(anchor - 70 * 60_000).toISOString(),
+      testRunCompletedAt: new Date(anchor - 10 * 60_000).toISOString(),
+      certifiedAt: new Date(anchor - 5 * 60_000).toISOString(),
     }), keys.privateKey);
     const evidencePath = path.join(directory, "evidence.json");
     const keyPath = path.join(directory, "key.json");

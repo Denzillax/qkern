@@ -498,8 +498,11 @@ function readiness(
         PROVIDER_E2E_EVIDENCE_POLICY.testRunDurationMinSeconds ||
       evidence.testRunDurationSeconds >
         PROVIDER_E2E_EVIDENCE_POLICY.testRunDurationMaxSeconds ||
-      exactSeconds(certifiedAt - testRunCompletedAt) >
-        PROVIDER_E2E_EVIDENCE_POLICY.certificationLagMaxSeconds ||
+      // In Millisekunden verglichen (2.162). Ueber `exactSeconds` ergab ein
+      // Abstand mit Millisekundenrest `NaN`, und `NaN > Grenze` ist falsch:
+      // Die Grenze galt dann nicht. Ganze Sekunden verlangt nur die Laufdauer.
+      certifiedAt - testRunCompletedAt >
+        PROVIDER_E2E_EVIDENCE_POLICY.certificationLagMaxSeconds * 1_000 ||
       certifiedAt >
         nowAt + PROVIDER_E2E_EVIDENCE_POLICY.futureClockSkewSeconds * 1_000 ||
       nowAt - certifiedAt >
