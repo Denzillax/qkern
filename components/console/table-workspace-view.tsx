@@ -178,12 +178,22 @@ export function TableWorkspaceView({ projectId, environment, navigate, reload, i
             options={tables.map((entry) => ({
               id: entry.name,
               label: entry.name,
-              hint: entry.columns.length === 1 ? t("1 Spalte") : `${entry.columns.length} ${t("Spalten")}`,
+              // Die Erklaerzeile sagt, was vor der Wahl die Frage ist: wie breit
+              // die Tabelle ist und ob die Daten-API sie ueberhaupt hergibt. Der
+              // Reiter "Daten" liest ueber die generierte Daten-API, und die
+              // verlangt Row Level Security; ohne sie steht dort gleich ein
+              // Fehler, und das soll vorher zu sehen sein.
+              hint: `${entry.columns.length === 1 ? t("1 Spalte") : `${entry.columns.length} ${t("Spalten")}`}${entry.rowSecurityEnabled ? "" : ` · ${t("ohne Row Level Security")}`}`,
             }))}/>
           <button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> <StableLabel current={t("Neu laden")} variants={tAll("Neu laden")}/></button>
         </div>
       </div>
       {tables.length === 0 && <p className="muted">{t("Dieses Schema hat noch keine Tabellen")}</p>}
+      {/* Ehrlich vor dem ersten Klick: Der Reiter "Daten" liest ueber die
+          generierte Daten-API, und die zeigt nur Tabellen mit Row Level
+          Security. Die anderen vier Reiter lesen den Katalog und arbeiten
+          auch ohne. */}
+      {current?.rowSecurityEnabled === false && <p className="muted">{t("Diese Tabelle hat keine Row Level Security. Die Reiter Struktur, Beziehungen, Sicherheit und API lesen den Katalog und zeigen sie trotzdem; der Reiter Daten liest über die generierte Daten-API, und die gibt nur Tabellen mit Row Level Security her.")}</p>}
       {/* Die Reiter sind Knoepfe und keine Verweise: Die Console ist eine Seite
           mit einem Zustand, und ein Reiter wechselt diesen Zustand. */}
       <div className="table-workspace-tabs" role="tablist" aria-label={t("Bereiche dieser Tabelle")}>

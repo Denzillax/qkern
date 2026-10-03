@@ -4122,6 +4122,8 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
     "Dieselbe Lesung auf der Kommandozeile": "The same reading on the command line",
     "Die Adresse dieser Console steht erst da, wenn der Browser sie gelesen hat; bis dahin ist im Beispiel eine Lücke.": "The address of this console appears only once the browser has read it; until then there is a gap in the example.",
     "Geprüfter Pfad:": "Checked path:",
+    "ohne Row Level Security": "without Row Level Security",
+    "Diese Tabelle hat keine Row Level Security. Die Reiter Struktur, Beziehungen, Sicherheit und API lesen den Katalog und zeigen sie trotzdem; der Reiter Daten liest über die generierte Daten-API, und die gibt nur Tabellen mit Row Level Security her.": "This table has no Row Level Security. The Structure, Relations, Security and API tabs read the catalogue and show it anyway; the Data tab reads through the generated data API, and that only hands over tables with Row Level Security.",
   },
   fr: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
@@ -8238,6 +8240,8 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
     "Dieselbe Lesung auf der Kommandozeile": "La même lecture en ligne de commande",
     "Die Adresse dieser Console steht erst da, wenn der Browser sie gelesen hat; bis dahin ist im Beispiel eine Lücke.": "L'adresse de cette console n'apparaît qu'une fois que le navigateur l'a lue; jusque-là, il y a un trou dans l'exemple.",
     "Geprüfter Pfad:": "Chemin vérifié:",
+    "ohne Row Level Security": "sans Row Level Security",
+    "Diese Tabelle hat keine Row Level Security. Die Reiter Struktur, Beziehungen, Sicherheit und API lesen den Katalog und zeigen sie trotzdem; der Reiter Daten liest über die generierte Daten-API, und die gibt nur Tabellen mit Row Level Security her.": "Cette table n'a pas de Row Level Security. Les onglets Structure, Relations, Sécurité et API lisent le catalogue et l'affichent quand même; l'onglet Données lit via l'API de données générée, et celle-ci ne fournit que les tables avec Row Level Security.",
   },
   it: {
     // Der Oberflaechenmodus und seine Navigation (2.134).
@@ -12353,5 +12357,7 @@ export const CONSOLE_TRANSLATIONS: Record<Exclude<Locale, "de">, Record<string, 
     "Dieselbe Lesung auf der Kommandozeile": "La stessa lettura dalla riga di comando",
     "Die Adresse dieser Console steht erst da, wenn der Browser sie gelesen hat; bis dahin ist im Beispiel eine Lücke.": "L'indirizzo di questa console compare solo quando il browser l'ha letto; fino a quel momento nell'esempio c'è una lacuna.",
     "Geprüfter Pfad:": "Percorso verificato:",
+    "ohne Row Level Security": "senza Row Level Security",
+    "Diese Tabelle hat keine Row Level Security. Die Reiter Struktur, Beziehungen, Sicherheit und API lesen den Katalog und zeigen sie trotzdem; der Reiter Daten liest über die generierte Daten-API, und die gibt nur Tabellen mit Row Level Security her.": "Questa tabella non ha Row Level Security. Le schede Struttura, Relazioni, Sicurezza e API leggono il catalogo e la mostrano comunque; la scheda Dati legge tramite l'API dati generata, che fornisce solo tabelle con Row Level Security.",
   },
 };
