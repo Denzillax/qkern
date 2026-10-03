@@ -129,16 +129,19 @@ export function StoragePoliciesView({ projectId, environment, initialState }: { 
         <div><strong>{bucket.name}</strong>
           <div className="policy-fields">
             <label>{t("Lesen")}
+              {/* Der Knopf traegt die Bedeutung, die Zusatzzeile den Wert, den die
+                  API kennt (2.163). Vorher stand "public" auf dem Knopf, und was
+                  das heisst, sah man erst in der aufgeklappten Liste. */}
               <OptionMenu value={drafts[bucket.id]?.readPolicy ?? bucket.readPolicy} align="left"
                 ariaLabel={`${t("Leseregel")} ${bucket.name}`} listLabel={t("Leseregel wählen")}
                 onChange={(next) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], readPolicy: next } })}
-                options={(Object.keys(readLabel) as ReadPolicy[]).map((policy) => ({ id: policy, label: policy, hint: readLabel[policy] }))}/>
+                options={(Object.keys(readLabel) as ReadPolicy[]).map((policy) => ({ id: policy, label: readLabel[policy], hint: policy }))}/>
             </label>
             <label>{t("Schreiben")}
               <OptionMenu value={drafts[bucket.id]?.writePolicy ?? bucket.writePolicy} align="left"
                 ariaLabel={`${t("Schreibregel")} ${bucket.name}`} listLabel={t("Schreibregel wählen")}
                 onChange={(next) => setDrafts({ ...drafts, [bucket.id]: { ...drafts[bucket.id], writePolicy: next } })}
-                options={(Object.keys(writeLabel) as WritePolicy[]).map((policy) => ({ id: policy, label: policy, hint: writeLabel[policy] }))}/>
+                options={(Object.keys(writeLabel) as WritePolicy[]).map((policy) => ({ id: policy, label: writeLabel[policy], hint: policy }))}/>
             </label>
           </div>
         </div>

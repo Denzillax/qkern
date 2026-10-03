@@ -158,4 +158,16 @@ describe("console readability contract", () => {
     // Der Designer ruegt kein leeres Feld, das noch niemand angefasst hat.
     expect(await view("table-designer-view")).toMatch(/if \(untouched\) return \{ statement: "", reason: "" \};/);
   });
+
+  it("puts the meaning on the button and keeps descenders visible", async () => {
+    // Zugriffsseite (2.163): Der Knopf zeigte "public", die Bedeutung erst
+    // aufgeklappt. Jetzt umgekehrt, der API-Wert bleibt als Zusatzzeile.
+    const policies = await readFile(path.resolve(process.cwd(), "components/console/storage-policies-view.tsx"), "utf8");
+    expect(policies).toContain("({ id: policy, label: readLabel[policy], hint: policy })");
+    expect(policies).toContain("({ id: policy, label: writeLabel[policy], hint: policy })");
+    // Ein Kasten mit `overflow: hidden` und `line-height: 1` schnitt die
+    // Unterlaengen jeder Menuebeschriftung ab.
+    const css = await readFile(CSS, "utf8");
+    expect(css).toMatch(/\.option-field \.stable-label, \.option-field \.stable-label > span \{ line-height: 1\.4; \}/);
+  });
 });
