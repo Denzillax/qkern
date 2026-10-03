@@ -841,10 +841,24 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--qkern-te
 .console-root .plain-button { min-height: 32px; padding: 0 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; }
 .console-root .plain-button:hover { background: var(--qkern-primary-muted); }
 .row-actions button, .api-key-list button, .one-time-secret button { border-radius: 10px; min-width: 32px; min-height: 32px; }
+/* 2.133: Der Projektwechsler gehoert in dieselbe Generation wie die Navigation.
+   Der Befund: Dieser Block hat beim Umbau nur Schrift und Radius nachgezogen,
+   die Geometrie blieb von vorher. Die Navigationszeilen wuchsen von 36 auf 42
+   Pixel und von 10 auf 13 Pixel Schrift, der Wechsler behielt ein 30 Pixel
+   grosses Zeichen, 10 Pixel Innenabstand und 9 Pixel Spalt. Daneben wirkt er
+   zusammengequetscht, und das ist er auch: gemessen 55 Pixel hoch gegen 42
+   Pixel hohe Zeilen, bei kleinerer Schrift.
+   Dazu lief der Name der Organisation aus seiner Spalte heraus. Die mittlere
+   Spalte ist rund 125 Pixel breit, "Denis Mihaljevic Workspace" braucht in 10
+   Pixel mehr, und `overflow: hidden` schnitt ihn mitten im Wort ab. Jetzt
+   schneidet er mit Auslassungszeichen, wie jede andere Zeile der Konsole. */
 .console-brand button, .project-switch { border-radius: 12px; }
-.project-glyph { font: 700 10px var(--qkern-font-sans); }
-.project-switch strong { font-size: 12px; }
-.project-switch small { font-size: 10px; }
+.project-switch { padding: 12px; gap: 11px; grid-template-columns: 34px 1fr auto; }
+.project-glyph { width: 34px; height: 34px; border-radius: 9px; font: 700 11px var(--qkern-font-sans); }
+.project-switch strong, .project-switch small { overflow: hidden; text-overflow: ellipsis; }
+.project-switch strong { font-size: 13px; line-height: 1.35; }
+.project-switch small { font-size: 11px; line-height: 1.35; }
+.is-collapsed .project-switch { grid-template-columns: 34px; }
 .settings-nav button { min-height: 40px; }
 .endpoint-list button { min-height: 46px; font-size: 12px; }
 
@@ -1174,3 +1188,13 @@ input[type="checkbox"], input[type="radio"] {
   padding: 0; margin: 0; flex: none; accent-color: var(--qkern-primary);
   vertical-align: middle;
 }
+
+/* 2.133: Die letzte Zelle einer Listenzeile sitzt am Rand, der Text davor
+   schneidet mit Auslassungszeichen.
+   Der Befund: `.bucket-row` erklaert vier Rasterspalten (38px 1fr 70px auto).
+   Eine Ansicht mit drei Zellen legte ihre letzte in die 70-Pixel-Spalte, also
+   mitten ins Nichts statt an den Rand. Und die Spaltenliste einer Tabelle ist
+   eine einzige lange Zeile, die ohne Schnitt aus der Karte lief. */
+.bucket-row .row-trailing { grid-column: -2 / -1; justify-self: end; white-space: nowrap; }
+.bucket-row .row-text { min-width: 0; }
+.bucket-row .row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -213,11 +213,16 @@ export function TableDesignerView({ projectId, environment, navigate, reload, in
       {tables.length === 0 && <p className="muted">{t("Dieses Schema hat noch keine Tabellen")}</p>}
       {tables.map((table) => <div className="bucket-row" key={table.name}>
         <span className="bucket-icon"><Table2 size={16}/></span>
-        <div>
+        <div className="row-text">
           <strong>{table.name}</strong>
           <small>{table.columns.map((column) => `${column.name} ${column.dataType}${column.nullable ? "" : " *"}`).join(" · ") || t("keine Spalten")}</small>
         </div>
-        <span className="muted">{table.columns.length}</span>
+        {/* Die blanke Zahl stand ohne Wort da und sass in der dritten von vier
+            Rasterspalten, also weder am Text noch am Rand. Gelesen wurde sie
+            als Zeilenzahl; gemeint sind Spalten. */}
+        <span className="muted row-trailing">{table.columns.length === 1
+          ? t("1 Spalte")
+          : `${table.columns.length} ${t("Spalten")}`}</span>
       </div>)}
     </article>
 
