@@ -56,6 +56,7 @@ import { analyticsBucketTexts } from "@/lib/console/analytics-buckets-texts";
 import { changeSetLabelTexts } from "@/lib/console/change-set-labels";
 import { auditStatusTexts } from "@/components/console/activity-view";
 import { serverErrorTexts } from "@/components/console/server-errors";
+import { computeFormTexts } from "@/components/console/compute-form-fields";
 
 /**
  * Die Console spricht vier Sprachen (2.3). Der Schluessel jeder Uebersetzung
@@ -264,6 +265,8 @@ async function consoleKeys(): Promise<string[]> {
   // Die Meldungen des Servers (2.160) laufen als t(variable) durch das Modul,
   // das sie uebersetzt.
   for (const text of serverErrorTexts()) keys.add(text);
+  // Die Felder der Formulare fuer Cron, Webhook und Function (2.166).
+  for (const text of computeFormTexts()) keys.add(text);
   return [...keys];
 }
 

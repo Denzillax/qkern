@@ -8,6 +8,7 @@ import { formatMoment } from "@/components/console/console-display";
 import { maskSecret } from "@/components/console/console-format";
 import { CopyValue } from "@/components/console/copy-value";
 import { DangerousAction } from "@/components/console/dangerous-action";
+import { FormPanel } from "@/components/console/form-panel";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { StableLabel } from "@/components/stable-label";
 
@@ -34,6 +35,8 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
   const [state, setState] = useState<"loading" | "ready" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
   const [secret, setSecret] = useState("");
+  // Welcher Key gerade angelegt wird (2.166); vorher ein `window.prompt`.
+  const [creating, setCreating] = useState<"public" | "service" | null>(null);
   // Das frische Geheimnis steht maskiert da; Anzeigen ist eine bewusste Handlung.
   const [revealed, setRevealed] = useState(false);
 
@@ -48,13 +51,13 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
   }, [base]);
   useEffect(() => { void load(); }, [load]);
 
-  async function create(kind: "public" | "service") {
-    const name = window.prompt(kind === "public" ? t("Name für den Public Key") : t("Name für den Service Key"), kind === "public" ? t("Public Key für den Browser") : t("Service Key für den Server")); if (!name) return;
+  async function create(kind: "public" | "service", name: string): Promise<string | null> {
     const expiresAt = new Date(Date.now() + (kind === "public" ? 90 : 30) * 24 * 60 * 60 * 1000).toISOString();
-    const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, kind, expiresAt }) });
+    const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), kind, expiresAt }) });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setMessage(serverErrorText(payload.error) ?? t("Key konnte nicht erstellt werden")); return; }
-    setSecret(payload.data.secret); setRevealed(false); await load();
+    if (!response.ok) return serverErrorText(payload.error) ?? t("Key konnte nicht erstellt werden");
+    setCreating(null); setSecret(payload.data.secret); setRevealed(false); await load();
+    return null;
   }
   async function revoke(keyId: string) {
     const response = await fetch(`${base}/${keyId}`, { method: "DELETE" });
@@ -75,7 +78,8 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
       <div><span>{t("WIDERRUFEN")}</span><strong>{keys.length - live.length}</strong><small>{t("gelten nicht mehr")}</small></div>
     </article>
     <article className="console-card span-2 api-key-manager">
-      <div className="card-head"><div><span>{t("API-KEYS DES PROJEKTS")}</span><h3>{t("Zugriff für")} {environment}</h3></div><div><button className="secondary-button" onClick={() => void create("public")}><Plus size={13}/> {t("Public Key")}</button><button className="button small" onClick={() => void create("service")}><Plus size={13}/> {t("Service Key")}</button></div></div>
+      <div className="card-head"><div><span>{t("API-KEYS DES PROJEKTS")}</span><h3>{t("Zugriff für")} {environment}</h3></div><div><button className="secondary-button" onClick={() => setCreating("public")}><Plus size={13}/> {t("Public Key")}</button><button className="button small" onClick={() => setCreating("service")}><Plus size={13}/> {t("Service Key")}</button></div></div>
+      {creating && <FormPanel key={creating} title={creating === "public" ? t("Public Key") : t("Service Key")} submitLabel={t("Anlegen")} onCancel={() => setCreating(null)} onSubmit={(values) => create(creating, values.name)} fields={[{ name: "name", label: creating === "public" ? t("Name für den Public Key") : t("Name für den Service Key"), initial: creating === "public" ? t("Public Key für den Browser") : t("Service Key für den Server"), required: true }]}/>}
       {message && <p className="muted">{message}</p>}
       {secret && <div className="one-time-secret">
         <div><strong>{t("Jetzt kopieren, erscheint nur einmal")}</strong><code>{revealed ? secret : maskSecret(secret)}</code></div>
@@ -106,7 +110,7 @@ export function ApiKeysView({ projectId, environment, initialState }: { projectI
         </div>)}
         {keys.length === 0 && <InlineEmptyState
           text={t("Noch kein Key in dieser Umgebung. Ein Key ist der Ausweis, mit dem deine Anwendung die Daten-API, Storage und Auth dieses Projekts erreicht; ohne Key kommt keine Anfrage durch. Das Geheimnis wird nie gespeichert und nur einmal gezeigt.")}
-          action={<button className="button small" onClick={() => void create("public")}><Plus size={13}/> {t("Ersten Public Key anlegen")}</button>}
+          action={<button className="button small" onClick={() => setCreating("public")}><Plus size={13}/> {t("Ersten Public Key anlegen")}</button>}
         />}
       </div>
       <p className="muted">{t("Eine Rotation gibt es hier nicht, weil keine Route sie kann. Wer einen Key wechseln will, legt den neuen an, stellt die Anwendung um und widerruft danach den alten.")}</p>

@@ -5,6 +5,8 @@ import { Blocks, Plus, RefreshCw, ShieldCheck, Webhook, Zap } from "lucide-react
 import { t, tAll } from "@/components/console/console-i18n";
 import { serverErrorText } from "@/components/console/server-errors";
 import { DangerousAction } from "@/components/console/dangerous-action";
+import { FormPanel } from "@/components/console/form-panel";
+import { cronBody, cronFields, functionBody, functionFields, webhookBody, webhookFields } from "@/components/console/compute-form-fields";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
@@ -35,6 +37,9 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
   const [selected,setSelected]=useState<string|null>(null);
   const [state, setState] = useState<"loading"|"ready"|"unavailable"|"error">(initialState ?? "loading");
   const [message,setMessage]=useState("");
+  // Welches Formular offen ist (2.166). Immer nur eines, damit die Seite
+  // nicht drei halbe Eingaben gleichzeitig traegt.
+  const [forming,setForming]=useState<"cron"|"webhook"|"function"|null>(null);
   const base=`/api/v1/projects/${projectId}/environments/${environment}/compute`;
 
   const load=useCallback(async()=>{setState("loading");setMessage("");try{
@@ -57,25 +62,11 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
     if(response.ok){await load();return true;}
     const payload=await response.json().catch(()=>({}));setMessage(serverErrorText(payload.error)??t("Die Änderung wurde abgelehnt."));return false;}
 
-  async function createCron(){const name=window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"),"nightly-report");if(!name)return;
-    const expression=window.prompt(t("Ausdruck: fünf Felder, Namen wie MON-FRI oder JAN, oder ein Kürzel wie @daily"),"*/15 * * * *");if(!expression)return;
-    const timeZone=window.prompt(t("Zeitzone des Zeitplans (IANA-Name wie Europe/Berlin)"),"UTC");if(timeZone===null)return;
-    const queue=window.prompt(t("Bestehende Projekt-Queue"),"email_jobs");if(!queue)return;
-    await mutate("/cron",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),expression:expression.trim(),queue:queue.trim(),timeZone:timeZone.trim()||"UTC"})});}
-
-  async function createWebhook(){const name=window.prompt(t("Name des Webhooks (Kleinbuchstaben, Ziffern, Bindestrich)"),"order-events");if(!name)return;
-    const url=window.prompt(t("Exaktes öffentliches HTTPS-Ziel, ohne Query und Fragment"),"https://receiver.example.com/hooks");if(!url)return;
-    const events=window.prompt(t("Ereignistypen, kommagetrennt"),"order.created");if(!events)return;
-    // Nur die Referenz. Das Geheimnis selbst liegt im Vault und darf diese
-    // Flaeche nie beruehren.
-    const signingSecretRef=window.prompt(t("Vault-Referenz des Signaturschlüssels, nie das Geheimnis selbst"),"vault:webhook/orders");if(!signingSecretRef)return;
-    await mutate("/webhooks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),url:url.trim(),eventTypes:events.split(",").map(entry=>entry.trim()).filter(Boolean),signingSecretRef:signingSecretRef.trim()})});}
-
-  async function createFunction(){const name=window.prompt(t("Name der Function (Kleinbuchstaben, Ziffern, Bindestrich)"),"resize-image");if(!name)return;
-    // Digest statt Tag: Ein Tag koennte morgen einen anderen Inhalt bezeichnen.
-    const image=window.prompt(t("Image per Digest, zum Beispiel registry.example.com/app/fn@sha256:…"),"");if(!image)return;
-    const entrypoint=window.prompt(t("Entrypoint im Image"),"handler.mjs");if(!entrypoint)return;
-    await mutate("/functions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name.trim(),image:image.trim(),entrypoint:entrypoint.trim()})});}
+  // Anlegen ueber ein Formular statt einer Kette aus `window.prompt` (2.166).
+  // Eine Ablehnung bleibt im Formular stehen, mit den Eingaben.
+  async function submitForm(path:string,body:string):Promise<string|null>{const response=await fetch(`${base}${path}`,{method:"POST",headers:{"Content-Type":"application/json"},body});
+    if(!response.ok){const payload=await response.json().catch(()=>({}));return serverErrorText(payload.error)??t("Die Änderung wurde abgelehnt.");}
+    setForming(null);await load();return null;}
 
   async function testInvoke(fn:FunctionDefinitionItem){
     setMessage(`${fn.name} läuft…`);
@@ -95,8 +86,9 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
   if(state==="unavailable")return <div className="console-card live-module-state"><Webhook size={26}/><h3>{t("Compute nicht aktiviert")}</h3><p>{message}</p><button className="secondary-button" onClick={()=>void load()}><RefreshCw size={14}/> {t("Noch einmal")}</button></div>;
 
   return <div className="module-grid">
-    <article className="console-card span-2"><div className="card-head"><div><span>FUNCTIONS · {environment.toUpperCase()}</span><h3>{t("Ausführung in der Sandbox")}</h3></div><button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> {t("Neue Function")}</button></div>
-      {functions.length===0&&<InlineEmptyState text={t("Noch keine Function in dieser Umgebung. Eine Function stellt serverseitige Logik bereit, ohne dass du einen eigenen Server betreiben musst. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.")} action={<button className="button small" onClick={()=>void createFunction()}><Plus size={14}/> {t("Erste Function anlegen")}</button>}/>}
+    <article className="console-card span-2"><div className="card-head"><div><span>FUNCTIONS · {environment.toUpperCase()}</span><h3>{t("Ausführung in der Sandbox")}</h3></div><button className="button small" onClick={()=>setForming("function")}><Plus size={14}/> {t("Neue Function")}</button></div>
+      {forming==="function"&&<FormPanel key="function" title={t("Neue Function")} submitLabel={t("Anlegen")} fields={functionFields()} onCancel={()=>setForming(null)} onSubmit={(values)=>submitForm("/functions",functionBody(values))}/>}
+      {functions.length===0&&<InlineEmptyState text={t("Noch keine Function in dieser Umgebung. Eine Function stellt serverseitige Logik bereit, ohne dass du einen eigenen Server betreiben musst. Das Image muss per Digest festgelegt sein; die Sandbox startet es ohne Netz, nur lesend, ohne Root und mit harter Speichergrenze.")} action={<button className="button small" onClick={()=>setForming("function")}><Plus size={14}/> {t("Erste Function anlegen")}</button>}/>}
       {functions.map(fn=><div className="bucket-row" key={fn.id}><span className="bucket-icon"><Blocks size={16}/></span>
         <div><strong>{fn.name}</strong><small>{fn.entrypoint} · {fn.memoryMiB} MiB · {fn.timeoutMs} ms · {fn.egressOrigins.length?`${fn.egressOrigins.length} Ausgangsziele (noch nicht ausführbar)`:t("kein Ausgang")}{fn.secretRefs.length?` · ${fn.secretRefs.length} Secret-Referenzen`:""}</small></div>
         <span className={fn.enabled?"secure":"muted"}>{fn.enabled?t("aktiv"):t("pausiert")}</span>
@@ -104,9 +96,10 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
         <button className="plain-button" onClick={()=>void mutate(`/functions/${fn.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:!fn.enabled})})}><StableLabel current={fn.enabled?t("Pausieren"):t("Aktivieren")} variants={tAll("Pausieren", "Aktivieren")}/></button>
         <DangerousAction label={t("Löschen")} title={`${t("Function löschen")}: ${fn.name}`} consequence={t("Die Function verschwindet samt Image, Grenzen und Secret-Referenzen. Jeder Cron-Job und jeder Aufruf, der auf diesen Namen zeigt, bricht danach.")} confirmName={fn.name} onConfirm={()=>void mutate(`/functions/${fn.id}`,{method:"DELETE"})}/></div>)}
     </article>
-    <article className="console-card span-2"><div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><button className="button small" onClick={()=>void createCron()}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div>
+    <article className="console-card span-2"><div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><button className="button small" onClick={()=>setForming("cron")}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div>
+      {forming==="cron"&&<FormPanel key="cron" title={t("Neuer Cron-Job")} submitLabel={t("Anlegen")} fields={cronFields()} onCancel={()=>setForming(null)} onSubmit={(values)=>submitForm("/cron",cronBody(values))}/>}
       {message&&<p className="muted">{message}</p>}
-      {cron.length===0&&<InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={()=>void createCron()}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
+      {cron.length===0&&<InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={()=>setForming("cron")}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
       {cron.map(job=><div className="bucket-row" key={job.id}><span className="bucket-icon"><Zap size={16}/></span>
         <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone??"UTC"} → {job.queue} · {job.lastDispatchedAt?`zuletzt ${formatMoment(job.lastDispatchedAt)}`:t("noch nie eingereiht")}</small></div>
         <span className={job.enabled?"secure":"muted"}>{job.enabled?t("aktiv"):t("pausiert")}</span>
@@ -115,8 +108,9 @@ export function ComputeView({projectId,environment, initialState}:{projectId:str
     </article>
     <article className="console-card"><div className="card-head"><div><span>{t("ZUSTELLVERTRAG")}</span><h3>{t("Signiert und bestätigt")}</h3></div><ShieldCheck className="secure" size={21}/></div>
       <p className="muted">{t("Jede Zustellung ist mit HMAC-SHA256 über Zeitstempel und Body signiert. Der Empfänger muss 2xx antworten")} <em>{t("und")}</em> {t("den Header")} <code>{"x-qkern-delivery-id"}</code> {t("zurückgeben, sonst zählt der Versuch als fehlgeschlagen und der Server entscheidet über die Wiederholung. Payloads erscheinen hier nie.")}</p></article>
-    <article className="console-card span-2"><div className="card-head"><div><span>WEBHOOKS · {environment.toUpperCase()}</span><h3>{t("Ziele für ausgehende Zustellungen")}</h3></div><button className="button small" onClick={()=>void createWebhook()}><Plus size={14}/> {t("Neuer Webhook")}</button></div>
-      {webhooks.length===0&&<InlineEmptyState text={t("Noch kein Webhook in dieser Umgebung. Ein Webhook meldet Ereignisse dieses Projekts an ein Ziel ausserhalb. Ziele müssen exakte öffentliche HTTPS-URLs auf Port 443 sein, ohne Query und Fragment. Dieselbe Regel prüft der Zusteller, also wird ein hier angenommenes Ziel später nicht abgelehnt.")} action={<button className="button small" onClick={()=>void createWebhook()}><Plus size={14}/> {t("Ersten Webhook anlegen")}</button>}/>}
+    <article className="console-card span-2"><div className="card-head"><div><span>WEBHOOKS · {environment.toUpperCase()}</span><h3>{t("Ziele für ausgehende Zustellungen")}</h3></div><button className="button small" onClick={()=>setForming("webhook")}><Plus size={14}/> {t("Neuer Webhook")}</button></div>
+      {forming==="webhook"&&<FormPanel key="webhook" title={t("Neuer Webhook")} submitLabel={t("Anlegen")} fields={webhookFields()} onCancel={()=>setForming(null)} onSubmit={(values)=>submitForm("/webhooks",webhookBody(values))}/>}
+      {webhooks.length===0&&<InlineEmptyState text={t("Noch kein Webhook in dieser Umgebung. Ein Webhook meldet Ereignisse dieses Projekts an ein Ziel ausserhalb. Ziele müssen exakte öffentliche HTTPS-URLs auf Port 443 sein, ohne Query und Fragment. Dieselbe Regel prüft der Zusteller, also wird ein hier angenommenes Ziel später nicht abgelehnt.")} action={<button className="button small" onClick={()=>setForming("webhook")}><Plus size={14}/> {t("Ersten Webhook anlegen")}</button>}/>}
       {webhooks.map(hook=><div key={hook.id}>
         <div className="bucket-row"><span className="bucket-icon"><Webhook size={16}/></span>
           <div><strong>{hook.name}</strong><small>{hook.url} · {hook.eventTypes.join(", ")} · {hook.maxAttempts} Versuche · Schlüssel {hook.signingSecretRef}</small></div>

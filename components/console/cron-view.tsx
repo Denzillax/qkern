@@ -5,6 +5,8 @@ import { Clock3, Plus, RefreshCw } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { serverErrorText } from "@/components/console/server-errors";
 import { DangerousAction } from "@/components/console/dangerous-action";
+import { FormPanel } from "@/components/console/form-panel";
+import { cronBody, cronFields } from "@/components/console/compute-form-fields";
 import { InlineEmptyState } from "@/components/console/console-parts";
 import { formatMoment } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
@@ -25,6 +27,7 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "unavailable" | "error">(initialState ?? "loading");
   const [message, setMessage] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setMessage("");
@@ -44,13 +47,16 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
     const payload = await response.json().catch(() => ({}));
     setMessage(serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt."));
   }
-  async function create() {
-    const name = window.prompt(t("Name des Cron-Jobs (Kleinbuchstaben, Ziffern, Bindestrich)"), "nightly-report"); if (!name) return;
-    const expression = window.prompt(t("Ausdruck: fünf Felder, Namen wie MON-FRI oder JAN, oder ein Kürzel wie @daily"), "*/15 * * * *"); if (!expression) return;
-    // Die Zeitzone gehoert zum Plan (2.66). Leer heisst UTC, wie bei jedem Plan von vorher.
-    const timeZone = window.prompt(t("Zeitzone des Zeitplans (IANA-Name wie Europe/Berlin)"), "UTC"); if (timeZone === null) return;
-    const queue = window.prompt(t("Bestehende Projekt-Queue"), "email_jobs"); if (!queue) return;
-    await mutate("/cron", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), expression: expression.trim(), queue: queue.trim(), timeZone: timeZone.trim() || "UTC" }) });
+  // Ein Formular statt vier `window.prompt` nacheinander (2.166).
+  async function create(values: Record<string, string>): Promise<string | null> {
+    const response = await fetch(`${base}/cron`, { method: "POST", headers: { "Content-Type": "application/json" }, body: cronBody(values) });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return serverErrorText(payload.error) ?? t("Die Änderung wurde abgelehnt.");
+    }
+    setCreating(false);
+    await load();
+    return null;
   }
 
   if (state === "loading") return <div className="console-card live-module-state"><RefreshCw size={24}/><h3>{t("Cron-Jobs werden geladen…")}</h3></div>;
@@ -63,9 +69,10 @@ export function CronView({ projectId, environment, initialState }: { projectId: 
       <div><span>{t("PAUSIERT")}</span><strong>{jobs.filter((job) => !job.enabled).length}</strong><small>{t("warten")}</small></div>
     </article>
     <article className="console-card span-2">
-      <div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div></div>
+      <div className="card-head"><div><span>CRON · {environment.toUpperCase()}</span><h3>{t("Geplante Einreihung")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="button small" onClick={() => setCreating(true)}><Plus size={14}/> {t("Neuer Cron-Job")}</button></div></div>
+      {creating && <FormPanel title={t("Neuer Cron-Job")} submitLabel={t("Anlegen")} fields={cronFields()} onCancel={() => setCreating(false)} onSubmit={create}/>}
       {message && <p className="muted">{message}</p>}
-      {jobs.length === 0 && <InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
+      {jobs.length === 0 && <InlineEmptyState text={t("Noch kein Cron-Job in dieser Umgebung. Ein Job reiht zu festen Terminen eine Nachricht ein, damit etwas ohne Zutun läuft. Jeder Termin landet mit festem Dedupe-Schlüssel in einer bestehenden Projekt-Queue, damit zwei Scheduler genau eine Nachricht erzeugen.")} action={<button className="button small" onClick={() => setCreating(true)}><Plus size={14}/> {t("Ersten Cron-Job anlegen")}</button>}/>}
       {jobs.map((job) => <div className="bucket-row" key={job.id}><span className="bucket-icon"><Clock3 size={16}/></span>
         <div><strong>{job.name}</strong><small>{job.expression} {job.timeZone ?? "UTC"} → {job.queue} · {job.lastDispatchedAt ? `${t("zuletzt")} ${formatMoment(job.lastDispatchedAt)}` : t("noch nie eingereiht")}</small></div>
         <span className={job.enabled ? "secure" : "muted"}>{job.enabled ? t("aktiv") : t("pausiert")}</span>

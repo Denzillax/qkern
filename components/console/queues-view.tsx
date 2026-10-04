@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Inbox, Plus, RefreshCw, RotateCcw, Route } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { serverErrorText } from "@/components/console/server-errors";
+import { FormPanel } from "@/components/console/form-panel";
 import { formatMoment, formatNumber } from "@/components/console/console-display";
 import { StableLabel } from "@/components/stable-label";
 import { tAll } from "@/components/console/console-i18n";
@@ -66,6 +67,9 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
   const [busy, setBusy] = useState("");
   const [trace, setTrace] = useState<Trace | null>(null);
   const [search, setSearch] = useState<TraceSearch | null>(null);
+  // Welches Formular offen ist (2.166): eine neue Queue, die Spur einer
+  // Nachricht in einer bestimmten Queue, oder die Suche nach einer Spur-Id.
+  const [form, setForm] = useState<{ kind: "create" } | { kind: "lookup"; queue: string } | { kind: "search" } | null>(null);
 
   const load = useCallback(async () => {
     setState("loading"); setMessage("");
@@ -87,12 +91,12 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
   }, [base]);
   useEffect(() => { void load(); }, [load]);
 
-  async function create() {
-    const name = window.prompt(t("Name der Queue (Kleinbuchstaben, Ziffern, Bindestrich oder Unterstrich, 3 bis 63 Zeichen)"), "email_jobs");
-    if (!name) return;
-    const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
-    if (!response.ok) { const payload = await response.json().catch(() => ({})); setMessage(serverErrorText(payload.error) ?? t("Queue konnte nicht angelegt werden")); return; }
+  async function create(values: Record<string, string>): Promise<string | null> {
+    const response = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: values.name.trim() }) });
+    if (!response.ok) { const payload = await response.json().catch(() => ({})); return serverErrorText(payload.error) ?? t("Queue konnte nicht angelegt werden"); }
+    setForm(null);
     await load();
+    return null;
   }
 
   /**
@@ -104,16 +108,22 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
    * holen. Wer eine Spur sucht, hat die Id aus der Quittung.
    */
   async function showTrace(queueName: string, messageId: string | null) {
-    const id = (messageId ?? window.prompt(t("Nachrichten-Id, deren Spur Sie sehen wollen"), "") ?? "").trim();
-    if (!id) return;
-    if (trace?.messageId === id) { setTrace(null); return; }
+    // Ohne bekannte Id oeffnet sich das Formular (2.166), vorher ein Prompt.
+    if (messageId === null) { setForm({ kind: "lookup", queue: queueName }); return; }
+    if (trace?.messageId === messageId) { setTrace(null); return; }
+    const error = await loadTrace(queueName, messageId);
+    if (error) setMessage(error);
+  }
+
+  async function loadTrace(queueName: string, id: string): Promise<string | null> {
     setBusy(id);
     const response = await fetch(`${base}/${queueName}/messages/${encodeURIComponent(id)}/trace`, { cache: "no-store" });
     setBusy("");
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setTrace(null); setMessage(serverErrorText(payload.error) ?? t("Spur nicht verfügbar")); return; }
+    if (!response.ok) { setTrace(null); return serverErrorText(payload.error) ?? t("Spur nicht verfügbar"); }
     setMessage("");
     setTrace(payload.data as Trace);
+    return null;
   }
 
   /**
@@ -124,11 +134,11 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
    * Cursor der Antwort, und angehaengt statt ersetzt — wer blaettert, will mehr
    * sehen und nicht etwas anderes.
    */
-  async function searchTrace(cursor: string | null) {
-    const traceId = cursor === null
-      ? (window.prompt(t("Spur-Id (32 Hex-Zeichen, klein), deren Nachrichten Sie sehen wollen"), "") ?? "").trim()
-      : search!.traceId;
-    if (!traceId) return;
+  async function searchTrace(cursor: string | null, typed?: string): Promise<string | null> {
+    // Die erste Seite fragt die Id im Formular ab (2.166), vorher ein Prompt.
+    if (cursor === null && typed === undefined) { setForm({ kind: "search" }); return null; }
+    const traceId = cursor === null ? (typed ?? "").trim() : search!.traceId;
+    if (!traceId) return null;
     const query = new URLSearchParams({ traceId, limit: "20" });
     if (cursor !== null) query.set("cursor", cursor);
     const response = await fetch(
@@ -136,10 +146,17 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
       { cache: "no-store" },
     );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) { setSearch(null); setMessage(serverErrorText(payload.error) ?? t("Suche nach der Spur nicht verfügbar")); return; }
+    if (!response.ok) {
+      setSearch(null);
+      const error = serverErrorText(payload.error) ?? t("Suche nach der Spur nicht verfügbar");
+      if (cursor === null) return error;
+      setMessage(error);
+      return null;
+    }
     setMessage("");
     const page = payload.data as TraceSearch;
     setSearch(cursor === null ? page : { ...page, messages: [...search!.messages, ...page.messages] });
+    return null;
   }
 
   async function showDeadLetters(queue: QueueItem) {
@@ -193,9 +210,17 @@ export function QueuesView({ projectId, environment, initialState }: { projectId
       <div><span>{t("DEAD LETTERS")}</span><strong>{totals.deadLettered}</strong><small>{totals.inFlight} {t("in Bearbeitung")}</small></div>
     </article>
     <article className="console-card span-2">
-      <div className="card-head"><div><span>{t("PROJECT QUEUES")} · {environment.toUpperCase()}</span><h3>{t("Queues des Projekts")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="secondary-button" onClick={() => void searchTrace(null)}><Route size={14}/> {t("Spur suchen")}</button><button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Neue Queue")}</button></div></div>
+      <div className="card-head"><div><span>{t("PROJECT QUEUES")} · {environment.toUpperCase()}</span><h3>{t("Queues des Projekts")}</h3></div><div><button className="secondary-button" onClick={() => void load()}><RefreshCw size={14}/> {t("Neu laden")}</button><button className="secondary-button" onClick={() => void searchTrace(null)}><Route size={14}/> {t("Spur suchen")}</button><button className="button small" onClick={() => setForm({ kind: "create" })}><Plus size={14}/> {t("Neue Queue")}</button></div></div>
+      {form?.kind === "create" && <FormPanel key="create" title={t("Neue Queue")} submitLabel={t("Anlegen")} onCancel={() => setForm(null)} onSubmit={create}
+        fields={[{ name: "name", label: t("Name der Queue (Kleinbuchstaben, Ziffern, Bindestrich oder Unterstrich, 3 bis 63 Zeichen)"), placeholder: "email_jobs", required: true, mono: true }]}/>}
+      {form?.kind === "lookup" && <FormPanel key={`lookup-${form.queue}`} title={`${t("Spur")} · ${form.queue}`} submitLabel={t("Spur")} onCancel={() => setForm(null)}
+        onSubmit={async (values) => { const error = await loadTrace(form.queue, values.id.trim()); if (!error) setForm(null); return error; }}
+        fields={[{ name: "id", label: t("Nachrichten-Id, deren Spur du sehen willst"), required: true, mono: true }]}/>}
+      {form?.kind === "search" && <FormPanel key="search" title={t("Spur suchen")} submitLabel={t("Spur suchen")} onCancel={() => setForm(null)}
+        onSubmit={async (values) => { const error = await searchTrace(null, values.traceId); if (!error) setForm(null); return error; }}
+        fields={[{ name: "traceId", label: t("Spur-Id (32 Hex-Zeichen, klein), deren Nachrichten du sehen willst"), required: true, mono: true }]}/>}
       {message && <p className="muted">{message}</p>}
-      {queues.length === 0 && <InlineEmptyState text={t("Noch keine Queue in dieser Umgebung. Eine Queue nimmt Nachrichten an, vergibt Leases an Worker und legt fehlgeschlagene Nachrichten nach dem letzten Versuch als Dead Letter ab.")} action={<button className="button small" onClick={() => void create()}><Plus size={14}/> {t("Erste Queue anlegen")}</button>}/>}
+      {queues.length === 0 && <InlineEmptyState text={t("Noch keine Queue in dieser Umgebung. Eine Queue nimmt Nachrichten an, vergibt Leases an Worker und legt fehlgeschlagene Nachrichten nach dem letzten Versuch als Dead Letter ab.")} action={<button className="button small" onClick={() => setForm({ kind: "create" })}><Plus size={14}/> {t("Erste Queue anlegen")}</button>}/>}
       {queues.map((queue) => { const s = status[queue.name]; return <div key={queue.id}>
         <div className="bucket-row"><span className="bucket-icon"><Inbox size={16}/></span>
           <div><strong>{queue.name}</strong><small>{queue.enqueuePolicy === "service" ? t("nur Service Key") : t("angemeldete Nutzer")} · {queue.maxAttempts} {t("Versuche")} · {t("Lease")} {queue.visibilityTimeoutSeconds} s · {t("Retry")} {queue.retryBaseSeconds}–{queue.retryMaxSeconds} s{queue.dedupeWindowSeconds ? ` · ${t("Dedupe")} ${queue.dedupeWindowSeconds} s` : ""}</small></div>

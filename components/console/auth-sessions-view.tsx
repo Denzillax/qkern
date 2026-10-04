@@ -64,8 +64,12 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
   }, [base, loadSessions]);
   useEffect(() => { void load(); }, [load]);
 
+  // Bestaetigt wird in der Seite statt ueber `window.confirm` (2.166): Der
+  // Knopf merkt sich, was beendet werden soll, und ein Bereich darueber fragt.
+  const [confirming, setConfirming] = useState<Session | "all" | null>(null);
+
   async function revoke(session: Session) {
-    if (!window.confirm(t("Diese Sitzung beenden? Die App muss sich danach neu anmelden."))) return;
+    setConfirming(null);
     setBusy(session.id);
     try {
       const response = await fetch(`${base}/${selected}/sessions/${session.id}`, { method: "DELETE" });
@@ -76,7 +80,7 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
   }
 
   async function revokeAll() {
-    if (!window.confirm(t("Alle Sitzungen dieses Nutzers beenden? Er wird überall abgemeldet, bleibt aber aktiv."))) return;
+    setConfirming(null);
     setBusy("all");
     try {
       const response = await fetch(`${base}/${selected}/sessions`, { method: "DELETE" });
@@ -119,11 +123,18 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
               hint: user.status === "disabled" ? t("Deaktiviert; das Sperren hat seine Sitzungen beendet.") : undefined,
             }))}/>
           <button className="secondary-button" onClick={() => void loadSessions(selected)} disabled={!selected}><RefreshCw size={14}/> {t("Neu laden")}</button>
-          <button className="secondary-button" onClick={() => void revokeAll()} disabled={!selected || sessions.length === 0 || busy !== ""}><LogOut size={14}/> <StableLabel current={busy === "all" ? t("Wird beendet…") : t("Alle Sitzungen beenden")} variants={tAll("Wird beendet…", "Alle Sitzungen beenden")}/></button>
+          <button className="secondary-button" onClick={() => setConfirming("all")} disabled={!selected || sessions.length === 0 || busy !== ""}><LogOut size={14}/> <StableLabel current={busy === "all" ? t("Wird beendet…") : t("Alle Sitzungen beenden")} variants={tAll("Wird beendet…", "Alle Sitzungen beenden")}/></button>
         </div>
       </div>
       {users.length === 0 && <p className="muted">{t("Noch keine Nutzer. Sie kommen über Signup, Magic Link oder OIDC herein.")}</p>}
       {message && <p className="muted">{message}</p>}
+      {confirming && <div className="danger-confirm" role="group" aria-label={confirming === "all" ? t("Alle Sitzungen beenden") : t("Sitzung beenden")}>
+        <p><strong>{confirming === "all" ? t("Alle Sitzungen dieses Nutzers beenden? Er wird überall abgemeldet, bleibt aber aktiv.") : t("Diese Sitzung beenden? Die App muss sich danach neu anmelden.")}</strong></p>
+        <div className="danger-confirm-actions">
+          <button type="button" className="danger-button" onClick={() => void (confirming === "all" ? revokeAll() : revoke(confirming))}><LogOut size={13}/> {confirming === "all" ? t("Alle Sitzungen beenden") : t("Sitzung beenden")}</button>
+          <button type="button" className="secondary-button" onClick={() => setConfirming(null)}>{t("Abbrechen")}</button>
+        </div>
+      </div>}
       {current && sessions.length === 0 && !message && <div className="live-module-state compact"><LogOut size={24}/><p>{t("Dieser Nutzer hat gerade keine aktive Sitzung. Eine Sitzung entsteht, wenn er sich in deiner Anwendung anmeldet, und verschwindet beim Abmelden oder mit dem Ablauf ihres Refresh-Tokens.")}</p></div>}
       {sessions.length > 0 && <div className="log-row log-header" style={columns}><span>{t("Erstellt")}</span><span>{t("Läuft ab")}</span><span>{t("Anmeldung")}</span><span>{t("Familie")}</span><span/></div>}
       {sessions.map((session) => <div className="log-row" key={session.id} style={columns}>
@@ -131,7 +142,7 @@ export function AuthSessionsView({ projectId, environment, initialState }: { pro
         <time>{format(session.expiresAt)}</time>
         <span className={session.assurance === "aal2" ? "secure" : ""}>{assurance(session.assurance)}</span>
         <code title={session.familyId}>{session.familyId.slice(0, 8)}</code>
-        <span><button className="plain-button" onClick={() => void revoke(session)} disabled={busy !== ""}><StableLabel current={busy === session.id ? t("Wird beendet…") : t("Sitzung beenden")} variants={tAll("Wird beendet…", "Sitzung beenden")}/></button></span>
+        <span><button className="plain-button" onClick={() => setConfirming(session)} disabled={busy !== ""}><StableLabel current={busy === session.id ? t("Wird beendet…") : t("Sitzung beenden")} variants={tAll("Wird beendet…", "Sitzung beenden")}/></button></span>
       </div>)}
     </article>
   </div>;

@@ -29,6 +29,7 @@ import { UsageSeriesView } from "@/components/console/usage-series-view";
 import { CheckIcon, EmptyState, ErrorState, InlineEmptyState } from "@/components/console/console-parts";
 import { CopyValue } from "@/components/console/copy-value";
 import { DangerousAction } from "@/components/console/dangerous-action";
+import { FormPanel } from "@/components/console/form-panel";
 import { Database } from "lucide-react";
 
 /**
@@ -232,6 +233,17 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
   DangerousAction: [element(DangerousAction, {
     label: "Delete", title: "Delete the bucket", consequence: "The bucket and its name disappear.",
     confirmName: "assets", onConfirm: () => {},
+  })],
+  // 2.166: Das Formular, das statt `window.prompt` aufklappt. Ein Pflichtfeld,
+  // ein freiwilliges mit Vorbelegung und Hinweis, eines mehrzeilig, damit
+  // jede Form eines Felds einmal gerendert wird.
+  FormPanel: [element(FormPanel, {
+    title: "New bucket", submitLabel: "Create", onCancel: () => {}, onSubmit: async () => null,
+    fields: [
+      { name: "name", label: "Bucket name", placeholder: "project-assets", required: true, mono: true },
+      { name: "zone", label: "Time zone", initial: "UTC", hint: "IANA name" },
+      { name: "json", label: "Values", multiline: true, initial: "{}" },
+    ],
   })],
   ApprovalView: [element(ApprovalView, { ...DEFAULT_PROPS, approvals: SNAPSHOT.approvals, changes: SNAPSHOT.changeSets, reload: async () => {} })],
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],

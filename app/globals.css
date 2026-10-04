@@ -1872,3 +1872,21 @@ input[type="checkbox"], input[type="radio"] {
 .crumb-workspace { flex: 0 3 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 .console-crumb > strong { flex: 0 1 auto; min-width: 60px; }
 .user-chip > span { flex: none; }
+
+/* 2.166: Das Formular, das statt `window.prompt` aufklappt. Dieselbe Familie
+   wie `.danger-confirm`, nur mit dem Akzent statt der Warnfarbe. */
+.form-panel { display: grid; gap: 12px; padding: 16px; margin: 12px 0; border: 1px solid color-mix(in srgb, var(--qkern-primary) 40%, var(--qkern-border)); border-radius: 12px; background: color-mix(in srgb, var(--qkern-primary) 5%, var(--qkern-surface)); }
+.form-panel h4 { margin: 0; font-size: 14px; color: var(--qkern-text); }
+.form-panel label { display: grid; gap: 5px; font-size: 12px; color: var(--qkern-text); }
+.form-panel label > span { font-weight: 600; }
+.form-panel label em { font-style: normal; font-weight: 400; color: var(--qkern-text-muted); }
+.form-panel input, .form-panel textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--qkern-border); border-radius: 9px; background: var(--qkern-surface); color: var(--qkern-text); font: 13px/1.4 var(--qkern-font-sans); }
+.form-panel .mono { font-family: var(--qkern-font-mono); font-size: 12px; }
+.form-panel input:focus-visible, .form-panel textarea:focus-visible { outline: 2px solid var(--qkern-accent-text); outline-offset: 1px; }
+.form-panel small { color: var(--qkern-text-muted); font-size: 12px; line-height: 1.45; }
+.form-panel-error { margin: 0; color: var(--qkern-danger); font-size: 12px; font-weight: 600; }
+.form-panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Seit die Workspace-Angabe kuerzen kann (2.165), ist sie kein Flex mehr, und
+   ihr Symbol klebte am Namen. Die Abstaende stehen jetzt an den Teilen. */
+.crumb-workspace > svg { margin-right: 6px; vertical-align: -2px; }
+.crumb-workspace > small { margin-left: 8px; }
