@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import { serverErrorText, serverErrorTexts } from "@/components/console/server-errors";
 import { CONSOLE_TRANSLATIONS } from "@/lib/i18n/console";
+import { projectStorageRouteError } from "@/lib/server/project-storage/http";
+import { ProjectStorageError, type ProjectStorageErrorCode } from "@/lib/server/project-storage/service";
+import { computeRouteError } from "@/lib/server/compute/definitions-http";
+import { ComputeDefinitionError } from "@/lib/server/compute/definitions";
 
 /**
  * Die Meldungen des Servers in der Sprache der Console (2.160).
@@ -64,5 +68,30 @@ describe("console server errors contract", () => {
       for (const pattern of raw) if (pattern.test(text)) offenders.push(`${name}: ${pattern.source.slice(0, 30)}`);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("translates every rejection the storage and compute routes really send", async () => {
+    // 2.171: Statt Annahmen ueber die Texte laeuft jeder Fehlercode durch die
+    // echte Abbildung der Route. So fiel auf, dass gerade die Ablehnungen
+    // englisch blieben, die ein Formular am ehesten bekommt: ein Bucket oder
+    // Cron-Job mit vergebenem Namen ("... conflict").
+    const storage: ProjectStorageErrorCode[] = [
+      "PROJECT_STORAGE_DISABLED", "STORAGE_INVALID_INPUT", "STORAGE_RESOURCE_NOT_FOUND", "STORAGE_ACCESS_DENIED",
+      "STORAGE_CONFLICT", "STORAGE_QUOTA_EXCEEDED", "STORAGE_INVALID_TOKEN", "STORAGE_OBJECT_NOT_READY",
+      "STORAGE_OBJECT_INFECTED", "STORAGE_PROVIDER_UNAVAILABLE",
+      // Nicht dabei: STORAGE_UPLOAD_NOT_FOUND, STORAGE_PART_ORDER und
+      // STORAGE_PART_UNKNOWN. Sie gehoeren zum Multipart-Protokoll, das ein
+      // Client fuehrt und nicht die Console; ihre Texte bleiben, wie sie sind.
+    ];
+    const untranslated: string[] = [];
+    for (const code of storage) {
+      const error = (await projectStorageRouteError(new ProjectStorageError(code)).json()).error as string;
+      if (serverErrorText(error) === error) untranslated.push(`${code}: ${error}`);
+    }
+    for (const code of ["COMPUTE_INVALID_INPUT", "COMPUTE_NOT_FOUND", "COMPUTE_CONFLICT", "COMPUTE_PRECONDITION_FAILED", "COMPUTE_AT_CAPACITY", "COMPUTE_QUOTA_EXCEEDED"] as const) {
+      const error = (await computeRouteError(new ComputeDefinitionError(code)).json()).error as string;
+      if (serverErrorText(error) === error) untranslated.push(`${code}: ${error}`);
+    }
+    expect(untranslated).toEqual([]);
   });
 });

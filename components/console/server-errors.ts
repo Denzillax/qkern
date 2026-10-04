@@ -42,6 +42,15 @@ const EXACT: Record<string, string> = {
   "Production apply is not authorized": "Für Production fehlt die Berechtigung zum Anwenden.",
   "Views are read-only": "Eine View lässt sich nur lesen.",
   "A row-level security policy rejected the write": "Eine Policy der Tabelle hat das Schreiben abgelehnt.",
+  // Die Ablehnungen, die ein Formular am ehesten bekommt (2.171), gefunden,
+  // indem jeder Fehlercode von Storage und Compute durch die echte Abbildung
+  // der Route lief. Ein Konflikt hat drei Ursachen, und der Satz nennt alle.
+  "Storage conflict": "Das widerspricht dem, was schon da ist: Der Name ist vergeben, die Höchstzahl ist erreicht, oder jemand hat dasselbe gleichzeitig geändert.",
+  "Compute definition conflict": "Das widerspricht dem, was schon da ist: Der Name ist vergeben, die Höchstzahl ist erreicht, oder jemand hat dasselbe gleichzeitig geändert.",
+  "Disable the webhook before deleting it": "Schalte den Webhook zuerst ab, dann lässt er sich löschen.",
+  "The usage quota for function invocations is exhausted": "Das Kontingent für Function-Aufrufe ist ausgeschöpft.",
+  "Object is quarantined or not ready": "Das Objekt ist noch in Quarantäne oder nicht fertig hochgeladen.",
+  "Object was rejected": "Das Objekt wurde abgelehnt, weil der Scanner es nicht freigegeben hat.",
 };
 
 const INVALID = "Die Anfrage wurde abgelehnt, weil ein Wert fehlt oder ungültig ist.";
