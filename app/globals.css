@@ -1829,3 +1829,46 @@ input[type="checkbox"], input[type="radio"] {
    "Service Key". Das traf jedes Auswahlmenue, auch Umgebung und Modus oben.
    Die Hoehe des Knopfs ist fest und bleibt. */
 .option-field .stable-label, .option-field .stable-label > span { line-height: 1.4; }
+
+/* 2.165: Lange Namen. Bis hierher sah der Nachbau nur kurze, freundliche
+   Daten. Mit einem Projektnamen von 60 Zeichen, einer Tabelle mit 30 Spalten
+   und Bezeichnern wie `bestellpositionen_mit_rabattstaffel_und_lieferfenster`
+   zeigten sich drei Fehler, die mit kurzen Namen nicht auftreten:
+
+   1. `StableLabel` zentriert seinen Text. Ist er breiter als der Kasten, ragt
+      er nach beiden Seiten hinaus, und die Auslassungspunkte greifen nicht.
+      Der Projektwechsler zeigte "neshop Produl". In einem Auswahlfeld steht
+      der Text darum links.
+   2. Die Werkzeugleiste der Zeilen brach erst unter 760 Pixeln um; bei 1024
+      lagen zwei Knoepfe ausserhalb der Karte.
+   3. Bezeichner ohne Leerzeichen liefen bei 390 Pixeln ueber den Kartenrand,
+      und die E-Mail in der Kontozeile war ohne Auslassungspunkte gekappt. */
+.option-field .stable-label { justify-items: start; }
+.table-toolbar { flex-wrap: wrap; row-gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+.table-toolbar .option-field, .toolbar-fixed-table { max-width: 100%; min-width: 0; }
+.toolbar-fixed-table > code { overflow-wrap: anywhere; }
+.card-head > div { min-width: 0; }
+.card-head h3, .bucket-row strong, .data-row strong, .settings-groups-head h2 { overflow-wrap: anywhere; }
+.bucket-row > div, .data-row > div { min-width: 0; }
+.user-chip > div { min-width: 0; }
+.user-chip strong, .user-chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-kicker { overflow-wrap: anywhere; }
+/* Auf dem Handy stehen Belegung und Knopf unter dem Namen. Bei 390 Pixeln
+   blieben neben ihnen 50 Pixel fuer Name und Regeln eines Buckets. */
+@media (max-width: 760px) {
+  .bucket-row { grid-template-columns: 38px minmax(0, 1fr); row-gap: 8px; padding: 10px 0; }
+  .bucket-row > :nth-child(n+3) { grid-column: 2; justify-self: start; }
+}
+/* Ein Auswahlfeld kuerzt nur, wenn die Spalte seines Labels kuerzen darf. Das
+   Raster von `StableLabel` war so breit wie die laengste Variante, und der
+   Projektwechsler zeigte "Nova Market !" statt Auslassungspunkten. */
+.option-field .stable-label { grid-template-columns: minmax(0, 1fr); }
+.option-field .stable-label > span { min-width: 0; max-width: 100%; }
+/* Die Kontozeile wuchs mit der E-Mail auf 292 Pixel in einer 232 Pixel
+   breiten Seitenleiste. */
+.sidebar-bottom > *, .sidebar-bottom .user-chip { min-width: 0; max-width: 100%; }
+.user-chip > div { flex: 1 1 auto; }
+/* Ein langer Workspace-Name gibt zuerst nach; der Projektname behaelt Platz. */
+.crumb-workspace { flex: 0 3 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+.console-crumb > strong { flex: 0 1 auto; min-width: 60px; }
+.user-chip > span { flex: none; }

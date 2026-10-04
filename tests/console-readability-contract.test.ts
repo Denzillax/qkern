@@ -170,4 +170,21 @@ describe("console readability contract", () => {
     const css = await readFile(CSS, "utf8");
     expect(css).toMatch(/\.option-field \.stable-label, \.option-field \.stable-label > span \{ line-height: 1\.4; \}/);
   });
+
+  it("shortens long names instead of letting them leave their box", async () => {
+    // Gesehen erst mit Belastungsdaten (2.165): Projektname mit 60 Zeichen,
+    // Bezeichner ohne Leerzeichen, eine Tabelle mit 30 Spalten.
+    const css = await readFile(CSS, "utf8");
+    // Ein zentriertes, unbeschraenktes Label ragte nach beiden Seiten hinaus.
+    expect(css).toMatch(/\.option-field \.stable-label \{ justify-items: start; \}/);
+    expect(css).toMatch(/\.option-field \.stable-label \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+    // Die Kontozeile wuchs auf 292 Pixel in einer 232 Pixel breiten Leiste.
+    expect(css).toMatch(/\.sidebar-bottom > \*, \.sidebar-bottom \.user-chip \{ min-width: 0; max-width: 100%; \}/);
+    // Die Werkzeugleiste der Zeilen bricht in jeder Breite um.
+    expect(css).toMatch(/\.table-toolbar \{ flex-wrap: wrap;/);
+    // Auf dem Handy stehen Belegung und Knopf unter dem Namen des Buckets.
+    expect(css).toMatch(/\.bucket-row > :nth-child\(n\+3\) \{ grid-column: 2;/);
+    // Ein langer Workspace gibt in der Kopfzeile zuerst nach.
+    expect(css).toMatch(/\.crumb-workspace \{ flex: 0 3 auto;[^}]*text-overflow: ellipsis/);
+  });
 });
