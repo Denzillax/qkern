@@ -1899,3 +1899,12 @@ input[type="checkbox"], input[type="radio"] {
    darum den hellen Akzent fest. */
 button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--qkern-accent-text); outline-offset: 2px; }
 .console-sidebar :focus-visible { outline-color: #5b9bff; }
+
+/* 2.169: Die Befehlspalette als Dialog. Die gewaehlte Zeile ist sichtbar,
+   ohne dass die Maus darueber stehen muss, und traegt den Text-Akzent; die
+   Knopffarbe auf ihrer eigenen Flaeche war im dunklen Modus kaum lesbar. Der
+   Knopf "Esc" stand bei 7 Pixeln. */
+.command-results button.is-active, .command-results button:hover { background: var(--qkern-primary-muted); color: var(--qkern-text); }
+.command-results button.is-active svg:last-child { color: var(--qkern-accent-text); }
+.command-input button { font-size: 11px; padding: 4px 8px; }
+.command-results p { margin: 8px 10px 12px; font-size: 13px; }

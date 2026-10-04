@@ -39,4 +39,21 @@ describe("console menu keyboard contract", () => {
     expect(hook).toContain("if (returnFocus) trigger.current?.focus();");
     for (const key of ["ArrowDown", "ArrowUp", "Home", "End"]) expect(hook).toContain(`"${key}"`);
   });
+
+  it("makes the command palette a dialog that the keyboard can finish", async () => {
+    // 2.169: Enter tat nichts, Pfeile gab es nicht, Escape nur als Knopf in
+    // 7 Pixeln, kein Fokus zurueck, keine Rolle.
+    const palette = await readFile(path.resolve(process.cwd(), "components/console/command-palette.tsx"), "utf8");
+    expect(palette).toContain('role="dialog" aria-modal="true"');
+    expect(palette).toContain('event.key === "Enter" && matches[current]');
+    expect(palette).toContain('event.key === "Escape"');
+    expect(palette).toContain('event.key === "ArrowDown"');
+    expect(palette).toContain("(previous.current as HTMLElement | null)?.focus?.()");
+    // Die Treffer heissen wie die Seitenleiste des aktuellen Modus.
+    expect(palette).toContain("navPath(item.id, mode)");
+    const app = await readFile(path.resolve(process.cwd(), "components/console/console-app.tsx"), "utf8");
+    expect(app).toContain("onNavigate={changeView} mode={mode}/>");
+    // Auf Windows stand "⌘ K".
+    expect(app).toContain('isMac ? "⌘ K" : `${t("Strg")} K`');
+  });
 });

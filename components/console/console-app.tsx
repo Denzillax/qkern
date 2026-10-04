@@ -15,6 +15,7 @@ import {
   groupOf, isPlaceholder, type InterfaceMode, type ViewId,
 } from "@/components/console/navigation";
 import { InterfaceMenu } from "@/components/console/interface-menu";
+import { CommandPalette } from "@/components/console/command-palette";
 import { setConsoleLocale, t, tAll } from "@/components/console/console-i18n";
 import { CheckIcon, ErrorState } from "@/components/console/console-parts";
 import { setConsoleDisplaySettings } from "@/components/console/console-display";
@@ -173,6 +174,11 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [commandOpen, setCommandOpen] = useState(false);
+  // Das Kuerzel auf dem Suchknopf stimmt jetzt fuer das System (2.169): Auf
+  // Windows stand "⌘ K", gemeint war Strg+K. Erst nach dem Laden bekannt, darum
+  // im Effekt; bis dahin bleibt die Mac-Form, wie sie immer dastand.
+  const [isMac, setIsMac] = useState(true);
+  useEffect(() => { setIsMac(/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -474,7 +480,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
             <EnvironmentMenu value={environment} onChange={setEnvironment}/>
             <InterfaceMenu value={mode} onChange={setMode}/>
             <LanguageSwitcher locale={locale} label={t("Sprache wählen")}/>
-            <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>{t("Suchen")}</span><kbd>⌘ K</kbd></button>
+            <button className="command-button" onClick={() => setCommandOpen(true)}><Search size={15}/><span>{t("Suchen")}</span><kbd>{isMac ? "⌘ K" : `${t("Strg")} K`}</kbd></button>
             {snapshot && !error && <span className="system-online"><i/> {t("Verbunden")}</span>}
             <ThemeToggle labels={{ dark: t("Dark Mode aktivieren"), light: t("Light Mode aktivieren") }}/><button className="icon-button is-placeholder" aria-label={t("Benachrichtigungen")} disabled title={t("Benachrichtigungen sind noch nicht verbunden")}><Bell size={16}/></button>
           </div>
@@ -489,7 +495,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
           )}
         </main>
       </div>
-      {commandOpen && <CommandPalette onClose={() => setCommandOpen(false)} onNavigate={changeView}/>} 
+      {commandOpen && <CommandPalette onClose={() => setCommandOpen(false)} onNavigate={changeView} mode={mode}/>} 
     </div>
   );
 }
@@ -716,6 +722,5 @@ function AIBridge({ projectId, environment, reload, navigate }: { projectId: str
   return <div className="ai-console-grid"><article className="console-card connection-card placeholder-state"><Bot size={26}/><div><span className="console-kicker">{t("Agenten")}</span><h3>{t("Noch keine Verbindung")}</h3><p>{t("Der OAuth-Weg, über den sich Claude Code oder Codex an dieses Projekt binden, ist noch nicht verbunden. Bis dahin zeigt diese Karte keine erfundenen Agenten.")}</p></div><button className="button small is-placeholder" disabled title={t("Agentenverbindungen sind noch nicht verbunden")}><Plus size={14}/> {t("Verbinden")}</button></article><article className="console-card workspace-card"><div className="card-head"><div><span>{t("AGENTEN-ARBEITSBEREICH")}</span><h3>{t("Eine Änderung vorbereiten")}</h3></div><span className={`environment-select ${environment}`}>{environment}</span></div><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} aria-label={t("Aufgabe für den Agenten")}/><div className="workspace-scope"><ShieldCheck size={14}/><span>{t("Der Agent liest das Schema und erstellt Vorschauen. Freigabe und Einreihung folgen der Regel des Projekts: manuell, abgesichert oder autonom. Geheimnisse bleiben verborgen.")}</span></div><button className="button" onClick={create} disabled={creating}><StableLabel current={creating?t("Wird vorbereitet…"):t("Vorschau erstellen")} variants={tAll("Wird vorbereitet…", "Vorschau erstellen")}/><ArrowIcon/></button>{done&&<div className="inline-success"><CheckIcon/>{t("Change Set erstellt.")} <button onClick={()=>navigate("approvals")}>{t("Freigabezentrale öffnen")}</button></div>}</article><article className="console-card span-2 mcp-config"><div className="card-head"><div><span>{t("CODEX-KONFIGURATION")}</span><h3>{t("Streamable HTTP, an das Projekt gebunden")}</h3></div><span className="muted">{t("Beispiel")}</span></div><pre>{`[mcp_servers.qkern]\nurl = "https://mcp.example.qkern.ch/mcp"\nauth = "oauth"\nrequired = true\nenabled_tools = ["qkern_project_get", "qkern_schema_list", "qkern_query_readonly", "qkern_migration_preview"]\ndefault_tools_approval_mode = "writes"`}</pre><p>{t("OAuth muss die MCP-Session an Akteur, Organisation, Projekt, Umgebung und Werkzeug-Scopes binden. Die URL oben ist ein Beispiel.")}</p></article></div>;
 }
 
-function CommandPalette({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: ViewId) => void }){const [query,setQuery]=useState("");const matches=NAV_ENTRIES.filter(item=>`${item.group} ${item.label} ${t(item.group)} ${t(item.label)}`.toLowerCase().includes(query.toLowerCase())).slice(0,12);return <div className="command-overlay" onMouseDown={onClose}><div className="command-palette" onMouseDown={e=>e.stopPropagation()}><div className="command-input"><Search size={18}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={t("Console durchsuchen…")}/><button onClick={onClose}>ESC</button></div><div className="command-results"><span>{t("NAVIGATION")}</span>{matches.map(item=>{const Icon=groupOf(item.id).icon;return <button key={`${item.group}-${item.id}`} onClick={()=>{onNavigate(item.id);onClose();}}><Icon size={16}/>{item.group===item.label?t(item.label):`${t(item.group)} · ${t(item.label)}`}<Command size={13}/></button>})}</div></div></div>}
 function LoadingState(){return <div className="loading-grid">{Array.from({length:8}).map((_,i)=><i key={i}/>)}</div>}
 function ArrowIcon(){return <span aria-hidden>→</span>}
