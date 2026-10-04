@@ -187,4 +187,16 @@ describe("console readability contract", () => {
     // Ein langer Workspace gibt in der Kopfzeile zuerst nach.
     expect(css).toMatch(/\.crumb-workspace \{ flex: 0 3 auto;[^}]*text-overflow: ellipsis/);
   });
+
+  it("draws a focus ring that can be seen", async () => {
+    // Gemessen mit echten Tab-Druecken ueber 39 Elemente (2.167): Der Rahmen
+    // war ueberall da, in der Knopffarbe bei 40 Prozent, und kam auf 1,36 zu 1.
+    // Ein Fokusrahmen braucht 3 zu 1; mit dem Text-Akzent sind es 6,24.
+    const css = await readFile(CSS, "utf8");
+    const rule = "button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible";
+    const last = css.lastIndexOf(rule);
+    expect(css.slice(last, css.indexOf("}", last))).toContain("outline: 2px solid var(--qkern-accent-text)");
+    // Die Seitenleiste ist in beiden Modi dunkel.
+    expect(css).toMatch(/\.console-sidebar :focus-visible \{ outline-color: #5b9bff; \}/);
+  });
 });

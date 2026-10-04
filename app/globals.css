@@ -1890,3 +1890,12 @@ input[type="checkbox"], input[type="radio"] {
    ihr Symbol klebte am Namen. Die Abstaende stehen jetzt an den Teilen. */
 .crumb-workspace > svg { margin-right: 6px; vertical-align: -2px; }
 .crumb-workspace > small { margin-left: 8px; }
+
+/* 2.167: Ein Fokusrahmen, den man sieht. Gemessen mit echten Tab-Druecken
+   ueber 39 Elemente: Der Rahmen war ueberall da, aber in der Knopffarbe bei
+   40 Prozent Deckkraft, und das ergab 1,36 zu 1 im dunklen und hoechstens
+   2,01 zu 1 im hellen Modus. Ein Fokusrahmen braucht 3 zu 1. Jetzt das
+   Text-Akzent-Token; die Seitenleiste ist in beiden Modi dunkel und nimmt
+   darum den hellen Akzent fest. */
+button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--qkern-accent-text); outline-offset: 2px; }
+.console-sidebar :focus-visible { outline-color: #5b9bff; }
