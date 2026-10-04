@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { t, tAll } from "@/components/console/console-i18n";
 import { StableLabel } from "@/components/stable-label";
@@ -39,21 +39,34 @@ export function DangerousAction({ label, title, consequence, confirmName, onConf
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const matches = confirmName === undefined || typed === confirmName;
+  // Fokus beim Oeffnen und Schliessen (2.169). Gemessen: Enter auf dem Knopf
+  // oeffnete die Bestaetigung, der Knopf verschwand, und der Fokus lag auf
+  // `body`. Jetzt steht er im Namensfeld oder auf der Bestaetigung, und nach
+  // "Abbrechen" wieder auf dem Knopf, der sie geoeffnet hat.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const confirm = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open) (field.current ?? confirm.current)?.focus();
+    else if (wasOpen.current) trigger.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
 
   if (!open) {
-    return <button type="button" className="danger-button" onClick={() => { setTyped(""); setOpen(true); }}>
+    return <button type="button" ref={trigger} className="danger-button" onClick={() => { setTyped(""); setOpen(true); }}>
       <Trash2 size={13} aria-hidden /> {label}
     </button>;
   }
-  return <div className="danger-confirm">
+  return <div className="danger-confirm" onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); setTyped(""); } }}>
     <p><AlertTriangle size={13} aria-hidden /> <strong>{title}</strong></p>
     <p>{consequence}</p>
     {confirmName !== undefined && <label>
       {t("Tippe den Namen ab, um die Zerstörung zu bestätigen")}
-      <input type="text" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={confirmName} autoComplete="off" spellCheck={false}/>
+      <input ref={field} type="text" value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={confirmName} autoComplete="off" spellCheck={false}/>
     </label>}
     <div className="danger-confirm-actions">
-      <button type="button" className="danger-button" disabled={!matches} onClick={() => { setOpen(false); setTyped(""); onConfirm(); }}>
+      <button type="button" ref={confirm} className="danger-button" disabled={!matches} onClick={() => { setOpen(false); setTyped(""); onConfirm(); }}>
         <Trash2 size={13} aria-hidden /> <StableLabel current={label} variants={tAll(label)}/>
       </button>
       <button type="button" className="secondary-button" onClick={() => { setOpen(false); setTyped(""); }}>{t("Abbrechen")}</button>

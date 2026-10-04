@@ -56,4 +56,15 @@ describe("console menu keyboard contract", () => {
     // Auf Windows stand "⌘ K".
     expect(app).toContain('isMac ? "⌘ K" : `${t("Strg")} K`');
   });
+
+  it("keeps the focus on the page when a form or a confirmation opens and closes", async () => {
+    // 2.170: Nach Escape aus einem Formular und nach dem Oeffnen einer
+    // Bestaetigung lag der Fokus auf `body`.
+    const form = await readFile(path.resolve(process.cwd(), "components/console/form-panel.tsx"), "utf8");
+    expect(form).toContain("previous.current = document.activeElement;");
+    expect(form).toContain("if (target?.isConnected) target.focus();");
+    const danger = await readFile(path.resolve(process.cwd(), "components/console/dangerous-action.tsx"), "utf8");
+    expect(danger).toContain("if (open) (field.current ?? confirm.current)?.focus();");
+    expect(danger).toContain("else if (wasOpen.current) trigger.current?.focus();");
+  });
 });

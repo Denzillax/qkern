@@ -49,7 +49,19 @@ export function FormPanel({ title, fields, submitLabel, onSubmit, onCancel }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const first = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  useEffect(() => { first.current?.focus(); }, []);
+  // Der Fokus geht beim Schliessen dorthin zurueck, wo er beim Oeffnen stand,
+  // also auf den Knopf, der das Formular geoeffnet hat (2.169). Gemessen:
+  // Nach Escape lag er auf `body`. Steht der Knopf nicht mehr im Dokument,
+  // etwa weil die Liste neu geladen wurde, bleibt es dabei.
+  const previous = useRef<Element | null>(null);
+  useEffect(() => {
+    previous.current = document.activeElement;
+    first.current?.focus();
+    return () => {
+      const target = previous.current as HTMLElement | null;
+      if (target?.isConnected) target.focus();
+    };
+  }, []);
 
   const missing = fields.some((field) => field.required && !(values[field.name] ?? "").trim());
 
