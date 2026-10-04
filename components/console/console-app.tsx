@@ -1,5 +1,6 @@
 "use client";
 
+import { useMenuKeyboard } from "@/components/use-menu-keyboard";
 import {
   Bell, Blocks, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, Code2, Command,
   LogOut, Menu, Plus, Search, Settings, ShieldCheck, Users, X,
@@ -673,21 +674,15 @@ const ENVIRONMENTS: Array<{ id: Environment; label: string; hint: string }> = [
 
 function AccountMenu({ email, workspace, collapsed, onLogout }: { email: string | null; workspace: string | null; collapsed: boolean; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onPointer(event: PointerEvent) { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); }
-    function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
-    document.addEventListener("pointerdown", onPointer); document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  // Tastatur, Klick ausserhalb und Fokus beim Schliessen (2.168).
+  const { root, trigger, list, chose, onListKey } = useMenuKeyboard(open, setOpen);
   const initials = email ? email.slice(0, 2).toUpperCase() : "QK";
   const handle = email ? email.split("@")[0] : "Account";
   return <div className="account-menu" ref={root}>
-    <button type="button" className="user-chip" aria-haspopup="menu" aria-expanded={open} aria-label={t("Kontomenü")} title={collapsed ? handle : undefined} onClick={() => setOpen(!open)}>
+    <button type="button" ref={trigger} className="user-chip" aria-haspopup="menu" aria-expanded={open} aria-label={t("Kontomenü")} title={collapsed ? handle : undefined} onClick={() => setOpen(!open)}>
       <span>{initials}</span><div><strong>{handle}</strong><small>Owner</small></div><ChevronDown size={14} aria-hidden="true"/>
     </button>
-    {open && <div className="account-sheet" role="menu">
+    {open && <div className="account-sheet" role="menu" ref={list as React.RefObject<HTMLDivElement>} onKeyDown={onListKey}>
       <div className="account-identity"><strong>{email ?? t("Nicht angemeldet")}</strong><small>{displayWorkspaceName(workspace)} · Owner</small></div>
       <button type="button" role="menuitem" disabled className="is-placeholder" title={t("Kontoeinstellungen sind noch nicht verbunden")}><Settings size={15}/><span>{t("Kontoeinstellungen")}</span><em>{t("Bald")}</em></button>
       <button type="button" role="menuitem" disabled className="is-placeholder" title={t("Workspace-Einstellungen sind noch nicht verbunden")}><Blocks size={15}/><span>{t("Workspace-Einstellungen")}</span><em>{t("Bald")}</em></button>
@@ -698,22 +693,16 @@ function AccountMenu({ email, workspace, collapsed, onLogout }: { email: string 
 
 function EnvironmentMenu({ value, onChange }: { value: Environment; onChange: (next: Environment) => void }) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onPointer(event: PointerEvent) { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); }
-    function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
-    document.addEventListener("pointerdown", onPointer); document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  // Tastatur, Klick ausserhalb und Fokus beim Schliessen (2.168).
+  const { root, trigger, list, chose, onListKey } = useMenuKeyboard(open, setOpen);
   const current = ENVIRONMENTS.find((entry) => entry.id === value) ?? ENVIRONMENTS[0];
   return <div className={`environment-menu ${value}`} ref={root}>
-    <button type="button" className={`environment-field ${value}`} aria-haspopup="listbox" aria-expanded={open} aria-label={`Umgebung: ${current.label}`} onClick={() => setOpen(!open)}>
+    <button type="button" ref={trigger} className={`environment-field ${value}`} aria-haspopup="listbox" aria-expanded={open} aria-label={`Umgebung: ${current.label}`} onClick={() => setOpen(!open)}>
       <i aria-hidden="true"/><StableLabel current={current.label} variants={ENVIRONMENTS.map((entry) => entry.label)}/><ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
     </button>
-    {open && <ul className="environment-list" role="listbox" aria-label={t("Umgebung auswählen")}>
+    {open && <ul className="environment-list" role="listbox" aria-label={t("Umgebung auswählen")} ref={list as React.RefObject<HTMLUListElement>} onKeyDown={onListKey}>
       {ENVIRONMENTS.map((entry) => <li key={entry.id} role="option" aria-selected={entry.id === value} className={entry.id}>
-        <button type="button" onClick={() => { onChange(entry.id); setOpen(false); }}>
+        <button type="button" onClick={(event) => { onChange(entry.id); chose(event); }}>
           <i aria-hidden="true"/><span><strong>{entry.label}</strong><small>{entry.hint}</small></span>{entry.id === value && <Check size={14} aria-hidden="true"/>}
         </button>
       </li>)}

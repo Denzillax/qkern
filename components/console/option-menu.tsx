@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMenuKeyboard } from "@/components/use-menu-keyboard";
+import { useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
 import { StableLabel } from "@/components/stable-label";
@@ -64,20 +65,8 @@ export function OptionMenu<Id extends string>({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onPointer(event: PointerEvent) {
-      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
-    }
-    function onKey(event: KeyboardEvent) { if (event.key === "Escape") setOpen(false); }
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Tastatur, Klick ausserhalb und Fokus beim Schliessen (2.168).
+  const { root, trigger, list, chose, onListKey } = useMenuKeyboard(open, setOpen);
 
   // Ohne Eintraege bleibt der Knopf stehen und tut nichts: Der Render-Vertrag
   // zeichnet jede Ansicht ohne Daten, und ein Bauteil, das dabei wirft, macht
@@ -86,7 +75,7 @@ export function OptionMenu<Id extends string>({
   const tone = current?.tone ?? "";
   const locked = disabled || options.length === 0;
   return <div className={`option-menu ${tone}`} ref={root}>
-    <button type="button" className={`option-field ${tone}`} aria-haspopup="listbox"
+    <button type="button" ref={trigger} className={`option-field ${tone}`} aria-haspopup="listbox"
             aria-expanded={open} aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
             disabled={locked}
             onClick={() => setOpen(!open)}>
@@ -97,10 +86,10 @@ export function OptionMenu<Id extends string>({
       <StableLabel current={current?.label ?? ""} variants={options.map((entry) => entry.label)}/>
       <ChevronDown size={14} aria-hidden="true" className={open ? "is-open" : ""}/>
     </button>
-    {open && !locked && <ul className={`option-list ${align}`} role="listbox" aria-label={listLabel}>
+    {open && !locked && <ul ref={list as React.RefObject<HTMLUListElement>} className={`option-list ${align}`} role="listbox" aria-label={listLabel} onKeyDown={onListKey}>
       {options.map((entry) => <li key={entry.id} role="option" aria-selected={entry.id === value}
                                   className={entry.tone ?? ""}>
-        <button type="button" onClick={() => { onChange(entry.id); setOpen(false); }}>
+        <button type="button" onClick={(event) => { onChange(entry.id); chose(event); }}>
           {entry.tone ? <i aria-hidden="true"/> : null}
           <span><strong>{entry.label}</strong>{entry.hint ? <small>{entry.hint}</small> : null}</span>
           {entry.id === value && <Check size={14} aria-hidden="true"/>}
