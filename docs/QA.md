@@ -6889,3 +6889,29 @@ Nicht erbracht: Der Nachbau ist nicht die echte Console, und was eine echte
 Projektdatenbank zeigt, hat er nicht gesehen. Die Ansichten sind fotografiert,
 nur wenige bedient. Von 180 englischen Servermeldungen sind die haeufigen und
 vier Familien uebersetzt.
+
+## Welle zweiunddreissig (2.80): die Console bedient
+
+Sechs Schnitte (2.165 bis 2.170). 2.79 hatte die Console angesehen; diese
+Welle hat sie bedient. Der Nachbau bekam Belastungsdaten (lange Namen, eine
+Tabelle mit 30 Spalten) und wurde mit echten Klicks und echten Tastendruecken
+ueber das DevTools-Protokoll gefahren.
+
+Gefunden: Labels, die nach beiden Seiten aus ihrem Feld ragten; neun Ansichten,
+die ueber Browser-Dialoge fragten, und zwei davon, die bei einer Ablehnung die
+ganze Liste verschwinden liessen; ein Fokusrahmen mit 1,36 zu 1; vier Menues und
+drei eigene Bausteine, die den Fokus nach dem Schliessen auf `body` fallen
+liessen; eine Befehlspalette, in der Enter nichts tat.
+
+Zum Verfahren: Programmatischer Fokus loest `:focus-visible` nicht aus. Die
+erste Messung des Fokusrahmens war darum falsch: Sie meldete fehlende Rahmen,
+wo nur blasse waren. Zweimal lag
+ein Fehler im eigenen Testskript, nicht im Produkt; beide Male zeigte das Bild,
+dass die Messung nicht stimmen konnte.
+
+Checkpoint `2.80.0` am 4. Oktober 2026: PostgreSQL 17 mit 257 von 257 zweimal,
+beide exit 0; lokal 2733 bestanden, zweimal reproduziert.
+
+Nicht erbracht: Der Nachbau antwortet auf Schreibanfragen mit einer festen
+Zusage; eine echte Ablehnung des Servers ist nicht gefahren. Ein Screenreader
+hat die Console nicht gelesen.

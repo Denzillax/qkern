@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.79.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.80.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,18 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.165 bis 2.170 (`main`) **Die Console bedient.** Belastungsdaten im
+  Nachbau (`HARNESS_STRESS=1`: lange Namen, 30 Spalten) und echte Klicks und
+  Tastendruecke ueber CDP. Fuer den naechsten: Es gibt keinen
+  `window.prompt`/`confirm`/`alert` mehr, Eingaben gehen ueber `FormPanel`
+  (`components/console/form-panel.tsx`), Bestaetigungen ueber
+  `DangerousAction` oder einen Bereich in der Seite; der Vertrag
+  `console-form-panel-contract` faellt bei jedem neuen Browser-Dialog. Menues
+  laufen ueber `useMenuKeyboard` (`components/use-menu-keyboard.ts`). Wer den
+  Fokus misst, muss echte Tasten druecken: programmatischer Fokus loest
+  `:focus-visible` nicht aus. Felddefinitionen gehoeren in `.ts`-Dateien, weil
+  der Render-Vertrag je `.tsx` genau eine Komponente verlangt.
 
 - 2.155 bis 2.164 (`main`) **Die Console einmal ganz angesehen.** Sie lief in
   einem Nachbau ausserhalb des Repos (Vite mit Alias auf das Repo, Ersatz fuer
@@ -1227,7 +1239,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.79.0`
+- Paketversion: `2.80.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

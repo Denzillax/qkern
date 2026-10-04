@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle32-local-run2.log",
+  "commit": "0f49a395aaf30a8a14719411190f25be9f0fc383",
+  "commitSubject": "console: Formular und Bestaetigung halten den Fokus (2.170)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "378 passed | 42 skipped (420)",
+  "tests": "2733 passed | 379 skipped (3112)",
+  "passed": 2733,
+  "failed": 0,
+  "skipped": 379,
+  "images": []
+}

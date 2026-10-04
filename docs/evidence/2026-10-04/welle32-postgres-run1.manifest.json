@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle32-postgres-run1.log",
+  "commit": "0f49a395aaf30a8a14719411190f25be9f0fc383",
+  "commitSubject": "console: Formular und Bestaetigung halten den Fokus (2.170)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "257 passed (257)",
+  "passed": 257,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
