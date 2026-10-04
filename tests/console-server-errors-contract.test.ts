@@ -8,6 +8,12 @@ import { projectStorageRouteError } from "@/lib/server/project-storage/http";
 import { ProjectStorageError, type ProjectStorageErrorCode } from "@/lib/server/project-storage/service";
 import { computeRouteError } from "@/lib/server/compute/definitions-http";
 import { ComputeDefinitionError } from "@/lib/server/compute/definitions";
+import { projectAuthRouteError } from "@/lib/server/project-auth/http";
+import { ProjectAuthError, type ProjectAuthErrorCode } from "@/lib/server/project-auth/service";
+import { projectQueueRouteError } from "@/lib/server/project-queues/http";
+import { ProjectQueueError, type ProjectQueueErrorCode } from "@/lib/server/project-queues/service";
+import { usageRouteError } from "@/lib/server/usage/http";
+import { UsageError, type UsageErrorCode } from "@/lib/server/usage/service";
 
 /**
  * Die Meldungen des Servers in der Sprache der Console (2.160).
@@ -92,6 +98,35 @@ describe("console server errors contract", () => {
       const error = (await computeRouteError(new ComputeDefinitionError(code)).json()).error as string;
       if (serverErrorText(error) === error) untranslated.push(`${code}: ${error}`);
     }
+    expect(untranslated).toEqual([]);
+  });
+
+  it("translates every rejection the auth, queue and usage routes really send", async () => {
+    // 2.172: derselbe Durchlauf wie fuer Storage und Compute.
+    const untranslated: string[] = [];
+    async function sweep(codes: readonly string[], make: (code: string) => unknown, map: (error: unknown) => Response) {
+      for (const code of codes) {
+        const error = (await map(make(code)).json()).error as string;
+        if (serverErrorText(error) === error) untranslated.push(`${code}: ${error}`);
+      }
+    }
+    const auth: ProjectAuthErrorCode[] = [
+      "PROJECT_AUTH_DISABLED", "INVALID_INPUT", "ACCOUNT_EXISTS", "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED",
+      "INVALID_TOKEN", "TOKEN_REPLAYED", "MFA_REQUIRED", "INVALID_MFA", "INVALID_PASSKEY", "RATE_LIMITED",
+      "LEAKED_PASSWORD", "WEAK_PASSWORD", "DELIVERY_UNAVAILABLE", "RESOURCE_NOT_FOUND", "HOOK_DENIED",
+      "HOOK_UNAVAILABLE", "HOOK_REJECTED", "AUDIT_UNAVAILABLE",
+    ];
+    const queues: ProjectQueueErrorCode[] = [
+      "PROJECT_QUEUES_DISABLED", "QUEUE_INVALID_INPUT", "QUEUE_RESOURCE_NOT_FOUND", "QUEUE_ACCESS_DENIED",
+      "QUEUE_CONFLICT", "QUEUE_CAPACITY_EXCEEDED", "QUEUE_QUOTA_EXCEEDED", "QUEUE_LEASE_LOST", "QUEUE_UNAVAILABLE",
+    ];
+    const usage: UsageErrorCode[] = [
+      "USAGE_METERING_DISABLED", "USAGE_INVALID_INPUT", "USAGE_ACCESS_DENIED", "USAGE_RESOURCE_NOT_FOUND",
+      "USAGE_IDEMPOTENCY_CONFLICT", "USAGE_POLICY_CONFLICT",
+    ];
+    await sweep(auth, (code) => new ProjectAuthError(code as ProjectAuthErrorCode), (error) => projectAuthRouteError(error));
+    await sweep(queues, (code) => new ProjectQueueError(code as ProjectQueueErrorCode), (error) => projectQueueRouteError(error));
+    await sweep(usage, (code) => new UsageError(code as UsageErrorCode), (error) => usageRouteError(error));
     expect(untranslated).toEqual([]);
   });
 });

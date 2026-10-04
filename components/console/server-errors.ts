@@ -51,6 +51,22 @@ const EXACT: Record<string, string> = {
   "The usage quota for function invocations is exhausted": "Das Kontingent für Function-Aufrufe ist ausgeschöpft.",
   "Object is quarantined or not ready": "Das Objekt ist noch in Quarantäne oder nicht fertig hochgeladen.",
   "Object was rejected": "Das Objekt wurde abgelehnt, weil der Scanner es nicht freigegeben hat.",
+  // Auth, Queues und Usage (2.172), nach demselben Durchlauf durch die echten
+  // Abbildungen der Routen. Die Konflikte stehen mit den Ursachen, die der
+  // Code an der Stelle wirklich kennt.
+  "Account already exists": "Unter dieser Adresse gibt es schon ein Konto.",
+  "Email verification required": "Die E-Mail-Adresse ist noch nicht bestätigt.",
+  "Password appears in a known credential leak": "Dieses Passwort steht in einer bekannten Sammlung geleakter Zugangsdaten. Wähle ein anderes.",
+  "Password does not meet the policy of this project": "Das Passwort erfüllt die Regeln dieses Projekts nicht.",
+  "Sign-in refused by the auth hook of this project": "Der Auth-Hook dieses Projekts hat die Anmeldung abgelehnt.",
+  "Project Auth hook did not answer": "Der Auth-Hook dieses Projekts hat nicht geantwortet.",
+  "Project Auth hook returned an answer that was refused": "Der Auth-Hook hat eine Antwort geschickt, die nicht angenommen wurde.",
+  "Project Auth audit is not configured": "Das Audit-Log von Project Auth ist nicht eingerichtet.",
+  "Queue conflict": "Das widerspricht dem, was schon da ist: Der Name der Queue ist vergeben, oder jemand hat sie gleichzeitig geändert.",
+  "Queue capacity exceeded": "Die Queue ist voll: Sie hält schon so viele offene Nachrichten, wie sie darf.",
+  "Queue lease is no longer valid": "Die Lease dieser Nachricht gilt nicht mehr. Sie ist abgelaufen, oder ein anderer Worker hat die Nachricht übernommen.",
+  "Usage idempotency conflict": "Ein Ereignis mit demselben Schlüssel wurde schon mit anderen Werten gemeldet.",
+  "Usage policy conflict": "Das widerspricht dem bestehenden Preisblatt: Für diesen Zeitpunkt gibt es schon einen Eintrag, oder die Währung passt nicht zu den bisherigen.",
 };
 
 const INVALID = "Die Anfrage wurde abgelehnt, weil ein Wert fehlt oder ungültig ist.";
