@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.78.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.79.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,27 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.155 bis 2.164 (`main`) **Die Console einmal ganz angesehen.** Sie lief in
+  einem Nachbau ausserhalb des Repos (Vite mit Alias auf das Repo, Ersatz fuer
+  `next/link`, `next/navigation` und `node:crypto`, `/api/v1/console` aus
+  `lib/server/store.ts`, Beispieldaten fuer Schema, Zeilen, Nutzer und Buckets)
+  und wurde mit kopflosem Chrome ueber CDP fotografiert und vermessen. Wichtig
+  beim Nachbauen: Der Ersatz fuer `useRouter` muss **ein stabiles Objekt**
+  liefern, sonst laedt `load` (haengt an `router`) die Console in einer
+  Endlosschleife. Befunde und Regeln stehen in
+  `tests/console-readability-contract.test.ts` und
+  `tests/console-server-errors-contract.test.ts`.
+
+  Fuer den naechsten: Eine Servermeldung geht nur noch ueber
+  `serverErrorText` (`components/console/server-errors.ts`) in die Oberflaeche;
+  der Vertrag kennt fuenf Schreibweisen, auch in `.ts`-Dateien. Text als Farbe
+  nur ueber `--qkern-accent-text`, `--qkern-success-text`,
+  `--qkern-warning-text`, nie ueber `--qkern-primary`. Regeln fuer die schmale
+  Kopfzeile stehen am Dateiende, weil spaetere Bloecke sonst gewinnen.
+  **Erklaert**: Das Flattern auf dem Ubuntu-Runner war der CLI-Fall mit zwei
+  `Date.now()`-Aufrufen gegen eine Dauer in ganzen Sekunden (2.162); dabei fiel
+  die Abstandsgrenze im Pruefer auf, die bei Millisekundenrest nicht griff.
 
 - 2.152 bis 2.154 (`main`) **Drei Neins sind Wege geworden, ohne eine neue Route.**
   Bestellen benutzt `POST .../provisioning` (seit 1.60, Recht
@@ -1206,7 +1227,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.78.0`
+- Paketversion: `2.79.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

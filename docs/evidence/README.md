@@ -2051,6 +2051,17 @@ Testdatei.
 | `2026-10-03/welle30-local-run1.log` | Vitest lokal (Windows) | 2706 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-10-03/welle30-local-run2.log` | Vitest lokal (Windows) | 2706 bestanden, exit 0, mit `--maxWorkers=3` |
 
+| `2026-10-04/welle31-postgres-run1.log` | PostgreSQL 17 | 257 bestanden, exit 0 |
+| `2026-10-04/welle31-postgres-run2.log` | PostgreSQL 17 | 257 bestanden, exit 0, Reproduktion |
+| `2026-10-04/welle31-local-run1.log` | Vitest lokal (Windows) | 2724 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-04/welle31-local-run2.log` | Vitest lokal (Windows) | 2724 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Zu 2.79 ist der PostgreSQL-Lauf wieder ein Rueckfallgitter: Geaendert sind
+Console-Seiten, CSS, Texte und Vertraege, dazu eine Vergleichszeile im Pruefer
+der Provider-Evidenz, den kein Stack faehrt. Die Belege fuer die Console sind
+diesmal Bilder und Messungen aus einem Nachbau, nicht archiviert: Sie haengen an
+Beispieldaten, und die Regeln, die sie fanden, stehen als Vertraege im Repo.
+
 Zu 2.78 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Seiten, ein Textmodul, ein Pruefskript und die Fehlerklasse dahinter.
 Die Route, die der neue Bestellknopf benutzt, gibt es seit `1.60` und sie wurde

@@ -6858,3 +6858,34 @@ nichts ausgefuehrt, solange kein Provisionierer laeuft, und die Seite kann nicht
 sagen, ob gerade einer laeuft. Der vorbereitete Change Set ist nicht angewendet.
 Keine der drei Seiten ist im Browser gesehen. Das Flattern auf dem Ubuntu-Runner
 ist nicht erklaert, nur untersuchbar gemacht.
+
+## Welle einunddreissig (2.79): die Console einmal ganz angesehen
+
+Zehn Schnitte (2.155 bis 2.164). Der Unterschied zu allen vorigen Wellen an der
+Console: Sie ist gesehen. Ein Nachbau mit denselben Komponenten und demselben
+Stylesheet, Daten aus dem Speicher-Store und Beispielzeilen, kopfloses Chrome
+in Breiten von 390 bis 1440 Pixeln, und ein Pruefskript ueber jede Ansicht in
+beiden Farbmodi. Es meldete zu Beginn Kontraste ab 1,71 zu 1, Fliesstext ab 8
+Pixeln, eine Kopfzeile, die unter 1280 Pixeln ueberlief, und englische
+Rohwerte. Am Ende meldet es nichts mehr.
+
+Zum Verfahren: Viermal war ein Vertrag gruen, und das Bild zeigte trotzdem den
+Fehler. Die Regel gegen rohe Servermeldungen schloss ein vorangehendes "("
+aus, kannte zwei Schreibweisen nicht und las nur `.tsx`; die Zuordnung der
+Change-Set-Zustaende hatte `ready` nicht. Jede Luecke ist nachgetragen und mit
+einer Mutation belegt, die genau sie fallen laesst. Ein Vertrag sieht, was
+seine Regel beschreibt; was sie nicht beschreibt, sieht nur das Bild.
+
+Das Flattern auf dem Ubuntu-Runner ist erklaert (2.162): zwei Aufrufe von
+`Date.now()` gegen eine Laufdauer in ganzen Sekunden. Gefunden mit dem Schritt,
+den die Diagnose aus 2.152 zum ersten Mal nannte. Beim Lesen fiel im Pruefer
+eine Grenze auf, die bei Millisekundenrest nicht griff; der Fall dafuer fiel
+auf dem alten Stand.
+
+Checkpoint `2.79.0` am 4. Oktober 2026: PostgreSQL 17 mit 257 von 257 zweimal,
+beide exit 0; lokal 2724 bestanden, zweimal reproduziert.
+
+Nicht erbracht: Der Nachbau ist nicht die echte Console, und was eine echte
+Projektdatenbank zeigt, hat er nicht gesehen. Die Ansichten sind fotografiert,
+nur wenige bedient. Von 180 englischen Servermeldungen sind die haeufigen und
+vier Familien uebersetzt.

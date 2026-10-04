@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle31-local-run2.log",
+  "commit": "8ba7a9db6d500a4a469ad06563626684fb676034",
+  "commitSubject": "console: alle Ansichten ohne Befund (2.164)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "376 passed | 42 skipped (418)",
+  "tests": "2724 passed | 379 skipped (3103)",
+  "passed": 2724,
+  "failed": 0,
+  "skipped": 379,
+  "images": []
+}

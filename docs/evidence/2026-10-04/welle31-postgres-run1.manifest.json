@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle31-postgres-run1.log",
+  "commit": "8ba7a9db6d500a4a469ad06563626684fb676034",
+  "commitSubject": "console: alle Ansichten ohne Befund (2.164)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "257 passed (257)",
+  "passed": 257,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}
