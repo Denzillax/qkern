@@ -27,6 +27,7 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [SECURITY.md](SECURITY.md) | Trust Boundaries, Sicherheitsannahmen und Go-live-Gates |
 | [QA.md](QA.md) | Testabdeckung, Qualitätsziele und Release Gates |
 | [DOCS_MAINTENANCE.md](DOCS_MAINTENANCE.md) | Verbindliche Dokumentationspflege bei jeder Änderung |
+| [PROJEKT_LOESCHEN.md](PROJEKT_LOESCHEN.md) | Ein Projekt löschen: Denzils Entscheidungen und der Bauplan in Schnitten |
 | [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md) | Chatunabhängiger Übergabestand und nächste Arbeit für Coding-Agenten |
 | [REALTIME_PROTOCOL.md](REALTIME_PROTOCOL.md) | WebSocket-Protokoll, Channel-Policy, Replay, Presence und Grenzen |
 | [PROJECT_QUEUES.md](PROJECT_QUEUES.md) | Queue-Policies, Dedupe, Claims, Lease-Fencing, Retry und Alpha-Grenzen |
