@@ -149,6 +149,20 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.173 (`main`) **Ein Projekt loeschen, mit Frist.** Entschieden von Denzil
+  am 7. Oktober 2026: sofort gesperrt und ausgeblendet, sieben Tage
+  zurueckholbar, danach mit Datenbank, Backups und Buckets abgeraeumt; nur
+  Owner (`project_delete`). Migration `0087_project_deletion.sql` legt
+  `projects.delete_after` an, zwei Funktionen `qkern_delete_project` und
+  `qkern_restore_project` (die Laufzeitrolle darf `projects` seit 0020 nicht
+  aendern), und laesst die zwei Key-Pruefungen
+  (`qkern_authenticate_project_api_key`, `..._s3_access_key`) ein geloeschtes
+  Projekt ablehnen; vorher fragten sie nie nach dem Projekt. Routen:
+  `DELETE /v1/projects/{id}` mit `confirmName`, `POST .../restore`,
+  `GET /v1/projects/deleted`. **Offen fuer 2.174**: der Abraeumer nach der
+  Frist, und die Hintergrundprozesse (Cron, Webhook-Zustellung, Backup,
+  Migrationen), die geloeschte Projekte noch nicht auslassen.
+
 - 2.171 und 2.172 (`main`) **Echte Ablehnungen auf Deutsch.** Jeder
   Fehlercode der fuenf Routen-Abbildungen (Storage, Compute, Auth, Queues,
   Usage) laeuft im Vertrag `console-server-errors-contract` durch die echte

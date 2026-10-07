@@ -49,6 +49,7 @@ import type {
   MigrationReviewReasonCode,
   OrganizationRecord,
   ProjectRecord,
+  DeletedProjectRecord,
   ProjectEnvironmentRecord,
   ProjectDatabaseBindingRecord,
   ProjectDatabaseProvisioningErrorCode,
@@ -842,6 +843,44 @@ export class ProjectRepository {
       [this.tx.organizationId, input.name, input.slug, input.region, input.status ?? "provisioning", input.createdBy],
     );
     return projectFromRow(result.rows[0]);
+  }
+
+  /**
+   * Loescht ein Projekt mit Frist (2.173), ueber `qkern_delete_project`, weil
+   * diese Rolle `projects` seit 0020 nicht aendern darf. Ein Projekt, das es
+   * nicht gibt oder das schon geloescht ist, ergibt `ResourceNotFoundError`.
+   */
+  async markDeleted(projectId: string): Promise<{ deletedAt: string; deleteAfter: string }> {
+    const result = await this.tx.query(
+      "SELECT deleted_at, delete_after FROM qkern_delete_project($1)",
+      [projectId],
+    );
+    const row = result.rows[0];
+    if (!row) throw new ResourceNotFoundError("Project");
+    return { deletedAt: new Date(row.deleted_at as string).toISOString(), deleteAfter: new Date(row.delete_after as string).toISOString() };
+  }
+
+  /** Holt ein geloeschtes Projekt vor Ablauf der Frist zurueck (2.173). */
+  async restore(projectId: string): Promise<void> {
+    const result = await this.tx.query("SELECT restored_id FROM qkern_restore_project($1)", [projectId]);
+    if (!result.rows[0]) throw new ResourceNotFoundError("Project");
+  }
+
+  /** Die geloeschten Projekte dieser Organisation, deren Frist noch laeuft. */
+  async listDeleted(): Promise<DeletedProjectRecord[]> {
+    const result = await this.tx.query(
+      `SELECT id, name, slug, deleted_at, delete_after
+       FROM projects
+       WHERE organization_id = $1 AND deleted_at IS NOT NULL AND delete_after > now()
+       ORDER BY delete_after ASC
+       LIMIT 250`,
+      [this.tx.organizationId],
+    );
+    return result.rows.map((row) => ({
+      id: row.id as string, name: row.name as string, slug: row.slug as string,
+      deletedAt: new Date(row.deleted_at as string).toISOString(),
+      deleteAfter: new Date(row.delete_after as string).toISOString(),
+    }));
   }
 
   async setProvisioningStatus(projectId: string, status: "ready" | "degraded"): Promise<ProjectRecord> {

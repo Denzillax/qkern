@@ -61,7 +61,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto";
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
-import { ProjectSlugTakenError } from "@/lib/server/control-plane/model";
+import { ProjectDeleteConfirmationError, ProjectSlugTakenError } from "@/lib/server/control-plane/model";
 import { validateProjectDraft } from "@/lib/console/project-draft";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
 // Dauerhafte Presence (2.113): der echte Store ueber die echte Laufzeitrolle,
@@ -109,6 +109,11 @@ import { NextRequest } from "next/server";
 import { projectApplicationPrincipal } from "@/lib/server/data-plane/generated-http";
 import { ProjectAuthThirdPartyKeySets } from "@/lib/server/project-auth/third-party-keys";
 import type { ProjectApiKeyService } from "@/lib/server/project-api-keys/service";
+import {
+  ProjectApiKeyService as RealProjectApiKeyService,
+  PostgresProjectApiKeyStore,
+  PostgresProjectApiKeyVerifier,
+} from "@/lib/server/project-api-keys/service";
 import { Argon2idPasswordHasher } from "@/lib/server/auth/password";
 import { InMemoryRateLimiter } from "@/lib/server/auth/rate-limit";
 import { PostgresProjectAuthRepository } from "@/lib/server/project-auth/postgres-repository";
@@ -8332,6 +8337,124 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     expect(neighbourProject.slug).toBe(slug);
     expect(neighbourProject.id).not.toBe(created.id);
     expect((await service.listProjects(context)).map((entry) => entry.id)).not.toContain(neighbourProject.id);
+  }, 120_000);
+  it("(2.173) deletes a project with a seven-day grace period, refuses its keys at once, restores it within the grace period and not after, and keeps all of it inside the organization", async () => {
+    // Ein Projekt loeschen (2.173), entschieden am 7. Oktober 2026: sofort
+    // gesperrt, sieben Tage zurueckholbar, dann abgeraeumt; nur Owner.
+    //
+    // Gegen echtes PostgreSQL, weil die Zusagen in der Datenbank liegen: Die
+    // Laufzeitrolle darf `projects` seit 0020 nicht aendern und loescht ueber
+    // `qkern_delete_project`; und dass ein Key danach abgelehnt wird,
+    // entscheidet `qkern_authenticate_project_api_key` unter der Auth-Rolle,
+    // nicht der TypeScript-Code. Vor dem Bau fragte diese Funktion nie nach dem
+    // Projekt.
+    const deleteOwner = randomUUID();
+    const deleteOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [deleteOwner, `delete-2-173-owner-${deleteOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Delete 2.173', $2, $3)`,
+    [deleteOrganization, `delete-2-173-${deleteOrganization}`, deleteOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [deleteOrganization, deleteOwner]);
+
+    const control = new PostgresControlPlane(runtime);
+    const service = new PostgresControlPlaneService(control, new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex")));
+    const context = {
+      organizationId: deleteOrganization,
+      actor: { id: deleteOwner, ref: `delete-2-173-owner-${deleteOwner}@qkern.test`, type: "user" as const },
+    };
+    const name = `Loeschbar ${deleteOrganization.slice(0, 8)}`;
+    const slug = validateProjectDraft({ name, region: "ch-zrh-1" }).slug;
+    const project = await service.createProject(context, { name, slug, region: "ch-zrh-1" });
+
+    // Ein echter Key dieses Projekts, geprueft wie jede Anfrage von aussen:
+    // ueber die Auth-Rolle und die SQL-Funktion.
+    const keys = new RealProjectApiKeyService(service, new PostgresProjectApiKeyStore(control), new PostgresProjectApiKeyVerifier(auth));
+    const issued = await keys.create(context, {
+      projectId: project.id, environment: "development", name: "App", kind: "public",
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    expect((await keys.authenticate(issued.secret))?.projectId).toBe(project.id);
+
+    // --- Ein falscher Name loescht nichts ---
+    await expect(service.deleteProject(context, project.id, `${name} `))
+      .rejects.toThrowError(ProjectDeleteConfirmationError);
+    expect((await service.listProjects(context)).map((entry) => entry.id)).toContain(project.id);
+
+    // --- Loeschen: Frist sieben Tage, sofort verschwunden ---
+    const before = Date.now();
+    const deleted = await service.deleteProject(context, project.id, name);
+    expect(deleted.id).toBe(project.id);
+    const graceMs = Date.parse(deleted.deleteAfter) - Date.parse(deleted.deletedAt);
+    expect(graceMs).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(deleted.deletedAt)).toBeGreaterThanOrEqual(before - 5_000);
+    expect((await service.listProjects(context)).map((entry) => entry.id)).not.toContain(project.id);
+    await expect(service.getProject(context, project.id)).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    // Zweimal loeschen geht nicht: Es gibt nichts Ungeloeschtes mehr.
+    await expect(service.deleteProject(context, project.id, name)).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+
+    // --- Der Key wird sofort abgelehnt, in der Datenbank ---
+    expect(await keys.authenticate(issued.secret)).toBeNull();
+    // Und der S3-Zugang folgt derselben Regel; seine Definition traegt die
+    // Bedingung, die Funktion liest `projects`.
+    const s3Definition = await owner.query<{ body: string }>(
+      "SELECT pg_get_functiondef('qkern_authenticate_project_storage_s3_access_key(text)'::regprocedure) AS body");
+    expect(s3Definition.rows[0].body).toMatch(/project\.deleted_at IS NULL/);
+
+    // --- In der Liste der Geloeschten, mit Frist; der Audit-Eintrag haengt ---
+    const listed = await service.listDeletedProjects(context);
+    expect(listed.map((entry) => entry.id)).toEqual([project.id]);
+    expect(listed[0].deleteAfter).toBe(deleted.deleteAfter);
+    const deletedAudit = await owner.query<{ action: string; metadata: Record<string, unknown> }>(
+      `SELECT action, redacted_metadata AS metadata FROM audit_logs
+       WHERE organization_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`, [deleteOrganization]);
+    expect(deletedAudit.rows[0].action).toBe("project.deleted");
+    expect(deletedAudit.rows[0].metadata).toMatchObject({ slug, graceDays: 7 });
+
+    // --- Eine andere Organisation sieht nichts, holt nichts zurueck ---
+    const neighbourOwner = randomUUID();
+    const neighbourOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [neighbourOwner, `delete-2-173-neighbour-${neighbourOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Delete 2.173 neighbour', $2, $3)`,
+    [neighbourOrganization, `delete-2-173-n-${neighbourOrganization}`, neighbourOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [neighbourOrganization, neighbourOwner]);
+    const neighbour = {
+      organizationId: neighbourOrganization,
+      actor: { id: neighbourOwner, ref: `delete-2-173-neighbour-${neighbourOwner}@qkern.test`, type: "user" as const },
+    };
+    expect(await service.listDeletedProjects(neighbour)).toEqual([]);
+    await expect(service.restoreProject(neighbour, project.id)).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+
+    // --- Zurueckholen in der Frist: alles wie vorher, der Key wieder gueltig ---
+    const restored = await service.restoreProject(context, project.id);
+    expect(restored.id).toBe(project.id);
+    expect((await service.listProjects(context)).map((entry) => entry.id)).toContain(project.id);
+    expect((await keys.authenticate(issued.secret))?.projectId).toBe(project.id);
+    expect(await service.listDeletedProjects(context)).toEqual([]);
+    const restoredRow = await owner.query<{ deleted_at: string | null; delete_after: string | null }>(
+      "SELECT deleted_at, delete_after FROM projects WHERE id = $1", [project.id]);
+    expect(restoredRow.rows[0]).toEqual({ deleted_at: null, delete_after: null });
+
+    // --- Nach der Frist gibt es nichts zurueckzuholen ---
+    await service.deleteProject(context, project.id, name);
+    await owner.query(
+      "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
+      [project.id]);
+    await expect(service.restoreProject(context, project.id)).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    expect(await service.listDeletedProjects(context)).toEqual([]);
+    expect(await keys.authenticate(issued.secret)).toBeNull();
+
+    // --- Die Laufzeitrolle hat weiter kein UPDATE auf `projects` ---
+    const privileges = await owner.query<{ may_update: boolean; may_delete_fn: boolean }>(
+      `SELECT has_table_privilege('qkern_runtime', 'projects', 'UPDATE') AS may_update,
+              has_function_privilege('qkern_runtime', 'qkern_delete_project(uuid)', 'EXECUTE') AS may_delete_fn`);
+    expect(privileges.rows[0]).toEqual({ may_update: false, may_delete_fn: true });
   }, 120_000);
   it("(2.80) accepts a real foreign token through the Data API under row security and refuses the four forgeries", async () => {
     // Fremde Anbieter (2.80) an einem Stueck, gegen die echte Datenbank: echtes

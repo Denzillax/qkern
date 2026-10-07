@@ -236,14 +236,20 @@ describe("console empty state contract", () => {
   });
 
   it("invents no destructive action that no route can carry", async () => {
-    // Ein Projekt zuruecksetzen oder loeschen kann die Console heute nicht:
-    // Es gibt keine Route dafuer. Ein Knopf waere ein Versprechen ohne
-    // Deckung, also steht keiner da.
+    // Ein Projekt zuruecksetzen kann die Console nicht: Es gibt keine Route
+    // dafuer, also steht kein Knopf da. Loeschen kann sie seit 2.173, und
+    // genau an einer Stelle, hinter der die Route steht.
     for (const file of await views()) {
       const source = await readFile(path.join(VIEWS, file), "utf8");
       expect(source, `${file} verspricht ein Zuruecksetzen des Projekts`)
-        .not.toMatch(/t\("Projekt (zurücksetzen|löschen)"\)/u);
+        .not.toMatch(/t\("Projekt zurücksetzen"\)/u);
+      if (file !== "project-deletion.tsx") {
+        expect(source, `${file} verspricht ein Loeschen des Projekts`).not.toMatch(/t\("Projekt löschen"\)/u);
+      }
     }
+    const route = await readFile(path.resolve(process.cwd(), "app/api/v1/projects/[projectId]/route.ts"), "utf8");
+    expect(route).toContain("export async function DELETE(");
+    expect(route).toContain('requireCapability(context, "project_delete");');
     // Und die API-Keys versprechen keine Rotation, weil keine Route sie kann.
     const keys = await readFile(path.join(VIEWS, "api-keys-view.tsx"), "utf8");
     expect(keys).not.toMatch(/t\("Rotieren"\)/u);

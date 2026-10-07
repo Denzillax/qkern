@@ -45,6 +45,18 @@ export type CreateProjectInput = {
   region: string;
 };
 
+/** Ein geloeschtes Projekt innerhalb seiner Frist (2.173). */
+export type DeletedProject = {
+  id: string;
+  name: string;
+  slug: string;
+  deletedAt: string;
+  deleteAfter: string;
+};
+
+/** Wie lange ein geloeschtes Projekt zurueckzuholen ist (2.173), wie in 0087. */
+export const PROJECT_DELETION_GRACE_DAYS = 7;
+
 export type DecideApprovalInput = {
   approvalId: string;
   decision: "approved" | "rejected";
@@ -189,6 +201,18 @@ export interface ControlPlaneService {
    * Fehler aus dem Treiber.
    */
   createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project>;
+  /**
+   * Loescht ein Projekt mit Frist (2.173). `confirmName` muss genau der Name
+   * des Projekts sein; die Pruefung steht hier und nicht nur in der Console,
+   * damit auch ein direkter Aufruf sie nicht umgeht. Danach ist das Projekt
+   * fuer jeden Leseweg verschwunden, und bis zum Ablauf der Frist laesst es
+   * sich zurueckholen.
+   */
+  deleteProject(context: ControlPlaneContext, projectId: string, confirmName: string): Promise<DeletedProject>;
+  /** Holt ein geloeschtes Projekt vor Ablauf seiner Frist zurueck (2.173). */
+  restoreProject(context: ControlPlaneContext, projectId: string): Promise<Project>;
+  /** Die geloeschten Projekte der Organisation, deren Frist noch laeuft (2.173). */
+  listDeletedProjects(context: ControlPlaneContext): Promise<DeletedProject[]>;
   createChangeSet(context: ControlPlaneContext, input: CreateChangeSetInput): Promise<ChangeSet>;
   decideApproval(context: ControlPlaneContext, input: DecideApprovalInput): Promise<Approval>;
 }
@@ -211,6 +235,23 @@ export class ProjectSlugTakenError extends Error {
   }
 }
 recognisedByName(ProjectSlugTakenError, "ProjectSlugTakenError");
+
+/**
+ * Der abgetippte Name passt nicht zum Projekt (2.173).
+ *
+ * Dieselbe Bestaetigung wie in der Console, aber im Dienst geprueft: Wer die
+ * Route direkt aufruft, soll nicht mit weniger loeschen koennen als jemand,
+ * der den Knopf drueckt.
+ */
+export class ProjectDeleteConfirmationError extends Error {
+  readonly code = "PROJECT_DELETE_CONFIRMATION";
+
+  constructor() {
+    super("The confirmation does not match the project name.");
+    this.name = "ProjectDeleteConfirmationError";
+  }
+}
+recognisedByName(ProjectDeleteConfirmationError, "ProjectDeleteConfirmationError");
 
 /**
  * Zum Anlegen eines Projekts fehlt ein bestaendiger Nutzer (2.147).

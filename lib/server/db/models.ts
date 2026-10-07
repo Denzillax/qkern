@@ -21,6 +21,18 @@ export type ProjectRecord = {
   updatedAt: string;
 };
 
+/**
+ * Ein geloeschtes Projekt innerhalb seiner Frist (2.173). Mehr braucht die
+ * Liste zum Zurueckholen nicht, und mehr soll sie nicht zeigen.
+ */
+export type DeletedProjectRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  deletedAt: string;
+  deleteAfter: string;
+};
+
 export type ProjectEnvironmentRecord = {
   id: string;
   organizationId: string;

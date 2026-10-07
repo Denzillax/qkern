@@ -57,10 +57,10 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   { id: "billing", views: ["set-billing", "monitoring", "set-addons"], missing: false },
   // Team: es gibt keine Mitglieder, keine Einladungen, keine Personenrollen.
   { id: "team", views: [], missing: true },
-  // Gefahrenzone: kein Loeschen, kein Zuruecksetzen, kein Pausieren eines
-  // Projekts. Die Verweise fuehren zu den Seiten, auf denen das Einzelne
-  // wirklich zerstoerbar ist.
-  { id: "danger", views: ["table", "storage", "set-api-keys", "compute"], missing: true },
+  // Gefahrenzone: Seit 2.173 laesst sich ein Projekt loeschen, mit Frist und
+  // nur als Owner. Zuruecksetzen und Pausieren gibt es weiter nicht. Die
+  // Verweise fuehren zu den Seiten, auf denen das Einzelne zerstoerbar ist.
+  { id: "danger", views: ["table", "storage", "set-api-keys", "compute"], missing: false },
 ];
 
 /** Ein Weg in der Navigation: die Gruppe und der Eintrag, beides uebersetzbar. */

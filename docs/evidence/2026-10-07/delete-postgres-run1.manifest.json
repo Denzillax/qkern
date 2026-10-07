@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "delete-postgres-run1.log",
+  "commit": "b28a2fd9ada07721ccc80cfbeb2fafe054bff796",
+  "commitSubject": "release: 2.81.0 Echte Ablehnungen auf Deutsch, und jeder Knopf hat einen Namen",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 81,
+  "testFiles": "31 passed (31)",
+  "tests": "258 passed (258)",
+  "passed": 258,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

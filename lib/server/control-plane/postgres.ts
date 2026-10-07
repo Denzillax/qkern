@@ -28,6 +28,8 @@ import {
   MissingDecisionActorError,
   MissingPolicyActorError,
   MissingProjectActorError,
+  PROJECT_DELETION_GRACE_DAYS,
+  ProjectDeleteConfirmationError,
   ProjectSlugTakenError,
   type ApprovalTallyStatus,
   type ChangeFlowTally,
@@ -36,6 +38,7 @@ import {
   type CreateChangeSetInput,
   type CreateProjectInput,
   type DecideApprovalInput,
+  type DeletedProject,
   type MigrationTallyStatus,
   type ProjectChangeFlow,
   type SetAutomationPolicyInput,
@@ -429,6 +432,57 @@ export class PostgresControlPlaneService implements ControlPlaneService {
    * Eintrag steht also in der Kette und in der Datenbank, aber nicht auf jener
    * Seite. Eine erfundene Umgebung waere der schlechtere Tausch.
    */
+  async deleteProject(context: ControlPlaneContext, projectId: string, confirmName: string): Promise<DeletedProject> {
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+    }, async (repositories) => {
+      const project = await repositories.projects.get(projectId);
+      if (confirmName !== project.name) throw new ProjectDeleteConfirmationError();
+      const marked = await repositories.projects.markDeleted(projectId);
+      await repositories.audit.append({
+        projectId,
+        environment: null,
+        actorType: context.actor.type ?? "user",
+        actorRef: context.actor.ref,
+        action: "project.deleted",
+        resourceRef: projectId,
+        status: "success",
+        metadata: { slug: project.slug, deleteAfter: marked.deleteAfter, graceDays: PROJECT_DELETION_GRACE_DAYS },
+      });
+      return { id: project.id, name: project.name, slug: project.slug, ...marked };
+    });
+  }
+
+  async restoreProject(context: ControlPlaneContext, projectId: string): Promise<Project> {
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+    }, async (repositories) => {
+      await repositories.projects.restore(projectId);
+      const project = await repositories.projects.get(projectId);
+      await repositories.audit.append({
+        projectId,
+        environment: null,
+        actorType: context.actor.type ?? "user",
+        actorRef: context.actor.ref,
+        action: "project.restored",
+        resourceRef: projectId,
+        status: "success",
+        metadata: { slug: project.slug },
+      });
+      return projectFromRecord(project, FIXED_ENVIRONMENTS[0]);
+    });
+  }
+
+  async listDeletedProjects(context: ControlPlaneContext): Promise<DeletedProject[]> {
+    return this.database.withTenant({
+      organizationId: context.organizationId,
+      actorRef: context.actor.ref,
+      readOnly: true,
+    }, async (repositories) => repositories.projects.listDeleted());
+  }
+
   async createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project> {
     const createdBy = context.actor.id;
     if (!createdBy || (context.actor.type ?? "user") !== "user") throw new MissingProjectActorError();

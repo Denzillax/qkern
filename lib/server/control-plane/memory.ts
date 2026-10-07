@@ -10,6 +10,8 @@ import {
 import {
   FIXED_ENVIRONMENTS,
   MissingProjectActorError,
+  PROJECT_DELETION_GRACE_DAYS,
+  ProjectDeleteConfirmationError,
   ProjectSlugTakenError,
 } from "@/lib/server/control-plane/model";
 import type {
@@ -20,6 +22,7 @@ import type {
   ControlPlaneSnapshot,
   CreateChangeSetInput,
   CreateProjectInput,
+  DeletedProject,
   DecideApprovalInput,
   ProjectChangeFlow,
   SetAutomationPolicyInput,
@@ -30,6 +33,23 @@ import {
   policyAllowsAutomaticApproval,
 } from "@/lib/server/control-plane/automation-policy";
 import { classifySqlRisk } from "@/lib/security";
+
+/** Die geloeschten Projekte dieses Prozesses, bis zum Ablauf ihrer Frist (2.173). */
+const memoryDeletedProjects = new Map<string, { project: Project; deletedAt: string; deleteAfter: string }>();
+
+function memoryProjectAudit(context: ControlPlaneContext, projectId: string, action: "project.deleted" | "project.restored") {
+  store.audit.unshift({
+    id: `aud_${crypto.randomUUID().slice(0, 8)}`,
+    organizationId: context.organizationId,
+    projectId,
+    environment: null,
+    actor: context.actor.ref,
+    action,
+    resource: projectId,
+    status: "success",
+    createdAt: new Date().toISOString(),
+  });
+}
 
 function publicChangeSet(change: ChangeSet): ChangeSet {
   return {
@@ -198,6 +218,41 @@ export class MemoryControlPlaneService implements ControlPlaneService {
    * darum durch denselben Weg wie jedes andere Ereignis hier, naemlich die
    * Liste in `store.audit`; die verkettete Kette ist die der Datenbank.
    */
+  /**
+   * Loeschen mit Frist im Speicher (2.173). Das Projekt verlaesst die Liste,
+   * aus der jeder Leseweg dieses Adapters liest, und wartet in einer eigenen
+   * Ablage; dieselben Regeln wie in 0087: nur ungeloeschte Projekte loeschen,
+   * nur vor Ablauf der Frist zurueckholen.
+   */
+  async deleteProject(context: ControlPlaneContext, projectId: string, confirmName: string): Promise<DeletedProject> {
+    const project = getProject(context.organizationId, projectId);
+    if (confirmName !== project.name) throw new ProjectDeleteConfirmationError();
+    const deletedAt = new Date();
+    const deleteAfter = new Date(deletedAt.getTime() + PROJECT_DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000);
+    store.projects.splice(store.projects.indexOf(project), 1);
+    const entry = { project, deletedAt: deletedAt.toISOString(), deleteAfter: deleteAfter.toISOString() };
+    memoryDeletedProjects.set(projectId, entry);
+    memoryProjectAudit(context, projectId, "project.deleted");
+    return { id: project.id, name: project.name, slug: project.slug, deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter };
+  }
+
+  async restoreProject(context: ControlPlaneContext, projectId: string): Promise<Project> {
+    const entry = memoryDeletedProjects.get(projectId);
+    if (!entry || entry.project.organizationId !== context.organizationId || Date.parse(entry.deleteAfter) <= Date.now()) {
+      throw new Error("RESOURCE_NOT_FOUND");
+    }
+    memoryDeletedProjects.delete(projectId);
+    store.projects.push(entry.project);
+    memoryProjectAudit(context, projectId, "project.restored");
+    return entry.project;
+  }
+
+  async listDeletedProjects(context: ControlPlaneContext): Promise<DeletedProject[]> {
+    return [...memoryDeletedProjects.values()]
+      .filter((entry) => entry.project.organizationId === context.organizationId && Date.parse(entry.deleteAfter) > Date.now())
+      .map((entry) => ({ id: entry.project.id, name: entry.project.name, slug: entry.project.slug, deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter }));
+  }
+
   async createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project> {
     if (!context.actor.id || (context.actor.type ?? "user") !== "user") throw new MissingProjectActorError();
     const taken = listProjects(context.organizationId).some((entry) => entry.slug === input.slug);

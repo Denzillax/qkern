@@ -57,6 +57,13 @@ export type RequestCapability =
    */
   | "project_create"
   /**
+   * Ein Projekt loeschen und zurueckholen (2.173). Nur die Owner-Rolle, so
+   * entschieden am 7. Oktober 2026: Das Loeschen raeumt nach sieben Tagen
+   * Datenbank, Backups und Buckets ab, und das soll nicht dieselbe Rolle
+   * koennen, die Projekte anlegen und taeglich verwalten darf.
+   */
+  | "project_delete"
+  /**
    * Die drei Rechte am Backup einer Projektdatenbank (2.129). Drei und nicht
    * eines, weil die Handlungen nicht dasselbe sind; die Begruendung je Recht
    * steht in `app/api/v1/.../database/backups/route.ts`.
@@ -77,7 +84,7 @@ const ROLE_CAPABILITIES: Record<OrganizationRole, ReadonlySet<RequestCapability>
   // neue Datenbank an, bringt geloeschte Daten zurueck und ist nicht
   // wiederholbar. Ein Administrator darf ein Backup bestellen und den Katalog
   // lesen; die Datenbank zurueckholen darf der, der fuer die Organisation haftet.
-  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "project_backup_read", "project_backup_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate", "project_create", "project_backup_restore"]),
+  owner: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "project_backup_read", "project_backup_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate", "project_create", "project_backup_restore", "project_delete"]),
   administrator: new Set(["read", "change_preview", "approve", "apply", "migration_review", "migration_apply_delivery_read", "migration_apply_delivery_retry", "migration_incident_read", "migration_incident_ack", "migration_incident_resolve", "migration_incident_delivery_retry", "project_provisioning_read", "project_provisioning_request", "project_backup_read", "project_backup_request", "automation_policy", "project_api_keys", "project_auth_admin", "project_storage_admin", "project_queues_admin", "project_compute_admin", "project_data_mutate", "project_create"]),
   developer: new Set(["read", "change_preview", "project_data_mutate"]),
   deployer: new Set(["read", "change_preview", "apply", "migration_apply_delivery_read", "project_provisioning_read", "project_backup_read"]),

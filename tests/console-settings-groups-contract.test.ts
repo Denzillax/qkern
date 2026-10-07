@@ -89,22 +89,27 @@ describe("console settings groups contract", () => {
   });
 
   it("names no capability that does not exist", async () => {
-    // Genau zwei Gruppen haben keine Faehigkeit, und es sind diese zwei.
+    // Seit 2.173 hat nur noch Team keine Faehigkeit: Ein Projekt laesst sich
+    // loeschen, mit Frist und nur als Owner.
     expect(SETTINGS_GROUPS.filter((group) => group.missing).map((group) => group.id))
-      .toEqual(["team", "danger"]);
+      .toEqual(["team"]);
 
     const html = markup();
     // Team: der Satz steht da, und in dem Abschnitt steht kein Knopf.
     const team = card(html, "Team");
     expect(html).toContain("Eine Teamverwaltung gibt es in QKERN nicht.");
-    expect(html).toContain("Ein Projekt löschen, zurücksetzen oder pausieren kann diese Console nicht");
+    expect(html).toContain("Ein Projekt löschen darf nur die Owner-Rolle.");
+    expect(html).toContain("Zurücksetzen oder pausieren kann diese Console nicht");
 
     const source = await readFile(VIEW, "utf8");
     // Kein Speicherknopf, kein Eingabefeld, keine zerstoerende Aktion: Die
     // Seite liest, und zwar alles aus ihren Requisiten.
     expect(source, "die Seite verspricht wieder ein Speichern").not.toMatch(/t\("Änderungen speichern"\)/u);
     expect(source, "die Seite baut wieder ein Formular").not.toContain("<input");
-    expect(source, "die Seite erfindet eine zerstoerende Aktion").not.toContain("DangerousAction");
+    // Die eine zerstoerende Aktion steht in ihrer eigenen Komponente, und die
+    // Seite selbst liest weiter nur (2.173).
+    expect(source, "die Seite baut eine eigene zerstoerende Aktion").not.toContain("DangerousAction");
+    expect(source).toContain("<ProjectDeletion");
     expect(html, "ein abgeschalteter Knopf steht wieder auf der Seite").not.toContain("disabled");
     for (const word of ["Projekt löschen", "Projekt zurücksetzen", "Projekt pausieren"]) {
       expect(source, `${word} gibt es nicht`).not.toContain(`t("${word}")`);
@@ -144,11 +149,13 @@ describe("console settings groups contract", () => {
     expect(danger).toBeDefined();
     const html = markup();
     const body = card(html, "Gefahrenzone");
-    // Jeder Knopf dort ist ein Verweis, und zwar genau einer je Ansicht der
-    // Gruppe. Ein Knopf mehr waere einer ohne Route.
+    // Jeder Knopf dort ist ein Verweis, genau einer je Ansicht der Gruppe,
+    // dazu seit 2.173 genau einer zum Loeschen des Projekts. Ein Knopf mehr
+    // waere einer ohne Route.
     const buttons = [...body.matchAll(/<button/g)];
     expect(buttons.length, "Die Gefahrenzone traegt einen Knopf ohne Verweis")
-      .toBe(danger!.views.length);
+      .toBe(danger!.views.length + 1);
+    expect(body).toContain("Projekt löschen");
     for (const view of danger!.views) {
       expect(body, `Die Gefahrenzone nennt ${view} nicht`).toContain(linkName(view));
     }

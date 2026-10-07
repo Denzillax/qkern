@@ -188,6 +188,56 @@ export const qkernOpenAPI = {
         },
       },
     },
+    "/v1/projects/deleted": {
+      get: {
+        tags: ["Projects"], operationId: "listDeletedProjects",
+        summary: "List deleted projects whose grace period is still running",
+        description: "Since `2.173`, read-only, with a session that has read access, private, no-store. A deleted project stays restorable for seven days; this list shows exactly those, with deletedAt and deleteAfter, and nothing that has passed its deadline. Restoring needs project_delete.",
+        security: [{ sessionCookie: [] }],
+        responses: {
+          "200": { description: "Deleted projects within their grace period", content: { "application/json": { schema: { $ref: "#/components/schemas/DeletedProjectListResponse" } } } },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}": {
+      delete: {
+        tags: ["Projects"], operationId: "deleteProject",
+        summary: "Delete a project with a seven-day grace period",
+        description: "Since `2.173`. Needs the capability project_delete, which only the owner role carries, and a trusted origin; no-store. The body must carry confirmName, exactly the name of the project, checked by the service and not only by the console. The project is blocked at once: it disappears from every read path, and every project API key and S3 access key of it is refused. It stays restorable for seven days (deleteAfter); after that its database, backups and buckets are removed. The audit log stays, because it belongs to the organization. A project that does not exist or is already deleted answers 404.",
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/DeleteProjectRequest" } } },
+        },
+        responses: {
+          "200": { description: "The deleted project with its deadline", content: { "application/json": { schema: { $ref: "#/components/schemas/DeletedProjectResponse" } } } },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
+    "/v1/projects/{projectId}/restore": {
+      post: {
+        tags: ["Projects"], operationId: "restoreProject",
+        summary: "Restore a deleted project before its deadline",
+        description: "Since `2.173`. Same capability as deleting (project_delete) and a trusted origin; no-store. Works only while deleteAfter lies in the future; after that there is nothing left to restore and the answer is 404.",
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: "projectId", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "The restored project", content: { "application/json": { schema: { $ref: "#/components/schemas/CreateProjectResponse" } } } },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
     "/v1/projects/provisioning/health": {
       get: {
         tags: ["Project Provisioning"],
@@ -2920,6 +2970,25 @@ export const qkernOpenAPI = {
       ProjectDatabaseHealth: { type: "object", additionalProperties: false, required: ["source", "database", "writeback", "serverLog"], properties: { source: { const: "postgres" }, database: { $ref: "#/components/schemas/ProjectDatabaseHealthFigures" }, writeback: { $ref: "#/components/schemas/ProjectDatabaseWriteback", description: "The write path of the server; it applies to the whole cluster, not only to this database." }, serverLog: { $ref: "#/components/schemas/ProjectDatabaseServerLog", description: "What this server does with its own log. Since 2.109; it carries no log line." } } },
       ProjectDatabaseServerLog: { type: "object", additionalProperties: false, required: ["collector", "destination", "mayReadFiles", "maySeeLogPath"], properties: { collector: { type: "boolean", description: "logging_collector. False means there is no log file at all, and the server writes to the stderr of its process." }, destination: { type: "string", maxLength: 128, description: "log_destination in its wording, a list such as stderr or stderr,csvlog. csvlog and jsonlog would write a file a machine can read." }, mayReadFiles: { type: "boolean", description: "Whether this role is a member of pg_read_server_files. The role boundary forbids that membership, so it is false in QKERN." }, maySeeLogPath: { type: "boolean", description: "Whether this role is a member of pg_read_all_settings. Without it log_directory, log_filename and data_directory stay invisible, so the route never names the file." } } },
       ProjectDatabaseHealthResponse: { type: "object", additionalProperties: false, required: ["data"], properties: { data: { $ref: "#/components/schemas/ProjectDatabaseHealth" } } },
+      DeleteProjectRequest: {
+        type: "object", additionalProperties: false, required: ["confirmName"],
+        properties: { confirmName: { type: "string", minLength: 1, maxLength: 200, description: "Exactly the name of the project." } },
+      },
+      DeletedProject: {
+        type: "object", required: ["id", "name", "slug", "deletedAt", "deleteAfter"],
+        properties: {
+          id: { type: "string" }, name: { type: "string" }, slug: { type: "string" },
+          deletedAt: { type: "string", format: "date-time" },
+          deleteAfter: { type: "string", format: "date-time", description: "Until then the project can be restored; afterwards it is removed." },
+        },
+      },
+      DeletedProjectResponse: {
+        type: "object", required: ["data"], properties: { data: { $ref: "#/components/schemas/DeletedProject" } },
+      },
+      DeletedProjectListResponse: {
+        type: "object", required: ["data"],
+        properties: { data: { type: "object", required: ["projects"], properties: { projects: { type: "array", items: { $ref: "#/components/schemas/DeletedProject" } } } } },
+      },
       CreateProjectRequest: { type: "object", additionalProperties: false, required: ["name", "region"], properties: { name: { type: "string", minLength: 2, maxLength: 60, description: "The project name as typed. The slug is derived from it; it is not sent." }, region: { type: "string", enum: ["ch-zrh-1"], description: "The one region QKERN carries. It is text in the project row: no location is checked and no hardware is picked from it." } } },
       CreateProjectResponse: { type: "object", additionalProperties: false, required: ["data", "environments", "databaseProvisioned"], properties: { data: { type: "object", description: "The created project with status provisioning." }, environments: { type: "array", items: { type: "string", enum: ["development", "staging", "production"] }, description: "The three fixed environments created with a waiting database reference." }, databaseProvisioned: { type: "boolean", enum: [false], description: "Always false here: creating a project creates no project database." } } },
       ProjectEnvironmentBinding: { type: "object", additionalProperties: false, required: ["environment", "databaseInstanceRef", "bound", "createdAt"], properties: { environment: { type: "string", enum: ["development", "staging", "production"] }, databaseInstanceRef: { type: "string", description: "The opaque identifier the provisioner assigns (managed:...) or a waiting marker (pending:...). It is not an address: no host, no port, no password." }, bound: { type: "boolean", description: "False while the reference waits and points at no database." }, createdAt: { type: ["string", "null"], format: "date-time", description: "Null where the source keeps no timestamp." } } },

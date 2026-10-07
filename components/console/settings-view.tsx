@@ -3,6 +3,7 @@
 import { AlertTriangle, ArrowRight, Boxes, CreditCard, KeyRound, ShieldCheck, Sliders, Users } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { CopyValue } from "@/components/console/copy-value";
+import { ProjectDeletion } from "@/components/console/project-deletion";
 import type { InterfaceMode, ViewId } from "@/components/console/navigation";
 import { SETTINGS_GROUPS, navPath, type SettingsGroupId } from "@/lib/console/settings-groups";
 
@@ -31,11 +32,13 @@ import { SETTINGS_GROUPS, navPath, type SettingsGroupId } from "@/lib/console/se
  * verdrahtet ist, bleiben die Verweise stumm, statt dass die Seite nicht
  * baut.
  */
-export function SettingsView({ project, organizationId, navigate, mode = "advanced" }: {
+export function SettingsView({ project, organizationId, navigate, mode = "advanced", onProjectChanged }: {
   project: { name: string; id: string; region?: string };
   organizationId: string;
   navigate?: (view: ViewId) => void;
   mode?: InterfaceMode;
+  /** Nach Loeschen oder Zurueckholen eines Projekts (2.173). */
+  onProjectChanged?: () => void;
 }) {
   /** Titel, Symbol und der Satz, der sagt, was die Gruppe enthält. */
   const texts: Record<SettingsGroupId, { title: string; lead: string; icon: typeof Sliders }> = {
@@ -65,7 +68,7 @@ export function SettingsView({ project, organizationId, navigate, mode = "advanc
     },
     danger: {
       title: t("Gefahrenzone"), icon: AlertTriangle,
-      lead: t("Ein Projekt löschen, zurücksetzen oder pausieren kann diese Console nicht, denn keine Route trägt eine dieser Aktionen. Zerstörend wirkt hier nur das Einzelne, und jedes davon liegt auf seiner eigenen Seite: die Zeilen einer Tabelle, ein Bucket mit seinen Objekten, ein API-Key, eine Function, ein Cron-Job, ein Webhook."),
+      lead: t("Ein Projekt löschen darf nur die Owner-Rolle. Es ist danach sofort gesperrt, lässt sich sieben Tage lang zurückholen und wird dann mit Datenbank, Backups und Buckets abgeräumt. Zurücksetzen oder pausieren kann diese Console nicht, denn keine Route trägt eine dieser Aktionen. Sonst wirkt nur das Einzelne zerstörend, auf seiner eigenen Seite: die Zeilen einer Tabelle, ein Bucket mit seinen Objekten, ein API-Key, eine Function, ein Cron-Job, ein Webhook."),
     },
   };
 
@@ -97,6 +100,8 @@ export function SettingsView({ project, organizationId, navigate, mode = "advanc
               aber nicht herein. Ohne Wert keine Zeile, statt eines Striches. */}
           {project.region !== undefined && value(t("Region"), project.region)}
         </div>}
+        {/* Seit 2.173 der eine zerstoerende Knopf dieser Seite, mit Route. */}
+        {group.id === "danger" && <ProjectDeletion project={{ id: project.id, name: project.name }} onChanged={onProjectChanged}/>}
         {group.views.length > 0 && <div className="settings-group-links">
           {group.views.map((view) => {
             const path = navPath(view, mode);

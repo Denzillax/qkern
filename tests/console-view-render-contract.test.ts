@@ -30,6 +30,7 @@ import { CheckIcon, EmptyState, ErrorState, InlineEmptyState } from "@/component
 import { CopyValue } from "@/components/console/copy-value";
 import { DangerousAction } from "@/components/console/dangerous-action";
 import { FormPanel } from "@/components/console/form-panel";
+import { ProjectDeletion } from "@/components/console/project-deletion";
 import { Database } from "lucide-react";
 
 /**
@@ -245,6 +246,8 @@ const SPECIAL_PROPS: Record<string, ReactElement[]> = {
       { name: "json", label: "Values", multiline: true, initial: "{}" },
     ],
   })],
+  // 2.173: Loeschen mit Frist; geschlossen steht nur der Knopf da.
+  ProjectDeletion: [element(ProjectDeletion, { project: { id: PROJECT.id, name: PROJECT.name }, onChanged: () => {} })],
   ApprovalView: [element(ApprovalView, { ...DEFAULT_PROPS, approvals: SNAPSHOT.approvals, changes: SNAPSHOT.changeSets, reload: async () => {} })],
   BillingSettingsView: [element(BillingSettingsView, { ...DEFAULT_PROPS, navigate: () => {} })],
   DatabaseView: [element(DatabaseView, { project: PROJECT, navigate: () => {} })],

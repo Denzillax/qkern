@@ -54,6 +54,9 @@ const EXACT: Record<string, string> = {
   // Auth, Queues und Usage (2.172), nach demselben Durchlauf durch die echten
   // Abbildungen der Routen. Die Konflikte stehen mit den Ursachen, die der
   // Code an der Stelle wirklich kennt.
+  // Loeschen eines Projekts (2.173).
+  "The confirmation does not match the project name.": "Der abgetippte Name passt nicht zum Projekt.",
+  "This role may not delete projects.": "Ein Projekt löschen darf nur die Owner-Rolle.",
   "Account already exists": "Unter dieser Adresse gibt es schon ein Konto.",
   "Email verification required": "Die E-Mail-Adresse ist noch nicht bestätigt.",
   "Password appears in a known credential leak": "Dieses Passwort steht in einer bekannten Sammlung geleakter Zugangsdaten. Wähle ein anderes.",

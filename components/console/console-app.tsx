@@ -491,7 +491,8 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
           {loading && <LoadingState/>}
           {error && <ErrorState message={error} retry={load}/>} 
           {!loading && !error && snapshot && project && (
-            <ViewRouter view={view} snapshot={snapshot} project={project} environment={environment} reload={load} navigate={changeView} display={display} onDisplayChange={setDisplay} mode={mode}/>
+            <ViewRouter view={view} snapshot={snapshot} project={project} environment={environment} reload={load} navigate={changeView} display={display} onDisplayChange={setDisplay} mode={mode}
+              onProjectChanged={() => { setProjectId(null); void load(); }}/>
           )}
         </main>
       </div>
@@ -500,7 +501,7 @@ export function ConsoleApp({ locale }: { locale: Locale }) {
   );
 }
 
-function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; display: ConsoleDisplaySettings; onDisplayChange: (settings: ConsoleDisplaySettings) => void; mode: InterfaceMode }) {
+function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project; environment: Environment; reload: () => Promise<void>; navigate: (view: ViewId) => void; display: ConsoleDisplaySettings; onDisplayChange: (settings: ConsoleDisplaySettings) => void; mode: InterfaceMode; onProjectChanged: () => void }) {
   switch (props.view) {
     // Ohne die Vorschau-Notiz (2.136). Sie stand ueber allem und sagte, der
     // Metrik-Dienst fehle; seit die Uebersicht selbst je Karte sagt, woher die
@@ -532,7 +533,7 @@ function ViewRouter(props: { view: ViewId; snapshot: Snapshot; project: Project;
     case "backups": return <BackupsView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-pitr": return <PitrView projectId={props.project.id} environment={props.environment}/>;
     case "db-backups-restore": return <RestoreToNewProjectView projectId={props.project.id} environment={props.environment}/>;
-    case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id, region: props.project.region }} organizationId={props.snapshot.organization.id} navigate={props.navigate} mode={props.mode}/>;
+    case "settings": return <SettingsView project={{ name: props.project.name, id: props.project.id, region: props.project.region }} organizationId={props.snapshot.organization.id} navigate={props.navigate} mode={props.mode} onProjectChanged={props.onProjectChanged}/>;
     case "int-queues": return <QueuesView projectId={props.project.id} environment={props.environment}/>;
     case "db-migrations": return <MigrationsView projectId={props.project.id} environment={props.environment} changeSets={props.snapshot.changeSets}/>;
     case "compute-invocations": return <InvocationsView projectId={props.project.id} environment={props.environment}/>;
