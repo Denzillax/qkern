@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle33-local-run1.log",
+  "commit": "2209c819b8851d7bc35e51db8d444203ac6c35b9",
+  "commitSubject": "console: Ablehnungen von Auth, Queues und Usage auf Deutsch (2.172)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "378 passed | 42 skipped (420)",
+  "tests": "2735 passed | 379 skipped (3114)",
+  "passed": 2735,
+  "failed": 0,
+  "skipped": 379,
+  "images": []
+}

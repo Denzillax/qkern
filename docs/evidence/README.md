@@ -2061,6 +2061,14 @@ Testdatei.
 | `2026-10-04/welle32-local-run1.log` | Vitest lokal (Windows) | 2733 bestanden, exit 0, mit `--maxWorkers=3` |
 | `2026-10-04/welle32-local-run2.log` | Vitest lokal (Windows) | 2733 bestanden, exit 0, mit `--maxWorkers=3` |
 
+| `2026-10-07/welle33-postgres-run1.log` | PostgreSQL 17 | 257 bestanden, exit 0 |
+| `2026-10-07/welle33-postgres-run2.log` | PostgreSQL 17 | 257 bestanden, exit 0, Reproduktion |
+| `2026-10-07/welle33-local-run1.log` | Vitest lokal (Windows) | 2735 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-07/welle33-local-run2.log` | Vitest lokal (Windows) | 2735 bestanden, exit 0, mit `--maxWorkers=3` |
+
+Zu 2.81 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind ein
+Textmodul der Console, Uebersetzungen und ein Vertrag.
+
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind
 im Nachbau mit echten Klicks und Tastendruecken gefahren, nicht archiviert:

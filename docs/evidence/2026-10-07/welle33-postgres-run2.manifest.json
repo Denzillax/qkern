@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "welle33-postgres-run2.log",
+  "commit": "2209c819b8851d7bc35e51db8d444203ac6c35b9",
+  "commitSubject": "console: Ablehnungen von Auth, Queues und Usage auf Deutsch (2.172)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 80,
+  "testFiles": "31 passed (31)",
+  "tests": "257 passed (257)",
+  "passed": 257,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

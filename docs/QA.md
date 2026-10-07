@@ -6915,3 +6915,28 @@ beide exit 0; lokal 2733 bestanden, zweimal reproduziert.
 Nicht erbracht: Der Nachbau antwortet auf Schreibanfragen mit einer festen
 Zusage; eine echte Ablehnung des Servers ist nicht gefahren. Ein Screenreader
 hat die Console nicht gelesen.
+
+## Welle dreiunddreissig (2.81): echte Ablehnungen, und jeder Knopf hat einen Namen
+
+Zwei Schnitte (2.171, 2.172). Der Nachbau nimmt Schreibanfragen pauschal an,
+also war eine echte Ablehnung nie im Formular zu sehen. Statt eines Laufs
+gegen den Server geht jetzt jeder Fehlercode der fuenf Routen-Abbildungen
+durch die echte Abbildung und dann durch die Funktion, die das Formular
+benutzt. Gefunden: Gerade die haeufigsten Ablehnungen eines Formulars, ein
+vergebener Name, kamen englisch an; insgesamt neunzehn Meldungen.
+
+Zum Verfahren: Jede Uebersetzung eines Konflikts ist an der Stelle geprueft,
+die den Code wirft. Dieselbe englische Meldung hat je nach Modul andere
+Ursachen, und ein Satz, der eine davon raet, waere in den anderen Faellen
+falsch.
+
+Ohne Commit, weil nichts zu aendern war: Der Barrierefreiheits-Baum aller 99
+Ansichten und der offenen Zustaende hat kein Bedienelement ohne Namen. Die
+Pruefung fand einen absichtlich eingeschleusten Knopf ohne Namen.
+
+Checkpoint `2.81.0` am 7. Oktober 2026: PostgreSQL 17 mit 257 von 257 zweimal,
+beide exit 0; lokal 2735 bestanden, zweimal reproduziert.
+
+Nicht erbracht: Ein Screenreader hat die Console nicht gelesen. Die Console ist
+nicht mit einem echten Projekt angesehen. Projekt loeschen wartet auf eine
+Entscheidung.

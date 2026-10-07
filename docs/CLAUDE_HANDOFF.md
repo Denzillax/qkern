@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.80.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.81.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,17 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- 2.171 und 2.172 (`main`) **Echte Ablehnungen auf Deutsch.** Jeder
+  Fehlercode der fuenf Routen-Abbildungen (Storage, Compute, Auth, Queues,
+  Usage) laeuft im Vertrag `console-server-errors-contract` durch die echte
+  Abbildung und dann durch `serverErrorText`. Wer einen Fehlercode ergaenzt,
+  muss ihn dort eintragen und uebersetzen; ein Konflikt wird mit den Ursachen
+  uebersetzt, die der Code an der Stelle wirklich kennt. Dazu, ohne Commit:
+  Der Barrierefreiheits-Baum aller 99 Ansichten und der offenen Zustaende hat
+  kein Bedienelement ohne Namen (gemessen ueber `Accessibility.getFullAXTree`
+  im Nachbau). **Offen**: Projekt loeschen braucht Denzils Entscheidung zu
+  Daten, Keys, Umgebungen und Frist.
 
 - 2.165 bis 2.170 (`main`) **Die Console bedient.** Belastungsdaten im
   Nachbau (`HARNESS_STRESS=1`: lange Namen, 30 Spalten) und echte Klicks und
@@ -1239,7 +1250,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.80.0`
+- Paketversion: `2.81.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 
