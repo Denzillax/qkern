@@ -149,6 +149,18 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.175 (`main`) **Der Abraeumer, erster Teil.** `lib/server/projects/purge.ts`
+  (`ProjectPurgeRound`) laeuft in der Leerlaufrunde des Provisioners nach dem
+  Backup-Durchlauf (`workers/project-provisioning-runtime.mts`). Er nimmt das
+  Projekt mit der aeltesten abgelaufenen Frist, entfernt seine Backups wie
+  `pruneExpired` (Objekt, dann `forget`) und ruft
+  `qkern_purge_project` aus Migration `0089_project_purge.sql`: Keys
+  widerrufen, `purged_at` setzen, aber nur, wenn kein Backup mehr lesbar ist
+  oder laeuft und keine Wiederherstellung wartet. Die Projektzeile und die
+  Umgebungen bleiben als Huelle (Audit-Log und Abrechnung haengen mit
+  RESTRICT daran). Plan und Entscheidungen: `docs/PROJEKT_LOESCHEN.md`.
+  **Offen**: Buckets (2.176), Abbau der Datenbank ueber den Broker (2.177).
+
 - 2.174 (`main`) **Hintergrundprozesse lassen ein geloeschtes Projekt aus.**
   Cron (`listActive`), Webhook-Zustellung (`claim`), Backup-Zeitplan
   (`claimDue`) und Migrations-Abholung (`claimNext`) fragen jetzt, ob das

@@ -35,7 +35,16 @@ try {
     pool,
     logger: { log: (event) => console.info(JSON.stringify(event)) },
     probe: probe?.observer,
-    idleDuty: backup?.service,
+    // Die Leerlaufrunde traegt zwei Pflichten (2.175): erst Backups und
+    // Wiederherstellungen, dann der Abraeumer fuer Projekte, deren Frist
+    // abgelaufen ist. Faellt der Abraeumer aus, ist die Backup-Runde schon
+    // gelaufen; der Worker faengt den Fehler und macht weiter.
+    idleDuty: backup ? {
+      runRound: async (signal?: AbortSignal) => {
+        await backup!.service.runRound(signal);
+        await backup!.purge.runRound();
+      },
+    } : undefined,
   });
   await probe?.start();
   await worker.run(controller.signal);

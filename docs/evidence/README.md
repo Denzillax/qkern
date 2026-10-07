@@ -2074,6 +2074,8 @@ Textmodul der Console, Uebersetzungen und ein Vertrag.
 | `2026-10-07/delete-mutation-deadline.log` | Mutation: Zurueckholen ohne Fristpruefung | **257 von 258, exit 1 – absichtlich**, es faellt genau (2.173) |
 | `2026-10-07/workers-postgres-run1.log` | PostgreSQL 17 | 262 bestanden, exit 0, im Schnitt 2.174 |
 | `2026-10-07/workers-mutation-filters.log` | Mutation: Cron, Webhook, Backup und Migration fragen nicht nach dem geloeschten Projekt | **258 von 262, exit 1 – absichtlich**, es fallen genau die vier (2.174) |
+| `2026-10-08/purge-postgres-run1.log` | PostgreSQL 17 | 263 bestanden, exit 0, im Schnitt 2.175 |
+| `2026-10-08/purge-mutation-running-backup.log` | Mutation: der Abraeumer wartet nicht auf ein laufendes Backup | **262 von 263, exit 1 – absichtlich**, es faellt genau (2.175) |
 
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind

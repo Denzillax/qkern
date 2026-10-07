@@ -1,4 +1,5 @@
 import { ConfigurationError } from "@/lib/server/db/errors";
+import { ProjectPurgeRound } from "@/lib/server/projects/purge";
 import { createPostgresPool } from "@/lib/server/db/pool";
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool, SqlQueryable } from "@/lib/server/db/sql";
@@ -114,6 +115,12 @@ export type ProjectDatabaseBackupRuntime = Readonly<{
   /** Der Zeitplan (2.129). Dieselbe Pflicht, die `runRound` von sich aus ruft. */
   scheduler: ProjectDatabaseBackupScheduler;
   scheduleStore: PostgresProjectDatabaseBackupScheduleStore;
+  /**
+   * Der Abraeumer fuer geloeschte Projekte (2.175), mit genau diesem Speicher
+   * und diesem Katalog: Ein Backup verschwindet auf demselben Weg wie am Ende
+   * seiner Aufbewahrung.
+   */
+  purge: ProjectPurgeRound;
   close(): Promise<void>;
 }>;
 
@@ -367,11 +374,20 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
   });
   service.useSchedule(scheduler);
 
+  const purge = new ProjectPurgeRound({
+    database: dependencies.controlPlane,
+    organizationId,
+    objects,
+    backups: store,
+    actorRef: workerId,
+  });
+
   return Object.freeze({
     service,
     store,
     scheduler,
     scheduleStore,
+    purge,
     close: async () => {
       await Promise.allSettled([reader.close(), admin.close()]);
     },

@@ -62,6 +62,7 @@ import path from "node:path";
 import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto";
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
 import { ProjectDeleteConfirmationError, ProjectSlugTakenError } from "@/lib/server/control-plane/model";
+import { ProjectPurgeRound } from "@/lib/server/projects/purge";
 import { validateProjectDraft } from "@/lib/console/project-draft";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
 // Dauerhafte Presence (2.113): der echte Store ueber die echte Laufzeitrolle,
@@ -17095,6 +17096,149 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         [backupProject, foreignProject]).catch(() => {});
     }
   }, 180_000);
+
+  it("(2.175) purges a deleted project after its deadline: removes its backups the way retention does, waits while a backup still runs, then revokes its keys and leaves a hull with purged_at", async () => {
+    // Der Abraeumer, erster Teil (docs/PROJEKT_LOESCHEN.md). Echt sind die
+    // Provisioner-Rolle, der Backup-Katalog mit `forget`, die Funktion
+    // `qkern_purge_project` und der Key-Dienst mit seiner SQL-Pruefung. Nur
+    // der Objektspeicher ist ein Protokoll; den echten S3-Weg belegt der
+    // Backup-Stack.
+    expect(provisionerUrl, "QKERN_TEST_PROVISIONER_DATABASE_URL").toBeTruthy();
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 2 }), "provisioner",
+    );
+    // Eine eigene Organisation: Der Abraeumer schreibt einen Audit-Eintrag, und
+    // eine Organisation mit Audit-Zeilen laesst sich wegen
+    // audit_logs_organization_id_fkey nicht mehr loeschen. Das gemeinsame
+    // afterAll muss organizationA loswerden; diese bleibt als Rest im
+    // Wegwerf-Stack, wie in (2.147).
+    const purgeOwner = randomUUID();
+    const purgeOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [purgeOwner, `purge-2-175-owner-${purgeOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Purge 2.175', $2, $3)`,
+    [purgeOrganization, `purge-2-175-${purgeOrganization}`, purgeOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [purgeOrganization, purgeOwner]);
+    const purgeProject = randomUUID();
+    const reference = `managed:purge-${randomUUID().slice(0, 8)}`;
+    try {
+      await owner.query(
+        `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+         VALUES ($1, $2, 'Purge 2.175', $3, 'test', 'ready', $4)`,
+        [purgeProject, purgeOrganization, `purge-${purgeProject}`, purgeOwner]);
+      await owner.query(
+        `INSERT INTO project_environments (organization_id, project_id, environment, database_instance_ref)
+         VALUES ($1, $2, 'production', $3)`, [purgeOrganization, purgeProject, reference]);
+      const jobId = randomUUID();
+      await owner.query(
+        `INSERT INTO project_database_provisioning_jobs
+           (id, organization_id, project_id, environment, requested_by, status)
+         VALUES ($1, $2, $3, 'production', 'purge-case', 'pending')`, [jobId, purgeOrganization, purgeProject]);
+      await owner.query(
+        `INSERT INTO project_database_bindings
+           (organization_id, project_id, environment, provisioning_job_id, database_instance_ref,
+            vault_static_role, host, port, expected_role, expected_database,
+            expected_ledger_owner, server_certificate_sha256, bootstrap_contract_sha256)
+         VALUES ($1, $2, 'production', $3, $4, 'purge-role', 'postgres', 5432,
+                 'qkern_project_api_app', 'project_database', 'qkern_ledger_owner', $5, $6)`,
+        [purgeOrganization, purgeProject, jobId, reference, "a".repeat(64), PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256]);
+
+      // Ein lesbares Backup und eines, das gerade laeuft.
+      const availableId = randomUUID();
+      const objectKey = `project-database-backups/${purgeOrganization}/${purgeProject}/production/${availableId}.qkbak`;
+      await owner.query(
+        `INSERT INTO project_database_backups
+           (id, organization_id, project_id, environment, database_instance_ref, status, object_key,
+            artifact_sha256, size_bytes, wrapped_data_key, key_id, manifest_sha256, includes,
+            snapshot_at, completed_at, expires_at, artifact_format)
+         VALUES ($1, $2, $3, 'production', $4, 'available', $5, $6, 1024, $7, 'purge-key', $8,
+                 ARRAY['schema','rows'], now() - interval '2 days', now() - interval '2 days',
+                 now() + interval '20 days', 'single')`,
+        [availableId, purgeOrganization, purgeProject, reference, objectKey, "b".repeat(64), "A".repeat(44), "c".repeat(64)]);
+      const runningId = randomUUID();
+      await owner.query(
+        `INSERT INTO project_database_backups
+           (id, organization_id, project_id, environment, database_instance_ref, status,
+            claimed_by, lease_token, lease_expires_at)
+         VALUES ($1, $2, $3, 'production', $4, 'running', 'purge-case', $5, now() + interval '5 minutes')`,
+        [runningId, purgeOrganization, purgeProject, reference, randomUUID()]);
+
+      // Ein echter Key des Projekts, solange es noch lebt.
+      const control = new PostgresControlPlane(runtime);
+      const service = new PostgresControlPlaneService(control, new AesGcmStatementCipher(Buffer.from("0".repeat(64), "hex")));
+      const keys = new RealProjectApiKeyService(service, new PostgresProjectApiKeyStore(control), new PostgresProjectApiKeyVerifier(auth));
+      const issued = await keys.create({
+        organizationId: purgeOrganization,
+        actor: { id: purgeOwner, ref: `purge-case-${purgeOwner}@qkern.test` },
+      }, {
+        projectId: purgeProject, environment: "production", name: "Purge", kind: "service",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+      // Geloescht vor acht Tagen, Frist gestern abgelaufen.
+      await owner.query(
+        "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
+        [purgeProject]);
+
+      const deletedObjects: string[] = [];
+      const round = new ProjectPurgeRound({
+        database: new PostgresControlPlane(provisioner),
+        organizationId: purgeOrganization,
+        objects: { delete: async (key) => { deletedObjects.push(key); } },
+        backups: new PostgresProjectDatabaseBackupStore(provisioner, purgeOrganization, "purge-case"),
+        actorRef: "purge-case",
+      });
+
+      // --- Erste Runde: das lesbare Backup verschwindet, das Projekt wartet ---
+      const first = await round.runRound();
+      expect(first).toMatchObject({ projectId: purgeProject, backupsRemoved: 1, purged: false });
+      expect(deletedObjects).toEqual([objectKey]);
+      const afterFirst = await owner.query<{ status: string; object_key: string | null; wrapped_data_key: string | null }>(
+        "SELECT status, object_key, wrapped_data_key FROM project_database_backups WHERE id = $1", [availableId]);
+      expect(afterFirst.rows[0]).toEqual({ status: "expired", object_key: null, wrapped_data_key: null });
+      // Das laufende Backup haelt das Abraeumen auf: Es koennte nach dem
+      // Abraeumen fertig werden und ein lesbares Backup hinterlassen.
+      const stillOpen = await owner.query<{ purged_at: string | null }>("SELECT purged_at FROM projects WHERE id = $1", [purgeProject]);
+      expect(stillOpen.rows[0].purged_at).toBeNull();
+
+      // --- Das laufende Backup scheitert; die naechste Runde schliesst ab ---
+      await owner.query(
+        `UPDATE project_database_backups SET status = 'failed', last_error_code = 'DUMP_FAILED',
+           claimed_by = NULL, lease_token = NULL, lease_expires_at = NULL WHERE id = $1`, [runningId]);
+      const second = await round.runRound();
+      expect(second).toMatchObject({ projectId: purgeProject, backupsRemoved: 0, purged: true, apiKeysRevoked: 1 });
+      const hull = await owner.query<{ purged_at: string | null; deleted_at: string | null }>(
+        "SELECT purged_at, deleted_at FROM projects WHERE id = $1", [purgeProject]);
+      expect(hull.rows[0].purged_at).not.toBeNull();
+      expect(hull.rows[0].deleted_at).not.toBeNull();
+      const revoked = await owner.query<{ revoked_at: string | null }>(
+        "SELECT revoked_at FROM project_api_keys WHERE id = $1", [issued.key.id]);
+      expect(revoked.rows[0].revoked_at).not.toBeNull();
+      const purgedAudit = await owner.query<{ action: string; actor_type: string }>(
+        `SELECT action, actor_type FROM audit_logs WHERE organization_id = $1 AND project_id = $2
+         ORDER BY created_at DESC, id DESC LIMIT 1`, [purgeOrganization, purgeProject]);
+      expect(purgedAudit.rows[0]).toEqual({ action: "project.purged", actor_type: "provisioner" });
+
+      // --- Danach ist nichts mehr faellig, und die Huelle bleibt ---
+      expect(await round.runRound()).toBeNull();
+      const stays = await owner.query<{ projects: string; environments: string }>(
+        `SELECT (SELECT count(*)::text FROM projects WHERE id = $1) AS projects,
+                (SELECT count(*)::text FROM project_environments WHERE project_id = $1) AS environments`,
+        [purgeProject]);
+      expect(stays.rows[0]).toEqual({ projects: "1", environments: "1" });
+
+      // --- Die Funktion gehoert nur dem Provisioner ---
+      const may = await owner.query<{ runtime: boolean; provisioner: boolean }>(
+        `SELECT has_function_privilege('qkern_runtime', 'qkern_purge_project(uuid)', 'EXECUTE') AS runtime,
+                has_function_privilege('qkern_provisioner', 'qkern_purge_project(uuid)', 'EXECUTE') AS provisioner`);
+      expect(may.rows[0]).toEqual({ runtime: false, provisioner: true });
+    } finally {
+      await provisioner.end();
+    }
+  }, 120_000);
 
   it("(2.174) takes no scheduled backup of a deleted project, leaves its schedule due, and claims it again after a restore", async () => {
     // Seit 2.173 laesst sich ein Projekt loeschen. Ohne Filter haette der
