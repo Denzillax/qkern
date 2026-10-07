@@ -149,6 +149,16 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.174 (`main`) **Hintergrundprozesse lassen ein geloeschtes Projekt aus.**
+  Cron (`listActive`), Webhook-Zustellung (`claim`), Backup-Zeitplan
+  (`claimDue`) und Migrations-Abholung (`claimNext`) fragen jetzt, ob das
+  Projekt geloescht ist, und lassen es aus, ohne etwas zu verbrauchen: Die
+  Eintraege bleiben stehen, bis der Abraeumer (2.175) sie nimmt, und laufen
+  nach einem Zurueckholen weiter. Migration
+  `0088_worker_sees_deleted_projects.sql` gibt `qkern_worker` genau
+  `SELECT (organization_id, id, deleted_at)` auf `projects`; ohne das haette
+  die Migrations-Abholung nicht fragen koennen.
+
 - 2.173 (`main`) **Ein Projekt loeschen, mit Frist.** Entschieden von Denzil
   am 7. Oktober 2026: sofort gesperrt und ausgeblendet, sieben Tage
   zurueckholbar, danach mit Datenbank, Backups und Buckets abgeraeumt; nur

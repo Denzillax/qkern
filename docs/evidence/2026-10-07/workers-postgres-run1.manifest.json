@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "workers-postgres-run1.log",
+  "commit": "a89b22998302ad64a134ca8c1a26e0f9f1477492",
+  "commitSubject": "feat: ein Projekt loeschen, mit sieben Tagen Frist (2.173)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 82,
+  "testFiles": "31 passed (31)",
+  "tests": "262 passed (262)",
+  "passed": 262,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

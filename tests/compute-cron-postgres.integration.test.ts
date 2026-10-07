@@ -330,6 +330,31 @@ describe.runIf(enabled)("Cron PostgreSQL certification", () => {
     )).rejects.toMatchObject({ message: expect.stringContaining("identity is immutable") });
   });
 
+  it("(2.174) dispatches nothing for a deleted project and resumes after a restore", async () => {
+    // Seit 2.173 laesst sich ein Projekt loeschen. Ein geloeschtes Projekt
+    // haette sonst weiter zu jedem Termin Nachrichten in seine Queues
+    // eingereiht, obwohl der Owner es geloescht hat. Der Fall loescht das
+    // gemeinsame Projekt dieser Datei und stellt es in jedem Fall wieder her,
+    // damit die Faelle daneben nicht betroffen sind.
+    const queue = `cron-deleted-${randomUUID().slice(0, 8)}`;
+    const id = await defineCron(queue, "*/5 * * * *", null);
+    const node = instance();
+    expect((await node.repository.listActive(service, scope)).map((entry) => entry.id)).toContain(id);
+    try {
+      await owner.query(
+        "UPDATE projects SET deleted_at = now(), delete_after = now() + interval '7 days' WHERE id = $1",
+        [projectId]);
+      expect((await node.repository.listActive(service, scope)).map((entry) => entry.id)).not.toContain(id);
+      // Die Definition steht unveraendert da; ausgelassen, nicht entfernt.
+      const stored = await owner.query<{ enabled: boolean }>(
+        "SELECT enabled FROM project_cron_definitions WHERE id = $1", [id]);
+      expect(stored.rows[0]?.enabled).toBe(true);
+    } finally {
+      await owner.query("UPDATE projects SET deleted_at = NULL, delete_after = NULL WHERE id = $1", [projectId]);
+    }
+    expect((await node.repository.listActive(service, scope)).map((entry) => entry.id)).toContain(id);
+  });
+
   it("hides definitions of a different organization", async () => {
     const queue = `cron-tenant-${randomUUID().slice(0, 8)}`;
     await defineCron(queue, "*/5 * * * *", null);

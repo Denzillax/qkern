@@ -579,6 +579,11 @@ implements ProjectDatabaseBackupScheduleStore {
            SELECT candidate.project_id, candidate.environment
            FROM project_database_backup_schedules AS candidate
            WHERE candidate.enabled AND candidate.next_due_at <= $1
+             -- Ein geloeschtes Projekt bekommt kein Backup mehr (2.174).
+             AND EXISTS (SELECT 1 FROM projects AS project
+                          WHERE project.organization_id = candidate.organization_id
+                            AND project.id = candidate.project_id
+                            AND project.deleted_at IS NULL)
            ORDER BY candidate.next_due_at, candidate.project_id, candidate.environment
            FOR UPDATE SKIP LOCKED LIMIT $2)
          RETURNING schedule.organization_id, schedule.project_id, schedule.environment,

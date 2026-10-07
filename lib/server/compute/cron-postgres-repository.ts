@@ -40,6 +40,10 @@ export class PostgresCronRepository implements CronRepository {
                 payload, enabled, time_zone, last_dispatched_at
            FROM project_cron_definitions
           WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND enabled
+            -- Ein geloeschtes Projekt reiht nichts mehr ein (2.174).
+            AND EXISTS (SELECT 1 FROM projects AS project
+                         WHERE project.organization_id = $1 AND project.id = $2
+                           AND project.deleted_at IS NULL)
           ORDER BY name`,
         [scope.organizationId, scope.projectId, scope.environment],
       );

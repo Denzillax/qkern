@@ -1663,6 +1663,12 @@ export class MigrationJobRepository {
          SELECT id AS candidate_id, status = 'running' AS reclaimed
          FROM migration_jobs
          WHERE organization_id = $1
+           -- Ein geloeschtes Projekt bekommt keine Migration mehr (2.174);
+           -- der Auftrag bleibt stehen, bis der Abraeumer ihn nimmt.
+           AND EXISTS (SELECT 1 FROM projects AS project
+                        WHERE project.organization_id = migration_jobs.organization_id
+                          AND project.id = migration_jobs.project_id
+                          AND project.deleted_at IS NULL)
            AND (
              (status = 'queued' AND available_at <= now() AND (
                (NOT reconciliation_required AND attempt_count < max_attempts) OR

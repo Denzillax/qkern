@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AesGcmStatementCipher, approvalActionHash, sha256 } from "@/lib/server/control-plane/crypto";
-import { createPostgresPool } from "@/lib/server/db/pool";
+import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
+import { PostgresControlPlane } from "@/lib/server/db/repositories";
+import { PostgresMigrationQueue } from "@/lib/server/migrations/postgres-queue";
 import { FENCE_BOUNDARY_SQL } from "@/lib/server/migrations/postgres-executor";
 import type { SqlPool } from "@/lib/server/db/sql";
 
@@ -427,4 +429,61 @@ describe.runIf(enabled)("Migration process PostgreSQL certification", () => {
       await admin.query("REVOKE qkern_ledger_owner FROM qkern_boundary_probe");
     }
   }, 240_000);
+
+  /**
+   * Ein geloeschtes Projekt bekommt keine Migration mehr (2.174).
+   *
+   * Seit 2.173 laesst sich ein Projekt loeschen. Ohne Filter haette der Worker
+   * weiter freigegebene Statements in die Datenbank eines Projekts geschrieben,
+   * das der Owner geloescht hat. Der Auftrag muss dabei stehen bleiben und
+   * nicht verbraucht werden: ein Zurueckholen soll ihn so vorfinden, wie er war.
+   *
+   * Hier laeuft der Claim als Bibliothek und nicht als Prozess. Gefragt ist,
+   * ob die Abfrage den Auftrag auslaesst, und das laesst sich nur mit einem
+   * Aufruf eindeutig zeigen; ein Prozess, der eine Weile nichts tut, beweist
+   * nichts. Rolle und Weg sind dieselben wie im Prozess: Worker-Pool,
+   * `PostgresControlPlane`, `PostgresMigrationQueue`.
+   *
+   * Der Fall steht zuletzt, weil der zurueckgeholte Auftrag danach mit Lease
+   * auf `running` steht und kein spaeterer Prozess ihn ausfuehren soll.
+   */
+  it("(2.174) claims no migration of a deleted project and claims it again after a restore", async () => {
+    const table = `deleted_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const jobId = await queueJob(
+      `CREATE TABLE public.${table} (id integer PRIMARY KEY)`, "certification deleted project");
+    const workerPool = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: workerUrl!, max: 2 }), "worker",
+    );
+    const queue = new PostgresMigrationQueue(new PostgresControlPlane(workerPool), organizationId);
+    const claimInput = { workerId: "certification-deleted-project", leaseDurationMs: 60_000 };
+    try {
+      try {
+        await owner.query(
+          "UPDATE projects SET deleted_at = now(), delete_after = now() + interval '7 days' WHERE id = $1",
+          [projectId]);
+        // Alle Auftraege dieser Organisation gehoeren zu diesem einen Projekt,
+        // also darf gar nichts kommen.
+        expect(await queue.claimNext(claimInput)).toBeNull();
+        // Ausgelassen, nicht verbraucht: weiter `queued`, ohne Versuch und ohne Lease.
+        const state = await owner.query<{ status: string; attempt_count: number; lease_owner: string | null }>(
+          "SELECT status, attempt_count, lease_owner FROM migration_jobs WHERE id=$1", [jobId]);
+        expect(state.rows[0]).toEqual({ status: "queued", attempt_count: 0, lease_owner: null });
+      } finally {
+        await owner.query("UPDATE projects SET deleted_at = NULL, delete_after = NULL WHERE id = $1", [projectId]);
+      }
+
+      // Zurueckgeholt kommt derselbe Auftrag wieder. Das zeigt, dass der
+      // Filter ihn zurueckgehalten hat und nicht ein kaputter Aufbau. Ein
+      // frueherer Fall kann nach Ablauf seiner Frist einen aelteren Auftrag
+      // `queued` hinterlassen haben; der kaeme zuerst, deshalb gezielt suchen.
+      let claimed = await queue.claimNext(claimInput);
+      for (let attempt = 0; claimed && claimed.jobId !== jobId && attempt < 5; attempt += 1) {
+        claimed = await queue.claimNext(claimInput);
+      }
+      expect(claimed?.jobId).toBe(jobId);
+      expect(await jobStatus(jobId)).toBe("running");
+    } finally {
+      await workerPool.end();
+    }
+  }, 60_000);
 });

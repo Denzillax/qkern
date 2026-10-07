@@ -123,6 +123,11 @@ implements WebhookOutboxRepository, WebhookDefinitionSource {
         `SELECT d.id FROM project_webhook_deliveries d
           WHERE d.organization_id=$1 AND d.project_id=$2 AND d.environment=$3
             AND d.status='pending' AND d.available_at <= $4
+            -- Ein geloeschtes Projekt stellt nichts mehr zu (2.174); die
+            -- Zustellungen bleiben liegen, bis der Abraeumer sie nimmt.
+            AND EXISTS (SELECT 1 FROM projects AS project
+                         WHERE project.organization_id = d.organization_id AND project.id = d.project_id
+                           AND project.deleted_at IS NULL)
             AND EXISTS (
               SELECT 1 FROM project_webhooks w
                WHERE w.organization_id=d.organization_id AND w.project_id=d.project_id

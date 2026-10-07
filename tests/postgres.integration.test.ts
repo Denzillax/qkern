@@ -17095,6 +17095,98 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         [backupProject, foreignProject]).catch(() => {});
     }
   }, 180_000);
+
+  it("(2.174) takes no scheduled backup of a deleted project, leaves its schedule due, and claims it again after a restore", async () => {
+    // Seit 2.173 laesst sich ein Projekt loeschen. Ohne Filter haette der
+    // Zeitplan weiter Backups eines Projekts bestellt, das der Owner geloescht
+    // hat, bis der Abraeumer es nach sieben Tagen wegnimmt. Der Takt darf es
+    // dabei auch nicht fortschreiben: ein Zurueckholen soll den Zeitplan so
+    // vorfinden, wie er stand.
+    //
+    // Ein eigenes Projekt und kein geteiltes: `claimDue` holt ueber die ganze
+    // Organisation, und ein geloeschtes Nachbarprojekt wuerde andere Faelle
+    // verfaelschen. Aufgebaut wie in `(2.130)`, also mit Bindung, damit der
+    // Trigger aus 0084 den Zeitplan anlegt und nicht dieser Fall.
+    expect(provisionerUrl, "QKERN_TEST_PROVISIONER_DATABASE_URL").toBeTruthy();
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 2 }), "provisioner",
+    );
+    const deletedProject = randomUUID();
+    const reference = `managed:backup-deleted-${randomUUID().slice(0, 8)}`;
+    try {
+      await owner.query(
+        `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+         VALUES ($1, $2, 'Backup Deleted', $3, 'test', 'ready', $4)`,
+        [deletedProject, organizationA, `backup-deleted-${deletedProject}`, userId],
+      );
+      await owner.query(
+        `INSERT INTO project_environments
+           (organization_id, project_id, environment, database_instance_ref)
+         VALUES ($1, $2, 'production', $3)`,
+        [organizationA, deletedProject, reference],
+      );
+      const jobId = randomUUID();
+      await owner.query(
+        `INSERT INTO project_database_provisioning_jobs
+           (id, organization_id, project_id, environment, requested_by, status)
+         VALUES ($1, $2, $3, 'production', 'backup-deleted', 'pending')`,
+        [jobId, organizationA, deletedProject],
+      );
+      await owner.query(
+        `INSERT INTO project_database_bindings
+           (organization_id, project_id, environment, provisioning_job_id, database_instance_ref,
+            vault_static_role, host, port, expected_role, expected_database,
+            expected_ledger_owner, server_certificate_sha256, bootstrap_contract_sha256)
+         VALUES ($1, $2, 'production', $3, $4, 'backup-deleted-role', 'postgres', 5432,
+                 'qkern_project_api_app', 'project_database', 'qkern_ledger_owner', $5, $6)`,
+        [organizationA, deletedProject, jobId, reference,
+          "a".repeat(64), PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256],
+      );
+      const scheduleStore = new PostgresProjectDatabaseBackupScheduleStore(
+        provisioner, organizationA, "deleted-case",
+      );
+      const now = new Date();
+      const dueAt = new Date(now.getTime() - 60_000);
+      await owner.query(
+        `UPDATE project_database_backup_schedules
+         SET next_due_at = $3 WHERE organization_id = $1 AND project_id = $2
+           AND environment = 'production'`,
+        [organizationA, deletedProject, dueAt],
+      );
+
+      try {
+        await owner.query(
+          "UPDATE projects SET deleted_at = now(), delete_after = now() + interval '7 days' WHERE id = $1",
+          [deletedProject]);
+        const skipped = await scheduleStore.claimDue(now, 200);
+        expect(skipped.map((row) => row.projectId)).not.toContain(deletedProject);
+        // Ausgelassen und nicht verbraucht: der Takt steht noch faellig und
+        // eingeschaltet da, genau auf der Zeit von vorher.
+        const untouched = await scheduleStore.get({ projectId: deletedProject, environment: "production" });
+        expect(untouched!.enabled).toBe(true);
+        expect(untouched!.nextDueAt.getTime()).toBe(dueAt.getTime());
+      } finally {
+        await owner.query("UPDATE projects SET deleted_at = NULL, delete_after = NULL WHERE id = $1",
+          [deletedProject]);
+      }
+
+      // Zurueckgeholt kommt derselbe Takt wieder. Das zeigt, dass der Filter
+      // ihn zurueckgehalten hat und nicht ein kaputter Aufbau.
+      const resumed = await scheduleStore.claimDue(now, 200);
+      expect(resumed.map((row) => row.projectId)).toContain(deletedProject);
+    } finally {
+      await provisioner.end();
+      await owner.query(`DELETE FROM project_database_backup_schedules WHERE project_id = $1`,
+        [deletedProject]).catch(() => {});
+      await owner.query(`DELETE FROM project_database_bindings WHERE project_id = $1`,
+        [deletedProject]).catch(() => {});
+      await owner.query(`DELETE FROM project_database_provisioning_jobs WHERE project_id = $1`,
+        [deletedProject]).catch(() => {});
+      await owner.query(`DELETE FROM project_environments WHERE project_id = $1`,
+        [deletedProject]).catch(() => {});
+      await owner.query(`DELETE FROM projects WHERE id = $1`, [deletedProject]).catch(() => {});
+    }
+  }, 120_000);
 });
 
 /**

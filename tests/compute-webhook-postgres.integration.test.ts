@@ -215,6 +215,44 @@ describe.runIf(enabled)("Webhook outbox PostgreSQL certification", () => {
     )).rejects.toMatchObject({ message: expect.stringContaining("is final") });
   }, 30_000);
 
+  it("(2.174) delivers nothing for a deleted project and resumes after a restore", async () => {
+    // Seit 2.173 laesst sich ein Projekt loeschen. Ohne Filter haette der
+    // Zusteller weiter Webhooks eines Projekts verschickt, das der Owner
+    // geloescht hat. Die Zustellung muss liegen bleiben und nicht verbraucht
+    // werden, sonst verbrennt sie ihre Versuche bis zum Dead Letter und ein
+    // Zurueckholen faende sie nicht mehr vor.
+    //
+    // Der Fall loescht das gemeinsame Projekt dieser Datei, weil `defineWebhook`
+    // und `scope` daran haengen, und stellt es in jedem Fall wieder her, damit
+    // die Faelle daneben nicht betroffen sind.
+    const webhookId = await defineWebhook();
+    const service = instance();
+    const delivery = await service.enqueue(scope, {
+      webhookId, eventType: "order.created", payload: { id: 9 },
+    });
+
+    try {
+      await owner.query(
+        "UPDATE projects SET deleted_at = now(), delete_after = now() + interval '7 days' WHERE id = $1",
+        [projectId]);
+      const skipped = await service.claim(scope, { workerId: "deleted-project", limit: 10 });
+      expect(skipped.map((claim) => claim.id)).not.toContain(delivery.id);
+      // Ausgelassen, nicht verbraucht: weiter `pending`, ohne Versuch und ohne Lease.
+      const state = await owner.query<{ status: string; attempt_count: number; lease_worker_id: string | null }>(
+        "SELECT status, attempt_count, lease_worker_id FROM project_webhook_deliveries WHERE id=$1",
+        [delivery.id],
+      );
+      expect(state.rows[0]).toEqual({ status: "pending", attempt_count: 0, lease_worker_id: null });
+    } finally {
+      await owner.query("UPDATE projects SET deleted_at = NULL, delete_after = NULL WHERE id = $1", [projectId]);
+    }
+
+    // Zurueckgeholt kommt dieselbe Zustellung wieder. Das zeigt, dass der
+    // Filter sie zurueckgehalten hat und nicht ein kaputter Aufbau.
+    const resumed = await claimOwn(service, delivery.id, "deleted-project");
+    expect(resumed.attemptCount).toBe(1);
+  }, 30_000);
+
   it("hides deliveries of a different organization", async () => {
     const webhookId = await defineWebhook();
     await instance().enqueue(scope, {
