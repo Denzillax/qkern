@@ -1,6 +1,6 @@
 # QKERN Status
 
-> Stand: 8. Oktober 2026 · Release: `2.82.0` · Statusdatei ist Teil der Definition of Done.
+> Stand: 8. Oktober 2026 · Release: `2.83.0` · Statusdatei ist Teil der Definition of Done.
 
 QKERN ist ein belastbarer Product-MVP und eine modulare Architekturgrundlage,
 aber noch keine vollständige Supabase-Alternative.
@@ -63,7 +63,7 @@ Gemessen wird jetzt zweiachsig je Modul:
 
 Die übersprungenen Fälle sind Real-Service-Tests, die in den Docker-Läufen
 laufen, und POSIX-Fälle, die auf Windows nicht ausdrückbar sind. Sie gelten als
-übersprungen, nie als bestanden. Gemessen sind es 2739 bestandene und 389
+übersprungen, nie als bestanden. Gemessen sind es 2740 bestandene und 390
 übersprungene Fälle.
 
 ## Ausführbar implementiert

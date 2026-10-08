@@ -2101,6 +2101,8 @@ Textmodul der Console, Uebersetzungen und ein Vertrag.
 | `2026-10-08/upload-release-postgres-2-49-once.log` | PostgreSQL 17 | **265 von 266, exit 1** – (2.49) fiel einmal ohne Grund im Log; seither mit Diagnose, in den folgenden Laeufen gruen |
 | `2026-10-08/upload-release-s3-run1.log` | versitygw und ClamAV | 15 bestanden, exit 0, Rueckfallgitter fuer 2.178 |
 | `2026-10-08/upload-release-s3-run2.log` | versitygw und ClamAV | 15 bestanden, exit 0, Wiederholung |
+| `2026-10-08/welle35-local-run1.log` | Vitest lokal (Windows) | 2740 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-08/welle35-local-run2.log` | Vitest lokal (Windows) | 2740 bestanden, exit 0, mit `--maxWorkers=3` |
 
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind

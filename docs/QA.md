@@ -6971,3 +6971,23 @@ Nicht erbracht: Ein echter Broker, der eine Datenbank abbaut. Abgelaufene
 einfache Uploads können Dateien beim Anbieter hinterlassen; die Lücke ist
 älter. Ein Screenreader hat die Console nicht gelesen. Die Console ist nicht
 mit einem echten Projekt angesehen.
+
+## Welle fünfunddreissig (2.83): kein Upload lässt mehr eine Datei liegen
+
+Ein Schnitt (2.178). Verfallene und abgebrochene Uploads tragen einen Vermerk,
+sobald ihre Datei beim Anbieter gelöscht ist; ohne Vermerk nimmt die
+Lifecycle-Runde sie wieder. Belegt mit einem Ausfall des Anbieters beim ersten
+Versuch und einem Real-DB-Fall für die Regeln des Vermerks.
+
+Gefunden beim Zertifizieren: (2.67) zählte seine Vergleichszahl als
+Eigentümer, der Dienst liest als App-Rolle, und die sieht fremde Statements
+ohne Kennung. Der Fall hing an der Reihenfolge der Testdateien. (2.49) fiel
+einmal ohne Grund im Log und trägt jetzt eine Diagnose.
+
+Checkpoint `2.83.0` am 8. Oktober 2026: PostgreSQL 17 mit 266 von 266 zweimal
+(zwei Worker), versitygw und ClamAV 15 von 15 zweimal, alle exit 0; lokal 2740
+bestanden, zweimal reproduziert.
+
+Nicht erbracht: Ein echter Broker hat keine Datenbank abgebaut. Die Ursache des
+einen Fehlschlags von (2.49) ist nicht gefunden. Ein Screenreader hat die
+Console nicht gelesen.

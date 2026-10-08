@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle35-local-run1.log",
+  "commit": "0fb9ed5d9b63cb888f21ecbbd46eeb455d767e6c",
+  "commitSubject": "feat: verfallene Uploads geben ihre Datei beim Anbieter frei (2.178)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "379 passed | 42 skipped (421)",
+  "tests": "2740 passed | 390 skipped (3130)",
+  "passed": 2740,
+  "failed": 0,
+  "skipped": 390,
+  "images": []
+}

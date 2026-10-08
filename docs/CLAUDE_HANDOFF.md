@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.82.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.83.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,13 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- Release `2.83.0` (`main`) **Kein Upload laesst mehr eine Datei liegen.**
+  Fasst 2.178 zusammen, Notiz `docs/RELEASE_2.83.md`. **Naechste begrenzte
+  Aufgabe**: Was jetzt offen ist, braucht Denzil oder Dritte: den
+  Abbau-Vertrag mit dem Broker, einen Screenreader-Durchgang und einen Blick
+  auf die Console mit einem echten Projekt. Groessere Module (Transform und
+  CDN, SMS und SAML, Tarife) brauchen vorher seine Entscheidung.
 
 - 2.178 (`main`) **Verfallene Uploads geben ihre Datei frei.** Migration
   `0092_storage_upload_provider_release.sql`: Spalte
@@ -1335,7 +1342,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.82.0`
+- Paketversion: `2.83.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 
