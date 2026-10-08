@@ -1,0 +1,15 @@
+{
+  "stack": "Vitest lokal (Windows)",
+  "log": "welle34-local-timeouts.log",
+  "commit": "fde8a74167c2591f14c438e06b51142cf24425d4",
+  "commitSubject": "feat: der Abraeumer, dritter Teil: die Datenbank (2.177)",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": null,
+  "testFiles": "2 failed | 377 passed | 42 skipped (421)",
+  "tests": "2 failed | 2737 passed | 389 skipped (3128)",
+  "passed": 2737,
+  "failed": 2,
+  "skipped": 389,
+  "images": []
+}

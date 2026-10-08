@@ -178,6 +178,9 @@ describe("console backups contract", () => {
   // Der Satz, der den Knopf gekostet hat: kein Produktweg                //
   // ------------------------------------------------------------------ //
 
+  // Zeitbudget (2.82.0): Der Fall liest jede Quelldatei der genannten Wurzeln. Bei wenig
+  // freiem Speicher brauchte das allein gemessen 4,3 bis 5 Sekunden und riss die
+  // Voreinstellung von 5000 ms. Die Pruefung selbst ist unveraendert.
   it("finds no place in the product that pulls a base backup, and exactly one that dumps a project database", async () => {
     // `pg_dump` steht hier seit 2.126 **nicht** mehr in der Liste, und das ist
     // kein Aufweichen: Fuer die Projektdatenbank gibt es den Weg jetzt, und er
@@ -243,7 +246,7 @@ describe("console backups contract", () => {
 
     // Die eine Stelle, die ein Basisbackup wirklich zieht, liegt unter tests/.
     expect(await source(DRILL_TEST)).toContain('execFileSync("pg_basebackup"');
-  });
+  }, 30_000);
 
   it("finds the write verbs that 2.129 added, every one behind the control-plane role matrix and none behind a project key", async () => {
     // Bis 2.129 war dies der Fall "kein Schreibverb, also hatte ein Knopf

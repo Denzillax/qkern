@@ -91,6 +91,9 @@ function greater(a: readonly number[], b: readonly number[]): boolean {
 }
 
 describe("version reference contract", () => {
+  // Zeitbudget (2.82.0): Der Fall liest jede Quelldatei der genannten Wurzeln. Bei wenig
+  // freiem Speicher brauchte das allein gemessen 4,3 bis 5 Sekunden und riss die
+  // Voreinstellung von 5000 ms. Die Pruefung selbst ist unveraendert.
   it("never names a release that has not shipped", async () => {
     const pkg = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
     const shipped = pkg.version.split(".").map(Number);
@@ -127,7 +130,7 @@ describe("version reference contract", () => {
       }
     }
     expect(found).toEqual([]);
-  });
+  }, 30_000);
 
   /**
    * Die Sperrdatei nennt dieselbe Version wie das Paket.

@@ -1,6 +1,6 @@
 # QKERN Übergabe an Claude oder einen anderen Coding-Agenten
 
-Diese Datei ist der chatunabhängige Einstiegspunkt für `2.81.0`. Sie wird
+Diese Datei ist der chatunabhängige Einstiegspunkt für `2.82.0`. Sie wird
 bei jedem versionierten Stand zusammen mit Quellcode, Status, Handbuch und Release
 Note aktualisiert.
 
@@ -148,6 +148,12 @@ Grossbuchstaben.
   allein (Quartz: Samstag) gibt es nicht; ein Plan mit Zeitzone und
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
+
+- Release `2.82.0` (`main`) **Ein Projekt loeschen.** Fasst 2.173 bis 2.177
+  zusammen, Notiz `docs/RELEASE_2.82.md`. **Naechste begrenzte Aufgabe**: den
+  Abbau-Vertrag mit dem Broker abstimmen (Runbook der Bereitstellung,
+  Abschnitt Abbau); danach die alte Luecke der abgelaufenen einfachen Uploads
+  schliessen. Offen wie zuvor: Screenreader, echtes Projekt.
 
 - 2.177 (`main`) **Der Abraeumer, dritter Teil: die Datenbank.** Migration
   `0091_project_database_teardown.sql`: Tabelle `project_database_teardowns`
@@ -1319,7 +1325,7 @@ Grossbuchstaben.
   weg sind (geloescht, nicht abgeschaltet), wandert ihre Position nicht
   weiter; eine spaeter neu angelegte Kopplung sieht dann, was der Feed
   seither haelt. Im Browser nicht gesehen
-- Paketversion: `2.81.0`
+- Paketversion: `2.82.0`
 - Neuester Slice: 2.63 Gerendert, aufgeraeumt, kein toter Knopf. Drei Schulden
   aus den Releases davor sind bezahlt.
 

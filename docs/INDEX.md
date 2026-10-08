@@ -37,7 +37,8 @@ gerendert; die Seitenliste steht in `lib/docs/pages.ts`.
 | [CLI.md](CLI.md) | CLI, Type-Generator, Migration Plan und Seed-Check |
 | [DEVELOPER_EXPERIENCE.md](DEVELOPER_EXPERIENCE.md) | Paketbuilds, Fresh-Project-Smoke und OS-Matrix |
 | [SLICE_BERATERREGELN.md](SLICE_BERATERREGELN.md) | Regeln, die nie liefen (Schnitt aus 2.52.0, früher fälschlich RELEASE_2.57.md) |
-| [RELEASE_2.81.md](RELEASE_2.81.md) | Aktueller Release: Echte Ablehnungen auf Deutsch, und jeder Knopf hat einen Namen |
+| [RELEASE_2.82.md](RELEASE_2.82.md) | Aktueller Release: Ein Projekt löschen, und was danach verschwindet |
+| [RELEASE_2.81.md](RELEASE_2.81.md) | Vorheriger Release: Echte Ablehnungen auf Deutsch, und jeder Knopf hat einen Namen |
 | [RELEASE_2.80.md](RELEASE_2.80.md) | Vorheriger Release: Die Console bedient, nicht nur angesehen |
 | [RELEASE_2.79.md](RELEASE_2.79.md) | Vorheriger Release: Die Console einmal ganz angesehen, und das Flattern ist erklärt |
 | [RELEASE_2.78.md](RELEASE_2.78.md) | Vorheriger Release: Drei Neins sind jetzt Wege, und eine Zusage ist genauer als vorher |

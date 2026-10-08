@@ -1,6 +1,6 @@
 # QKERN Handbuch
 
-Dieses Handbuch gilt für `2.81.0`. QKERN benötigt Node.js **24.7 oder neuer**.
+Dieses Handbuch gilt für `2.82.0`. QKERN benötigt Node.js **24.7 oder neuer**.
 
 > Neu hier? Beginne mit [Was ist QKERN](guide/de/WAS_IST_QKERN.md), auch auf
 > Englisch, Französisch und Italienisch unter `docs/guide/`. Dieses Handbuch ist
@@ -5638,6 +5638,37 @@ Positionen und Betrag unberührt und verbrennt keine Nummer: Die nächsten
 Rechnungen bekommen die dritte und die vierte, der Kreis bleibt lückenlos.
 Zuletzt zählt eine fremde Organisation Rechnungen, Positionen und Pauschalen
 ohne jeden Filter und findet keine einzige Zeile.
+
+### Ein Projekt löschen (2.173 bis 2.177)
+
+Seit `2.82.0` lässt sich ein Projekt löschen: **Einstellungen →
+Gefahrenzone → Projekt löschen**. Das darf nur die Owner-Rolle, und der
+Projektname muss abgetippt werden. Der Dienst prüft denselben Namen noch
+einmal, ein direkter Aufruf von `DELETE /api/v1/projects/{id}` löscht also
+nicht mit weniger.
+
+**Sofort** ist das Projekt gesperrt: Es verschwindet aus der Console, jeder
+seiner Keys wird abgelehnt, auch die S3-Schlüssel, und Cron, Webhooks,
+Backup-Zeitplan und Migrationen fassen es nicht mehr an. **Sieben Tage lang**
+steht es unter „Gelöschte Projekte“ mit dem Knopf **Zurückholen**; danach
+läuft alles wieder wie vorher.
+
+**Nach der Frist** räumt der Provisioner ab, in dieser Reihenfolge: Backups,
+Storage-Dateien und offene Uploads beim Anbieter, Buckets, Keys. Für jede
+Datenbank schickt er dem Broker eine signierte Bitte um Abbau; QKERN selbst
+führt nie `DROP DATABASE` aus. Erst wenn der Broker jede bestätigt hat, wird
+das Projekt zur Hülle (`purged_at`). Bis dahin steht es in der Liste als „wird
+abgeräumt“, ohne Zurückholen.
+
+**Es bleibt**: die Projektzeile, die Umgebungen, das Audit-Log, Rechnungen und
+Abrechnungsposten, dazu die Definitionen von Cron, Webhooks und Functions als
+Konfiguration.
+
+**Betrieb**: Der Abbau braucht `QKERN_PROVISIONING_BROKER_TEARDOWN_URL` (Vertrag
+im Bereitstellungs-Runbook), das Abräumen von Dateien
+`QKERN_PROJECT_STORAGE_ENABLED=true` und die Storage-Einstellungen im
+Provisioner. Fehlt eins davon, wartet ein betroffenes Projekt, statt halb
+abgeräumt zu werden. Entscheidungen und Plan: `docs/PROJEKT_LOESCHEN.md`.
 
 ## 10. MCP für KI-Agenten
 

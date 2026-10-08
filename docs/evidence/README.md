@@ -2091,6 +2091,9 @@ Textmodul der Console, Uebersetzungen und ein Vertrag.
 | `2026-10-08/teardown-receiver-run1.log` | Node 24 HTTPS-Empfaenger und PostgreSQL 17 | 18 bestanden, exit 0, im Schnitt 2.177 |
 | `2026-10-08/teardown-receiver-run2.log` | Node 24 HTTPS-Empfaenger und PostgreSQL 17 | 18 bestanden, exit 0, Wiederholung |
 | `2026-10-08/teardown-receiver-mutation-idempotency.log` | Mutation: abweichender Idempotenzschluessel | **17 von 18, exit 1 – absichtlich**, es faellt genau (2.177) |
+| `2026-10-08/welle34-local-run1.log` | Vitest lokal (Windows) | 2739 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-08/welle34-local-run2.log` | Vitest lokal (Windows) | 2739 bestanden, exit 0, mit `--maxWorkers=3` |
+| `2026-10-08/welle34-local-timeouts.log` | Vitest lokal (Windows) | **2737 von 2739, exit 1** – zwei Datei-Scans rissen die 5000 ms bei wenig freiem Speicher; danach mit ausdruecklichem Zeitbudget |
 
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind

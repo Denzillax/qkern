@@ -1,0 +1,43 @@
+
+ RUN  v4.1.10 C:/Projekte/qkern/code/qkern
+
+ ❯ tests/version-reference-contract.test.ts (2 tests | 1 failed) 5033ms
+     × never names a release that has not shipped 5014ms
+ ❯ tests/console-backups-contract.test.ts (11 tests | 1 failed) 5184ms
+     × finds no place in the product that pulls a base backup, and exactly one that dumps a project database 5011ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/console-backups-contract.test.ts > console backups contract > finds no place in the product that pulls a base backup, and exactly one that dumps a project database
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/console-backups-contract.test.ts:181:3
+    179|   // -----------------------------------------------------------------…
+    180|
+    181|   it("finds no place in the product that pulls a base backup, and exac…
+       |   ^
+    182|     // `pg_dump` steht hier seit 2.126 **nicht** mehr in der Liste, un…
+    183|     // kein Aufweichen: Fuer die Projektdatenbank gibt es den Weg jetz…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/version-reference-contract.test.ts > version reference contract > never names a release that has not shipped
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/version-reference-contract.test.ts:94:3
+     92|
+     93| describe("version reference contract", () => {
+     94|   it("never names a release that has not shipped", async () => {
+       |   ^
+     95|     const pkg = JSON.parse(await readFile("package.json", "utf8")) as …
+     96|     const shipped = pkg.version.split(".").map(Number);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 377 passed | 42 skipped (421)
+      Tests  2 failed | 2737 passed | 389 skipped (3128)
+   Start at  19:29:01
+   Duration  205.64s (transform 48.12s, setup 0ms, import 215.48s, tests 152.61s, environment 144ms)
+
+EXIT=1

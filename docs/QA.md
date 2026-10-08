@@ -6940,3 +6940,34 @@ beide exit 0; lokal 2735 bestanden, zweimal reproduziert.
 Nicht erbracht: Ein Screenreader hat die Console nicht gelesen. Die Console ist
 nicht mit einem echten Projekt angesehen. Projekt loeschen wartet auf eine
 Entscheidung.
+
+## Welle vierunddreissig (2.82): ein Projekt löschen
+
+Fünf Schnitte (2.173 bis 2.177) nach Denzils Entscheidungen vom 7. und
+8. Oktober 2026: sieben Tage Frist, Daten mitlöschen, nur Owner, die Datenbank
+baut der Broker ab, Rechnungen bleiben. Jeder Schnitt hat seinen Fall im
+PostgreSQL-Stack und eine Mutationsprobe, die genau diesen Fall traf. Storage
+ist zusätzlich gegen den echten Anbieter belegt (versitygw), die Abbau-Anfrage
+gegen den echten HTTPS-Empfänger mit Signatur über TLS.
+
+Gefunden beim Bauen: Ein Audit-Eintrag des Abräumers liess die gemeinsame
+Organisation des PostgreSQL-Falls nicht mehr löschen; die Fälle haben darum
+eigene Organisationen. Ein offener Bereitstellungsauftrag, der schon eine
+Bindung hat, legt keine zweite Datenbank an; die Sperre des Abbaus gilt darum
+nur Aufträgen ohne Bindung.
+
+Zum Verfahren: Bei gut 1 GB freiem Speicher fielen zwei volle PostgreSQL-Läufe
+mit 21 und 16 Zeitüberschreitungen in fremden Dateien, alle Fälle zum Löschen
+grün. Der Stack kennt seither `QKERN_CERT_MAX_WORKERS`; die zertifizierenden
+Läufe fuhren mit zwei Workern, dieselben Dateien und Erwartungen. Lokal rissen
+zwei Verträge, die jede Quelldatei lesen, zweimal die 5000 ms; sie haben jetzt
+ein ausdrückliches Zeitbudget, die Prüfung ist dieselbe.
+
+Checkpoint `2.82.0` am 8. Oktober 2026: PostgreSQL 17 mit 265 von 265 zweimal,
+Empfänger-Stack 18 von 18 zweimal, versitygw und ClamAV 15 von 15 zweimal,
+alle exit 0; lokal 2739 bestanden, zweimal reproduziert.
+
+Nicht erbracht: Ein echter Broker, der eine Datenbank abbaut. Abgelaufene
+einfache Uploads können Dateien beim Anbieter hinterlassen; die Lücke ist
+älter. Ein Screenreader hat die Console nicht gelesen. Die Console ist nicht
+mit einem echten Projekt angesehen.
