@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "upload-release-postgres-statements-oracle.log",
+  "commit": "029f83064c6510f775b42c36fc81daef865625b5",
+  "commitSubject": "release: 2.82.0 Ein Projekt loeschen, und was danach verschwindet",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 86,
+  "testFiles": "1 failed | 30 passed (31)",
+  "tests": "1 failed | 265 passed (266)",
+  "passed": 265,
+  "failed": 1,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

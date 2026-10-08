@@ -238,7 +238,7 @@ describe("Project Storage service", () => {
     });
     advance(2 * 24 * 60 * 60 * 1_000);
     expect(await service.expireLifecycle(admin, scope, 1)).toEqual({
-      examined: 1, deleted: 1, expiredUploads: 0, orphanedUploadsAborted: 0,
+      examined: 1, deleted: 1, expiredUploads: 0, orphanedUploadsAborted: 0, releasedUploads: 0,
     });
     expect((await service.listBuckets(admin, scope))[0].usedBytes).toBe(0);
   });
@@ -267,6 +267,36 @@ describe("Project Storage service", () => {
     expect(await provider.headObject(prepared.upload.fields.key)).toBeNull();
   });
 
+  it("(2.178) deletes the provider file of an expired single upload, retries after a provider failure and never touches a completed object", async () => {
+    const { service, provider, scanner, advance } = fixture();
+    scanner.verdict = "clean";
+    const bucket = await service.createBucket(admin, scope, {
+      name: "released", readPolicy: "authenticated", writePolicy: "authenticated",
+    });
+    const alice = app("alice");
+    // Hochgeladen, aber nie abgeschlossen: die Datei liegt beim Anbieter.
+    const abandoned = await stageProviderObject(service, provider, alice, bucket.id, "abandoned.png");
+    // Abgeschlossen: dieses Objekt darf nie verschwinden.
+    const kept = await stageProviderObject(service, provider, alice, bucket.id, "kept.png");
+    await service.completeUpload(alice, scope, { uploadId: kept.uploadId, completionToken: kept.completionToken });
+    advance(10 * 60 * 1_000);
+
+    // Der Anbieter faellt beim ersten Versuch aus: kein Vermerk, die Datei bleibt.
+    const original = provider.deleteObject.bind(provider);
+    provider.deleteObject = async () => { throw new Error("provider down"); };
+    expect(await service.expireLifecycle(admin, scope)).toMatchObject({ expiredUploads: 1, releasedUploads: 0 });
+    expect(await provider.headObject(abandoned.upload.fields.key)).not.toBeNull();
+
+    // Der naechste Lauf nimmt ihn wieder und gibt ihn frei.
+    provider.deleteObject = original;
+    expect(await service.expireLifecycle(admin, scope)).toMatchObject({ expiredUploads: 0, releasedUploads: 1 });
+    expect(await provider.headObject(abandoned.upload.fields.key)).toBeNull();
+    expect(await provider.headObject(kept.upload.fields.key)).not.toBeNull();
+
+    // Danach ist nichts mehr offen.
+    expect(await service.expireLifecycle(admin, scope)).toMatchObject({ releasedUploads: 0 });
+  });
+
   it("expires stale multipart reservations, aborts provider orphans and spares living uploads", async () => {
     const alice = app("alice");
     const { service: svc, provider: prov, advance } = fixture();
@@ -289,8 +319,10 @@ describe("Project Storage service", () => {
     await svc.prepareMultipartUpload(alice, scope, bucketB.id, {
       key: "live.bin", contentType: "application/octet-stream", sizeBytes: 512, checksumSha256: checksum,
     });
+    // Der verfallene Upload ist danach auch freigegeben (2.178): Sein Abbruch
+    // beim Anbieter ist vermerkt, der naechste Lauf nimmt ihn nicht wieder.
     expect(await svc.expireLifecycle(admin, scope)).toEqual({
-      examined: 0, deleted: 0, expiredUploads: 1, orphanedUploadsAborted: 1,
+      examined: 0, deleted: 0, expiredUploads: 1, orphanedUploadsAborted: 1, releasedUploads: 1,
     });
     const keys = (await prov.listMultipartUploads({ keyPrefix: `${scope.organizationId}/` }))
       .map((upload) => upload.providerKey);

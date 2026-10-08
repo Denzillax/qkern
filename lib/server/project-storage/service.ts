@@ -1139,7 +1139,33 @@ export class ProjectStorageService {
         } catch { /* naechster Lauf */ }
       }
     } catch { /* Objekt-Aufraeumen oben gilt trotzdem; naechster Lauf */ }
-    return { examined: expired.length, deleted, expiredUploads, orphanedUploadsAborted };
+    // Verfallene und abgebrochene Uploads geben ihre Datei frei (2.178). Ein
+    // einfacher Upload, dessen signierte Anfrage ausgefuehrt, aber nie
+    // abgeschlossen wurde, liess sonst eine Datei beim Anbieter liegen, die
+    // niemand mehr kennt. Erst die Datei, dann der Vermerk; ohne Vermerk nimmt
+    // der naechste Lauf ihn wieder. Der Schluessel enthaelt die Kennung der
+    // Reservierung, das Loeschen trifft also nie ein abgeschlossenes Objekt.
+    let releasedUploads = 0;
+    try {
+      const unreleased = await this.dependencies.repository.listUnreleasedUploads(
+        principal, scope, integer(limit, 1, 100),
+      );
+      for (const upload of unreleased) {
+        try {
+          if (upload.kind === "multipart" && upload.providerUploadId) {
+            await this.dependencies.provider.abortMultipartUpload({
+              providerKey: upload.providerKey, uploadId: upload.providerUploadId,
+            });
+          } else {
+            await this.dependencies.provider.deleteObject(upload.providerKey);
+          }
+          if (await this.dependencies.repository.markUploadReleased(principal, scope, upload.id, now)) {
+            releasedUploads += 1;
+          }
+        } catch { /* naechster Lauf */ }
+      }
+    } catch { /* naechster Lauf */ }
+    return { examined: expired.length, deleted, expiredUploads, orphanedUploadsAborted, releasedUploads };
   }
 
   private async bucket(principal: ProjectStoragePrincipal, scope: ProjectStorageScope, idOrName: string) {

@@ -2794,6 +2794,16 @@ langsamen Scans abläuft, wird ein danach nicht mehr commitbares Provider-Object
 bereinigt. Gleichzeitiges manuelles Delete und Lifecycle-Delete geben Usage nur
 einmal frei. Der PostgreSQL-Dockerlauf unten enthält dafür sechs Storage-Tests.
 
+Seit dem Schnitt (2.178) gibt ein Upload, der verfallen ist oder abgebrochen wurde, seine
+Datei beim Anbieter frei. Vorher konnte ein einfacher Upload, dessen
+signierte Anfrage ausgeführt, aber nie abgeschlossen wurde, eine Datei
+hinterlassen, die niemand mehr kannte. `POST .../storage/lifecycle` löscht
+sie jetzt (bei Multipart: bricht den Upload ab), vermerkt das am Upload
+(`provider_released_at`) und meldet die Zahl als `releasedUploads`. Scheitert
+der Anbieter, bleibt der Vermerk leer, und der nächste Lauf versucht es
+wieder. Der Schlüssel enthält die Kennung des Uploads; ein abgeschlossenes
+Objekt wird nie getroffen.
+
 Wichtige Pfade:
 
 - `GET|POST /api/v1/projects/{projectId}/environments/{environment}/storage/buckets`

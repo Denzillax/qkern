@@ -149,6 +149,16 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.178 (`main`) **Verfallene Uploads geben ihre Datei frei.** Migration
+  `0092_storage_upload_provider_release.sql`: Spalte
+  `project_storage_uploads.provider_released_at`, der Schutz-Trigger laesst
+  genau ihren einmaligen Wechsel an einem `expired`/`cancelled` Upload zu,
+  und die Funktionen des Abraeumers (Liste, Vergessen, `qkern_purge_project`)
+  nehmen solche Uploads mit. `expireLifecycle` loescht die Datei beim Anbieter
+  und setzt dann den Vermerk (`listUnreleasedUploads`, `markUploadReleased`).
+  Nebenbei: (2.67) zaehlt mit der Rolle des Dienstes, (2.49) traegt eine
+  Diagnose. Damit ist die alte Luecke aus 2.176 geschlossen.
+
 - Release `2.82.0` (`main`) **Ein Projekt loeschen.** Fasst 2.173 bis 2.177
   zusammen, Notiz `docs/RELEASE_2.82.md`. **Naechste begrenzte Aufgabe**: den
   Abbau-Vertrag mit dem Broker abstimmen (Runbook der Bereitstellung,

@@ -173,6 +173,23 @@ export interface ProjectStorageRepository {
     now: Date,
   ): Promise<ProjectStorageUpload[]>;
   /**
+   * Verfallene und abgebrochene Uploads, deren Datei beim Anbieter noch nicht
+   * freigegeben ist (2.178), aelteste zuerst. Die Lifecycle-Runde loescht die
+   * Datei oder bricht den Upload ab und setzt dann `markUploadReleased`.
+   */
+  listUnreleasedUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    limit: number,
+  ): Promise<ProjectStorageUpload[]>;
+  /** Setzt den Vermerk einmal; `false`, wenn er schon stand oder der Upload nicht passt. */
+  markUploadReleased(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    now: Date,
+  ): Promise<boolean>;
+  /**
    * Der Stand der Objekte einer Umgebung, neueste zuerst (2.51) — ueber alle
    * Buckets oder ueber einen, wahlweise auf ein Urteil eingeschraenkt.
    *
@@ -556,6 +573,35 @@ export class MemoryProjectStorageRepository implements ProjectStorageRepository 
     }
     for (const upload of stale) this.parts.delete(upload.id);
     return stale.map(cloneUpload);
+  }
+
+  /** Die freigegebenen Uploads (2.178); im Speicherbetrieb neben der Zeile gefuehrt. */
+  private readonly releasedUploads = new Set<string>();
+
+  async listUnreleasedUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    limit: number,
+  ) {
+    return [...this.uploads.values()].filter((upload) =>
+      upload.organizationId === principal.organizationId && sameScope(upload, scope) &&
+      (upload.status === "expired" || upload.status === "cancelled") && !this.releasedUploads.has(upload.id))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .slice(0, limit).map(cloneUpload);
+  }
+
+  async markUploadReleased(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+  ) {
+    const upload = this.uploads.get(uploadId);
+    if (!upload || upload.organizationId !== principal.organizationId || !sameScope(upload, scope) ||
+        (upload.status !== "expired" && upload.status !== "cancelled") || this.releasedUploads.has(uploadId)) {
+      return false;
+    }
+    this.releasedUploads.add(uploadId);
+    return true;
   }
 
   async listPendingMultipartUploads(

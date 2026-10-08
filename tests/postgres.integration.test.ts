@@ -1408,7 +1408,13 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         { workerId: "certification-table-designer-1" },
       );
       const applied = await worker.runOnce();
-      expect(applied, "der Worker hat nicht angewendet").toMatchObject({ status: "applied" });
+      // Diagnose (2.178): Am 8. Oktober 2026 fiel dieser Fall einmal in vier
+      // Laeufen mit `failed`, ohne dass das Log den Grund nannte. Jetzt steht
+      // der Fehlercode des Auftrags in der Meldung; geprueft wird dasselbe.
+      const diagnosis = applied.status === "applied" ? "" : JSON.stringify((await owner.query(
+        "SELECT status, attempt_count, last_error_code, last_error_message FROM migration_jobs WHERE change_set_id = $1",
+        [change.id])).rows);
+      expect(applied, `der Worker hat nicht angewendet ${diagnosis}`).toMatchObject({ status: "applied" });
 
       // Der Beleg: der Katalog der Zieldatenbank, nicht die Control Plane.
       const columns = await project.query<{
@@ -3420,10 +3426,31 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
           expectedLedgerOwner: "qkern",
         }) },
       );
-      const result = await service.inspectStatements(
-        { organizationId: perfOrganization, actorRef: "queryperf-2-67@qkern.test" },
-        { projectId: perfProject, environment: "development" },
-      );
+      // Wie viele Zeilen die Sicht dem Dienst zeigt. Gezaehlt wird mit
+      // **derselben Rolle** wie der Dienst: Ohne `pg_read_all_stats` sieht
+      // eine Rolle bei fremden Statements `queryid = NULL`, der Eigentuemer
+      // dagegen alle. Bis zum 8. Oktober 2026 zaehlte dieser Fall als
+      // Eigentuemer und war nur gruen, solange keine andere Datei unter einer
+      // anderen Rolle in dieselbe Projektdatenbank schrieb; mit zwei Workern
+      // tat das eine. Ausserdem kann die Zahl zwischen Lesung und Zaehlung
+      // wachsen, darum wird vor und nach der Lesung gezaehlt und nur eine
+      // Messung verglichen, in der sie stand. Die Pruefung unten ist dieselbe.
+      const countVisible = async () => Number((await projectApi.query<{ visible: string }>(
+        `SELECT count(*)::text AS visible FROM pg_stat_statements
+         WHERE dbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
+           AND queryid IS NOT NULL`)).rows[0].visible);
+      let result!: Awaited<ReturnType<typeof service.inspectStatements>>;
+      let visible = -1;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const before = await countVisible();
+        result = await service.inspectStatements(
+          { organizationId: perfOrganization, actorRef: "queryperf-2-67@qkern.test" },
+          { projectId: perfProject, environment: "development" },
+        );
+        const after = await countVisible();
+        if (before === after) { visible = after; break; }
+      }
+      expect(visible, "Die Sicht stand in fuenf Messungen nie still.").toBeGreaterThanOrEqual(0);
 
       expect(result.source).toBe("postgres");
       expect(result.installed).toBe(true);
@@ -3437,12 +3464,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       // wird mit Parametern, damit dieser Text nicht selbst zum Marker wird.
       const truth = await owner.query<{
         statement_id: string; calls: string; total_exec_time: number;
-        mean_exec_time: number; rows: string; visible: string;
+        mean_exec_time: number; rows: string;
       }>(`SELECT stat.queryid::text AS statement_id, stat.calls::text AS calls,
                  stat.total_exec_time AS total_exec_time, stat.mean_exec_time AS mean_exec_time,
-                 stat.rows::text AS rows,
-                 (SELECT count(*)::text FROM pg_stat_statements AS all_rows
-                  WHERE all_rows.dbid = stat.dbid AND all_rows.queryid IS NOT NULL) AS visible
+                 stat.rows::text AS rows
           FROM pg_stat_statements AS stat
           WHERE stat.dbid = (SELECT database.oid FROM pg_catalog.pg_database AS database
                              WHERE database.datname = $1)
@@ -3450,7 +3475,6 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       expect(truth.rows.length,
         "Das erzeugte Statement steht nicht in der Sicht; dann prueft dieser Fall nichts.").toBe(1);
       const mirror = truth.rows[0];
-      const visible = Number(mirror.visible);
 
       // `truncated` ist keine Vermutung: Es stimmt mit der Zahl der Zeilen
       // ueberein, die die Sicht fuer diese Datenbank haelt.
@@ -17307,6 +17331,17 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         [singleUpload, multipartUpload, storageOrganization, project, bucket,
           `${prefix}/${bucket}/u3/c.png`, `${prefix}/${bucket}/u4/d.png`, checksum,
           "c".repeat(43), "d".repeat(43)]);
+      // Seit 2.178: ein verfallener einfacher Upload, dessen Datei beim
+      // Anbieter noch nicht freigegeben ist. Auch er muss weg, bevor die
+      // Buckets gehen.
+      const expiredUpload = randomUUID();
+      await owner.query(
+        `INSERT INTO project_storage_uploads
+           (id, organization_id, project_id, environment, bucket_id, object_key, provider_key, owner_subject,
+            content_type, size_bytes, checksum_sha256, completion_token_hash, expires_at, created_at, status)
+         VALUES ($1, $2, $3, 'production', $4, 'e.png', $5, 'user-1', 'image/png', 10, $6, $7,
+                 now() - interval '1 day', now() - interval '2 days', 'expired')`,
+        [expiredUpload, storageOrganization, project, bucket, `${prefix}/${bucket}/u5/e.png`, checksum, "e".repeat(43)]);
 
       await owner.query(
         "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
@@ -17345,15 +17380,16 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
 
       // --- Mit Zugang: erst beim Anbieter, dann im Katalog, dann die Buckets ---
       const done = await roundWith(true).runRound();
-      expect(done).toMatchObject({ projectId: project, storageRemoved: 3, purged: true, bucketsRemoved: 1 });
+      expect(done).toMatchObject({ projectId: project, storageRemoved: 4, purged: true, bucketsRemoved: 1 });
       // Die Reihenfolge innerhalb einer Liste folgt Anlagezeit und Kennung;
       // die beiden Uploads entstanden in einer Anweisung, darum sortiert.
-      expect(calls.slice(0, 3).sort()).toEqual([
+      expect(calls.slice(0, 4).sort()).toEqual([
         `abort ${prefix}/${bucket}/u4/d.png upload-d`,
         `delete ${prefix}/${bucket}/u1/a.png`,
         `delete ${prefix}/${bucket}/u3/c.png`,
+        `delete ${prefix}/${bucket}/u5/e.png`,
       ]);
-      expect(calls.slice(3)).toEqual([
+      expect(calls.slice(4)).toEqual([
         `list ${storageOrganization}/${project}/`,
         `abort ${prefix}/${bucket}/u9/orphan.png orphan-9`,
       ]);
@@ -17368,7 +17404,7 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         `SELECT action, redacted_metadata AS metadata FROM audit_logs WHERE organization_id = $1 AND project_id = $2
          ORDER BY created_at DESC, id DESC LIMIT 1`, [storageOrganization, project]);
       expect(audit.rows[0].action).toBe("project.purged");
-      expect(audit.rows[0].metadata).toMatchObject({ storageRemoved: 3, bucketsRemoved: 1, databasesTornDown: 0 });
+      expect(audit.rows[0].metadata).toMatchObject({ storageRemoved: 4, bucketsRemoved: 1, databasesTornDown: 0 });
       // Seit 2.177 ist nichts mehr offen; der Eintrag nennt nichts als ausstehend.
       expect(audit.rows[0].metadata).not.toHaveProperty("pending");
 

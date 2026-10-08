@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "upload-release-s3-run1.log",
+  "commit": "029f83064c6510f775b42c36fc81daef865625b5",
+  "commitSubject": "release: 2.82.0 Ein Projekt loeschen, und was danach verschwindet",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "15 passed (15)",
+  "passed": 15,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}

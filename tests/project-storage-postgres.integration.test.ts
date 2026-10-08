@@ -265,6 +265,57 @@ describe.runIf(enabled)("Project Storage PostgreSQL certification", () => {
     expect(state.rows[0]).toEqual({ status: "expired", reserved_bytes: 0 });
   }, 30_000);
 
+  it("(2.178) releases the provider file of an expired single upload through the runtime role, once, and lets nothing else change with it", async () => {
+    let current = new Date();
+    const timedService = new ProjectStorageService({
+      repository, provider, scanner: { async scan() { return "clean"; } },
+      now: () => new Date(current),
+    });
+    const bucket = await timedService.createBucket(admin, scope, {
+      name: `released-${randomUUID().slice(0, 8)}`,
+      readPolicy: "authenticated", writePolicy: "authenticated",
+    });
+    const checksum = Buffer.alloc(32, 9).toString("base64");
+    const prepared = await timedService.prepareUpload(application, scope, bucket.id, {
+      key: "abandoned.png", contentType: "image/png", sizeBytes: 12, checksumSha256: checksum,
+    });
+    const providerKey = prepared.upload.fields.key;
+    provider.putForTest(providerKey, { sizeBytes: 12, contentType: "image/png", checksumSha256: checksum, etag: "e" });
+
+    // Der Vermerk geht nicht an einem offenen Upload.
+    await expect(owner.query(
+      "UPDATE project_storage_uploads SET provider_released_at = now() WHERE id = $1", [prepared.uploadId],
+    )).rejects.toMatchObject({ code: "55000" });
+
+    current = new Date(current.getTime() + 60 * 60 * 1_000);
+    const result = await timedService.expireLifecycle(admin, scope, 100);
+    expect(result).toMatchObject({ expiredUploads: 1, releasedUploads: 1 });
+    expect(await provider.headObject(providerKey)).toBeNull();
+    const row = await owner.query<{ status: string; released: boolean }>(
+      "SELECT status, provider_released_at IS NOT NULL AS released FROM project_storage_uploads WHERE id = $1",
+      [prepared.uploadId]);
+    expect(row.rows[0]).toEqual({ status: "expired", released: true });
+
+    // Einmal gesetzt, bleibt er; und mit ihm aendert sich sonst nichts.
+    await expect(owner.query(
+      "UPDATE project_storage_uploads SET provider_released_at = now() + interval '1 hour' WHERE id = $1", [prepared.uploadId],
+    )).rejects.toMatchObject({ code: "55000" });
+    expect((await timedService.expireLifecycle(admin, scope, 100)).releasedUploads).toBe(0);
+
+    // Ein zweiter verfallener Upload: Vermerk und Groesse zugleich zu aendern, geht nicht.
+    // Mit der echten Uhr: Der Anbieter stellt keine Vollmacht fuer die vorgestellte Zeit aus.
+    const second = await service.prepareUpload(application, scope, bucket.id, {
+      key: "second.png", contentType: "image/png", sizeBytes: 12, checksumSha256: checksum,
+    });
+    await owner.query("UPDATE project_storage_uploads SET status = 'expired' WHERE id = $1", [second.uploadId]);
+    await expect(owner.query(
+      "UPDATE project_storage_uploads SET provider_released_at = now(), size_bytes = 13 WHERE id = $1", [second.uploadId],
+    )).rejects.toMatchObject({ code: "55000" });
+    const grants = await owner.query<{ allowed: boolean }>(
+      "SELECT has_column_privilege('qkern_runtime', 'project_storage_uploads', 'provider_released_at', 'UPDATE') AS allowed");
+    expect(grants.rows[0].allowed).toBe(true);
+  }, 30_000);
+
   it("keeps the runtime role inside RLS and rejects direct cross-tenant reads", async () => {
     const direct = await runtime.query("SELECT id FROM project_storage_buckets");
     expect(direct.rows).toEqual([]);

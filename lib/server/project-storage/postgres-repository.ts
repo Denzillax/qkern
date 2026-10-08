@@ -562,6 +562,35 @@ export class PostgresProjectStorageRepository implements ProjectStorageRepositor
     });
   }
 
+  listUnreleasedUploads(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    limit: number,
+  ) {
+    return this.withTenant(principal, true, async (database) => {
+      const result = await database.query(`${UPLOAD_SELECT}
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3
+          AND status IN ('expired','cancelled') AND provider_released_at IS NULL
+        ORDER BY created_at ASC,id ASC LIMIT $4`, [...scopeValues(scope), limit]);
+      return result.rows.map(uploadFromRow);
+    });
+  }
+
+  markUploadReleased(
+    principal: ProjectStoragePrincipal,
+    scope: ProjectStorageScope,
+    uploadId: string,
+    now: Date,
+  ) {
+    return this.withTenant(principal, false, async (database) => {
+      const result = await database.query(`UPDATE project_storage_uploads SET provider_released_at=$5
+        WHERE organization_id=$1 AND project_id=$2 AND environment=$3 AND id=$4
+          AND status IN ('expired','cancelled') AND provider_released_at IS NULL
+        RETURNING id`, [...scopeValues(scope), uploadId, now]);
+      return result.rows.length > 0;
+    });
+  }
+
   listPendingMultipartUploads(
     principal: ProjectStoragePrincipal,
     scope: ProjectStorageScope,
