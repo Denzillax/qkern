@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "teardown-postgres-run1.log",
+  "commit": "d598dafb64b4adfdc3c05329a2904e3f7766afe7",
+  "commitSubject": "feat: der Abraeumer, zweiter Teil: Storage (2.176)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": 85,
+  "testFiles": "31 passed (31)",
+  "tests": "265 passed (265)",
+  "passed": 265,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

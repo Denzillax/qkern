@@ -187,6 +187,49 @@ const server = createServer(options, async (request, response) => {
     return;
   }
 
+  /**
+   * Die Abbau-Anfrage (2.177). Dieselbe Signatur wie `/provision`; dazu muss
+   * die Kennung der Anfrage im Koerper, im eigenen Kopf und im
+   * Idempotenzschluessel dieselbe sein. Eine Wiederholung derselben Kennung
+   * bestaetigt der Empfaenger noch einmal, wie ein echter Broker, der schon
+   * abgebaut hat. Was er gesehen hat, merkt er unter `teardown:<kennung>`:
+   * wie oft, und den Koerper der letzten Anfrage.
+   *
+   * `/teardown-refuse` prueft genauso und lehnt dann mit 503 ab: der Broker,
+   * der gerade nicht kann.
+   */
+  if (path === "/teardown" || path === "/teardown-refuse") {
+    const ok = incidentSignatureMatches(
+      request.headers["x-qkern-signature"],
+      request.headers["x-qkern-timestamp"],
+      body,
+    );
+    if (!ok) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end('{"error":"signature"}');
+      return;
+    }
+    let parsed;
+    try { parsed = JSON.parse(body); } catch { parsed = null; }
+    const id = parsed?.teardownRequestId;
+    if (typeof id !== "string" || id !== request.headers["x-qkern-teardown-request-id"] ||
+        id !== request.headers["idempotency-key"]) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end('{"error":"teardown request id"}');
+      return;
+    }
+    const previous = seen.get(`teardown:${id}`);
+    seen.set(`teardown:${id}`, { count: (previous?.count ?? 0) + 1, path, body: parsed });
+    if (path === "/teardown-refuse") {
+      response.writeHead(503, { "content-type": "application/json" });
+      response.end('{"error":"busy"}');
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ status: "torn_down", teardownRequestId: id }));
+    return;
+  }
+
   // Die Beobachtung des Empfaengers, abgefragt vom Testlauf ueber dieselbe
   // TLS-Verbindung. Ohne Signatur, weil es keine Zustellung ist, sondern die
   // Frage "was hast du gesehen" an den Empfaenger selbst.

@@ -1,0 +1,21 @@
+{
+  "stack": "Node 24 HTTPS-Empfaenger und PostgreSQL 17",
+  "log": "teardown-receiver-run2.log",
+  "commit": "d598dafb64b4adfdc3c05329a2904e3f7766afe7",
+  "commitSubject": "feat: der Abraeumer, zweiter Teil: Storage (2.176)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "1 passed (1)",
+  "tests": "18 passed (18)",
+  "passed": 18,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "alpine/openssl:3.3.2",
+    "node:24.7.0-alpine",
+    "node:24.7.0-alpine",
+    "postgres:17-alpine",
+    "node:24.7.0-alpine"
+  ]
+}

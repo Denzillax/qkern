@@ -2083,6 +2083,14 @@ Textmodul der Console, Uebersetzungen und ein Vertrag.
 | `2026-10-08/storage-purge-s3-run1.log` | versitygw und ClamAV | 15 bestanden, exit 0, im Schnitt 2.176 |
 | `2026-10-08/storage-purge-s3-run2.log` | versitygw und ClamAV | 15 bestanden, exit 0, Wiederholung |
 | `2026-10-08/storage-purge-s3-mutation-orphans.log` | Mutation: verwaiste Multipart-Uploads bleiben liegen | **14 von 15, exit 1 – absichtlich**, es faellt genau (2.176) |
+| `2026-10-08/teardown-postgres-run1.log` | PostgreSQL 17, `QKERN_CERT_MAX_WORKERS=2` | 265 bestanden, exit 0, im Schnitt 2.177 |
+| `2026-10-08/teardown-postgres-run2.log` | PostgreSQL 17, `QKERN_CERT_MAX_WORKERS=2` | 265 bestanden, exit 0, Wiederholung |
+| `2026-10-08/teardown-mutation-unconfirmed.log` | Mutation: `purged_at` ohne Bestaetigung des Brokers | **264 von 265, exit 1 – absichtlich**, es faellt genau (2.177) |
+| `2026-10-08/teardown-postgres-stale-2173.log` | PostgreSQL 17 | **264 von 265, exit 1** – (2.173) erwartete noch, dass ein abgelaufenes Projekt aus der Liste verschwindet; seit 2.177 steht es dort als "wird abgeraeumt", der Fall ist angepasst |
+| `2026-10-08/teardown-postgres-memory-pressure.log` | PostgreSQL 17, volle Parallelitaet | **229 von 265, exit 1** – 16 Zeitueberschreitungen in fremden Dateien bei rund 1,4 GB freiem Speicher; alle Faelle zum Loeschen gruen; darum mit zwei Workern wiederholt |
+| `2026-10-08/teardown-receiver-run1.log` | Node 24 HTTPS-Empfaenger und PostgreSQL 17 | 18 bestanden, exit 0, im Schnitt 2.177 |
+| `2026-10-08/teardown-receiver-run2.log` | Node 24 HTTPS-Empfaenger und PostgreSQL 17 | 18 bestanden, exit 0, Wiederholung |
+| `2026-10-08/teardown-receiver-mutation-idempotency.log` | Mutation: abweichender Idempotenzschluessel | **17 von 18, exit 1 – absichtlich**, es faellt genau (2.177) |
 
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind

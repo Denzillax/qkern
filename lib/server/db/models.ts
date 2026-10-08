@@ -31,6 +31,17 @@ export type DeletedProjectRecord = {
   slug: string;
   deletedAt: string;
   deleteAfter: string;
+  /**
+   * `restorable`: die Frist laeuft, das Projekt laesst sich zurueckholen.
+   * `purging`: die Frist ist um, der Abraeumer ist dran (2.175 bis 2.177).
+   */
+  state: "restorable" | "purging";
+  /**
+   * Der Abbau der Datenbanken beim Broker (2.177): `none`, wenn das Projekt
+   * keine hat; `pending`, solange noch keine Anfrage gestellt ist; `requested`,
+   * solange der Broker nicht jede bestaetigt hat; `confirmed` danach.
+   */
+  databaseTeardown: "none" | "pending" | "requested" | "confirmed";
 };
 
 export type ProjectEnvironmentRecord = {

@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "teardown-postgres-memory-pressure.log",
+  "commit": "d598dafb64b4adfdc3c05329a2904e3f7766afe7",
+  "commitSubject": "feat: der Abraeumer, zweiter Teil: Storage (2.176)",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 85,
+  "testFiles": "12 failed | 19 passed (31)",
+  "tests": "16 failed | 229 passed | 20 skipped (265)",
+  "passed": 229,
+  "failed": 16,
+  "skipped": 20,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

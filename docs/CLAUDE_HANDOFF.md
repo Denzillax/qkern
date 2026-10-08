@@ -149,6 +149,24 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.177 (`main`) **Der Abraeumer, dritter Teil: die Datenbank.** Migration
+  `0091_project_database_teardown.sql`: Tabelle `project_database_teardowns`
+  (je Bindung eine Anfrage, `id` = Idempotenzschluessel),
+  `qkern_open_project_database_teardowns` und
+  `qkern_record_project_database_teardown` (nur Provisioner, Frist geprueft,
+  Rueckzug eine Minute bis eine Stunde) und `qkern_purge_project` mit der
+  Bedingung, dass jede Bindung bestaetigt ist. Der Adapter
+  `SignedProjectDatabaseTeardownBrokerAdapter` in
+  `lib/server/provisioning/broker-adapter.ts` signiert wie das Anlegen und geht
+  an `QKERN_PROVISIONING_BROKER_TEARDOWN_URL`; ohne sie wartet das Projekt.
+  Die Console listet abgelaufene, noch nicht abgeraeumte Projekte als
+  `purging` mit `databaseTeardown` (`none`, `pending`, `requested`,
+  `confirmed`). Der Empfaenger-Stack hat `/teardown` und `/teardown-refuse`.
+  `docker-compose.certification.yml` kennt seither `QKERN_CERT_MAX_WORKERS`
+  fuer Laeufe bei wenig freiem Speicher. Damit ist der Plan in
+  `docs/PROJEKT_LOESCHEN.md` umgesetzt; offen bleibt nur die alte Luecke der
+  abgelaufenen einfachen Uploads (siehe 2.176).
+
 - 2.176 (`main`) **Der Abraeumer, zweiter Teil: Storage.** Migration
   `0090_project_purge_storage.sql` bringt `qkern_list_project_purge_storage`
   und `qkern_forget_project_purge_storage` (nur Provisioner, Frist geprueft)

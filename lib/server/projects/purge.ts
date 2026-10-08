@@ -1,5 +1,12 @@
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
+import type { Environment } from "@/lib/types";
 import type { ProjectStorageProvider } from "@/lib/server/project-storage/provider";
+import {
+  PROJECT_DATABASE_TEARDOWN_ERROR_CODES,
+  ProjectDatabaseTeardownError,
+  type ProjectDatabaseTeardownAdapter,
+  type ProjectDatabaseTeardownErrorCode,
+} from "@/lib/server/provisioning/broker-adapter";
 
 /**
  * Der Abraeumer fuer geloeschte Projekte, erster Teil (2.175).
@@ -16,8 +23,11 @@ import type { ProjectStorageProvider } from "@/lib/server/project-storage/provid
  * vermerkt `qkern_forget_project_purge_storage` sie als weg. Danach loescht
  * `qkern_purge_project` die Buckets, widerruft die Keys und setzt
  * `purged_at`, aber nur, wenn kein Backup mehr lesbar ist oder laeuft und
- * beim Anbieter nichts mehr liegt, das der Katalog kennt. Der Abbau der
- * Datenbank ueber den Broker kommt mit 2.177.
+ * beim Anbieter nichts mehr liegt, das der Katalog kennt. Seit 2.177 bittet
+ * er ausserdem den Broker, jede Datenbank des Projekts abzubauen
+ * (`qkern_open_project_database_teardowns`, signierte Anfrage, dann
+ * `qkern_record_project_database_teardown`); `purged_at` kommt erst, wenn der
+ * Broker jede bestaetigt hat. Ohne Broker-Adresse wartet das Projekt.
  *
  * **Ohne Storage-Zugang** (Project Storage in diesem Prozess nicht
  * eingestellt) laesst der Abraeumer den Storage-Schritt aus. Hat das Projekt
@@ -44,6 +54,10 @@ export type ProjectPurgeRoundResult = Readonly<{
   apiKeysRevoked: number;
   s3KeysRevoked: number;
   bucketsRemoved: number;
+  /** Datenbanken, deren Abbau der Broker in dieser Runde bestaetigt hat (2.177). */
+  databasesTornDown: number;
+  /** Abbau-Anfragen, die in dieser Runde scheiterten und spaeter wiederholt werden. */
+  teardownsFailed: number;
 }>;
 
 export type ProjectPurgeDependencies = Readonly<{
@@ -58,6 +72,11 @@ export type ProjectPurgeDependencies = Readonly<{
    * und ein Projekt mit Dateien wartet.
    */
   storage?: Pick<ProjectStorageProvider, "deleteObject" | "abortMultipartUpload" | "listMultipartUploads">;
+  /**
+   * Der Broker fuer die Abbau-Anfrage (2.177). Fehlt er, bleibt die Datenbank
+   * stehen, und das Projekt wartet.
+   */
+  teardown?: ProjectDatabaseTeardownAdapter;
   actorRef?: string;
   /** Wie viele Backups eine Runde hoechstens anfasst. */
   batchSize?: number;
@@ -106,6 +125,7 @@ export class ProjectPurgeRound {
     }
 
     const storageRemoved = await this.purgeStorage(due);
+    const { databasesTornDown, teardownsFailed } = await this.tearDownDatabases(due);
 
     return database.withTenant({ organizationId, actorRef: this.actorRef }, async (repositories) => {
       const result = await repositories.transaction.query(
@@ -128,16 +148,80 @@ export class ProjectPurgeRound {
           status: "succeeded",
           metadata: {
             backupsRemoved: backups.length, storageRemoved, bucketsRemoved, apiKeysRevoked, s3KeysRevoked,
-            // Was der Abraeumer noch nicht abraeumt, steht im Eintrag selbst.
-            pending: ["project_databases"],
+            databasesTornDown,
           },
         });
       }
       return {
         projectId: due, backupsRemoved: backups.length, storageRemoved, purged,
-        apiKeysRevoked, s3KeysRevoked, bucketsRemoved,
+        apiKeysRevoked, s3KeysRevoked, bucketsRemoved, databasesTornDown, teardownsFailed,
       };
     });
+  }
+
+  /**
+   * Der Datenbank-Schritt (2.177): Die Funktion legt die fehlenden Anfragen an
+   * und nennt die faelligen; jede geht signiert an den Broker, und seine
+   * Antwort wird vermerkt. Eine Bestaetigung bekommt einen eigenen
+   * Audit-Eintrag, ein Fehlschlag nur den Fehlercode an der Anfrage.
+   */
+  private async tearDownDatabases(projectId: string): Promise<{ databasesTornDown: number; teardownsFailed: number }> {
+    const teardown = this.dependencies.teardown;
+    if (!teardown) return { databasesTornDown: 0, teardownsFailed: 0 };
+    const { database, organizationId } = this.dependencies;
+    const open = await database.withTenant({ organizationId, actorRef: this.actorRef }, async (repositories) => {
+      const result = await repositories.transaction.query(
+        `SELECT teardown_id, environment, database_instance_ref, restore_databases
+         FROM qkern_open_project_database_teardowns($1)`,
+        [projectId],
+      );
+      return result.rows.map((row) => ({
+        id: String(row.teardown_id),
+        environment: String(row.environment) as Environment,
+        databaseInstanceRef: String(row.database_instance_ref),
+        restoreDatabases: Array.isArray(row.restore_databases) ? row.restore_databases.map(String) : [],
+      }));
+    });
+    let databasesTornDown = 0;
+    let teardownsFailed = 0;
+    for (const request of open) {
+      let errorCode: ProjectDatabaseTeardownErrorCode | null = null;
+      try {
+        await teardown.teardown({
+          teardownRequestId: request.id,
+          organizationId,
+          projectId,
+          environment: request.environment,
+          databaseInstanceRef: request.databaseInstanceRef,
+          restoreDatabases: request.restoreDatabases,
+        });
+      } catch (error) {
+        errorCode = error instanceof ProjectDatabaseTeardownError &&
+          (PROJECT_DATABASE_TEARDOWN_ERROR_CODES as readonly string[]).includes(error.code)
+          ? error.code : "PROVIDER_UNAVAILABLE";
+      }
+      await database.withTenant({ organizationId, actorRef: this.actorRef }, async (repositories) => {
+        const result = await repositories.transaction.query(
+          "SELECT qkern_record_project_database_teardown($1, $2, $3, $4) AS recorded",
+          [projectId, request.id, errorCode === null, errorCode],
+        );
+        if (errorCode === null && result.rows[0]?.recorded === true) {
+          await repositories.audit.append({
+            projectId,
+            environment: request.environment,
+            actorType: "provisioner",
+            actorRef: this.actorRef,
+            action: "project.database.torn_down",
+            resourceRef: request.databaseInstanceRef,
+            status: "succeeded",
+            metadata: { teardownRequestId: request.id, restoreDatabases: request.restoreDatabases.length },
+          });
+        }
+      });
+      if (errorCode === null) databasesTornDown += 1;
+      else teardownsFailed += 1;
+    }
+    return { databasesTornDown, teardownsFailed };
   }
 
   /**

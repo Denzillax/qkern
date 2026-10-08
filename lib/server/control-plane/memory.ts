@@ -233,7 +233,10 @@ export class MemoryControlPlaneService implements ControlPlaneService {
     const entry = { project, deletedAt: deletedAt.toISOString(), deleteAfter: deleteAfter.toISOString() };
     memoryDeletedProjects.set(projectId, entry);
     memoryProjectAudit(context, projectId, "project.deleted");
-    return { id: project.id, name: project.name, slug: project.slug, deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter };
+    return {
+      id: project.id, name: project.name, slug: project.slug, deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter,
+      state: "restorable", databaseTeardown: "none",
+    };
   }
 
   async restoreProject(context: ControlPlaneContext, projectId: string): Promise<Project> {
@@ -249,8 +252,15 @@ export class MemoryControlPlaneService implements ControlPlaneService {
 
   async listDeletedProjects(context: ControlPlaneContext): Promise<DeletedProject[]> {
     return [...memoryDeletedProjects.values()]
-      .filter((entry) => entry.project.organizationId === context.organizationId && Date.parse(entry.deleteAfter) > Date.now())
-      .map((entry) => ({ id: entry.project.id, name: entry.project.name, slug: entry.project.slug, deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter }));
+      // Im Speicherbetrieb gibt es keinen Abraeumer: Nach der Frist bleibt
+      // das Projekt als "wird abgeraeumt" stehen, ohne Datenbank.
+      .filter((entry) => entry.project.organizationId === context.organizationId)
+      .map((entry) => ({
+        id: entry.project.id, name: entry.project.name, slug: entry.project.slug,
+        deletedAt: entry.deletedAt, deleteAfter: entry.deleteAfter,
+        state: Date.parse(entry.deleteAfter) > Date.now() ? "restorable" as const : "purging" as const,
+        databaseTeardown: "none" as const,
+      }));
   }
 
   async createProject(context: ControlPlaneContext, input: CreateProjectInput): Promise<Project> {

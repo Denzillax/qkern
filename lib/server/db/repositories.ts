@@ -866,21 +866,47 @@ export class ProjectRepository {
     if (!result.rows[0]) throw new ResourceNotFoundError("Project");
   }
 
-  /** Die geloeschten Projekte dieser Organisation, deren Frist noch laeuft. */
+  /**
+   * Die geloeschten Projekte dieser Organisation, die noch nicht abgeraeumt
+   * sind (2.173, seit 2.177 auch die nach der Frist). Ob eine Datenbank
+   * existiert, sagt die Umgebung (`managed:` setzt erst die Bereitstellung);
+   * die Bindungen selbst darf die Laufzeitrolle nicht lesen.
+   */
   async listDeleted(): Promise<DeletedProjectRecord[]> {
     const result = await this.tx.query(
-      `SELECT id, name, slug, deleted_at, delete_after
-       FROM projects
-       WHERE organization_id = $1 AND deleted_at IS NOT NULL AND delete_after > now()
-       ORDER BY delete_after ASC
+      `SELECT project.id, project.name, project.slug, project.deleted_at, project.delete_after,
+              project.delete_after > now() AS restorable,
+              (SELECT count(*) FROM project_environments AS environment
+                WHERE environment.organization_id = project.organization_id
+                  AND environment.project_id = project.id
+                  AND environment.database_instance_ref LIKE 'managed:%')::integer AS databases,
+              (SELECT count(*) FROM project_database_teardowns AS teardown
+                WHERE teardown.organization_id = project.organization_id
+                  AND teardown.project_id = project.id)::integer AS requested,
+              (SELECT count(*) FROM project_database_teardowns AS teardown
+                WHERE teardown.organization_id = project.organization_id
+                  AND teardown.project_id = project.id
+                  AND teardown.status = 'confirmed')::integer AS confirmed
+       FROM projects AS project
+       WHERE project.organization_id = $1 AND project.deleted_at IS NOT NULL AND project.purged_at IS NULL
+       ORDER BY project.delete_after ASC
        LIMIT 250`,
       [this.tx.organizationId],
     );
-    return result.rows.map((row) => ({
-      id: row.id as string, name: row.name as string, slug: row.slug as string,
-      deletedAt: new Date(row.deleted_at as string).toISOString(),
-      deleteAfter: new Date(row.delete_after as string).toISOString(),
-    }));
+    return result.rows.map((row) => {
+      const databases = Number(row.databases);
+      const requested = Number(row.requested);
+      const confirmed = Number(row.confirmed);
+      return {
+        id: row.id as string, name: row.name as string, slug: row.slug as string,
+        deletedAt: new Date(row.deleted_at as string).toISOString(),
+        deleteAfter: new Date(row.delete_after as string).toISOString(),
+        state: row.restorable === true ? "restorable" as const : "purging" as const,
+        databaseTeardown: databases === 0 ? "none" as const
+          : confirmed >= databases ? "confirmed" as const
+          : requested > 0 ? "requested" as const : "pending" as const,
+      };
+    });
   }
 
   async setProvisioningStatus(projectId: string, status: "ready" | "degraded"): Promise<ProjectRecord> {

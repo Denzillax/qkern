@@ -85,6 +85,10 @@ services:
     environment:
       NODE_ENV: test
       DATABASE_SSL: disable
+      # Wahlweise weniger parallele Testdateien (2.177), wenn der Rechner wenig
+      # freien Speicher hat. Dieselben Dateien, dieselben Erwartungen; leer
+      # heisst wie bisher. Die Evidenz nennt den Wert, wenn er gesetzt war.
+      QKERN_CERT_MAX_WORKERS: ${QKERN_CERT_MAX_WORKERS:-}
       QKERN_TEST_ALLOW_DATABASE_CREATE_DROP: "true"
       QKERN_TEST_ADMIN_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
       QKERN_TEST_OWNER_DATABASE_URL: postgresql://qkern:qkern_local_only@postgres:5432/qkern_control
@@ -132,4 +136,9 @@ services:
           --exclude=./docs/evidence \
           -cf - . | tar -C /workspace/qkern -xf -
         npm ci --ignore-scripts
-        npm run test:postgres
+        if [ -n "$${QKERN_CERT_MAX_WORKERS}" ]; then
+          echo "certification: vitest --maxWorkers=$${QKERN_CERT_MAX_WORKERS}"
+          npm run test:postgres -- --maxWorkers="$${QKERN_CERT_MAX_WORKERS}"
+        else
+          npm run test:postgres
+        fi

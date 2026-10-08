@@ -83,6 +83,31 @@ Die einzig akzeptierte Antwortform ist:
 
 Passwörter, Provider-Tokens und Connection Strings besitzen keinen Vertrags- oder Persistenzslot.
 
+### Abbau einer Projektdatenbank (2.177)
+
+Ist ein gelöschtes Projekt nach Ablauf seiner Frist abgeräumt, bittet der Provisioner den Broker, jede seiner Datenbanken abzubauen. QKERN selbst führt nie `DROP DATABASE` aus. Die Anfrage geht per HTTPS POST an `QKERN_PROVISIONING_BROKER_TEARDOWN_URL`, signiert wie oben, mit demselben Schlüssel und derselben Host-Liste:
+
+```json
+{
+  "teardownRequestId": "<uuid>",
+  "organizationId": "<uuid>",
+  "projectId": "<uuid>",
+  "environment": "production",
+  "databaseInstanceRef": "managed:<opaque-reference>",
+  "restoreDatabases": ["<restore-target-database>"]
+}
+```
+
+`Idempotency-Key` und `X-QKERN-Teardown-Request-Id` entsprechen der `teardownRequestId`. Eine Wiederholung nach Ablehnung oder Zeitüberschreitung trägt dieselbe Kennung; der Broker bestätigt einen schon erledigten Abbau noch einmal. `restoreDatabases` nennt die Zieldatenbanken früherer Wiederherstellungen im selben Cluster.
+
+Bestätigt ist nur genau diese Antwort:
+
+```json
+{ "status": "torn_down", "teardownRequestId": "<same-uuid>" }
+```
+
+Alles andere zählt als Fehlschlag (`PROVIDER_UNAVAILABLE`, `PROVIDER_REJECTED`, `INVALID_RESPONSE`, `TEARDOWN_TIMEOUT`). Der nächste Versuch folgt nach einer Minute, danach mit doppeltem Abstand bis höchstens einer Stunde. Bis der Broker jede Datenbank bestätigt hat, bleibt `purged_at` leer, die Datenbank gesperrt (die Keys sind seit der Löschung abgelehnt), und die Console zeigt das Projekt als „wird abgeräumt“. Ohne `QKERN_PROVISIONING_BROKER_TEARDOWN_URL` geht keine Anfrage hinaus, und das Projekt wartet.
+
 ## Startreihenfolge
 
 1. Migrationen `0020_project_database_provisioning.sql` und `0021_project_database_provisioning_health.sql` kontrolliert in dieser Reihenfolge anwenden.

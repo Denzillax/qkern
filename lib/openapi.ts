@@ -2975,11 +2975,13 @@ export const qkernOpenAPI = {
         properties: { confirmName: { type: "string", minLength: 1, maxLength: 200, description: "Exactly the name of the project." } },
       },
       DeletedProject: {
-        type: "object", required: ["id", "name", "slug", "deletedAt", "deleteAfter"],
+        type: "object", required: ["id", "name", "slug", "deletedAt", "deleteAfter", "state", "databaseTeardown"],
         properties: {
           id: { type: "string" }, name: { type: "string" }, slug: { type: "string" },
           deletedAt: { type: "string", format: "date-time" },
           deleteAfter: { type: "string", format: "date-time", description: "Until then the project can be restored; afterwards it is removed." },
+          state: { type: "string", enum: ["restorable", "purging"], description: "restorable while the grace period runs; purging once it has ended and the project is being removed." },
+          databaseTeardown: { type: "string", enum: ["none", "pending", "requested", "confirmed"], description: "Removal of the project databases by the broker. The databases stay locked until the broker has confirmed each one." },
         },
       },
       DeletedProjectResponse: {

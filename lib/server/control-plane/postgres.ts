@@ -450,7 +450,18 @@ export class PostgresControlPlaneService implements ControlPlaneService {
         status: "success",
         metadata: { slug: project.slug, deleteAfter: marked.deleteAfter, graceDays: PROJECT_DELETION_GRACE_DAYS },
       });
-      return { id: project.id, name: project.name, slug: project.slug, ...marked };
+      // Wie in `listDeleted`: Eine Datenbank hat das Projekt, sobald eine
+      // Umgebung auf `managed:` zeigt; abgebaut wird sie erst nach der Frist.
+      const databases = await repositories.transaction.query(
+        `SELECT count(*)::integer AS count FROM project_environments
+         WHERE organization_id = $1 AND project_id = $2 AND database_instance_ref LIKE 'managed:%'`,
+        [context.organizationId, projectId],
+      );
+      return {
+        id: project.id, name: project.name, slug: project.slug, ...marked,
+        state: "restorable",
+        databaseTeardown: Number(databases.rows[0]?.count ?? 0) > 0 ? "pending" : "none",
+      };
     });
   }
 

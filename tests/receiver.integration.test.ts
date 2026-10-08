@@ -14,6 +14,12 @@ import { FetchWebhookTransport } from "@/lib/server/compute/webhook-transport";
 import { WebhookDeliverer } from "@/lib/server/compute/webhooks";
 import { createPostgresPool, verifyDatabaseBoundary } from "@/lib/server/db/pool";
 import { PostgresControlPlane } from "@/lib/server/db/repositories";
+import { ProjectPurgeRound } from "@/lib/server/projects/purge";
+import {
+  SignedProjectDatabaseTeardownBrokerAdapter,
+  StaticProvisioningBrokerSigningKeyProvider,
+} from "@/lib/server/provisioning/broker-adapter";
+import { PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256 } from "@/lib/server/provisioning/contract";
 // Der Anschluss nach draussen (2.125) faengt in der Queue an: Die Spur, die die
 // Zustellung ausloest, kommt aus einer echten Queue-Nachricht und nicht aus
 // einem Literal im Test.
@@ -801,6 +807,96 @@ describe.runIf(enabled)("Receiver certification", () => {
     expect(noise).not.toContain(RECEIVER_SECRET);
     expect(noise).not.toContain("receiver.qkern.test");
   }, 180_000);
+
+  it("(2.177) sends the signed teardown request of a purged project over real TLS, keeps the database after a refusal and confirms it with the same idempotency key", async () => {
+    // Der Abbau-Weg gegen den echten Empfaenger: echte Provisioner-Rolle,
+    // echte Funktionen aus 0091, echte Signatur ueber TLS. Der Empfaenger
+    // prueft Signatur und Kennung und merkt sich, was er sah.
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 2 }), "provisioner",
+    );
+    const doomed = randomUUID();
+    const reference = `managed:teardown-${doomed.slice(0, 8)}`;
+    try {
+      await owner.query(`INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+        VALUES ($1, $2, 'Receiver Teardown', $3, 'test', 'ready', $4)`,
+      [doomed, organizationId, `receiver-teardown-${doomed}`, controlUser]);
+      await owner.query(`INSERT INTO project_environments
+        (organization_id, project_id, environment, database_instance_ref)
+        VALUES ($1, $2, 'development', $3)`, [organizationId, doomed, reference]);
+      const jobId = randomUUID();
+      await owner.query(`INSERT INTO project_database_provisioning_jobs
+        (id, organization_id, project_id, environment, requested_by, status)
+        VALUES ($1, $2, $3, 'development', 'certification', 'pending')`, [jobId, organizationId, doomed]);
+      const bound = await owner.query<{ id: string }>(`INSERT INTO project_database_bindings
+          (organization_id, project_id, environment, provisioning_job_id, database_instance_ref,
+           vault_static_role, host, port, expected_role, expected_database,
+           expected_ledger_owner, server_certificate_sha256, bootstrap_contract_sha256)
+        VALUES ($1, $2, 'development', $3, $4, 'teardown-role', 'receiver.qkern.test', 5432,
+                'qkern_project_api_app', 'project_database', 'qkern_ledger_owner', $5, $6)
+        RETURNING id`,
+      [organizationId, doomed, jobId, reference, "a".repeat(64), PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256]);
+      // Der Auftrag ist erledigt wie nach einer echten Bereitstellung: Ein
+      // spaeterer Provisioner-Prozess in diesem Lauf soll ihn nicht anfassen.
+      await owner.query(`UPDATE project_database_provisioning_jobs
+        SET status = 'succeeded', binding_id = $2, started_at = now(), finished_at = now()
+        WHERE id = $1`, [jobId, bound.rows[0].id]);
+      await owner.query(
+        "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
+        [doomed]);
+
+      const broker = (path: string) => new SignedProjectDatabaseTeardownBrokerAdapter({
+        endpoint: new URL(`${ORIGIN}${path}`),
+        allowedHosts: new Set(["receiver.qkern.test"]),
+        signingKeyProvider: new StaticProvisioningBrokerSigningKeyProvider({ keyId: "cert-1", secret: RECEIVER_SECRET }),
+        timeoutMs: 10_000,
+      });
+      const round = (path: string) => new ProjectPurgeRound({
+        database: new PostgresControlPlane(provisioner),
+        organizationId,
+        objects: { delete: async () => undefined },
+        backups: { forget: async () => undefined },
+        teardown: broker(path),
+        actorRef: "receiver-teardown",
+      });
+      const purgedAt = async () => (await owner.query<{ purged_at: string | null }>(
+        "SELECT purged_at FROM projects WHERE id = $1", [doomed])).rows[0].purged_at;
+
+      // --- Der Broker kann gerade nicht: Die Datenbank bleibt stehen ---
+      expect(await round("/teardown-refuse").runRound()).toMatchObject({
+        projectId: doomed, purged: false, databasesTornDown: 0, teardownsFailed: 1,
+      });
+      const request = (await owner.query<{ id: string; last_error_code: string }>(
+        "SELECT id, last_error_code FROM project_database_teardowns WHERE project_id = $1", [doomed])).rows[0];
+      expect(request.last_error_code).toBe("PROVIDER_REJECTED");
+      expect(await purgedAt()).toBeNull();
+
+      // --- Der naechste Versuch, mit derselben Kennung ---
+      await owner.query("UPDATE project_database_teardowns SET next_attempt_at = now() WHERE id = $1", [request.id]);
+      expect(await round("/teardown").runRound()).toMatchObject({
+        projectId: doomed, purged: true, databasesTornDown: 1, teardownsFailed: 0,
+      });
+      expect(await purgedAt()).not.toBeNull();
+
+      // Der Empfaenger sah dieselbe Kennung zweimal und den vollstaendigen Koerper.
+      const seenResponse = await fetch(`${ORIGIN}/seen/teardown:${request.id}`);
+      expect(seenResponse.status).toBe(200);
+      expect(await seenResponse.json()).toEqual({
+        count: 2,
+        path: "/teardown",
+        body: {
+          teardownRequestId: request.id,
+          organizationId,
+          projectId: doomed,
+          environment: "development",
+          databaseInstanceRef: reference,
+          restoreDatabases: [],
+        },
+      });
+    } finally {
+      await provisioner.end();
+    }
+  }, 120_000);
 
   /**
    * Derselbe Fehler wie in Release 1.61 — absichtlich wiederhergestellt.

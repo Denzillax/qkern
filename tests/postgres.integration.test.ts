@@ -63,6 +63,7 @@ import { AesGcmStatementCipher, sha256 } from "@/lib/server/control-plane/crypto
 import { PostgresControlPlaneService } from "@/lib/server/control-plane/postgres";
 import { ProjectDeleteConfirmationError, ProjectSlugTakenError } from "@/lib/server/control-plane/model";
 import { ProjectPurgeRound } from "@/lib/server/projects/purge";
+import { ProjectDatabaseTeardownError, type ProjectDatabaseTeardownRequest } from "@/lib/server/provisioning/broker-adapter";
 import { validateProjectDraft } from "@/lib/console/project-draft";
 import { PostgresProjectStorageRepository } from "@/lib/server/project-storage/postgres-repository";
 // Dauerhafte Presence (2.113): der echte Store ueber die echte Laufzeitrolle,
@@ -8448,7 +8449,10 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
       "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
       [project.id]);
     await expect(service.restoreProject(context, project.id)).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
-    expect(await service.listDeletedProjects(context)).toEqual([]);
+    // Seit 2.177 bleibt es nach der Frist in der Liste, als "wird abgeraeumt"
+    // und ohne Zurueckholen, bis der Abraeumer `purged_at` setzt.
+    expect((await service.listDeletedProjects(context)).map((entry) => ({ id: entry.id, state: entry.state })))
+      .toEqual([{ id: project.id, state: "purging" }]);
     expect(await keys.authenticate(issued.secret)).toBeNull();
 
     // --- Die Laufzeitrolle hat weiter kein UPDATE auf `projects` ---
@@ -17189,6 +17193,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         organizationId: purgeOrganization,
         objects: { delete: async (key) => { deletedObjects.push(key); } },
         backups: new PostgresProjectDatabaseBackupStore(provisioner, purgeOrganization, "purge-case"),
+        // Seit 2.177 wartet das Abraeumen, bis der Broker den Abbau jeder
+        // Bindung bestaetigt; dieser Fall hat eine und bestaetigt sofort.
+        teardown: { teardown: async () => undefined },
         actorRef: "purge-case",
       });
 
@@ -17361,7 +17368,9 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
         `SELECT action, redacted_metadata AS metadata FROM audit_logs WHERE organization_id = $1 AND project_id = $2
          ORDER BY created_at DESC, id DESC LIMIT 1`, [storageOrganization, project]);
       expect(audit.rows[0].action).toBe("project.purged");
-      expect(audit.rows[0].metadata).toMatchObject({ storageRemoved: 3, bucketsRemoved: 1, pending: ["project_databases"] });
+      expect(audit.rows[0].metadata).toMatchObject({ storageRemoved: 3, bucketsRemoved: 1, databasesTornDown: 0 });
+      // Seit 2.177 ist nichts mehr offen; der Eintrag nennt nichts als ausstehend.
+      expect(audit.rows[0].metadata).not.toHaveProperty("pending");
 
       // --- Die Funktionen gehoeren nur dem Provisioner ---
       const may = await owner.query<{ runtime_list: boolean; runtime_forget: boolean; provisioner_list: boolean; provisioner_forget: boolean }>(
@@ -17370,6 +17379,137 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
                 has_function_privilege('qkern_provisioner', 'qkern_list_project_purge_storage(uuid, integer)', 'EXECUTE') AS provisioner_list,
                 has_function_privilege('qkern_provisioner', 'qkern_forget_project_purge_storage(uuid, text, uuid)', 'EXECUTE') AS provisioner_forget`);
       expect(may.rows[0]).toEqual({ runtime_list: false, runtime_forget: false, provisioner_list: true, provisioner_forget: true });
+    } finally {
+      await provisioner.end();
+    }
+  }, 120_000);
+
+  it("(2.177) asks the broker to tear down each database of a purged project, retries a refusal later with the same idempotency key, and sets purged_at only after the broker confirmed", async () => {
+    // Der Abraeumer, dritter Teil (docs/PROJEKT_LOESCHEN.md). Echt sind die
+    // Provisioner-Rolle, die Funktionen aus 0091, die Konsolenliste unter der
+    // Laufzeitrolle und der Audit-Eintrag. Der Broker ist ein Protokoll; die
+    // signierte Anfrage ueber TLS belegt der Empfaenger-Stack.
+    expect(provisionerUrl, "QKERN_TEST_PROVISIONER_DATABASE_URL").toBeTruthy();
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 2 }), "provisioner",
+    );
+    const teardownOwner = randomUUID();
+    const teardownOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [teardownOwner, `purge-2-177-owner-${teardownOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Purge 2.177', $2, $3)`,
+    [teardownOrganization, `purge-2-177-${teardownOrganization}`, teardownOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [teardownOrganization, teardownOwner]);
+    const project = randomUUID();
+    const reference = `managed:teardown-${project.slice(0, 8)}`;
+    try {
+      await owner.query(
+        `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+         VALUES ($1, $2, 'Purge 2.177', $3, 'test', 'ready', $4)`,
+        [project, teardownOrganization, `purge-${project}`, teardownOwner]);
+      await owner.query(
+        `INSERT INTO project_environments (organization_id, project_id, environment, database_instance_ref)
+         VALUES ($1, $2, 'production', $3)`, [teardownOrganization, project, reference]);
+      const jobId = randomUUID();
+      await owner.query(
+        `INSERT INTO project_database_provisioning_jobs
+           (id, organization_id, project_id, environment, requested_by, status)
+         VALUES ($1, $2, $3, 'production', 'teardown-case', 'pending')`, [jobId, teardownOrganization, project]);
+      await owner.query(
+        `INSERT INTO project_database_bindings
+           (organization_id, project_id, environment, provisioning_job_id, database_instance_ref,
+            vault_static_role, host, port, expected_role, expected_database,
+            expected_ledger_owner, server_certificate_sha256, bootstrap_contract_sha256)
+         VALUES ($1, $2, 'production', $3, $4, 'teardown-role', 'postgres', 5432,
+                 'qkern_project_api_app', 'project_database', 'qkern_ledger_owner', $5, $6)`,
+        [teardownOrganization, project, jobId, reference, "a".repeat(64), PROJECT_DATABASE_BOOTSTRAP_CONTRACT_SHA256]);
+      // Eine abgeschlossene Wiederherstellung: Ihre Zieldatenbank liegt im
+      // selben Cluster und gehoert mit in die Anfrage.
+      await owner.query(
+        `INSERT INTO project_database_backups
+           (id, organization_id, project_id, environment, database_instance_ref, status, last_error_code,
+            restore_status, restore_requested_at, restore_requested_by, restore_database_name, restore_completed_at)
+         VALUES ($1, $2, $3, 'production', $4, 'failed', 'DUMP_FAILED',
+                 'succeeded', now() - interval '3 days', 'teardown-case', 'qkern_restore_2177', now() - interval '3 days')`,
+        [randomUUID(), teardownOrganization, project, reference]);
+      await owner.query(
+        "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
+        [project]);
+
+      const consoleView = async () => {
+        const listed = await new PostgresControlPlane(runtime).withTenant(
+          { organizationId: teardownOrganization, actorRef: "teardown-case", readOnly: true },
+          (repositories) => repositories.projects.listDeleted());
+        return listed.map((entry) => ({ id: entry.id, state: entry.state, databaseTeardown: entry.databaseTeardown }));
+      };
+      const sent: ProjectDatabaseTeardownRequest[] = [];
+      const roundWith = (broker?: (request: ProjectDatabaseTeardownRequest) => Promise<void>) => new ProjectPurgeRound({
+        database: new PostgresControlPlane(provisioner),
+        organizationId: teardownOrganization,
+        objects: { delete: async () => undefined },
+        backups: { forget: async () => undefined },
+        ...(broker ? { teardown: { teardown: async (request: ProjectDatabaseTeardownRequest) => {
+          sent.push(request);
+          await broker(request);
+        } } } : {}),
+        actorRef: "teardown-case",
+      });
+      const teardownRow = async () => (await owner.query<{ id: string; status: string; attempt_count: number; last_error_code: string | null; later: boolean }>(
+        `SELECT id, status, attempt_count, last_error_code, next_attempt_at > now() AS later
+         FROM project_database_teardowns WHERE project_id = $1`, [project])).rows;
+
+      expect(await consoleView()).toEqual([{ id: project, state: "purging", databaseTeardown: "pending" }]);
+
+      // --- Ohne Broker: keine Anfrage, die Datenbank bleibt stehen ---
+      expect(await roundWith().runRound()).toMatchObject({ projectId: project, purged: false, databasesTornDown: 0 });
+      expect(await teardownRow()).toEqual([]);
+
+      // --- Der Broker lehnt ab: vermerkt, spaeter wieder ---
+      const refused = await roundWith(async () => { throw new ProjectDatabaseTeardownError("PROVIDER_REJECTED"); }).runRound();
+      expect(refused).toMatchObject({ purged: false, databasesTornDown: 0, teardownsFailed: 1 });
+      const [afterRefusal] = await teardownRow();
+      expect(afterRefusal).toMatchObject({ status: "requested", attempt_count: 1, last_error_code: "PROVIDER_REJECTED", later: true });
+      expect(await consoleView()).toEqual([{ id: project, state: "purging", databaseTeardown: "requested" }]);
+
+      // --- Vor dem naechsten Versuch geht nichts hinaus ---
+      expect(await roundWith(async () => undefined).runRound()).toMatchObject({ purged: false, teardownsFailed: 0, databasesTornDown: 0 });
+      expect(sent).toHaveLength(1);
+
+      // --- Der naechste Versuch: dieselbe Kennung, der Broker bestaetigt ---
+      await owner.query("UPDATE project_database_teardowns SET next_attempt_at = now() WHERE project_id = $1", [project]);
+      const confirmed = await roundWith(async () => undefined).runRound();
+      expect(confirmed).toMatchObject({ projectId: project, purged: true, databasesTornDown: 1, teardownsFailed: 0 });
+      expect(sent).toHaveLength(2);
+      expect(sent[1]).toEqual({
+        teardownRequestId: afterRefusal.id,
+        organizationId: teardownOrganization,
+        projectId: project,
+        environment: "production",
+        databaseInstanceRef: reference,
+        restoreDatabases: ["qkern_restore_2177"],
+      });
+      expect(sent[0].teardownRequestId).toBe(afterRefusal.id);
+      expect(await teardownRow()).toMatchObject([{ status: "confirmed", attempt_count: 2, last_error_code: null }]);
+      const audit = await owner.query<{ action: string }>(
+        `SELECT action FROM audit_logs WHERE organization_id = $1 AND project_id = $2
+         ORDER BY created_at, id`, [teardownOrganization, project]);
+      expect(audit.rows.map((row) => row.action)).toEqual(["project.database.torn_down", "project.purged"]);
+      // Abgeraeumt: Die Konsole fuehrt das Projekt nicht mehr.
+      expect(await consoleView()).toEqual([]);
+
+      // --- Schreiben duerfen nur die Funktionen, und die nur dem Provisioner ---
+      const may = await owner.query<Record<string, boolean>>(
+        `SELECT has_function_privilege('qkern_runtime', 'qkern_open_project_database_teardowns(uuid)', 'EXECUTE') AS runtime_open,
+                has_function_privilege('qkern_runtime', 'qkern_record_project_database_teardown(uuid, uuid, boolean, text)', 'EXECUTE') AS runtime_record,
+                has_function_privilege('qkern_provisioner', 'qkern_open_project_database_teardowns(uuid)', 'EXECUTE') AS provisioner_open,
+                has_table_privilege('qkern_runtime', 'project_database_teardowns', 'INSERT') AS runtime_insert,
+                has_table_privilege('qkern_provisioner', 'project_database_teardowns', 'UPDATE') AS provisioner_update`);
+      expect(may.rows[0]).toEqual({
+        runtime_open: false, runtime_record: false, provisioner_open: true, runtime_insert: false, provisioner_update: false,
+      });
     } finally {
       await provisioner.end();
     }

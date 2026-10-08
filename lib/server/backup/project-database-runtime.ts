@@ -1,6 +1,10 @@
 import { ConfigurationError } from "@/lib/server/db/errors";
 import { ProjectPurgeRound } from "@/lib/server/projects/purge";
 import type { ProjectStorageProvider } from "@/lib/server/project-storage/provider";
+import {
+  createSignedProjectDatabaseTeardownBrokerFromEnv,
+  type ProjectDatabaseTeardownAdapter,
+} from "@/lib/server/provisioning/broker-adapter";
 import { providerFromEnv as projectStorageProviderFromEnv } from "@/lib/server/project-storage/provider-env";
 import { createPostgresPool } from "@/lib/server/db/pool";
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
@@ -237,6 +241,13 @@ export type ProjectDatabaseBackupRuntimeDependencies = Readonly<{
    * laesst der Abraeumer Storage aus, und ein Projekt mit Dateien wartet.
    */
   storageProvider?: ProjectStorageProvider;
+  /**
+   * Die Abbau-Anfrage an den Broker (2.177). Ohne sie liest der Prozess
+   * `QKERN_PROVISIONING_BROKER_TEARDOWN_URL` mit demselben Schluessel und
+   * derselben Host-Liste wie das Anlegen; ist sie nicht gesetzt, bleibt die
+   * Datenbank eines abgelaufenen Projekts stehen, und das Projekt wartet.
+   */
+  teardownAdapter?: ProjectDatabaseTeardownAdapter;
 }>;
 
 /**
@@ -385,12 +396,15 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
 
   const storage = dependencies.storageProvider ??
     (env.QKERN_PROJECT_STORAGE_ENABLED === "true" ? projectStorageProviderFromEnv(env, production) : undefined);
+  const teardown = dependencies.teardownAdapter ??
+    createSignedProjectDatabaseTeardownBrokerFromEnv(env, { fetchFn: dependencies.fetchFn }) ?? undefined;
   const purge = new ProjectPurgeRound({
     database: dependencies.controlPlane,
     organizationId,
     objects,
     backups: store,
     ...(storage ? { storage } : {}),
+    ...(teardown ? { teardown } : {}),
     actorRef: workerId,
   });
 

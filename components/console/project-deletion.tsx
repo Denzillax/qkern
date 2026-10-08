@@ -19,10 +19,24 @@ import { formatMoment } from "@/components/console/console-display";
  * dieser Console, und der Dienst prueft denselben Namen noch einmal: Ein
  * direkter Aufruf soll nicht mit weniger loeschen als ein Druck auf den Knopf.
  *
- * Darunter stehen die geloeschten Projekte dieser Organisation, deren Frist
- * noch laeuft, jedes mit dem Zeitpunkt, bis zu dem es zurueckzuholen ist.
+ * Darunter stehen die geloeschten Projekte dieser Organisation, die noch
+ * nicht abgeraeumt sind. Solange die Frist laeuft, mit dem Zeitpunkt, bis zu
+ * dem es zurueckzuholen ist. Danach (2.177) ohne Knopf und mit dem Satz, der
+ * sagt, worauf das Abraeumen wartet: Die Datenbank bleibt gesperrt stehen, bis
+ * der Broker ihren Abbau bestaetigt.
  */
-type DeletedProject = { id: string; name: string; slug: string; deletedAt: string; deleteAfter: string };
+type DeletedProject = {
+  id: string; name: string; slug: string; deletedAt: string; deleteAfter: string;
+  state: "restorable" | "purging";
+  databaseTeardown: "none" | "pending" | "requested" | "confirmed";
+};
+
+function purgingText(entry: DeletedProject): string {
+  if (entry.databaseTeardown === "pending" || entry.databaseTeardown === "requested") {
+    return t("Wird abgeräumt. Die Datenbank bleibt gesperrt, bis der Broker ihren Abbau bestätigt.");
+  }
+  return t("Wird abgeräumt. Backups und Dateien werden entfernt.");
+}
 
 export function ProjectDeletion({ project, onChanged }: {
   project: { id: string; name: string };
@@ -77,11 +91,13 @@ export function ProjectDeletion({ project, onChanged }: {
       <h4>{t("Gelöschte Projekte")}</h4>
       {deleted.map((entry) => <div className="bucket-row" key={entry.id}>
         <span className="bucket-icon"><RotateCcw size={16} aria-hidden/></span>
-        <div><strong>{entry.name}</strong><small>{t("Zurückholbar bis")} {formatMoment(entry.deleteAfter)}</small></div>
+        <div><strong>{entry.name}</strong><small>{entry.state === "restorable"
+          ? `${t("Zurückholbar bis")} ${formatMoment(entry.deleteAfter)}`
+          : purgingText(entry)}</small></div>
         <span/>
-        <button type="button" className="secondary-button" onClick={() => void restore(entry)}>
+        {entry.state === "restorable" ? <button type="button" className="secondary-button" onClick={() => void restore(entry)}>
           <RotateCcw size={13} aria-hidden/> {t("Zurückholen")}
-        </button>
+        </button> : <span/>}
       </div>)}
     </div>}
   </div>;

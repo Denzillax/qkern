@@ -52,6 +52,17 @@ export type DeletedProject = {
   slug: string;
   deletedAt: string;
   deleteAfter: string;
+  /**
+   * `restorable`: die Frist laeuft, das Projekt laesst sich zurueckholen.
+   * `purging`: die Frist ist um, der Abraeumer ist dran (2.175 bis 2.177).
+   */
+  state: "restorable" | "purging";
+  /**
+   * Der Abbau der Datenbanken beim Broker (2.177): `none`, wenn das Projekt
+   * keine hat; `pending`, solange noch keine Anfrage gestellt ist; `requested`,
+   * solange der Broker nicht jede bestaetigt hat; `confirmed` danach.
+   */
+  databaseTeardown: "none" | "pending" | "requested" | "confirmed";
 };
 
 /** Wie lange ein geloeschtes Projekt zurueckzuholen ist (2.173), wie in 0087. */
@@ -211,7 +222,10 @@ export interface ControlPlaneService {
   deleteProject(context: ControlPlaneContext, projectId: string, confirmName: string): Promise<DeletedProject>;
   /** Holt ein geloeschtes Projekt vor Ablauf seiner Frist zurueck (2.173). */
   restoreProject(context: ControlPlaneContext, projectId: string): Promise<Project>;
-  /** Die geloeschten Projekte der Organisation, deren Frist noch laeuft (2.173). */
+  /**
+   * Die geloeschten Projekte der Organisation, die noch nicht abgeraeumt sind:
+   * die zurueckholbaren (2.173) und seit 2.177 die, an denen der Abraeumer ist.
+   */
   listDeletedProjects(context: ControlPlaneContext): Promise<DeletedProject[]>;
   createChangeSet(context: ControlPlaneContext, input: CreateChangeSetInput): Promise<ChangeSet>;
   decideApproval(context: ControlPlaneContext, input: DecideApprovalInput): Promise<Approval>;
