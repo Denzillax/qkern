@@ -2076,6 +2076,13 @@ Textmodul der Console, Uebersetzungen und ein Vertrag.
 | `2026-10-07/workers-mutation-filters.log` | Mutation: Cron, Webhook, Backup und Migration fragen nicht nach dem geloeschten Projekt | **258 von 262, exit 1 – absichtlich**, es fallen genau die vier (2.174) |
 | `2026-10-08/purge-postgres-run1.log` | PostgreSQL 17 | 263 bestanden, exit 0, im Schnitt 2.175 |
 | `2026-10-08/purge-mutation-running-backup.log` | Mutation: der Abraeumer wartet nicht auf ein laufendes Backup | **262 von 263, exit 1 – absichtlich**, es faellt genau (2.175) |
+| `2026-10-08/storage-purge-postgres-run1.log` | PostgreSQL 17 | 264 bestanden, exit 0, im Schnitt 2.176 |
+| `2026-10-08/storage-purge-postgres-run2.log` | PostgreSQL 17 | 264 bestanden, exit 0, Wiederholung |
+| `2026-10-08/storage-purge-mutation-guard.log` | Mutation: Buckets gehen, obwohl noch Dateien bekannt sind | **263 von 264, exit 1 – absichtlich**, es faellt genau (2.176) |
+| `2026-10-08/storage-purge-mutation-guard-first-try.log` | Dieselbe Mutation, erster Versuch | **262 von 264, exit 1** – (2.176) und der Realtime-Latenzfall bei rund 1 GB freiem Speicher; darum wiederholt |
+| `2026-10-08/storage-purge-s3-run1.log` | versitygw und ClamAV | 15 bestanden, exit 0, im Schnitt 2.176 |
+| `2026-10-08/storage-purge-s3-run2.log` | versitygw und ClamAV | 15 bestanden, exit 0, Wiederholung |
+| `2026-10-08/storage-purge-s3-mutation-orphans.log` | Mutation: verwaiste Multipart-Uploads bleiben liegen | **14 von 15, exit 1 – absichtlich**, es faellt genau (2.176) |
 
 Zu 2.80 ist der PostgreSQL-Lauf ein Rueckfallgitter: Geaendert sind
 Console-Komponenten, CSS, Texte und Vertraege, keine Route. Die Ablaeufe sind

@@ -17240,6 +17240,141 @@ describe.runIf(enabled)("PostgreSQL 17 role and RLS integration", () => {
     }
   }, 120_000);
 
+  it("(2.176) purges the storage of a deleted project: waits without storage access, removes each file at the provider before the catalog forgets it, then drops the buckets", async () => {
+    // Der Abraeumer, zweiter Teil (docs/PROJEKT_LOESCHEN.md). Echt sind die
+    // Provisioner-Rolle, die drei Funktionen aus 0090 und die Kaskade der
+    // Buckets. Der Anbieter ist ein Protokoll; den echten S3-Weg belegt der
+    // Storage-Stack.
+    expect(provisionerUrl, "QKERN_TEST_PROVISIONER_DATABASE_URL").toBeTruthy();
+    const provisioner = verifyDatabaseBoundary(
+      createPostgresPool({ connectionString: provisionerUrl!, max: 2 }), "provisioner",
+    );
+    // Eine eigene Organisation, aus demselben Grund wie in (2.175).
+    const storageOwner = randomUUID();
+    const storageOrganization = randomUUID();
+    await owner.query(`INSERT INTO users (id, email, password_hash, status)
+      VALUES ($1, $2, '$argon2id$integration-only', 'active')`,
+    [storageOwner, `purge-2-176-owner-${storageOwner}@qkern.test`]);
+    await owner.query(`INSERT INTO organizations (id, name, slug, created_by)
+      VALUES ($1, 'Purge 2.176', $2, $3)`,
+    [storageOrganization, `purge-2-176-${storageOrganization}`, storageOwner]);
+    await owner.query(`INSERT INTO organization_members (organization_id, user_id, role, is_personal_workspace)
+      VALUES ($1, $2, 'owner', true)`, [storageOrganization, storageOwner]);
+    const project = randomUUID();
+    const prefix = `${storageOrganization}/${project}/production`;
+    try {
+      await owner.query(
+        `INSERT INTO projects (id, organization_id, name, slug, region, status, created_by)
+         VALUES ($1, $2, 'Purge 2.176', $3, 'test', 'ready', $4)`,
+        [project, storageOrganization, `purge-${project}`, storageOwner]);
+      await owner.query(
+        `INSERT INTO project_environments (organization_id, project_id, environment, database_instance_ref)
+         VALUES ($1, $2, 'production', $3)`, [storageOrganization, project, `managed:purge-${project.slice(0, 8)}`]);
+      const bucket = randomUUID();
+      await owner.query(
+        `INSERT INTO project_storage_buckets
+           (id, organization_id, project_id, environment, name, allowed_mime_types, max_object_bytes, quota_bytes)
+         VALUES ($1, $2, $3, 'production', 'avatars', ARRAY['image/png'], 1048576, 10485760)`,
+        [bucket, storageOrganization, project]);
+      const checksum = `${"A".repeat(43)}=`;
+      const liveObject = randomUUID();
+      const goneObject = randomUUID();
+      await owner.query(
+        `INSERT INTO project_storage_objects
+           (id, organization_id, project_id, environment, bucket_id, object_key, provider_key,
+            size_bytes, content_type, checksum_sha256, status, deleted_at)
+         VALUES ($1, $3, $4, 'production', $5, 'a.png', $6, 10, 'image/png', $8, 'clean', NULL),
+                ($2, $3, $4, 'production', $5, 'b.png', $7, 10, 'image/png', $8, 'clean', now())`,
+        [liveObject, goneObject, storageOrganization, project, bucket,
+          `${prefix}/${bucket}/u1/a.png`, `${prefix}/${bucket}/u2/b.png`, checksum]);
+      const singleUpload = randomUUID();
+      const multipartUpload = randomUUID();
+      await owner.query(
+        `INSERT INTO project_storage_uploads
+           (id, organization_id, project_id, environment, bucket_id, object_key, provider_key, owner_subject,
+            content_type, size_bytes, checksum_sha256, completion_token_hash, expires_at, kind, provider_upload_id)
+         VALUES ($1, $3, $4, 'production', $5, 'c.png', $6, 'user-1', 'image/png', 10, $8, $9,
+                 now() + interval '1 hour', 'single', NULL),
+                ($2, $3, $4, 'production', $5, 'd.png', $7, 'user-1', 'image/png', 10, $8, $10,
+                 now() + interval '1 hour', 'multipart', 'upload-d')`,
+        [singleUpload, multipartUpload, storageOrganization, project, bucket,
+          `${prefix}/${bucket}/u3/c.png`, `${prefix}/${bucket}/u4/d.png`, checksum,
+          "c".repeat(43), "d".repeat(43)]);
+
+      await owner.query(
+        "UPDATE projects SET deleted_at = now() - interval '8 days', delete_after = now() - interval '1 day' WHERE id = $1",
+        [project]);
+
+      const calls: string[] = [];
+      const storage = {
+        deleteObject: async (key: string) => { calls.push(`delete ${key}`); },
+        abortMultipartUpload: async (input: { providerKey: string; uploadId: string }) => {
+          calls.push(`abort ${input.providerKey} ${input.uploadId}`);
+        },
+        // Ein begonnener Upload, den der Katalog nicht kennt: nach der Frist eine Waise.
+        listMultipartUploads: async (input: { keyPrefix: string }) => {
+          calls.push(`list ${input.keyPrefix}`);
+          return [{ providerKey: `${prefix}/${bucket}/u9/orphan.png`, uploadId: "orphan-9", initiatedAt: new Date() }];
+        },
+      };
+      const roundWith = (withStorage: boolean) => new ProjectPurgeRound({
+        database: new PostgresControlPlane(provisioner),
+        organizationId: storageOrganization,
+        objects: { delete: async () => undefined },
+        backups: { forget: async () => undefined },
+        ...(withStorage ? { storage } : {}),
+        actorRef: "purge-case",
+      });
+      const liveRows = async () => (await owner.query<{ objects: string; uploads: string; buckets: string }>(
+        `SELECT (SELECT count(*)::text FROM project_storage_objects WHERE project_id = $1 AND deleted_at IS NULL) AS objects,
+                (SELECT count(*)::text FROM project_storage_uploads WHERE project_id = $1 AND status = 'pending') AS uploads,
+                (SELECT count(*)::text FROM project_storage_buckets WHERE project_id = $1) AS buckets`,
+        [project])).rows[0];
+
+      // --- Ohne Storage-Zugang: nichts wird geloescht, das Projekt wartet ---
+      const waiting = await roundWith(false).runRound();
+      expect(waiting).toMatchObject({ projectId: project, storageRemoved: 0, purged: false, bucketsRemoved: 0 });
+      expect(await liveRows()).toEqual({ objects: "1", uploads: "2", buckets: "1" });
+
+      // --- Mit Zugang: erst beim Anbieter, dann im Katalog, dann die Buckets ---
+      const done = await roundWith(true).runRound();
+      expect(done).toMatchObject({ projectId: project, storageRemoved: 3, purged: true, bucketsRemoved: 1 });
+      // Die Reihenfolge innerhalb einer Liste folgt Anlagezeit und Kennung;
+      // die beiden Uploads entstanden in einer Anweisung, darum sortiert.
+      expect(calls.slice(0, 3).sort()).toEqual([
+        `abort ${prefix}/${bucket}/u4/d.png upload-d`,
+        `delete ${prefix}/${bucket}/u1/a.png`,
+        `delete ${prefix}/${bucket}/u3/c.png`,
+      ]);
+      expect(calls.slice(3)).toEqual([
+        `list ${storageOrganization}/${project}/`,
+        `abort ${prefix}/${bucket}/u9/orphan.png orphan-9`,
+      ]);
+      // Das schon geloeschte Objekt ging nicht noch einmal zum Anbieter.
+      expect(calls.some((call) => call.includes("b.png"))).toBe(false);
+      expect(await liveRows()).toEqual({ objects: "0", uploads: "0", buckets: "0" });
+      const leftovers = await owner.query<{ objects: string; uploads: string }>(
+        `SELECT (SELECT count(*)::text FROM project_storage_objects WHERE project_id = $1) AS objects,
+                (SELECT count(*)::text FROM project_storage_uploads WHERE project_id = $1) AS uploads`, [project]);
+      expect(leftovers.rows[0]).toEqual({ objects: "0", uploads: "0" });
+      const audit = await owner.query<{ action: string; metadata: Record<string, unknown> }>(
+        `SELECT action, redacted_metadata AS metadata FROM audit_logs WHERE organization_id = $1 AND project_id = $2
+         ORDER BY created_at DESC, id DESC LIMIT 1`, [storageOrganization, project]);
+      expect(audit.rows[0].action).toBe("project.purged");
+      expect(audit.rows[0].metadata).toMatchObject({ storageRemoved: 3, bucketsRemoved: 1, pending: ["project_databases"] });
+
+      // --- Die Funktionen gehoeren nur dem Provisioner ---
+      const may = await owner.query<{ runtime_list: boolean; runtime_forget: boolean; provisioner_list: boolean; provisioner_forget: boolean }>(
+        `SELECT has_function_privilege('qkern_runtime', 'qkern_list_project_purge_storage(uuid, integer)', 'EXECUTE') AS runtime_list,
+                has_function_privilege('qkern_runtime', 'qkern_forget_project_purge_storage(uuid, text, uuid)', 'EXECUTE') AS runtime_forget,
+                has_function_privilege('qkern_provisioner', 'qkern_list_project_purge_storage(uuid, integer)', 'EXECUTE') AS provisioner_list,
+                has_function_privilege('qkern_provisioner', 'qkern_forget_project_purge_storage(uuid, text, uuid)', 'EXECUTE') AS provisioner_forget`);
+      expect(may.rows[0]).toEqual({ runtime_list: false, runtime_forget: false, provisioner_list: true, provisioner_forget: true });
+    } finally {
+      await provisioner.end();
+    }
+  }, 120_000);
+
   it("(2.174) takes no scheduled backup of a deleted project, leaves its schedule due, and claims it again after a restore", async () => {
     // Seit 2.173 laesst sich ein Projekt loeschen. Ohne Filter haette der
     // Zeitplan weiter Backups eines Projekts bestellt, das der Owner geloescht

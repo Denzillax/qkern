@@ -149,6 +149,21 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.176 (`main`) **Der Abraeumer, zweiter Teil: Storage.** Migration
+  `0090_project_purge_storage.sql` bringt `qkern_list_project_purge_storage`
+  und `qkern_forget_project_purge_storage` (nur Provisioner, Frist geprueft)
+  und definiert `qkern_purge_project` neu: Buckets loeschen (Kaskade), aber
+  erst, wenn kein lebendes Objekt und kein offener Upload mehr bekannt ist.
+  `ProjectPurgeRound` loescht jede Datei erst beim Anbieter, bricht offene
+  Multipart-Uploads und Waisen unter dem Projektpraefix ab und vermerkt dann.
+  Der Provisioner liest den Anbieter ueber
+  `lib/server/project-storage/provider-env.ts` (dieselben Einstellungen wie
+  die Storage-Routen, wenn `QKERN_PROJECT_STORAGE_ENABLED=true`); ohne ihn
+  wartet ein Projekt mit Dateien. **Bekannte Luecke**: Ein abgelaufener oder
+  abgebrochener einfacher Upload kann eine Datei beim Anbieter hinterlassen,
+  die der Katalog nicht mehr als offen fuehrt; das gilt schon vor 2.176.
+  **Offen**: Abbau der Datenbank ueber den Broker (2.177).
+
 - 2.175 (`main`) **Der Abraeumer, erster Teil.** `lib/server/projects/purge.ts`
   (`ProjectPurgeRound`) laeuft in der Leerlaufrunde des Provisioners nach dem
   Backup-Durchlauf (`workers/project-provisioning-runtime.mts`). Er nimmt das

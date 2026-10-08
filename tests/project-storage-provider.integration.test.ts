@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/project-storage/provider";
 import { MemoryProjectStorageRepository } from "@/lib/server/project-storage/repository";
 import { ProjectStorageError, ProjectStorageService } from "@/lib/server/project-storage/service";
+import { ProjectPurgeRound } from "@/lib/server/projects/purge";
 
 const enabled = process.env.QKERN_TEST_STORAGE_PROVIDER_E2E === "true";
 const endpoint = process.env.QKERN_TEST_STORAGE_S3_ENDPOINT ?? "http://minio:9000";
@@ -360,6 +361,86 @@ describe.runIf(enabled)("real MinIO and ClamAV Project Storage certification", (
       parts: [{ partNumber: 1, etag: response.headers.get("etag")! }],
     });
     expect(object.status).toBe("clean");
+  }, 180_000);
+
+  it("(2.176) purges a deleted project's files at the real provider and leaves another project's files alone", async () => {
+    // Der Storage-Schritt des Abraeumers gegen den echten Anbieter. Dieser
+    // Stack hat kein PostgreSQL; die drei SQL-Aufrufe beantwortet darum ein
+    // Stub, und zwar mit genau dem, was der Katalog nennt. Dass die Funktionen
+    // das richtig nennen und vergessen, belegt (2.176) im PostgreSQL-Stack.
+    const { provider, service } = await certificationRuntime();
+    const deleted: ProjectStorageScope = { ...scope, projectId: crypto.randomUUID() };
+    const deletedPrincipal = principal;
+    const upload = async (target: ProjectStorageScope, name: string) => {
+      const bucket = await service.createBucket(deletedPrincipal, target, {
+        name: `cert-purge-${name}-${Date.now()}`,
+        allowedMimeTypes: ["text/plain"], maxObjectBytes: 1024 * 1024, quotaBytes: 4 * 1024 * 1024,
+      });
+      const payload = Buffer.from(`QKERN purge ${name} ${Date.now()}`, "utf8");
+      const prepared = await service.prepareUpload(deletedPrincipal, target, bucket.id, {
+        key: `${name}.txt`, contentType: "text/plain",
+        sizeBytes: payload.byteLength, checksumSha256: sha256Base64(payload),
+      });
+      await uploadForm(prepared.upload.url, prepared.upload.fields, payload, `${name}.txt`, "text/plain");
+      await service.completeUpload(deletedPrincipal, target, {
+        uploadId: prepared.uploadId, completionToken: prepared.completionToken,
+      });
+      return { bucketId: bucket.id, providerKey: prepared.upload.fields.key };
+    };
+    const doomed = await upload(deleted, "doomed");
+    const kept = await upload(scope, "kept");
+    // Ein Upload, den der Katalog kennt, der aber nie hochgeladen wurde: 404 ist Erfolg.
+    const neverSent = `${deleted.organizationId}/${deleted.projectId}/${deleted.environment}/${doomed.bucketId}/never/sent.txt`;
+    // Ein begonnener Multipart-Upload im Katalog und eine Waise ohne Eintrag.
+    const catalogKey = `${deleted.organizationId}/${deleted.projectId}/${deleted.environment}/${doomed.bucketId}/mp/catalog.bin`;
+    const catalogUpload = await provider.createMultipartUpload({ providerKey: catalogKey, contentType: "application/octet-stream" });
+    const orphanKey = `${deleted.organizationId}/${deleted.projectId}/${deleted.environment}/${doomed.bucketId}/mp/orphan.bin`;
+    await provider.createMultipartUpload({ providerKey: orphanKey, contentType: "application/octet-stream" });
+    const foreignKey = `${scope.organizationId}/${scope.projectId}/${scope.environment}/${kept.bucketId}/mp/foreign.bin`;
+    const foreign = await provider.createMultipartUpload({ providerKey: foreignKey, contentType: "application/octet-stream" });
+
+    const forgotten: string[] = [];
+    const query = async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("FROM projects")) return { rows: [{ id: deleted.projectId }] };
+      if (sql.includes("FROM project_database_backups")) return { rows: [] };
+      if (sql.includes("qkern_list_project_purge_storage")) {
+        return { rows: [
+          { kind: "object", id: "o1", provider_key: doomed.providerKey, provider_upload_id: null },
+          { kind: "upload", id: "u1", provider_key: neverSent, provider_upload_id: null },
+          { kind: "upload", id: "u2", provider_key: catalogKey, provider_upload_id: catalogUpload.uploadId },
+        ] };
+      }
+      if (sql.includes("qkern_forget_project_purge_storage")) {
+        forgotten.push(String(params[2]));
+        return { rows: [{ forgotten: true }] };
+      }
+      if (sql.includes("qkern_purge_project")) {
+        return { rows: [{ purged_at: new Date().toISOString(), api_keys_revoked: 0, s3_keys_revoked: 0, buckets_removed: 1 }] };
+      }
+      throw new Error(`unexpected SQL: ${sql}`);
+    };
+    const database = {
+      withTenant: async <T>(_context: unknown, run: (repositories: never) => Promise<T>) =>
+        run({ transaction: { query }, audit: { append: async () => undefined } } as never),
+    };
+    const round = new ProjectPurgeRound({
+      database: database as never,
+      organizationId: deleted.organizationId,
+      objects: { delete: async () => undefined },
+      backups: { forget: async () => undefined },
+      storage: provider,
+      actorRef: "storage-certification",
+    });
+
+    expect(await round.runRound()).toMatchObject({ storageRemoved: 3, purged: true, bucketsRemoved: 1 });
+    expect(forgotten).toEqual(["o1", "u1", "u2"]);
+    expect(await provider.headObject(doomed.providerKey)).toBeNull();
+    expect(await provider.listMultipartUploads({ keyPrefix: `${deleted.organizationId}/${deleted.projectId}/` })).toHaveLength(0);
+    // Das andere Projekt hat seine Datei und seinen Upload noch.
+    expect(await provider.headObject(kept.providerKey)).not.toBeNull();
+    expect((await provider.listMultipartUploads({ keyPrefix: foreignKey })).map((entry) => entry.uploadId))
+      .toEqual([foreign.uploadId]);
+    await provider.abortMultipartUpload({ providerKey: foreignKey, uploadId: foreign.uploadId });
   }, 180_000);
 });
 

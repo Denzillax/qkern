@@ -8,10 +8,7 @@ import {
   ClamdInstreamClient,
 } from "@/lib/server/project-storage/clamav-scanner";
 import {
-  MemoryProjectStorageProvider,
   QuarantineOnlyProjectStorageScanner,
-  S3ProjectStorageProvider,
-  StaticS3ProjectStorageCredentialsProvider,
   type ProjectStorageProvider,
   type ProjectStorageScanner,
 } from "@/lib/server/project-storage/provider";
@@ -20,6 +17,7 @@ import {
   type ProjectStorageRepository,
 } from "@/lib/server/project-storage/repository";
 import { ProjectStorageError, ProjectStorageService } from "@/lib/server/project-storage/service";
+import { providerFromEnv } from "@/lib/server/project-storage/provider-env";
 import { runtimeModeFromEnv } from "@/lib/server/runtime-mode";
 import { createUsageEmitterFromEnv } from "@/lib/server/usage/runtime";
 
@@ -102,37 +100,6 @@ function scannerFromEnv(
     new ClamdInstreamClient(config),
     config,
   );
-}
-
-function providerFromEnv(
-  env: Readonly<Record<string, string | undefined>>,
-  production: boolean,
-): ProjectStorageProvider {
-  if (production) {
-    throw new ConfigurationError(
-      "Production Project Storage requires injected object-provider and rotating credential adapters.",
-    );
-  }
-  const endpoint = env.QKERN_PROJECT_STORAGE_S3_ENDPOINT?.trim();
-  const region = env.QKERN_PROJECT_STORAGE_S3_REGION?.trim();
-  const bucket = env.QKERN_PROJECT_STORAGE_S3_BUCKET?.trim();
-  const accessKeyId = env.QKERN_PROJECT_STORAGE_S3_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = env.QKERN_PROJECT_STORAGE_S3_SECRET_ACCESS_KEY?.trim();
-  const configured = [endpoint, region, bucket, accessKeyId, secretAccessKey].filter(Boolean).length;
-  if (configured === 0) return new MemoryProjectStorageProvider();
-  if (configured !== 5) {
-    throw new ConfigurationError("All QKERN_PROJECT_STORAGE_S3_* development settings are required together.");
-  }
-  return new S3ProjectStorageProvider({
-    endpoint: endpoint!, region: region!, bucket: bucket!, production: false,
-    timeoutMs: integerSetting(env.QKERN_PROJECT_STORAGE_PROVIDER_TIMEOUT_MS, 10_000, 500, 30_000),
-  }, new StaticS3ProjectStorageCredentialsProvider({
-    accessKeyId: accessKeyId!,
-    secretAccessKey: secretAccessKey!,
-    ...(env.QKERN_PROJECT_STORAGE_S3_SESSION_TOKEN?.trim()
-      ? { sessionToken: env.QKERN_PROJECT_STORAGE_S3_SESSION_TOKEN.trim() }
-      : {}),
-  }));
 }
 
 function integerSetting(value: string | undefined, fallback: number, min: number, max: number) {

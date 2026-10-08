@@ -1,4 +1,5 @@
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
+import type { ProjectStorageProvider } from "@/lib/server/project-storage/provider";
 
 /**
  * Der Abraeumer fuer geloeschte Projekte, erster Teil (2.175).
@@ -8,12 +9,20 @@ import type { PostgresControlPlane } from "@/lib/server/db/repositories";
  * die Abrechnung bleiben, die Zeile in `projects` bleibt als Huelle mit
  * `purged_at`.
  *
- * **Was dieser Teil abraeumt.** Die Backups, auf demselben Weg wie das Ende
- * ihrer Aufbewahrung: erst das Objekt, dann verliert der Katalogeintrag
- * Objektverweis und Schluessel (`forget`). Danach widerruft
- * `qkern_purge_project` die Keys und setzt `purged_at`, aber nur, wenn kein
- * Backup mehr lesbar ist und keines mehr laeuft. Buckets kommen mit 2.176, der
- * Abbau der Datenbank ueber den Broker mit 2.177.
+ * **Was er abraeumt.** Die Backups, auf demselben Weg wie das Ende ihrer
+ * Aufbewahrung: erst das Objekt, dann verliert der Katalogeintrag
+ * Objektverweis und Schluessel (`forget`). Seit 2.176 ebenso Storage: erst die
+ * Datei beim Anbieter (ein offener Multipart-Upload wird abgebrochen), dann
+ * vermerkt `qkern_forget_project_purge_storage` sie als weg. Danach loescht
+ * `qkern_purge_project` die Buckets, widerruft die Keys und setzt
+ * `purged_at`, aber nur, wenn kein Backup mehr lesbar ist oder laeuft und
+ * beim Anbieter nichts mehr liegt, das der Katalog kennt. Der Abbau der
+ * Datenbank ueber den Broker kommt mit 2.177.
+ *
+ * **Ohne Storage-Zugang** (Project Storage in diesem Prozess nicht
+ * eingestellt) laesst der Abraeumer den Storage-Schritt aus. Hat das Projekt
+ * dann noch Dateien, bleibt es stehen und wartet; geloescht wird nichts, was
+ * beim Anbieter noch liegen koennte.
  *
  * **Wiederaufnehmbar.** Jede Runde nimmt das Projekt mit der aeltesten
  * abgelaufenen Frist und so viele Backups, wie in eine Runde passen. Bricht
@@ -28,10 +37,13 @@ import type { PostgresControlPlane } from "@/lib/server/db/repositories";
 export type ProjectPurgeRoundResult = Readonly<{
   projectId: string;
   backupsRemoved: number;
+  /** Dateien und offene Uploads, die diese Runde beim Anbieter entfernt hat (2.176). */
+  storageRemoved: number;
   /** `true`, wenn das Projekt in dieser Runde zur Huelle wurde. */
   purged: boolean;
   apiKeysRevoked: number;
   s3KeysRevoked: number;
+  bucketsRemoved: number;
 }>;
 
 export type ProjectPurgeDependencies = Readonly<{
@@ -41,6 +53,11 @@ export type ProjectPurgeDependencies = Readonly<{
   objects: { delete(objectKey: string): Promise<void> };
   /** Der Backup-Katalog; `forget` ist derselbe Schritt wie bei `pruneExpired`. */
   backups: { forget(backupId: string): Promise<void> };
+  /**
+   * Der Storage-Anbieter (2.176). Fehlt er, laesst die Runde den Schritt aus,
+   * und ein Projekt mit Dateien wartet.
+   */
+  storage?: Pick<ProjectStorageProvider, "deleteObject" | "abortMultipartUpload" | "listMultipartUploads">;
   actorRef?: string;
   /** Wie viele Backups eine Runde hoechstens anfasst. */
   batchSize?: number;
@@ -88,15 +105,18 @@ export class ProjectPurgeRound {
       await this.dependencies.backups.forget(backup.id);
     }
 
+    const storageRemoved = await this.purgeStorage(due);
+
     return database.withTenant({ organizationId, actorRef: this.actorRef }, async (repositories) => {
       const result = await repositories.transaction.query(
-        "SELECT purged_at, api_keys_revoked, s3_keys_revoked FROM qkern_purge_project($1)",
+        "SELECT purged_at, api_keys_revoked, s3_keys_revoked, buckets_removed FROM qkern_purge_project($1)",
         [due],
       );
       const row = result.rows[0];
       const purged = Boolean(row);
       const apiKeysRevoked = row ? Number(row.api_keys_revoked) : 0;
       const s3KeysRevoked = row ? Number(row.s3_keys_revoked) : 0;
+      const bucketsRemoved = row ? Number(row.buckets_removed) : 0;
       if (purged) {
         await repositories.audit.append({
           projectId: due,
@@ -107,13 +127,60 @@ export class ProjectPurgeRound {
           resourceRef: due,
           status: "succeeded",
           metadata: {
-            backupsRemoved: backups.length, apiKeysRevoked, s3KeysRevoked,
-            // Was dieser Teil noch nicht abraeumt, steht im Eintrag selbst.
-            pending: ["storage_buckets", "project_databases"],
+            backupsRemoved: backups.length, storageRemoved, bucketsRemoved, apiKeysRevoked, s3KeysRevoked,
+            // Was der Abraeumer noch nicht abraeumt, steht im Eintrag selbst.
+            pending: ["project_databases"],
           },
         });
       }
-      return { projectId: due, backupsRemoved: backups.length, purged, apiKeysRevoked, s3KeysRevoked };
+      return {
+        projectId: due, backupsRemoved: backups.length, storageRemoved, purged,
+        apiKeysRevoked, s3KeysRevoked, bucketsRemoved,
+      };
     });
+  }
+
+  /**
+   * Der Storage-Schritt (2.176): Was der Katalog noch kennt, verschwindet erst
+   * beim Anbieter und wird dann vermerkt. Begonnene Multipart-Uploads unter
+   * dem Praefix des Projekts, die der Katalog nicht kennt, bricht er ebenfalls
+   * ab; nach der Frist gehoert dort keiner mehr zu einem lebenden Upload.
+   */
+  private async purgeStorage(projectId: string): Promise<number> {
+    const storage = this.dependencies.storage;
+    if (!storage) return 0;
+    const { database, organizationId } = this.dependencies;
+    const entries = await database.withTenant({ organizationId, actorRef: this.actorRef, readOnly: true }, async (repositories) => {
+      const result = await repositories.transaction.query(
+        "SELECT kind, id, provider_key, provider_upload_id FROM qkern_list_project_purge_storage($1, $2)",
+        [projectId, this.batchSize],
+      );
+      return result.rows.map((row) => ({
+        kind: String(row.kind),
+        id: String(row.id),
+        providerKey: String(row.provider_key),
+        providerUploadId: row.provider_upload_id === null ? null : String(row.provider_upload_id),
+      }));
+    });
+    let removed = 0;
+    for (const entry of entries) {
+      if (entry.providerUploadId) {
+        await storage.abortMultipartUpload({ providerKey: entry.providerKey, uploadId: entry.providerUploadId });
+      } else {
+        await storage.deleteObject(entry.providerKey);
+      }
+      const forgotten = await database.withTenant({ organizationId, actorRef: this.actorRef }, async (repositories) => {
+        const result = await repositories.transaction.query(
+          "SELECT qkern_forget_project_purge_storage($1, $2, $3) AS forgotten",
+          [projectId, entry.kind, entry.id],
+        );
+        return result.rows[0]?.forgotten === true;
+      });
+      if (forgotten) removed += 1;
+    }
+    for (const started of await storage.listMultipartUploads({ keyPrefix: `${organizationId}/${projectId}/` })) {
+      await storage.abortMultipartUpload({ providerKey: started.providerKey, uploadId: started.uploadId });
+    }
+    return removed;
   }
 }

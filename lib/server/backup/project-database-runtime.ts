@@ -1,5 +1,7 @@
 import { ConfigurationError } from "@/lib/server/db/errors";
 import { ProjectPurgeRound } from "@/lib/server/projects/purge";
+import type { ProjectStorageProvider } from "@/lib/server/project-storage/provider";
+import { providerFromEnv as projectStorageProviderFromEnv } from "@/lib/server/project-storage/provider-env";
 import { createPostgresPool } from "@/lib/server/db/pool";
 import type { PostgresControlPlane } from "@/lib/server/db/repositories";
 import type { SqlPool, SqlQueryable } from "@/lib/server/db/sql";
@@ -228,6 +230,13 @@ export type ProjectDatabaseBackupRuntimeDependencies = Readonly<{
   logger?: { log(event: ProjectDatabaseBackupLogEvent): void };
   now?: () => Date;
   fetchFn?: typeof fetch;
+  /**
+   * Der Storage-Anbieter fuer den Abraeumer (2.176). Ohne ihn liest der
+   * Prozess dieselben Einstellungen wie die Storage-Routen, sobald
+   * `QKERN_PROJECT_STORAGE_ENABLED=true` gesetzt ist; ist es nicht gesetzt,
+   * laesst der Abraeumer Storage aus, und ein Projekt mit Dateien wartet.
+   */
+  storageProvider?: ProjectStorageProvider;
 }>;
 
 /**
@@ -374,11 +383,14 @@ export function createProjectDatabaseBackupRuntimeFromEnv(
   });
   service.useSchedule(scheduler);
 
+  const storage = dependencies.storageProvider ??
+    (env.QKERN_PROJECT_STORAGE_ENABLED === "true" ? projectStorageProviderFromEnv(env, production) : undefined);
   const purge = new ProjectPurgeRound({
     database: dependencies.controlPlane,
     organizationId,
     objects,
     backups: store,
+    ...(storage ? { storage } : {}),
     actorRef: workerId,
   });
 

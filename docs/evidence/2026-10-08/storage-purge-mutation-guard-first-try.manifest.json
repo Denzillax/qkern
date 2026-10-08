@@ -1,0 +1,19 @@
+{
+  "stack": "PostgreSQL 17",
+  "log": "storage-purge-mutation-guard-first-try.log",
+  "commit": "271ef6cbd081c692da7f0aa550be8f43f2b746dd",
+  "commitSubject": "feat: der Abraeumer, erster Teil (2.175)",
+  "workingTreeClean": false,
+  "exitCode": 1,
+  "migrationsApplied": 84,
+  "testFiles": "2 failed | 29 passed (31)",
+  "tests": "2 failed | 262 passed (264)",
+  "passed": 262,
+  "failed": 2,
+  "skipped": 0,
+  "images": [
+    "postgres:17-alpine",
+    "hashicorp/vault:1.18.3",
+    "node:24-alpine"
+  ]
+}

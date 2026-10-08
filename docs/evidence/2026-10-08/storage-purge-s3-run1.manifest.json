@@ -1,0 +1,19 @@
+{
+  "stack": "versitygw und ClamAV",
+  "log": "storage-purge-s3-run1.log",
+  "commit": "271ef6cbd081c692da7f0aa550be8f43f2b746dd",
+  "commitSubject": "feat: der Abraeumer, erster Teil (2.175)",
+  "workingTreeClean": false,
+  "exitCode": 0,
+  "migrationsApplied": null,
+  "testFiles": "2 passed (2)",
+  "tests": "15 passed (15)",
+  "passed": 15,
+  "failed": 0,
+  "skipped": 0,
+  "images": [
+    "versity/versitygw:v1.8.0",
+    "clamav/clamav:1.4.5",
+    "node:24.7.0-alpine"
+  ]
+}
