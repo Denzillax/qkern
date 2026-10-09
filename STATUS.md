@@ -137,23 +137,25 @@ laufen, und POSIX-Fälle, die auf Windows nicht ausdrückbar sind. Sie gelten al
 
 ## Aktueller Fokus
 
-**Release 1.9 hat beide Zertifizierungsstacks erstmals ausgeführt.** Dabei traten
-fünf Produktfehler zutage, die ausschließlich unter einer realen Datenbank
-auftreten — darunter zwei, die einen als fertig beziehungsweise implementiert
-dokumentierten Pfad vollständig funktionsunfähig machten: Der dauerhafte
-Queue-Adapter konnte nie eine Nachricht schreiben, und die Generated Data API lud
-keine einzige reale Tabelle. Beide sind behoben und belegt. Details in
-[Release 1.9](docs/RELEASE_1.9.md).
+Stand `2.83.0`, 8. Oktober 2026. Die letzten Releases haben das Löschen eines
+Projekts gebaut (`2.82.0`, Schnitte 2.173 bis 2.177, Entscheidungen in
+[PROJEKT_LOESCHEN](docs/PROJEKT_LOESCHEN.md)) und die ältere Lücke bei
+verfallenen Uploads geschlossen (`2.83.0`). Davor lag der Schwerpunkt auf der
+Übersichtlichkeit und Bedienbarkeit der Console (`2.79.0` bis `2.81.0`).
 
-**Release 1.10 schließt Stufe 1.3.** Ein dritter Wegwerfstack mit Mailpit als
-echtem SMTP-Server und Dex als echtem OIDC-Provider erbringt die vom
-Austrittskriterium verlangte Provider-E2E-Matrix. Der Dienst läuft dabei ohne
-Debug-Token: Der einzige Weg an ein Verifikations-, Magic-Link- oder
-Reset-Token führt über eine tatsächlich zugestellte Nachricht. Details in
-[Release 1.10](docs/RELEASE_1.10.md).
+Was jetzt offen ist, braucht Dritte oder eine Entscheidung:
 
-Damit sind die Stufen 1.1 bis 1.4 abgeschlossen. Als nächstes steht Stufe 1.5
-Realtime an; dort fehlt der persistente PostgreSQL-Event-Log mit CDC.
+- **Broker.** Der Abbau-Vertrag aus `2.82.0` ist gegen den Empfänger des
+  Stacks belegt; ein echter Broker, der eine Datenbank abbaut, nicht. Ohne ihn
+  bleibt ein abgelaufenes Projekt mit Datenbank als „wird abgeräumt“ stehen.
+- **Screenreader und echtes Projekt.** Rollen und Namen der Console sind
+  ausgelesen; wie sie klingen, beurteilt nur ein Mensch. Die Console ist nur im
+  Nachbau angesehen.
+- **Grössere Module** aus der Tabelle oben (Transform und CDN, SMS und SAML,
+  Tarife) warten auf eine Entscheidung, was gebaut wird.
+
+Die Stufengeschichte bis Release 1.10 steht in
+[Release 1.9](docs/RELEASE_1.9.md) und [Release 1.10](docs/RELEASE_1.10.md).
 
 ## Wichtige Grenzen
 
