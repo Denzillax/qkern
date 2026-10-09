@@ -149,6 +149,12 @@ Grossbuchstaben.
   `*`-Stunde meldet im Cron-Log in der doppelten Stunde zwei Vorkommen, das ist
   gewollt und dort nicht erklaert.
 
+- 2.179 (`main`) **Geloeschte Projekte in der Console uebersichtlich.** Im
+  Nachbau mit langen Namen bei 1440 und 390 Pixeln angesehen: Die Liste klebte
+  am Knopf "Projekt loeschen", und jede Zeile trug den Pfeil zum Zurueckholen,
+  auch die, die schon abgeraeumt werden. Jetzt Abstand nach oben und fuer
+  abgeraeumte Zeilen eine Sanduhr im ruhigen Ton (`.bucket-icon.is-purging`).
+
 - Release `2.83.0` (`main`) **Kein Upload laesst mehr eine Datei liegen.**
   Fasst 2.178 zusammen, Notiz `docs/RELEASE_2.83.md`. **Naechste begrenzte
   Aufgabe**: Was jetzt offen ist, braucht Denzil oder Dritte: den

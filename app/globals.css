@@ -1908,3 +1908,11 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
 .command-results button.is-active svg:last-child { color: var(--qkern-accent-text); }
 .command-input button { font-size: 11px; padding: 4px 8px; }
 .command-results p { margin: 8px 10px 12px; font-size: 13px; }
+
+/* Geloeschte Projekte (2.173, 2.177). Die Liste klebte direkt am Knopf
+   "Projekt loeschen", und jede Zeile trug den Pfeil zum Zurueckholen, auch
+   die, die schon abgeraeumt werden. Abstand nach oben, und die Sanduhr der
+   abgeraeumten Zeilen im ruhigen Ton statt in der Aktionsfarbe. */
+.project-deletion-list { margin-top: 20px; }
+.project-deletion-list h4 { margin: 0 0 8px; }
+.bucket-icon.is-purging { background: var(--qkern-surface-2); color: var(--qkern-text-muted); }

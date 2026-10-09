@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { Hourglass, RotateCcw } from "lucide-react";
 import { t } from "@/components/console/console-i18n";
 import { DangerousAction } from "@/components/console/dangerous-action";
 import { serverErrorText } from "@/components/console/server-errors";
@@ -90,7 +90,12 @@ export function ProjectDeletion({ project, onChanged }: {
     {deleted.length > 0 && <div className="project-deletion-list">
       <h4>{t("Gelöschte Projekte")}</h4>
       {deleted.map((entry) => <div className="bucket-row" key={entry.id}>
-        <span className="bucket-icon"><RotateCcw size={16} aria-hidden/></span>
+        {/* Das Zeichen sagt, was mit der Zeile geht: Ein Pfeil zurueck nur, wo
+            das Projekt sich zurueckholen laesst; eine Sanduhr, wo der
+            Abraeumer dran ist und nichts mehr zurueckkommt. */}
+        <span className={`bucket-icon${entry.state === "restorable" ? "" : " is-purging"}`}>
+          {entry.state === "restorable" ? <RotateCcw size={16} aria-hidden/> : <Hourglass size={16} aria-hidden/>}
+        </span>
         <div><strong>{entry.name}</strong><small>{entry.state === "restorable"
           ? `${t("Zurückholbar bis")} ${formatMoment(entry.deleteAfter)}`
           : purgingText(entry)}</small></div>
